@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+/* Hide scrollbar */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+body {
+  transition: background-color 0.3s, color 0.3s;
+  overflow-x: hidden;
+}
+
+/* Sidebar width and transition */
+.sidebar {
+  width: 18rem;
+  /* 72 Tailwind units */
+  transition: width 0.3s;
+}
+
+.sidebar.closed {
+  width: 0;
+}
+
+/* Optional: hide content overflow when closed */
+.sidebar-inner {
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Optional: smooth transition for main content margin */
+.main-content {
+  transition: margin-left 0.3s;
+}
+
+/* Table ki rows ko dropdown bahar dikhane ke liye force karein */
+.rdt_TableBody {
+  overflow: visible !important;
+}
+
+.rdt_TableRow {
+  overflow: visible !important;
+}
+
+.rdt_TableCell {
+  overflow: visible !important;
+}
+
+/* Container for the button group */
+.quotation-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Creates the thin line between buttons */
+  border-radius: 8px;
+  overflow: hidden;
+  /* Ensures corners stay rounded */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-quotation {
+  background-color: #3b28e1;
+  /* Your specific brand purple */
+  color: #ffffff;
+  border: none;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  transition: background-color 0.2s ease;
+  width: 100%;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.btn-quotation:hover {
+  background-color: #2a1bb5;
+  /* Slightly darker on hover */
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.btn-quotation:active {
+  background-color: #1e138a;
+}
