@@ -5,16 +5,12 @@ import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import Attendance from "./pages/Attendance";
 import Leaves from "./pages/Leaves";
-import Chat from "./pages/Chat";
 import ServiceRequest from "./pages/ServiceRequest";
 import InventoryInspection from "./pages/InventoryInspection";
-import Rental from "./pages/Rental";
-import Reports from "./pages/Reports";
-import Billing from "./pages/Billing";
+
 import Leads from "./pages/Leads";
-import Vendor from "./pages/Vendor";
+import Vendor from "./pages/vendor/Vendor";
 import Documentation from "./pages/Documentation";
-import SettingsPage from "./pages/SettingsPage";
 import Facilities from "./pages/setup/Facilities";
 import AddFacility from "./pages/setup/AddFacility";
 import FacilitiesManagers from "./pages/setup/FacilitiesManagers";
@@ -93,6 +89,60 @@ import InspectionCompleted from "./pages/pm-inspection/InspectionCompleted";
 import InspectionQoutation from "./pages/pm-inspection/InspectionQoutation";
 import ViewInspectionQoutation from "./pages/pm-inspection/viewInspectionQoutation";
 import InspectionHistory from "./pages/pm-inspection/InspectionHistory";
+import EditSaleParts from "./pages/sales/EditSaleParts";
+import ViewSales from "./pages/sales/ViewSales";
+import SalesCreditCard from "./pages/sales/SalesCreditCard";
+import SalesPartsInvoice from "./pages/sales/SalesPartsInvoice";
+import SalesInvoicePay from "./pages/sales/SalesInvoicePay";
+import EditInvoicePay from "./pages/sales/EditInvoicePay";
+import SalesInvoiceView from "./pages/sales/SalesInvoiceView";
+import SalesInProgress from "./pages/sales/SalesInProgress";
+import SalesCompleted from "./pages/sales/SalesCompleted";
+import SalesHistory from "./pages/sales/SalesHistory";
+import RentalQoutation from "./pages/rentals/RentalQoutation";
+import AddRentalQuotation from "./pages/rentals/AddRentalQuotation";
+import RentalConvertInvoice from "./pages/rentals/RentalConvertInvoice";
+import RentalQoutationView from "./pages/rentals/RentalQoutationView";
+import RentalPartEdit from "./pages/rentals/RentalPartEdit";
+import RentalCreditCard from "./pages/rentals/RentalCreditCard";
+import RentalPartBuy from "./pages/rentals/RentalPartBuy";
+import RentalPartInvoices from "./pages/rentals/RentalPartInvoices";
+import RentalInProgress from "./pages/rentals/RentalInProgress";
+import RentalCompleted from "./pages/rentals/RentalCompleted";
+import RentalHistory from "./pages/rentals/RentalHistory";
+import ServiceReport from "./pages/reports/ServiceReport";
+import ServiceReportPrint from "./pages/reports/ServiceReportPrint";
+import ReportInspection from "./pages/reports/ReportInspection";
+import ViewReportInspection from "./pages/reports/ViewReportInspection";
+import InspectionPrintReport from "./pages/reports/InspectionPrintReport";
+import InspectionReportActivity from "./pages/reports/InspectionReportActivity";
+import FacilityInventoryReport from "./pages/reports/FacilityInventoryReport";
+import InspectionRangeReport from "./pages/reports/InspectionRangeReport";
+import EquipmentServiceHistory from "./pages/reports/EquipmentServiceHistory";
+import BillingsInvoice from "./pages/billings/BillingsInvoice";
+import BillingInstallment from "./pages/billings/BillingInstallment";
+import BillingReport from "./pages/billings/BillingReport";
+import BillingRevenueReports from "./pages/billings/BillingRevenueReports";
+import CCAuthForms from "./pages/billings/CCAuthForms";
+import InstallmentPlans from "./pages/billings/InstallmentPlans";
+import AddInstallmentPlan from "./pages/billings/AddInstallmentPlan";
+import EditInstallmentPlan from "./pages/billings/EditInstallmentPlan";
+import BillingInvoiceSetting from "./pages/billings/BillingInvoiceSetting";
+import AttendenceList from "./pages/Hr-management/AttendenceList";
+import EditAttendenceList from "./pages/Hr-management/EditAttendenceList";
+import Chat from "./pages/chat/Chat";
+import AddVendor from "./pages/vendor/AddVendor";
+import EditVendor from "./pages/vendor/EditVendor";
+import NewLead from "./pages/leads/NewLead";
+import AddLeads from "./pages/leads/AddLeads";
+import UpdateLead from "./pages/leads/UpdateLead";
+import LeadsInProgress from "./pages/leads/LeadsInProgress";
+import LeadCompleted from "./pages/leads/LeadCompleted";
+import LeadHistory from "./pages/leads/LeadHistory";
+import EditServiceCompleted from "./pages/service-requist/EditServiceCompleted";
+import MailServiceCompleted from "./pages/service-requist/MailServiceCompleted";
+import ViewQoutation from "./pages/service-requist/ViewQoutation";
+import AboutCompany from "./pages/settings/AboutCompany";
 
 // Pages
 
@@ -140,7 +190,6 @@ export default function App() {
             path="modality/update-modality/:id/update"
             element={<UpdateModality />}
           />
-
           <Route
             path="submodality/update-submodality/:id/update"
             element={<UpdateSubmodality />}
@@ -175,9 +224,7 @@ export default function App() {
           <Route path="rental-parts/add" element={<AddRentalPart />} />
           <Route path="rental-parts/edit/:id" element={<EditRentalPart />} />
           {/*===================== End ======================*/}
-
           {/* ============================ service request ======================= */}
-
           <Route path="new-request" element={<NewServiceRequest />} />
           <Route path="new-request/add" element={<AddNewRequest />} />
           <Route path="new-request/edit/:id" element={<UpdateNewRequest />} />
@@ -195,21 +242,29 @@ export default function App() {
             path="service-request-completed"
             element={<ServiceRequestCompleted />}
           />
-
+          <Route
+            path="service-request-completed/edit/:id"
+            element={<EditServiceCompleted />}
+          />
+          <Route
+            path="service-request-completed/mail/:id"
+            element={<MailServiceCompleted />}
+          />
           <Route
             path="service-request-completed/view-report/:id"
             element={<ServiceCompletedView />}
           />
           <Route path="service-quotation" element={<ServiceQoutation />} />
           <Route
+            path="service-quotation/view/:id"
+            element={<ViewQoutation />}
+          />
+          <Route
             path="service-request-history"
             element={<ServiceRequestHistory />}
           />
-
           {/* ============================ end ======================= */}
-
           {/* ============================ PM Inspection ======================= */}
-
           <Route path="upcoming-inspections" element={<UpComingInspection />} />
           <Route
             path="upcoming-inspections/pending/:id"
@@ -240,13 +295,19 @@ export default function App() {
             path="inspections-quotation/view-inspection-quotation/:id"
             element={<ViewInspectionQoutation />}
           />
-
           <Route path="inspections-history" element={<InspectionHistory />} />
           {/* ============================ End PM Inspection ======================= */}
-
           {/* HR Management */}
           <Route path="employees" element={<Employees />} />
+          {/* ==================== Hr ManageMent ============================ */}
           <Route path="attendance" element={<Attendance />} />
+          <Route path="attendance-list" element={<AttendenceList />} />
+          <Route
+            path="attendance-list/edit/:id"
+            element={<EditAttendenceList />}
+          />
+
+          {/* ==================== end ===================== */}
           <Route path="leaves" element={<Leaves />} />
           {/*========= User Management ==============*/}
           <Route path="users" element={<Users />} />
@@ -262,26 +323,123 @@ export default function App() {
             path="inventory-inspection"
             element={<InventoryInspection />}
           />
-          {/* Sales route */}
-          <Route path="/sales/sales-qoutation" element={<SalesQoutation />} />
+          {/*================== Sales route ========================*/}
+          <Route path="sales-qoutation" element={<SalesQoutation />} />
           <Route
             path="/sales/add-quotation/:type"
             element={<AddQuotationPage />}
           />
-          <Route path="/sales/convert-invoice/:id" element={<SalesInvoice />} />
+          <Route path="sales-qoutation/edit/:id" element={<EditSaleParts />} />
+          <Route path="sales-qoutation/view/:id" element={<ViewSales />} />
+          <Route path="sales-invoice" element={<SalesPartsInvoice />} />
+          <Route path="sales-invoice/pay/:id" element={<SalesInvoicePay />} />
+          <Route path="sales-invoice/edit/:id" element={<EditInvoicePay />} />
+          <Route path="sales-invoice/view/:id" element={<SalesInvoiceView />} />
+          <Route path="sales-in-progress" element={<SalesInProgress />} />
+          <Route path="completed-sales" element={<SalesCompleted />} />
+          <Route path="sales-history" element={<SalesHistory />} />
+          {/*============= end sales route  =======================*/}
+          {/*================== Rentals route ========================*/}
+          <Route path="rental-qoutation" element={<RentalQoutation />} />
+          <Route path="rental-qoutation/add" element={<AddRentalQuotation />} />
+          <Route
+            path="rental-qoutation/view/:id"
+            element={<RentalQoutationView />}
+          />
+          <Route
+            path="rental-qoutation/edit/:id"
+            element={<RentalPartEdit />}
+          />
+          <Route path="rental-qoutation/buy/:id" element={<RentalPartBuy />} />
+          <Route path="rental-invoices" element={<RentalPartInvoices />} />
+          <Route path="rental-in-progress" element={<RentalInProgress />} />
+          <Route path="rental-completed" element={<RentalCompleted />} />
+          <Route path="rental-history" element={<RentalHistory />} />
+          {/*================== End rental ========================*/}
+          {/*================== Reports ========================*/}
+          <Route path="service-report" element={<ServiceReport />} />
+          <Route
+            path="service-report/print/:id"
+            element={<ServiceReportPrint />}
+          />
+          <Route path="report-inspection" element={<ReportInspection />} />
+          <Route
+            path="report-inspection/view/:id"
+            element={<ViewReportInspection />}
+          />
+          <Route
+            path="report-inspection/print/:id"
+            element={<InspectionPrintReport />}
+          />
+          <Route
+            path="report-inspection/report-activity/:id"
+            element={<InspectionReportActivity />}
+          />
+          <Route
+            path="facility-reports"
+            element={<FacilityInventoryReport />}
+          />
+          <Route
+            path="inspection-range-reports"
+            element={<InspectionRangeReport />}
+          />
+          <Route
+            path="equipment-service-history"
+            element={<EquipmentServiceHistory />}
+          />
+          {/*================== End reports ========================*/}
+          {/* ======================= Billings Route ================================= */}
+          <Route path="billing-invoice" element={<BillingsInvoice />} />
+          <Route path="installment-invoices" element={<BillingInstallment />} />
+          <Route path="billing-reports" element={<BillingReport />} />
+          <Route path="revenue-reports" element={<BillingRevenueReports />} />
+          <Route path="cc-forms" element={<CCAuthForms />} />
+          <Route path="installment-plans" element={<InstallmentPlans />} />
+          <Route
+            path="installment-plans/add"
+            element={<AddInstallmentPlan />}
+          />
+          <Route
+            path="installment-plans/edit/:id"
+            element={<EditInstallmentPlan />}
+          />
+          <Route path="billing-settings" element={<BillingInvoiceSetting />} />
 
-          {/* end sales route  */}
-          <Route path="rental" element={<Rental />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="billing" element={<Billing />} />
+          {/* ======================= Ends Billings Route ================================= */}
           <Route path="leads" element={<Leads />} />
+          {/* ================= Vendor ===================== */}
           <Route path="vendor" element={<Vendor />} />
+          <Route path="vendor/add" element={<AddVendor />} />
+          <Route path="vendor/edit-vendor/:id" element={<EditVendor />} />
+
+          {/* ================= end Vendor ===================== */}
+
+          {/* ======================= Leads Route ================================= */}
+          <Route path="new-lead" element={<NewLead />} />
+          <Route path="new-lead/add-leads" element={<AddLeads />} />
+          <Route path="new-lead/edit/:id" element={<UpdateLead />} />
+          <Route path="lead-in-progress" element={<LeadsInProgress />} />
+          <Route path="lead-completed" element={<LeadCompleted />} />
+          <Route path="leads-history" element={<LeadHistory />} />
+
+          {/* ======================= Ends Leads Route ================================= */}
+
           <Route path="documentation" element={<Documentation />} />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route path="about-company" element={<AboutCompany />} />
         </Route>
         <Route
           path="/new-request/auth/:id"
           element={<CreditCardAuthorization />}
+        />
+        <Route path="/sales/convert-invoice/:id" element={<SalesInvoice />} />
+        <Route path="/sales/credit-auth/:id" element={<SalesCreditCard />} />
+        <Route
+          path="rental-qoutation/rental-invoice/:id"
+          element={<RentalConvertInvoice />}
+        />
+        <Route
+          path="rental-qoutation/credit-card/:id"
+          element={<RentalCreditCard />}
         />
       </Routes>
     </BrowserRouter>

@@ -82,7 +82,10 @@ const ActionDropdown = ({ row }) => {
             <button
               onClick={() => {
                 setIsOpen(false);
-                setTimeout(() => navigate(`/view-quotation/${row.id}`), 0);
+                setTimeout(
+                  () => navigate(`/service-quotation/view/${row.id}`),
+                  0,
+                );
               }}
               className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             >

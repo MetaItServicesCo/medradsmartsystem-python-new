@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import Logo from "../../assets/logo.png";
-const SalesInvoice = () => {
+import Rental from "../Rental";
+const RentalConvertInvoice = () => {
   const [parts, setParts] = useState([
     {
       id: 1,
@@ -102,8 +103,8 @@ const SalesInvoice = () => {
       <div className="bg-white mt-1">
         <div className="max-w-[1300px] mx-auto px-6 py-3 flex items-center gap-4">
           <div className="h-5 flex-1 bg-blue-500 shadow "></div>
-          <h1 className="text-xl font-bold text-gray-800 whitespace-nowrap">
-            Sale Quotation
+          <h1 className="text-xl font-bold text-gray-800 whitespace-nowrap shadow-2xl">
+            Rental Quotation
           </h1>
           <div className="h-5 flex-1 bg-blue-500 shadow "></div>
         </div>
@@ -167,30 +168,38 @@ const SalesInvoice = () => {
             </div>
 
             {/* Parts Used */}
-            <div className="rounded overflow-hidden border border-gray-200 bg-white">
-              <div className="bg-blue-500 px-4 py-2.5">
-                <h2 className="text-white font-semibold text-sm">Parts Used</h2>
+            <div className="rounded overflow-hidden border border-gray-300 bg-white shadow-sm">
+              {/* Header Section */}
+              <div className="bg-[#007bff] px-4 py-2 border-b border-gray-300">
+                <h2 className="text-white font-bold text-[14px]">Parts Used</h2>
               </div>
+
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-[13px] border-collapse">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left px-4 py-3 font-semibold text-gray-700">
+                    <tr className="bg-white border-b border-gray-300">
+                      <th className="px-3 py-2 text-left font-bold text-gray-800 border-r border-gray-200 w-10">
+                        Select
+                      </th>
+                      <th className="px-3 py-2 text-left font-bold text-gray-800 border-r border-gray-200">
                         Number
                       </th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-700">
+                      <th className="px-3 py-2 text-left font-bold text-gray-800 border-r border-gray-200">
                         Description
                       </th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-700">
-                        Unit Amount
+                      <th className="px-3 py-2 text-left font-bold text-gray-800 border-r border-gray-200">
+                        Per Day Rent
                       </th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-700">
+                      <th className="px-3 py-2 text-left font-bold text-gray-800 border-r border-gray-200">
+                        Rental Period
+                      </th>
+                      <th className="px-3 py-2 text-left font-bold text-gray-800 border-r border-gray-200">
                         Quantity
                       </th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-700">
+                      <th className="px-3 py-2 text-left font-bold text-gray-800 border-r border-gray-200">
                         Condition
                       </th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-700">
+                      <th className="px-3 py-2 text-left font-bold text-gray-800">
                         Total
                       </th>
                     </tr>
@@ -199,18 +208,28 @@ const SalesInvoice = () => {
                     {parts.map((part, idx) => (
                       <tr
                         key={part.id}
-                        className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                        className="border-b border-gray-200 hover:bg-gray-50"
                       >
-                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                        <td className="px-3 py-2 text-center border-r border-gray-200">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 accent-red-600"
+                            checked={part.selected}
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 border-r border-gray-200">
                           {part.number}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">
+                        <td className="px-3 py-2 text-gray-700 border-r border-gray-200">
                           {part.description}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">
-                          ${part.unitAmount.toFixed(2)}
+                        <td className="px-3 py-2 text-gray-700 border-r border-gray-200">
+                          ${part.unitAmount?.toFixed(2)}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2 text-gray-700 border-r border-gray-200">
+                          0 days
+                        </td>
+                        <td className="px-3 py-2 border-r border-gray-200">
                           <input
                             type="number"
                             min={1}
@@ -218,13 +237,13 @@ const SalesInvoice = () => {
                             onChange={(e) =>
                               handleQtyChange(part.id, e.target.value)
                             }
-                            className="w-16 border border-gray-300 rounded px-2 py-1 text-center text-sm outline-none focus:ring-1 focus:ring-blue-400"
+                            className="w-16 border border-gray-300 rounded px-2 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-400"
                           />
                         </td>
-                        <td className="px-4 py-3 text-gray-700">
+                        <td className="px-3 py-2 text-gray-700 border-r border-gray-200">
                           {part.condition}
                         </td>
-                        <td className="px-4 py-3 text-gray-700 font-medium">
+                        <td className="px-3 py-2 text-gray-700 font-medium">
                           ${(part.unitAmount * part.quantity).toFixed(2)}
                         </td>
                       </tr>
@@ -233,37 +252,33 @@ const SalesInvoice = () => {
                 </table>
               </div>
 
-              {/* Summary Rows */}
-              <div className="border-t border-gray-100">
+              {/* Summary Section */}
+              <div className="bg-white">
                 {[
                   { label: "Worked Hours (0/hour)", value: "$0.00" },
                   { label: "Setup Fee", value: "$0.00" },
-                  { label: "Service Fee", value: "$0" },
-                  { label: "Shipping Fee", value: "$0.00" },
+                  { label: "Shipping Fee", value: "$250.00" },
                   { label: "Application Fee", value: "$0.00" },
-                  {
-                    label: "Tax Amount on Parts",
-                    value: `$${taxAmount.toFixed(2)}`,
-                  },
                 ].map((row, i) => (
                   <div
                     key={i}
-                    className="flex justify-end border-b border-gray-50 last:border-0"
+                    className="flex justify-end border-b border-gray-200"
                   >
-                    <div className="text-right px-6 py-2 text-sm font-semibold text-gray-600 w-56">
+                    <div className="text-right px-4 py-1.5 text-[13px] font-bold text-gray-800 w-64 border-l border-gray-200">
                       {row.label}
                     </div>
-                    <div className="px-6 py-2 text-sm text-gray-700 w-24 text-right">
+                    <div className="px-4 py-1.5 text-[13px] text-gray-700 w-32 text-right border-l border-gray-200">
                       {row.value}
                     </div>
                   </div>
                 ))}
-                {/* Grand Total */}
-                <div className="flex justify-end bg-gray-50">
-                  <div className="text-right px-6 py-2.5 text-sm font-bold text-gray-800 w-56">
+
+                {/* Grand Total Row */}
+                <div className="flex justify-end bg-white">
+                  <div className="text-right px-4 py-2 text-[14px] font-bold text-gray-900 w-64 border-l border-gray-200 border-b border-gray-200">
                     Grand Total
                   </div>
-                  <div className="px-6 py-2.5 text-sm font-bold text-gray-800 w-24 text-right">
+                  <div className="px-4 py-2 text-[14px] font-bold text-gray-900 w-32 text-right border-l border-gray-200 border-b border-gray-200">
                     ${grandTotal.toFixed(2)}
                   </div>
                 </div>
@@ -337,4 +352,4 @@ const SalesInvoice = () => {
   );
 };
 
-export default SalesInvoice;
+export default RentalConvertInvoice;

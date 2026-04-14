@@ -5,13 +5,17 @@ import DataTableComponent from "react-data-table-component";
 
 const DataTable = DataTableComponent.default || DataTableComponent;
 
-const AddQuotationPage = () => {
+const AddRentalQuotation = () => {
   const { type } = useParams();
   const [showAddPartsModal, setShowAddPartsModal] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
   const [filterText, setFilterText] = useState("");
   const [activeLetter, setActiveLetter] = useState("None");
   const navigate = useNavigate();
+
+  // Date States
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   // Facility List
   const facilities = [
@@ -86,6 +90,11 @@ const AddQuotationPage = () => {
   ];
 
   const handleSelectItem = (item) => {
+    const isAlreadySelected = selectedItems.find((i) => i.id === item.id);
+    if (isAlreadySelected) {
+      alert("Item already added!");
+      return;
+    }
     const newItem = { ...item, qty: 1, shipping: 0, setup: 0 };
     setSelectedItems([...selectedItems, newItem]);
     setShowAddPartsModal(false);
@@ -101,8 +110,9 @@ const AddQuotationPage = () => {
     item.amt * item.qty + item.shipping + item.setup;
 
   // Modal Table Columns
+  // Modal Table Columns with Quantity Input
   const modalColumns = [
-    { name: "#", selector: (row) => row.id, sortable: true, width: "60px" },
+    { name: "#", selector: (row) => row.id, sortable: true, width: "40px" },
     {
       name: "Part Description",
       selector: (row) => row.desc,
@@ -113,20 +123,30 @@ const AddQuotationPage = () => {
     { name: "Amount", selector: (row) => row.amt, sortable: true },
     {
       name: "Quantity",
-      cell: () => (
+      width: "90px",
+      cell: (row) => (
         <input
-          type="text"
-          className="border rounded w-full px-2 py-1 outline-none h-8"
+          type="number"
+          min="1"
+          defaultValue="1"
+          id={`qty-${row.id}`} // Unique ID taake value pick ki ja sake
+          className="border rounded w-full px-2 py-1 outline-none h-8 text-sm focus:border-indigo-400"
         />
       ),
-      width: "120px",
     },
     { name: "Condition", selector: (row) => row.cond, sortable: true },
     {
       name: "Option",
       cell: (row) => (
         <button
-          onClick={() => handleSelectItem(row)}
+          onClick={() => {
+            // Input field se value uthane ke liye
+            const qtyInput = document.getElementById(`qty-${row.id}`);
+            const quantity = parseInt(qtyInput.value) || 1;
+
+            // Item ke saath quantity bhej rahe hain
+            handleSelectItem({ ...row, qty: quantity });
+          }}
           className="bg-[#3e49bb] text-white px-4 py-1 rounded text-xs font-bold shadow hover:bg-blue-800"
         >
           Select
@@ -148,10 +168,10 @@ const AddQuotationPage = () => {
   }, [activeLetter, filterText]);
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 min-h-screen font-sans">
       <div className="max-w-7xl mx-auto bg-white shadow rounded-lg p-6 border border-gray-200">
         <h2 className="text-gray-600 text-lg font-medium mb-6">
-          Add Sale Parts
+          Add Rental Quotation
         </h2>
 
         {/* --- Select Facility Dropdown --- */}
@@ -159,7 +179,7 @@ const AddQuotationPage = () => {
           <label className="block text-gray-600 text-xs font-bold mb-1">
             Select Facility
           </label>
-          <select className="w-full border border-gray-300 rounded p-2 bg-white outline-none focus:ring-1 focus:ring-blue-500">
+          <select className="w-full border border-gray-300 rounded p-2 bg-white outline-none focus:ring-1 focus:ring-blue-500 text-sm">
             <option value="">Search Facility</option>
             {facilities.map((f, i) => (
               <option key={i} value={f}>
@@ -173,18 +193,18 @@ const AddQuotationPage = () => {
         <div className="flex gap-3 mb-6 flex-wrap">
           <button
             onClick={() => setShowAddPartsModal(true)}
-            className="bg-[#3e49bb] text-white px-4 py-2 rounded flex items-center gap-2 font-bold shadow-md"
+            className="bg-[#3e49bb] text-white px-4 py-2 rounded flex items-center gap-2 font-bold shadow-md text-xs"
           >
-            <HiPlus /> Add Items
+            <HiPlus /> Add Parts
           </button>
           <button
-            className="bg-[#3e49bb] text-white px-4 py-2 rounded font-bold shadow-md"
+            className="bg-[#3e49bb] text-white px-4 py-2 rounded font-bold shadow-md text-xs"
             onClick={() => navigate("/add-test-equipment")}
           >
             Switch to Equipment
           </button>
           {/* <button
-            className="bg-[#3e49bb] text-white px-4 py-2 rounded font-bold shadow-md"
+            className="bg-[#3e49bb] text-white px-4 py-2 rounded font-bold shadow-md text-xs"
             onClick={() => navigate("/rental")}
           >
             Rental
@@ -208,63 +228,100 @@ const AddQuotationPage = () => {
               </tr>
             </thead>
             <tbody>
-              {selectedItems.map((item, idx) => (
-                <tr key={idx} className="border-b hover:bg-gray-50">
-                  <td className="p-3">{item.num}</td>
-                  <td className="p-3">{item.desc}</td>
-                  <td className="p-3">{item.amt}</td>
-                  <td className="p-3 text-center">
-                    <input
-                      type="number"
-                      value={item.qty}
-                      onChange={(e) =>
-                        updateItemValue(idx, "qty", e.target.value)
-                      }
-                      className="w-16 border rounded px-1 text-center"
-                    />
-                  </td>
-                  <td className="p-3 text-center">
-                    <input
-                      type="number"
-                      value={item.shipping}
-                      onChange={(e) =>
-                        updateItemValue(idx, "shipping", e.target.value)
-                      }
-                      className="w-20 border rounded px-1 text-center"
-                    />
-                  </td>
-                  <td className="p-3 text-center">
-                    <input
-                      type="number"
-                      value={item.setup}
-                      onChange={(e) =>
-                        updateItemValue(idx, "setup", e.target.value)
-                      }
-                      className="w-20 border rounded px-1 text-center"
-                    />
-                  </td>
-                  <td className="p-3">{item.cond}</td>
-                  <td className="p-3 font-bold text-[#3e49bb] text-center">
-                    {calculateRowTotal(item).toFixed(2)}
-                  </td>
+              {selectedItems.length === 0 ? (
+                <tr>
                   <td
-                    className="p-3 text-red-500 cursor-pointer font-bold text-center text-lg"
-                    onClick={() =>
-                      setSelectedItems(
-                        selectedItems.filter((_, i) => i !== idx),
-                      )
-                    }
+                    colSpan="9"
+                    className="p-8 text-center text-gray-400 italic"
                   >
-                    &times;
+                    No items added yet. Click "Add Items" to begin.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                selectedItems.map((item, idx) => (
+                  <tr key={idx} className="border-b hover:bg-gray-50">
+                    <td className="p-3">{item.num}</td>
+                    <td className="p-3">{item.desc}</td>
+                    <td className="p-3">{item.amt}</td>
+                    <td className="p-3 text-center">
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.qty}
+                        onChange={(e) =>
+                          updateItemValue(idx, "qty", e.target.value)
+                        }
+                        className="w-16 border rounded px-1 text-center outline-none focus:border-blue-500"
+                      />
+                    </td>
+                    <td className="p-3 text-center">
+                      <input
+                        type="number"
+                        value={item.shipping}
+                        onChange={(e) =>
+                          updateItemValue(idx, "shipping", e.target.value)
+                        }
+                        className="w-20 border rounded px-1 text-center outline-none focus:border-blue-500"
+                      />
+                    </td>
+                    <td className="p-3 text-center">
+                      <input
+                        type="number"
+                        value={item.setup}
+                        onChange={(e) =>
+                          updateItemValue(idx, "setup", e.target.value)
+                        }
+                        className="w-20 border rounded px-1 text-center outline-none focus:border-blue-500"
+                      />
+                    </td>
+                    <td className="p-3">{item.cond}</td>
+                    <td className="p-3 font-bold text-[#3e49bb] text-center">
+                      {calculateRowTotal(item).toFixed(2)}
+                    </td>
+                    <td
+                      className="p-3 text-red-500 cursor-pointer font-bold text-center text-lg hover:text-red-700"
+                      onClick={() =>
+                        setSelectedItems(
+                          selectedItems.filter((_, i) => i !== idx),
+                        )
+                      }
+                    >
+                      &times;
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* --- Extra Fees Section --- */}
+        {/* --- Extra Fees & Dates Section --- */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 bg-gray-50 p-4 rounded-lg border">
+          {/* New Date Fields */}
+          <div>
+            <label className="block text-gray-600 text-xs font-bold mb-1 uppercase tracking-tight">
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full border border-gray-300 rounded p-2 bg-white text-sm outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-600 text-xs font-bold mb-1 uppercase tracking-tight">
+              End Date
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full border border-gray-300 rounded p-2 bg-white text-sm outline-none focus:border-blue-500"
+            />
+          </div>
+
+          {/* Existing Fee Fields */}
           {[
             "Labour Hours",
             "Service Fee",
@@ -280,7 +337,7 @@ const AddQuotationPage = () => {
               <input
                 type="number"
                 defaultValue={label === "Working Hours Fee" ? "120" : "0"}
-                className="w-full border border-gray-300 rounded p-2 bg-white"
+                className="w-full border border-gray-300 rounded p-2 bg-white text-sm outline-none focus:border-blue-500"
               />
             </div>
           ))}
@@ -288,7 +345,7 @@ const AddQuotationPage = () => {
             <label className="block text-gray-600 text-xs font-bold mb-1 uppercase tracking-tight">
               Discount Type
             </label>
-            <select className="w-full border border-gray-300 rounded p-2 bg-white outline-none">
+            <select className="w-full border border-gray-300 rounded p-2 bg-white outline-none text-sm">
               <option>Fixed</option>
               <option>Percentage</option>
             </select>
@@ -299,22 +356,22 @@ const AddQuotationPage = () => {
             </label>
             <input
               type="text"
-              placeholder="Discount"
-              className="w-full border border-gray-300 rounded p-2 bg-white"
+              placeholder="0.00"
+              className="w-full border border-gray-300 rounded p-2 bg-white text-sm outline-none focus:border-blue-500"
             />
           </div>
         </div>
 
-        <button className="bg-[#3e49bb] text-white px-8 py-2 rounded font-bold shadow-md hover:bg-blue-800 transition-all">
+        <button className="bg-[#3e49bb] text-white px-8 py-2 rounded font-bold shadow-md hover:bg-blue-800 transition-all text-sm">
           Create Quotation
         </button>
       </div>
 
       {/* --- MODAL DESIGN --- */}
       {showAddPartsModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded shadow-xl w-full max-w-[700px] flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-center p-4 border-b">
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded shadow-xl w-full max-w-[920px] flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 border-b bg-gray-50">
               <h3 className="text-gray-700 text-xl font-bold">Add Parts</h3>
               <button
                 onClick={() => setShowAddPartsModal(false)}
@@ -325,36 +382,34 @@ const AddQuotationPage = () => {
             </div>
 
             <div className="p-6 overflow-y-auto">
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    className="bg-green-500 text-white px-4 py-2 rounded text-sm font-bold shadow-sm"
-                    onClick={() => navigate("/inventory")}
-                  >
-                    Add Inventory
-                  </button>
-                  <button
-                    className="bg-[#3e49bb] text-white px-4 py-2 rounded text-sm font-bold shadow-sm"
-                    onClick={() => navigate("/testkits")}
-                  >
-                    Switch to Equipment
-                  </button>
-                  <button
-                    className="bg-[#3e49bb] text-white px-4 py-2 rounded text-sm font-bold shadow-sm"
-                    onClick={() => navigate("/rental")}
-                  >
-                    Rental
-                  </button>
-                </div>
+              <div className="flex gap-2 mb-6 flex-wrap">
+                <button
+                  className="bg-green-600 text-white px-4 py-2 rounded text-[11px] font-bold shadow-sm"
+                  onClick={() => navigate("/inventory")}
+                >
+                  Add Inventory
+                </button>
+                <button
+                  className="bg-[#3e49bb] text-white px-4 py-2 rounded text-[11px] font-bold shadow-sm"
+                  onClick={() => navigate("/testkits")}
+                >
+                  Switch to Equipment
+                </button>
+                <button
+                  className="bg-[#3e49bb] text-white px-4 py-2 rounded text-[11px] font-bold shadow-sm"
+                  onClick={() => navigate("/rental")}
+                >
+                  Rental
+                </button>
               </div>
 
               {/* Alphabet Navigation */}
-              <div className="flex flex-wrap gap-4 mb-6 text-[#3e49bb] font-medium text-sm">
+              <div className="flex flex-wrap gap-3 mb-6 text-[#3e49bb] font-medium text-[13px]">
                 {letters.map((l) => (
                   <button
                     key={l}
                     onClick={() => setActiveLetter(l)}
-                    className={`hover:underline ${activeLetter === l ? "font-bold text-black border-b-2 border-black" : ""}`}
+                    className={`hover:text-black transition-colors ${activeLetter === l ? "font-bold text-black border-b-2 border-black" : ""}`}
                   >
                     {l}
                   </button>
@@ -362,19 +417,20 @@ const AddQuotationPage = () => {
               </div>
 
               <div className="flex justify-between items-center mb-4 text-sm text-gray-600">
-                <div>
-                  Show{" "}
-                  <select className="border rounded mx-1 p-1">
+                <div className="flex items-center">
+                  Show
+                  <select className="border rounded mx-1 p-1 text-xs">
                     <option>10</option>
-                  </select>{" "}
+                    <option>25</option>
+                  </select>
                   entries
                 </div>
-                <div>
-                  Search:{" "}
+                <div className="flex items-center">
+                  Search:
                   <input
                     type="text"
                     onChange={(e) => setFilterText(e.target.value)}
-                    className="border rounded px-2 py-1 ml-2 outline-none focus:ring-1 focus:ring-blue-300"
+                    className="border border-gray-300 rounded px-2 py-1 ml-2 outline-none focus:ring-1 focus:ring-blue-300 text-xs"
                   />
                 </div>
               </div>
@@ -385,15 +441,24 @@ const AddQuotationPage = () => {
                 pagination
                 noHeader
                 highlightOnHover
+                pointerOnHover
                 customStyles={{
-                  headRow: { style: { borderTop: "1px solid #dee2e6" } },
+                  headRow: {
+                    style: {
+                      borderTop: "1px solid #dee2e6",
+                      backgroundColor: "#f9fafb",
+                    },
+                  },
+                  headCells: {
+                    style: { fontWeight: "bold", color: "#4b5563" },
+                  },
                 }}
               />
             </div>
             <div className="p-4 border-t flex justify-end bg-gray-50">
               <button
                 onClick={() => setShowAddPartsModal(false)}
-                className="bg-gray-200 px-6 py-2 rounded font-semibold text-gray-700 hover:bg-gray-300 transition-all"
+                className="bg-white border border-gray-300 px-6 py-2 rounded font-semibold text-gray-600 hover:bg-gray-50 transition-all text-xs"
               >
                 Close
               </button>
@@ -405,4 +470,4 @@ const AddQuotationPage = () => {
   );
 };
 
-export default AddQuotationPage;
+export default AddRentalQuotation;

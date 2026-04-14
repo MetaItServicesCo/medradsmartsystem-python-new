@@ -19,7 +19,6 @@ const ActionDropdown = ({ row, onDelete }) => {
       const spaceBelow = window.innerHeight - rect.bottom;
       const spaceAbove = rect.top;
       const menuHeight = 220;
-
       if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
         setMenuPos({
           top: rect.top + window.scrollY - menuHeight - 4,
@@ -38,9 +37,7 @@ const ActionDropdown = ({ row, onDelete }) => {
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
-      if (btnRef.current && !btnRef.current.contains(e.target)) {
-        setOpen(false);
-      }
+      if (btnRef.current && !btnRef.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
@@ -61,7 +58,7 @@ const ActionDropdown = ({ row, onDelete }) => {
     setOpen(false);
     Swal.fire({
       title: "Are you sure?",
-      text: `Quotation #${row.workOrder} will be permanently deleted!`,
+      text: `Invoice #${row.workOrder} will be permanently deleted!`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#e03131",
@@ -74,7 +71,7 @@ const ActionDropdown = ({ row, onDelete }) => {
         onDelete(row.id);
         Swal.fire({
           title: "Deleted!",
-          text: `Quotation #${row.workOrder} has been deleted.`,
+          text: `Invoice #${row.workOrder} has been deleted.`,
           icon: "success",
           confirmButtonColor: "#3e49bb",
           timer: 2000,
@@ -85,23 +82,10 @@ const ActionDropdown = ({ row, onDelete }) => {
   };
 
   const menuItems = [
-    {
-      label: "Convert to Invoice",
-      action: () => navigate(`/sales/convert-invoice/${row.id}`),
-    },
-    {
-      label: "Edit",
-      action: () => navigate(`/sales-qoutation/edit/${row.id}`),
-    },
-    {
-      label: "View",
-      action: () => navigate(`/sales-qoutation/view/${row.id}`),
-    },
-    {
-      label: "Delete",
-      action: handleDelete,
-      danger: true,
-    },
+    { label: "Pay", action: () => navigate(`/sales-invoice/pay/${row.id}`) },
+    { label: "Edit", action: () => navigate(`/sales-invoice/edit/${row.id}`) },
+    { label: "Delete", action: handleDelete, danger: true },
+    { label: "View", action: () => navigate(`/sales-invoice/view/${row.id}`) },
     {
       label: "Request Credit Card Authorization",
       action: () => navigate(`/sales/credit-auth/${row.id}`),
@@ -161,95 +145,131 @@ const ActionDropdown = ({ row, onDelete }) => {
               ))}
             </ul>
           </div>,
-          document.body
+          document.body,
         )}
     </>
   );
 };
 
-const SalesQoutation = () => {
+const SalesPartsInvoice = () => {
   const navigate = useNavigate();
-  const [showModal, setShowModal] = useState(false);
-  const [selectedType, setSelectedType] = useState("");
   const [filterText, setFilterText] = useState("");
-  const [activeLetter, setActiveLetter] = useState("None");
-
-  const letters = ["None", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")];
+  const [perPage, setPerPage] = useState(10);
 
   const [data, setData] = useState([
     {
-      id: 317,
-      workOrder: "2026-000278",
+      id: 320,
+      workOrder: "2026-000281",
       facility: "South Texas Clinic for Pain Management",
-      type: "Standard",
+      type: "N/A",
       createdBy: "Shah Nawaz",
-      date: "04-01-2026",
-      status: "Pending",
+      date: "04-07-2026",
+      status: "Accepted",
       paid: "Un Paid",
     },
     {
-      id: 314,
-      workOrder: "2026-000275",
-      facility: "Metacare EMS",
-      type: "Standard",
+      id: 318,
+      workOrder: "2026-000279",
+      facility: "Double Oak Veterinary Medical Center",
+      type: "N/A",
       createdBy: "Shah Nawaz",
-      date: "03-27-2026",
-      status: "Pending",
+      date: "04-06-2026",
+      status: "Accepted",
       paid: "Un Paid",
     },
     {
-      id: 313,
-      workOrder: "2026-000274",
+      id: 315,
+      workOrder: "2026-000276",
       facility: "The Heart Beat Clinic Dallas",
-      type: "Standard",
+      type: "N/A",
       createdBy: "Shah Nawaz",
-      date: "03-27-2026",
-      status: "Pending",
+      date: "03-31-2026",
+      status: "Accepted",
       paid: "Un Paid",
     },
     {
-      id: 312,
-      workOrder: "2026-000273",
-      facility: "The Heart Beat Clinic Dallas",
+      id: 293,
+      workOrder: "2026-000254",
+      facility: "Dermatology Surgery Specialists",
       type: "Standard",
       createdBy: "Shah Nawaz",
-      date: "03-27-2026",
-      status: "Pending",
+      date: "03-24-2026",
+      status: "Accepted",
       paid: "Un Paid",
     },
     {
-      id: 311,
-      workOrder: "2026-000272",
-      facility: "The Heart Beat Clinic Dallas",
-      type: "Standard",
+      id: 288,
+      workOrder: "2026-000249",
+      facility: "Texas Pain Physicians NorthRichland Hills",
+      type: "N/A",
       createdBy: "Shah Nawaz",
-      date: "03-26-2026",
-      status: "Pending",
+      date: "03-18-2026",
+      status: "Accepted",
       paid: "Un Paid",
     },
     {
-      id: 310,
-      workOrder: "2026-000271",
-      facility: "The Heart Beat Clinic Dallas",
+      id: 285,
+      workOrder: "2026-000246",
+      facility: "Mina Pain and Wellness",
+      type: "N/A",
+      createdBy: "Omar Ahmad",
+      date: "03-10-2026",
+      status: "Accepted",
+      paid: "Un Paid",
+    },
+    {
+      id: 284,
+      workOrder: "2026-000245",
+      facility: "Odessa Regional Medical Center",
       type: "Standard",
+      createdBy: "Omar Ahmad",
+      date: "03-09-2026",
+      status: "Accepted",
+      paid: "Un Paid",
+    },
+    {
+      id: 283,
+      workOrder: "2026-000244",
+      facility: "DFW Children's Surgery Center",
+      type: "N/A",
       createdBy: "Shah Nawaz",
-      date: "03-26-2026",
-      status: "Pending",
+      date: "03-03-2026",
+      status: "Accepted",
+      paid: "Un Paid",
+    },
+    {
+      id: 278,
+      workOrder: "2026-000239",
+      facility: "FWMP LLC",
+      type: "N/A",
+      createdBy: "Sher Nawab",
+      date: "03-02-2026",
+      status: "Accepted",
+      paid: "Un Paid",
+    },
+    {
+      id: 277,
+      workOrder: "2026-000238",
+      facility: "Grace Ambulatory Surgery Center",
+      type: "N/A",
+      createdBy: "Sher Nawab",
+      date: "02-25-2026",
+      status: "Accepted",
       paid: "Un Paid",
     },
   ]);
 
-  // Delete handler — row remove karo state se
   const handleDelete = (id) => {
     setData((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const handleModalSelect = () => {
-    if (!selectedType) return;
-    const typeParam = selectedType.toLowerCase().replace(/\s+/g, "-");
-    navigate(`/sales/add-quotation/${typeParam}`);
-    setShowModal(false);
-  };
+  const filteredItems = useMemo(() => {
+    return data.filter(
+      (item) =>
+        item.facility?.toLowerCase().includes(filterText.toLowerCase()) ||
+        item.workOrder?.includes(filterText),
+    );
+  }, [filterText, data]);
 
   const columns = [
     { name: "#", selector: (row) => row.id, sortable: true, width: "70px" },
@@ -266,7 +286,7 @@ const SalesQoutation = () => {
     {
       name: "Status",
       cell: (row) => (
-        <span className="bg-[#e9ecef] text-[#6c757d] text-[10px] px-2 py-0.5 rounded font-bold uppercase">
+        <span className="bg-green-500 text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase">
           {row.status}
         </span>
       ),
@@ -286,22 +306,8 @@ const SalesQoutation = () => {
     },
   ];
 
-  const filteredItems = useMemo(() => {
-    return data.filter((item) => {
-      const matchesLetter =
-        activeLetter === "None" ||
-        (item.facility && item.facility.toUpperCase().startsWith(activeLetter));
-      const matchesSearch =
-        item.facility?.toLowerCase().includes(filterText.toLowerCase()) ||
-        item.workOrder?.includes(filterText);
-      return matchesLetter && matchesSearch;
-    });
-  }, [activeLetter, filterText, data]);
-
   const customStyles = {
-    headRow: {
-      style: { borderTop: "1px solid #e5e7eb" },
-    },
+    headRow: { style: { borderTop: "1px solid #e5e7eb" } },
     headCells: {
       style: {
         fontSize: "13px",
@@ -310,9 +316,7 @@ const SalesQoutation = () => {
         backgroundColor: "#f9fafb",
       },
     },
-    cells: {
-      style: { fontSize: "13px", color: "#374151", padding: "12px" },
-    },
+    cells: { style: { fontSize: "13px", color: "#374151", padding: "12px" } },
   };
 
   return (
@@ -321,10 +325,10 @@ const SalesQoutation = () => {
         {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-gray-100">
           <h2 className="text-gray-500 text-lg font-medium">
-            Quotation Parts List
+            Invoice Parts List
           </h2>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => navigate("/sales/invoice/add")}
             className="bg-[#3e49bb] text-white w-9 h-8 rounded flex items-center justify-center shadow hover:opacity-90 transition-all"
           >
             <HiPlus className="text-xl" />
@@ -332,36 +336,27 @@ const SalesQoutation = () => {
         </div>
 
         <div className="p-6">
-          {/* Alphabet Filter */}
-          <div className="flex flex-wrap gap-4 mb-6 text-[#3e49bb] font-medium pb-4 border-b border-gray-100">
-            {letters.map((l) => (
-              <button
-                key={l}
-                onClick={() => setActiveLetter(l)}
-                className={`hover:underline transition-all ${
-                  activeLetter === l
-                    ? "text-black font-bold border-b-2 border-black"
-                    : ""
-                }`}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-
           <DataTable
             columns={columns}
             data={filteredItems}
             pagination
+            paginationPerPage={perPage}
             customStyles={customStyles}
             highlightOnHover
             subHeader
             subHeaderComponent={
               <div className="flex justify-between w-full items-center mb-4">
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 flex items-center gap-1">
                   Show{" "}
-                  <select className="border border-gray-300 rounded mx-1 px-1 py-0.5 outline-none">
-                    <option>10</option>
+                  <select
+                    className="border border-gray-300 rounded mx-1 px-1 py-0.5 outline-none"
+                    value={perPage}
+                    onChange={(e) => setPerPage(Number(e.target.value))}
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
                   </select>{" "}
                   entries
                 </div>
@@ -379,57 +374,8 @@ const SalesQoutation = () => {
           />
         </div>
       </div>
-
-      {/* Quotation Type Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg border border-gray-200 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-gray-100">
-              <h3 className="text-[#3e49bb] text-xl font-bold">
-                Select Quotation Type
-              </h3>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                &times;
-              </button>
-            </div>
-            <div className="p-8">
-              <label className="block text-gray-600 mb-2 font-medium">
-                Choose a type:
-              </label>
-              <select
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                className="w-full border border-gray-300 rounded-md p-3 outline-none focus:ring-2 focus:ring-blue-100 text-gray-700"
-              >
-                <option value="">Select a type</option>
-                <option value="Standard">Standard</option>
-                <option value="Choice One">Choice One</option>
-                <option value="Choice Multiple">Choice Multiple</option>
-              </select>
-            </div>
-            <div className="flex justify-end gap-3 p-4 bg-gray-50 border-t border-gray-100">
-              <button
-                onClick={() => setShowModal(false)}
-                className="bg-[#e9ecef] text-gray-700 px-6 py-2 rounded font-semibold hover:bg-gray-200"
-              >
-                Close
-              </button>
-              <button
-                onClick={handleModalSelect}
-                disabled={!selectedType}
-                className="bg-[#3e49bb] text-white px-8 py-2 rounded font-semibold hover:opacity-90 disabled:opacity-50"
-              >
-                Select
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
-export default SalesQoutation;
+export default SalesPartsInvoice;

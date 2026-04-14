@@ -381,13 +381,22 @@ const ServiceRequestCompleted = () => {
             <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-[#f8f9fa] hover:text-[#3b28e1] rounded transition-colors border-b">
               Not Approve for Billing
             </button>
-            <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-[#f8f9fa] hover:text-[#3b28e1] rounded transition-colors">
+            <button
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-[#f8f9fa] hover:text-[#3b28e1] rounded transition-colors"
+              onClick={() => navigate(`/new-request/auth/${openActionId}`)}
+            >
               Request Credit Card Authorization
             </button>
-            <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-[#f8f9fa] hover:text-[#3b28e1] rounded transition-colors">
+            <button
+              onClick={() => navigate(`/new-request/assign/${openActionId}`)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-[#3b28e1] rounded-lg transition-all"
+            >
               Change Technician
             </button>
-            <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-[#f8f9fa] hover:text-[#3b28e1] rounded transition-colors">
+            <button
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-[#f8f9fa] hover:text-[#3b28e1] rounded transition-colors"
+              onClick={() => navigate(`/service-request-completed/mail/${openActionId}`)}
+            >
               Send CSR Form
             </button>
             <button className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded transition-colors mt-1 font-medium">

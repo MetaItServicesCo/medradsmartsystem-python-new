@@ -89,14 +89,14 @@ const menuData = [
     name: "Sales",
     icon: DollarSign,
     sub: [
-      { name: "Qoutation", path: "/sales/sales-qoutation" },
+      { name: "Qoutation", path: "/sales-qoutation" },
       {
-        name: "Sales Invoice",
-        path: "/sales-invoice",
+        name: " Invoice",
+        path: "/rental-invoices",
       },
-      { name: "Sales In progress", path: "/sales-in-progress" },
-      { name: "Sales Completed ", path: "/completed-sales" },
-      { name: "Sales History", path: "/sales-history" },
+      { name: " In progress", path: "/sales-in-progress" },
+      { name: " Completed ", path: "/completed-sales" },
+      { name: " History", path: "/sales-history" },
     ],
   },
   {
@@ -105,15 +105,28 @@ const menuData = [
     sub: [
       { name: "Qoutation", path: "/rental-qoutation" },
       {
-        name: "Rental Invoice",
-        path: "/rental-invoice",
+        name: " Invoice",
+        path: "/rental-invoices",
       },
-      { name: "Rental In progress", path: "/rental-in-progress" },
-      { name: "Rental Completed ", path: "/rental-sales" },
-      { name: "Rental History", path: "/rental-history" },
+      { name: " In progress", path: "/rental-in-progress" },
+      { name: " Completed ", path: "/rental-completed" },
+      { name: " History", path: "/rental-history" },
     ],
   },
-  { name: "Reports", icon: BarChart3, path: "/reports" },
+  {
+    name: "Reports",
+    icon: BarChart3,
+    sub: [
+      { name: "Service Report", path: "/service-report" },
+      {
+        name: " Inspection Reports",
+        path: "/report-inspection",
+      },
+      { name: " Facility Inventory Reports", path: "/facility-reports" },
+      { name: " Inspection Range Reports", path: "/inspection-range-reports" },
+      { name: " Service Request Reports", path: "/equipment-service-history" },
+    ],
+  },
   {
     name: "Forms",
     icon: Clipboard,
@@ -123,7 +136,7 @@ const menuData = [
     name: "Billings",
     icon: CreditCard,
     sub: [
-      { name: "Invoices", path: "/billing-invoices" },
+      { name: "Invoices", path: "/billing-invoice" },
       { name: "Installment Invoices", path: "/installment-invoices" },
       { name: "Billing Reports", path: "/billing-reports" },
       { name: "Revenue Reports", path: "/revenue-reports" },
@@ -151,9 +164,8 @@ const menuData = [
     name: "HR ",
     icon: Users,
     sub: [
-      { name: "Employees", path: "/employees" },
       { name: "Mark Today's Attendance", path: "/attendance" },
-      { name: "Leaves", path: "/leaves" },
+      { name: "Attendance List", path: "/attendance-list" },
     ],
   },
   { name: "Accounts", icon: UserCog, path: "/account" },

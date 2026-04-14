@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import DataTableComponent from "react-data-table-component";
 import { FaSearch, FaArrowLeft } from "react-icons/fa";
+import DataTableComponent from "react-data-table-component";
 
 const DataTable = DataTableComponent.default || DataTableComponent;
 
