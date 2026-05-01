@@ -17,7 +17,7 @@ const Breadcrumbs = () => {
   const pathnames = location.pathname.split("/").filter((x) => x);
 
   return (
-    <div className="flex items-center justify-between px-8 py-4 bg-white border-b border-gray-100 shadow-sm">
+    <div className="flex items-center justify-between px-8 py-4 bg-w border-b border-gray-100 shadow-sm">
       <nav className="flex text-lg font-normal text-slate-500 capitalize items-center">
         <Link 
           to="/" 

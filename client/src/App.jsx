@@ -143,6 +143,13 @@ import EditServiceCompleted from "./pages/service-requist/EditServiceCompleted";
 import MailServiceCompleted from "./pages/service-requist/MailServiceCompleted";
 import ViewQoutation from "./pages/service-requist/ViewQoutation";
 import AboutCompany from "./pages/settings/AboutCompany";
+import Home from "./pages/Home";
+import Login from "./pages/auth/Login";
+import Register from "./pages/auth/Register";
+import Calendar from "./pages/calendar/Calendar";
+import Account from "./pages/Account";
+import EventLogs from "./pages/EventLogs";
+import ViewNewRequest from "./pages/service-requist/ViewNewRequest";
 
 // Pages
 
@@ -150,8 +157,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/home" element={<Home />} />
         <Route path="/" element={<MainLayout />}>
           <Route index element={<Dashboard />} />
+          <Route path="calendar" element={<Calendar />} />
+          <Route path="account" element={<Account />} />
+           <Route path="event-log" element={<EventLogs />} />
           {/* Setup facility*/}
           <Route path="facilities" element={<Facilities />} />
           <Route path="facility/excel/utility" element={<ExcelUtlity />} />
@@ -228,6 +239,7 @@ export default function App() {
           <Route path="new-request" element={<NewServiceRequest />} />
           <Route path="new-request/add" element={<AddNewRequest />} />
           <Route path="new-request/edit/:id" element={<UpdateNewRequest />} />
+          <Route path="new-request/view/:id" element={<ViewNewRequest />} />
           <Route path="new-request/assign/:id" element={<AssignTechnician />} />
           <Route path="in-progress" element={<ServiceRequestsInProgress />} />
           <Route
@@ -441,6 +453,10 @@ export default function App() {
           path="rental-qoutation/credit-card/:id"
           element={<RentalCreditCard />}
         />
+        {/*================== Auth ==================== */}
+
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
       </Routes>
     </BrowserRouter>
   );

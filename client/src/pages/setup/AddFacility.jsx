@@ -5,9 +5,56 @@ import {
   HiSearch,
   HiOutlineArrowLeft,
   HiX,
+  HiPencil,
+  HiTrash,
+  HiCheck,
 } from "react-icons/hi";
 import DataTableComponent from "react-data-table-component";
-  const DataTable = DataTableComponent.default || DataTableComponent;
+const DataTable = DataTableComponent.default || DataTableComponent;
+
+// ── Dummy available tiers (API se aayenge) ──────────────────────────────────
+const AVAILABLE_TIERS = [
+  {
+    id: 1970,
+    unique: "tier_3",
+    laborFee: 130,
+    serviceFee: 150,
+    pmCost: 150,
+    mileageCost: 2.5,
+  },
+  {
+    id: 1971,
+    unique: "tier_1",
+    laborFee: 100,
+    serviceFee: 120,
+    pmCost: 110,
+    mileageCost: 1.5,
+  },
+  {
+    id: 1972,
+    unique: "tier_2",
+    laborFee: 115,
+    serviceFee: 135,
+    pmCost: 130,
+    mileageCost: 2.0,
+  },
+  {
+    id: 1973,
+    unique: "tier_4",
+    laborFee: 145,
+    serviceFee: 160,
+    pmCost: 170,
+    mileageCost: 3.0,
+  },
+  {
+    id: 1974,
+    unique: "tier_5",
+    laborFee: 160,
+    serviceFee: 175,
+    pmCost: 180,
+    mileageCost: 3.5,
+  },
+];
 
 const AddFacility = () => {
   const navigate = useNavigate();
@@ -19,8 +66,13 @@ const AddFacility = () => {
   const [selectedLetter, setSelectedLetter] = useState("None");
   const [facilities, setFacilities] = useState([]);
 
+  // Tier states
+  const [selectedTierId, setSelectedTierId] = useState("");
+  const [addedTiers, setAddedTiers] = useState([]);
+  const [editingTierId, setEditingTierId] = useState(null);
+  const [editingRow, setEditingRow] = useState({});
+
   const [formData, setFormData] = useState({
-    // General Info
     contactPerson: "",
     phone: "",
     email: "",
@@ -30,12 +82,10 @@ const AddFacility = () => {
     state: "",
     zipCode: "",
     website: "",
-    // Facility Info
     parentFacilityId: "",
     parentFacilityName: "",
     facilityName: "",
     status: "",
-    // Billing Info (Missing Fields Added)
     billingPerson: "",
     billingPhone: "",
     billingEmail: "",
@@ -44,7 +94,6 @@ const AddFacility = () => {
     billingCity: "",
     billingState: "",
     billingZipCode: "",
-    // Other Settings
     taxExemption: "",
     inheritance: "",
     installments: "",
@@ -52,19 +101,17 @@ const AddFacility = () => {
     deliveryEmail: "",
   });
 
-  // --- API Simulation ---
   useEffect(() => {
     const fetchFacilities = async () => {
       setIsLoading(true);
       try {
-        const dummyData = [
+        setFacilities([
           { id: 1, name: "North Stare Foot and Ankle Associates" },
           { id: 2, name: "Radford & Associates" },
           { id: 3, name: "Anthony Texas Vital Ortho" },
           { id: 4, name: "North Dallas Surgicare" },
           { id: 5, name: "Cardiac Center of Texas" },
-        ];
-        setFacilities(dummyData);
+        ]);
       } catch (error) {
         console.error("Error fetching facilities:", error);
       } finally {
@@ -107,7 +154,49 @@ const AddFacility = () => {
     return matchesSearch && matchesLetter;
   });
 
-  // Reusable Input Component
+  // ── Tier handlers ─────────────────────────────────────────────────────────
+  const alreadyAddedIds = addedTiers.map((t) => t.id);
+
+  const handleAddTier = () => {
+    if (!selectedTierId) return;
+    const tier = AVAILABLE_TIERS.find((t) => t.id === Number(selectedTierId));
+    if (!tier || alreadyAddedIds.includes(tier.id)) return;
+    setAddedTiers((prev) => [...prev, { ...tier }]);
+    setSelectedTierId("");
+  };
+
+  const handleDeleteTier = (id) => {
+    setAddedTiers((prev) => prev.filter((t) => t.id !== id));
+    if (editingTierId === id) {
+      setEditingTierId(null);
+      setEditingRow({});
+    }
+  };
+
+  const handleEditTier = (tier) => {
+    setEditingTierId(tier.id);
+    setEditingRow({ ...tier });
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditingRow((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveEdit = (id) => {
+    setAddedTiers((prev) =>
+      prev.map((t) => (t.id === id ? { ...editingRow } : t)),
+    );
+    setEditingTierId(null);
+    setEditingRow({});
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTierId(null);
+    setEditingRow({});
+  };
+
+  // Reusable Input
   const FormInput = ({
     label,
     name,
@@ -135,6 +224,21 @@ const AddFacility = () => {
         )}
       </div>
     </div>
+  );
+
+  // Inline edit cell
+  const EditCell = ({ field, type = "text" }) => (
+    <input
+      name={field}
+      value={editingRow[field] ?? ""}
+      onChange={handleEditChange}
+      type={type}
+      className="w-full border border-[#3e49bb] rounded px-2 py-1 text-xs outline-none bg-blue-50/30"
+    />
+  );
+
+  const availableToAdd = AVAILABLE_TIERS.filter(
+    (t) => !alreadyAddedIds.includes(t.id),
   );
 
   return (
@@ -179,8 +283,6 @@ const AddFacility = () => {
                 type="email"
                 colSpan="md:col-span-4"
               />
-
-              {/* Street (Ziada) & Suite (Kam) */}
               <FormInput
                 label="Street Address"
                 name="street"
@@ -199,7 +301,6 @@ const AddFacility = () => {
                 placeholder="City"
                 colSpan="md:col-span-3"
               />
-
               <FormInput
                 label="State / Province"
                 name="state"
@@ -224,7 +325,7 @@ const AddFacility = () => {
 
           <hr className="border-gray-100" />
 
-          {/* Section 2: Facility Connections */}
+          {/* Section 2: Facility Details */}
           <div className="space-y-6">
             <h3 className="text-[#3e49bb] font-bold text-sm border-l-4 border-[#3e49bb] pl-3 uppercase">
               Facility Details
@@ -234,12 +335,16 @@ const AddFacility = () => {
                 <label className="text-sm text-gray-500 font-medium">
                   Parent Facility
                 </label>
-                <div className="flex relative">
+                <div className="flex">
                   <input
                     readOnly
                     placeholder="Search Parent..."
                     value={formData.parentFacilityName}
-                    className={`w-full border rounded-l px-3 py-2 text-sm outline-none ${formData.parentFacilityName ? "border-green-500 bg-green-50/30" : "border-gray-300 bg-gray-50"}`}
+                    className={`w-full border rounded-l px-3 py-2 text-sm outline-none ${
+                      formData.parentFacilityName
+                        ? "border-green-500 bg-green-50/30"
+                        : "border-gray-300 bg-gray-50"
+                    }`}
                   />
                   <button
                     onClick={() => setIsModalOpen(true)}
@@ -255,7 +360,7 @@ const AddFacility = () => {
                 placeholder="Facility Name"
                 colSpan="md:col-span-4"
               />
-              <div className="md:col-span-3 space-y-1 relative">
+              <div className="md:col-span-3 space-y-1">
                 <label className="text-sm text-gray-500 font-medium">
                   Status
                 </label>
@@ -275,58 +380,57 @@ const AddFacility = () => {
 
           <hr className="border-gray-100" />
 
-          {/* Section 3: Billing Info (Now Complete) */}
+          {/* Section 3: Billing Info */}
           <div className="space-y-6">
-            <h3 className="text-2xl font-bold text-slate-700">Billings</h3>
+            <h3 className="text-[#3e49bb] font-bold text-sm border-l-4 border-[#3e49bb] pl-3 uppercase">
+              Billings
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
               <FormInput
-                label=" Person"
+                label="Billing Person"
                 name="billingPerson"
-                placeholder=" Name"
+                placeholder="Billing Name"
                 colSpan="md:col-span-4"
               />
               <FormInput
-                label=" Phone"
+                label="Billing Phone"
                 name="billingPhone"
-                placeholder=" Phone"
+                placeholder="Billing Phone"
                 colSpan="md:col-span-4"
               />
               <FormInput
-                label=" Email"
+                label="Billing Email"
                 name="billingEmail"
-                placeholder=" Email"
+                placeholder="Billing Email"
                 type="email"
                 colSpan="md:col-span-4"
               />
-
-              {/* Billing Street (Ziada) & Suite (Kam) */}
               <FormInput
-                label=" Street"
+                label="Billing Street"
                 name="billingStreet"
-                placeholder=" Street"
+                placeholder="Billing Street"
                 colSpan="md:col-span-7"
               />
               <FormInput
-                label=" Suite"
+                label="Billing Suite"
                 name="billingSuite"
                 placeholder="Suite"
                 colSpan="md:col-span-2"
               />
               <FormInput
-                label=" City"
+                label="Billing City"
                 name="billingCity"
                 placeholder="City"
                 colSpan="md:col-span-3"
               />
-
               <FormInput
-                label=" State"
+                label="Billing State"
                 name="billingState"
                 placeholder="State"
                 colSpan="md:col-span-6"
               />
               <FormInput
-                label=" Zip Code"
+                label="Billing Zip Code"
                 name="billingZipCode"
                 placeholder="Zip Code"
                 colSpan="md:col-span-6"
@@ -343,7 +447,7 @@ const AddFacility = () => {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {["taxExemption", "inheritance", "installments"].map((field) => (
-                <div key={field} className="space-y-1 relative">
+                <div key={field} className="space-y-1">
                   <label className="text-sm text-gray-500 font-medium capitalize">
                     {field.replace(/([A-Z])/g, " $1")}
                   </label>
@@ -384,8 +488,194 @@ const AddFacility = () => {
             </div>
           </div>
 
+          <hr className="border-gray-100" />
+
+          {/* Section 5: Tiers ─────────────────────────────────────────────── */}
+          <div className="space-y-5">
+            <h3 className="text-[#3e49bb] font-bold text-sm border-l-4 border-[#3e49bb] pl-3 uppercase">
+              Tiers
+            </h3>
+
+            {/* Dropdown + Add Button */}
+            <div className="flex items-end gap-4 flex-wrap">
+              <div className="space-y-1 flex-1 min-w-[220px] max-w-sm">
+                <label className="text-sm text-gray-500 font-medium">
+                  Select Tier
+                </label>
+                <select
+                  value={selectedTierId}
+                  onChange={(e) => setSelectedTierId(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white outline-none focus:border-[#3e49bb] appearance-none"
+                >
+                  <option value="">Select a Tier</option>
+                  {availableToAdd.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.unique} &nbsp;(ID: {t.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={handleAddTier}
+                disabled={!selectedTierId}
+                className="bg-[#3e49bb] text-white px-6 py-2 rounded text-sm font-bold uppercase tracking-wide hover:bg-blue-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                + Add
+              </button>
+            </div>
+
+            {/* Selected Tiers Table */}
+            {addedTiers.length > 0 ? (
+              <div className="border border-gray-200 rounded-lg overflow-x-auto">
+                <table className="w-full text-left text-[13px]">
+                  <thead className="bg-gray-50 border-b border-gray-200 text-slate-500 uppercase text-[11px] font-bold">
+                    <tr>
+                      <th className="px-3 py-3 w-8 text-center">#</th>
+                      <th className="px-3 py-3">ID</th>
+                      <th className="px-3 py-3">Unique</th>
+                      <th className="px-3 py-3">Labor Fee</th>
+                      <th className="px-3 py-3">Service Fee</th>
+                      <th className="px-3 py-3">PM Cost</th>
+                      <th className="px-3 py-3">Mileage Cost</th>
+                      <th className="px-3 py-3">Status</th>
+                      <th className="px-3 py-3 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {addedTiers.map((tier, idx) => {
+                      const isEditing = editingTierId === tier.id;
+                      return (
+                        <tr
+                          key={tier.id}
+                          className={`transition-colors ${isEditing ? "bg-blue-50/40" : "hover:bg-gray-50/60"}`}
+                        >
+                          <td className="px-3 py-2.5 text-center text-gray-400 text-xs">
+                            {idx + 1}
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-500">
+                            {tier.id}
+                          </td>
+
+                          <td className="px-3 py-2.5 font-medium text-slate-700 min-w-[110px]">
+                            {isEditing ? (
+                              <EditCell field="unique" />
+                            ) : (
+                              tier.unique
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 min-w-[90px]">
+                            {isEditing ? (
+                              <EditCell field="laborFee" type="number" />
+                            ) : (
+                              `$${tier.laborFee}`
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 min-w-[90px]">
+                            {isEditing ? (
+                              <EditCell field="serviceFee" type="number" />
+                            ) : (
+                              `$${tier.serviceFee}`
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 min-w-[90px]">
+                            {isEditing ? (
+                              <EditCell field="pmCost" type="number" />
+                            ) : (
+                              `$${tier.pmCost}`
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 min-w-[100px]">
+                            {isEditing ? (
+                              <EditCell field="mileageCost" type="number" />
+                            ) : (
+                              `$${tier.mileageCost}`
+                            )}
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-3 py-2.5 min-w-[110px]">
+                            {isEditing ? (
+                              <select
+                                name="status"
+                                value={editingRow.status ?? ""}
+                                onChange={handleEditChange}
+                                className="w-full border border-[#3e49bb] rounded px-2 py-1 text-xs outline-none bg-blue-50/30"
+                              >
+                                <option value="">Select</option>
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                              </select>
+                            ) : (
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                                  tier.status === "Active"
+                                    ? "bg-green-100 text-green-700"
+                                    : tier.status === "Inactive"
+                                      ? "bg-red-100 text-red-600"
+                                      : "bg-gray-100 text-gray-400"
+                                }`}
+                              >
+                                {tier.status || "—"}
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center justify-center gap-2">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    onClick={() => handleSaveEdit(tier.id)}
+                                    title="Save"
+                                    className="p-1.5 rounded bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
+                                  >
+                                    <HiCheck className="text-base" />
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEdit}
+                                    title="Cancel"
+                                    className="p-1.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
+                                  >
+                                    <HiX className="text-base" />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleEditTier(tier)}
+                                    title="Edit"
+                                    className="p-1.5 rounded bg-blue-100 text-[#3e49bb] hover:bg-blue-200 transition-colors"
+                                  >
+                                    <HiPencil className="text-base" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteTier(tier.id)}
+                                    title="Delete"
+                                    className="p-1.5 rounded bg-red-100 text-red-500 hover:bg-red-200 transition-colors"
+                                  >
+                                    <HiTrash className="text-base" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 italic py-2">
+                No tier selected — please choose a tier from the dropdown above
+                and click Add.
+              </p>
+            )}
+          </div>
+
+          {/* Save Button */}
           <button
-            onClick={() => console.log(formData)}
+            onClick={() => console.log({ formData, addedTiers })}
             className="bg-[#3e49bb] text-white px-12 py-3 rounded text-sm font-bold shadow-lg hover:bg-blue-800 transition-all uppercase tracking-widest"
           >
             Save Facility
@@ -393,7 +683,7 @@ const AddFacility = () => {
         </div>
       </div>
 
-      {/* --- Modal --- */}
+      {/* --- Parent Facility Modal --- */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex justify-center items-center p-4">
           <div className="bg-white rounded-lg w-full max-w-4xl shadow-2xl overflow-hidden">
@@ -412,7 +702,11 @@ const AddFacility = () => {
                   <button
                     key={l}
                     onClick={() => setSelectedLetter(l)}
-                    className={`px-2 py-1 text-xs font-bold rounded ${selectedLetter === l ? "bg-[#3e49bb] text-white" : "text-blue-600 hover:bg-blue-50"}`}
+                    className={`px-2 py-1 text-xs font-bold rounded ${
+                      selectedLetter === l
+                        ? "bg-[#3e49bb] text-white"
+                        : "text-blue-600 hover:bg-blue-50"
+                    }`}
                   >
                     {l}
                   </button>
@@ -427,7 +721,7 @@ const AddFacility = () => {
                     sortable: true,
                   },
                   {
-                    name: "Facility name",
+                    name: "Facility Name",
                     selector: (row) => row.name,
                     sortable: true,
                   },

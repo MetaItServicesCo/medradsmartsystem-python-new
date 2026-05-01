@@ -177,10 +177,27 @@ const QuotationsList = () => {
       return matchesLetter && matchesSearch;
     });
   }, [activeLetter, filterText]);
+  const WorkOrderCell = ({ row }) => {
+    const navigate = useNavigate();
 
+    return (
+      <span
+        onClick={() => navigate(`/service-quotation/view/${row.id}`)}
+        className="text-blue-600 cursor-pointer hover:underline font-semibold"
+      >
+        {row.workOrder}
+      </span>
+    );
+  };
   const columns = [
     { name: "ID", selector: (row) => row.id, sortable: true, width: "70px" },
-    { name: "Work Order", selector: (row) => row.workOrder, sortable: true },
+    {
+      name: "Work Order",
+      selector: (row) => row.workOrder,
+      sortable: true,
+      width: "120px",
+      cell: (row) => <WorkOrderCell row={row} />,
+    },
     { name: "Part Number", selector: (row) => row.partNumber, sortable: true },
     {
       name: "Part Description",

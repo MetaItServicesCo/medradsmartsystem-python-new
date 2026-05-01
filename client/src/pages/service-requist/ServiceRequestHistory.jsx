@@ -274,6 +274,20 @@ const ServiceRequestHistory = () => {
     }),
     [],
   );
+  const WorkOrderCell = ({ row }) => {
+    const navigate = useNavigate();
+
+    return (
+      <span
+        onClick={() =>
+          navigate(`/service-request-completed/view-report/${row.id}`)
+        }
+        className="text-blue-600 cursor-pointer hover:underline font-semibold"
+      >
+        {row.workOrder}
+      </span>
+    );
+  };
 
   // ✅ Chhote columns — scroll nahi hoga
   const columns = [
@@ -283,6 +297,7 @@ const ServiceRequestHistory = () => {
       selector: (row) => row.workOrder,
       sortable: true,
       width: "120px",
+      cell: (row) => <WorkOrderCell row={row} />,
     },
     {
       name: "Facility Name",

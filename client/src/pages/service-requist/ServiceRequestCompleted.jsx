@@ -10,7 +10,20 @@ const ServiceRequestCompleted = () => {
   const [openActionId, setOpenActionId] = useState(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const actionRef = useRef(null);
+  const WorkOrderCell = ({ row }) => {
+    const navigate = useNavigate();
 
+    return (
+      <span
+        onClick={() =>
+          navigate(`/service-request-completed/view-report/${row.id}`)
+        }
+        className="text-blue-600 cursor-pointer hover:underline font-semibold"
+      >
+        {row.workOrder}
+      </span>
+    );
+  };
   const data = [
     {
       id: 2087,
@@ -136,6 +149,13 @@ const ServiceRequestCompleted = () => {
   const columns = [
     { name: "#", selector: (row) => row.id, width: "70px", sortable: true },
     {
+      name: "Work Order",
+      sortable: true,
+      width: "110px",
+      cell: (row) => <WorkOrderCell row={row} />,
+    },
+
+    {
       name: "Facility Name",
       selector: (row) => row.facility,
       sortable: true,
@@ -150,7 +170,6 @@ const ServiceRequestCompleted = () => {
       sortable: true,
       grow: 1.5,
     },
-    { name: "Work Order#", selector: (row) => row.workOrder, sortable: true },
     {
       name: "Service Status",
       cell: (row) => (
@@ -395,7 +414,9 @@ const ServiceRequestCompleted = () => {
             </button>
             <button
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-[#f8f9fa] hover:text-[#3b28e1] rounded transition-colors"
-              onClick={() => navigate(`/service-request-completed/mail/${openActionId}`)}
+              onClick={() =>
+                navigate(`/service-request-completed/mail/${openActionId}`)
+              }
             >
               Send CSR Form
             </button>

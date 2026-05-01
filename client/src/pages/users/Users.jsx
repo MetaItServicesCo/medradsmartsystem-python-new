@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { HiPlus, HiChevronDown } from "react-icons/hi";
 import DataTableComponent from "react-data-table-component";
 const DataTable = DataTableComponent.default || DataTableComponent;
+import Swal from "sweetalert2";
 
 // ─── Portal Dropdown ──────────────────────────────────────────────────────────
 // Yeh component dropdown ko document.body mein render karta hai
@@ -56,7 +57,25 @@ const PortalDropdown = ({ rowId, buttonRef, onClose, onNavigate }) => {
           ✏️ Edit
         </button>
         <button
-          onClick={onClose}
+          onClick={() => {
+            Swal.fire({
+              title: "Are you sure?",
+              text: "This user will be deleted permanently!",
+              icon: "warning",
+              showCancelButton: true,
+              confirmButtonColor: "#3e49bb",
+              cancelButtonColor: "#d33",
+              confirmButtonText: "Yes, delete it!",
+              cancelButtonText: "Cancel",
+            }).then((result) => {
+              if (result.isConfirmed) {
+                // yahan delete logic lagana hai (API ya state)
+                Swal.fire("Deleted!", "User has been deleted.", "success");
+              }
+            });
+
+            onClose();
+          }}
           style={{ ...dropItemStyle, color: "#ef4444" }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
           onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}

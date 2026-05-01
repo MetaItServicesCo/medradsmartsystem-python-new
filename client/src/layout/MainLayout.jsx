@@ -32,12 +32,7 @@ export default function MainLayout() {
       <Sidebar isOpen={isOpen} setIsOpen={setIsOpen} />
 
       {/* MAIN CONTENT */}
-      {/* 
-        Margin sirf tab do jab:
-        1. Sidebar open ho AND
-        2. Large screen ho (lg+)
-        Mobile/md par overlay sidebar hoga, margin nahi 
-      */}
+    
       <div
         className="flex-1 flex flex-col transition-all duration-300 min-w-0"
         style={{

@@ -10,6 +10,20 @@ const ServiceRequestsInProgress = () => {
   const [openMenuId, setOpenMenuId] = useState(null);
   const menuRef = useRef(null);
   const navigate = useNavigate();
+  const WorkOrderCell = ({ row }) => {
+    const navigate = useNavigate();
+
+    return (
+      <span
+        onClick={() =>
+          navigate(`/in-progress/view/${row.id}`)
+        }
+        className="text-blue-600 cursor-pointer hover:underline font-semibold"
+      >
+        {row.workOrder}
+      </span>
+    );
+  };
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -23,6 +37,13 @@ const ServiceRequestsInProgress = () => {
   const columns = [
     { name: "#", selector: (row) => row.id, sortable: true, width: "60px" },
     {
+      name: "Work Order",
+      sortable: true,
+      width: "110px",
+      cell: (row) => <WorkOrderCell row={row} />,
+    },
+
+    {
       name: "Facility Name",
       selector: (row) => row.facility,
       sortable: true,
@@ -33,10 +54,9 @@ const ServiceRequestsInProgress = () => {
         </span>
       ),
     },
-    { name: "Created By", selector: (row) => row.createdBy, width: "85px" },
-    { name: "Asset #", selector: (row) => row.asset, width: "90px" },
+    { name: "Created By", selector: (row) => row.createdBy, width: "80px" },
+    { name: "Asset #", selector: (row) => row.asset, width: "80px" },
     { name: "Description", selector: (row) => row.description, width: "100px" },
-    { name: "Work Order#", selector: (row) => row.workOrder, width: "105px" },
     { name: "Req. Date", selector: (row) => row.reqDate, width: "85px" },
     { name: "Pref. Date", selector: (row) => row.prefDate, width: "85px" },
     { name: "Req. By", selector: (row) => row.reqBy, width: "80px" },
@@ -77,7 +97,7 @@ const ServiceRequestsInProgress = () => {
             <div
               className="absolute right-0 mt-1 w-52 bg-white rounded-md shadow-2xl border border-gray-200 py-1 text-[12px]"
               style={{
-                zIndex: 999999, // Super high z-index
+                zIndex: 999999, 
                 position: "absolute",
                 display: "block",
               }}
@@ -120,18 +140,18 @@ const ServiceRequestsInProgress = () => {
   const customStyles = {
     table: {
       style: {
-        overflow: "visible", // Table level overflow fix
+        overflow: "visible",
       },
     },
     rows: {
       style: {
         minHeight: "45px",
-        overflow: "visible !important", // Row level overflow fix
+        overflow: "visible !important", 
       },
     },
     cells: {
       style: {
-        overflow: "visible !important", // Cell level overflow fix
+        overflow: "visible !important", 
       },
     },
   };
@@ -179,7 +199,7 @@ const ServiceRequestsInProgress = () => {
         </button>
       </div>
 
-      <div className="border rounded-md" style={{ overflow: "visible" }}>
+      <div className="borde rounded-md" style={{ overflow: "visible" }}>
         <DataTable
           columns={columns}
           data={data}

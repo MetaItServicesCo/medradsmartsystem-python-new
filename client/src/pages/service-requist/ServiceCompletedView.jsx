@@ -1,5 +1,5 @@
 import React from "react";
-import { Printer, Mail } from "lucide-react";
+import { Printer, Mail, CheckCircle, Save } from "lucide-react";
 import Logo from "../../assets/logo.png";
 
 const ServiceCompletedView = () => {
@@ -186,11 +186,24 @@ const ServiceCompletedView = () => {
         {/* BUTTONS */}
         <div className="flex flex-col md:flex-row justify-between gap-3 p-4 md:p-6 border-t">
           <div className="flex flex-col sm:flex-row gap-2">
-            <button className="bg-blue-600 text-white px-4 py-2 rounded flex items-center justify-center gap-2">
+            {/* Print */}
+            <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded flex items-center justify-center gap-2 transition">
               <Printer size={16} /> Print
             </button>
-            <button className="border px-4 py-2 rounded flex items-center justify-center gap-2">
+
+            {/* Email */}
+            <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center justify-center gap-2 transition">
               <Mail size={16} /> Email
+            </button>
+
+            {/* Save */}
+            <button className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded flex items-center justify-center gap-2 transition">
+              <Save size={16} /> Save
+            </button>
+
+            {/* Save & Approve */}
+            <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center justify-center gap-2 transition">
+              <CheckCircle size={16} /> Save & Approve
             </button>
           </div>
 

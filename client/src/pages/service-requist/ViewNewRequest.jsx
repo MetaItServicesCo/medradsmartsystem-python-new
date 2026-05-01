@@ -1,8 +1,10 @@
+
+
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { HiArrowLeft } from "react-icons/hi";
 
-const UpdateNewRequest = () => {
+const ViewNewRequest = () => {
   const navigate = useNavigate();
   const { id } = useParams(); // Route se id lenge: e.g. /new-request/update/:id
 
@@ -214,4 +216,4 @@ const UpdateNewRequest = () => {
   );
 };
 
-export default UpdateNewRequest;
+export default ViewNewRequest;
