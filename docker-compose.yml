@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: medrad_postgres
+    environment:
+      POSTGRES_USER: medrad
+      POSTGRES_PASSWORD: medrad123
+      POSTGRES_DB: medrad_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - medrad_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: medrad_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - medrad_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medrad_backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://medrad:medrad123@postgres:5432/medrad_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - medrad_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: medrad_frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    networks:
+      - medrad_network
+
+volumes:
+  postgres_data:
+
+networks:
+  medrad_network:
+    driver: bridge

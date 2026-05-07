@@ -1,0 +1,602 @@
+import { useState, useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Box, Card, Typography, Button, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, IconButton, Chip, Avatar,
+  InputBase, Tooltip, Dialog, DialogTitle, DialogContent,
+  DialogContentText, DialogActions, Skeleton, Menu, MenuItem,
+  ListItemIcon, ListItemText, Pagination, Select, FormControl,
+  InputLabel, SelectChangeEvent, TextField,
+} from '@mui/material'
+import AddIcon from '@mui/icons-material/Add'
+import SearchIcon from '@mui/icons-material/Search'
+import ClearIcon from '@mui/icons-material/Clear'
+import BuildIcon from '@mui/icons-material/Build'
+import AssignmentIcon from '@mui/icons-material/Assignment'
+import PendingActionsIcon from '@mui/icons-material/PendingActions'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import FilterListIcon from '@mui/icons-material/FilterList'
+import { toast } from 'react-toastify'
+
+import {
+  fetchServiceRequests,
+  deleteServiceRequest,
+  type ServiceRequest,
+  type ServiceRequestStatus as SRStatus,
+} from '@/api/serviceRequests'
+import CreateServiceRequestModal from './CreateServiceRequestModal'
+
+const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
+  low:      { bg: '#E0F2FE', color: '#0369A1' },
+  medium:   { bg: '#FEF3C7', color: '#B45309' },
+  high:     { bg: '#FFE4E6', color: '#BE123C' },
+  critical: { bg: '#FEE2E2', color: '#DC2626' },
+}
+
+const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
+  new:         { bg: '#E0E7FF', color: '#4338CA' },
+  assigned:    { bg: '#DBEAFE', color: '#1D4ED8' },
+  in_progress: { bg: '#FEF3C7', color: '#B45309' },
+  completed:   { bg: '#D1FAE5', color: '#047857' },
+  cancelled:   { bg: '#F3F4F6', color: '#6B7280' },
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  new: 'New',
+  assigned: 'Assigned',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+}
+
+const STAT_CARDS = [
+  {
+    label: 'Total Requests',
+    key: 'total',
+    icon: <BuildIcon />,
+    bg: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
+  },
+  {
+    label: 'New / Open',
+    key: 'new',
+    icon: <AssignmentIcon />,
+    bg: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+  },
+  {
+    label: 'In Progress',
+    key: 'in_progress',
+    icon: <PendingActionsIcon />,
+    bg: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+  },
+  {
+    label: 'Completed',
+    key: 'completed',
+    icon: <CheckCircleOutlineIcon />,
+    bg: 'linear-gradient(135deg, #10B981 0%, #047857 100%)',
+  },
+]
+
+const ServiceRequestList = () => {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const querySearch = searchParams.get('search') || ''
+  const queryStatus = searchParams.get('status') || ''
+  const queryPriority = searchParams.get('priority') || ''
+
+  const [searchInput, setSearchInput] = useState(querySearch)
+  const [page, setPage] = useState(1)
+  const [limit] = useState(10)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ServiceRequest | null>(null)
+
+  // Actions menu
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
+  const [menuItem, setMenuItem] = useState<ServiceRequest | null>(null)
+
+  // Debounced search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const trimmed = searchInput.trim()
+      const current = searchParams.get('search') || ''
+      if (trimmed !== current) {
+        const next = new URLSearchParams(searchParams)
+        if (trimmed) next.set('search', trimmed)
+        else next.delete('search')
+        setSearchParams(next, { replace: true })
+        setPage(1)
+      }
+    }, 400)
+    return () => clearTimeout(handler)
+  }, [searchInput])
+
+  const skip = (page - 1) * limit
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['service-requests', querySearch, queryStatus, queryPriority, skip, limit],
+    queryFn: () =>
+      fetchServiceRequests({
+        search: querySearch || undefined,
+        status: queryStatus || undefined,
+        priority: queryPriority || undefined,
+        skip,
+        limit,
+      }),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteServiceRequest(id),
+    onSuccess: () => {
+      toast.success('Service request deleted')
+      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+      setDeleteTarget(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to delete')
+      setDeleteTarget(null)
+    },
+  })
+
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.ceil(total / limit)
+
+  // Stats
+  const countByStatus = (s: string) => items.filter((r) => r.status === s).length
+  const statsValues: Record<string, number> = {
+    total,
+    new: countByStatus('new') + countByStatus('assigned'),
+    in_progress: countByStatus('in_progress'),
+    completed: countByStatus('completed'),
+  }
+
+  const handleFilterChange = (key: string) => (e: SelectChangeEvent<string> | React.ChangeEvent<HTMLInputElement>) => {
+    const next = new URLSearchParams(searchParams)
+    if (e.target.value) next.set(key, e.target.value)
+    else next.delete(key)
+    setSearchParams(next, { replace: true })
+    setPage(1)
+  }
+
+  const handleClearSearch = () => {
+    setSearchInput('')
+    const next = new URLSearchParams(searchParams)
+    next.delete('search')
+    setSearchParams(next, { replace: true })
+  }
+
+  const handleActionsOpen = (e: React.MouseEvent<HTMLElement>, sr: ServiceRequest) => {
+    setAnchorEl(e.currentTarget)
+    setMenuItem(sr)
+  }
+
+  const handleActionsClose = () => {
+    setAnchorEl(null)
+  }
+
+  const formatDate = (d: string | null) => {
+    if (!d) return '—'
+    return new Date(d).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  }
+
+  return (
+    <Box className="page-enter">
+      {/* Stat Cards */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
+        {STAT_CARDS.map((card) => (
+          <Card
+            key={card.key}
+            sx={{
+              p: 2,
+              background: card.bg,
+              color: '#fff',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <Box
+              sx={{
+                position: 'absolute', right: -10, top: -10, opacity: 0.15,
+                '& svg': { fontSize: '5rem' },
+              }}
+            >
+              {card.icon}
+            </Box>
+            <Typography
+              sx={{
+                fontSize: '0.8rem', fontWeight: 800, color: '#fff',
+                textTransform: 'uppercase', letterSpacing: '0.05em', mb: 1,
+              }}
+            >
+              {card.label}
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800, color: '#fff' }}>
+              {isLoading ? '—' : statsValues[card.key]}
+            </Typography>
+          </Card>
+        ))}
+      </Box>
+
+      {/* Main Card */}
+      <Card sx={{ overflow: 'hidden' }}>
+        {/* Toolbar */}
+        <Box
+          sx={{
+            display: 'flex', alignItems: 'center', gap: 2, p: 2.5,
+            borderBottom: '1px solid rgba(124,58,237,0.08)', flexWrap: 'wrap',
+          }}
+        >
+          {/* Search */}
+          <Box
+            component="form"
+            onSubmit={(e: React.FormEvent) => e.preventDefault()}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1,
+              backgroundColor: '#F5F3FF', borderRadius: '12px', px: 2, py: 1,
+              flex: 1, minWidth: 220, maxWidth: 340,
+              border: '1px solid rgba(124,58,237,0.12)',
+              '&:focus-within': { border: '1px solid #8B5CF6', backgroundColor: '#fff' },
+              transition: 'all 0.2s',
+            }}
+          >
+            <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
+            <InputBase
+              placeholder="Search requests..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}
+            />
+            {searchInput && (
+              <IconButton size="small" onClick={handleClearSearch} sx={{ p: '2px' }}>
+                <ClearIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
+              </IconButton>
+            )}
+          </Box>
+
+          {/* Status Filter */}
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel sx={{ fontSize: '0.85rem' }}>Status</InputLabel>
+            <Select
+              value={queryStatus}
+              label="Status"
+              onChange={handleFilterChange('status')}
+              sx={{ borderRadius: '12px', fontSize: '0.85rem' }}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="new">New</MenuItem>
+              <MenuItem value="assigned">Assigned</MenuItem>
+              <MenuItem value="in_progress">In Progress</MenuItem>
+              <MenuItem value="completed">Completed</MenuItem>
+              <MenuItem value="cancelled">Cancelled</MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Priority Filter */}
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel sx={{ fontSize: '0.85rem' }}>Priority</InputLabel>
+            <Select
+              value={queryPriority}
+              label="Priority"
+              onChange={handleFilterChange('priority')}
+              sx={{ borderRadius: '12px', fontSize: '0.85rem' }}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="low">Low</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="high">High</MenuItem>
+              <MenuItem value="critical">Critical</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Box sx={{ flex: 1 }} />
+
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateOpen(true)}
+            sx={{
+              background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
+              boxShadow: '0 8px 24px rgba(124,58,237,0.25)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)',
+                boxShadow: '0 12px 32px rgba(124,58,237,0.35)',
+                transform: 'translateY(-1px)',
+              },
+              px: 3,
+              borderRadius: '12px',
+              fontWeight: 800,
+              textTransform: 'none',
+            }}
+          >
+            New Request
+          </Button>
+        </Box>
+
+        {/* Table */}
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Request #</TableCell>
+                <TableCell>Facility</TableCell>
+                <TableCell>Equipment</TableCell>
+                <TableCell>Priority</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Requester</TableCell>
+                <TableCell>Created</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {isLoading
+                ? Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 8 }).map((_, j) => (
+                        <TableCell key={j}><Skeleton variant="text" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                : items.length === 0
+                  ? (
+                    <TableRow>
+                      <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                        <Box sx={{ textAlign: 'center', opacity: 0.8 }}>
+                          <BuildIcon sx={{ fontSize: '3.5rem', color: '#DDD6FE', mb: 2 }} />
+                          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B', mb: 0.5 }}>
+                            {querySearch ? 'No matches found' : 'No service requests yet'}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#6B7280', mb: 3, maxWidth: 300, mx: 'auto' }}>
+                            {querySearch
+                              ? `No results for "${querySearch}". Try different keywords.`
+                              : 'Get started by creating your first service request.'}
+                          </Typography>
+                          {!querySearch && (
+                            <Button
+                              variant="contained"
+                              onClick={() => setCreateOpen(true)}
+                              sx={{ px: 4, borderRadius: '10px', backgroundColor: '#7C3AED' }}
+                            >
+                              Create First Request
+                            </Button>
+                          )}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )
+                  : items.map((sr) => {
+                      const pColor = PRIORITY_COLORS[sr.priority] || PRIORITY_COLORS.low
+                      const sColor = STATUS_COLORS[sr.status] || STATUS_COLORS.new
+                      return (
+                        <TableRow
+                          key={sr.id}
+                          sx={{
+                            '&:hover': { backgroundColor: '#FAFAFF' },
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => navigate(`/service-requests/${sr.id}`)}
+                        >
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#4F46E5', fontFamily: 'monospace' }}>
+                              {sr.request_number}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {sr.facility_name || '—'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {sr.equipment_name || '—'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={sr.priority.charAt(0).toUpperCase() + sr.priority.slice(1)}
+                              size="small"
+                              sx={{
+                                backgroundColor: pColor.bg,
+                                color: pColor.color,
+                                fontWeight: 700,
+                                fontSize: '0.7rem',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.03em',
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={STATUS_LABELS[sr.status] || sr.status}
+                              size="small"
+                              sx={{
+                                backgroundColor: sColor.bg,
+                                color: sColor.color,
+                                fontWeight: 700,
+                                fontSize: '0.7rem',
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Avatar
+                                sx={{
+                                  width: 26, height: 26, fontSize: '0.7rem', fontWeight: 700,
+                                  background: 'linear-gradient(135deg, #7C3AED, #EC4899)',
+                                }}
+                              >
+                                {sr.requester_name?.[0] || '?'}
+                              </Avatar>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                {sr.requester_name || '—'}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ color: '#6B7280', fontSize: '0.8rem' }}>
+                              {formatDate(sr.created_at)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Actions">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleActionsOpen(e, sr)
+                                }}
+                                sx={{
+                                  color: '#7C3AED',
+                                  backgroundColor: '#F5F3FF',
+                                  borderRadius: '10px',
+                                  width: 36, height: 36,
+                                  transition: 'all 0.2s ease',
+                                  '&:hover': {
+                                    backgroundColor: '#EDE9FE',
+                                    transform: 'scale(1.05)',
+                                  },
+                                }}
+                              >
+                                <MoreVertIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Box
+            sx={{
+              display: 'flex', justifyContent: 'center', p: 2.5,
+              borderTop: '1px solid rgba(124,58,237,0.08)',
+            }}
+          >
+            <Pagination
+              count={totalPages}
+              page={page}
+              onChange={(_, p) => setPage(p)}
+              color="primary"
+              shape="rounded"
+              sx={{
+                '& .MuiPaginationItem-root': { borderRadius: '8px', fontWeight: 600 },
+                '& .Mui-selected': {
+                  background: 'linear-gradient(135deg, #7C3AED, #EC4899) !important',
+                  color: '#fff',
+                },
+              }}
+            />
+          </Box>
+        )}
+      </Card>
+
+      {/* Actions Menu */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleActionsClose}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        PaperProps={{
+          elevation: 0,
+          sx: {
+            borderRadius: '14px',
+            overflow: 'visible',
+            filter: 'drop-shadow(0 4px 24px rgba(124,58,237,0.15))',
+            border: '1px solid rgba(124,58,237,0.08)',
+            mt: 1, minWidth: 180,
+            '&::before': {
+              content: '""', display: 'block', position: 'absolute',
+              top: 0, right: 14, width: 12, height: 12,
+              bgcolor: 'background.paper',
+              transform: 'translateY(-50%) rotate(45deg)', zIndex: 0,
+              borderLeft: '1px solid rgba(124,58,237,0.08)',
+              borderTop: '1px solid rgba(124,58,237,0.08)',
+            },
+          },
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            if (menuItem) navigate(`/service-requests/${menuItem.id}`)
+            handleActionsClose()
+          }}
+          sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}
+        >
+          <ListItemIcon><VisibilityOutlinedIcon sx={{ color: '#7C3AED', fontSize: '1.2rem' }} /></ListItemIcon>
+          <ListItemText primary="View Details" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+        </MenuItem>
+
+        <Box sx={{ mx: 2, my: 0.5 }}>
+          <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
+        </Box>
+
+        <MenuItem
+          onClick={() => {
+            if (menuItem) setDeleteTarget(menuItem)
+            handleActionsClose()
+          }}
+          sx={{
+            py: 1.2, px: 2, mx: 0.75, borderRadius: '10px',
+            '&:hover': { backgroundColor: '#FEF2F2' },
+          }}
+        >
+          <ListItemIcon><DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.2rem' }} /></ListItemIcon>
+          <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#EF4444' }} />
+        </MenuItem>
+      </Menu>
+
+      {/* Create Modal */}
+      <CreateServiceRequestModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
+
+      {/* Delete Confirmation */}
+      <Dialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>Delete Service Request?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete <strong>{deleteTarget?.request_number}</strong>? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button
+            onClick={() => setDeleteTarget(null)}
+            variant="outlined"
+            sx={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+            variant="contained"
+            color="error"
+            disabled={deleteMutation.isPending}
+            sx={{ boxShadow: '0 4px 12px rgba(239,68,68,0.25)' }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+}
+
+export default ServiceRequestList

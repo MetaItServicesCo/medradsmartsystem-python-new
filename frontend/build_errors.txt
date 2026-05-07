@@ -1,0 +1,14 @@
+﻿
+> medrad-admin-panel-frontend@2.0.0 build
+> tsc && vite build
+
+src/api/client.ts(5,24): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/Facilities/FacilityFormModal.tsx(6,11): error TS6133: 'DialogTitle' is declared but its value is never read.
+src/pages/Facilities/FacilityFormModal.tsx(60,13): error TS2345: Argument of type '{ tier_id: number | null; id: number; name: string; address: string; city: string; state: string; zip_code: string; country: string; phone: string; email: string; timezone: string; operating_hours: string | null; created_at: string; updated_at: string; }' is not assignable to parameter of type '{ address: string; name: string; email: string; city: string; state: string; zip_code: string; country: string; phone: string; timezone: string; operating_hours?: string | undefined; tier_id?: number | ... 1 more ... | undefined; } | { ...; } | ResetAction<...> | undefined'.
+  Type '{ tier_id: number | null; id: number; name: string; address: string; city: string; state: string; zip_code: string; country: string; phone: string; email: string; timezone: string; operating_hours: string | null; created_at: string; updated_at: string; }' is not assignable to type '{ address?: string | undefined; name?: string | undefined; email?: string | undefined; city?: string | undefined; state?: string | undefined; zip_code?: string | undefined; country?: string | undefined; phone?: string | undefined; timezone?: string | undefined; operating_hours?: string | undefined; tier_id?: number ...'.
+    Types of property 'operating_hours' are incompatible.
+      Type 'string | null' is not assignable to type 'string | undefined'.
+        Type 'null' is not assignable to type 'string | undefined'.
+src/pages/Facilities/FacilityList.tsx(7,47): error TS6133: 'Select' is declared but its value is never read.
+src/pages/Facilities/FacilityList.tsx(7,55): error TS6133: 'MenuItem' is declared but its value is never read.
+src/pages/Facilities/FacilityList.tsx(8,3): error TS6133: 'FormControl' is declared but its value is never read.

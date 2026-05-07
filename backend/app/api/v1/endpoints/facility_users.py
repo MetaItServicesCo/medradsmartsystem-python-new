@@ -1,0 +1,90 @@
+from typing import Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from app.core.deps import get_current_user, get_admin_user
+from app.db.base import get_db
+from app.models.user import User
+from app.schemas.facility_user import FacilityUserResponse, FacilityUserListResponse, FacilityUserUpdate, FacilityUserBulkAssign
+
+router = APIRouter()
+
+
+@router.get("/", response_model=FacilityUserListResponse)
+def list_facility_users(
+    db: Session = Depends(get_db),
+    facility_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """List users, optionally filtered by facility_id."""
+    query = db.query(User)
+    if facility_id is not None:
+        query = query.filter(User.facility_id == facility_id)
+    items = query.all()
+    return {"items": items, "total": len(items)}
+
+
+@router.put("/{user_id}/facility", response_model=FacilityUserResponse)
+def assign_user_to_facility(
+    user_id: int,
+    update_in: FacilityUserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+) -> Any:
+    """Assign or reassign a user to a facility."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.facility_id = update_in.facility_id
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.delete("/{user_id}/facility", response_model=FacilityUserResponse)
+def remove_user_from_facility(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+) -> Any:
+    """Remove a user from their facility (set facility_id to null)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.facility_id = None
+    db.commit()
+    db.refresh(user)
+    return user
+@router.post("/bulk-assign", response_model=dict)
+def bulk_assign_users_to_facility(
+    assign_in: FacilityUserBulkAssign,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+) -> Any:
+    """Bulk assign many users to one facility."""
+    from app.models.user_facility import UserFacility
+    
+    new_assignments = 0
+    for uid in assign_in.user_ids:
+        # Check if already assigned
+        exists = db.query(UserFacility).filter(
+            UserFacility.user_id == uid,
+            UserFacility.facility_id == assign_in.facility_id
+        ).first()
+        
+        if not exists:
+            assignment = UserFacility(
+                user_id=uid,
+                facility_id=assign_in.facility_id,
+                role_at_facility=None # optional
+            )
+            db.add(assignment)
+            new_assignments += 1
+            
+            # If user has no primary facility, set this one
+            user = db.query(User).filter(User.id == uid).first()
+            if user and user.facility_id is None:
+                user.facility_id = assign_in.facility_id
+    
+    db.commit()
+    return {"detail": f"Successfully assigned {new_assignments} new users to facility."}
