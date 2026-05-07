@@ -40,6 +40,24 @@ dist-ssr/
 *~
 .DS_Store
 
+# Tool configs
+.kiro/
+.gemini/
+.antigravityignore
+
+# Debug & scratch files
+*.log
+err*.log
+pip_out.txt
+openapi.json
+debug_*.py
+check_*.py
+test_tier.*
+tsc_output.txt
+build_errors.txt
+out.txt
+alembic_err.txt
+
 # Database
 *.db
 *.sqlite
