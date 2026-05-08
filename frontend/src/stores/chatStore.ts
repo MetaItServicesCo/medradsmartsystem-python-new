@@ -175,9 +175,11 @@ function handleIncomingMessage(data: any, set: any, get: any) {
       break
 
     case 'call_offer':
+      get().messageListeners.forEach((fn: (msg: any) => void) => fn(data))
       set({
         incomingCall: {
           senderId: data.sender_id,
+          senderName: data.sender_name,
           callType: data.call_type || 'voice',
           offer: data.offer,
         },

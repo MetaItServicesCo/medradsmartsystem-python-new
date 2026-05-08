@@ -31,6 +31,7 @@ const ICE_SERVERS = [
 export default function useWebRTC({
   targetUserId,
   callType,
+  isHost = false,
   onCallEnded,
 }: UseWebRTCOptions): UseWebRTCReturn {
   const { sendWsMessage, addMessageListener, removeMessageListener } = useChatStore()

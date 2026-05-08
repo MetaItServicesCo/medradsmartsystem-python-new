@@ -27,7 +27,7 @@ interface Props {
 
 const FacilityTierModal = ({ open, onClose, facility }: Props) => {
   const queryClient = useQueryClient()
-  const [selectedTierId, setSelectedTierId] = useState<number | null>(null)
+  const [selectedTierIds, setSelectedTierIds] = useState<number[]>([])
   
   // Form State
   const [showForm, setShowForm] = useState(false)
@@ -51,14 +51,14 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
 
   useEffect(() => {
     if (facility) {
-      setSelectedTierId(facility.tier_id)
+      setSelectedTierIds(facility.tier_ids?.length ? facility.tier_ids : (facility.tier_id ? [facility.tier_id] : []))
     }
   }, [facility, open])
 
   // Mutations
   const assignMutation = useMutation({
-    mutationFn: (tierId: number | null) =>
-      updateFacility(facility!.id, { tier_id: tierId }),
+    mutationFn: (tierIds: number[]) =>
+      updateFacility(facility!.id, { tier_ids: tierIds, tier_id: tierIds[0] ?? null }),
     onSuccess: () => {
       toast.success('Facility tier updated successfully!')
       queryClient.invalidateQueries({ queryKey: ['facilities'] })
@@ -104,14 +104,14 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
     onSuccess: () => {
       toast.success('Tier deleted')
       queryClient.invalidateQueries({ queryKey: ['tiers'] })
-      if (selectedTierId === deleteMut.variables) setSelectedTierId(null)
+      setSelectedTierIds((ids) => ids.filter((id) => id !== deleteMut.variables))
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to delete tier'),
   })
 
   const handleSave = () => {
     if (facility && facility.id !== 0) {
-      assignMutation.mutate(selectedTierId)
+      assignMutation.mutate(selectedTierIds)
     } else {
       onClose()
     }
@@ -186,9 +186,9 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
           </Box>
         </Collapse>
 
-        {facility && facility.id !== 0 && facility.tier_id && (
+        {facility && facility.id !== 0 && selectedTierIds.length > 0 && (
           <Alert severity="info" icon={<CheckCircleIcon />} sx={{ mb: 2.5, borderRadius: '12px', backgroundColor: '#F5F3FF', color: '#5B21B6', border: '1px solid rgba(124,58,237,0.12)', '& .MuiAlert-icon': { color: '#7C3AED' } }}>
-            Currently assigned: <strong>{tiers.find((t) => t.id === facility.tier_id)?.name || `Tier #${facility.tier_id}`}</strong>
+            Currently assigned: <strong>{selectedTierIds.map((id) => tiers.find((t) => t.id === id)?.name || `Tier #${id}`).join(', ')}</strong>
           </Alert>
         )}
 
@@ -219,7 +219,7 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
               </thead>
               <tbody>
                 {tiers.map((tier) => {
-                  const selected = selectedTierId === tier.id
+                  const selected = selectedTierIds.includes(tier.id)
                   const isViewing = viewTierId === tier.id
                   const isEditing = editTierId === tier.id
                   return (
@@ -258,9 +258,9 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
                             </IconButton>
                           </Tooltip>
                           {facility && facility.id !== 0 && (
-                            <Button size="small" variant={selected ? 'contained' : 'outlined'} onClick={() => setSelectedTierId(tier.id)}
+                            <Button size="small" variant={selected ? 'contained' : 'outlined'} onClick={() => setSelectedTierIds((ids) => selected ? ids.filter((id) => id !== tier.id) : [...ids, tier.id])}
                               sx={{ minWidth: '80px', borderColor: '#7C3AED', color: selected ? '#fff' : '#7C3AED', backgroundColor: selected ? '#7C3AED' : 'transparent', borderRadius: '8px', textTransform: 'none', '&:hover': { backgroundColor: selected ? '#6D28D9' : 'rgba(124,58,237,0.08)' } }}>
-                              {selected ? 'Assigned' : 'Assign'}
+                              {selected ? 'Assigned' : 'Add'}
                             </Button>
                           )}
                         </td>
@@ -301,9 +301,9 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
             </table>
 
             {facility && facility.id !== 0 && (
-              <Box onClick={() => setSelectedTierId(null)} sx={{ mt: 3, p: 2, borderRadius: '12px', border: selectedTierId === null ? '1px solid #EF4444' : '1px solid #E5E7EB', backgroundColor: selectedTierId === null ? '#FEF2F2' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: selectedTierId === null ? '#EF4444' : '#6B7280' }}>
-                  {selectedTierId === null ? '✓ No Tier Assigned' : 'Remove Tier Assignment'}
+              <Box onClick={() => setSelectedTierIds([])} sx={{ mt: 3, p: 2, borderRadius: '12px', border: selectedTierIds.length === 0 ? '1px solid #EF4444' : '1px solid #E5E7EB', backgroundColor: selectedTierIds.length === 0 ? '#FEF2F2' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: selectedTierIds.length === 0 ? '#EF4444' : '#6B7280' }}>
+                  {selectedTierIds.length === 0 ? 'No Tiers Assigned' : 'Remove All Tier Assignments'}
                 </Typography>
               </Box>
             )}
@@ -316,7 +316,7 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
         {facility && facility.id !== 0 && (
           <Button onClick={handleSave} variant="contained" disabled={assignMutation.isPending || tiersLoading}
             sx={{ flex: 2, backgroundColor: '#7C3AED', borderRadius: '12px', py: 1.2, boxShadow: '0 4px 16px rgba(124,58,237,0.3)', '&:hover': { backgroundColor: '#6D28D9' } }}>
-            {assignMutation.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Save Facility Tier'}
+            {assignMutation.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Save Facility Tiers'}
           </Button>
         )}
       </DialogActions>

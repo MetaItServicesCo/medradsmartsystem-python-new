@@ -3,6 +3,7 @@ import {
   Box, Typography, Tabs, Tab, TextField, InputAdornment,
   List, ListItemButton, ListItemAvatar, ListItemText, Avatar,
   Badge, Chip, IconButton, Tooltip, Divider, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import GroupAddIcon from '@mui/icons-material/GroupAdd'
@@ -11,16 +12,15 @@ import PeopleIcon from '@mui/icons-material/People'
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'
 import { useQuery } from '@tanstack/react-query'
 import { fetchFriends, fetchWorkspaces, fetchUnreadCounts, fetchFriendRequests } from '@/api/chat'
-import { useAuthStore } from '@/stores/authStore'
 import { useChatStore } from '@/stores/chatStore'
 import MessagePanel from './MessagePanel'
 import WorkspacePanel from './WorkspacePanel'
 import FriendRequests from './FriendRequests'
 import CreateWorkspaceModal from './CreateWorkspaceModal'
+import CallPanel from './CallPanel'
 
 const Chat = () => {
-  const currentUser = useAuthStore((s) => s.user)
-  const { connect, isConnected, onlineUsers, unreadCounts } = useChatStore()
+  const { connect, isConnected, onlineUsers, unreadCounts, incomingCall, clearIncomingCall, sendWsMessage } = useChatStore()
 
   const [tab, setTab] = useState(0) // 0=DMs, 1=Workspaces
   const [selectedUser, setSelectedUser] = useState<any>(null)
@@ -28,6 +28,12 @@ const Chat = () => {
   const [showRequests, setShowRequests] = useState(false)
   const [showCreateWs, setShowCreateWs] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [activeIncomingCall, setActiveIncomingCall] = useState<{
+    senderId: number
+    callType: 'voice' | 'video'
+    offer: any
+    caller: any
+  } | null>(null)
 
   // Connect WebSocket on mount
   useEffect(() => {
@@ -61,6 +67,31 @@ const Chat = () => {
     refetchInterval: 30000,
   })
   const pendingCount = pendingRequests?.total || 0
+
+  const incomingCaller = incomingCall
+    ? friends.find((f: any) => f.id === incomingCall.senderId) || {
+        id: incomingCall.senderId,
+        full_name: incomingCall.senderName || `User #${incomingCall.senderId}`,
+      }
+    : null
+
+  const handleAcceptCall = () => {
+    if (!incomingCall || !incomingCaller) return
+    setActiveIncomingCall({
+      senderId: incomingCall.senderId,
+      callType: incomingCall.callType,
+      offer: incomingCall.offer,
+      caller: incomingCaller,
+    })
+    clearIncomingCall()
+  }
+
+  const handleRejectCall = () => {
+    if (incomingCall) {
+      sendWsMessage({ type: 'call_reject', target_id: incomingCall.senderId })
+    }
+    clearIncomingCall()
+  }
 
   const filteredFriends = friends.filter((f: any) =>
     f.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -312,6 +343,41 @@ const Chat = () => {
         open={showCreateWs}
         onClose={() => { setShowCreateWs(false); refetchWorkspaces() }}
       />
+
+      <Dialog open={!!incomingCall && !activeIncomingCall} onClose={handleRejectCall} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>
+          Incoming {incomingCall?.callType === 'video' ? 'Video' : 'Voice'} Call
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
+            <Avatar sx={{ width: 52, height: 52, backgroundColor: '#7C3AED', fontWeight: 800 }}>
+              {incomingCaller?.full_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'}
+            </Avatar>
+            <Box>
+              <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+                {incomingCaller?.full_name || 'Unknown caller'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#6B7280' }}>
+                Wants to start a {incomingCall?.callType || 'voice'} call.
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={handleRejectCall} color="error" variant="outlined">Decline</Button>
+          <Button onClick={handleAcceptCall} variant="contained" sx={{ backgroundColor: '#7C3AED' }}>Accept</Button>
+        </DialogActions>
+      </Dialog>
+
+      {activeIncomingCall && (
+        <CallPanel
+          targetUser={activeIncomingCall.caller}
+          callType={activeIncomingCall.callType}
+          incomingOffer={activeIncomingCall.offer}
+          incomingFromUserId={activeIncomingCall.senderId}
+          onEnd={() => setActiveIncomingCall(null)}
+        />
+      )}
     </Box>
   )
 }

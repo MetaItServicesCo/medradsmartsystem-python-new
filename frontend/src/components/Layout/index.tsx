@@ -15,6 +15,7 @@ const pageTitles: Record<string, string> = {
   '/rentals': 'Rentals',
   '/inventory': 'Inventory',
   '/reports': 'Reports',
+  '/profile': 'Profile Settings',
 }
 
 const Layout = () => {
@@ -24,19 +25,33 @@ const Layout = () => {
   )?.[1] ?? 'Medrad'
 
   return (
-    <Box sx={{ 
-      display: 'flex', 
-      minHeight: '100vh', 
-      backgroundColor: '#F9FAFB',
+    <Box sx={{
+      display: 'flex',
+      minHeight: '100vh',
+      background: '#E9EEFA',
+      p: { xs: 0, md: 1.5 },
+      gap: { xs: 0, md: 1.5 },
     }}>
       <Sidebar />
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0,
+          overflow: 'hidden',
+          bgcolor: '#F8FAFC',
+          borderRadius: { xs: 0, md: '30px' },
+          border: { xs: 0, md: '1px solid rgba(255,255,255,0.72)' },
+          boxShadow: { xs: 'none', md: '0 24px 70px rgba(71,85,105,0.16)' },
+        }}
+      >
         <Header title={title} />
         <Box
           component="main"
           sx={{
             flex: 1,
-            p: 3,
+            p: { xs: 2, md: 3 },
             overflowY: 'auto',
             overflowX: 'hidden',
           }}

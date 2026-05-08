@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, get_admin_user
 from app.db.base import get_db
 from app.models.user import User
+from app.models.facility import Facility
 from app.schemas.facility_user import FacilityUserResponse, FacilityUserListResponse, FacilityUserUpdate, FacilityUserBulkAssign
+from app.utils.notifications import create_notification
 
 router = APIRouter()
 
@@ -36,6 +38,16 @@ def assign_user_to_facility(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.facility_id = update_in.facility_id
+    facility = db.query(Facility).filter(Facility.id == update_in.facility_id).first() if update_in.facility_id else None
+    create_notification(
+        db,
+        user_id=user.id,
+        title="Facility assignment updated",
+        message=f"You were assigned to {facility.name if facility else 'a facility'}.",
+        notification_type="facility",
+        link_url="/facilities",
+        actor_id=current_user.id,
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -52,6 +64,15 @@ def remove_user_from_facility(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.facility_id = None
+    create_notification(
+        db,
+        user_id=user.id,
+        title="Facility assignment removed",
+        message="You were removed from your assigned facility.",
+        notification_type="facility",
+        link_url="/facilities",
+        actor_id=current_user.id,
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -63,6 +84,7 @@ def bulk_assign_users_to_facility(
 ) -> Any:
     """Bulk assign many users to one facility."""
     from app.models.user_facility import UserFacility
+    facility = db.query(Facility).filter(Facility.id == assign_in.facility_id).first()
     
     new_assignments = 0
     for uid in assign_in.user_ids:
@@ -85,6 +107,16 @@ def bulk_assign_users_to_facility(
             user = db.query(User).filter(User.id == uid).first()
             if user and user.facility_id is None:
                 user.facility_id = assign_in.facility_id
+            if user:
+                create_notification(
+                    db,
+                    user_id=user.id,
+                    title="Facility assignment added",
+                    message=f"You were assigned to {facility.name if facility else 'a facility'}.",
+                    notification_type="facility",
+                    link_url="/facilities",
+                    actor_id=current_user.id,
+                )
     
     db.commit()
     return {"detail": f"Successfully assigned {new_assignments} new users to facility."}

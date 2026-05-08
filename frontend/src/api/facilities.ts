@@ -13,6 +13,13 @@ export interface Facility {
   timezone: string
   operating_hours: string | null
   tier_id: number | null
+  tier_ids?: number[]
+  tiers?: {
+    id: number
+    tier_code: string
+    name: string
+    status: string
+  }[]
   created_at: string
   updated_at: string
 
@@ -69,6 +76,7 @@ export interface FacilityCreate {
   timezone?: string
   operating_hours?: string
   tier_id?: number | null
+  tier_ids?: number[]
 
   contact_person?: string
   suite?: string

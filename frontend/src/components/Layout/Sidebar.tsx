@@ -47,7 +47,7 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
   { text: 'Inventory', icon: <InventoryIcon />, path: '/inventory', module: 'inventory' },
   { text: 'Reports', icon: <AssessmentIcon />, path: '/reports', module: 'reports' },
   { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', module: 'chat' },
-  { text: 'Calendar', icon: <CalendarMonthIcon />, path: '/calendar', module: 'chat' || 'dashboard' },
+  { text: 'Calendar', icon: <CalendarMonthIcon />, path: '/calendar', module: 'calendar' },
 ]
 
 const Sidebar = () => {
@@ -86,17 +86,18 @@ const Sidebar = () => {
     <Box
       sx={{
         width: 72,
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
+        minHeight: { xs: '100vh', md: 'calc(100vh - 24px)' },
+        background: 'linear-gradient(180deg, #7161D8 0%, #5C4BBC 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         py: 3,
         gap: 1,
         flexShrink: 0,
-        boxShadow: '10px 0 30px rgba(79,70,229,0.15)',
+        boxShadow: '0 24px 60px rgba(89,76,190,0.22)',
         position: 'relative',
         zIndex: 10,
+        borderRadius: { xs: 0, md: '28px' },
       }}
     >
       {/* Logo mark */}
@@ -104,7 +105,7 @@ const Sidebar = () => {
         sx={{
           width: 48,
           height: 48,
-          borderRadius: '16px',
+          borderRadius: '18px',
           background: 'rgba(255,255,255,0.15)',
           display: 'flex',
           alignItems: 'center',
@@ -115,7 +116,7 @@ const Sidebar = () => {
           fontWeight: 900,
           fontSize: '1.2rem',
           color: '#fff',
-          boxShadow: '0 8px 20px rgba(0,0,0,0.1)',
+          boxShadow: '0 12px 28px rgba(35,28,97,0.18)',
         }}
       >
         M
@@ -132,21 +133,21 @@ const Sidebar = () => {
                 sx={{
                   width: '100%',
                   height: 48,
-                  borderRadius: '14px',
+                  borderRadius: '16px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
                   position: 'relative',
-                  color: active ? '#fff' : 'rgba(255,255,255,0.6)',
-                  backgroundColor: active ? 'rgba(255,255,255,0.15)' : 'transparent',
-                  border: active ? '1px solid rgba(255,255,255,0.2)' : '1px solid transparent',
+                  color: active ? '#fff' : 'rgba(255,255,255,0.68)',
+                  backgroundColor: active ? 'rgba(255,255,255,0.18)' : 'transparent',
+                  border: active ? '1px solid rgba(255,255,255,0.24)' : '1px solid transparent',
                   backdropFilter: active ? 'blur(8px)' : 'none',
                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                   '&:hover': {
                     backgroundColor: active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)',
                     color: '#fff',
-                    transform: 'translateX(2px)',
+                    transform: 'translateY(-1px)',
                   },
                   '& svg': { fontSize: '1.4rem' },
                   // Active indicator
@@ -156,7 +157,7 @@ const Sidebar = () => {
                     left: -12,
                     width: 4,
                     height: 24,
-                    backgroundColor: '#F472B6',
+                    backgroundColor: '#FF7AAE',
                     borderRadius: '0 4px 4px 0',
                     boxShadow: '0 0 15px #F472B6',
                   } : {},

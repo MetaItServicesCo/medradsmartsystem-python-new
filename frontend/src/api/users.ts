@@ -59,6 +59,22 @@ export interface UpdateUserPayload {
   facility_ids?: number[]
 }
 
+export interface UpdateOwnProfilePayload {
+  email?: string
+  full_name?: string
+  phone?: string
+  password?: string
+}
+
+export const resolveUploadUrl = (url?: string | null): string | undefined => {
+  if (!url) return undefined
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+  const origin = apiBase.replace(/\/api\/v1\/?$/, '')
+  return `${origin}${url.startsWith('/') ? url : `/${url}`}`
+}
+
 export const fetchUsers = async (params?: {
   skip?: number
   limit?: number
@@ -72,6 +88,25 @@ export const fetchUsers = async (params?: {
 
 export const fetchUser = async (id: number): Promise<UserData> => {
   const res = await apiClient.get(`/users/${id}`)
+  return res.data
+}
+
+export const fetchCurrentUser = async (): Promise<UserData> => {
+  const res = await apiClient.get('/users/me')
+  return res.data
+}
+
+export const updateOwnProfile = async (data: UpdateOwnProfilePayload): Promise<UserData> => {
+  const res = await apiClient.put('/users/me', data)
+  return res.data
+}
+
+export const uploadOwnProfilePicture = async (file: File): Promise<UserData> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await apiClient.post('/users/me/profile-picture', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return res.data
 }
 

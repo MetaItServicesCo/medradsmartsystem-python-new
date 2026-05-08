@@ -22,6 +22,7 @@ from app.schemas.service_request import (
     QuotationPaymentCreate, QuotationPaymentResponse,
     LineItemCreate,
 )
+from app.utils.notifications import create_notification, create_notifications, notify_admins
 
 router = APIRouter()
 
@@ -168,6 +169,25 @@ def create_service_request(
     db.add(db_sr)
     db.commit()
     db.refresh(db_sr)
+    notify_admins(
+        db,
+        title="New service request",
+        message=f"Service request {db_sr.request_number} was created.",
+        notification_type="service_request",
+        link_url=f"/service-requests/{db_sr.id}",
+        actor_id=current_user.id,
+    )
+    if db_sr.requester_id != current_user.id:
+        create_notification(
+            db,
+            user_id=db_sr.requester_id,
+            title="Service request created",
+            message=f"Service request {db_sr.request_number} was created for you.",
+            notification_type="service_request",
+            link_url=f"/service-requests/{db_sr.id}",
+            actor_id=current_user.id,
+        )
+    db.commit()
 
     # Re-query with joins for response
     return _enrich(
@@ -226,6 +246,29 @@ def update_service_request(
 
     db.commit()
     db.refresh(db_sr)
+    recipients = {db_sr.requester_id}
+    if db_sr.assigned_technician_id:
+        recipients.add(db_sr.assigned_technician_id)
+    create_notifications(
+        db,
+        user_ids=[uid for uid in recipients if uid and uid != current_user.id],
+        title="Service request updated",
+        message=f"Service request {db_sr.request_number} was updated.",
+        notification_type="service_request",
+        link_url=f"/service-requests/{db_sr.id}",
+        actor_id=current_user.id,
+    )
+    if "assigned_technician_id" in update_data and db_sr.assigned_technician_id:
+        create_notification(
+            db,
+            user_id=db_sr.assigned_technician_id,
+            title="Service request assigned",
+            message=f"You were assigned to {db_sr.request_number}.",
+            notification_type="service_request",
+            link_url=f"/service-requests/{db_sr.id}",
+            actor_id=current_user.id,
+        )
+    db.commit()
 
     return _enrich(
         db.query(ServiceRequest)
@@ -318,6 +361,16 @@ def create_quotation(
 
     db.commit()
     db.refresh(db_quotation)
+    create_notifications(
+        db,
+        user_ids=[uid for uid in {db_sr.requester_id, db_sr.assigned_technician_id} if uid and uid != current_user.id],
+        title="Quotation created",
+        message=f"Quotation {quotation_number} was created for {db_sr.request_number}.",
+        notification_type="service_request",
+        link_url=f"/service-requests/{request_id}",
+        actor_id=current_user.id,
+    )
+    db.commit()
 
     return db_quotation
 
@@ -400,6 +453,17 @@ def update_quotation(
     db_quotation.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(db_quotation)
+    sr = db_quotation.service_request
+    create_notifications(
+        db,
+        user_ids=[uid for uid in {sr.requester_id, sr.assigned_technician_id} if uid and uid != current_user.id],
+        title="Quotation updated",
+        message=f"Quotation {db_quotation.quotation_number} was updated.",
+        notification_type="service_request",
+        link_url=f"/service-requests/{sr.id}",
+        actor_id=current_user.id,
+    )
+    db.commit()
 
     return db_quotation
 
@@ -528,5 +592,16 @@ def create_quotation_payment(
 
     db.commit()
     db.refresh(db_payment)
+    sr = db_quotation.service_request
+    create_notifications(
+        db,
+        user_ids=[uid for uid in {sr.requester_id, sr.assigned_technician_id} if uid and uid != current_user.id],
+        title="Quotation payment recorded",
+        message=f"Payment {reference_number} was recorded.",
+        notification_type="service_request",
+        link_url=f"/service-requests/{sr.id}",
+        actor_id=current_user.id,
+    )
+    db.commit()
 
     return db_payment

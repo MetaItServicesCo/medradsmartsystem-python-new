@@ -5,7 +5,7 @@ from app.models import (
     facility, facility_document, equipment, service_request,
     inspection, invoice, rental, tier, user, department, modality,
 )
-from app.models import user_facility, equipment_facility, chat, calendar
+from app.models import user_facility, equipment_facility, facility_tier, inventory, chat, calendar, notification
 
 
 def run_migration():

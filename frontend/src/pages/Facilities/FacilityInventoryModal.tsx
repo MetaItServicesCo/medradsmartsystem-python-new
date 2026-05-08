@@ -13,6 +13,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { toast } from 'react-toastify'
 import { fetchEquipment, createEquipment, updateEquipment, deleteEquipment, type EquipmentCreate, type EquipmentItem } from '@/api/equipment'
 import { fetchModalities } from '@/api/modalities'
+import { fetchTiers } from '@/api/tiers'
 import { type Facility } from '@/api/facilities'
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
@@ -57,13 +58,20 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     enabled: open,
   })
 
+  const { data: tiersData } = useQuery({
+    queryKey: ['tiers'],
+    queryFn: fetchTiers,
+    enabled: open,
+  })
+
   const createMut = useMutation({
     mutationFn: (d: EquipmentCreate) => createEquipment(d),
     onSuccess: () => {
       toast.success('Inventory item added!')
+      queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', facility?.id] })
       setShowForm(false)
-      setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active' })
+      setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active', tier_id: null })
       setSelectedParentMod('')
       setSelectedSubMod('')
     },
@@ -74,10 +82,11 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     mutationFn: ({ id, data }: { id: number, data: EquipmentCreate }) => updateEquipment(id, data),
     onSuccess: () => {
       toast.success('Inventory item updated!')
+      queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', facility?.id] })
       setShowForm(false)
       setEditItemId(null)
-      setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active' })
+      setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active', tier_id: null })
       setSelectedParentMod('')
       setSelectedSubMod('')
     },
@@ -88,12 +97,18 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     mutationFn: (id: number) => deleteEquipment(id),
     onSuccess: () => {
       toast.success('Item removed')
+      queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', facility?.id] })
     },
   })
 
   const items = data?.items ?? []
   const modalities = modalitiesData?.items ?? []
+  const tiers = tiersData?.items ?? []
+  const facilityTierIds = facility?.tier_ids?.length ? facility.tier_ids : (facility?.tier_id ? [facility.tier_id] : [])
+  const availableTiers = facilityTierIds.length > 0
+    ? tiers.filter((tier) => facilityTierIds.includes(tier.id))
+    : tiers
 
   // Compute children for the selected parent modality
   const subModalities = useMemo(() => {
@@ -108,6 +123,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
       make: item.make,
       model: item.model,
       serial_number: item.serial_number,
+      tier_id: item.tier_id,
       status: item.status,
     })
     
@@ -209,7 +225,14 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <Box /> // Empty placeholder to keep grid layout intact
               )}
 
-              <TextField size="small" label="Status" select value={form.status || 'active'} onChange={e => setForm({ ...form, status: e.target.value })} sx={{ gridColumn: 'span 2' }}>
+              <TextField size="small" label="Tier" select value={form.tier_id || ''} onChange={e => setForm({ ...form, tier_id: e.target.value ? Number(e.target.value) : null })}>
+                <MenuItem value="">No Tier</MenuItem>
+                {availableTiers.map((tier) => (
+                  <MenuItem key={tier.id} value={tier.id}>{tier.name}</MenuItem>
+                ))}
+              </TextField>
+
+              <TextField size="small" label="Status" select value={form.status || 'active'} onChange={e => setForm({ ...form, status: e.target.value })}>
                 <MenuItem value="active">Active</MenuItem>
                 <MenuItem value="rented">Rented</MenuItem>
                 <MenuItem value="in_maintenance">In Maintenance</MenuItem>
@@ -217,7 +240,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
               </TextField>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button size="small" onClick={() => { setShowForm(false); setEditItemId(null); setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active' }); setSelectedParentMod(''); setSelectedSubMod(''); }} sx={{ color: '#6B7280' }}>Cancel</Button>
+              <Button size="small" onClick={() => { setShowForm(false); setEditItemId(null); setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active', tier_id: null }); setSelectedParentMod(''); setSelectedSubMod(''); }} sx={{ color: '#6B7280' }}>Cancel</Button>
               <Button size="small" variant="contained" onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} sx={{ backgroundColor: '#7C3AED', '&:hover': { backgroundColor: '#6D28D9' } }}>
                 {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : (editItemId ? 'Update Item' : 'Add Item')}
               </Button>
@@ -233,6 +256,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <TableCell>Asset Tag</TableCell>
                 <TableCell>Make / Model</TableCell>
                 <TableCell>Serial #</TableCell>
+                <TableCell>Tier</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -240,11 +264,11 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
-                  <TableRow key={i}>{Array.from({ length: 5 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
+                  <TableRow key={i}>{Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
                 ))
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                     <InventoryIcon sx={{ fontSize: '2.5rem', color: '#E5E7EB', mb: 1, display: 'block', mx: 'auto' }} />
                     <Typography variant="body2" color="text.secondary">No inventory items for this facility</Typography>
                   </TableCell>
@@ -256,6 +280,11 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                     <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{item.asset_tag}</Typography></TableCell>
                     <TableCell><Typography variant="body2">{item.make} {item.model}</Typography></TableCell>
                     <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{item.serial_number}</Typography></TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ color: item.tier_id ? '#7C3AED' : '#9CA3AF', fontWeight: item.tier_id ? 600 : 400 }}>
+                        {tiers.find((tier) => tier.id === item.tier_id)?.name || 'No tier'}
+                      </Typography>
+                    </TableCell>
                     <TableCell>
                       <Chip label={item.status.replace('_', ' ')} size="small" sx={{ backgroundColor: sc.bg, color: sc.color, fontWeight: 600, fontSize: '0.7rem', textTransform: 'capitalize' }} />
                     </TableCell>

@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.auto_migrate import run_migration
+from app.middleware.activity_audit import ActivityAuditMiddleware
 
 run_migration()
 
@@ -22,6 +23,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ActivityAuditMiddleware)
 
 # Include API router (REST + WebSocket)
 app.include_router(api_router, prefix=settings.API_V1_STR)

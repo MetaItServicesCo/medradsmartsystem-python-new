@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.db.base import SessionLocal
 from app.models.user import User
 from app.models.chat import DirectMessage, WorkspaceMessage, MessageType, WorkspaceMember
+from app.utils.notifications import create_notification, create_notifications
 
 router = APIRouter()
 
@@ -174,6 +175,17 @@ async def handle_chat_message(sender_id: int, data: dict):
         db.refresh(msg)
         msg_id = msg.id
         created_at = msg.created_at.isoformat() if msg.created_at else datetime.utcnow().isoformat()
+        sender = db.query(User).filter(User.id == sender_id).first()
+        create_notification(
+            db,
+            user_id=receiver_id,
+            title="New direct message",
+            message=f"{sender.full_name if sender else 'Someone'} sent you a message.",
+            notification_type="chat",
+            link_url="/chat",
+            actor_id=sender_id,
+        )
+        db.commit()
     finally:
         db.close()
 
@@ -243,6 +255,17 @@ async def handle_workspace_message(sender_id: int, data: dict):
             "created_at": msg.created_at.isoformat() if msg.created_at else datetime.utcnow().isoformat(),
         }
         await manager.broadcast_to_workspace(workspace_id, outgoing, db)
+        member_ids = [m.user_id for m in db.query(WorkspaceMember).filter(WorkspaceMember.workspace_id == workspace_id).all() if m.user_id != sender_id]
+        create_notifications(
+            db,
+            user_ids=member_ids,
+            title="New workspace message",
+            message=f"{sender.full_name if sender else 'Someone'} posted in a workspace.",
+            notification_type="chat",
+            link_url="/chat",
+            actor_id=sender_id,
+        )
+        db.commit()
     finally:
         db.close()
 
@@ -308,4 +331,21 @@ async def handle_call_signal(sender_id: int, data: dict):
         return
 
     data["sender_id"] = sender_id
+    if data.get("type") == "call_offer":
+        db = SessionLocal()
+        try:
+            sender = db.query(User).filter(User.id == sender_id).first()
+            data["sender_name"] = sender.full_name if sender else None
+            create_notification(
+                db,
+                user_id=target_id,
+                title="Incoming call",
+                message=f"{sender.full_name if sender else 'Someone'} started a {data.get('call_type', 'voice')} call.",
+                notification_type="chat",
+                link_url="/chat",
+                actor_id=sender_id,
+            )
+            db.commit()
+        finally:
+            db.close()
     await manager.send_to_user(target_id, data)

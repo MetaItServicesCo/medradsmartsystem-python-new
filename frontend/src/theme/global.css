@@ -1,23 +1,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --primary: #4F46E5;
-  --primary-light: #818CF8;
-  --primary-dark: #3730A3;
-  --rose: #EC4899;
-  --rose-light: #FBCFE8;
-  --indigo: #4F46E5;
-  --indigo-dark: #3730A3;
-  --accent: #F43F5E;
-  --bg-base: #F9FAFB;
+  --primary: #7161D8;
+  --primary-light: #9B8EF0;
+  --primary-dark: #5445B3;
+  --rose: #F05D92;
+  --rose-light: #F9A8C7;
+  --indigo: #7161D8;
+  --indigo-dark: #5445B3;
+  --accent: #F05D92;
+  --bg-base: #E9EEFA;
   --bg-card: #ffffff;
-  --bg-sidebar: linear-gradient(180deg, #4F46E5 0%, #3730A3 100%);
+  --bg-sidebar: linear-gradient(180deg, #7161D8 0%, #5445B3 100%);
   --text-primary: #1E1B4B;
   --text-secondary: #6B7280;
-  --border: rgba(124, 58, 237, 0.08);
+  --border: #EEF0F6;
   --glass: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.4);
-  --shadow-premium: 0 10px 40px -10px rgba(124, 58, 237, 0.15);
+  --shadow-premium: 0 18px 45px rgba(49, 46, 129, 0.08);
   --radius-xl: 24px;
 }
 

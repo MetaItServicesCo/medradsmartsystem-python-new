@@ -8,6 +8,8 @@ from app.db.base import get_db
 from app.models.user import User
 from app.models.tier import Tier
 from app.models.facility import Facility
+from app.models.facility_tier import FacilityTier
+from app.models.inventory import InventoryPart
 from app.schemas.tier import (
     Tier as TierSchema, TierCreate, TierUpdate, TierListResponse
 )
@@ -130,8 +132,12 @@ def delete_tier(
     tier = crud.tier.get(db=db, id=id)
     if not tier:
         raise HTTPException(status_code=404, detail="Tier not found")
-    # Unlink facilities that reference this tier
+    # Unlink facilities and inventory parts that reference this tier
     db.query(Facility).filter(Facility.tier_id == id).update(
+        {"tier_id": None}, synchronize_session="fetch"
+    )
+    db.query(FacilityTier).filter(FacilityTier.tier_id == id).delete()
+    db.query(InventoryPart).filter(InventoryPart.tier_id == id).update(
         {"tier_id": None}, synchronize_session="fetch"
     )
     db.commit()

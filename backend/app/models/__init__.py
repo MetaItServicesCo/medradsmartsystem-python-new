@@ -10,9 +10,12 @@ from app.models.invoice import Invoice, InvoiceStatus
 from app.models.rental import Rental, RentalStatus
 from app.models.inspection_form import InspectionForm
 from app.models.audit_log import AuditLog
+from app.models.notification import Notification
 from app.models.facility_document import FacilityDocument
 from app.models.user_facility import UserFacility
 from app.models.equipment_facility import EquipmentFacility
+from app.models.facility_tier import FacilityTier
+from app.models.inventory import InventoryPart, InventoryTransaction
 from app.models.chat import (
     FriendRequest, FriendRequestStatus,
     DirectMessage, MessageType,

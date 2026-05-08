@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
-  Box, Card, Typography, Table, TableBody, TableCell,
+  Avatar, Box, Card, Typography, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Skeleton, Button, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   FormControl, FormLabel, RadioGroup, FormControlLabel, Radio,
@@ -124,40 +124,52 @@ const Billing = () => {
   }
 
   return (
-    <Box className="page-enter">
+    <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
       {/* Header */}
       <Card sx={{
         mb: 3, p: 3, position: 'relative', overflow: 'hidden',
-        background: 'linear-gradient(135deg, #059669 0%, #10B981 50%, #34D399 100%)',
-        color: '#fff',
+        borderRadius: '28px',
+        border: '1px solid #DDF8ED',
+        background: 'linear-gradient(135deg, #F5FFFA 0%, #ECFDF5 100%)',
+        boxShadow: '0 18px 45px rgba(49,46,129,0.08)',
       }}>
-        <Box sx={{ position: 'absolute', right: -20, top: -20, opacity: 0.1 }}>
+        <Box sx={{ position: 'absolute', right: -20, top: -20, opacity: 0.08, color: '#10B981' }}>
           <PaymentIcon sx={{ fontSize: '10rem' }} />
         </Box>
         <Box sx={{ position: 'relative', zIndex: 1 }}>
-          <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>Billing & Payments</Typography>
-          <Typography variant="body2" sx={{ opacity: 0.9, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.6, mb: 2 }}>
+            <Avatar sx={{ width: 52, height: 52, bgcolor: '#DDF8ED', color: '#059669', borderRadius: '18px' }}>
+              <PaymentIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Billing & Payments</Typography>
+              <Typography variant="body2" sx={{ color: '#6B7280', fontWeight: 700 }}>
+                Manage quotation payments across all service requests.
+              </Typography>
+            </Box>
+          </Box>
+          <Typography variant="body2" sx={{ color: '#6B7280', mb: 2, display: 'none' }}>
             Manage quotation payments across all service requests.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 3 }}>
-            <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.15)', borderRadius: '16px', backdropFilter: 'blur(10px)', minWidth: 140 }}>
-              <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, opacity: 0.8, textTransform: 'uppercase' }}>Outstanding</Typography>
-              <Typography sx={{ fontWeight: 800, fontSize: '1.5rem' }}>${totalOutstanding.toFixed(2)}</Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Box sx={{ p: 2, bgcolor: '#fff', borderRadius: '18px', minWidth: 150, border: '1px solid #E8F8F0' }}>
+              <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#6B7280', textTransform: 'uppercase' }}>Outstanding</Typography>
+              <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#1E1B4B' }}>${totalOutstanding.toFixed(2)}</Typography>
             </Box>
-            <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.15)', borderRadius: '16px', backdropFilter: 'blur(10px)', minWidth: 140 }}>
-              <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, opacity: 0.8, textTransform: 'uppercase' }}>Paid</Typography>
-              <Typography sx={{ fontWeight: 800, fontSize: '1.5rem' }}>${totalPaid.toFixed(2)}</Typography>
+            <Box sx={{ p: 2, bgcolor: '#fff', borderRadius: '18px', minWidth: 150, border: '1px solid #E8F8F0' }}>
+              <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#6B7280', textTransform: 'uppercase' }}>Paid</Typography>
+              <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#059669' }}>${totalPaid.toFixed(2)}</Typography>
             </Box>
-            <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.15)', borderRadius: '16px', backdropFilter: 'blur(10px)', minWidth: 140 }}>
-              <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, opacity: 0.8, textTransform: 'uppercase' }}>Total Quotations</Typography>
-              <Typography sx={{ fontWeight: 800, fontSize: '1.5rem' }}>{filtered.length}</Typography>
+            <Box sx={{ p: 2, bgcolor: '#fff', borderRadius: '18px', minWidth: 150, border: '1px solid #E8F8F0' }}>
+              <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#6B7280', textTransform: 'uppercase' }}>Total Quotations</Typography>
+              <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#1E1B4B' }}>{filtered.length}</Typography>
             </Box>
           </Box>
         </Box>
       </Card>
 
       {/* Filters */}
-      <Card sx={{ mb: 3, p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Card sx={{ mb: 3, p: 2, display: 'flex', alignItems: 'center', gap: 2, borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(49,46,129,0.07)' }}>
         <FilterListIcon sx={{ color: '#6B7280' }} />
         <Typography sx={{ fontWeight: 600, color: '#374151', fontSize: '0.9rem' }}>Filter:</Typography>
         {['all', 'draft', 'sent', 'approved', 'paid', 'rejected'].map(s => (
@@ -168,16 +180,16 @@ const Billing = () => {
             onClick={() => setStatusFilter(s)}
             sx={{
               fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
-              bgcolor: statusFilter === s ? '#7C3AED' : '#F3F4F6',
+              bgcolor: statusFilter === s ? '#7161D8' : '#F3F4F6',
               color: statusFilter === s ? '#fff' : '#374151',
-              '&:hover': { bgcolor: statusFilter === s ? '#6D28D9' : '#E5E7EB' },
+              '&:hover': { bgcolor: statusFilter === s ? '#5C4BBC' : '#E5E7EB' },
             }}
           />
         ))}
       </Card>
 
       {/* Table */}
-      <Card sx={{ overflow: 'hidden' }}>
+      <Card sx={{ overflow: 'hidden', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
         <TableContainer>
           <Table>
             <TableHead>
@@ -214,16 +226,16 @@ const Billing = () => {
                   <>
                     <TableRow
                       key={q.id}
-                      sx={{ '&:hover': { backgroundColor: '#FAFAFF' }, cursor: 'pointer' }}
+                      sx={{ '&:hover': { backgroundColor: '#F8FAFC' }, cursor: 'pointer' }}
                       onClick={() => setExpandedId(isExpanded ? null : q.id)}
                     >
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#7C3AED', fontFamily: 'monospace' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: '#7161D8', fontFamily: 'monospace' }}>
                           {q.quotation_number || `Q-${q.id}`}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#4F46E5', fontFamily: 'monospace' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: '#6757D8', fontFamily: 'monospace' }}>
                           {q.request_number}
                         </Typography>
                       </TableCell>

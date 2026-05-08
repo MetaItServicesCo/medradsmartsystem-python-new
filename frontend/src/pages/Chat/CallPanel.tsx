@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Box, Typography, IconButton, Avatar, Tooltip, Dialog,
 } from '@mui/material'
@@ -9,22 +9,22 @@ import VideocamIcon from '@mui/icons-material/Videocam'
 import VideocamOffIcon from '@mui/icons-material/VideocamOff'
 import ScreenShareIcon from '@mui/icons-material/ScreenShare'
 import StopScreenShareIcon from '@mui/icons-material/StopScreenShare'
-import { useAuthStore } from '@/stores/authStore'
-import { useChatStore } from '@/stores/chatStore'
 import useWebRTC from '@/hooks/useWebRTC'
 
 interface Props {
   targetUser: any
   callType: 'voice' | 'video'
   isHost?: boolean
+  incomingOffer?: any
+  incomingFromUserId?: number
   onEnd: () => void
 }
 
-const CallPanel = ({ targetUser, callType, isHost, onEnd }: Props) => {
-  const currentUser = useAuthStore((s) => s.user)
+const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUserId, onEnd }: Props) => {
   const [muted, setMuted] = useState(false)
   const [videoOff, setVideoOff] = useState(callType === 'voice')
   const [duration, setDuration] = useState(0)
+  const callStartedRef = useRef(false)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
@@ -35,6 +35,7 @@ const CallPanel = ({ targetUser, callType, isHost, onEnd }: Props) => {
     remoteStreams,
     isScreenSharing,
     initiateCall,
+    answerCall,
     toggleScreenShare,
     endCall,
   } = useWebRTC({
@@ -44,10 +45,16 @@ const CallPanel = ({ targetUser, callType, isHost, onEnd }: Props) => {
     onCallEnded: onEnd,
   })
 
-  // Start call on mount
+  // Start or answer call on mount. React StrictMode can run effects twice in dev.
   useEffect(() => {
-    initiateCall()
-  }, [])
+    if (callStartedRef.current) return
+    callStartedRef.current = true
+    if (incomingOffer && incomingFromUserId) {
+      answerCall(incomingOffer, incomingFromUserId)
+    } else {
+      initiateCall()
+    }
+  }, [answerCall, incomingFromUserId, incomingOffer, initiateCall])
 
   // Attach streams
   useEffect(() => {

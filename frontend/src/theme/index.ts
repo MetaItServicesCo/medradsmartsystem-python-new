@@ -3,19 +3,19 @@ import { createTheme } from '@mui/material/styles'
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#7C3AED',
-      light: '#A78BFA',
-      dark: '#5B21B6',
+      main: '#7161D8',
+      light: '#9B8EF0',
+      dark: '#5445B3',
       contrastText: '#ffffff',
     },
     secondary: {
-      main: '#F472B6',
-      light: '#FBCFE8',
-      dark: '#DB2777',
+      main: '#F05D92',
+      light: '#F9A8C7',
+      dark: '#D93672',
       contrastText: '#ffffff',
     },
     background: {
-      default: '#F8F7FF',
+      default: '#E9EEFA',
       paper: '#ffffff',
     },
     text: {
@@ -29,19 +29,19 @@ const theme = createTheme({
   },
   typography: {
     fontFamily: '"Inter", "Segoe UI", sans-serif',
-    h1: { fontWeight: 700, color: '#1E1B4B' },
-    h2: { fontWeight: 700, color: '#1E1B4B' },
-    h3: { fontWeight: 600, color: '#1E1B4B' },
-    h4: { fontWeight: 600, color: '#1E1B4B' },
-    h5: { fontWeight: 600, color: '#1E1B4B' },
-    h6: { fontWeight: 600, color: '#1E1B4B' },
+    h1: { fontWeight: 900, color: '#1E1B4B' },
+    h2: { fontWeight: 900, color: '#1E1B4B' },
+    h3: { fontWeight: 900, color: '#1E1B4B' },
+    h4: { fontWeight: 900, color: '#1E1B4B' },
+    h5: { fontWeight: 900, color: '#1E1B4B' },
+    h6: { fontWeight: 800, color: '#1E1B4B' },
     subtitle1: { color: '#6B7280' },
     subtitle2: { color: '#6B7280' },
     body1: { color: '#374151' },
     body2: { color: '#6B7280' },
   },
   shape: {
-    borderRadius: 16,
+    borderRadius: 18,
   },
   shadows: [
     'none',
@@ -56,22 +56,21 @@ const theme = createTheme({
     MuiButton: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 14,
           textTransform: 'none',
           fontWeight: 700,
           padding: '10px 24px',
           fontSize: '0.875rem',
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: 'all 0.2s ease',
           '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: '0 12px 24px rgba(124,58,237,0.2)',
+            boxShadow: '0 14px 28px rgba(113,97,216,0.18)',
           },
         },
         contained: {
-          background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
-          boxShadow: '0 4px 14px rgba(124,58,237,0.25)',
+          background: 'linear-gradient(135deg, #7161D8 0%, #F05D92 100%)',
+          boxShadow: '0 10px 24px rgba(113,97,216,0.22)',
           '&:hover': {
-            background: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)',
+            background: 'linear-gradient(135deg, #6151C7 0%, #E14A83 100%)',
           },
         },
         outlined: {
@@ -88,13 +87,8 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 24,
-          boxShadow: '0 10px 40px -10px rgba(124,58,237,0.08)',
-          border: '1px solid rgba(124,58,237,0.05)',
-          transition: 'all 0.3s ease',
-          '&:hover': {
-            boxShadow: '0 20px 60px -15px rgba(124,58,237,0.14)',
-            transform: 'translateY(-2px)',
-          },
+          boxShadow: '0 18px 45px rgba(49,46,129,0.08)',
+          border: '1px solid #EEF0F6',
         },
       },
     },
@@ -104,10 +98,10 @@ const theme = createTheme({
           '& .MuiOutlinedInput-root': {
             borderRadius: 12,
             '&:hover .MuiOutlinedInput-notchedOutline': {
-              borderColor: '#8B5CF6',
+              borderColor: '#7161D8',
             },
             '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-              borderColor: '#7C3AED',
+              borderColor: '#7161D8',
               borderWidth: '2px',
             },
           },
@@ -125,13 +119,12 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           '& .MuiTableCell-head': {
-            backgroundColor: '#F5F3FF',
+            backgroundColor: '#F8FAFC',
             color: '#6B7280',
-            fontWeight: 600,
+            fontWeight: 800,
             fontSize: '0.75rem',
             textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            borderBottom: '1px solid #E9D5FF',
+            borderBottom: '1px solid #E8ECF4',
           },
         },
       },
@@ -140,7 +133,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           '&:hover': {
-            backgroundColor: '#FAFAFF',
+            backgroundColor: '#F8FAFC',
           },
           '&:last-child td': {
             borderBottom: 0,

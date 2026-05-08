@@ -10,6 +10,11 @@ from .service_request import (
     ServiceRequestCreate, ServiceRequestUpdate,
     ServiceRequestResponse, ServiceRequestListResponse,
 )
+from .inventory import (
+    InventoryPartCreate, InventoryPartUpdate, InventoryPartResponse, InventoryPartListResponse,
+    InventoryTransactionCreate, InventoryTransactionResponse, InventoryTransactionListResponse,
+)
+from .notification import NotificationResponse, NotificationListResponse
 from .chat import (
     FriendRequestCreate, FriendRequestResponse, FriendRequestListResponse,
     DirectMessageCreate, DirectMessageResponse, DirectMessageListResponse,

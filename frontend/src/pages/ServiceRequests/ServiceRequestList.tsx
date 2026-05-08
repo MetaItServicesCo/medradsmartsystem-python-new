@@ -58,25 +58,29 @@ const STAT_CARDS = [
     label: 'Total Requests',
     key: 'total',
     icon: <BuildIcon />,
-    bg: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
+    color: '#6757D8',
+    soft: '#F0EDFF',
   },
   {
     label: 'New / Open',
     key: 'new',
     icon: <AssignmentIcon />,
-    bg: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+    color: '#3B82F6',
+    soft: '#EFF6FF',
   },
   {
     label: 'In Progress',
     key: 'in_progress',
     icon: <PendingActionsIcon />,
-    bg: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+    color: '#E39B23',
+    soft: '#FFF6E7',
   },
   {
     label: 'Completed',
     key: 'completed',
     icon: <CheckCircleOutlineIcon />,
-    bg: 'linear-gradient(135deg, #10B981 0%, #047857 100%)',
+    color: '#13A77B',
+    soft: '#EAFBF5',
   },
 ]
 
@@ -189,37 +193,35 @@ const ServiceRequestList = () => {
   }
 
   return (
-    <Box className="page-enter">
+    <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
       {/* Stat Cards */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2.5, mb: 3 }}>
         {STAT_CARDS.map((card) => (
           <Card
             key={card.key}
             sx={{
-              p: 2,
-              background: card.bg,
-              color: '#fff',
-              position: 'relative',
-              overflow: 'hidden',
+              p: 2.3,
+              minHeight: 150,
+              borderRadius: '22px',
+              border: '1px solid #EEF0F6',
+              boxShadow: '0 18px 40px rgba(49,46,129,0.08)',
             }}
           >
-            <Box
-              sx={{
-                position: 'absolute', right: -10, top: -10, opacity: 0.15,
-                '& svg': { fontSize: '5rem' },
-              }}
-            >
-              {card.icon}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Avatar sx={{ width: 46, height: 46, bgcolor: card.soft, color: card.color, borderRadius: '16px' }}>
+                {card.icon}
+              </Avatar>
+              <Typography sx={{ color: card.color, fontSize: 12, fontWeight: 900 }}>Live</Typography>
             </Box>
             <Typography
               sx={{
-                fontSize: '0.8rem', fontWeight: 800, color: '#fff',
-                textTransform: 'uppercase', letterSpacing: '0.05em', mb: 1,
+                fontSize: '0.78rem', fontWeight: 900, color: '#6B7280',
+                textTransform: 'uppercase', mb: 1,
               }}
             >
               {card.label}
             </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: '#fff' }}>
+            <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>
               {isLoading ? '—' : statsValues[card.key]}
             </Typography>
           </Card>
@@ -227,12 +229,13 @@ const ServiceRequestList = () => {
       </Box>
 
       {/* Main Card */}
-      <Card sx={{ overflow: 'hidden' }}>
+      <Card sx={{ overflow: 'hidden', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
         {/* Toolbar */}
         <Box
           sx={{
             display: 'flex', alignItems: 'center', gap: 2, p: 2.5,
-            borderBottom: '1px solid rgba(124,58,237,0.08)', flexWrap: 'wrap',
+            borderBottom: '1px solid #E8ECF4', flexWrap: 'wrap',
+            backgroundColor: '#fff',
           }}
         >
           {/* Search */}
@@ -241,10 +244,10 @@ const ServiceRequestList = () => {
             onSubmit={(e: React.FormEvent) => e.preventDefault()}
             sx={{
               display: 'flex', alignItems: 'center', gap: 1,
-              backgroundColor: '#F5F3FF', borderRadius: '12px', px: 2, py: 1,
+              backgroundColor: '#F8FAFC', borderRadius: '16px', px: 2, py: 1,
               flex: 1, minWidth: 220, maxWidth: 340,
-              border: '1px solid rgba(124,58,237,0.12)',
-              '&:focus-within': { border: '1px solid #8B5CF6', backgroundColor: '#fff' },
+              border: '1px solid #E8ECF4',
+              '&:focus-within': { border: '1px solid #7161D8', backgroundColor: '#fff', boxShadow: '0 10px 24px rgba(113,97,216,0.1)' },
               transition: 'all 0.2s',
             }}
           >
@@ -269,7 +272,7 @@ const ServiceRequestList = () => {
               value={queryStatus}
               label="Status"
               onChange={handleFilterChange('status')}
-              sx={{ borderRadius: '12px', fontSize: '0.85rem' }}
+              sx={{ borderRadius: '16px', fontSize: '0.85rem', bgcolor: '#fff' }}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="new">New</MenuItem>
@@ -287,7 +290,7 @@ const ServiceRequestList = () => {
               value={queryPriority}
               label="Priority"
               onChange={handleFilterChange('priority')}
-              sx={{ borderRadius: '12px', fontSize: '0.85rem' }}
+              sx={{ borderRadius: '16px', fontSize: '0.85rem', bgcolor: '#fff' }}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="low">Low</MenuItem>
@@ -304,15 +307,10 @@ const ServiceRequestList = () => {
             startIcon={<AddIcon />}
             onClick={() => setCreateOpen(true)}
             sx={{
-              background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
-              boxShadow: '0 8px 24px rgba(124,58,237,0.25)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)',
-                boxShadow: '0 12px 32px rgba(124,58,237,0.35)',
-                transform: 'translateY(-1px)',
-              },
+              background: 'linear-gradient(135deg, #7161D8 0%, #F05D92 100%)',
+              boxShadow: '0 12px 28px rgba(113,97,216,0.22)',
               px: 3,
-              borderRadius: '12px',
+              borderRadius: '16px',
               fontWeight: 800,
               textTransform: 'none',
             }}
@@ -363,7 +361,7 @@ const ServiceRequestList = () => {
                             <Button
                               variant="contained"
                               onClick={() => setCreateOpen(true)}
-                              sx={{ px: 4, borderRadius: '10px', backgroundColor: '#7C3AED' }}
+                              sx={{ px: 4, borderRadius: '14px', backgroundColor: '#7161D8' }}
                             >
                               Create First Request
                             </Button>
@@ -379,13 +377,13 @@ const ServiceRequestList = () => {
                         <TableRow
                           key={sr.id}
                           sx={{
-                            '&:hover': { backgroundColor: '#FAFAFF' },
+                            '&:hover': { backgroundColor: '#F8FAFC' },
                             cursor: 'pointer',
                           }}
                           onClick={() => navigate(`/service-requests/${sr.id}`)}
                         >
                           <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#4F46E5', fontFamily: 'monospace' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 800, color: '#6757D8', fontFamily: 'monospace' }}>
                               {sr.request_number}
                             </Typography>
                           </TableCell>
@@ -430,7 +428,7 @@ const ServiceRequestList = () => {
                               <Avatar
                                 sx={{
                                   width: 26, height: 26, fontSize: '0.7rem', fontWeight: 700,
-                                  background: 'linear-gradient(135deg, #7C3AED, #EC4899)',
+                                  background: 'linear-gradient(135deg, #7161D8, #F05D92)',
                                 }}
                               >
                                 {sr.requester_name?.[0] || '?'}
@@ -454,13 +452,13 @@ const ServiceRequestList = () => {
                                   handleActionsOpen(e, sr)
                                 }}
                                 sx={{
-                                  color: '#7C3AED',
-                                  backgroundColor: '#F5F3FF',
-                                  borderRadius: '10px',
+                                  color: '#7161D8',
+                                  backgroundColor: '#F0EDFF',
+                                  borderRadius: '14px',
                                   width: 36, height: 36,
                                   transition: 'all 0.2s ease',
                                   '&:hover': {
-                                    backgroundColor: '#EDE9FE',
+                                    backgroundColor: '#E8E2FF',
                                     transform: 'scale(1.05)',
                                   },
                                 }}

@@ -56,6 +56,9 @@ class Facility(Base):
     documents = relationship("FacilityDocument", back_populates="facility", cascade="all, delete-orphan")
     facility_users = relationship("UserFacility", back_populates="facility", cascade="all, delete-orphan")
     facility_equipment = relationship("EquipmentFacility", back_populates="facility", cascade="all, delete-orphan")
+    facility_tiers = relationship("FacilityTier", back_populates="facility", cascade="all, delete-orphan")
+    tiers = relationship("Tier", secondary="facility_tiers", viewonly=True)
+    inventory_parts = relationship("InventoryPart", back_populates="facility", cascade="all, delete-orphan")
 
     # Self-referential parent/child
     parent = relationship("Facility", remote_side=[id], backref="children", foreign_keys=[parent_facility_id])

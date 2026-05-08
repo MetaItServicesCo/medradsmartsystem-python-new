@@ -15,6 +15,7 @@ class FacilityBase(BaseModel):
     timezone: Optional[str] = "UTC"
     operating_hours: Optional[str] = None
     tier_id: Optional[int] = None
+    tier_ids: Optional[List[int]] = None
 
     # General Information
     contact_person: Optional[str] = None
@@ -58,6 +59,7 @@ class FacilityUpdate(BaseModel):
     timezone: Optional[str] = None
     operating_hours: Optional[str] = None
     tier_id: Optional[int] = None
+    tier_ids: Optional[List[int]] = None
 
     contact_person: Optional[str] = None
     suite: Optional[str] = None
@@ -102,6 +104,16 @@ class FacilityUserBrief(BaseModel):
         from_attributes = True
 
 
+class FacilityTierBrief(BaseModel):
+    id: int
+    tier_code: str
+    name: str
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
 class FacilityInDBBase(FacilityBase):
     id: int
     created_at: datetime
@@ -113,6 +125,7 @@ class FacilityInDBBase(FacilityBase):
 
 class Facility(FacilityInDBBase):
     assigned_users: Optional[List[FacilityUserBrief]] = None
+    tiers: Optional[List[FacilityTierBrief]] = None
 
 
 class FacilityListResponse(BaseModel):
@@ -120,4 +133,3 @@ class FacilityListResponse(BaseModel):
     total: int
     skip: int
     limit: int
-

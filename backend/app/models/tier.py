@@ -21,3 +21,6 @@ class Tier(Base):
     
     # Relationships
     facilities = relationship("Facility", back_populates="tier")
+    facility_tiers = relationship("FacilityTier", back_populates="tier", cascade="all, delete-orphan")
+    assigned_facilities = relationship("Facility", secondary="facility_tiers", viewonly=True)
+    inventory_parts = relationship("InventoryPart", back_populates="tier")

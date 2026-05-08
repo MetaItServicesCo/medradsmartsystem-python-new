@@ -1,5 +1,8 @@
+import os
+import uuid
+from datetime import datetime
 from typing import Any, Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_admin_user, require_roles
@@ -10,14 +13,18 @@ from app.models.facility import Facility
 from app.crud.crud_user import user as crud_user
 from app.schemas.user import (
     UserCreate, UserUpdate, UserResponse, UserListResponse,
-    UserRoleUpdate, UserSearchResponse, FacilityBrief,
+    UserProfileUpdate, UserRoleUpdate, UserSearchResponse, FacilityBrief,
 )
-from app.core.security import create_access_token
+from app.core.security import create_access_token, get_password_hash
 from app.utils.logging import log_activity
+from app.utils.notifications import create_notification
 
 router = APIRouter()
 
 get_superadmin_user = require_roles("superadmin")
+PROFILE_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "profile_pictures")
+ALLOWED_PROFILE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+MAX_PROFILE_IMAGE_SIZE = 5 * 1024 * 1024
 
 
 def _build_user_response(db_user: User, db: Session) -> dict:
@@ -56,6 +63,113 @@ def _build_user_response(db_user: User, db: Session) -> dict:
     )
 
 
+@router.get("/me", response_model=UserResponse)
+def get_own_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return the authenticated user's profile."""
+    db.refresh(current_user)
+    return _build_user_response(current_user, db)
+
+
+@router.put("/me", response_model=UserResponse)
+def update_own_profile(
+    profile_in: UserProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Allow any authenticated user to update their own profile details."""
+    update_data = profile_in.model_dump(exclude_unset=True)
+    if "email" in update_data and update_data["email"] != current_user.email:
+        existing = crud_user.get_by_email(db, email=update_data["email"])
+        if existing and existing.id != current_user.id:
+            raise HTTPException(status_code=400, detail="Email already taken")
+
+    before = {
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "phone": current_user.phone,
+        "has_password_change": False,
+    }
+
+    if "email" in update_data:
+        current_user.email = update_data["email"]
+    if "full_name" in update_data:
+        current_user.full_name = update_data["full_name"]
+    if "phone" in update_data:
+        current_user.phone = update_data["phone"]
+    if update_data.get("password"):
+        current_user.hashed_password = get_password_hash(update_data["password"])
+
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
+
+    after = {
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "phone": current_user.phone,
+        "has_password_change": bool(update_data.get("password")),
+    }
+    log_activity(db, "users", current_user.id, "PROFILE_UPDATED", current_user, {"before": before, "after": after})
+    create_notification(
+        db,
+        user_id=current_user.id,
+        title="Profile updated",
+        message="Your profile settings were updated.",
+        notification_type="profile",
+        link_url="/profile",
+        actor_id=current_user.id,
+    )
+    db.commit()
+    return _build_user_response(current_user, db)
+
+
+@router.post("/me/profile-picture", response_model=UserResponse)
+async def upload_own_profile_picture(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Upload and assign the authenticated user's profile picture."""
+    if file.content_type not in ALLOWED_PROFILE_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Profile picture must be JPEG, PNG, GIF, or WebP")
+
+    content = await file.read()
+    if len(content) > MAX_PROFILE_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="Profile picture must be 5MB or smaller")
+
+    os.makedirs(PROFILE_UPLOAD_DIR, exist_ok=True)
+    file_ext = os.path.splitext(file.filename or "")[1].lower()
+    if file_ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        file_ext = ".jpg"
+    stored_name = f"{current_user.id}_{uuid.uuid4().hex}{file_ext}"
+    file_path = os.path.join(PROFILE_UPLOAD_DIR, stored_name)
+
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    before = {"avatar_url": current_user.avatar_url}
+    current_user.avatar_url = f"/uploads/profile_pictures/{stored_name}"
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
+
+    log_activity(db, "users", current_user.id, "PROFILE_PICTURE_UPDATED", current_user, {"before": before, "after": {"avatar_url": current_user.avatar_url}})
+    create_notification(
+        db,
+        user_id=current_user.id,
+        title="Profile picture updated",
+        message="Your profile picture was changed.",
+        notification_type="profile",
+        link_url="/profile",
+        actor_id=current_user.id,
+    )
+    db.commit()
+    return _build_user_response(current_user, db)
+
+
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
@@ -86,7 +200,17 @@ def create_user(
         db.commit()
         db.refresh(db_user)
 
+    create_notification(
+        db,
+        user_id=db_user.id,
+        title="Your account was created",
+        message=f"{current_user.full_name or current_user.username} created your Medrad account.",
+        notification_type="user",
+        link_url="/profile",
+        actor_id=current_user.id,
+    )
     log_activity(db, "users", db_user.id, "CREATE", current_user, user_in.model_dump(exclude={"password"}))
+    db.commit()
     return _build_user_response(db_user, db)
 
 
@@ -175,6 +299,16 @@ def update_user(
         db.refresh(db_user)
 
     log_activity(db, "users", user_id, "UPDATE", current_user, user_in.model_dump(exclude_unset=True, exclude={"password"}))
+    create_notification(
+        db,
+        user_id=user_id,
+        title="Your user profile was updated",
+        message=f"{current_user.full_name or current_user.username} updated your user record.",
+        notification_type="user",
+        link_url="/profile",
+        actor_id=current_user.id,
+    )
+    db.commit()
     return _build_user_response(db_user, db)
 
 
@@ -198,6 +332,16 @@ def update_user_role(
 
     db_user = crud_user.update_role(db, db_obj=db_user, role=role_in.role)
     log_activity(db, "users", user_id, "UPDATE_ROLE", current_user, {"role": role_in.role})
+    create_notification(
+        db,
+        user_id=user_id,
+        title="Your role was changed",
+        message=f"Your role is now {role_in.role.replace('_', ' ')}.",
+        notification_type="user",
+        link_url="/profile",
+        actor_id=current_user.id,
+    )
+    db.commit()
     return _build_user_response(db_user, db)
 
 
@@ -218,6 +362,15 @@ def deactivate_user(
     db.commit()
     db.refresh(db_user)
     log_activity(db, "users", user_id, "DEACTIVATE", current_user)
+    create_notification(
+        db,
+        user_id=user_id,
+        title="Your account was deactivated",
+        message="Your account access has been disabled.",
+        notification_type="user",
+        actor_id=current_user.id,
+    )
+    db.commit()
     return _build_user_response(db_user, db)
 
 
@@ -268,6 +421,16 @@ def activate_user(
     db.commit()
     db.refresh(db_user)
     log_activity(db, "users", user_id, "ACTIVATE", current_user)
+    create_notification(
+        db,
+        user_id=user_id,
+        title="Your account was activated",
+        message="Your account access has been restored.",
+        notification_type="user",
+        link_url="/",
+        actor_id=current_user.id,
+    )
+    db.commit()
     return _build_user_response(db_user, db)
 
 

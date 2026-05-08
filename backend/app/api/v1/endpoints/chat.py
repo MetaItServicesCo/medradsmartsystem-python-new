@@ -7,6 +7,7 @@ from sqlalchemy import or_, and_
 
 from app.core.deps import get_current_user
 from app.utils.logging import log_activity
+from app.utils.notifications import create_notification, create_notifications
 from app.db.base import get_db
 from app.models.user import User
 from app.models.chat import (
@@ -76,6 +77,15 @@ def send_friend_request(
     db.flush() # Generate ID
     
     log_activity(db, "friend_requests", fr.id, "FRIEND_REQUEST_SENT", current_user, {"receiver_id": fr.receiver_id})
+    create_notification(
+        db,
+        user_id=fr.receiver_id,
+        title="New friend request",
+        message=f"{current_user.full_name or current_user.username} sent you a friend request.",
+        notification_type="chat",
+        link_url="/chat",
+        actor_id=current_user.id,
+    )
     db.commit()
     db.refresh(fr)
     return _build_friend_request_response(fr, db)
@@ -136,6 +146,15 @@ def accept_friend_request(
         db.add(dm)
 
     log_activity(db, "friend_requests", fr.id, "FRIEND_REQUEST_ACCEPTED", current_user, {"sender_id": fr.sender_id})
+    create_notification(
+        db,
+        user_id=fr.sender_id,
+        title="Friend request accepted",
+        message=f"{current_user.full_name or current_user.username} accepted your friend request.",
+        notification_type="chat",
+        link_url="/chat",
+        actor_id=current_user.id,
+    )
     db.commit()
     db.refresh(fr)
     return _build_friend_request_response(fr, db)
@@ -157,10 +176,18 @@ def reject_friend_request(
         raise HTTPException(status_code=400, detail=f"Request already {fr.status.value}")
 
     fr.status = FriendRequestStatus.REJECTED
+    log_activity(db, "friend_requests", fr.id, "FRIEND_REQUEST_REJECTED", current_user, {"sender_id": fr.sender_id})
+    create_notification(
+        db,
+        user_id=fr.sender_id,
+        title="Friend request rejected",
+        message=f"{current_user.full_name or current_user.username} rejected your friend request.",
+        notification_type="chat",
+        link_url="/chat",
+        actor_id=current_user.id,
+    )
     db.commit()
     db.refresh(fr)
-    
-    log_activity(db, "friend_requests", fr.id, "FRIEND_REQUEST_REJECTED", current_user, {"sender_id": fr.sender_id})
     
     return _build_friend_request_response(fr, db)
 
@@ -271,6 +298,15 @@ def send_direct_message(
     db.flush()
     
     log_activity(db, "direct_messages", msg.id, "DM_SENT", current_user, {"receiver_id": user_id})
+    create_notification(
+        db,
+        user_id=user_id,
+        title="New direct message",
+        message=f"{current_user.full_name or current_user.username} sent you a message.",
+        notification_type="chat",
+        link_url="/chat",
+        actor_id=current_user.id,
+    )
     db.commit()
     db.refresh(msg)
     return _build_dm_response(msg)
@@ -322,11 +358,13 @@ def create_workspace(
     db.add(member)
 
     # Add other members if provided
+    valid_member_ids = []
     if ws_in.member_ids:
         for uid in ws_in.member_ids:
             if uid != current_user.id:
                 user = db.query(User).filter(User.id == uid).first()
                 if user:
+                    valid_member_ids.append(uid)
                     m = WorkspaceMember(
                         workspace_id=ws.id,
                         user_id=uid,
@@ -335,6 +373,15 @@ def create_workspace(
                     db.add(m)
     
     log_activity(db, "workspaces", ws.id, "WORKSPACE_CREATED", current_user, {"name": ws.name, "member_count": len(ws_in.member_ids or []) + 1})
+    create_notifications(
+        db,
+        user_ids=valid_member_ids,
+        title="Added to workspace",
+        message=f"You were added to workspace {ws.name}.",
+        notification_type="chat",
+        link_url="/chat",
+        actor_id=current_user.id,
+    )
     db.commit()
     db.refresh(ws)
     return _build_workspace_response(ws, db)
@@ -407,6 +454,16 @@ def add_workspace_member(
     db.refresh(m)
     
     log_activity(db, "workspace_members", m.id, "WORKSPACE_MEMBER_ADDED", current_user, {"workspace_id": workspace_id, "user_id": member_in.user_id})
+    create_notification(
+        db,
+        user_id=member_in.user_id,
+        title="Added to workspace",
+        message=f"You were added to workspace {ws.name}.",
+        notification_type="chat",
+        link_url="/chat",
+        actor_id=current_user.id,
+    )
+    db.commit()
     
     return _build_workspace_member_response(m, db)
 
@@ -444,6 +501,16 @@ def remove_workspace_member(
     db.commit()
     
     log_activity(db, "workspace_members", member.id, "WORKSPACE_MEMBER_REMOVED", current_user, {"workspace_id": workspace_id, "user_id": user_id})
+    create_notification(
+        db,
+        user_id=user_id,
+        title="Removed from workspace",
+        message=f"You were removed from workspace {ws.name}.",
+        notification_type="chat",
+        link_url="/chat",
+        actor_id=current_user.id,
+    )
+    db.commit()
     
     return {"message": "Member removed"}
 
@@ -495,6 +562,20 @@ def send_workspace_message(
     db.flush()
     
     log_activity(db, "workspace_messages", msg.id, "WORKSPACE_MESSAGE_SENT", current_user, {"workspace_id": workspace_id})
+    member_ids = [
+        m.user_id
+        for m in db.query(WorkspaceMember).filter(WorkspaceMember.workspace_id == workspace_id).all()
+        if m.user_id != current_user.id
+    ]
+    create_notifications(
+        db,
+        user_ids=member_ids,
+        title="New workspace message",
+        message=f"{current_user.full_name or current_user.username} posted in a workspace.",
+        notification_type="chat",
+        link_url="/chat",
+        actor_id=current_user.id,
+    )
     db.commit()
     db.refresh(msg)
     return _build_ws_message_response(msg, db)

@@ -13,6 +13,7 @@ from app.core.deps import get_current_user, get_admin_user, get_facility_admin_u
 from app.db.base import get_db
 from app.models.user import User
 from app.models.facility import Facility
+from app.models.facility_tier import FacilityTier
 from app.models.facility_document import FacilityDocument
 from app.models.equipment import Equipment
 from app.models.audit_log import AuditLog
@@ -21,6 +22,50 @@ from app.utils.logging import log_activity
 router = APIRouter()
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "facility_documents")
+
+
+def _sync_facility_tiers(db: Session, facility: Facility, tier_ids: Optional[List[int]]) -> None:
+    if tier_ids is None:
+        return
+    unique_ids = []
+    for tier_id in tier_ids:
+        if tier_id and tier_id not in unique_ids:
+            unique_ids.append(tier_id)
+
+    if unique_ids:
+        existing_count = db.query(crud.tier.model).filter(crud.tier.model.id.in_(unique_ids)).count()
+        if existing_count != len(unique_ids):
+            raise HTTPException(status_code=400, detail="One or more selected tiers do not exist")
+
+    db.query(FacilityTier).filter(FacilityTier.facility_id == facility.id).delete()
+    for tier_id in unique_ids:
+        db.add(FacilityTier(facility_id=facility.id, tier_id=tier_id))
+    facility.tier_id = unique_ids[0] if unique_ids else None
+
+
+def _facility_response(db: Session, facility: Facility) -> dict:
+    primary_users = db.query(User).filter(User.facility_id == facility.id).all()
+    from app.models.user_facility import UserFacility
+    secondary_users = db.query(User).join(UserFacility).filter(UserFacility.facility_id == facility.id).all()
+    all_users = {u.id: u for u in primary_users + secondary_users}.values()
+
+    facility_dict = {c.name: getattr(facility, c.name) for c in facility.__table__.columns}
+    tiers = [ft.tier for ft in facility.facility_tiers if ft.tier]
+    if not tiers and facility.tier:
+        tiers = [facility.tier]
+    facility_dict["tier_ids"] = [t.id for t in tiers]
+    facility_dict["tiers"] = tiers
+    facility_dict["assigned_users"] = [
+        {
+            "id": u.id,
+            "full_name": u.full_name,
+            "username": u.username,
+            "role": u.role.value if hasattr(u.role, "value") else str(u.role),
+            "avatar_url": u.avatar_url
+        }
+        for u in all_users
+    ]
+    return facility_dict
 
 
 
@@ -46,31 +91,7 @@ def read_facilities(
     total = query.count()
     items = query.offset(skip).limit(limit).all()
     
-    # Populate assigned users for each facility
-    results = []
-    for item in items:
-        # Include users directly linked via facility_id (primary)
-        primary_users = db.query(User).filter(User.facility_id == item.id).all()
-        # Include users linked via UserFacility table (secondary)
-        from app.models.user_facility import UserFacility
-        secondary_users = db.query(User).join(UserFacility).filter(UserFacility.facility_id == item.id).all()
-        
-        # Combine and unique
-        all_users = {u.id: u for u in primary_users + secondary_users}.values()
-        
-        # Convert to schema dict
-        facility_dict = {c.name: getattr(item, c.name) for c in item.__table__.columns}
-        facility_dict["assigned_users"] = [
-            {
-                "id": u.id,
-                "full_name": u.full_name,
-                "username": u.username,
-                "role": u.role.value if hasattr(u.role, "value") else str(u.role),
-                "avatar_url": u.avatar_url
-            }
-            for u in all_users
-        ]
-        results.append(facility_dict)
+    results = [_facility_response(db, item) for item in items]
 
     return {"items": results, "total": total, "skip": skip, "limit": limit}
 
@@ -100,9 +121,18 @@ def create_facility(
     current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Create a new facility — admin/superadmin only."""
-    facility = crud.facility.create(db=db, obj_in=facility_in)
+    tier_ids = facility_in.tier_ids
+    data = facility_in.model_dump(exclude={"tier_ids"})
+    if tier_ids is None and data.get("tier_id"):
+        tier_ids = [data["tier_id"]]
+    facility = Facility(**data)
+    db.add(facility)
+    db.flush()
+    _sync_facility_tiers(db, facility, tier_ids)
+    db.commit()
+    db.refresh(facility)
     log_activity(db, "facilities", facility.id, "CREATE", current_user, facility_in.model_dump())
-    return facility
+    return _facility_response(db, facility)
 
 
 @router.get("/{id}", response_model=schemas.Facility)
@@ -117,24 +147,7 @@ def read_facility(
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     
-    # Populate assigned users
-    primary_users = db.query(User).filter(User.facility_id == id).all()
-    from app.models.user_facility import UserFacility
-    secondary_users = db.query(User).join(UserFacility).filter(UserFacility.facility_id == id).all()
-    all_users = {u.id: u for u in primary_users + secondary_users}.values()
-    
-    facility_dict = {c.name: getattr(facility, c.name) for c in facility.__table__.columns}
-    facility_dict["assigned_users"] = [
-        {
-            "id": u.id,
-            "full_name": u.full_name,
-            "username": u.username,
-            "role": u.role.value if hasattr(u.role, "value") else str(u.role),
-            "avatar_url": u.avatar_url
-        }
-        for u in all_users
-    ]
-    return facility_dict
+    return _facility_response(db, facility)
 
 
 
@@ -151,10 +164,17 @@ def update_facility(
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     old_data = {c.name: getattr(facility, c.name) for c in facility.__table__.columns}
+    tier_ids = facility_in.tier_ids
+    if tier_ids is None and facility_in.tier_id is not None:
+        tier_ids = [facility_in.tier_id] if facility_in.tier_id else []
     updated = crud.facility.update(db=db, db_obj=facility, obj_in=facility_in)
+    _sync_facility_tiers(db, updated, tier_ids)
+    if tier_ids is not None:
+        db.commit()
+        db.refresh(updated)
     new_data = facility_in.model_dump(exclude_unset=True)
     log_activity(db, "facilities", id, "UPDATE", current_user, {"before": old_data, "after": new_data})
-    return updated
+    return _facility_response(db, updated)
 
 
 @router.delete("/{id}", response_model=schemas.Facility)

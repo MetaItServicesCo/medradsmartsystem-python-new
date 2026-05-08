@@ -146,7 +146,7 @@ const FacilityList = () => {
 
   // Compute stats
   const countries = new Set(facilities.map((f) => f.country)).size
-  const tiered = facilities.filter((f) => f.tier_id).length
+  const tiered = facilities.filter((f) => f.tier_id || (f.tier_ids && f.tier_ids.length > 0)).length
 
   const statsValues: Record<string, number | string> = {
     total,

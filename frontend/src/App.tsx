@@ -14,6 +14,7 @@ import Reports from './pages/Reports'
 import Users from './pages/Users'
 import Chat from './pages/Chat'
 import Calendar from './pages/Calendar'
+import Profile from './pages/Profile'
 
 function App() {
   const { isAuthenticated } = useAuthStore()
@@ -33,6 +34,7 @@ function App() {
         <Route path="users/*" element={<Users />} />
         <Route path="chat/*" element={<Chat />} />
         <Route path="calendar" element={<Calendar />} />
+        <Route path="profile" element={<Profile />} />
         <Route path="service-requests/*" element={<ServiceRequests />} />
         <Route path="inspections/*" element={<Inspections />} />
         <Route path="sales/*" element={<Sales />} />
