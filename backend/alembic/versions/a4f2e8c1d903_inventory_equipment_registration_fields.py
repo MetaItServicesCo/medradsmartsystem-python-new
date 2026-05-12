@@ -39,13 +39,27 @@ def _fk_exists(table_name: str, constraint_name: str) -> bool:
     return any(fk["name"] == constraint_name for fk in sa.inspect(op.get_bind()).get_foreign_keys(table_name))
 
 
+def _fk_for_columns_exists(table_name: str, local_cols: list[str], referred_table: str) -> bool:
+    if not _table_exists(table_name):
+        return False
+    for fk in sa.inspect(op.get_bind()).get_foreign_keys(table_name):
+        if fk.get("constrained_columns") == local_cols and fk.get("referred_table") == referred_table:
+            return True
+    return False
+
+
 def _add_column_if_missing(table_name: str, column: sa.Column) -> None:
     if _table_exists(table_name) and not _column_exists(table_name, column.name):
         op.add_column(table_name, column)
 
 
 def _create_fk_if_missing(name: str, source: str, referent: str, local_cols: list[str], remote_cols: list[str]) -> None:
-    if _table_exists(source) and _table_exists(referent) and not _fk_exists(source, name):
+    if (
+        _table_exists(source)
+        and _table_exists(referent)
+        and not _fk_exists(source, name)
+        and not _fk_for_columns_exists(source, local_cols, referent)
+    ):
         op.create_foreign_key(name, source, referent, local_cols, remote_cols)
 
 
@@ -95,10 +109,10 @@ def upgrade() -> None:
     for column in columns:
         _add_column_if_missing("inventory_parts", column)
 
-    if _column_exists("inventory_parts", "asset_tag") and not _index_exists("ix_inventory_parts_asset_tag", "inventory_parts"):
-        op.create_index("ix_inventory_parts_asset_tag", "inventory_parts", ["asset_tag"], unique=False)
-    if _column_exists("inventory_parts", "modality_id") and not _index_exists("ix_inventory_parts_modality_id", "inventory_parts"):
-        op.create_index("ix_inventory_parts_modality_id", "inventory_parts", ["modality_id"], unique=False)
+    if _column_exists("inventory_parts", "asset_tag"):
+        op.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_inventory_parts_asset_tag ON inventory_parts (asset_tag)"))
+    if _column_exists("inventory_parts", "modality_id"):
+        op.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_inventory_parts_modality_id ON inventory_parts (modality_id)"))
 
     _create_fk_if_missing("fk_inventory_parts_modality_id_modalities", "inventory_parts", "modalities", ["modality_id"], ["id"])
     _create_fk_if_missing("fk_inventory_parts_inspection_form_id_inspection_forms", "inventory_parts", "inspection_forms", ["inspection_form_id"], ["id"])
