@@ -23,6 +23,7 @@ interface ChatState {
   incomingCall: {
     senderId: number
     senderName?: string
+    senderAvatar?: string | null
     callType: 'voice' | 'video'
     offer?: any
   } | null
@@ -180,6 +181,7 @@ function handleIncomingMessage(data: any, set: any, get: any) {
         incomingCall: {
           senderId: data.sender_id,
           senderName: data.sender_name,
+          senderAvatar: data.sender_avatar,
           callType: data.call_type || 'voice',
           offer: data.offer,
         },

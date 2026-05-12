@@ -11,6 +11,8 @@ import ScreenShareIcon from '@mui/icons-material/ScreenShare'
 import StopScreenShareIcon from '@mui/icons-material/StopScreenShare'
 import useWebRTC from '@/hooks/useWebRTC'
 
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace('/api/v1', '')
+
 interface Props {
   targetUser: any
   callType: 'voice' | 'video'
@@ -34,6 +36,15 @@ const initialsFor = (value: unknown) => {
     .join('')
     .toUpperCase()
     .slice(0, 2)
+}
+
+const avatarSrcFor = (targetUser: any) => {
+  const avatarUrl = safeText(targetUser?.avatar_url || targetUser?.sender_avatar || targetUser?.avatar)
+  if (!avatarUrl) return undefined
+  if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://') || avatarUrl.startsWith('data:')) {
+    return avatarUrl
+  }
+  return `${API_BASE}${avatarUrl.startsWith('/') ? avatarUrl : `/${avatarUrl}`}`
 }
 
 const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUserId, onEnd }: Props) => {
@@ -127,6 +138,7 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
 
   const participantName = safeText(targetUser?.full_name || targetUser?.username, targetUser?.id ? `User #${targetUser.id}` : 'Unknown User')
   const initials = initialsFor(participantName)
+  const avatarSrc = avatarSrcFor(targetUser)
   const hasRemoteVideo = Boolean(remoteStream?.getVideoTracks().length)
   const showRemoteVideo = callType === 'video' && hasRemoteVideo
   const hasHostParticipants = isHost && Object.keys(remoteStreams).length > 0
@@ -202,7 +214,7 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
         {/* Voice call or waiting UI */}
         {showAvatarPanel && (
           <Box sx={{ textAlign: 'center', zIndex: 5 }}>
-            <Avatar sx={{
+            <Avatar src={avatarSrc} sx={{
               width: 100, height: 100, mx: 'auto', mb: 3,
               backgroundColor: '#7C3AED',
               fontSize: '2.5rem', fontWeight: 700,

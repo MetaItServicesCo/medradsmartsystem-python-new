@@ -23,6 +23,25 @@ services:
     networks:
       - medrad_network
 
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    container_name: medrad_coturn
+    command:
+      - -n
+      - --log-file=stdout
+      - --lt-cred-mech
+      - --realm=${TURN_REALM:-medcodesolution.com}
+      - --user=${TURN_USERNAME:-medrad}:${TURN_PASSWORD:-change-this-turn-password}
+      - --external-ip=${TURN_EXTERNAL_IP:-134.199.192.91}
+      - --min-port=49160
+      - --max-port=49200
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    networks:
+      - medrad_network
+
   backend:
     build:
       context: ./backend
@@ -55,6 +74,10 @@ services:
       - "3000:3000"
     environment:
       - VITE_API_URL=http://134.199.192.91:8000/api/v1
+      - VITE_STUN_URLS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+      - VITE_TURN_URLS=turn:134.199.192.91:3478?transport=udp,turn:134.199.192.91:3478?transport=tcp
+      - VITE_TURN_USERNAME=${TURN_USERNAME:-medrad}
+      - VITE_TURN_CREDENTIAL=${TURN_PASSWORD:-change-this-turn-password}
     depends_on:
       - backend
     networks:

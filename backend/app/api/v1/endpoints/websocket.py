@@ -336,6 +336,7 @@ async def handle_call_signal(sender_id: int, data: dict):
         try:
             sender = db.query(User).filter(User.id == sender_id).first()
             data["sender_name"] = sender.full_name if sender else None
+            data["sender_avatar"] = sender.avatar_url if sender else None
             create_notification(
                 db,
                 user_id=target_id,

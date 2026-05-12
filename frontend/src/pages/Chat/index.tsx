@@ -97,6 +97,7 @@ const Chat = () => {
     ? friendsList.find((f: any) => f.id === incomingCall.senderId) || {
         id: incomingCall.senderId,
         full_name: incomingCall.senderName || `User #${incomingCall.senderId}`,
+        avatar_url: incomingCall.senderAvatar,
       }
     : null
 

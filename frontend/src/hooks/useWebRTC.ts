@@ -24,10 +24,33 @@ interface UseWebRTCReturn {
   endCall: () => void
 }
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-]
+const parseUrlList = (value: string | undefined, fallback: string[]) => {
+  const parsed = value
+    ?.split(',')
+    .map((url) => url.trim())
+    .filter(Boolean)
+  return parsed && parsed.length > 0 ? parsed : fallback
+}
+
+const getIceServers = (): RTCIceServer[] => {
+  const stunUrls = parseUrlList(import.meta.env.VITE_STUN_URLS, [
+    'stun:stun.l.google.com:19302',
+    'stun:stun1.l.google.com:19302',
+  ])
+  const turnUrls = parseUrlList(import.meta.env.VITE_TURN_URLS, [])
+  const turnUsername = import.meta.env.VITE_TURN_USERNAME
+  const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL
+
+  const servers: RTCIceServer[] = [{ urls: stunUrls }]
+  if (turnUrls.length > 0 && turnUsername && turnCredential) {
+    servers.push({
+      urls: turnUrls,
+      username: turnUsername,
+      credential: turnCredential,
+    })
+  }
+  return servers
+}
 
 export default function useWebRTC({
   targetUserId,
@@ -109,7 +132,7 @@ export default function useWebRTC({
         initiator: false,
         trickle: false,
         stream: stream,
-        config: { iceServers: ICE_SERVERS },
+        config: { iceServers: getIceServers() },
       })
 
       peer.on('signal', (data: any) => {
@@ -233,7 +256,7 @@ export default function useWebRTC({
         initiator: true,
         trickle: false,
         stream: stream,
-        config: { iceServers: ICE_SERVERS },
+        config: { iceServers: getIceServers() },
       })
 
       peer.on('signal', (data: any) => {
