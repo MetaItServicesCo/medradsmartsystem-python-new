@@ -197,3 +197,51 @@ def run_migration():
             except Exception as e:
                 conn.rollback()
                 pass
+
+        equipment_registration_columns = [
+            "inspection_form_id INTEGER REFERENCES inspection_forms(id)",
+            "default_picture_url TEXT",
+            "description TEXT",
+            "risk_priority VARCHAR",
+            "risk_name VARCHAR",
+            "location VARCHAR",
+            "inventory_date DATE",
+            "acquisition_authorized_by VARCHAR",
+            "department VARCHAR",
+            "po_no VARCHAR",
+            "requester_first_name VARCHAR",
+            "requester_last_name VARCHAR",
+            "requester_phone VARCHAR",
+            "requester_fax VARCHAR",
+            "requester_mailing_address TEXT",
+            "requester_email VARCHAR",
+            "owning_department VARCHAR",
+            "acquisition_method VARCHAR",
+            "acquired_company_name VARCHAR",
+            "acquired_account_number VARCHAR",
+            "acquired_sales_person VARCHAR",
+            "acquired_phone VARCHAR",
+            "acquired_email VARCHAR",
+            "acquired_mailing_address TEXT",
+            "cost NUMERIC(10, 2)",
+            "acquisition_date DATE",
+            "capital_equipment VARCHAR",
+            "warranty_duration VARCHAR",
+            "parts_duration VARCHAR",
+            "labor_duration VARCHAR",
+            "coverage_start_date DATE",
+            "coverage_type VARCHAR",
+            "part_warranty_end_date DATE",
+            "labor_warranty_end_date DATE",
+            "pm_scheduling VARCHAR",
+            "installation_date DATE",
+            "last_pm_date DATE",
+            "next_generated_pm_date DATE",
+        ]
+        for col in equipment_registration_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE equipment ADD COLUMN {col}"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass

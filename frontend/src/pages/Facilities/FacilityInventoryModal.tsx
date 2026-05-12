@@ -12,6 +12,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { toast } from 'react-toastify'
 import { fetchEquipment, createEquipment, updateEquipment, deleteEquipment, type EquipmentCreate, type EquipmentItem } from '@/api/equipment'
+import { fetchInspectionForms } from '@/api/inspections'
 import { fetchModalities } from '@/api/modalities'
 import { fetchTiers } from '@/api/tiers'
 import { type Facility } from '@/api/facilities'
@@ -33,9 +34,18 @@ interface Props {
 const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(mode === 'add')
-  const [form, setForm] = useState<Partial<EquipmentCreate>>({
-    asset_tag: '', make: '', model: '', serial_number: '', status: 'active',
-  })
+  const defaultForm: Partial<EquipmentCreate> = {
+    asset_tag: '',
+    make: '',
+    model: '',
+    serial_number: '',
+    status: 'active',
+    risk_name: 'Non-Critical',
+    acquisition_method: 'Purchased',
+    capital_equipment: 'Yes',
+    pm_scheduling: 'Annual',
+  }
+  const [form, setForm] = useState<Partial<EquipmentCreate>>(defaultForm)
   
   const [selectedParentMod, setSelectedParentMod] = useState<number | ''>('')
   const [selectedSubMod, setSelectedSubMod] = useState<number | ''>('')
@@ -64,6 +74,12 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     enabled: open,
   })
 
+  const { data: inspectionFormsData } = useQuery({
+    queryKey: ['inspection-forms'],
+    queryFn: fetchInspectionForms,
+    enabled: open,
+  })
+
   const createMut = useMutation({
     mutationFn: (d: EquipmentCreate) => createEquipment(d),
     onSuccess: () => {
@@ -71,9 +87,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', facility?.id] })
       setShowForm(false)
-      setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active', tier_id: null })
-      setSelectedParentMod('')
-      setSelectedSubMod('')
+      resetForm()
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to add item'),
   })
@@ -85,10 +99,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', facility?.id] })
       setShowForm(false)
-      setEditItemId(null)
-      setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active', tier_id: null })
-      setSelectedParentMod('')
-      setSelectedSubMod('')
+      resetForm()
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to update item'),
   })
@@ -105,6 +116,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const items = data?.items ?? []
   const modalities = modalitiesData?.items ?? []
   const tiers = tiersData?.items ?? []
+  const inspectionForms = inspectionFormsData?.items ?? []
   const facilityTierIds = facility?.tier_ids?.length ? facility.tier_ids : (facility?.tier_id ? [facility.tier_id] : [])
   const availableTiers = facilityTierIds.length > 0
     ? tiers.filter((tier) => facilityTierIds.includes(tier.id))
@@ -117,6 +129,20 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     return parent?.children || []
   }, [selectedParentMod, modalities])
 
+  const resetForm = () => {
+    setForm(defaultForm)
+    setSelectedParentMod('')
+    setSelectedSubMod('')
+    setEditItemId(null)
+  }
+
+  const handlePicture = (file?: File) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setForm((prev) => ({ ...prev, default_picture_url: String(reader.result || '') }))
+    reader.readAsDataURL(file)
+  }
+
   const handleEditClick = (item: EquipmentItem) => {
     setForm({
       asset_tag: item.asset_tag,
@@ -124,6 +150,43 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
       model: item.model,
       serial_number: item.serial_number,
       tier_id: item.tier_id,
+      inspection_form_id: item.inspection_form_id,
+      default_picture_url: item.default_picture_url || '',
+      description: item.description || '',
+      risk_priority: item.risk_priority || '',
+      risk_name: item.risk_name || 'Non-Critical',
+      location: item.location || '',
+      inventory_date: item.inventory_date,
+      department: item.department || '',
+      po_no: item.po_no || '',
+      requester_first_name: item.requester_first_name || '',
+      requester_last_name: item.requester_last_name || '',
+      requester_phone: item.requester_phone || '',
+      requester_fax: item.requester_fax || '',
+      requester_mailing_address: item.requester_mailing_address || '',
+      requester_email: item.requester_email || '',
+      owning_department: item.owning_department || '',
+      acquisition_method: item.acquisition_method || 'Purchased',
+      acquired_company_name: item.acquired_company_name || '',
+      acquired_account_number: item.acquired_account_number || '',
+      acquired_sales_person: item.acquired_sales_person || '',
+      acquired_phone: item.acquired_phone || '',
+      acquired_email: item.acquired_email || '',
+      acquired_mailing_address: item.acquired_mailing_address || '',
+      cost: Number(item.cost || 0),
+      acquisition_date: item.acquisition_date,
+      capital_equipment: item.capital_equipment || 'Yes',
+      warranty_duration: item.warranty_duration || '',
+      parts_duration: item.parts_duration || '',
+      labor_duration: item.labor_duration || '',
+      coverage_start_date: item.coverage_start_date,
+      coverage_type: item.coverage_type || '',
+      part_warranty_end_date: item.part_warranty_end_date,
+      labor_warranty_end_date: item.labor_warranty_end_date,
+      pm_scheduling: item.pm_scheduling || 'Annual',
+      installation_date: item.installation_date,
+      last_pm_date: item.last_pm_date,
+      next_generated_pm_date: item.next_generated_pm_date,
       status: item.status,
     })
     
@@ -156,8 +219,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
       finalModalityId = selectedSubMod
     }
 
-    if (!form.asset_tag || !form.make || !form.model || !form.serial_number || !finalModalityId) {
-      toast.error('Please fill all required fields (including Modality constraints)')
+    if (!form.asset_tag || !form.make || !form.model || !form.serial_number || !finalModalityId || !form.description || !form.risk_priority || !form.location || !form.risk_name) {
+      toast.error('Please fill all required equipment description fields')
       return
     }
 
@@ -203,9 +266,10 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
             <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, mb: 1.5, display: 'block' }}>
               {editItemId ? 'Edit Inventory Item' : 'New Inventory Item'}
             </Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 2 }}>
-              <TextField size="small" label="Asset Tag *" value={form.asset_tag} onChange={e => setForm({ ...form, asset_tag: e.target.value })} />
-              <TextField size="small" label="Serial Number *" value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} />
+            <Box sx={{ display: 'grid', gap: 2, mb: 2 }}>
+              <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Equipment Description</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+              <TextField size="small" label="Asset # *" value={form.asset_tag} onChange={e => setForm({ ...form, asset_tag: e.target.value })} />
               <TextField size="small" label="Make *" value={form.make} onChange={e => setForm({ ...form, make: e.target.value })} />
               <TextField size="small" label="Model *" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} />
               
@@ -232,15 +296,99 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 ))}
               </TextField>
 
+              <Button component="label" variant="outlined" sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 800 }}>
+                Default Picture
+                <input hidden type="file" accept="image/*" onChange={(e) => handlePicture(e.target.files?.[0])} />
+              </Button>
+
+              <TextField size="small" label="Description *" value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} sx={{ gridColumn: { md: 'span 2' } }} />
+              <TextField size="small" label="Serial *" value={form.serial_number} onChange={e => setForm({ ...form, serial_number: e.target.value })} />
+              <TextField size="small" label="Risk Priority *" value={form.risk_priority || ''} onChange={e => setForm({ ...form, risk_priority: e.target.value })} />
+              <TextField size="small" label="Location *" value={form.location || ''} onChange={e => setForm({ ...form, location: e.target.value })} />
+              <TextField size="small" type="date" label="Date" InputLabelProps={{ shrink: true }} value={form.inventory_date || ''} onChange={e => setForm({ ...form, inventory_date: e.target.value || null })} />
+              <TextField size="small" label="Risk Name *" select value={form.risk_name || 'Non-Critical'} onChange={e => setForm({ ...form, risk_name: e.target.value })}>
+                <MenuItem value="Non-Critical">Non-Critical</MenuItem>
+                <MenuItem value="Critical">Critical</MenuItem>
+                <MenuItem value="Life Support">Life Support</MenuItem>
+                <MenuItem value="High Risk">High Risk</MenuItem>
+              </TextField>
+              </Box>
+
+              <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mt: 1 }}>Acquisition Authorized By</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" label="Department" value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })} />
+                <TextField size="small" label="PO No" value={form.po_no || ''} onChange={e => setForm({ ...form, po_no: e.target.value })} />
+                <TextField size="small" label="First Name" value={form.requester_first_name || ''} onChange={e => setForm({ ...form, requester_first_name: e.target.value })} />
+                <TextField size="small" label="Last Name" value={form.requester_last_name || ''} onChange={e => setForm({ ...form, requester_last_name: e.target.value })} />
+                <TextField size="small" label="Phone" value={form.requester_phone || ''} onChange={e => setForm({ ...form, requester_phone: e.target.value })} />
+                <TextField size="small" label="Fax Number" value={form.requester_fax || ''} onChange={e => setForm({ ...form, requester_fax: e.target.value })} />
+                <TextField size="small" label="Mailing Address" value={form.requester_mailing_address || ''} onChange={e => setForm({ ...form, requester_mailing_address: e.target.value })} />
+                <TextField size="small" label="Email" value={form.requester_email || ''} onChange={e => setForm({ ...form, requester_email: e.target.value })} />
+                <TextField size="small" label="Owning Department" value={form.owning_department || ''} onChange={e => setForm({ ...form, owning_department: e.target.value })} />
+              </Box>
+
+              <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mt: 1 }}>Acquired From</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" label="Acquisition Method" select value={form.acquisition_method || 'Purchased'} onChange={e => setForm({ ...form, acquisition_method: e.target.value })}>
+                  <MenuItem value="Purchased">Purchased</MenuItem>
+                  <MenuItem value="Lease">Lease</MenuItem>
+                  <MenuItem value="Rental">Rental</MenuItem>
+                  <MenuItem value="Donation">Donation</MenuItem>
+                  <MenuItem value="Transfer">Transfer</MenuItem>
+                </TextField>
+                <TextField size="small" label="Company Name" value={form.acquired_company_name || ''} onChange={e => setForm({ ...form, acquired_company_name: e.target.value })} />
+                <TextField size="small" label="Account Number" value={form.acquired_account_number || ''} onChange={e => setForm({ ...form, acquired_account_number: e.target.value })} />
+                <TextField size="small" label="Sales Person Name" value={form.acquired_sales_person || ''} onChange={e => setForm({ ...form, acquired_sales_person: e.target.value })} />
+                <TextField size="small" label="Phone Number" value={form.acquired_phone || ''} onChange={e => setForm({ ...form, acquired_phone: e.target.value })} />
+                <TextField size="small" label="Email" value={form.acquired_email || ''} onChange={e => setForm({ ...form, acquired_email: e.target.value })} />
+                <TextField size="small" label="Mailing Address" value={form.acquired_mailing_address || ''} onChange={e => setForm({ ...form, acquired_mailing_address: e.target.value })} sx={{ gridColumn: { md: 'span 2' } }} />
+              </Box>
+
+              <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mt: 1 }}>Cost & Warranty</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" type="number" label="Cost" value={form.cost || 0} onChange={e => setForm({ ...form, cost: Number(e.target.value) })} />
+                <TextField size="small" type="date" label="Acquisition date" InputLabelProps={{ shrink: true }} value={form.acquisition_date || ''} onChange={e => setForm({ ...form, acquisition_date: e.target.value || null })} />
+                <TextField size="small" label="Capital Equipment" select value={form.capital_equipment || 'Yes'} onChange={e => setForm({ ...form, capital_equipment: e.target.value })}>
+                  <MenuItem value="Yes">Yes</MenuItem>
+                  <MenuItem value="No">No</MenuItem>
+                </TextField>
+                <TextField size="small" label="Warranty Duration" value={form.warranty_duration || ''} onChange={e => setForm({ ...form, warranty_duration: e.target.value })} />
+                <TextField size="small" label="Parts Duration" value={form.parts_duration || ''} onChange={e => setForm({ ...form, parts_duration: e.target.value })} />
+                <TextField size="small" label="Labor Duration" value={form.labor_duration || ''} onChange={e => setForm({ ...form, labor_duration: e.target.value })} />
+                <TextField size="small" type="date" label="Coverage Start Date" InputLabelProps={{ shrink: true }} value={form.coverage_start_date || ''} onChange={e => setForm({ ...form, coverage_start_date: e.target.value || null })} />
+                <TextField size="small" label="Coverage Type" value={form.coverage_type || ''} onChange={e => setForm({ ...form, coverage_type: e.target.value })} />
+                <TextField size="small" type="date" label="Part Warranty End Date" InputLabelProps={{ shrink: true }} value={form.part_warranty_end_date || ''} onChange={e => setForm({ ...form, part_warranty_end_date: e.target.value || null })} />
+                <TextField size="small" type="date" label="Labor Warranty End Date" InputLabelProps={{ shrink: true }} value={form.labor_warranty_end_date || ''} onChange={e => setForm({ ...form, labor_warranty_end_date: e.target.value || null })} />
+              </Box>
+
+              <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mt: 1 }}>Service and Maintenance</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" label="PM Scheduling" select value={form.pm_scheduling || 'Annual'} onChange={e => setForm({ ...form, pm_scheduling: e.target.value })}>
+                  <MenuItem value="Monthly">Monthly</MenuItem>
+                  <MenuItem value="Quarterly">Quarterly</MenuItem>
+                  <MenuItem value="Semi-Annual">Semi-Annual</MenuItem>
+                  <MenuItem value="Annual">Annual</MenuItem>
+                </TextField>
+                <TextField size="small" type="date" label="Installation Date" InputLabelProps={{ shrink: true }} value={form.installation_date || ''} onChange={e => setForm({ ...form, installation_date: e.target.value || null })} />
+                <TextField size="small" type="date" label="Last PM Date" InputLabelProps={{ shrink: true }} value={form.last_pm_date || ''} onChange={e => setForm({ ...form, last_pm_date: e.target.value || null })} />
+                <TextField size="small" type="date" label="Next Generated PM Date" InputLabelProps={{ shrink: true }} value={form.next_generated_pm_date || ''} onChange={e => setForm({ ...form, next_generated_pm_date: e.target.value || null })} />
+                <TextField size="small" label="Inspection Form" select value={form.inspection_form_id || ''} onChange={e => setForm({ ...form, inspection_form_id: e.target.value ? Number(e.target.value) : null })}>
+                  <MenuItem value="">Select Form</MenuItem>
+                  {inspectionForms.map((inspectionForm) => (
+                    <MenuItem key={inspectionForm.id} value={inspectionForm.id}>{inspectionForm.name}</MenuItem>
+                  ))}
+                </TextField>
+
               <TextField size="small" label="Status" select value={form.status || 'active'} onChange={e => setForm({ ...form, status: e.target.value })}>
                 <MenuItem value="active">Active</MenuItem>
                 <MenuItem value="rented">Rented</MenuItem>
                 <MenuItem value="in_maintenance">In Maintenance</MenuItem>
                 <MenuItem value="retired">Retired</MenuItem>
               </TextField>
+              </Box>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button size="small" onClick={() => { setShowForm(false); setEditItemId(null); setForm({ asset_tag: '', make: '', model: '', serial_number: '', status: 'active', tier_id: null }); setSelectedParentMod(''); setSelectedSubMod(''); }} sx={{ color: '#6B7280' }}>Cancel</Button>
+              <Button size="small" onClick={() => { setShowForm(false); resetForm() }} sx={{ color: '#6B7280' }}>Cancel</Button>
               <Button size="small" variant="contained" onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} sx={{ backgroundColor: '#7C3AED', '&:hover': { backgroundColor: '#6D28D9' } }}>
                 {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : (editItemId ? 'Update Item' : 'Add Item')}
               </Button>
