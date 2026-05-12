@@ -17,6 +17,7 @@ interface UseWebRTCReturn {
   remoteStream: MediaStream | null
   remoteStreams: Record<number, MediaStream> // For Host to see everyone
   isScreenSharing: boolean
+  callError: string | null
   initiateCall: () => void
   answerCall: (offer: any, fromUserId: number) => void
   toggleScreenShare: () => Promise<void>
@@ -41,6 +42,7 @@ export default function useWebRTC({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [remoteStreams, setRemoteStreams] = useState<Record<number, MediaStream>>({})
   const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [callError, setCallError] = useState<string | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
   const peersRef = useRef<Record<number, any>>({})
   const peerRef = useRef<any>(null) // Legacy for 1-on-1
@@ -91,7 +93,15 @@ export default function useWebRTC({
       audio: true,
       video: callType === 'video',
     }
-    return navigator.mediaDevices.getUserMedia(constraints)
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints)
+    } catch (err) {
+      if (callType === 'video') {
+        console.warn('Video capture failed, falling back to voice-only media.', err)
+        return navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      }
+      throw err
+    }
   }
 
   const cleanup = () => {
@@ -124,13 +134,14 @@ export default function useWebRTC({
     }
 
     try {
+      setCallError(null)
       setCallState('ringing')
       const stream = await getMediaStream()
       setLocalStream(stream)
 
       const peer = new SimplePeer({
         initiator: true,
-        trickle: true,
+        trickle: false,
         stream: stream,
         config: { iceServers: ICE_SERVERS },
       })
@@ -157,21 +168,26 @@ export default function useWebRTC({
         setCallState('connected')
       })
 
-      // ... other listeners same as before
       peer.on('connect', () => setCallState('connected'))
       peer.on('close', () => { setCallState('ended'); onCallEnded?.() })
-      peer.on('error', (err: any) => { console.error(err); cleanup(); onCallEnded?.() })
+      peer.on('error', (err: any) => {
+        console.error(err)
+        setCallError('Call connection failed. Please try again.')
+        cleanup()
+        setCallState('ended')
+      })
 
       peerRef.current = peer
     } catch (err) {
       console.error(err)
+      setCallError('Microphone or camera access failed.')
       setCallState('ended')
-      onCallEnded?.()
     }
   }
 
   const answerCall = async (offer: any, fromUserId: number) => {
     try {
+      setCallError(null)
       let stream = localStream
       if (!stream) {
         stream = await getMediaStream()
@@ -180,7 +196,7 @@ export default function useWebRTC({
 
       const peer = new SimplePeer({
         initiator: false,
-        trickle: true,
+        trickle: false,
         stream: stream,
         config: { iceServers: ICE_SERVERS },
       })
@@ -212,12 +228,19 @@ export default function useWebRTC({
 
       peer.on('error', (err: any) => {
         console.error('Peer error:', err)
+        setCallError('Call connection failed. Please try again.')
         if (isHost) {
           delete peersRef.current[fromUserId]
           setRemoteStreams(prev => {
             const next = { ...prev }; delete next[fromUserId]; return next
           })
         }
+      })
+
+      peer.on('connect', () => setCallState('connected'))
+      peer.on('close', () => {
+        setCallState('ended')
+        if (!isHost) onCallEnded?.()
       })
 
       peer.signal(offer)
@@ -227,10 +250,10 @@ export default function useWebRTC({
       } else {
         peerRef.current = peer
       }
-      
-      setCallState('connected')
     } catch (err) {
       console.error(err)
+      setCallError('Microphone or camera access failed.')
+      setCallState('ended')
     }
   }
 
@@ -300,6 +323,7 @@ export default function useWebRTC({
     callState,
     localStream,
     remoteStream,
+    callError,
     isScreenSharing,
     initiateCall,
     answerCall,

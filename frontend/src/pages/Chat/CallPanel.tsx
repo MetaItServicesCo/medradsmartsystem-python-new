@@ -27,12 +27,14 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
   const callStartedRef = useRef(false)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const remoteAudioRef = useRef<HTMLAudioElement>(null)
 
   const {
     callState,
     localStream,
     remoteStream,
     remoteStreams,
+    callError,
     isScreenSharing,
     initiateCall,
     answerCall,
@@ -69,6 +71,12 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
     }
   }, [remoteStream])
 
+  useEffect(() => {
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream
+    }
+  }, [remoteStream])
+
   // Duration timer
   useEffect(() => {
     if (callState !== 'connected') return
@@ -102,6 +110,10 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
   }
 
   const initials = targetUser.full_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
+  const hasRemoteVideo = Boolean(remoteStream?.getVideoTracks().length)
+  const showRemoteVideo = callType === 'video' && hasRemoteVideo
+  const hasHostParticipants = isHost && Object.keys(remoteStreams).length > 0
+  const showAvatarPanel = callType === 'voice' || (!showRemoteVideo && !hasHostParticipants)
 
   return (
     <Dialog open fullScreen PaperProps={{ sx: { backgroundColor: '#0F0A1F' } }}>
@@ -120,7 +132,7 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
             gridTemplateColumns: isHost ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr',
             gap: 1, backgroundColor: '#000'
           }}>
-            {!isHost && remoteStream && (
+            {!isHost && showRemoteVideo && (
               <video
                 ref={remoteVideoRef}
                 autoPlay playsInline
@@ -161,7 +173,7 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
         )}
 
         {/* Voice call or waiting UI */}
-        {(callType === 'voice' || !remoteStream) && (
+        {showAvatarPanel && (
           <Box sx={{ textAlign: 'center', zIndex: 5 }}>
             <Avatar sx={{
               width: 100, height: 100, mx: 'auto', mb: 3,
@@ -181,11 +193,21 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
               {targetUser.full_name} {isHost ? '(Meeting Host)' : ''}
             </Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.5)', mb: 1 }}>
-              {callState === 'ringing' ? 'Calling...' :
+              {callError ? callError :
+               callState === 'ringing' ? 'Calling...' :
                callState === 'connected' ? (isHost ? `${Object.keys(remoteStreams).length} joined` : formatDuration(duration)) :
                callState === 'ended' ? 'Call ended' : 'Connecting...'}
             </Typography>
+            {callType === 'video' && remoteStream && !hasRemoteVideo && (
+              <Typography sx={{ color: 'rgba(255,255,255,0.42)', fontSize: 13 }}>
+                Remote camera is unavailable. Audio is connected.
+              </Typography>
+            )}
           </Box>
+        )}
+
+        {!showRemoteVideo && remoteStream && (
+          <audio ref={remoteAudioRef} autoPlay playsInline />
         )}
 
         {/* Controls */}
