@@ -16,6 +16,8 @@ import SearchIcon from '@mui/icons-material/Search'
 import DeleteIcon from '@mui/icons-material/Delete'
 import { toast } from 'react-toastify'
 import { fetchFacilities } from '@/api/facilities'
+import { fetchInspectionForms } from '@/api/inspections'
+import { fetchModalities } from '@/api/modalities'
 import { fetchTiers } from '@/api/tiers'
 import { fetchEquipment, type EquipmentItem } from '@/api/equipment'
 import {
@@ -27,13 +29,50 @@ import {
 const emptyPart: InventoryPartPayload = {
   facility_id: 0,
   tier_id: null,
+  modality_id: null,
+  inspection_form_id: null,
+  asset_tag: '',
   part_number: '',
-  part_type: 'spare_part',
+  part_type: 'equipment',
   description: '',
   make: '',
   model: '',
+  default_picture_url: '',
+  risk_priority: '',
+  risk_name: 'Non-Critical',
+  inventory_date: null,
   unit_price: 0,
   condition: 'new',
+  acquisition_authorized_by: '',
+  department: '',
+  po_no: '',
+  requester_first_name: '',
+  requester_last_name: '',
+  requester_phone: '',
+  requester_fax: '',
+  requester_mailing_address: '',
+  requester_email: '',
+  owning_department: '',
+  acquisition_method: 'Purchased',
+  acquired_company_name: '',
+  acquired_account_number: '',
+  acquired_sales_person: '',
+  acquired_phone: '',
+  acquired_email: '',
+  acquired_mailing_address: '',
+  acquisition_date: null,
+  capital_equipment: 'Yes',
+  warranty_duration: '',
+  parts_duration: '',
+  labor_duration: '',
+  coverage_start_date: null,
+  coverage_type: '',
+  part_warranty_end_date: null,
+  labor_warranty_end_date: null,
+  pm_scheduling: 'Annual',
+  installation_date: null,
+  last_pm_date: null,
+  next_generated_pm_date: null,
   supplier_name: '',
   supplier_contact: '',
   supplier_email: '',
@@ -61,6 +100,7 @@ const Inventory = () => {
   const [search, setSearch] = useState('')
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [tierId, setTierId] = useState<number | ''>('')
+  const [parentModalityId, setParentModalityId] = useState<number | ''>('')
   const [lowStock, setLowStock] = useState(false)
   const [partDialogOpen, setPartDialogOpen] = useState(false)
   const [editingPart, setEditingPart] = useState<InventoryPart | null>(null)
@@ -82,6 +122,8 @@ const Inventory = () => {
     queryFn: () => fetchFacilities({ limit: 500 }),
   })
   const { data: tiersData } = useQuery({ queryKey: ['tiers'], queryFn: fetchTiers })
+  const { data: modalitiesData } = useQuery({ queryKey: ['modalities', 'inventory-form'], queryFn: () => fetchModalities(true) })
+  const { data: inspectionFormsData } = useQuery({ queryKey: ['inspection-forms'], queryFn: fetchInspectionForms })
   const { data, isLoading } = useQuery({
     queryKey: ['inventory-parts', search, facilityId, tierId, lowStock],
     queryFn: () => fetchInventoryParts({
@@ -99,6 +141,10 @@ const Inventory = () => {
 
   const facilities = facilitiesData?.items ?? []
   const tiers = tiersData?.items ?? []
+  const modalities = modalitiesData?.items ?? []
+  const inspectionForms = inspectionFormsData?.items ?? []
+  const selectedModality = modalities.find((m) => m.id === parentModalityId)
+  const subModalities = selectedModality?.children ?? []
   const parts = data?.items ?? []
   const equipmentItems = useMemo(() => {
     const all = equipmentData?.items ?? []
@@ -127,6 +173,7 @@ const Inventory = () => {
 
   const resetPartForm = () => {
     setEditingPart(null)
+    setParentModalityId('')
     setPartForm({ ...emptyPart, facility_id: facilities[0]?.id || 0 })
   }
 
@@ -185,16 +232,55 @@ const Inventory = () => {
 
   const handleOpenEdit = (part: InventoryPart) => {
     setEditingPart(part)
+    const parent = modalities.find((m) => m.id === part.modality_id || m.children?.some((child: any) => child.id === part.modality_id))
+    setParentModalityId(parent?.id || '')
     setPartForm({
       facility_id: part.facility_id,
       tier_id: part.tier_id,
+      modality_id: part.modality_id,
+      inspection_form_id: part.inspection_form_id,
+      asset_tag: part.asset_tag || '',
       part_number: part.part_number,
       part_type: part.part_type,
       description: part.description,
       make: part.make || '',
       model: part.model || '',
+      default_picture_url: part.default_picture_url || '',
+      risk_priority: part.risk_priority || '',
+      risk_name: part.risk_name || 'Non-Critical',
+      inventory_date: part.inventory_date,
       unit_price: Number(part.unit_price),
       condition: part.condition,
+      acquisition_authorized_by: part.acquisition_authorized_by || '',
+      department: part.department || '',
+      po_no: part.po_no || '',
+      requester_first_name: part.requester_first_name || '',
+      requester_last_name: part.requester_last_name || '',
+      requester_phone: part.requester_phone || '',
+      requester_fax: part.requester_fax || '',
+      requester_mailing_address: part.requester_mailing_address || '',
+      requester_email: part.requester_email || '',
+      owning_department: part.owning_department || '',
+      acquisition_method: part.acquisition_method || 'Purchased',
+      acquired_company_name: part.acquired_company_name || '',
+      acquired_account_number: part.acquired_account_number || '',
+      acquired_sales_person: part.acquired_sales_person || '',
+      acquired_phone: part.acquired_phone || '',
+      acquired_email: part.acquired_email || '',
+      acquired_mailing_address: part.acquired_mailing_address || '',
+      acquisition_date: part.acquisition_date,
+      capital_equipment: part.capital_equipment || 'Yes',
+      warranty_duration: part.warranty_duration || '',
+      parts_duration: part.parts_duration || '',
+      labor_duration: part.labor_duration || '',
+      coverage_start_date: part.coverage_start_date,
+      coverage_type: part.coverage_type || '',
+      part_warranty_end_date: part.part_warranty_end_date,
+      labor_warranty_end_date: part.labor_warranty_end_date,
+      pm_scheduling: part.pm_scheduling || 'Annual',
+      installation_date: part.installation_date,
+      last_pm_date: part.last_pm_date,
+      next_generated_pm_date: part.next_generated_pm_date,
       supplier_name: part.supplier_name || '',
       supplier_contact: part.supplier_contact || '',
       supplier_email: part.supplier_email || '',
@@ -213,18 +299,30 @@ const Inventory = () => {
   }
 
   const handleSavePart = () => {
-    if (!partForm.facility_id || !partForm.part_number || !partForm.part_type || !partForm.description) {
-      toast.error('Facility, part number, type, and description are required')
+    if (!partForm.facility_id || !partForm.asset_tag || !partForm.make || !partForm.model || !partForm.modality_id || !partForm.description || !partForm.serial_number || !partForm.risk_priority || !partForm.location || !partForm.risk_name) {
+      toast.error('Please fill all required equipment description fields')
       return
     }
     const payload = {
       ...partForm,
       tier_id: partForm.tier_id || null,
+      modality_id: partForm.modality_id || null,
+      inspection_form_id: partForm.inspection_form_id || null,
+      part_number: partForm.part_number || partForm.asset_tag,
       supplier_email: partForm.supplier_email || undefined,
+      requester_email: partForm.requester_email || undefined,
+      acquired_email: partForm.acquired_email || undefined,
       technical_specs: typeof partForm.technical_specs === 'string' ? null : partForm.technical_specs,
     }
     if (editingPart) updateMut.mutate({ id: editingPart.id, payload })
     else createMut.mutate(payload)
+  }
+
+  const handlePicture = (file?: File) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setPartForm((prev) => ({ ...prev, default_picture_url: String(reader.result || '') }))
+    reader.readAsDataURL(file)
   }
 
   const handleSaveTransaction = () => {
@@ -428,54 +526,138 @@ const Inventory = () => {
         </TableContainer>
       </Card>
 
-      <Dialog open={partDialogOpen} onClose={() => setPartDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800 }}>{editingPart ? 'Edit Part' : 'Register Part'}</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, pt: 2 }}>
-          <TextField size="small" select label="Facility *" value={partForm.facility_id || ''} onChange={(e) => setPartForm({ ...partForm, facility_id: Number(e.target.value) })}>
-            {facilities.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
-          </TextField>
-          <TextField size="small" select label="Tier" value={partForm.tier_id || ''} onChange={(e) => setPartForm({ ...partForm, tier_id: e.target.value ? Number(e.target.value) : null })}>
-            <MenuItem value="">No tier</MenuItem>
-            {tiers.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-          </TextField>
-          <TextField size="small" label="Part Number *" value={partForm.part_number} onChange={(e) => setPartForm({ ...partForm, part_number: e.target.value })} />
-          <TextField size="small" select label="Type *" value={partForm.part_type} onChange={(e) => setPartForm({ ...partForm, part_type: e.target.value })}>
-            <MenuItem value="spare_part">Spare Part</MenuItem>
-            <MenuItem value="consumable">Consumable</MenuItem>
-            <MenuItem value="critical_component">Critical Component</MenuItem>
-            <MenuItem value="accessory">Accessory</MenuItem>
-          </TextField>
-          <TextField size="small" label="Make" value={partForm.make} onChange={(e) => setPartForm({ ...partForm, make: e.target.value })} />
-          <TextField size="small" label="Model" value={partForm.model} onChange={(e) => setPartForm({ ...partForm, model: e.target.value })} />
-          <TextField size="small" label="Description *" value={partForm.description} onChange={(e) => setPartForm({ ...partForm, description: e.target.value })} sx={{ gridColumn: 'span 3' }} />
-          <TextField size="small" type="number" label="Unit Price" value={partForm.unit_price} onChange={(e) => setPartForm({ ...partForm, unit_price: Number(e.target.value) })} />
-          <TextField size="small" select label="Condition" value={partForm.condition} onChange={(e) => setPartForm({ ...partForm, condition: e.target.value })}>
-            <MenuItem value="new">New</MenuItem>
-            <MenuItem value="refurbished">Refurbished</MenuItem>
-            <MenuItem value="used">Used</MenuItem>
-            <MenuItem value="damaged">Damaged</MenuItem>
-          </TextField>
-          <TextField size="small" label="Location" value={partForm.location} onChange={(e) => setPartForm({ ...partForm, location: e.target.value })} />
-          <TextField size="small" label="Batch Number" value={partForm.batch_number} onChange={(e) => setPartForm({ ...partForm, batch_number: e.target.value })} />
-          <TextField size="small" label="Serial Number" value={partForm.serial_number} onChange={(e) => setPartForm({ ...partForm, serial_number: e.target.value })} />
-          <TextField size="small" type="date" label="Expiry Date" InputLabelProps={{ shrink: true }} value={partForm.expiry_date || ''} onChange={(e) => setPartForm({ ...partForm, expiry_date: e.target.value || null })} />
-          <TextField size="small" type="number" label="Quantity On Hand" value={partForm.quantity_on_hand} onChange={(e) => setPartForm({ ...partForm, quantity_on_hand: Number(e.target.value) })} />
-          <TextField size="small" type="number" label="Reorder Level" value={partForm.reorder_level} onChange={(e) => setPartForm({ ...partForm, reorder_level: Number(e.target.value) })} />
-          <FormControlLabel control={<Switch checked={partForm.is_critical} onChange={(e) => setPartForm({ ...partForm, is_critical: e.target.checked })} />} label="Critical component" />
-          <TextField size="small" label="Supplier Name" value={partForm.supplier_name} onChange={(e) => setPartForm({ ...partForm, supplier_name: e.target.value })} />
-          <TextField size="small" label="Supplier Contact" value={partForm.supplier_contact} onChange={(e) => setPartForm({ ...partForm, supplier_contact: e.target.value })} />
-          <TextField size="small" label="Supplier Phone" value={partForm.supplier_phone} onChange={(e) => setPartForm({ ...partForm, supplier_phone: e.target.value })} />
-          <TextField size="small" label="Supplier Email" value={partForm.supplier_email} onChange={(e) => setPartForm({ ...partForm, supplier_email: e.target.value })} />
-          <TextField size="small" select label="Status" value={partForm.status} onChange={(e) => setPartForm({ ...partForm, status: e.target.value })}>
-            <MenuItem value="active">Active</MenuItem>
-            <MenuItem value="inactive">Inactive</MenuItem>
-            <MenuItem value="discontinued">Discontinued</MenuItem>
-          </TextField>
+      <Dialog open={partDialogOpen} onClose={() => setPartDialogOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800 }}>{editingPart ? 'Edit Inventory' : 'Add Inventory'}</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Box sx={{ display: 'grid', gap: 3 }}>
+            <Card sx={{ p: 2.5, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Equipment Description</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" label="Asset # *" value={partForm.asset_tag || ''} onChange={(e) => setPartForm({ ...partForm, asset_tag: e.target.value, part_number: e.target.value })} />
+                <TextField size="small" select label="Facility *" value={partForm.facility_id || ''} onChange={(e) => setPartForm({ ...partForm, facility_id: Number(e.target.value) })}>
+                  {facilities.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
+                </TextField>
+                <TextField size="small" label="Make *" value={partForm.make || ''} onChange={(e) => setPartForm({ ...partForm, make: e.target.value })} />
+                <TextField size="small" label="Model *" value={partForm.model || ''} onChange={(e) => setPartForm({ ...partForm, model: e.target.value })} />
+                <TextField size="small" select label="Modality *" value={parentModalityId} onChange={(e) => {
+                  const nextParent = e.target.value ? Number(e.target.value) : ''
+                  const parent = modalities.find((m) => m.id === nextParent)
+                  setParentModalityId(nextParent)
+                  setPartForm({ ...partForm, modality_id: parent?.children?.length ? null : Number(nextParent) || null })
+                }}>
+                  <MenuItem value="">Select</MenuItem>
+                  {modalities.map((m) => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
+                </TextField>
+                <TextField size="small" select label="Sub Modality" value={subModalities.some((m) => m.id === partForm.modality_id) ? partForm.modality_id : ''} onChange={(e) => setPartForm({ ...partForm, modality_id: e.target.value ? Number(e.target.value) : partForm.modality_id })}>
+                  <MenuItem value="">Select</MenuItem>
+                  {subModalities.map((m) => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
+                </TextField>
+                <TextField size="small" select label="Tier" value={partForm.tier_id || ''} onChange={(e) => setPartForm({ ...partForm, tier_id: e.target.value ? Number(e.target.value) : null })}>
+                  <MenuItem value="">Select Tier</MenuItem>
+                  {tiers.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
+                </TextField>
+                <Button component="label" variant="outlined" sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 800 }}>
+                  Choose File
+                  <input hidden type="file" accept="image/*" onChange={(e) => handlePicture(e.target.files?.[0])} />
+                </Button>
+                <TextField size="small" label="Description *" value={partForm.description} onChange={(e) => setPartForm({ ...partForm, description: e.target.value })} sx={{ gridColumn: { xs: '1', md: 'span 2' } }} />
+                <TextField size="small" label="Serial *" value={partForm.serial_number || ''} onChange={(e) => setPartForm({ ...partForm, serial_number: e.target.value })} />
+                <TextField size="small" label="Risk Priority *" value={partForm.risk_priority || ''} onChange={(e) => setPartForm({ ...partForm, risk_priority: e.target.value })} />
+                <TextField size="small" label="Location *" value={partForm.location || ''} onChange={(e) => setPartForm({ ...partForm, location: e.target.value })} />
+                <TextField size="small" type="date" label="Date" InputLabelProps={{ shrink: true }} value={partForm.inventory_date || ''} onChange={(e) => setPartForm({ ...partForm, inventory_date: e.target.value || null })} />
+                <TextField size="small" select label="Risk Name *" value={partForm.risk_name || 'Non-Critical'} onChange={(e) => setPartForm({ ...partForm, risk_name: e.target.value })}>
+                  <MenuItem value="Non-Critical">Non-Critical</MenuItem>
+                  <MenuItem value="Critical">Critical</MenuItem>
+                  <MenuItem value="Life Support">Life Support</MenuItem>
+                  <MenuItem value="High Risk">High Risk</MenuItem>
+                </TextField>
+              </Box>
+            </Card>
+
+            <Card sx={{ p: 2.5, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Acquisition Authorized By</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" label="Department" value={partForm.department || ''} onChange={(e) => setPartForm({ ...partForm, department: e.target.value })} />
+                <TextField size="small" label="PO No" value={partForm.po_no || ''} onChange={(e) => setPartForm({ ...partForm, po_no: e.target.value })} />
+                <TextField size="small" label="First Name" value={partForm.requester_first_name || ''} onChange={(e) => setPartForm({ ...partForm, requester_first_name: e.target.value })} />
+                <TextField size="small" label="Last Name" value={partForm.requester_last_name || ''} onChange={(e) => setPartForm({ ...partForm, requester_last_name: e.target.value })} />
+                <TextField size="small" label="Phone" value={partForm.requester_phone || ''} onChange={(e) => setPartForm({ ...partForm, requester_phone: e.target.value })} />
+                <TextField size="small" label="Fax Number" value={partForm.requester_fax || ''} onChange={(e) => setPartForm({ ...partForm, requester_fax: e.target.value })} />
+                <TextField size="small" label="Mailing Address" value={partForm.requester_mailing_address || ''} onChange={(e) => setPartForm({ ...partForm, requester_mailing_address: e.target.value })} />
+                <TextField size="small" label="Email" value={partForm.requester_email || ''} onChange={(e) => setPartForm({ ...partForm, requester_email: e.target.value })} />
+                <TextField size="small" label="Owning Department" value={partForm.owning_department || ''} onChange={(e) => setPartForm({ ...partForm, owning_department: e.target.value })} />
+              </Box>
+            </Card>
+
+            <Card sx={{ p: 2.5, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Acquired From</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" select label="Acquisition Method" value={partForm.acquisition_method || 'Purchased'} onChange={(e) => setPartForm({ ...partForm, acquisition_method: e.target.value })}>
+                  <MenuItem value="Purchased">Purchased</MenuItem>
+                  <MenuItem value="Lease">Lease</MenuItem>
+                  <MenuItem value="Rental">Rental</MenuItem>
+                  <MenuItem value="Donation">Donation</MenuItem>
+                  <MenuItem value="Transfer">Transfer</MenuItem>
+                </TextField>
+                <TextField size="small" label="Company Name" value={partForm.acquired_company_name || ''} onChange={(e) => setPartForm({ ...partForm, acquired_company_name: e.target.value })} />
+                <TextField size="small" label="Account Number" value={partForm.acquired_account_number || ''} onChange={(e) => setPartForm({ ...partForm, acquired_account_number: e.target.value })} />
+                <TextField size="small" label="Sales Person Name" value={partForm.acquired_sales_person || ''} onChange={(e) => setPartForm({ ...partForm, acquired_sales_person: e.target.value })} />
+                <TextField size="small" label="Phone Number" value={partForm.acquired_phone || ''} onChange={(e) => setPartForm({ ...partForm, acquired_phone: e.target.value })} />
+                <TextField size="small" label="Email" value={partForm.acquired_email || ''} onChange={(e) => setPartForm({ ...partForm, acquired_email: e.target.value })} />
+                <TextField size="small" label="Mailing Address" value={partForm.acquired_mailing_address || ''} onChange={(e) => setPartForm({ ...partForm, acquired_mailing_address: e.target.value })} sx={{ gridColumn: { xs: '1', md: 'span 2' } }} />
+              </Box>
+            </Card>
+
+            <Card sx={{ p: 2.5, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Cost & Warranty</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" type="number" label="Cost" value={partForm.unit_price} onChange={(e) => setPartForm({ ...partForm, unit_price: Number(e.target.value) })} />
+                <TextField size="small" type="date" label="Acquisition date" InputLabelProps={{ shrink: true }} value={partForm.acquisition_date || ''} onChange={(e) => setPartForm({ ...partForm, acquisition_date: e.target.value || null })} />
+                <TextField size="small" select label="Capital Equipment" value={partForm.capital_equipment || 'Yes'} onChange={(e) => setPartForm({ ...partForm, capital_equipment: e.target.value })}>
+                  <MenuItem value="Yes">Yes</MenuItem>
+                  <MenuItem value="No">No</MenuItem>
+                </TextField>
+                <TextField size="small" label="Warranty Duration" value={partForm.warranty_duration || ''} onChange={(e) => setPartForm({ ...partForm, warranty_duration: e.target.value })} />
+                <TextField size="small" label="Parts Duration" value={partForm.parts_duration || ''} onChange={(e) => setPartForm({ ...partForm, parts_duration: e.target.value })} />
+                <TextField size="small" label="Labor Duration" value={partForm.labor_duration || ''} onChange={(e) => setPartForm({ ...partForm, labor_duration: e.target.value })} />
+                <TextField size="small" type="date" label="Coverage Start Date" InputLabelProps={{ shrink: true }} value={partForm.coverage_start_date || ''} onChange={(e) => setPartForm({ ...partForm, coverage_start_date: e.target.value || null })} />
+                <TextField size="small" label="Coverage Type" value={partForm.coverage_type || ''} onChange={(e) => setPartForm({ ...partForm, coverage_type: e.target.value })} />
+                <TextField size="small" type="date" label="Part Warranty End Date" InputLabelProps={{ shrink: true }} value={partForm.part_warranty_end_date || ''} onChange={(e) => setPartForm({ ...partForm, part_warranty_end_date: e.target.value || null })} />
+                <TextField size="small" type="date" label="Labor Warranty End Date" InputLabelProps={{ shrink: true }} value={partForm.labor_warranty_end_date || ''} onChange={(e) => setPartForm({ ...partForm, labor_warranty_end_date: e.target.value || null })} />
+              </Box>
+            </Card>
+
+            <Card sx={{ p: 2.5, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Service and Maintenance</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <TextField size="small" select label="PM Scheduling" value={partForm.pm_scheduling || 'Annual'} onChange={(e) => setPartForm({ ...partForm, pm_scheduling: e.target.value })}>
+                  <MenuItem value="Monthly">Monthly</MenuItem>
+                  <MenuItem value="Quarterly">Quarterly</MenuItem>
+                  <MenuItem value="Semi-Annual">Semi-Annual</MenuItem>
+                  <MenuItem value="Annual">Annual</MenuItem>
+                </TextField>
+                <TextField size="small" type="date" label="Installation Date" InputLabelProps={{ shrink: true }} value={partForm.installation_date || ''} onChange={(e) => setPartForm({ ...partForm, installation_date: e.target.value || null })} />
+                <TextField size="small" type="date" label="Last PM Date" InputLabelProps={{ shrink: true }} value={partForm.last_pm_date || ''} onChange={(e) => setPartForm({ ...partForm, last_pm_date: e.target.value || null })} />
+                <TextField size="small" type="date" label="Next Generated PM Date" InputLabelProps={{ shrink: true }} value={partForm.next_generated_pm_date || ''} onChange={(e) => setPartForm({ ...partForm, next_generated_pm_date: e.target.value || null })} />
+                <TextField size="small" select label="Inspection Form" value={partForm.inspection_form_id || ''} onChange={(e) => setPartForm({ ...partForm, inspection_form_id: e.target.value ? Number(e.target.value) : null })}>
+                  <MenuItem value="">Select Form</MenuItem>
+                  {inspectionForms.map((form) => <MenuItem key={form.id} value={form.id}>{form.name}</MenuItem>)}
+                </TextField>
+                <TextField size="small" type="number" label="Quantity On Hand" value={partForm.quantity_on_hand} onChange={(e) => setPartForm({ ...partForm, quantity_on_hand: Number(e.target.value) })} />
+                <TextField size="small" type="number" label="Reorder Level" value={partForm.reorder_level} onChange={(e) => setPartForm({ ...partForm, reorder_level: Number(e.target.value) })} />
+                <TextField size="small" select label="Status" value={partForm.status} onChange={(e) => setPartForm({ ...partForm, status: e.target.value })}>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="inactive">Inactive</MenuItem>
+                  <MenuItem value="discontinued">Discontinued</MenuItem>
+                </TextField>
+              </Box>
+            </Card>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setPartDialogOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleSavePart} disabled={createMut.isPending || updateMut.isPending}>
-            {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={18} /> : 'Save Part'}
+            {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={18} /> : 'Add Inventory'}
           </Button>
         </DialogActions>
       </Dialog>

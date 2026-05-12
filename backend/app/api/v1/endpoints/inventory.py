@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.deps import get_current_user, get_admin_user
 from app.db.base import get_db
 from app.models.facility import Facility
+from app.models.inspection_form import InspectionForm
 from app.models.inventory import InventoryPart, InventoryTransaction
+from app.models.modality import Modality
 from app.models.tier import Tier
 from app.models.user import User
 from app.schemas.inventory import (
@@ -36,6 +38,8 @@ def _part_response(part: InventoryPart) -> dict:
     data = {c.name: getattr(part, c.name) for c in part.__table__.columns}
     data["facility_name"] = part.facility.name if part.facility else None
     data["tier_name"] = part.tier.name if part.tier else None
+    data["modality_name"] = part.modality.name if part.modality else None
+    data["inspection_form_name"] = part.inspection_form.name if part.inspection_form else None
     return data
 
 
@@ -45,11 +49,21 @@ def _transaction_response(txn: InventoryTransaction) -> dict:
     return data
 
 
-def _validate_facility_and_tier(db: Session, facility_id: int, tier_id: Optional[int]) -> None:
+def _validate_references(
+    db: Session,
+    facility_id: int,
+    tier_id: Optional[int],
+    modality_id: Optional[int] = None,
+    inspection_form_id: Optional[int] = None,
+) -> None:
     if not db.query(Facility).filter(Facility.id == facility_id).first():
         raise HTTPException(status_code=404, detail="Facility not found")
     if tier_id and not db.query(Tier).filter(Tier.id == tier_id).first():
         raise HTTPException(status_code=404, detail="Tier not found")
+    if modality_id and not db.query(Modality).filter(Modality.id == modality_id).first():
+        raise HTTPException(status_code=404, detail="Modality not found")
+    if inspection_form_id and not db.query(InspectionForm).filter(InspectionForm.id == inspection_form_id).first():
+        raise HTTPException(status_code=404, detail="Inspection form not found")
 
 
 @router.get("/", response_model=InventoryPartListResponse)
@@ -65,7 +79,12 @@ def list_inventory_parts(
     limit: int = Query(100, ge=1, le=500),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    query = db.query(InventoryPart).options(joinedload(InventoryPart.facility), joinedload(InventoryPart.tier))
+    query = db.query(InventoryPart).options(
+        joinedload(InventoryPart.facility),
+        joinedload(InventoryPart.tier),
+        joinedload(InventoryPart.modality),
+        joinedload(InventoryPart.inspection_form),
+    )
     if facility_id is not None:
         query = query.filter(InventoryPart.facility_id == facility_id)
     if tier_id is not None:
@@ -80,6 +99,7 @@ def list_inventory_parts(
         query = query.filter(
             or_(
                 InventoryPart.part_number.ilike(f"%{search}%"),
+                InventoryPart.asset_tag.ilike(f"%{search}%"),
                 InventoryPart.description.ilike(f"%{search}%"),
                 InventoryPart.make.ilike(f"%{search}%"),
                 InventoryPart.model.ilike(f"%{search}%"),
@@ -100,7 +120,12 @@ def get_inventory_part(
 ) -> Any:
     part = (
         db.query(InventoryPart)
-        .options(joinedload(InventoryPart.facility), joinedload(InventoryPart.tier))
+        .options(
+            joinedload(InventoryPart.facility),
+            joinedload(InventoryPart.tier),
+            joinedload(InventoryPart.modality),
+            joinedload(InventoryPart.inspection_form),
+        )
         .filter(InventoryPart.id == part_id)
         .first()
     )
@@ -115,7 +140,7 @@ def create_inventory_part(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    _validate_facility_and_tier(db, part_in.facility_id, part_in.tier_id)
+    _validate_references(db, part_in.facility_id, part_in.tier_id, part_in.modality_id, part_in.inspection_form_id)
     existing = (
         db.query(InventoryPart)
         .filter(
@@ -160,7 +185,13 @@ def update_inventory_part(
     update_data = part_in.model_dump(exclude_unset=True)
     facility_id = update_data.get("facility_id", part.facility_id)
     tier_id = update_data.get("tier_id", part.tier_id)
-    _validate_facility_and_tier(db, facility_id, tier_id)
+    _validate_references(
+        db,
+        facility_id,
+        tier_id,
+        update_data.get("modality_id", part.modality_id),
+        update_data.get("inspection_form_id", part.inspection_form_id),
+    )
 
     before = {c.name: getattr(part, c.name) for c in part.__table__.columns}
     for field, value in update_data.items():
@@ -237,7 +268,7 @@ def create_part_transaction(
             raise HTTPException(status_code=400, detail="Transfer requires a destination facility")
         if part.quantity_on_hand < txn_in.quantity:
             raise HTTPException(status_code=400, detail="Insufficient stock for transfer")
-        _validate_facility_and_tier(db, txn_in.to_facility_id, part.tier_id)
+        _validate_references(db, txn_in.to_facility_id, part.tier_id, part.modality_id, part.inspection_form_id)
         part.quantity_on_hand -= txn_in.quantity
         destination = (
             db.query(InventoryPart)
@@ -252,11 +283,18 @@ def create_part_transaction(
             destination = InventoryPart(
                 facility_id=txn_in.to_facility_id,
                 tier_id=part.tier_id,
+                modality_id=part.modality_id,
+                inspection_form_id=part.inspection_form_id,
+                asset_tag=part.asset_tag,
                 part_number=part.part_number,
                 part_type=part.part_type,
                 description=part.description,
                 make=part.make,
                 model=part.model,
+                default_picture_url=part.default_picture_url,
+                risk_priority=part.risk_priority,
+                risk_name=part.risk_name,
+                inventory_date=part.inventory_date,
                 unit_price=part.unit_price,
                 condition=part.condition,
                 supplier_name=part.supplier_name,

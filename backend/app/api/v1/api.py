@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     inventory,
     dashboard,
     notifications,
+    inspections,
 )
 
 api_router = APIRouter()
@@ -36,7 +37,7 @@ api_router.include_router(service_requests.router, prefix="/service-requests", t
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
-# api_router.include_router(inspections.router, prefix="/inspections", tags=["inspections"])
+api_router.include_router(inspections.router, prefix="/inspections", tags=["inspections"])
 # api_router.include_router(sales.router, prefix="/sales", tags=["sales"])
 # api_router.include_router(rentals.router, prefix="/rentals", tags=["rentals"])
 # api_router.include_router(reports.router, prefix="/reports", tags=["reports"])

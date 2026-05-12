@@ -24,6 +24,7 @@ import {
   type ServiceRequestQuotationList,
   type QuotationPaymentCreate,
 } from '@/api/serviceRequests'
+import { fetchInspectionQuotations } from '@/api/inspections'
 import { useAuthStore } from '@/stores/authStore'
 
 const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
@@ -60,6 +61,11 @@ const Billing = () => {
   const { data: quotations, isLoading } = useQuery({
     queryKey: ['billing-quotations'],
     queryFn: fetchAllQuotations,
+  })
+
+  const { data: inspectionInvoices } = useQuery({
+    queryKey: ['inspection-quotations'],
+    queryFn: fetchInspectionQuotations,
   })
 
   const payMut = useMutation({
@@ -114,9 +120,14 @@ const Billing = () => {
   const filtered = quotations?.filter(q =>
     statusFilter === 'all' ? true : q.status === statusFilter
   ) ?? []
+  const filteredInspectionInvoices = inspectionInvoices?.items.filter(inv =>
+    statusFilter === 'all' ? true : inv.status === statusFilter
+  ) ?? []
 
   const totalOutstanding = filtered.filter(q => q.status !== 'paid').reduce((s, q) => s + Number(q.amount), 0)
+    + filteredInspectionInvoices.filter(inv => inv.status !== 'paid').reduce((s, inv) => s + Number(inv.balance_due || inv.total_amount), 0)
   const totalPaid = filtered.filter(q => q.status === 'paid').reduce((s, q) => s + Number(q.amount), 0)
+    + filteredInspectionInvoices.filter(inv => inv.status === 'paid').reduce((s, inv) => s + Number(inv.total_amount), 0)
 
   const formatDate = (d: string | null) => {
     if (!d) return '—'
@@ -162,7 +173,7 @@ const Billing = () => {
             </Box>
             <Box sx={{ p: 2, bgcolor: '#fff', borderRadius: '18px', minWidth: 150, border: '1px solid #E8F8F0' }}>
               <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#6B7280', textTransform: 'uppercase' }}>Total Quotations</Typography>
-              <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#1E1B4B' }}>{filtered.length}</Typography>
+              <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#1E1B4B' }}>{filtered.length + filteredInspectionInvoices.length}</Typography>
             </Box>
           </Box>
         </Box>
@@ -352,6 +363,52 @@ const Billing = () => {
                       </TableCell>
                     </TableRow>
                   </>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
+
+      <Card sx={{ mt: 3, overflow: 'hidden', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+        <Box sx={{ p: 2.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #EEF0F6' }}>
+          <Box>
+            <Typography sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: '1.1rem' }}>Inspection Invoices</Typography>
+            <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: '0.8rem' }}>Generated when facility inventory inspections are completed.</Typography>
+          </Box>
+        </Box>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                <TableCell sx={{ fontWeight: 700 }}>Invoice #</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Inspection #</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Facility</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Inventory</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="right">Amount</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Due Date</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredInspectionInvoices.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4, color: '#6B7280', fontWeight: 600 }}>
+                    No inspection invoices found.
+                  </TableCell>
+                </TableRow>
+              ) : filteredInspectionInvoices.map(inv => {
+                const sc = STATUS_CHIP[inv.status] || STATUS_CHIP.draft
+                return (
+                  <TableRow key={inv.id} hover>
+                    <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 800 }}>{inv.invoice_number}</TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{inv.inspection_number || '—'}</TableCell>
+                    <TableCell>{inv.facility_name || '—'}</TableCell>
+                    <TableCell>{inv.inventory_part_name || '—'}</TableCell>
+                    <TableCell align="right" sx={{ color: '#059669', fontWeight: 900 }}>${Number(inv.total_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell><Chip label={inv.status} size="small" sx={{ bgcolor: sc.bg, color: sc.color, fontWeight: 700, fontSize: '0.7rem', textTransform: 'capitalize' }} /></TableCell>
+                    <TableCell>{formatDate(inv.due_date)}</TableCell>
+                  </TableRow>
                 )
               })}
             </TableBody>

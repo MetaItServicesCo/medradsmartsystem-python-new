@@ -109,3 +109,91 @@ def run_migration():
         except Exception as e:
             conn.rollback()
             pass
+
+        inspection_columns = [
+            "inventory_part_id INTEGER REFERENCES inventory_parts(id)",
+            "inspection_scope VARCHAR DEFAULT 'facility_inventory'",
+            "inspection_frequency VARCHAR DEFAULT 'instant'",
+            "compliance_requirement VARCHAR",
+            "criticality VARCHAR",
+            "quotation_notes TEXT",
+        ]
+        for col in inspection_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE inspections ADD COLUMN {col}"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass
+
+        try:
+            conn.execute(text("ALTER TABLE inspections ALTER COLUMN equipment_id DROP NOT NULL"))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            pass
+
+        try:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inspections_inventory_part_id ON inspections (inventory_part_id)"))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            pass
+
+        inventory_equipment_columns = [
+            "modality_id INTEGER REFERENCES modalities(id)",
+            "inspection_form_id INTEGER REFERENCES inspection_forms(id)",
+            "asset_tag VARCHAR",
+            "default_picture_url TEXT",
+            "risk_priority VARCHAR",
+            "risk_name VARCHAR",
+            "inventory_date DATE",
+            "acquisition_authorized_by VARCHAR",
+            "department VARCHAR",
+            "po_no VARCHAR",
+            "requester_first_name VARCHAR",
+            "requester_last_name VARCHAR",
+            "requester_phone VARCHAR",
+            "requester_fax VARCHAR",
+            "requester_mailing_address TEXT",
+            "requester_email VARCHAR",
+            "owning_department VARCHAR",
+            "acquisition_method VARCHAR",
+            "acquired_company_name VARCHAR",
+            "acquired_account_number VARCHAR",
+            "acquired_sales_person VARCHAR",
+            "acquired_phone VARCHAR",
+            "acquired_email VARCHAR",
+            "acquired_mailing_address TEXT",
+            "acquisition_date DATE",
+            "capital_equipment VARCHAR",
+            "warranty_duration VARCHAR",
+            "parts_duration VARCHAR",
+            "labor_duration VARCHAR",
+            "coverage_start_date DATE",
+            "coverage_type VARCHAR",
+            "part_warranty_end_date DATE",
+            "labor_warranty_end_date DATE",
+            "pm_scheduling VARCHAR",
+            "installation_date DATE",
+            "last_pm_date DATE",
+            "next_generated_pm_date DATE",
+        ]
+        for col in inventory_equipment_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE inventory_parts ADD COLUMN {col}"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass
+
+        for index_sql in [
+            "CREATE INDEX IF NOT EXISTS ix_inventory_parts_asset_tag ON inventory_parts (asset_tag)",
+            "CREATE INDEX IF NOT EXISTS ix_inventory_parts_modality_id ON inventory_parts (modality_id)",
+        ]:
+            try:
+                conn.execute(text(index_sql))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass

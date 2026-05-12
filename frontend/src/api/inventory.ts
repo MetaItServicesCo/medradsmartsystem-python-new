@@ -8,13 +8,52 @@ export interface InventoryPart {
   facility_name: string | null
   tier_id: number | null
   tier_name: string | null
+  modality_id: number | null
+  modality_name: string | null
+  inspection_form_id: number | null
+  inspection_form_name: string | null
+  asset_tag: string | null
   part_number: string
   part_type: string
   description: string
   make: string | null
   model: string | null
+  default_picture_url: string | null
+  risk_priority: string | null
+  risk_name: string | null
+  inventory_date: string | null
   unit_price: number
   condition: string
+  acquisition_authorized_by: string | null
+  department: string | null
+  po_no: string | null
+  requester_first_name: string | null
+  requester_last_name: string | null
+  requester_phone: string | null
+  requester_fax: string | null
+  requester_mailing_address: string | null
+  requester_email: string | null
+  owning_department: string | null
+  acquisition_method: string | null
+  acquired_company_name: string | null
+  acquired_account_number: string | null
+  acquired_sales_person: string | null
+  acquired_phone: string | null
+  acquired_email: string | null
+  acquired_mailing_address: string | null
+  acquisition_date: string | null
+  capital_equipment: string | null
+  warranty_duration: string | null
+  parts_duration: string | null
+  labor_duration: string | null
+  coverage_start_date: string | null
+  coverage_type: string | null
+  part_warranty_end_date: string | null
+  labor_warranty_end_date: string | null
+  pm_scheduling: string | null
+  installation_date: string | null
+  last_pm_date: string | null
+  next_generated_pm_date: string | null
   supplier_name: string | null
   supplier_contact: string | null
   supplier_email: string | null
@@ -35,13 +74,50 @@ export interface InventoryPart {
 export interface InventoryPartPayload {
   facility_id: number
   tier_id?: number | null
+  modality_id?: number | null
+  inspection_form_id?: number | null
+  asset_tag?: string
   part_number: string
   part_type: string
   description: string
   make?: string
   model?: string
+  default_picture_url?: string
+  risk_priority?: string
+  risk_name?: string
+  inventory_date?: string | null
   unit_price: number
   condition: string
+  acquisition_authorized_by?: string
+  department?: string
+  po_no?: string
+  requester_first_name?: string
+  requester_last_name?: string
+  requester_phone?: string
+  requester_fax?: string
+  requester_mailing_address?: string
+  requester_email?: string
+  owning_department?: string
+  acquisition_method?: string
+  acquired_company_name?: string
+  acquired_account_number?: string
+  acquired_sales_person?: string
+  acquired_phone?: string
+  acquired_email?: string
+  acquired_mailing_address?: string
+  acquisition_date?: string | null
+  capital_equipment?: string
+  warranty_duration?: string
+  parts_duration?: string
+  labor_duration?: string
+  coverage_start_date?: string | null
+  coverage_type?: string
+  part_warranty_end_date?: string | null
+  labor_warranty_end_date?: string | null
+  pm_scheduling?: string
+  installation_date?: string | null
+  last_pm_date?: string | null
+  next_generated_pm_date?: string | null
   supplier_name?: string
   supplier_contact?: string
   supplier_email?: string
