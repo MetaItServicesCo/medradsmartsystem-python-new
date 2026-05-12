@@ -35,7 +35,9 @@ export default function useWebRTC({
   isHost = false,
   onCallEnded,
 }: UseWebRTCOptions): UseWebRTCReturn {
-  const { sendWsMessage, addMessageListener, removeMessageListener } = useChatStore()
+  const sendWsMessage = useChatStore((s) => s.sendWsMessage)
+  const addMessageListener = useChatStore((s) => s.addMessageListener)
+  const removeMessageListener = useChatStore((s) => s.removeMessageListener)
 
   const [callState, setCallState] = useState<'idle' | 'ringing' | 'connected' | 'ended'>('idle')
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
@@ -46,49 +48,19 @@ export default function useWebRTC({
   const screenStreamRef = useRef<MediaStream | null>(null)
   const peersRef = useRef<Record<number, any>>({})
   const peerRef = useRef<any>(null) // Legacy for 1-on-1
-
-  // Handle incoming WebRTC signaling messages
-  const handleSignaling = useCallback((data: any) => {
-    // For Host: data.sender_id is the joiner
-    // For Joiner: data.sender_id must be the host (targetUserId)
-    if (!isHost && data.sender_id !== targetUserId) return
-
-    const fromId = data.sender_id
-    const targetPeer = isHost ? peersRef.current[fromId] : peerRef.current
-
-    if (data.type === 'call_offer' && isHost) {
-      // Host receives offer from joiner
-      answerCall(data.offer, fromId)
-    } else if (data.type === 'call_answer' && targetPeer) {
-      targetPeer.signal(data.answer)
-    } else if (data.type === 'ice_candidate' && targetPeer) {
-      targetPeer.signal(data.candidate)
-    } else if (data.type === 'call_end' || data.type === 'call_reject') {
-      if (isHost) {
-        if (peersRef.current[fromId]) {
-          peersRef.current[fromId].destroy()
-          delete peersRef.current[fromId]
-          setRemoteStreams(prev => {
-            const next = { ...prev }; delete next[fromId]; return next
-          })
-        }
-      } else {
-        cleanup()
-        setCallState('ended')
-        onCallEnded?.()
-      }
-    }
-  }, [targetUserId, onCallEnded, isHost])
+  const localStreamRef = useRef<MediaStream | null>(null)
+  const onCallEndedRef = useRef(onCallEnded)
 
   useEffect(() => {
-    addMessageListener(handleSignaling)
-    return () => {
-      removeMessageListener(handleSignaling)
-      cleanup()
-    }
-  }, [handleSignaling, addMessageListener, removeMessageListener])
+    onCallEndedRef.current = onCallEnded
+  }, [onCallEnded])
 
-  const getMediaStream = async (): Promise<MediaStream> => {
+  const rememberLocalStream = useCallback((stream: MediaStream | null) => {
+    localStreamRef.current = stream
+    setLocalStream(stream)
+  }, [])
+
+  const getMediaStream = useCallback(async (): Promise<MediaStream> => {
     const constraints: MediaStreamConstraints = {
       audio: true,
       video: callType === 'video',
@@ -102,18 +74,18 @@ export default function useWebRTC({
       }
       throw err
     }
-  }
+  }, [callType])
 
-  const cleanup = () => {
+  const cleanup = useCallback(() => {
     Object.values(peersRef.current).forEach(p => p.destroy())
     peersRef.current = {}
     if (peerRef.current) {
       peerRef.current.destroy()
       peerRef.current = null
     }
-    if (localStream) {
-      localStream.getTracks().forEach(t => t.stop())
-      setLocalStream(null)
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop())
+      rememberLocalStream(null)
     }
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(t => t.stop())
@@ -122,82 +94,15 @@ export default function useWebRTC({
     setRemoteStream(null)
     setRemoteStreams({})
     setIsScreenSharing(false)
-  }
+  }, [rememberLocalStream])
 
-  const initiateCall = async () => {
-    if (!targetUserId && !isHost) {
-      setCallError('Unable to start call because the participant is missing.')
-      setCallState('ended')
-      return
-    }
-
-    if (isHost) {
-      // Host just waits for offers
-      const stream = await getMediaStream()
-      setLocalStream(stream)
-      setCallState('connected')
-      return
-    }
-
+  const answerCall = useCallback(async (offer: any, fromUserId: number) => {
     try {
       setCallError(null)
-      setCallState('ringing')
-      const stream = await getMediaStream()
-      setLocalStream(stream)
-
-      const peer = new SimplePeer({
-        initiator: true,
-        trickle: false,
-        stream: stream,
-        config: { iceServers: ICE_SERVERS },
-      })
-
-      peer.on('signal', (data: any) => {
-        if (data.type === 'offer') {
-          sendWsMessage({
-            type: 'call_offer',
-            target_id: targetUserId,
-            offer: data,
-            call_type: callType,
-          })
-        } else {
-          sendWsMessage({
-            type: 'ice_candidate',
-            target_id: targetUserId,
-            candidate: data,
-          })
-        }
-      })
-
-      peer.on('stream', (remoteStream: MediaStream) => {
-        setRemoteStream(remoteStream)
-        setCallState('connected')
-      })
-
-      peer.on('connect', () => setCallState('connected'))
-      peer.on('close', () => { setCallState('ended'); onCallEnded?.() })
-      peer.on('error', (err: any) => {
-        console.error(err)
-        setCallError('Call connection failed. Please try again.')
-        cleanup()
-        setCallState('ended')
-      })
-
-      peerRef.current = peer
-    } catch (err) {
-      console.error(err)
-      setCallError('Microphone or camera access failed.')
-      setCallState('ended')
-    }
-  }
-
-  const answerCall = async (offer: any, fromUserId: number) => {
-    try {
-      setCallError(null)
-      let stream = localStream
+      let stream = localStreamRef.current
       if (!stream) {
         stream = await getMediaStream()
-        setLocalStream(stream)
+        rememberLocalStream(stream)
       }
 
       const peer = new SimplePeer({
@@ -246,7 +151,7 @@ export default function useWebRTC({
       peer.on('connect', () => setCallState('connected'))
       peer.on('close', () => {
         setCallState('ended')
-        if (!isHost) onCallEnded?.()
+        if (!isHost) onCallEndedRef.current?.()
       })
 
       peer.signal(offer)
@@ -261,9 +166,116 @@ export default function useWebRTC({
       setCallError('Microphone or camera access failed.')
       setCallState('ended')
     }
-  }
+  }, [getMediaStream, isHost, rememberLocalStream, sendWsMessage])
 
-  const endCall = () => {
+  // Handle incoming WebRTC signaling messages
+  const handleSignaling = useCallback((data: any) => {
+    // For Host: data.sender_id is the joiner
+    // For Joiner: data.sender_id must be the host (targetUserId)
+    if (!isHost && data.sender_id !== targetUserId) return
+
+    const fromId = data.sender_id
+    const targetPeer = isHost ? peersRef.current[fromId] : peerRef.current
+
+    if (data.type === 'call_offer' && isHost) {
+      answerCall(data.offer, fromId)
+    } else if (data.type === 'call_answer' && targetPeer) {
+      targetPeer.signal(data.answer)
+    } else if (data.type === 'ice_candidate' && targetPeer) {
+      targetPeer.signal(data.candidate)
+    } else if (data.type === 'call_end' || data.type === 'call_reject') {
+      if (isHost) {
+        if (peersRef.current[fromId]) {
+          peersRef.current[fromId].destroy()
+          delete peersRef.current[fromId]
+          setRemoteStreams(prev => {
+            const next = { ...prev }; delete next[fromId]; return next
+          })
+        }
+      } else {
+        cleanup()
+        setCallState('ended')
+        onCallEndedRef.current?.()
+      }
+    }
+  }, [answerCall, cleanup, targetUserId, isHost])
+
+  useEffect(() => {
+    addMessageListener(handleSignaling)
+    return () => {
+      removeMessageListener(handleSignaling)
+      cleanup()
+    }
+  }, [handleSignaling, addMessageListener, removeMessageListener, cleanup])
+
+  const initiateCall = useCallback(async () => {
+    if (!targetUserId && !isHost) {
+      setCallError('Unable to start call because the participant is missing.')
+      setCallState('ended')
+      return
+    }
+
+    if (isHost) {
+      // Host just waits for offers
+      const stream = await getMediaStream()
+      rememberLocalStream(stream)
+      setCallState('connected')
+      return
+    }
+
+    try {
+      setCallError(null)
+      setCallState('ringing')
+      const stream = await getMediaStream()
+      rememberLocalStream(stream)
+
+      const peer = new SimplePeer({
+        initiator: true,
+        trickle: false,
+        stream: stream,
+        config: { iceServers: ICE_SERVERS },
+      })
+
+      peer.on('signal', (data: any) => {
+        if (data.type === 'offer') {
+          sendWsMessage({
+            type: 'call_offer',
+            target_id: targetUserId,
+            offer: data,
+            call_type: callType,
+          })
+        } else {
+          sendWsMessage({
+            type: 'ice_candidate',
+            target_id: targetUserId,
+            candidate: data,
+          })
+        }
+      })
+
+      peer.on('stream', (remoteStream: MediaStream) => {
+        setRemoteStream(remoteStream)
+        setCallState('connected')
+      })
+
+      peer.on('connect', () => setCallState('connected'))
+      peer.on('close', () => { setCallState('ended'); onCallEndedRef.current?.() })
+      peer.on('error', (err: any) => {
+        console.error(err)
+        setCallError('Call connection failed. Please try again.')
+        cleanup()
+        setCallState('ended')
+      })
+
+      peerRef.current = peer
+    } catch (err) {
+      console.error(err)
+      setCallError('Microphone or camera access failed.')
+      setCallState('ended')
+    }
+  }, [cleanup, getMediaStream, isHost, rememberLocalStream, sendWsMessage, targetUserId])
+
+  const endCall = useCallback(() => {
     if (targetUserId) {
       sendWsMessage({
         type: 'call_end',
@@ -272,7 +284,7 @@ export default function useWebRTC({
     }
     cleanup()
     setCallState('ended')
-  }
+  }, [cleanup, sendWsMessage, targetUserId])
 
   const toggleScreenShare = async () => {
     if (!localStream) return
