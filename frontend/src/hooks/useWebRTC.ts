@@ -5,7 +5,7 @@ import { useChatStore } from '@/stores/chatStore'
 import SimplePeer from 'simple-peer'
 
 interface UseWebRTCOptions {
-  targetUserId: number
+  targetUserId?: number
   callType: 'voice' | 'video'
   isHost?: boolean
   onCallEnded?: () => void
@@ -125,6 +125,12 @@ export default function useWebRTC({
   }
 
   const initiateCall = async () => {
+    if (!targetUserId && !isHost) {
+      setCallError('Unable to start call because the participant is missing.')
+      setCallState('ended')
+      return
+    }
+
     if (isHost) {
       // Host just waits for offers
       const stream = await getMediaStream()
@@ -258,10 +264,12 @@ export default function useWebRTC({
   }
 
   const endCall = () => {
-    sendWsMessage({
-      type: 'call_end',
-      target_id: targetUserId,
-    })
+    if (targetUserId) {
+      sendWsMessage({
+        type: 'call_end',
+        target_id: targetUserId,
+      })
+    }
     cleanup()
     setCallState('ended')
   }

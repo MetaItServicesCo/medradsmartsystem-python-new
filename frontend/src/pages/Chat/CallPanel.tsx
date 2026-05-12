@@ -20,6 +20,22 @@ interface Props {
   onEnd: () => void
 }
 
+const safeText = (value: unknown, fallback = '') => {
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return fallback
+  return String(value)
+}
+
+const initialsFor = (value: unknown) => {
+  const text = safeText(value, 'U').trim() || 'U'
+  return text
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
 const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUserId, onEnd }: Props) => {
   const [muted, setMuted] = useState(false)
   const [videoOff, setVideoOff] = useState(callType === 'voice')
@@ -41,7 +57,7 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
     toggleScreenShare,
     endCall,
   } = useWebRTC({
-    targetUserId: targetUser.id,
+    targetUserId: targetUser?.id,
     callType,
     isHost,
     onCallEnded: onEnd,
@@ -109,14 +125,25 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
     onEnd()
   }
 
-  const initials = targetUser.full_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
+  const participantName = safeText(targetUser?.full_name || targetUser?.username, targetUser?.id ? `User #${targetUser.id}` : 'Unknown User')
+  const initials = initialsFor(participantName)
   const hasRemoteVideo = Boolean(remoteStream?.getVideoTracks().length)
   const showRemoteVideo = callType === 'video' && hasRemoteVideo
   const hasHostParticipants = isHost && Object.keys(remoteStreams).length > 0
   const showAvatarPanel = callType === 'voice' || (!showRemoteVideo && !hasHostParticipants)
 
   return (
-    <Dialog open fullScreen PaperProps={{ sx: { backgroundColor: '#0F0A1F' } }}>
+    <Dialog
+      open
+      fullScreen
+      PaperProps={{
+        sx: {
+          backgroundColor: '#0F0A1F',
+          backgroundImage: 'radial-gradient(circle at top, rgba(124,58,237,0.28), transparent 36%)',
+        },
+      }}
+      sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
+    >
       <Box sx={{
         width: '100%', height: '100%',
         display: 'flex', flexDirection: 'column',
@@ -190,7 +217,7 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
               {initials}
             </Avatar>
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mb: 0.5 }}>
-              {targetUser.full_name} {isHost ? '(Meeting Host)' : ''}
+              {participantName} {isHost ? '(Meeting Host)' : ''}
             </Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.5)', mb: 1 }}>
               {callError ? callError :
