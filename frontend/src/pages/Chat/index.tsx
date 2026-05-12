@@ -19,6 +19,30 @@ import FriendRequests from './FriendRequests'
 import CreateWorkspaceModal from './CreateWorkspaceModal'
 import CallPanel from './CallPanel'
 
+const safeText = (value: unknown, fallback = '') => {
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return fallback
+  return String(value)
+}
+
+const displayNameFor = (user: any) => {
+  const name = safeText(user?.full_name).trim()
+  const username = safeText(user?.username).trim()
+  if (name) return name
+  if (username) return username
+  return user?.id ? `User #${user.id}` : 'Unknown User'
+}
+
+const initialsFor = (value: unknown) => {
+  const text = safeText(value, 'U').trim() || 'U'
+  return text
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
 const Chat = () => {
   const { connect, isConnected, onlineUsers, unreadCounts, incomingCall, clearIncomingCall, sendWsMessage } = useChatStore()
 
@@ -45,13 +69,14 @@ const Chat = () => {
     queryKey: ['friends'],
     queryFn: fetchFriends,
   })
+  const friendsList = Array.isArray(friends) ? friends : []
 
   // Fetch workspaces
   const { data: workspacesData, refetch: refetchWorkspaces } = useQuery({
     queryKey: ['workspaces'],
     queryFn: fetchWorkspaces,
   })
-  const workspaces = workspacesData?.items || []
+  const workspaces = Array.isArray(workspacesData?.items) ? workspacesData.items : []
 
   // Fetch unread counts
   useQuery({
@@ -69,7 +94,7 @@ const Chat = () => {
   const pendingCount = pendingRequests?.total || 0
 
   const incomingCaller = incomingCall
-    ? friends.find((f: any) => f.id === incomingCall.senderId) || {
+    ? friendsList.find((f: any) => f.id === incomingCall.senderId) || {
         id: incomingCall.senderId,
         full_name: incomingCall.senderName || `User #${incomingCall.senderId}`,
       }
@@ -93,13 +118,14 @@ const Chat = () => {
     clearIncomingCall()
   }
 
-  const filteredFriends = friends.filter((f: any) =>
-    f.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.username.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const normalizedSearch = searchTerm.toLowerCase().trim()
+  const filteredFriends = friendsList.filter((f: any) => {
+    const haystack = `${displayNameFor(f)} ${safeText(f?.username)}`.toLowerCase()
+    return haystack.includes(normalizedSearch)
+  })
 
   const filteredWorkspaces = workspaces.filter((w: any) =>
-    w.name.toLowerCase().includes(searchTerm.toLowerCase())
+    safeText(w?.name, 'Workspace').toLowerCase().includes(normalizedSearch)
   )
 
   return (
@@ -199,6 +225,7 @@ const Chat = () => {
                   const isOnline = onlineUsers.includes(friend.id)
                   const unread = unreadCounts[String(friend.id)] || 0
                   const isSelected = selectedUser?.id === friend.id
+                  const friendName = displayNameFor(friend)
                   return (
                     <ListItemButton
                       key={friend.id}
@@ -227,12 +254,12 @@ const Chat = () => {
                             backgroundColor: '#7C3AED',
                             fontSize: '0.9rem', fontWeight: 700,
                           }}>
-                            {friend.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                            {initialsFor(friendName)}
                           </Avatar>
                         </Badge>
                       </ListItemAvatar>
                       <ListItemText
-                        primary={friend.full_name}
+                        primary={friendName}
                         secondary={isOnline ? 'Online' : 'Offline'}
                         primaryTypographyProps={{ fontWeight: 600, fontSize: '0.875rem', color: '#1E1B4B' }}
                         secondaryTypographyProps={{ fontSize: '0.75rem', color: isOnline ? '#10B981' : '#9CA3AF' }}
@@ -264,6 +291,7 @@ const Chat = () => {
               ) : (
                 filteredWorkspaces.map((ws: any) => {
                   const isSelected = selectedWorkspace?.id === ws.id
+                  const workspaceName = safeText(ws?.name, 'Workspace')
                   return (
                     <ListItemButton
                       key={ws.id}
@@ -281,12 +309,12 @@ const Chat = () => {
                           background: 'linear-gradient(135deg, #7C3AED, #EC4899)',
                           fontSize: '1rem', fontWeight: 700,
                         }}>
-                          {ws.name[0].toUpperCase()}
+                          {workspaceName[0]?.toUpperCase() || 'W'}
                         </Avatar>
                       </ListItemAvatar>
                       <ListItemText
-                        primary={ws.name}
-                        secondary={`${ws.member_count} members`}
+                        primary={workspaceName}
+                        secondary={`${ws.member_count ?? 0} members`}
                         primaryTypographyProps={{ fontWeight: 600, fontSize: '0.875rem', color: '#1E1B4B' }}
                         secondaryTypographyProps={{ fontSize: '0.75rem', color: '#9CA3AF' }}
                       />
@@ -351,11 +379,11 @@ const Chat = () => {
         <DialogContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
             <Avatar sx={{ width: 52, height: 52, backgroundColor: '#7C3AED', fontWeight: 800 }}>
-              {incomingCaller?.full_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'}
+              {initialsFor(displayNameFor(incomingCaller))}
             </Avatar>
             <Box>
               <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
-                {incomingCaller?.full_name || 'Unknown caller'}
+                {displayNameFor(incomingCaller)}
               </Typography>
               <Typography variant="body2" sx={{ color: '#6B7280' }}>
                 Wants to start a {incomingCall?.callType || 'voice'} call.

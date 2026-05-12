@@ -51,6 +51,30 @@ interface Props {
   user: any
 }
 
+const safeText = (value: unknown, fallback = '') => {
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return fallback
+  return String(value)
+}
+
+const displayNameFor = (user: any) => {
+  const name = safeText(user?.full_name).trim()
+  const username = safeText(user?.username).trim()
+  if (name) return name
+  if (username) return username
+  return user?.id ? `User #${user.id}` : 'Unknown User'
+}
+
+const initialsFor = (value: unknown) => {
+  const text = safeText(value, 'U').trim() || 'U'
+  return text
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
 const MessagePanel = ({ user }: Props) => {
   const currentUser = useAuthStore((s) => s.user)
   const { sendWsMessage, addMessageListener, removeMessageListener, typingUsers, onlineUsers } = useChatStore()
@@ -173,7 +197,8 @@ const MessagePanel = ({ user }: Props) => {
     setCallState({ active: true, type })
   }
 
-  const initials = user.full_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
+  const displayName = displayNameFor(user)
+  const initials = initialsFor(displayName)
 
   // Render a file message bubble
   const renderFileContent = (msg: DirectMessageData, isMine: boolean) => {
@@ -275,7 +300,7 @@ const MessagePanel = ({ user }: Props) => {
         </Avatar>
         <Box sx={{ flex: 1 }}>
           <Typography sx={{ fontWeight: 700, fontSize: '0.95rem', color: '#1E1B4B' }}>
-            {user.full_name}
+            {displayName}
           </Typography>
           <Typography variant="caption" sx={{ color: isOnline ? '#10B981' : '#9CA3AF' }}>
             {isTyping ? 'Typing...' : isOnline ? 'Online' : 'Offline'}

@@ -8,6 +8,7 @@ import 'react-toastify/dist/ReactToastify.css'
 import App from './App'
 import theme from './theme'
 import './theme/global.css'
+import ErrorBoundary from './components/ErrorBoundary'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,7 +25,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <App />
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
           <ToastContainer position="top-right" autoClose={3000} />
         </ThemeProvider>
       </BrowserRouter>
