@@ -1,5 +1,5 @@
 
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
 
@@ -41,6 +41,30 @@ class UserRoleUpdate(BaseModel):
     role: str
 
 
+class UserPermissionRule(BaseModel):
+    index: bool = False
+    view: bool = False
+    add: bool = False
+    edit: bool = False
+    delete: bool = False
+    scope: str = "own"
+
+
+class UserPermissionsUpdate(BaseModel):
+    permissions: Dict[str, UserPermissionRule]
+
+
+class PermissionCatalogModule(BaseModel):
+    key: str
+    label: str
+
+
+class PermissionCatalogResponse(BaseModel):
+    modules: List[PermissionCatalogModule]
+    actions: List[str]
+    scopes: List[str]
+
+
 class FacilityBrief(BaseModel):
     id: int
     name: str
@@ -60,6 +84,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     facility_id: Optional[int] = None
+    permissions: Optional[Dict[str, UserPermissionRule]] = None
     created_at: datetime
     updated_at: datetime
     facilities: Optional[List[FacilityBrief]] = None

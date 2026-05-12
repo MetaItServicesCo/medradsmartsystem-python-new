@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -35,6 +35,7 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0)
     last_login = Column(DateTime, nullable=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=True)
+    permissions = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

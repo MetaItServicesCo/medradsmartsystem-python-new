@@ -27,6 +27,7 @@ def run_migration():
     user_columns = [
         "phone VARCHAR",
         "avatar_url VARCHAR",
+        "permissions JSON",
     ]
 
     with engine.connect() as conn:

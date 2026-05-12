@@ -14,6 +14,7 @@ from app.crud.crud_user import user as crud_user
 from app.schemas.user import (
     UserCreate, UserUpdate, UserResponse, UserListResponse,
     UserProfileUpdate, UserRoleUpdate, UserSearchResponse, FacilityBrief,
+    UserPermissionsUpdate, PermissionCatalogResponse,
 )
 from app.core.security import create_access_token, get_password_hash
 from app.utils.logging import log_activity
@@ -25,6 +26,27 @@ get_superadmin_user = require_roles("superadmin")
 PROFILE_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "profile_pictures")
 ALLOWED_PROFILE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_PROFILE_IMAGE_SIZE = 5 * 1024 * 1024
+PERMISSION_ACTIONS = ["index", "view", "add", "edit", "delete"]
+PERMISSION_SCOPES = ["all", "facility", "assigned", "own", "none"]
+PERMISSION_MODULES = [
+    {"key": "dashboard", "label": "Dashboard"},
+    {"key": "facilities", "label": "Facilities"},
+    {"key": "facility_inventory", "label": "Facility Inventory"},
+    {"key": "inventory_parts", "label": "Parts Inventory"},
+    {"key": "inventory_tiers", "label": "Inventory Tiers"},
+    {"key": "modalities", "label": "Modalities"},
+    {"key": "users", "label": "Users"},
+    {"key": "service_requests", "label": "Service Requests"},
+    {"key": "inspections", "label": "Inspections"},
+    {"key": "inspection_quotations", "label": "Inspection Quotations"},
+    {"key": "billing", "label": "Billing"},
+    {"key": "reports", "label": "Reports"},
+    {"key": "rentals", "label": "Rentals"},
+    {"key": "calendar", "label": "Calendar"},
+    {"key": "chat", "label": "Chat"},
+    {"key": "notifications", "label": "Notifications"},
+    {"key": "audit_logs", "label": "Audit Logs"},
+]
 
 
 def _build_user_response(db_user: User, db: Session) -> dict:
@@ -57,6 +79,7 @@ def _build_user_response(db_user: User, db: Session) -> dict:
         role=db_user.role.value if db_user.role else "employee",
         is_active=db_user.is_active,
         facility_id=db_user.facility_id,
+        permissions=db_user.permissions or {},
         created_at=db_user.created_at,
         updated_at=db_user.updated_at,
         facilities=facilities,
@@ -244,6 +267,73 @@ def search_users(
     results = crud_user.search(db, query=q, skip=skip, limit=limit)
     # Exclude the searching user from results
     return [u for u in results if u.id != current_user.id]
+
+
+@router.get("/permissions/catalog", response_model=PermissionCatalogResponse)
+def get_permission_catalog(
+    current_user: User = Depends(get_superadmin_user),
+) -> Any:
+    """Return the modules/actions available in the permission editor."""
+    return {
+        "modules": PERMISSION_MODULES,
+        "actions": PERMISSION_ACTIONS,
+        "scopes": PERMISSION_SCOPES,
+    }
+
+
+@router.get("/{user_id}/permissions", response_model=UserResponse)
+def get_user_permissions(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_superadmin_user),
+) -> Any:
+    """Return a user with their saved permissions (super admin only)."""
+    db_user = crud_user.get(db, id=user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _build_user_response(db_user, db)
+
+
+@router.put("/{user_id}/permissions", response_model=UserResponse)
+def update_user_permissions(
+    user_id: int,
+    permissions_in: UserPermissionsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_superadmin_user),
+) -> Any:
+    """Update per-module permissions for a user (super admin only)."""
+    db_user = crud_user.get(db, id=user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    allowed_modules = {module["key"] for module in PERMISSION_MODULES}
+    sanitized = {}
+    for module_key, rule in permissions_in.permissions.items():
+        if module_key not in allowed_modules:
+            continue
+        rule_data = rule.model_dump()
+        if rule_data["scope"] not in PERMISSION_SCOPES:
+            rule_data["scope"] = "own"
+        sanitized[module_key] = rule_data
+
+    before = db_user.permissions or {}
+    db_user.permissions = sanitized
+    db_user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_user)
+
+    log_activity(db, "users", user_id, "UPDATE_PERMISSIONS", current_user, {"before": before, "after": sanitized})
+    create_notification(
+        db,
+        user_id=user_id,
+        title="Your permissions were updated",
+        message=f"{current_user.full_name or current_user.username} updated your module access.",
+        notification_type="user",
+        link_url="/profile",
+        actor_id=current_user.id,
+    )
+    db.commit()
+    return _build_user_response(db_user, db)
 
 
 @router.get("/{user_id}", response_model=UserResponse)

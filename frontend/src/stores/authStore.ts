@@ -12,6 +12,14 @@ interface User {
   avatar_url?: string | null
   is_active?: boolean
   facility_id?: number | null
+  permissions?: Record<string, {
+    index: boolean
+    view: boolean
+    add: boolean
+    edit: boolean
+    delete: boolean
+    scope: string
+  }>
 }
 
 interface AuthState {

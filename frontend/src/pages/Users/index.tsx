@@ -14,6 +14,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import LoginIcon from '@mui/icons-material/Login'
 import DeleteIcon from '@mui/icons-material/Delete'
+import SecurityIcon from '@mui/icons-material/Security'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
@@ -24,6 +25,7 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import CreateUserModal from './CreateUserModal'
 import EditUserModal from './EditUserModal'
+import PermissionEditorModal from './PermissionEditorModal'
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All Roles' },
@@ -60,6 +62,7 @@ const Users = () => {
   const [createOpen, setCreateOpen] = useState(false)
   const [editUser, setEditUser] = useState<UserData | null>(null)
   const [roleEditUser, setRoleEditUser] = useState<UserData | null>(null)
+  const [permissionUser, setPermissionUser] = useState<UserData | null>(null)
   const [selectedRole, setSelectedRole] = useState('')
   const [confirmDeactivate, setConfirmDeactivate] = useState<UserData | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<UserData | null>(null)
@@ -306,6 +309,12 @@ const Users = () => {
                               <EditIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
+                          <Tooltip title="Edit Permissions">
+                            <IconButton size="small" onClick={() => setPermissionUser(u)}
+                              sx={{ color: '#4F46E5' }}>
+                              <SecurityIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Tooltip title="Login as User">
                             <IconButton size="small" onClick={() => impersonateMutation.mutate(u.id)}
                               disabled={impersonateMutation.isPending || u.id === currentUser?.id}
@@ -367,6 +376,12 @@ const Users = () => {
           onClose={() => setEditUser(null)}
         />
       )}
+
+      <PermissionEditorModal
+        open={!!permissionUser}
+        user={permissionUser}
+        onClose={() => setPermissionUser(null)}
+      />
 
       {/* Quick Role Change Dialog */}
       <Dialog open={!!roleEditUser} onClose={() => setRoleEditUser(null)} maxWidth="xs" fullWidth>

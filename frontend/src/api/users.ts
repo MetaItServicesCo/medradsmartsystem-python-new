@@ -5,6 +5,28 @@ export interface UserFacilityBrief {
   name: string
 }
 
+export interface UserPermissionRule {
+  index: boolean
+  view: boolean
+  add: boolean
+  edit: boolean
+  delete: boolean
+  scope: string
+}
+
+export type UserPermissionMatrix = Record<string, UserPermissionRule>
+
+export interface PermissionCatalogModule {
+  key: string
+  label: string
+}
+
+export interface PermissionCatalogResponse {
+  modules: PermissionCatalogModule[]
+  actions: Array<'index' | 'view' | 'add' | 'edit' | 'delete'>
+  scopes: string[]
+}
+
 export interface UserData {
   id: number
   username: string
@@ -16,6 +38,7 @@ export interface UserData {
   role: string
   is_active: boolean
   facility_id: number | null
+  permissions?: UserPermissionMatrix
   created_at: string
   updated_at: string
   facilities: UserFacilityBrief[]
@@ -122,6 +145,21 @@ export const updateUser = async (id: number, data: UpdateUserPayload): Promise<U
 
 export const updateUserRole = async (id: number, role: string): Promise<UserData> => {
   const res = await apiClient.put(`/users/${id}/role`, { role })
+  return res.data
+}
+
+export const fetchPermissionCatalog = async (): Promise<PermissionCatalogResponse> => {
+  const res = await apiClient.get('/users/permissions/catalog')
+  return res.data
+}
+
+export const fetchUserPermissions = async (id: number): Promise<UserData> => {
+  const res = await apiClient.get(`/users/${id}/permissions`)
+  return res.data
+}
+
+export const updateUserPermissions = async (id: number, permissions: UserPermissionMatrix): Promise<UserData> => {
+  const res = await apiClient.put(`/users/${id}/permissions`, { permissions })
   return res.data
 }
 

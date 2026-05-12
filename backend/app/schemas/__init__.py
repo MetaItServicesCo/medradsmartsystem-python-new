@@ -5,7 +5,10 @@ from .department import Department as DepartmentSchema, DepartmentCreate, Depart
 from .equipment import Equipment as EquipmentSchema, EquipmentCreate, EquipmentUpdate, EquipmentListResponse
 from .facility_user import FacilityUserResponse, FacilityUserUpdate, FacilityUserListResponse
 from .facility_document import FacilityDocumentResponse, FacilityDocumentCreate, FacilityDocumentListResponse
-from .user import UserCreate, UserUpdate, UserResponse, UserListResponse, UserRoleUpdate, UserSearchResponse
+from .user import (
+    UserCreate, UserUpdate, UserResponse, UserListResponse, UserRoleUpdate,
+    UserSearchResponse, UserPermissionsUpdate, PermissionCatalogResponse,
+)
 from .service_request import (
     ServiceRequestCreate, ServiceRequestUpdate,
     ServiceRequestResponse, ServiceRequestListResponse,
