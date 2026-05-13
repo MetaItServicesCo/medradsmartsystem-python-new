@@ -172,6 +172,31 @@ const ServiceRequestDetail = () => {
     })
   }
 
+  const getHistoryChanges = (changes: unknown): Record<string, unknown> => {
+    if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return {}
+    return changes as Record<string, unknown>
+  }
+
+  const formatHistoryValue = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return '---'
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value)
+      } catch {
+        return String(value)
+      }
+    }
+    return String(value)
+  }
+
+  const renderHistoryChange = (change: unknown) => {
+    if (change && typeof change === 'object' && !Array.isArray(change) && ('from' in change || 'to' in change)) {
+      const pair = change as { from?: unknown; to?: unknown }
+      return `${formatHistoryValue(pair.from)} -> ${formatHistoryValue(pair.to)}`
+    }
+    return formatHistoryValue(change)
+  }
+
   if (isLoading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -448,30 +473,33 @@ const ServiceRequestDetail = () => {
               {(sr.history || []).length === 0 ? (
                 <Typography sx={{ color: '#94A3B8', fontSize: '0.875rem' }}>No history recorded yet.</Typography>
               ) : (
-                [...(sr.history || [])].reverse().map((entry, index) => (
-                  <Box key={`${entry.timestamp}-${index}`} sx={{ display: 'flex', gap: 1.5, p: 1.5, borderRadius: '12px', backgroundColor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
-                    <Avatar sx={{ width: 32, height: 32, backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
-                      <HistoryIcon sx={{ fontSize: '1rem' }} />
-                    </Avatar>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '0.85rem', textTransform: 'capitalize' }}>
-                        {entry.action.replace('_', ' ')}
-                      </Typography>
-                      <Typography sx={{ color: '#64748B', fontSize: '0.78rem' }}>
-                        {entry.user || 'System'} - {formatDateTime(entry.timestamp)}
-                      </Typography>
-                      {entry.changes && Object.keys(entry.changes).length > 0 && (
-                        <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
-                          {Object.entries(entry.changes).slice(0, 4).map(([field, change]) => (
-                            <Typography key={field} sx={{ color: '#475569', fontSize: '0.75rem' }}>
-                              <strong>{field.replace(/_/g, ' ')}:</strong> {String(change.from ?? '---')} -&gt; {String(change.to ?? '---')}
-                            </Typography>
-                          ))}
-                        </Box>
-                      )}
+                [...(sr.history || [])].reverse().map((entry, index) => {
+                  const changes = getHistoryChanges(entry.changes)
+                  return (
+                    <Box key={`${entry.timestamp}-${index}`} sx={{ display: 'flex', gap: 1.5, p: 1.5, borderRadius: '12px', backgroundColor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                      <Avatar sx={{ width: 32, height: 32, backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
+                        <HistoryIcon sx={{ fontSize: '1rem' }} />
+                      </Avatar>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '0.85rem', textTransform: 'capitalize' }}>
+                          {String(entry.action || 'updated').replace(/_/g, ' ')}
+                        </Typography>
+                        <Typography sx={{ color: '#64748B', fontSize: '0.78rem' }}>
+                          {entry.user || 'System'} - {formatDateTime(entry.timestamp)}
+                        </Typography>
+                        {Object.keys(changes).length > 0 && (
+                          <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+                            {Object.entries(changes).slice(0, 4).map(([field, change]) => (
+                              <Typography key={field} sx={{ color: '#475569', fontSize: '0.75rem' }}>
+                                <strong>{field.replace(/_/g, ' ')}:</strong> {renderHistoryChange(change)}
+                              </Typography>
+                            ))}
+                          </Box>
+                        )}
+                      </Box>
                     </Box>
-                  </Box>
-                ))
+                  )
+                })
               )}
             </Box>
           </Card>
