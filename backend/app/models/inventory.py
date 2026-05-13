@@ -62,6 +62,11 @@ class InventoryPart(Base):
     supplier_contact = Column(String, nullable=True)
     supplier_email = Column(String, nullable=True)
     supplier_phone = Column(String, nullable=True)
+    supplier_address = Column(Text, nullable=True)
+    vendor_name = Column(String, nullable=True)
+    purchase_location = Column(String, nullable=True)
+    shipping_method = Column(String, nullable=True)
+    warehouse_arrival_date = Column(Date, nullable=True)
     technical_specs = Column(JSON, nullable=True)
 
     batch_number = Column(String, nullable=True, index=True)

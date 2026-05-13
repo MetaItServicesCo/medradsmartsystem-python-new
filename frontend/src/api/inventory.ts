@@ -58,6 +58,11 @@ export interface InventoryPart {
   supplier_contact: string | null
   supplier_email: string | null
   supplier_phone: string | null
+  supplier_address: string | null
+  vendor_name: string | null
+  purchase_location: string | null
+  shipping_method: string | null
+  warehouse_arrival_date: string | null
   technical_specs: Record<string, any> | null
   batch_number: string | null
   expiry_date: string | null
@@ -122,6 +127,11 @@ export interface InventoryPartPayload {
   supplier_contact?: string
   supplier_email?: string
   supplier_phone?: string
+  supplier_address?: string
+  vendor_name?: string
+  purchase_location?: string
+  shipping_method?: string
+  warehouse_arrival_date?: string | null
   technical_specs?: Record<string, any> | null
   batch_number?: string
   expiry_date?: string | null

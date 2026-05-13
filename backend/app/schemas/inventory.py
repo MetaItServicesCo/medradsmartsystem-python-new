@@ -55,6 +55,11 @@ class InventoryPartBase(BaseModel):
     supplier_contact: Optional[str] = None
     supplier_email: Optional[EmailStr] = None
     supplier_phone: Optional[str] = None
+    supplier_address: Optional[str] = None
+    vendor_name: Optional[str] = None
+    purchase_location: Optional[str] = None
+    shipping_method: Optional[str] = None
+    warehouse_arrival_date: Optional[date] = None
     technical_specs: Optional[Dict[str, Any]] = None
     batch_number: Optional[str] = None
     expiry_date: Optional[date] = None
@@ -121,6 +126,11 @@ class InventoryPartUpdate(BaseModel):
     supplier_contact: Optional[str] = None
     supplier_email: Optional[EmailStr] = None
     supplier_phone: Optional[str] = None
+    supplier_address: Optional[str] = None
+    vendor_name: Optional[str] = None
+    purchase_location: Optional[str] = None
+    shipping_method: Optional[str] = None
+    warehouse_arrival_date: Optional[date] = None
     technical_specs: Optional[Dict[str, Any]] = None
     batch_number: Optional[str] = None
     expiry_date: Optional[date] = None
