@@ -9,7 +9,7 @@ class InventoryPart(Base):
     __tablename__ = "inventory_parts"
 
     id = Column(Integer, primary_key=True, index=True)
-    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False, index=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=True, index=True)
     tier_id = Column(Integer, ForeignKey("tiers.id"), nullable=True, index=True)
     modality_id = Column(Integer, ForeignKey("modalities.id"), nullable=True, index=True)
     inspection_form_id = Column(Integer, ForeignKey("inspection_forms.id"), nullable=True)
@@ -94,7 +94,7 @@ class InventoryTransaction(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     part_id = Column(Integer, ForeignKey("inventory_parts.id", ondelete="CASCADE"), nullable=False, index=True)
-    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False, index=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=True, index=True)
     transaction_type = Column(String, nullable=False, index=True)
     quantity = Column(Integer, nullable=False)
     unit_cost = Column(Numeric(10, 2), nullable=True)

@@ -27,7 +27,7 @@ import {
 } from '@/api/inventory'
 
 const emptyPart: InventoryPartPayload = {
-  facility_id: 0,
+  facility_id: null,
   tier_id: null,
   part_number: '',
   part_type: '',
@@ -135,7 +135,7 @@ const Inventory = () => {
 
   const resetPartForm = () => {
     setEditingPart(null)
-    setPartForm({ ...emptyPart, facility_id: facilities[0]?.id || 0 })
+    setPartForm({ ...emptyPart })
   }
 
   const createMut = useMutation({
@@ -227,12 +227,13 @@ const Inventory = () => {
   }
 
   const handleSavePart = () => {
-    if (!partForm.facility_id || !partForm.part_number || !partForm.part_type || !partForm.description || !partForm.condition) {
-      toast.error('Facility, part number, type, description, and condition are required')
+    if (!partForm.part_number || !partForm.part_type || !partForm.description || !partForm.condition) {
+      toast.error('Part number, type, description, and condition are required')
       return
     }
     const payload = {
       ...partForm,
+      facility_id: null,
       tier_id: partForm.tier_id || null,
       supplier_email: partForm.supplier_email || undefined,
       acquired_company_name: partForm.vendor_name || undefined,
@@ -318,7 +319,7 @@ const Inventory = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Asset Tag</TableCell>
-                <TableCell>Facility / Tier</TableCell>
+                <TableCell>Assignment</TableCell>
                 <TableCell>Make / Model</TableCell>
                 <TableCell>Serial #</TableCell>
                 <TableCell>Status</TableCell>
@@ -393,7 +394,7 @@ const Inventory = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Part</TableCell>
-                <TableCell>Facility / Tier</TableCell>
+                <TableCell>Assignment</TableCell>
                 <TableCell>Batch / Serial</TableCell>
                 <TableCell>Supplier</TableCell>
                 <TableCell>Stock</TableCell>
@@ -421,8 +422,8 @@ const Inventory = () => {
                       {part.is_critical && <Chip label="Critical" size="small" sx={{ ml: 1, backgroundColor: '#FEF2F2', color: '#DC2626', fontWeight: 700 }} />}
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">{part.facility_name}</Typography>
-                      <Typography variant="caption" sx={{ color: '#7C3AED' }}>{part.tier_name || 'No tier'}</Typography>
+                      <Typography variant="body2">{part.facility_name || 'Independent part'}</Typography>
+                      <Typography variant="caption" sx={{ color: part.tier_name ? '#7C3AED' : '#9CA3AF' }}>{part.tier_name || 'No tier'}</Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">{part.batch_number || 'No batch'}</Typography>
@@ -461,16 +462,6 @@ const Inventory = () => {
         <DialogContent sx={{ p: 3 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 256px' }, gap: 3 }}>
             <Box sx={{ display: 'grid', gap: 2.25 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
-                <TextField select label="Facility *" value={partForm.facility_id || ''} onChange={(e) => setPartForm({ ...partForm, facility_id: Number(e.target.value) })}>
-                  {facilities.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
-                </TextField>
-                <TextField select label="Tier" value={partForm.tier_id || ''} onChange={(e) => setPartForm({ ...partForm, tier_id: e.target.value ? Number(e.target.value) : null })}>
-                  <MenuItem value="">No tier</MenuItem>
-                  {tiers.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-                </TextField>
-              </Box>
-
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
                 <TextField label="Part Number *" placeholder="Part number" value={partForm.part_number} onChange={(e) => setPartForm({ ...partForm, part_number: e.target.value })} />
                 <TextField select label="Part Type *" value={partForm.part_type} onChange={(e) => setPartForm({ ...partForm, part_type: e.target.value })}>

@@ -4,7 +4,7 @@ export type InventoryTransactionType = 'receiving' | 'issuance' | 'transfer' | '
 
 export interface InventoryPart {
   id: number
-  facility_id: number
+  facility_id: number | null
   facility_name: string | null
   tier_id: number | null
   tier_name: string | null
@@ -77,7 +77,7 @@ export interface InventoryPart {
 }
 
 export interface InventoryPartPayload {
-  facility_id: number
+  facility_id?: number | null
   tier_id?: number | null
   modality_id?: number | null
   inspection_form_id?: number | null
@@ -162,7 +162,7 @@ export interface InventoryListParams {
 export interface InventoryTransaction {
   id: number
   part_id: number
-  facility_id: number
+  facility_id: number | null
   transaction_type: InventoryTransactionType
   quantity: number
   unit_cost: number | null

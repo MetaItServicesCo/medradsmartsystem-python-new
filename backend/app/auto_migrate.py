@@ -209,6 +209,17 @@ def run_migration():
                 conn.rollback()
                 pass
 
+        for alter_sql in [
+            "ALTER TABLE inventory_parts ALTER COLUMN facility_id DROP NOT NULL",
+            "ALTER TABLE inventory_transactions ALTER COLUMN facility_id DROP NOT NULL",
+        ]:
+            try:
+                conn.execute(text(alter_sql))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass
+
         for index_sql in [
             "CREATE INDEX IF NOT EXISTS ix_inventory_parts_asset_tag ON inventory_parts (asset_tag)",
             "CREATE INDEX IF NOT EXISTS ix_inventory_parts_modality_id ON inventory_parts (modality_id)",

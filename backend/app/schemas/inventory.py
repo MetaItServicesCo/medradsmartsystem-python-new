@@ -5,7 +5,7 @@ from pydantic import BaseModel, EmailStr
 
 
 class InventoryPartBase(BaseModel):
-    facility_id: int
+    facility_id: Optional[int] = None
     tier_id: Optional[int] = None
     modality_id: Optional[int] = None
     inspection_form_id: Optional[int] = None
@@ -174,7 +174,7 @@ class InventoryTransactionCreate(BaseModel):
 class InventoryTransactionResponse(BaseModel):
     id: int
     part_id: int
-    facility_id: int
+    facility_id: Optional[int] = None
     transaction_type: str
     quantity: int
     unit_cost: Optional[Decimal] = None

@@ -51,12 +51,12 @@ def _transaction_response(txn: InventoryTransaction) -> dict:
 
 def _validate_references(
     db: Session,
-    facility_id: int,
+    facility_id: Optional[int],
     tier_id: Optional[int],
     modality_id: Optional[int] = None,
     inspection_form_id: Optional[int] = None,
 ) -> None:
-    if not db.query(Facility).filter(Facility.id == facility_id).first():
+    if facility_id and not db.query(Facility).filter(Facility.id == facility_id).first():
         raise HTTPException(status_code=404, detail="Facility not found")
     if tier_id and not db.query(Tier).filter(Tier.id == tier_id).first():
         raise HTTPException(status_code=404, detail="Tier not found")
@@ -157,15 +157,16 @@ def create_inventory_part(
     db.add(part)
     db.flush()
     log_activity(db, "inventory_parts", part.id, "CREATE", current_user, part_in.model_dump())
-    notify_facility_users(
-        db,
-        facility_id=part.facility_id,
-        title="Inventory item added",
-        message=f"{part.part_number} was added to facility inventory.",
-        notification_type="inventory",
-        link_url="/inventory",
-        actor_id=current_user.id,
-    )
+    if part.facility_id:
+        notify_facility_users(
+            db,
+            facility_id=part.facility_id,
+            title="Inventory item added",
+            message=f"{part.part_number} was added to facility inventory.",
+            notification_type="inventory",
+            link_url="/inventory",
+            actor_id=current_user.id,
+        )
     db.commit()
     db.refresh(part)
     return _part_response(part)
@@ -337,15 +338,16 @@ def create_part_transaction(
     db.add(txn)
     db.flush()
     log_activity(db, "inventory_transactions", txn.id, txn_type.upper(), current_user, txn_in.model_dump())
-    notify_facility_users(
-        db,
-        facility_id=part.facility_id,
-        title="Inventory stock updated",
-        message=f"{part.part_number} stock changed by {txn_in.quantity}.",
-        notification_type="inventory",
-        link_url="/inventory",
-        actor_id=current_user.id,
-    )
+    if part.facility_id:
+        notify_facility_users(
+            db,
+            facility_id=part.facility_id,
+            title="Inventory stock updated",
+            message=f"{part.part_number} stock changed by {txn_in.quantity}.",
+            notification_type="inventory",
+            link_url="/inventory",
+            actor_id=current_user.id,
+        )
     if part.quantity_on_hand <= part.reorder_level:
         notify_admins(
             db,
