@@ -44,6 +44,7 @@ def _enrich(sr: ServiceRequest) -> dict:
         data["priority"] = data["priority"].value if hasattr(data["priority"], "value") else data["priority"]
     if data.get("status"):
         data["status"] = data["status"].value if hasattr(data["status"], "value") else data["status"]
+    data["history"] = data.get("history") or []
     # Nested names
     data["facility_name"] = sr.facility.name if sr.facility else None
     data["equipment_name"] = f"{sr.equipment.make} {sr.equipment.model}" if sr.equipment else None
@@ -64,6 +65,26 @@ def _enrich(sr: ServiceRequest) -> dict:
             ]
             data["quotations"].append(q_data)
     return data
+
+
+def _history_value(value: Any) -> Any:
+    if hasattr(value, "value"):
+        return value.value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
+
+
+def _history_entry(action: str, user: User, changes: Optional[dict] = None) -> dict:
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "action": action,
+        "user_id": user.id,
+        "user": user.full_name or user.username,
+        "changes": changes or {},
+    }
 
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
@@ -162,9 +183,22 @@ def create_service_request(
         facility_id=sr_in.facility_id,
         equipment_id=sr_in.equipment_id,
         problem_description=sr_in.problem_description,
+        service_required=sr_in.service_required or sr_in.problem_description,
+        preferred_datetime=sr_in.preferred_datetime,
+        requested_by_name=sr_in.requested_by_name,
+        reference_number=sr_in.reference_number,
+        request_image_url=sr_in.request_image_url,
         priority=sr_in.priority,
         requester_id=sr_in.requester_id or current_user.id,
         status=ServiceRequestStatus.NEW,
+        history=[_history_entry("created", current_user, {
+            "facility_id": sr_in.facility_id,
+            "equipment_id": sr_in.equipment_id,
+            "priority": sr_in.priority,
+            "preferred_datetime": sr_in.preferred_datetime.isoformat() if sr_in.preferred_datetime else None,
+            "requested_by_name": sr_in.requested_by_name,
+            "reference_number": sr_in.reference_number,
+        })],
     )
     db.add(db_sr)
     db.commit()
@@ -219,6 +253,7 @@ def update_service_request(
         raise HTTPException(status_code=404, detail="Service request not found")
 
     update_data = sr_in.model_dump(exclude_unset=True)
+    changes = {}
 
     # Enforce ordered status transitions
     if "status" in update_data and update_data["status"]:
@@ -242,7 +277,15 @@ def update_service_request(
             update_data["completed_at"] = datetime.utcnow()
 
     for field, value in update_data.items():
+        before = getattr(db_sr, field, None)
+        if _history_value(before) != _history_value(value):
+            changes[field] = {"from": _history_value(before), "to": _history_value(value)}
         setattr(db_sr, field, value)
+
+    if changes:
+        history = list(db_sr.history or [])
+        history.append(_history_entry("status_changed" if "status" in changes else "updated", current_user, changes))
+        db_sr.history = history
 
     db.commit()
     db.refresh(db_sr)

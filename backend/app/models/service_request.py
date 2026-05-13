@@ -122,6 +122,11 @@ class ServiceRequest(Base):
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     assigned_technician_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     problem_description = Column(Text, nullable=False)
+    service_required = Column(Text, nullable=True)
+    preferred_datetime = Column(DateTime, nullable=True)
+    requested_by_name = Column(String, nullable=True)
+    reference_number = Column(String, nullable=True)
+    request_image_url = Column(Text, nullable=True)
     priority = Column(SQLEnum(Priority), nullable=False)
     status = Column(SQLEnum(ServiceRequestStatus), default=ServiceRequestStatus.NEW)
     resolution_description = Column(Text, nullable=True)
@@ -137,6 +142,7 @@ class ServiceRequest(Base):
     billing_status = Column(String, default=BillingStatus.PENDING.value)
     cc_auth_requested = Column(Boolean, default=False)
     invoice_deleted = Column(Boolean, default=False)
+    history = Column(JSON, default=list)
 
     # Relationships
     facility = relationship("Facility", back_populates="service_requests")

@@ -98,6 +98,11 @@ class ServiceRequestBase(BaseModel):
     facility_id: int
     equipment_id: int
     problem_description: str
+    service_required: Optional[str] = None
+    preferred_datetime: Optional[datetime] = None
+    requested_by_name: Optional[str] = None
+    reference_number: Optional[str] = None
+    request_image_url: Optional[str] = None
     priority: str  # low / medium / high / critical
 
 
@@ -110,6 +115,11 @@ class ServiceRequestUpdate(BaseModel):
     priority: Optional[str] = None
     assigned_technician_id: Optional[int] = None
     problem_description: Optional[str] = None
+    service_required: Optional[str] = None
+    preferred_datetime: Optional[datetime] = None
+    requested_by_name: Optional[str] = None
+    reference_number: Optional[str] = None
+    request_image_url: Optional[str] = None
     resolution_description: Optional[str] = None
     time_spent_hours: Optional[Decimal] = None
     total_cost: Optional[Decimal] = None
@@ -126,6 +136,11 @@ class ServiceRequestResponse(BaseModel):
     requester_id: int
     assigned_technician_id: Optional[int] = None
     problem_description: str
+    service_required: Optional[str] = None
+    preferred_datetime: Optional[datetime] = None
+    requested_by_name: Optional[str] = None
+    reference_number: Optional[str] = None
+    request_image_url: Optional[str] = None
     priority: str
     status: str
     resolution_description: Optional[str] = None
@@ -140,6 +155,7 @@ class ServiceRequestResponse(BaseModel):
     billing_status: Optional[str] = "pending"
     cc_auth_requested: Optional[bool] = False
     invoice_deleted: Optional[bool] = False
+    history: Optional[list] = []
     
     quotations: List[ServiceRequestQuotationResponse] = []
 

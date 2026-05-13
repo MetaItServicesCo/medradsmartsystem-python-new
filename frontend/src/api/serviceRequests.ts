@@ -104,6 +104,11 @@ export interface ServiceRequest {
   requester_id: number
   assigned_technician_id: number | null
   problem_description: string
+  service_required: string | null
+  preferred_datetime: string | null
+  requested_by_name: string | null
+  reference_number: string | null
+  request_image_url: string | null
   priority: ServiceRequestPriority
   status: ServiceRequestStatus
   resolution_description: string | null
@@ -118,6 +123,7 @@ export interface ServiceRequest {
   billing_status: 'pending' | 'approved' | 'not_approved'
   cc_auth_requested: boolean
   invoice_deleted: boolean
+  history: ServiceRequestHistoryEntry[]
 
   // Denormalized display names
   facility_name: string | null
@@ -132,6 +138,11 @@ export interface ServiceRequestCreate {
   facility_id: number
   equipment_id: number
   problem_description: string
+  service_required?: string
+  preferred_datetime?: string | null
+  requested_by_name?: string
+  reference_number?: string
+  request_image_url?: string
   priority: ServiceRequestPriority
 }
 
@@ -140,12 +151,25 @@ export interface ServiceRequestUpdate {
   priority?: ServiceRequestPriority
   assigned_technician_id?: number | null
   problem_description?: string
+  service_required?: string
+  preferred_datetime?: string | null
+  requested_by_name?: string
+  reference_number?: string
+  request_image_url?: string
   resolution_description?: string
   time_spent_hours?: number
   total_cost?: number
   billing_status?: 'pending' | 'approved' | 'not_approved'
   cc_auth_requested?: boolean
   invoice_deleted?: boolean
+}
+
+export interface ServiceRequestHistoryEntry {
+  timestamp: string
+  action: string
+  user_id?: number
+  user?: string
+  changes?: Record<string, { from: unknown; to: unknown }>
 }
 
 export interface ServiceRequestListResponse {

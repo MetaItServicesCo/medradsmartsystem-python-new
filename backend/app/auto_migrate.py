@@ -141,6 +141,22 @@ def run_migration():
             conn.rollback()
             pass
 
+        service_request_columns = [
+            "service_required TEXT",
+            "preferred_datetime TIMESTAMP",
+            "requested_by_name VARCHAR",
+            "reference_number VARCHAR",
+            "request_image_url TEXT",
+            "history JSON",
+        ]
+        for col in service_request_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE service_requests ADD COLUMN {col}"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass
+
         inventory_equipment_columns = [
             "modality_id INTEGER REFERENCES modalities(id)",
             "inspection_form_id INTEGER REFERENCES inspection_forms(id)",

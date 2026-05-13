@@ -24,6 +24,8 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ThumbUpIcon from '@mui/icons-material/ThumbUp'
 import ThumbDownIcon from '@mui/icons-material/ThumbDown'
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
+import HistoryIcon from '@mui/icons-material/History'
+import ImageIcon from '@mui/icons-material/Image'
 import { toast } from 'react-toastify'
 
 import {
@@ -317,7 +319,7 @@ const ServiceRequestDetail = () => {
           {/* Problem Description */}
           <Card sx={{ p: 3 }}>
             <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
-              Problem Description
+              Service Required
             </Typography>
             <Typography
               sx={{
@@ -326,7 +328,7 @@ const ServiceRequestDetail = () => {
                 border: '1px solid #F3F4F6',
               }}
             >
-              {sr.problem_description}
+              {sr.service_required || sr.problem_description}
             </Typography>
           </Card>
 
@@ -376,10 +378,50 @@ const ServiceRequestDetail = () => {
                     Requested By
                   </Typography>
                   <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
-                    {sr.requester_name || '—'}
+                    {sr.requested_by_name || sr.requester_name || '---'}
                   </Typography>
                 </Box>
               </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#FFF7ED' }}>
+                <Avatar sx={{ backgroundColor: '#FFEDD5', color: '#C2410C', width: 36, height: 36 }}>
+                  <AccessTimeIcon sx={{ fontSize: '1.1rem' }} />
+                </Avatar>
+                <Box>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                    Preferred Date / Time
+                  </Typography>
+                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                    {formatDateTime(sr.preferred_datetime)}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#F8FAFC' }}>
+                <Avatar sx={{ backgroundColor: '#E2E8F0', color: '#475569', width: 36, height: 36 }}>
+                  <ReceiptLongIcon sx={{ fontSize: '1.1rem' }} />
+                </Avatar>
+                <Box>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                    Reference #
+                  </Typography>
+                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                    {sr.reference_number || '---'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {sr.request_image_url && (
+                <Button
+                  variant="outlined"
+                  startIcon={<ImageIcon />}
+                  href={sr.request_image_url}
+                  target="_blank"
+                  sx={{ borderRadius: '12px', fontWeight: 700, justifyContent: 'flex-start' }}
+                >
+                  View Attached Image
+                </Button>
+              )}
 
               {/* Technician */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#F0FDF4' }}>
@@ -395,6 +437,42 @@ const ServiceRequestDetail = () => {
                   </Typography>
                 </Box>
               </Box>
+            </Box>
+          </Card>
+
+          <Card sx={{ p: 3 }}>
+            <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
+              Service Request History
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 340, overflowY: 'auto', pr: 0.5 }}>
+              {(sr.history || []).length === 0 ? (
+                <Typography sx={{ color: '#94A3B8', fontSize: '0.875rem' }}>No history recorded yet.</Typography>
+              ) : (
+                [...(sr.history || [])].reverse().map((entry, index) => (
+                  <Box key={`${entry.timestamp}-${index}`} sx={{ display: 'flex', gap: 1.5, p: 1.5, borderRadius: '12px', backgroundColor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                    <Avatar sx={{ width: 32, height: 32, backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
+                      <HistoryIcon sx={{ fontSize: '1rem' }} />
+                    </Avatar>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '0.85rem', textTransform: 'capitalize' }}>
+                        {entry.action.replace('_', ' ')}
+                      </Typography>
+                      <Typography sx={{ color: '#64748B', fontSize: '0.78rem' }}>
+                        {entry.user || 'System'} - {formatDateTime(entry.timestamp)}
+                      </Typography>
+                      {entry.changes && Object.keys(entry.changes).length > 0 && (
+                        <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+                          {Object.entries(entry.changes).slice(0, 4).map(([field, change]) => (
+                            <Typography key={field} sx={{ color: '#475569', fontSize: '0.75rem' }}>
+                              <strong>{field.replace(/_/g, ' ')}:</strong> {String(change.from ?? '---')} -&gt; {String(change.to ?? '---')}
+                            </Typography>
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+                ))
+              )}
             </Box>
           </Card>
 
