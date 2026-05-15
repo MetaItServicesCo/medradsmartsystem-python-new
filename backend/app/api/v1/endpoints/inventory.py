@@ -27,6 +27,7 @@ from app.schemas.inventory import (
 )
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
+from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 
 router = APIRouter()
 
@@ -82,7 +83,7 @@ def list_inventory_parts(
     limit: int = Query(100, ge=1, le=500),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    query = db.query(InventoryPart).options(
+    query = scope_query_to_user_facilities(db.query(InventoryPart), InventoryPart.facility_id, db, current_user).options(
         joinedload(InventoryPart.facility),
         joinedload(InventoryPart.tier),
         joinedload(InventoryPart.modality),
@@ -186,6 +187,7 @@ def get_inventory_part(
     )
     if not part:
         raise HTTPException(status_code=404, detail="Inventory part not found")
+    require_facility_access(db, current_user, part.facility_id)
     return _part_response(part)
 
 
@@ -195,6 +197,8 @@ def create_inventory_part(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    if part_in.facility_id is not None:
+        require_facility_access(db, current_user, part_in.facility_id)
     _validate_references(db, part_in.facility_id, part_in.tier_id, part_in.modality_id, part_in.inspection_form_id)
     existing = (
         db.query(InventoryPart)
@@ -237,9 +241,11 @@ def update_inventory_part(
     part = db.query(InventoryPart).filter(InventoryPart.id == part_id).first()
     if not part:
         raise HTTPException(status_code=404, detail="Inventory part not found")
+    require_facility_access(db, current_user, part.facility_id)
 
     update_data = part_in.model_dump(exclude_unset=True)
     facility_id = update_data.get("facility_id", part.facility_id)
+    require_facility_access(db, current_user, facility_id)
     tier_id = update_data.get("tier_id", part.tier_id)
     _validate_references(
         db,
@@ -268,6 +274,7 @@ def delete_inventory_part(
     part = db.query(InventoryPart).filter(InventoryPart.id == part_id).first()
     if not part:
         raise HTTPException(status_code=404, detail="Inventory part not found")
+    require_facility_access(db, current_user, part.facility_id)
     data = {c.name: getattr(part, c.name) for c in part.__table__.columns}
     db.delete(part)
     log_activity(db, "inventory_parts", part_id, "DELETE", current_user, data)
@@ -283,8 +290,10 @@ def list_part_transactions(
     limit: int = Query(100, ge=1, le=500),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    if not db.query(InventoryPart.id).filter(InventoryPart.id == part_id).first():
+    part = db.query(InventoryPart).filter(InventoryPart.id == part_id).first()
+    if not part:
         raise HTTPException(status_code=404, detail="Inventory part not found")
+    require_facility_access(db, current_user, part.facility_id)
     query = (
         db.query(InventoryTransaction)
         .options(joinedload(InventoryTransaction.created_by))
@@ -305,6 +314,7 @@ def create_part_transaction(
     part = db.query(InventoryPart).filter(InventoryPart.id == part_id).first()
     if not part:
         raise HTTPException(status_code=404, detail="Inventory part not found")
+    require_facility_access(db, current_user, part.facility_id)
     txn_type = txn_in.transaction_type.lower()
     if txn_type not in VALID_TRANSACTIONS:
         raise HTTPException(status_code=400, detail=f"Invalid transaction type. Allowed: {sorted(VALID_TRANSACTIONS)}")
@@ -322,6 +332,7 @@ def create_part_transaction(
     elif txn_type in STOCK_TRANSFER:
         if not txn_in.to_facility_id:
             raise HTTPException(status_code=400, detail="Transfer requires a destination facility")
+        require_facility_access(db, current_user, txn_in.to_facility_id)
         if part.quantity_on_hand < txn_in.quantity:
             raise HTTPException(status_code=400, detail="Insufficient stock for transfer")
         _validate_references(db, txn_in.to_facility_id, part.tier_id, part.modality_id, part.inspection_form_id)

@@ -11,6 +11,7 @@ from app.schemas.department import (
     DepartmentCreate, DepartmentUpdate,
     Department as DepartmentSchema, DepartmentListResponse
 )
+from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 
 router = APIRouter()
 
@@ -22,7 +23,7 @@ def list_departments(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """List departments, optionally filtered by facility_id."""
-    query = db.query(Department)
+    query = scope_query_to_user_facilities(db.query(Department), Department.facility_id, db, current_user)
     if facility_id is not None:
         query = query.filter(Department.facility_id == facility_id)
     items = query.all()
@@ -39,6 +40,7 @@ def get_department(
     dept = crud.department.get(db=db, id=id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
+    require_facility_access(db, current_user, dept.facility_id)
     return dept
 
 
@@ -49,6 +51,7 @@ def create_department(
     current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Create a department."""
+    require_facility_access(db, current_user, dept_in.facility_id)
     return crud.department.create(db=db, obj_in=dept_in)
 
 
@@ -63,6 +66,7 @@ def update_department(
     dept = crud.department.get(db=db, id=id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
+    require_facility_access(db, current_user, dept.facility_id)
     return crud.department.update(db=db, db_obj=dept, obj_in=dept_in)
 
 
@@ -76,5 +80,6 @@ def delete_department(
     dept = crud.department.get(db=db, id=id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
+    require_facility_access(db, current_user, dept.facility_id)
     crud.department.remove(db=db, id=id)
     return {"detail": "Department deleted"}

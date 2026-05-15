@@ -25,6 +25,7 @@ from app.schemas.service_request import (
     LineItemCreate,
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
+from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 
 router = APIRouter()
 
@@ -116,7 +117,7 @@ def list_service_requests(
 ) -> Any:
     """List service requests with filters."""
     query = (
-        db.query(ServiceRequest)
+        scope_query_to_user_facilities(db.query(ServiceRequest), ServiceRequest.facility_id, db, current_user)
         .options(
             joinedload(ServiceRequest.facility),
             joinedload(ServiceRequest.equipment),
@@ -168,6 +169,7 @@ def get_service_request(
     )
     if not sr:
         raise HTTPException(status_code=404, detail="Service request not found")
+    require_facility_access(db, current_user, sr.facility_id)
     return _enrich(sr)
 
 
@@ -214,9 +216,13 @@ def create_service_request(
     # Validate facility
     if not db.query(Facility).filter(Facility.id == sr_in.facility_id).first():
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, sr_in.facility_id)
     # Validate equipment
-    if not db.query(Equipment).filter(Equipment.id == sr_in.equipment_id).first():
+    equipment = db.query(Equipment).filter(Equipment.id == sr_in.equipment_id).first()
+    if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
+    if equipment.facility_id != sr_in.facility_id:
+        raise HTTPException(status_code=400, detail="Equipment does not belong to the selected facility")
 
     # Generate unique request number
     last = db.query(ServiceRequest).order_by(ServiceRequest.id.desc()).first()
@@ -296,6 +302,7 @@ def update_service_request(
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
+    require_facility_access(db, current_user, db_sr.facility_id)
 
     update_data = sr_in.model_dump(exclude_unset=True)
     changes = {}
@@ -385,6 +392,7 @@ def delete_service_request(
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
+    require_facility_access(db, current_user, db_sr.facility_id)
     db.delete(db_sr)
     db.commit()
     return {"detail": "Service request deleted"}
@@ -409,6 +417,7 @@ def create_quotation(
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
+    require_facility_access(db, current_user, db_sr.facility_id)
 
     if db_sr.status == ServiceRequestStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Cannot create quotation for a completed service request")
@@ -485,6 +494,7 @@ def update_quotation(
     )
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
+    require_facility_access(db, current_user, db_quotation.service_request.facility_id)
 
     if db_quotation.service_request.status == ServiceRequestStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Cannot edit quotation after service is completed")
@@ -574,6 +584,7 @@ def delete_quotation(
     )
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
+    require_facility_access(db, current_user, db_quotation.service_request.facility_id)
 
     if db_quotation.service_request.status == ServiceRequestStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Cannot delete quotation after service is completed")
@@ -591,14 +602,15 @@ def get_all_quotations(
     """Get all service request quotations."""
     quotations = (
         db.query(ServiceRequestQuotation)
+        .join(ServiceRequest, ServiceRequest.id == ServiceRequestQuotation.service_request_id)
         .options(
             joinedload(ServiceRequestQuotation.service_request).joinedload(ServiceRequest.facility),
             joinedload(ServiceRequestQuotation.line_items),
             joinedload(ServiceRequestQuotation.payments),
         )
         .order_by(ServiceRequestQuotation.created_at.desc())
-        .all()
     )
+    quotations = scope_query_to_user_facilities(quotations, ServiceRequest.facility_id, db, current_user).all()
 
     result = []
     for q in quotations:
@@ -639,6 +651,7 @@ def create_quotation_payment(
     )
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
+    require_facility_access(db, current_user, db_quotation.service_request.facility_id)
 
     valid_methods = ["credit_card", "ach", "mbmts_ach"]
     if payment_in.payment_method not in valid_methods:

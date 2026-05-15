@@ -22,6 +22,7 @@ from app.models.user import User
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
+from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 
 router = APIRouter()
 
@@ -458,7 +459,7 @@ def inspection_facilities(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     facilities = (
-        db.query(Facility)
+        scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
         .options(
             joinedload(Facility.tier),
             joinedload(Facility.equipment),
@@ -487,6 +488,7 @@ def facility_inventory_for_inspection(
     search: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_facility_access(db, current_user, facility_id)
     query = (
         db.query(InventoryPart)
         .options(joinedload(InventoryPart.facility), joinedload(InventoryPart.tier))
@@ -531,6 +533,7 @@ def facility_equipment_for_inspection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_facility_access(db, current_user, facility_id)
     equipment = (
         db.query(Equipment)
         .options(joinedload(Equipment.facility), joinedload(Equipment.tier), joinedload(Equipment.modality))
@@ -564,7 +567,7 @@ def list_inspections(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
-        db.query(Inspection)
+        scope_query_to_user_facilities(db.query(Inspection), Inspection.facility_id, db, current_user)
         .options(
             joinedload(Inspection.facility).joinedload(Facility.tier),
             joinedload(Inspection.facility).joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
@@ -598,6 +601,7 @@ def schedule_inspections(
     facility = db.query(Facility).filter(Facility.id == payload.facility_id).first()
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, payload.facility_id)
 
     query = (
         db.query(Equipment)
@@ -662,7 +666,10 @@ def generate_upcoming_inspections(
         .filter(Equipment.status == EquipmentStatus.ACTIVE)
     )
     if payload.facility_id:
+        require_facility_access(db, current_user, payload.facility_id)
         query = query.filter(Equipment.facility_id == payload.facility_id)
+    else:
+        query = scope_query_to_user_facilities(query, Equipment.facility_id, db, current_user)
 
     form = _get_default_form(db)
     created: list[Inspection] = []
@@ -742,6 +749,7 @@ def start_scheduled_inspection(
     )
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
+    require_facility_access(db, current_user, inspection.facility_id)
     if inspection.status != InspectionStatus.UPCOMING:
         raise HTTPException(status_code=400, detail="Only upcoming inspections can be started")
 
@@ -769,6 +777,7 @@ def create_instant_inspection(
     )
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, payload.facility_id)
 
     equipment_query = (
         db.query(Equipment)
@@ -842,6 +851,7 @@ def complete_inspection(
     )
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
+    require_facility_access(db, current_user, inspection.facility_id)
 
     inspection.status = InspectionStatus.COMPLETED
     inspection.result = payload.result
@@ -887,7 +897,7 @@ def list_inspection_quotations(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     invoices = (
-        db.query(Invoice)
+        scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
         .options(
             joinedload(Invoice.facility),
             joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
@@ -933,6 +943,7 @@ def update_inspection_invoice(
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Inspection invoice not found")
+    require_facility_access(db, current_user, invoice.facility_id)
 
     before = {c.name: getattr(invoice, c.name) for c in invoice.__table__.columns}
     update_data = payload.model_dump(exclude_unset=True)

@@ -19,6 +19,7 @@ from app.models.facility_document import FacilityDocument
 from app.models.equipment import Equipment
 from app.models.audit_log import AuditLog
 from app.utils.logging import log_activity
+from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 
 router = APIRouter()
 
@@ -80,7 +81,7 @@ def read_facilities(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Retrieve facilities (all authenticated users)."""
-    query = db.query(Facility)
+    query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
     if search:
         query = query.filter(
             or_(
@@ -106,7 +107,7 @@ def search_facilities(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Lightweight facility search for parent/child dropdowns."""
-    query = db.query(Facility)
+    query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
     if q:
         query = query.filter(Facility.name.ilike(f"%{q}%"))
     if exclude_id:
@@ -194,6 +195,7 @@ def read_facility(
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility.id)
     
     return _facility_response(db, facility)
 
@@ -211,6 +213,7 @@ def update_facility(
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility.id)
     old_data = {c.name: getattr(facility, c.name) for c in facility.__table__.columns}
     tier_ids = facility_in.tier_ids
     if tier_ids is None and facility_in.tier_id is not None:
@@ -236,6 +239,7 @@ def delete_facility(
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility.id)
 
     # AC-5: prevent deletion if linked equipment exists
     equipment_count = db.query(Equipment).filter(Equipment.facility_id == id).count()
@@ -263,6 +267,7 @@ def list_facility_documents(
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility.id)
     docs = db.query(FacilityDocument).filter(FacilityDocument.facility_id == id).all()
     return {"items": docs, "total": len(docs)}
 
@@ -335,6 +340,7 @@ def export_facility_pdf(
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility.id)
 
     # Build PDF using basic reportlab-like approach with simple text
     # We'll generate a lightweight HTML-to-text PDF using minimal approach

@@ -10,6 +10,7 @@ from app.models.facility import Facility
 from app.models.user_facility import UserFacility
 from app.schemas.facility_user import FacilityManagerRoleUpdate, FacilityUserResponse, FacilityUserListResponse, FacilityUserUpdate, FacilityUserBulkAssign
 from app.utils.notifications import create_notification
+from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
 
 router = APIRouter()
 get_superadmin_user = require_roles("superadmin")
@@ -25,7 +26,12 @@ def list_facility_users(
 ) -> Any:
     """List users, optionally filtered by facility_id and comma-separated roles."""
     query = db.query(User)
+    if is_facility_scoped_user(current_user):
+        allowed_facility_ids = get_user_facility_ids(db, current_user)
+        secondary_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id.in_(allowed_facility_ids))
+        query = query.filter(or_(User.facility_id.in_(allowed_facility_ids), User.id.in_(secondary_user_ids)))
     if facility_id is not None:
+        require_facility_access(db, current_user, facility_id)
         secondary_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id == facility_id)
         query = query.filter(or_(User.facility_id == facility_id, User.id.in_(secondary_user_ids)))
     if roles:

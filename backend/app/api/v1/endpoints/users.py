@@ -19,6 +19,7 @@ from app.schemas.user import (
 from app.core.security import create_access_token, get_password_hash
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notification
+from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user
 
 router = APIRouter()
 
@@ -248,9 +249,29 @@ def list_users(
     search: Optional[str] = Query(None),
 ) -> Any:
     """List all users with optional filters."""
-    items, total = crud_user.get_multi_filtered(
-        db, skip=skip, limit=limit, role=role, is_active=is_active, search=search
-    )
+    if is_facility_scoped_user(current_user):
+        allowed_facility_ids = get_user_facility_ids(db, current_user)
+        secondary_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id.in_(allowed_facility_ids))
+        query = db.query(User).filter(
+            (User.facility_id.in_(allowed_facility_ids)) | (User.id.in_(secondary_user_ids))
+        )
+        if role:
+            query = query.filter(User.role == role)
+        if is_active is not None:
+            query = query.filter(User.is_active == is_active)
+        if search:
+            like = f"%{search}%"
+            query = query.filter(
+                (User.full_name.ilike(like))
+                | (User.username.ilike(like))
+                | (User.email.ilike(like))
+            )
+        total = query.count()
+        items = query.offset(skip).limit(limit).all()
+    else:
+        items, total = crud_user.get_multi_filtered(
+            db, skip=skip, limit=limit, role=role, is_active=is_active, search=search
+        )
     user_responses = [_build_user_response(u, db) for u in items]
     return {"items": user_responses, "total": total}
 
@@ -264,7 +285,22 @@ def search_users(
     limit: int = Query(20, ge=1, le=50),
 ) -> Any:
     """Search users by name, email, or username (for chat feature)."""
-    results = crud_user.search(db, query=q, skip=skip, limit=limit)
+    if is_facility_scoped_user(current_user):
+        allowed_facility_ids = get_user_facility_ids(db, current_user)
+        secondary_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id.in_(allowed_facility_ids))
+        like = f"%{q}%"
+        results = (
+            db.query(User)
+            .filter(
+                ((User.facility_id.in_(allowed_facility_ids)) | (User.id.in_(secondary_user_ids)))
+                & ((User.full_name.ilike(like)) | (User.username.ilike(like)) | (User.email.ilike(like)))
+            )
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+    else:
+        results = crud_user.search(db, query=q, skip=skip, limit=limit)
     # Exclude the searching user from results
     return [u for u in results if u.id != current_user.id]
 
@@ -346,6 +382,11 @@ def get_user(
     db_user = crud_user.get(db, id=user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    if is_facility_scoped_user(current_user):
+        allowed_facility_ids = get_user_facility_ids(db, current_user)
+        target_facility_ids = get_user_facility_ids(db, db_user)
+        if db_user.id != current_user.id and not (allowed_facility_ids & target_facility_ids):
+            raise HTTPException(status_code=404, detail="User not found")
     return _build_user_response(db_user, db)
 
 

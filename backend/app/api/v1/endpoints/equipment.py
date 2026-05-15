@@ -16,6 +16,7 @@ from app.schemas.equipment import (
     Equipment as EquipmentSchema, EquipmentListResponse
 )
 from app.utils.inspection_schedule import next_inspection_date
+from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ def list_equipment(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """List equipment/inventory, optionally filtered by facility_id."""
-    query = db.query(Equipment)
+    query = scope_query_to_user_facilities(db.query(Equipment), Equipment.facility_id, db, current_user)
     if facility_id is not None:
         query = query.filter(Equipment.facility_id == facility_id)
     total = query.count()
@@ -100,6 +101,7 @@ def get_equipment(
     item = crud.equipment.get(db=db, id=id)
     if not item:
         raise HTTPException(status_code=404, detail="Equipment not found")
+    require_facility_access(db, current_user, item.facility_id)
     return item
 
 
@@ -114,6 +116,7 @@ def create_equipment(
     facility = db.query(Facility).filter(Facility.id == equip_in.facility_id).first()
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, equip_in.facility_id)
     create_data = equip_in.model_dump()
     create_data["next_generated_pm_date"] = next_inspection_date(
         equip_in.last_pm_date,
@@ -133,6 +136,7 @@ def update_equipment(
     item = crud.equipment.get(db=db, id=id)
     if not item:
         raise HTTPException(status_code=404, detail="Equipment not found")
+    require_facility_access(db, current_user, item.facility_id)
     update_data = equip_in.model_dump(exclude_unset=True)
     if "last_pm_date" in update_data or "pm_scheduling" in update_data:
         last_inspection_date = update_data.get("last_pm_date", item.last_pm_date)
@@ -151,5 +155,6 @@ def delete_equipment(
     item = crud.equipment.get(db=db, id=id)
     if not item:
         raise HTTPException(status_code=404, detail="Equipment not found")
+    require_facility_access(db, current_user, item.facility_id)
     crud.equipment.remove(db=db, id=id)
     return {"detail": "Equipment deleted"}
