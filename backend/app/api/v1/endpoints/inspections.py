@@ -85,7 +85,7 @@ ADVANCED_REPORT_SCHEMA = {
 
 class InstantInspectionCreate(BaseModel):
     facility_id: int
-    inventory_part_ids: Optional[list[int]] = None
+    equipment_ids: Optional[list[int]] = None
     frequency: str = "instant"
     scheduled_date: Optional[datetime] = None
     notes: Optional[str] = None
@@ -275,6 +275,7 @@ def _inspection_response(inspection: Inspection) -> dict[str, Any]:
     data["equipment_name"] = _equipment_name(inspection.equipment) if inspection.equipment else None
     data["asset_name"] = data["inventory_part_name"] or data["equipment_name"] or "Inspection asset"
     data["part_number"] = inspection.inventory_part.part_number if inspection.inventory_part else None
+    data["asset_tag"] = inspection.equipment.asset_tag if inspection.equipment else None
     data["serial_number"] = (
         inspection.inventory_part.serial_number
         if inspection.inventory_part
@@ -460,7 +461,7 @@ def inspection_facilities(
         db.query(Facility)
         .options(
             joinedload(Facility.tier),
-            joinedload(Facility.inventory_parts),
+            joinedload(Facility.equipment),
             joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
         )
         .order_by(Facility.name.asc())
@@ -473,7 +474,7 @@ def inspection_facilities(
             "city": facility.city,
             "state": facility.state,
             "tier_name": facility.tier.name if facility.tier else None,
-            "inventory_count": len(facility.inventory_parts or []),
+            "inventory_count": len(facility.equipment or []),
         }
         for facility in facilities
     ]
@@ -769,24 +770,24 @@ def create_instant_inspection(
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
 
-    parts_query = (
-        db.query(InventoryPart)
-        .options(joinedload(InventoryPart.tier), joinedload(InventoryPart.facility))
-        .filter(InventoryPart.facility_id == payload.facility_id)
+    equipment_query = (
+        db.query(Equipment)
+        .options(joinedload(Equipment.tier), joinedload(Equipment.modality), joinedload(Equipment.facility))
+        .filter(Equipment.facility_id == payload.facility_id)
     )
-    if payload.inventory_part_ids:
-        parts_query = parts_query.filter(InventoryPart.id.in_(payload.inventory_part_ids))
-    parts = parts_query.order_by(InventoryPart.part_number.asc()).all()
-    if not parts:
-        raise HTTPException(status_code=400, detail="No facility inventory items found for inspection")
+    if payload.equipment_ids:
+        equipment_query = equipment_query.filter(Equipment.id.in_(payload.equipment_ids))
+    equipment_items = equipment_query.order_by(Equipment.asset_tag.asc()).all()
+    if not equipment_items:
+        raise HTTPException(status_code=400, detail="No facility assets found for inspection")
 
     form = _get_default_form(db)
     created: list[Inspection] = []
-    for part in parts:
+    for equipment in equipment_items:
         inspection = Inspection(
             inspection_number=_next_inspection_number(db),
-            equipment_id=None,
-            inventory_part_id=part.id,
+            equipment_id=equipment.id,
+            inventory_part_id=None,
             facility_id=facility.id,
             inspector_id=current_user.id,
             form_template_id=form.id,
@@ -794,16 +795,16 @@ def create_instant_inspection(
             result=InspectionResult.PENDING,
             scheduled_date=payload.scheduled_date or datetime.utcnow(),
             started_at=datetime.utcnow(),
-            inspection_scope="facility_inventory",
+            inspection_scope="facility_assets",
             inspection_frequency=payload.frequency,
-            compliance_requirement="On-demand facility inventory inspection",
+            compliance_requirement="On-demand facility asset inspection",
             criticality="instant" if payload.frequency == "instant" else payload.frequency,
             corrective_actions=payload.notes,
             is_instant=True,
         )
         db.add(inspection)
         db.flush()
-        log_activity(db, "inspections", inspection.id, "INITIATE", current_user, {"inventory_part_id": part.id})
+        log_activity(db, "inspections", inspection.id, "INITIATE", current_user, {"equipment_id": equipment.id})
         created.append(inspection)
 
     notify_facility_users(

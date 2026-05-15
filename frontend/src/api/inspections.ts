@@ -103,6 +103,7 @@ export interface Inspection {
   equipment_name: string | null
   asset_name: string | null
   part_number: string | null
+  asset_tag: string | null
   serial_number: string | null
   make: string | null
   model: string | null
@@ -133,7 +134,7 @@ export interface InspectionFormOption {
 
 export interface InstantInspectionPayload {
   facility_id: number
-  inventory_part_ids?: number[]
+  equipment_ids?: number[]
   frequency?: InspectionFrequency
   scheduled_date?: string
   notes?: string

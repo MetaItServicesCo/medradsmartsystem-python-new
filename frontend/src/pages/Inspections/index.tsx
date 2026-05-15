@@ -23,7 +23,6 @@ import {
   createInstantInspection,
   fetchInspectionFacilityEquipment,
   fetchInspectionFacilities,
-  fetchInspectionFacilityInventory,
   fetchInspectionForms,
   fetchInspectionQuotations,
   fetchInspections,
@@ -35,7 +34,6 @@ import {
   type Inspection,
   type InspectionEquipmentItem,
   type InspectionInvoice,
-  type InspectionInventoryItem,
   type InspectionFrequency,
   type InspectionFormOption,
 } from '@/api/inspections'
@@ -78,8 +76,8 @@ const formatDate = (date: string | null | undefined) => {
 
 const makeReport = (inspection: Inspection) => ({
   identity: {
-    asset_number: inspection.part_number || '',
-    description: inspection.inventory_part_name || '',
+    asset_number: inspection.asset_tag || inspection.part_number || '',
+    description: inspection.equipment_name || inspection.inventory_part_name || '',
     make: inspection.make || '',
     model: inspection.model || '',
     serial_number: inspection.serial_number || '',
@@ -123,7 +121,7 @@ const Inspections = () => {
   const queryClient = useQueryClient()
   const [tab, setTab] = useState(0)
   const [facilityId, setFacilityId] = useState<number | ''>('')
-  const [selectedPartIds, setSelectedPartIds] = useState<number[]>([])
+  const [selectedInstantEquipmentIds, setSelectedInstantEquipmentIds] = useState<number[]>([])
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([])
   const [frequency, setFrequency] = useState<InspectionFrequency>('instant')
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().slice(0, 10))
@@ -134,11 +132,6 @@ const Inspections = () => {
   const [invoiceForm, setInvoiceForm] = useState<any>({})
 
   const facilitiesQ = useQuery({ queryKey: ['inspection-facilities'], queryFn: fetchInspectionFacilities })
-  const inventoryQ = useQuery({
-    queryKey: ['inspection-inventory', facilityId],
-    queryFn: () => fetchInspectionFacilityInventory(Number(facilityId)),
-    enabled: Boolean(facilityId),
-  })
   const equipmentQ = useQuery({
     queryKey: ['inspection-equipment', facilityId],
     queryFn: () => fetchInspectionFacilityEquipment(Number(facilityId)),
@@ -161,7 +154,6 @@ const Inspections = () => {
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities() })
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
-  const inventory = inventoryQ.data || []
   const equipment = equipmentQ.data || []
   const assignableModalities = useMemo(
     () => flattenModalities(modalitiesQ.data?.items || []),
@@ -172,7 +164,7 @@ const Inspections = () => {
     mutationFn: createInstantInspection,
     onSuccess: (res) => {
       toast.success(`${res.total} inspection(s) started`)
-      setSelectedPartIds([])
+      setSelectedInstantEquipmentIds([])
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       setTab(2)
     },
@@ -262,14 +254,14 @@ const Inspections = () => {
 
   const stats = useMemo(() => ({
     upcoming: upcomingQ.data?.total || 0,
-    instantItems: inventory.length,
+    instantItems: equipment.length,
     inProgress: inProgressQ.data?.total || 0,
     completed: completedQ.data?.total || 0,
     quotations: quotationsQ.data?.total || 0,
-  }), [upcomingQ.data?.total, inventory.length, inProgressQ.data?.total, completedQ.data?.total, quotationsQ.data?.total])
+  }), [upcomingQ.data?.total, equipment.length, inProgressQ.data?.total, completedQ.data?.total, quotationsQ.data?.total])
 
-  const togglePart = (id: number) => {
-    setSelectedPartIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
+  const toggleInstantEquipment = (id: number) => {
+    setSelectedInstantEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
   }
 
   const toggleEquipment = (id: number) => {
@@ -280,7 +272,7 @@ const Inspections = () => {
     if (!facilityId) return toast.error('Select a facility first')
     createMut.mutate({
       facility_id: Number(facilityId),
-      inventory_part_ids: selectedPartIds.length ? selectedPartIds : undefined,
+      equipment_ids: selectedInstantEquipmentIds.length ? selectedInstantEquipmentIds : undefined,
       frequency,
     })
   }
@@ -320,7 +312,7 @@ const Inspections = () => {
         parts_amount: Number(report.billing?.parts || partTotal || 0),
         inspection_charge: Number(report.billing?.inspection_charges || 0),
         other_charges: Number(report.billing?.others || 0),
-        notes: `Inspection completed for ${reportInspection.inventory_part_name || reportInspection.inspection_number}`,
+        notes: `Inspection completed for ${reportInspection.asset_name || reportInspection.inspection_number}`,
       },
     })
   }
@@ -349,7 +341,7 @@ const Inspections = () => {
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Inventory</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Asset</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Tier</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Result</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Date</TableCell>
@@ -368,7 +360,7 @@ const Inspections = () => {
                 <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{item.inspection_number}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>{item.facility_name || '-'}</TableCell>
                 <TableCell>
-                  <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.inventory_part_name || '-'}</Typography>
+                  <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.asset_name || item.equipment_name || '-'}</Typography>
                   <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{item.serial_number || item.part_number || '-'}</Typography>
                 </TableCell>
                 <TableCell>{item.tier_name || '-'}</TableCell>
@@ -454,7 +446,7 @@ const Inspections = () => {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 2, mb: 3 }}>
         {renderKpi('Upcoming', stats.upcoming, <EventAvailableIcon />, '#2563EB')}
-        {renderKpi('Inventory Items', stats.instantItems, <BoltIcon />, '#7C3AED')}
+        {renderKpi('Assets', stats.instantItems, <BoltIcon />, '#7C3AED')}
         {renderKpi('In Progress', stats.inProgress, <BuildIcon />, '#F59E0B')}
         {renderKpi('Completed', stats.completed, <CheckCircleIcon />, '#059669')}
         {renderKpi('Quotations', stats.quotations, <ReceiptLongIcon />, '#2563EB')}
@@ -475,7 +467,7 @@ const Inspections = () => {
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 180px auto auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
               <FormControl fullWidth>
                 <InputLabel>Facility</InputLabel>
-                <Select label="Facility" value={facilityId} onChange={(e) => { setFacilityId(e.target.value as number); setSelectedPartIds([]); setSelectedEquipmentIds([]) }}>
+                <Select label="Facility" value={facilityId} onChange={(e) => { setFacilityId(e.target.value as number); setSelectedInstantEquipmentIds([]); setSelectedEquipmentIds([]) }}>
                   {(facilitiesQ.data || []).map(f => (
                     <MenuItem key={f.id} value={f.id}>{f.name} - {f.tier_name || 'No tier'}</MenuItem>
                   ))}
@@ -531,9 +523,9 @@ const Inspections = () => {
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
               <FormControl fullWidth>
                 <InputLabel>Facility</InputLabel>
-                <Select label="Facility" value={facilityId} onChange={(e) => { setFacilityId(e.target.value as number); setSelectedPartIds([]); setSelectedEquipmentIds([]) }}>
+                <Select label="Facility" value={facilityId} onChange={(e) => { setFacilityId(e.target.value as number); setSelectedInstantEquipmentIds([]); setSelectedEquipmentIds([]) }}>
                   {(facilitiesQ.data || []).map(f => (
-                    <MenuItem key={f.id} value={f.id}>{f.name} - {f.tier_name || 'No tier'} - {f.inventory_count} item(s)</MenuItem>
+                    <MenuItem key={f.id} value={f.id}>{f.name} - {f.tier_name || 'No tier'} - {f.inventory_count} asset(s)</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -550,12 +542,12 @@ const Inspections = () => {
                 disabled={!facilityId || createMut.isPending}
                 sx={{ height: 54, borderRadius: '14px', px: 3, fontWeight: 900, textTransform: 'none', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
               >
-                Start {selectedPartIds.length || 'All'} Inspection{selectedPartIds.length === 1 ? '' : 's'}
+                Start {selectedInstantEquipmentIds.length || 'All'} Inspection{selectedInstantEquipmentIds.length === 1 ? '' : 's'}
               </Button>
             </Box>
             {selectedFacility && (
               <Typography sx={{ mb: 2, color: '#6B7280', fontWeight: 800 }}>
-                {selectedFacility.name}: select inventory items or leave all unchecked to inspect the full facility inventory.
+                {selectedFacility.name}: select assets or leave all unchecked to inspect all facility assets.
               </Typography>
             )}
             <TableContainer>
@@ -563,26 +555,26 @@ const Inspections = () => {
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                     <TableCell padding="checkbox" />
-                    <TableCell sx={{ fontWeight: 900 }}>Part #</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Make / Model</TableCell>
+                    <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
+                    <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
+                    <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Serial #</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Tier</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {inventoryQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
+                  {equipmentQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
                     <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
-                  )) : inventory.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>Select a facility with inventory items.</TableCell></TableRow>
-                  ) : inventory.map((part: InspectionInventoryItem) => (
-                    <TableRow key={part.id} hover onClick={() => togglePart(part.id)} sx={{ cursor: 'pointer' }}>
-                      <TableCell padding="checkbox"><Checkbox checked={selectedPartIds.includes(part.id)} /></TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{part.part_number}</TableCell>
-                      <TableCell>{part.description}</TableCell>
-                      <TableCell>{[part.make, part.model].filter(Boolean).join(' ') || '-'}</TableCell>
-                      <TableCell>{part.serial_number || '-'}</TableCell>
-                      <TableCell>{part.tier_name || '-'}</TableCell>
+                  )) : equipment.length === 0 ? (
+                    <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>Select a facility with assets.</TableCell></TableRow>
+                  ) : equipment.map((item: InspectionEquipmentItem) => (
+                    <TableRow key={item.id} hover onClick={() => toggleInstantEquipment(item.id)} sx={{ cursor: 'pointer' }}>
+                      <TableCell padding="checkbox"><Checkbox checked={selectedInstantEquipmentIds.includes(item.id)} /></TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
+                      <TableCell>{item.make} {item.model}</TableCell>
+                      <TableCell>{item.modality_name || '-'}</TableCell>
+                      <TableCell>{item.serial_number || '-'}</TableCell>
+                      <TableCell>{item.tier_name || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
