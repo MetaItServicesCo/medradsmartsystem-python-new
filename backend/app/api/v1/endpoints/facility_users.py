@@ -1,11 +1,13 @@
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_admin_user
 from app.db.base import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.facility import Facility
+from app.models.user_facility import UserFacility
 from app.schemas.facility_user import FacilityUserResponse, FacilityUserListResponse, FacilityUserUpdate, FacilityUserBulkAssign
 from app.utils.notifications import create_notification
 
@@ -16,12 +18,26 @@ router = APIRouter()
 def list_facility_users(
     db: Session = Depends(get_db),
     facility_id: Optional[int] = Query(None),
+    roles: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """List users, optionally filtered by facility_id."""
+    """List users, optionally filtered by facility_id and comma-separated roles."""
     query = db.query(User)
     if facility_id is not None:
-        query = query.filter(User.facility_id == facility_id)
+        secondary_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id == facility_id)
+        query = query.filter(or_(User.facility_id == facility_id, User.id.in_(secondary_user_ids)))
+    if roles:
+        requested_roles = []
+        for role in roles.split(","):
+            role = role.strip()
+            if not role:
+                continue
+            try:
+                requested_roles.append(UserRole(role))
+            except ValueError:
+                continue
+        if requested_roles:
+            query = query.filter(User.role.in_(requested_roles))
     items = query.all()
     return {"items": items, "total": len(items)}
 

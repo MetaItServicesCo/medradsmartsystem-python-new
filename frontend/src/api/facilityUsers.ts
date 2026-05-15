@@ -18,8 +18,14 @@ export interface FacilityUserListResponse {
   total: number
 }
 
-export const fetchFacilityUsers = async (facilityId?: number): Promise<FacilityUserListResponse> => {
-  const params = facilityId ? { facility_id: facilityId } : {}
+export const fetchFacilityUsers = async (
+  facilityId?: number,
+  roles?: string[],
+): Promise<FacilityUserListResponse> => {
+  const params = {
+    ...(facilityId ? { facility_id: facilityId } : {}),
+    ...(roles?.length ? { roles: roles.join(',') } : {}),
+  }
   const res = await apiClient.get('/facility-users/', { params })
   return res.data
 }

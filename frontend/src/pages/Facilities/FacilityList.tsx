@@ -333,10 +333,6 @@ const FacilityList = () => {
               <ListItemText primary="Add Facility" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
             </MenuItem>
             <Divider sx={{ mx: 2, my: 0.5 }} />
-            <MenuItem onClick={() => { setMainMenuAnchor(null); setUsersModalOpen(true); setMenuFacility(null) }} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
-              <ListItemIcon><PeopleOutlinedIcon sx={{ color: '#3B82F6' }} /></ListItemIcon>
-              <ListItemText primary="Global User Manager" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
-            </MenuItem>
             <MenuItem onClick={() => { setMainMenuAnchor(null); setModalitiesModalOpen(true) }} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
               <ListItemIcon><CategoryOutlinedIcon sx={{ color: '#10B981' }} /></ListItemIcon>
               <ListItemText primary="Modalities" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
@@ -598,7 +594,7 @@ const FacilityList = () => {
 
         <MenuItem onClick={() => { setUsersModalOpen(true); handleActionsClose() }} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
           <ListItemIcon><PeopleOutlinedIcon sx={{ color: '#3B82F6', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="Manage Users" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          <ListItemText primary="Facility Managers" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
         </MenuItem>
 
         <Box sx={{ mx: 2, my: 0.5 }}>
