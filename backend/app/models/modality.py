@@ -24,3 +24,4 @@ class Modality(Base):
     parent = relationship("Modality", remote_side=[id], back_populates="children")
     children = relationship("Modality", back_populates="parent", cascade="all, delete-orphan")
     equipment = relationship("Equipment", back_populates="modality")
+    inspection_forms = relationship("InspectionForm", back_populates="modality")

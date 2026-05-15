@@ -3,15 +3,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user, get_admin_user
+from app.core.deps import get_current_user, get_admin_user, require_roles
 from app.db.base import get_db
 from app.models.user import User, UserRole
 from app.models.facility import Facility
 from app.models.user_facility import UserFacility
-from app.schemas.facility_user import FacilityUserResponse, FacilityUserListResponse, FacilityUserUpdate, FacilityUserBulkAssign
+from app.schemas.facility_user import FacilityManagerRoleUpdate, FacilityUserResponse, FacilityUserListResponse, FacilityUserUpdate, FacilityUserBulkAssign
 from app.utils.notifications import create_notification
 
 router = APIRouter()
+get_superadmin_user = require_roles("superadmin")
+FACILITY_MANAGER_ROLES = {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER}
 
 
 @router.get("/", response_model=FacilityUserListResponse)
@@ -40,6 +42,57 @@ def list_facility_users(
             query = query.filter(User.role.in_(requested_roles))
     items = query.all()
     return {"items": items, "total": len(items)}
+
+
+@router.put("/{facility_id}/managers/{user_id}", response_model=FacilityUserResponse)
+def assign_facility_manager_role(
+    facility_id: int,
+    user_id: int,
+    role_in: FacilityManagerRoleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_superadmin_user),
+) -> Any:
+    """Promote an already-attached facility user to facility admin or facility manager."""
+    facility = db.query(Facility).filter(Facility.id == facility_id).first()
+    if not facility:
+        raise HTTPException(status_code=404, detail="Facility not found")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    attached = (
+        user.facility_id == facility_id
+        or db.query(UserFacility).filter(
+            UserFacility.user_id == user_id,
+            UserFacility.facility_id == facility_id,
+        ).first()
+        is not None
+    )
+    if not attached:
+        raise HTTPException(status_code=400, detail="Only users attached to this facility can be assigned")
+
+    try:
+        target_role = UserRole(role_in.role)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {role_in.role}")
+    if target_role not in FACILITY_MANAGER_ROLES:
+        raise HTTPException(status_code=400, detail="Role must be facility_admin or facility_manager")
+
+    user.role = target_role
+    user.permissions = None
+    create_notification(
+        db,
+        user_id=user.id,
+        title="Facility role updated",
+        message=f"You are now {target_role.value.replace('_', ' ')} for {facility.name}.",
+        notification_type="facility",
+        link_url="/facilities",
+        actor_id=current_user.id,
+    )
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.put("/{user_id}/facility", response_model=FacilityUserResponse)

@@ -1,27 +1,58 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, type MouseEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Dialog, DialogContent, DialogActions, Box, Typography, IconButton,
   Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Chip, Skeleton, TextField, CircularProgress, MenuItem
+  Chip, Skeleton, TextField, CircularProgress, MenuItem, Menu, ListItemIcon, ListItemText
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import InventoryIcon from '@mui/icons-material/Inventory'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
+import BuildOutlinedIcon from '@mui/icons-material/BuildOutlined'
+import ToggleOnOutlinedIcon from '@mui/icons-material/ToggleOnOutlined'
+import ToggleOffOutlinedIcon from '@mui/icons-material/ToggleOffOutlined'
 import { toast } from 'react-toastify'
 import { fetchEquipment, createEquipment, updateEquipment, deleteEquipment, type EquipmentCreate, type EquipmentItem } from '@/api/equipment'
 import { fetchInspectionForms } from '@/api/inspections'
 import { fetchModalities } from '@/api/modalities'
 import { fetchTiers } from '@/api/tiers'
 import { type Facility } from '@/api/facilities'
+import CreateServiceRequestModal from '@/pages/ServiceRequests/CreateServiceRequestModal'
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   active: { bg: '#F0FDF4', color: '#10B981' },
+  inactive: { bg: '#F3F4F6', color: '#6B7280' },
   rented: { bg: '#FFF7ED', color: '#F59E0B' },
   in_maintenance: { bg: '#FEF2F2', color: '#EF4444' },
   retired: { bg: '#F3F4F6', color: '#6B7280' },
+}
+
+const INSPECTION_SCHEDULE_MONTHS: Record<string, number> = {
+  Monthly: 1,
+  Quarterly: 3,
+  'Semi-Annual': 6,
+  Annual: 12,
+}
+
+const getNextInspectionDate = (lastInspectionDate?: string | null, schedule?: string | null) => {
+  if (!lastInspectionDate || !schedule) return null
+  const months = INSPECTION_SCHEDULE_MONTHS[schedule]
+  if (!months) return null
+
+  const [year, month, day] = lastInspectionDate.split('-').map(Number)
+  if (!year || !month || !day) return null
+
+  const nextMonthIndex = month - 1 + months
+  const nextYear = year + Math.floor(nextMonthIndex / 12)
+  const nextMonth = (nextMonthIndex % 12) + 1
+  const lastDayOfNextMonth = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate()
+  const nextDay = Math.min(day, lastDayOfNextMonth)
+
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`
 }
 
 interface Props {
@@ -50,6 +81,10 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const [selectedParentMod, setSelectedParentMod] = useState<number | ''>('')
   const [selectedSubMod, setSelectedSubMod] = useState<number | ''>('')
   const [editItemId, setEditItemId] = useState<number | null>(null)
+  const [viewItem, setViewItem] = useState<EquipmentItem | null>(null)
+  const [serviceRequestItem, setServiceRequestItem] = useState<EquipmentItem | null>(null)
+  const [actionAnchor, setActionAnchor] = useState<null | HTMLElement>(null)
+  const [actionItem, setActionItem] = useState<EquipmentItem | null>(null)
 
   useEffect(() => {
     if (open) setShowForm(mode === 'add')
@@ -74,12 +109,6 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     enabled: open,
   })
 
-  const { data: inspectionFormsData } = useQuery({
-    queryKey: ['inspection-forms'],
-    queryFn: fetchInspectionForms,
-    enabled: open,
-  })
-
   const createMut = useMutation({
     mutationFn: (d: EquipmentCreate) => createEquipment(d),
     onSuccess: () => {
@@ -93,7 +122,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: number, data: EquipmentCreate }) => updateEquipment(id, data),
+    mutationFn: ({ id, data }: { id: number, data: Partial<EquipmentCreate> }) => updateEquipment(id, data),
     onSuccess: () => {
       toast.success('Inventory item updated!')
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
@@ -116,7 +145,6 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const items = data?.items ?? []
   const modalities = modalitiesData?.items ?? []
   const tiers = tiersData?.items ?? []
-  const inspectionForms = inspectionFormsData?.items ?? []
   const facilityTierIds = facility?.tier_ids?.length ? facility.tier_ids : (facility?.tier_id ? [facility.tier_id] : [])
   const availableTiers = facilityTierIds.length > 0
     ? tiers.filter((tier) => facilityTierIds.includes(tier.id))
@@ -128,6 +156,31 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     const parent = modalities.find(m => m.id === selectedParentMod)
     return parent?.children || []
   }, [selectedParentMod, modalities])
+
+  const selectedAssetModalityId = useMemo(() => {
+    if (!selectedParentMod) return undefined
+    if (subModalities.length > 0) return selectedSubMod ? Number(selectedSubMod) : undefined
+    return Number(selectedParentMod)
+  }, [selectedParentMod, selectedSubMod, subModalities.length])
+
+  const { data: inspectionFormsData, isSuccess: inspectionFormsLoaded } = useQuery({
+    queryKey: ['inspection-forms', selectedAssetModalityId],
+    queryFn: () => fetchInspectionForms(selectedAssetModalityId),
+    enabled: open && Boolean(selectedAssetModalityId),
+  })
+
+  const inspectionForms = inspectionFormsData?.items ?? []
+
+  const nextInspectionDate = useMemo(
+    () => getNextInspectionDate(form.last_pm_date, form.pm_scheduling),
+    [form.last_pm_date, form.pm_scheduling],
+  )
+
+  useEffect(() => {
+    if (!form.inspection_form_id || !selectedAssetModalityId || !inspectionFormsLoaded) return
+    if (inspectionForms.some((inspectionForm) => inspectionForm.id === form.inspection_form_id)) return
+    setForm((prev) => ({ ...prev, inspection_form_id: null }))
+  }, [form.inspection_form_id, inspectionForms, inspectionFormsLoaded, selectedAssetModalityId])
 
   const resetForm = () => {
     setForm(defaultForm)
@@ -208,6 +261,24 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
     setShowForm(true)
   }
 
+  const closeActionMenu = () => {
+    setActionAnchor(null)
+  }
+
+  const handleActionOpen = (event: MouseEvent<HTMLElement>, item: EquipmentItem) => {
+    setActionAnchor(event.currentTarget)
+    setActionItem(item)
+  }
+
+  const handleToggleActive = () => {
+    if (!actionItem) return
+    updateMut.mutate({
+      id: actionItem.id,
+      data: { status: actionItem.status === 'active' ? 'inactive' : 'active' },
+    })
+    closeActionMenu()
+  }
+
   const handleSubmit = () => {
     // Determine the final modality_id. If sub-modalities exist, the user must select one.
     let finalModalityId = selectedParentMod
@@ -226,6 +297,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
 
     const payload = { 
       ...form, 
+      next_generated_pm_date: nextInspectionDate,
       facility_id: facility!.id, 
       modality_id: Number(finalModalityId) 
     } as EquipmentCreate
@@ -371,16 +443,27 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 </TextField>
                 <TextField size="small" type="date" label="Installation Date" InputLabelProps={{ shrink: true }} value={form.installation_date || ''} onChange={e => setForm({ ...form, installation_date: e.target.value || null })} />
                 <TextField size="small" type="date" label="Last PM Date" InputLabelProps={{ shrink: true }} value={form.last_pm_date || ''} onChange={e => setForm({ ...form, last_pm_date: e.target.value || null })} />
-                <TextField size="small" type="date" label="Next Generated PM Date" InputLabelProps={{ shrink: true }} value={form.next_generated_pm_date || ''} onChange={e => setForm({ ...form, next_generated_pm_date: e.target.value || null })} />
-                <TextField size="small" label="Inspection Form" select value={form.inspection_form_id || ''} onChange={e => setForm({ ...form, inspection_form_id: e.target.value ? Number(e.target.value) : null })}>
+                <TextField size="small" type="date" label="Next Generated PM Date" InputLabelProps={{ shrink: true }} value={nextInspectionDate || ''} InputProps={{ readOnly: true }} helperText="Generated from the last PM date and selected schedule" />
+                <TextField
+                  size="small"
+                  label="Inspection Form"
+                  select
+                  value={form.inspection_form_id || ''}
+                  onChange={e => setForm({ ...form, inspection_form_id: e.target.value ? Number(e.target.value) : null })}
+                  disabled={!selectedAssetModalityId}
+                  helperText={selectedAssetModalityId ? 'Forms tagged to this asset type' : 'Select modality first'}
+                >
                   <MenuItem value="">Select Form</MenuItem>
                   {inspectionForms.map((inspectionForm) => (
-                    <MenuItem key={inspectionForm.id} value={inspectionForm.id}>{inspectionForm.name}</MenuItem>
+                    <MenuItem key={inspectionForm.id} value={inspectionForm.id}>
+                      {inspectionForm.name}{inspectionForm.modality_name ? ` - ${inspectionForm.modality_name}` : ' - General'}
+                    </MenuItem>
                   ))}
                 </TextField>
 
               <TextField size="small" label="Status" select value={form.status || 'active'} onChange={e => setForm({ ...form, status: e.target.value })}>
                 <MenuItem value="active">Active</MenuItem>
+                <MenuItem value="inactive">Inactive</MenuItem>
                 <MenuItem value="rented">Rented</MenuItem>
                 <MenuItem value="in_maintenance">In Maintenance</MenuItem>
                 <MenuItem value="retired">Retired</MenuItem>
@@ -437,12 +520,14 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                       <Chip label={item.status.replace('_', ' ')} size="small" sx={{ backgroundColor: sc.bg, color: sc.color, fontWeight: 600, fontSize: '0.7rem', textTransform: 'capitalize' }} />
                     </TableCell>
                     <TableCell align="right">
-                      <IconButton size="small" onClick={() => handleEditClick(item)} sx={{ mr: 1, color: '#F59E0B', backgroundColor: '#FEF3C7', borderRadius: '8px', '&:hover': { backgroundColor: '#FDE68A' } }}>
-                        <EditOutlinedIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton size="small" onClick={() => deleteMut.mutate(item.id)} sx={{ color: '#EF4444', backgroundColor: '#FEF2F2', borderRadius: '8px', '&:hover': { backgroundColor: '#FEE2E2' } }}>
-                        <DeleteOutlineIcon fontSize="small" />
-                      </IconButton>
+                      <Button
+                        size="small"
+                        endIcon={<MoreVertIcon fontSize="small" />}
+                        onClick={(event) => handleActionOpen(event, item)}
+                        sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none' }}
+                      >
+                        Action Taken
+                      </Button>
                     </TableCell>
                   </TableRow>
                 )
@@ -451,6 +536,72 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
           </Table>
         </TableContainer>
       </DialogContent>
+
+      <Menu
+        anchorEl={actionAnchor}
+        open={Boolean(actionAnchor)}
+        onClose={closeActionMenu}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+      >
+        <MenuItem onClick={() => { if (actionItem) setViewItem(actionItem); closeActionMenu() }}>
+          <ListItemIcon><VisibilityOutlinedIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="View" />
+        </MenuItem>
+        <MenuItem onClick={() => { if (actionItem) handleEditClick(actionItem); closeActionMenu() }}>
+          <ListItemIcon><EditOutlinedIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Edit" />
+        </MenuItem>
+        <MenuItem onClick={() => { if (actionItem) setServiceRequestItem(actionItem); closeActionMenu() }}>
+          <ListItemIcon><BuildOutlinedIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Service Request" />
+        </MenuItem>
+        <MenuItem onClick={handleToggleActive}>
+          <ListItemIcon>
+            {actionItem?.status === 'active' ? <ToggleOffOutlinedIcon fontSize="small" /> : <ToggleOnOutlinedIcon fontSize="small" />}
+          </ListItemIcon>
+          <ListItemText primary={actionItem?.status === 'active' ? 'Mark Inactive' : 'Mark Active'} />
+        </MenuItem>
+        <MenuItem onClick={() => { if (actionItem) deleteMut.mutate(actionItem.id); closeActionMenu() }}>
+          <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+          <ListItemText primary="Delete" primaryTypographyProps={{ color: '#EF4444' }} />
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={Boolean(viewItem)} onClose={() => setViewItem(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Inventory Item</Typography>
+          {viewItem && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              {[
+                ['Asset Tag', viewItem.asset_tag],
+                ['Make / Model', `${viewItem.make} ${viewItem.model}`],
+                ['Serial Number', viewItem.serial_number],
+                ['Status', viewItem.status.replace('_', ' ')],
+                ['Description', viewItem.description || '-'],
+                ['Location', viewItem.location || '-'],
+                ['Risk', viewItem.risk_name || '-'],
+                ['PM Scheduling', viewItem.pm_scheduling || '-'],
+              ].map(([label, value]) => (
+                <Box key={label}>
+                  <Typography variant="caption" sx={{ color: '#6B7280', fontWeight: 800 }}>{label}</Typography>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 700, textTransform: label === 'Status' ? 'capitalize' : 'none' }}>{value}</Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setViewItem(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <CreateServiceRequestModal
+        open={Boolean(serviceRequestItem)}
+        onClose={() => setServiceRequestItem(null)}
+        initialFacilityId={facility?.id}
+        initialEquipmentId={serviceRequestItem?.id}
+      />
     </Dialog>
   )
 }

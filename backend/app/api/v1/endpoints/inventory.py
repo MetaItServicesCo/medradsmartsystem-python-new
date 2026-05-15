@@ -1,11 +1,14 @@
+import csv
+import io
 from typing import Any, Optional
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.deps import get_current_user, get_admin_user
+from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
 from app.db.base import get_db
 from app.models.facility import Facility
 from app.models.inspection_form import InspectionForm
@@ -110,6 +113,58 @@ def list_inventory_parts(
     total = query.count()
     items = query.order_by(InventoryPart.updated_at.desc()).offset(skip).limit(limit).all()
     return {"items": [_part_response(item) for item in items], "total": total}
+
+
+@router.get("/export-csv")
+def export_inventory_parts_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_superadmin_user),
+) -> Any:
+    """Export independent parts inventory for super admins."""
+    items = (
+        db.query(InventoryPart)
+        .options(
+            joinedload(InventoryPart.facility),
+            joinedload(InventoryPart.tier),
+        )
+        .order_by(InventoryPart.part_number.asc())
+        .all()
+    )
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "id", "part_number", "part_type", "description", "make", "model", "condition", "facility",
+        "tier", "quantity_on_hand", "reorder_level", "unit_price", "supplier_name", "batch_number",
+        "serial_number", "expiry_date", "status", "created_at", "updated_at",
+    ])
+    for item in items:
+        writer.writerow([
+            item.id,
+            item.part_number,
+            item.part_type,
+            item.description,
+            item.make,
+            item.model,
+            item.condition,
+            item.facility.name if item.facility else "",
+            item.tier.name if item.tier else "",
+            item.quantity_on_hand,
+            item.reorder_level,
+            item.unit_price,
+            item.supplier_name,
+            item.batch_number,
+            item.serial_number,
+            item.expiry_date,
+            item.status,
+            item.created_at,
+            item.updated_at,
+        ])
+
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="parts_inventory.csv"'},
+    )
 
 
 @router.get("/{part_id}", response_model=InventoryPartResponse)

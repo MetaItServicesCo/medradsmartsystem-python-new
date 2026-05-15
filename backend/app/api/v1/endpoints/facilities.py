@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 import io
+import csv
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -9,7 +10,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import crud, schemas
-from app.core.deps import get_current_user, get_admin_user, get_facility_admin_user
+from app.core.deps import get_current_user, get_admin_user, get_facility_admin_user, get_superadmin_user
 from app.db.base import get_db
 from app.models.user import User
 from app.models.facility import Facility
@@ -111,6 +112,53 @@ def search_facilities(
     if exclude_id:
         query = query.filter(Facility.id != exclude_id)
     return query.limit(50).all()
+
+
+@router.get("/export-csv")
+def export_facilities_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_superadmin_user),
+) -> Any:
+    """Export all facilities for super admin review."""
+    facilities = db.query(Facility).order_by(Facility.name.asc()).all()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "id", "name", "status", "address", "suite", "city", "state", "zip_code", "country",
+        "phone", "email", "contact_person", "timezone", "operating_hours", "tiers",
+        "billing_name", "billing_email", "created_at", "updated_at",
+    ])
+    for facility in facilities:
+        tiers = [ft.tier.name for ft in facility.facility_tiers if ft.tier]
+        if not tiers and facility.tier:
+            tiers = [facility.tier.name]
+        writer.writerow([
+            facility.id,
+            facility.name,
+            facility.status,
+            facility.address,
+            facility.suite,
+            facility.city,
+            facility.state,
+            facility.zip_code,
+            facility.country,
+            facility.phone,
+            facility.email,
+            facility.contact_person,
+            facility.timezone,
+            facility.operating_hours,
+            ", ".join(tiers),
+            facility.billing_name,
+            facility.billing_email,
+            facility.created_at,
+            facility.updated_at,
+        ])
+
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="facilities.csv"'},
+    )
 
 
 @router.post("/", response_model=schemas.Facility, status_code=201)

@@ -3,7 +3,7 @@ from app.db.base import engine, Base
 # Import all models to ensure they are registered with Base
 from app.models import (
     facility, facility_document, equipment, service_request,
-    inspection, invoice, rental, tier, user, department, modality,
+    inspection, inspection_form, invoice, rental, tier, user, department, modality,
 )
 from app.models import user_facility, equipment_facility, facility_tier, inventory, chat, calendar, notification
 
@@ -278,3 +278,21 @@ def run_migration():
             except Exception as e:
                 conn.rollback()
                 pass
+
+        inspection_form_columns = [
+            "modality_id INTEGER REFERENCES modalities(id)",
+        ]
+        for col in inspection_form_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE inspection_forms ADD COLUMN {col}"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass
+
+        try:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inspection_forms_modality_id ON inspection_forms (modality_id)"))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            pass

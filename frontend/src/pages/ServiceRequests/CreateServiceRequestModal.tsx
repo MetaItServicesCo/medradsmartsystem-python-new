@@ -18,12 +18,14 @@ import { fetchEquipment, type EquipmentItem } from '@/api/equipment'
 interface Props {
   open: boolean
   onClose: () => void
+  initialFacilityId?: number
+  initialEquipmentId?: number
 }
 
 const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'))
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 
-const CreateServiceRequestModal = ({ open, onClose }: Props) => {
+const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEquipmentId }: Props) => {
   const queryClient = useQueryClient()
 
   const [facilityId, setFacilityId] = useState<number | ''>('')
@@ -58,13 +60,18 @@ const CreateServiceRequestModal = ({ open, onClose }: Props) => {
   const equipmentList: EquipmentItem[] = equipmentData?.items ?? []
 
   useEffect(() => {
+    if (!open) return
+    if (initialFacilityId && initialEquipmentId && facilityId === initialFacilityId) {
+      setEquipmentId(initialEquipmentId)
+      return
+    }
     setEquipmentId('')
-  }, [facilityId])
+  }, [facilityId, initialEquipmentId, initialFacilityId, open])
 
   useEffect(() => {
     if (!open) return
-    setFacilityId('')
-    setEquipmentId('')
+    setFacilityId(initialFacilityId || '')
+    setEquipmentId(initialEquipmentId || '')
     setPriority('medium')
     setPreferredDate('')
     setHour('09')
@@ -78,7 +85,7 @@ const CreateServiceRequestModal = ({ open, onClose }: Props) => {
     setImageName('')
     setImageFile(null)
     setUploadingImage(false)
-  }, [open])
+  }, [initialEquipmentId, initialFacilityId, open])
 
   const createMutation = useMutation({
     mutationFn: (data: ServiceRequestCreate) => createServiceRequest(data),

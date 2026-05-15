@@ -125,6 +125,8 @@ export interface InspectionFormOption {
   id: number
   name: string
   description: string | null
+  modality_id: number | null
+  modality_name: string | null
   created_at: string
   updated_at: string
 }
@@ -177,8 +179,20 @@ export const fetchInspectionFacilities = async (): Promise<InspectionFacility[]>
   return res.data
 }
 
-export const fetchInspectionForms = async (): Promise<{ items: InspectionFormOption[]; total: number }> => {
-  const res = await apiClient.get('/inspections/forms')
+export const fetchInspectionForms = async (
+  modalityId?: number
+): Promise<{ items: InspectionFormOption[]; total: number }> => {
+  const res = await apiClient.get('/inspections/forms', {
+    params: modalityId ? { modality_id: modalityId } : undefined,
+  })
+  return res.data
+}
+
+export const updateInspectionForm = async (
+  id: number,
+  data: { modality_id: number | null }
+): Promise<InspectionFormOption> => {
+  const res = await apiClient.patch(`/inspections/forms/${id}`, data)
   return res.data
 }
 

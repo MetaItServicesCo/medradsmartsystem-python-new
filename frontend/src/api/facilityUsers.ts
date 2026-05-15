@@ -30,6 +30,15 @@ export const fetchFacilityUsers = async (
   return res.data
 }
 
+export const assignFacilityManagerRole = async (
+  facilityId: number,
+  userId: number,
+  role: 'facility_admin' | 'facility_manager',
+): Promise<FacilityUser> => {
+  const res = await apiClient.put(`/facility-users/${facilityId}/managers/${userId}`, { role })
+  return res.data
+}
+
 export const assignUserToFacility = async (userId: number, facilityId: number | null): Promise<FacilityUser> => {
   const res = await apiClient.put(`/facility-users/${userId}/facility`, { facility_id: facilityId })
   return res.data

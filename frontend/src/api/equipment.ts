@@ -131,3 +131,16 @@ export const updateEquipment = async (id: number, data: EquipmentUpdate): Promis
 export const deleteEquipment = async (id: number): Promise<void> => {
   await apiClient.delete(`/equipment/${id}`)
 }
+
+export const exportEquipmentCsv = async (): Promise<void> => {
+  const res = await apiClient.get('/equipment/export-csv', { responseType: 'blob' })
+  const blob = new Blob([res.data], { type: 'text/csv' })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'facility_inventory.csv'
+  document.body.appendChild(a)
+  a.click()
+  window.URL.revokeObjectURL(url)
+  a.remove()
+}

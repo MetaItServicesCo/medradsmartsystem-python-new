@@ -200,3 +200,16 @@ export const exportFacilityPdf = async (facilityId: number): Promise<void> => {
   window.URL.revokeObjectURL(url)
   a.remove()
 }
+
+export const exportFacilitiesCsv = async (): Promise<void> => {
+  const res = await apiClient.get('/facilities/export-csv', { responseType: 'blob' })
+  const blob = new Blob([res.data], { type: 'text/csv' })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'facilities.csv'
+  document.body.appendChild(a)
+  a.click()
+  window.URL.revokeObjectURL(url)
+  a.remove()
+}

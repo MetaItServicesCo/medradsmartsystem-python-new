@@ -1,11 +1,19 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar,
+  Autocomplete,
   Box,
+  Button,
   Chip,
+  CircularProgress,
   Dialog,
   DialogContent,
+  FormControl,
   IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
   Skeleton,
   Table,
   TableBody,
@@ -13,12 +21,16 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import PeopleIcon from '@mui/icons-material/People'
-import { fetchFacilityUsers } from '@/api/facilityUsers'
+import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1'
+import { toast } from 'react-toastify'
+import { assignFacilityManagerRole, fetchFacilityUsers, type FacilityUser } from '@/api/facilityUsers'
 import { type Facility } from '@/api/facilities'
+import { useAuthStore } from '@/stores/authStore'
 
 interface Props {
   open: boolean
@@ -42,13 +54,45 @@ const getAvatarColor = (name: string) =>
   avatarColors[name.charCodeAt(0) % avatarColors.length]
 
 const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
+  const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.user)
+  const isSuperAdmin = currentUser?.role === 'superadmin'
+  const [selectedUser, setSelectedUser] = useState<FacilityUser | null>(null)
+  const [selectedRole, setSelectedRole] = useState<'facility_admin' | 'facility_manager'>('facility_manager')
+
+  useEffect(() => {
+    if (!open) return
+    setSelectedUser(null)
+    setSelectedRole('facility_manager')
+  }, [facility?.id, open])
+
   const { data, isLoading } = useQuery({
     queryKey: ['facility-managers', facility?.id],
     queryFn: () => fetchFacilityUsers(facility?.id, MANAGER_ROLES),
     enabled: open && !!facility,
   })
 
+  const { data: attachedUsersData, isLoading: attachedUsersLoading } = useQuery({
+    queryKey: ['facility-attached-users', facility?.id],
+    queryFn: () => fetchFacilityUsers(facility?.id),
+    enabled: open && !!facility && isSuperAdmin,
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: () => assignFacilityManagerRole(facility!.id, selectedUser!.id, selectedRole),
+    onSuccess: () => {
+      toast.success('Facility role updated')
+      setSelectedUser(null)
+      queryClient.invalidateQueries({ queryKey: ['facility-managers', facility?.id] })
+      queryClient.invalidateQueries({ queryKey: ['facility-attached-users', facility?.id] })
+      queryClient.invalidateQueries({ queryKey: ['facilities'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to assign facility role'),
+  })
+
   const users = data?.items ?? []
+  const attachedUsers = attachedUsersData?.items ?? []
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden' } }}>
@@ -77,6 +121,53 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
       </Box>
 
       <DialogContent sx={{ p: 3.5, pt: 2.5 }}>
+        {isSuperAdmin && (
+          <Box sx={{ mb: 3, p: 2, backgroundColor: '#F8FAFC', borderRadius: '16px', border: '1px solid #E5E7EB' }}>
+            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PersonAddAlt1Icon sx={{ fontSize: '1.2rem', color: '#7C3AED' }} />
+              Assign Facility Role
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px auto' }, gap: 1.5 }}>
+              <Autocomplete
+                options={attachedUsers}
+                loading={attachedUsersLoading}
+                value={selectedUser}
+                onChange={(_, value) => setSelectedUser(value)}
+                getOptionLabel={(option) => `${option.full_name} (${option.role.replace('_', ' ')})`}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Attached User"
+                    placeholder="Choose an attached user"
+                  />
+                )}
+              />
+              <FormControl fullWidth>
+                <InputLabel>Facility Role</InputLabel>
+                <Select
+                  value={selectedRole}
+                  label="Facility Role"
+                  onChange={(event) => setSelectedRole(event.target.value as 'facility_admin' | 'facility_manager')}
+                >
+                  <MenuItem value="facility_manager">Facility Manager</MenuItem>
+                  <MenuItem value="facility_admin">Facility Admin</MenuItem>
+                </Select>
+              </FormControl>
+              <Button
+                variant="contained"
+                disabled={!selectedUser || assignMutation.isPending}
+                onClick={() => assignMutation.mutate()}
+                sx={{ minWidth: 132, borderRadius: '12px', fontWeight: 800 }}
+              >
+                {assignMutation.isPending ? <CircularProgress size={20} color="inherit" /> : 'Assign'}
+              </Button>
+            </Box>
+            <Typography variant="caption" sx={{ display: 'block', mt: 1.25, color: '#64748B' }}>
+              Only users already attached to this facility can be promoted here.
+            </Typography>
+          </Box>
+        )}
+
         <TableContainer>
           <Table size="small">
             <TableHead>

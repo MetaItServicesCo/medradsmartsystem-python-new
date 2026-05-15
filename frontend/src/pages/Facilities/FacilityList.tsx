@@ -27,9 +27,12 @@ import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined'
 import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined'
 import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import { toast } from 'react-toastify'
 
-import { fetchFacilities, deleteFacility, type Facility } from '@/api/facilities'
+import { fetchFacilities, deleteFacility, exportFacilitiesCsv, type Facility } from '@/api/facilities'
+import { exportEquipmentCsv } from '@/api/equipment'
+import { useAuthStore } from '@/stores/authStore'
 import FacilityFormModal from './FacilityFormModal'
 import FacilityTierModal from './FacilityTierModal'
 import FacilityViewModal from './FacilityViewModal'
@@ -67,6 +70,8 @@ const STAT_CARDS = [
 
 const FacilityList = () => {
   const queryClient = useQueryClient()
+  const user = useAuthStore((state) => state.user)
+  const isSuperAdmin = user?.role === 'superadmin'
   const [searchParams, setSearchParams] = useSearchParams()
   const querySearch = searchParams.get('search') || ''
   
@@ -235,6 +240,28 @@ const FacilityList = () => {
     handleActionsClose()
   }
 
+  const handleDownloadFacilities = async () => {
+    try {
+      await exportFacilitiesCsv()
+      toast.success('Facilities download started')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Unable to download facilities')
+    } finally {
+      setMainMenuAnchor(null)
+    }
+  }
+
+  const handleDownloadInventory = async () => {
+    try {
+      await exportEquipmentCsv()
+      toast.success('Inventory download started')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Unable to download inventory')
+    } finally {
+      setMainMenuAnchor(null)
+    }
+  }
+
   return (
     <Box className="page-enter">
       {/* Stat Cards */}
@@ -341,6 +368,19 @@ const FacilityList = () => {
               <ListItemIcon><DomainOutlinedIcon sx={{ color: '#F59E0B' }} /></ListItemIcon>
               <ListItemText primary="Departments" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
             </MenuItem>
+            {isSuperAdmin && (
+              <>
+                <Divider sx={{ mx: 2, my: 0.5 }} />
+                <MenuItem onClick={handleDownloadFacilities} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
+                  <ListItemIcon><DownloadOutlinedIcon sx={{ color: '#2563EB' }} /></ListItemIcon>
+                  <ListItemText primary="Download Facilities" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
+                </MenuItem>
+                <MenuItem onClick={handleDownloadInventory} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
+                  <ListItemIcon><DownloadOutlinedIcon sx={{ color: '#059669' }} /></ListItemIcon>
+                  <ListItemText primary="Download Inventory" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
+                </MenuItem>
+              </>
+            )}
           </Menu>
         </Box>
 

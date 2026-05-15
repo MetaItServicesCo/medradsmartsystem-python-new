@@ -6,6 +6,7 @@ from app.db.base import Base
 
 class EquipmentStatus(str, enum.Enum):
     ACTIVE = "active"
+    INACTIVE = "inactive"
     RENTED = "rented"
     IN_MAINTENANCE = "in_maintenance"
     RETIRED = "retired"

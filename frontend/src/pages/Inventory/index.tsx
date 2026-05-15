@@ -16,15 +16,17 @@ import MoveUpIcon from '@mui/icons-material/MoveUp'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import SearchIcon from '@mui/icons-material/Search'
 import DeleteIcon from '@mui/icons-material/Delete'
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import { toast } from 'react-toastify'
 import { fetchFacilities } from '@/api/facilities'
 import { fetchTiers } from '@/api/tiers'
 import { fetchEquipment, type EquipmentItem } from '@/api/equipment'
 import {
   createInventoryPart, createInventoryTransaction, deleteInventoryPart,
-  fetchInventoryParts, fetchInventoryTransactions, updateInventoryPart,
+  exportInventoryPartsCsv, fetchInventoryParts, fetchInventoryTransactions, updateInventoryPart,
   type InventoryPart, type InventoryPartPayload, type InventoryTransactionType,
 } from '@/api/inventory'
+import { useAuthStore } from '@/stores/authStore'
 
 const emptyPart: InventoryPartPayload = {
   facility_id: null,
@@ -66,6 +68,8 @@ const transactionLabels: Record<InventoryTransactionType, string> = {
 
 const Inventory = () => {
   const queryClient = useQueryClient()
+  const user = useAuthStore((state) => state.user)
+  const isSuperAdmin = user?.role === 'superadmin'
   const [search, setSearch] = useState('')
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [tierId, setTierId] = useState<number | ''>('')
@@ -271,6 +275,15 @@ const Inventory = () => {
     })
   }
 
+  const handleDownloadInventory = async () => {
+    try {
+      await exportInventoryPartsCsv()
+      toast.success('Parts inventory download started')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to download inventory')
+    }
+  }
+
   return (
     <Box className="page-enter">
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
@@ -279,10 +292,18 @@ const Inventory = () => {
             Register parts, track batches and serials, and record stock movement with full transaction history.
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenNew}
-          sx={{ backgroundColor: '#7C3AED', borderRadius: '12px', px: 3, fontWeight: 800 }}>
-          Register Part
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1.25 }}>
+          {isSuperAdmin && (
+            <Button variant="outlined" startIcon={<DownloadOutlinedIcon />} onClick={handleDownloadInventory}
+              sx={{ borderRadius: '12px', px: 2.5, fontWeight: 800 }}>
+              Download Inventory
+            </Button>
+          )}
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenNew}
+            sx={{ backgroundColor: '#7C3AED', borderRadius: '12px', px: 3, fontWeight: 800 }}>
+            Register Part
+          </Button>
+        </Box>
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2, mb: 3 }}>
@@ -466,10 +487,8 @@ const Inventory = () => {
                 <TextField label="Part Number *" placeholder="Part number" value={partForm.part_number} onChange={(e) => setPartForm({ ...partForm, part_number: e.target.value })} />
                 <TextField select label="Part Type *" value={partForm.part_type} onChange={(e) => setPartForm({ ...partForm, part_type: e.target.value })}>
                   <MenuItem value="">Select part type(s)</MenuItem>
-                  <MenuItem value="spare_part">Spare Part</MenuItem>
-                  <MenuItem value="consumable">Consumable</MenuItem>
-                  <MenuItem value="critical_component">Critical Component</MenuItem>
-                  <MenuItem value="accessory">Accessory</MenuItem>
+                  <MenuItem value="sales">Sales</MenuItem>
+                  <MenuItem value="rental">Rental</MenuItem>
                 </TextField>
                 <TextField label="Part Description *" placeholder="Part description" value={partForm.description} onChange={(e) => setPartForm({ ...partForm, description: e.target.value })} />
                 <TextField label="Make" placeholder="Make" value={partForm.make} onChange={(e) => setPartForm({ ...partForm, make: e.target.value })} />

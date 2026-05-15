@@ -226,3 +226,16 @@ export const createInventoryTransaction = async (
   const res = await apiClient.post(`/inventory/${partId}/transactions`, data)
   return res.data
 }
+
+export const exportInventoryPartsCsv = async (): Promise<void> => {
+  const res = await apiClient.get('/inventory/export-csv', { responseType: 'blob' })
+  const blob = new Blob([res.data], { type: 'text/csv' })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'parts_inventory.csv'
+  document.body.appendChild(a)
+  a.click()
+  window.URL.revokeObjectURL(url)
+  a.remove()
+}

@@ -24,18 +24,22 @@ import {
   fetchInspectionFacilityEquipment,
   fetchInspectionFacilities,
   fetchInspectionFacilityInventory,
+  fetchInspectionForms,
   fetchInspectionQuotations,
   fetchInspections,
   generateUpcomingInspections,
   scheduleInspections,
   startInspection as startScheduledInspection,
+  updateInspectionForm,
   updateInspectionInvoice,
   type Inspection,
   type InspectionEquipmentItem,
   type InspectionInvoice,
   type InspectionInventoryItem,
   type InspectionFrequency,
+  type InspectionFormOption,
 } from '@/api/inspections'
+import { fetchModalities, type Modality } from '@/api/modalities'
 
 const CHECK_FIELDS = [
   ['physical_inspection', 'Physical Inspection'],
@@ -63,6 +67,9 @@ const statusChip = (value: string) => {
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
+
+const flattenModalities = (items: Modality[]): Modality[] =>
+  items.flatMap((item) => [item, ...flattenModalities(item.children || [])])
 
 const formatDate = (date: string | null | undefined) => {
   if (!date) return '-'
@@ -150,10 +157,16 @@ const Inspections = () => {
     queryFn: () => fetchInspections({ status: 'completed' }),
   })
   const quotationsQ = useQuery({ queryKey: ['inspection-quotations'], queryFn: fetchInspectionQuotations })
+  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms() })
+  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities() })
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
   const inventory = inventoryQ.data || []
   const equipment = equipmentQ.data || []
+  const assignableModalities = useMemo(
+    () => flattenModalities(modalitiesQ.data?.items || []),
+    [modalitiesQ.data?.items],
+  )
 
   const createMut = useMutation({
     mutationFn: createInstantInspection,
@@ -217,6 +230,15 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update invoice'),
+  })
+
+  const formMut = useMutation({
+    mutationFn: ({ id, modality_id }: { id: number; modality_id: number | null }) => updateInspectionForm(id, { modality_id }),
+    onSuccess: () => {
+      toast.success('Inspection form asset tag updated')
+      queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update inspection form'),
   })
 
   useEffect(() => {
@@ -445,6 +467,7 @@ const Inspections = () => {
           <Tab icon={<BuildIcon />} iconPosition="start" label="In Progress" />
           <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Completed" />
           <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Inspection Quotations" />
+          <Tab icon={<AssignmentTurnedInIcon />} iconPosition="start" label="Inspection Forms" />
         </Tabs>
 
         {tab === 0 && (
@@ -610,6 +633,50 @@ const Inspections = () => {
                     </TableRow>
                   )
                 })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {tab === 5 && (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                  <TableCell sx={{ fontWeight: 900 }}>Form</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Tagged Asset Type</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {formsQ.isLoading ? Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}><TableCell colSpan={3}><Skeleton /></TableCell></TableRow>
+                )) : (formsQ.data?.items || []).length === 0 ? (
+                  <TableRow><TableCell colSpan={3} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspection forms found.</TableCell></TableRow>
+                ) : formsQ.data!.items.map((form: InspectionFormOption) => (
+                  <TableRow key={form.id} hover>
+                    <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>{form.name}</TableCell>
+                    <TableCell>{form.description || '-'}</TableCell>
+                    <TableCell sx={{ minWidth: 280 }}>
+                      <TextField
+                        select
+                        size="small"
+                        fullWidth
+                        value={form.modality_id ?? ''}
+                        onChange={(event) => formMut.mutate({
+                          id: form.id,
+                          modality_id: event.target.value ? Number(event.target.value) : null,
+                        })}
+                        disabled={formMut.isPending}
+                      >
+                        <MenuItem value="">General - available to all assets</MenuItem>
+                        {assignableModalities.map((modality) => (
+                          <MenuItem key={modality.id} value={modality.id}>{modality.name}</MenuItem>
+                        ))}
+                      </TextField>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>

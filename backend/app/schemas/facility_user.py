@@ -28,7 +28,10 @@ class FacilityUserBulkAssign(BaseModel):
     user_ids: List[int]
 
 
+class FacilityManagerRoleUpdate(BaseModel):
+    role: str
+
+
 class FacilityUserListResponse(BaseModel):
     items: List[FacilityUserResponse]
     total: int
-

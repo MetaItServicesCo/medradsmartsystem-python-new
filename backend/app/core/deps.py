@@ -50,4 +50,5 @@ def require_roles(*roles: str):
 
 # Convenience shortcuts
 get_admin_user = require_roles("superadmin", "admin")
+get_superadmin_user = require_roles("superadmin")
 get_facility_admin_user = require_roles("superadmin", "admin", "facility_admin")

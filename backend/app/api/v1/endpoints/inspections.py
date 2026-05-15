@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.deps import get_current_user
+from app.core.deps import get_admin_user, get_current_user
 from app.db.base import get_db
 from app.models.facility import Facility
 from app.models.facility_tier import FacilityTier
@@ -16,8 +16,10 @@ from app.models.inspection import Inspection, InspectionResult, InspectionStatus
 from app.models.inspection_form import InspectionForm
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
+from app.models.modality import Modality
 from app.models.tier import Tier
 from app.models.user import User
+from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
 
@@ -127,6 +129,10 @@ class InspectionInvoiceUpdate(BaseModel):
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[InvoiceStatus] = None
+
+
+class InspectionFormUpdate(BaseModel):
+    modality_id: Optional[int] = None
 
 
 def _value(value: Any) -> Any:
@@ -370,11 +376,32 @@ def get_report_template(current_user: User = Depends(get_current_user)) -> Any:
 
 @router.get("/forms")
 def list_inspection_forms(
+    modality_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     form = _get_default_form(db)
-    forms = db.query(InspectionForm).order_by(InspectionForm.name.asc()).all()
+    query = db.query(InspectionForm).options(joinedload(InspectionForm.modality))
+
+    if modality_id is not None:
+        modality = db.query(Modality).filter(Modality.id == modality_id).first()
+        if not modality:
+            raise HTTPException(status_code=404, detail="Modality not found")
+
+        allowed_modality_ids = {modality.id}
+        parent = modality.parent
+        while parent:
+            allowed_modality_ids.add(parent.id)
+            parent = parent.parent
+
+        query = query.filter(
+            or_(
+                InspectionForm.modality_id.is_(None),
+                InspectionForm.modality_id.in_(allowed_modality_ids),
+            )
+        )
+
+    forms = query.order_by(InspectionForm.name.asc()).all()
     if form not in forms:
         forms.append(form)
     return {
@@ -383,12 +410,44 @@ def list_inspection_forms(
                 "id": item.id,
                 "name": item.name,
                 "description": item.description,
+                "modality_id": item.modality_id,
+                "modality_name": item.modality.name if item.modality else None,
                 "created_at": item.created_at,
                 "updated_at": item.updated_at,
             }
             for item in forms
         ],
         "total": len(forms),
+    }
+
+
+@router.patch("/forms/{form_id}")
+def update_inspection_form(
+    form_id: int,
+    form_in: InspectionFormUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+) -> Any:
+    form = db.query(InspectionForm).filter(InspectionForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Inspection form not found")
+
+    if form_in.modality_id is not None:
+        modality = db.query(Modality).filter(Modality.id == form_in.modality_id).first()
+        if not modality:
+            raise HTTPException(status_code=404, detail="Modality not found")
+
+    form.modality_id = form_in.modality_id
+    db.commit()
+    db.refresh(form)
+    return {
+        "id": form.id,
+        "name": form.name,
+        "description": form.description,
+        "modality_id": form.modality_id,
+        "modality_name": form.modality.name if form.modality else None,
+        "created_at": form.created_at,
+        "updated_at": form.updated_at,
     }
 
 
@@ -619,15 +678,23 @@ def generate_upcoming_inspections(
             continue
 
         criticality = _equipment_criticality(equipment)
-        frequency = _frequency_for_criticality(criticality)
+        frequency = inspection_frequency_from_schedule(equipment.pm_scheduling) or _frequency_for_criticality(criticality)
         last_completed = (
             db.query(Inspection)
             .filter(Inspection.equipment_id == equipment.id, Inspection.status == InspectionStatus.COMPLETED)
             .order_by(Inspection.completed_at.desc())
             .first()
         )
-        base_date = last_completed.completed_at if last_completed and last_completed.completed_at else datetime.utcnow()
-        due_date = base_date + timedelta(days=_frequency_days(frequency))
+        due_date = None
+        if equipment.next_generated_pm_date:
+            due_date = datetime.combine(equipment.next_generated_pm_date, datetime.min.time())
+        elif equipment.last_pm_date and equipment.pm_scheduling:
+            generated_due_date = next_inspection_date(equipment.last_pm_date, equipment.pm_scheduling)
+            if generated_due_date:
+                due_date = datetime.combine(generated_due_date, datetime.min.time())
+        if due_date is None:
+            base_date = last_completed.completed_at if last_completed and last_completed.completed_at else datetime.utcnow()
+            due_date = base_date + timedelta(days=_frequency_days(frequency))
         if due_date > horizon:
             continue
 
@@ -783,6 +850,12 @@ def complete_inspection(
     inspection.updated_at = datetime.utcnow()
     if not inspection.inspector_id:
         inspection.inspector_id = current_user.id
+    if inspection.equipment:
+        inspection.equipment.last_pm_date = inspection.completed_at.date()
+        inspection.equipment.next_generated_pm_date = next_inspection_date(
+            inspection.equipment.last_pm_date,
+            inspection.equipment.pm_scheduling,
+        )
 
     invoice = _create_inspection_invoice(db, inspection, payload)
     log_activity(
