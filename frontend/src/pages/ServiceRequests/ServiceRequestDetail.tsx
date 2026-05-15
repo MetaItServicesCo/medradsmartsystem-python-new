@@ -37,6 +37,7 @@ import {
 } from '@/api/serviceRequests'
 import QuotationPanel from './QuotationPanel'
 import { fetchUsers, type UserData } from '@/api/users'
+import { resolveUploadUrl } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
@@ -81,6 +82,7 @@ const ServiceRequestDetail = () => {
   const [timeSpent, setTimeSpent] = useState('')
   const [totalCost, setTotalCost] = useState('')
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [imageOpen, setImageOpen] = useState(false)
 
 
   const user = useAuthStore(state => state.user)
@@ -222,6 +224,7 @@ const ServiceRequestDetail = () => {
   const currentStepIndex = STATUS_STEPS.indexOf(sr.status)
   const isTerminal = sr.status === 'completed' || sr.status === 'cancelled'
   const nextStatus = NEXT_STATUS[sr.status]
+  const requestImageUrl = resolveUploadUrl(sr.request_image_url) || sr.request_image_url || ''
 
   return (
     <Box className="page-enter">
@@ -436,12 +439,11 @@ const ServiceRequestDetail = () => {
                 </Box>
               </Box>
 
-              {sr.request_image_url && (
+              {requestImageUrl && (
                 <Button
                   variant="outlined"
                   startIcon={<ImageIcon />}
-                  href={sr.request_image_url}
-                  target="_blank"
+                  onClick={() => setImageOpen(true)}
                   sx={{ borderRadius: '12px', fontWeight: 700, justifyContent: 'flex-start' }}
                 >
                   View Attached Image
@@ -885,6 +887,36 @@ const ServiceRequestDetail = () => {
           >
             Cancel Request
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={imageOpen}
+        onClose={() => setImageOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '20px', overflow: 'hidden' } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+          Attached Image
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, backgroundColor: '#0F172A' }}>
+          <Box
+            component="img"
+            src={requestImageUrl}
+            alt="Service request attachment"
+            sx={{ width: '100%', maxHeight: '72vh', objectFit: 'contain', display: 'block' }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setImageOpen(false)} variant="outlined">
+            Close
+          </Button>
+          {!requestImageUrl.startsWith('data:') && (
+            <Button href={requestImageUrl} target="_blank" rel="noreferrer" variant="contained">
+              Open Original
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

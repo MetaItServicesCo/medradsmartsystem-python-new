@@ -11,7 +11,7 @@ import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { toast } from 'react-toastify'
 
-import { createServiceRequest, type ServiceRequestCreate, type ServiceRequestPriority } from '@/api/serviceRequests'
+import { createServiceRequest, uploadServiceRequestImage, type ServiceRequestCreate, type ServiceRequestPriority } from '@/api/serviceRequests'
 import { fetchFacilities } from '@/api/facilities'
 import { fetchEquipment, type EquipmentItem } from '@/api/equipment'
 
@@ -39,6 +39,8 @@ const CreateServiceRequestModal = ({ open, onClose }: Props) => {
   const [serviceRequired, setServiceRequired] = useState('')
   const [imageUrl, setImageUrl] = useState('')
   const [imageName, setImageName] = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   const { data: facilitiesData } = useQuery({
     queryKey: ['facilities-brief'],
@@ -74,6 +76,8 @@ const CreateServiceRequestModal = ({ open, onClose }: Props) => {
     setServiceRequired('')
     setImageUrl('')
     setImageName('')
+    setImageFile(null)
+    setUploadingImage(false)
   }, [open])
 
   const createMutation = useMutation({
@@ -100,15 +104,28 @@ const CreateServiceRequestModal = ({ open, onClose }: Props) => {
   const handleImage = (file?: File) => {
     if (!file) return
     setImageName(file.name)
-    const reader = new FileReader()
-    reader.onload = () => setImageUrl(String(reader.result || ''))
-    reader.readAsDataURL(file)
+    setImageFile(file)
+    setImageUrl('')
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!facilityId || !equipmentId || !serviceRequired.trim()) {
       toast.warning('Facility, equipment, and service required are required')
       return
+    }
+    let uploadedImageUrl = imageUrl
+    if (imageFile && !uploadedImageUrl) {
+      try {
+        setUploadingImage(true)
+        const uploaded = await uploadServiceRequestImage(imageFile)
+        uploadedImageUrl = uploaded.file_url
+        setImageUrl(uploaded.file_url)
+      } catch (err: any) {
+        toast.error(err.response?.data?.detail || 'Failed to upload image')
+        return
+      } finally {
+        setUploadingImage(false)
+      }
     }
     createMutation.mutate({
       facility_id: facilityId as number,
@@ -119,7 +136,7 @@ const CreateServiceRequestModal = ({ open, onClose }: Props) => {
       preferred_datetime: preferredDateTime(),
       requested_by_name: requestedBy.trim() || undefined,
       reference_number: [...references, referenceNumber.trim()].filter(Boolean).join(', ') || undefined,
-      request_image_url: imageUrl || undefined,
+      request_image_url: uploadedImageUrl || undefined,
     })
   }
 
@@ -267,10 +284,10 @@ const CreateServiceRequestModal = ({ open, onClose }: Props) => {
         <Button
           onClick={handleSubmit}
           variant="contained"
-          disabled={!isValid || createMutation.isPending}
+          disabled={!isValid || uploadingImage || createMutation.isPending}
           sx={{ background: 'linear-gradient(135deg, #4F46E5 0%, #EC4899 100%)', borderRadius: '12px', px: 4, fontWeight: 900 }}
         >
-          {createMutation.isPending ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : 'Create Service Request'}
+          {uploadingImage || createMutation.isPending ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : 'Create Service Request'}
         </Button>
       </DialogActions>
     </Dialog>

@@ -91,7 +91,7 @@ export interface UpdateOwnProfilePayload {
 
 export const resolveUploadUrl = (url?: string | null): string | undefined => {
   if (!url) return undefined
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) return url
 
   const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
   const origin = apiBase.replace(/\/api\/v1\/?$/, '')

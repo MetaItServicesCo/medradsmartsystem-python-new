@@ -1,7 +1,9 @@
+import os
+import uuid
 from typing import Any, Optional
 from datetime import datetime
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session, joinedload
 
 from app import crud
@@ -25,6 +27,18 @@ from app.schemas.service_request import (
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 
 router = APIRouter()
+
+SERVICE_REQUEST_UPLOAD_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "..",
+    "..",
+    "..",
+    "uploads",
+    "service_request_images",
+)
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+MAX_IMAGE_SIZE = 8 * 1024 * 1024
 
 # Allowed ordered transitions  (+ cancelled from any state)
 VALID_TRANSITIONS = {
@@ -155,6 +169,37 @@ def get_service_request(
     if not sr:
         raise HTTPException(status_code=404, detail="Service request not found")
     return _enrich(sr)
+
+
+@router.post("/upload")
+async def upload_service_request_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Upload an image attachment for a service request."""
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, GIF, and WebP images are allowed")
+
+    content = await file.read()
+    if len(content) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="Image too large. Maximum size is 8MB")
+
+    os.makedirs(SERVICE_REQUEST_UPLOAD_DIR, exist_ok=True)
+    file_ext = os.path.splitext(file.filename or "image")[1].lower()
+    if file_ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        file_ext = ".jpg"
+
+    stored_name = f"{uuid.uuid4().hex}{file_ext}"
+    file_path = os.path.join(SERVICE_REQUEST_UPLOAD_DIR, stored_name)
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    return {
+        "file_url": f"/uploads/service_request_images/{stored_name}",
+        "file_name": file.filename or stored_name,
+        "file_size": len(content),
+        "file_type": file.content_type,
+    }
 
 
 # ── CREATE ───────────────────────────────────────────────────────────────────

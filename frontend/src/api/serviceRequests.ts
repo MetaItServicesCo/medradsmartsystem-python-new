@@ -164,6 +164,13 @@ export interface ServiceRequestUpdate {
   invoice_deleted?: boolean
 }
 
+export interface ServiceRequestImageUploadResponse {
+  file_url: string
+  file_name: string
+  file_size: number
+  file_type: string
+}
+
 export interface ServiceRequestHistoryEntry {
   timestamp: string
   action: string
@@ -204,6 +211,17 @@ export const createServiceRequest = async (
   data: ServiceRequestCreate
 ): Promise<ServiceRequest> => {
   const res = await apiClient.post('/service-requests/', data)
+  return res.data
+}
+
+export const uploadServiceRequestImage = async (
+  file: File
+): Promise<ServiceRequestImageUploadResponse> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await apiClient.post('/service-requests/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return res.data
 }
 
