@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, InputLabel, MenuItem, Select, Skeleton, Tab, Table, TableBody,
+  DialogTitle, Divider, FormControl, IconButton, InputLabel, Menu, MenuItem, Select, Skeleton, Tab, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material'
+import AddIcon from '@mui/icons-material/Add'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import BoltIcon from '@mui/icons-material/Bolt'
 import BuildIcon from '@mui/icons-material/Build'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import DeleteIcon from '@mui/icons-material/Delete'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import EditIcon from '@mui/icons-material/Edit'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import PersonIcon from '@mui/icons-material/Person'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SaveIcon from '@mui/icons-material/Save'
 import EventAvailableIcon from '@mui/icons-material/EventAvailable'
@@ -19,25 +23,33 @@ import AssessmentIcon from '@mui/icons-material/Assessment'
 import { toast } from 'react-toastify'
 
 import {
-  completeInspection,
+  addInspectionBatchAsset,
   createInstantInspection,
+  fetchInspectionBatch,
+  fetchInspectionBatches,
   fetchInspectionFacilityEquipment,
   fetchInspectionFacilities,
   fetchInspectionForms,
   fetchInspectionQuotations,
   fetchInspections,
   generateUpcomingInspections,
+  removeInspectionBatchAsset,
   scheduleInspections,
+  saveInspectionReport,
   startInspection as startScheduledInspection,
   updateInspectionForm,
   updateInspectionInvoice,
+  updateInspectionTechnician,
+  type BatchAssetCreatePayload,
   type Inspection,
+  type InspectionBatch,
   type InspectionEquipmentItem,
   type InspectionInvoice,
   type InspectionFrequency,
   type InspectionFormOption,
 } from '@/api/inspections'
 import { fetchModalities, type Modality } from '@/api/modalities'
+import { fetchUsers, type UserData } from '@/api/users'
 
 const CHECK_FIELDS = [
   ['physical_inspection', 'Physical Inspection'],
@@ -117,6 +129,24 @@ const makeReport = (inspection: Inspection) => ({
   },
 })
 
+const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
+  asset_tag: '',
+  make: '',
+  model: '',
+  serial_number: '',
+  modality_id: 0,
+  tier_id: null,
+  inspection_form_id: null,
+  description: '',
+  risk_priority: '',
+  risk_name: 'Non-Critical',
+  location: '',
+  pm_scheduling: 'annual',
+  last_pm_date: null,
+  installation_date: null,
+  inventory_date: new Date().toISOString().slice(0, 10),
+})
+
 const Inspections = () => {
   const queryClient = useQueryClient()
   const [tab, setTab] = useState(0)
@@ -127,9 +157,17 @@ const Inspections = () => {
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().slice(0, 10))
   const [reportInspection, setReportInspection] = useState<Inspection | null>(null)
   const [viewReport, setViewReport] = useState<Inspection | null>(null)
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [report, setReport] = useState<any>(null)
+  const [reportStatus, setReportStatus] = useState<'completed' | 'in_progress'>('completed')
   const [invoiceEdit, setInvoiceEdit] = useState<InspectionInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState<any>({})
+  const [techEdit, setTechEdit] = useState<Inspection | null>(null)
+  const [selectedTechId, setSelectedTechId] = useState<number | ''>('')
+  const [addAssetOpen, setAddAssetOpen] = useState(false)
+  const [batchAssetForm, setBatchAssetForm] = useState<BatchAssetCreatePayload>(emptyBatchAssetForm())
+  const [assetActionAnchor, setAssetActionAnchor] = useState<HTMLElement | null>(null)
+  const [assetActionItem, setAssetActionItem] = useState<Inspection | null>(null)
 
   const facilitiesQ = useQuery({ queryKey: ['inspection-facilities'], queryFn: fetchInspectionFacilities })
   const equipmentQ = useQuery({
@@ -145,6 +183,19 @@ const Inspections = () => {
     queryKey: ['inspections', 'in_progress'],
     queryFn: () => fetchInspections({ status: 'in_progress' }),
   })
+  const inProgressBatchesQ = useQuery({
+    queryKey: ['inspection-batches', 'in_progress'],
+    queryFn: () => fetchInspectionBatches({ status: 'in_progress' }),
+  })
+  const completedBatchesQ = useQuery({
+    queryKey: ['inspection-batches', 'completed'],
+    queryFn: () => fetchInspectionBatches({ status: 'completed' }),
+  })
+  const batchDetailQ = useQuery({
+    queryKey: ['inspection-batches', selectedBatchId],
+    queryFn: () => fetchInspectionBatch(Number(selectedBatchId)),
+    enabled: Boolean(selectedBatchId),
+  })
   const completedQ = useQuery({
     queryKey: ['inspections', 'completed'],
     queryFn: () => fetchInspections({ status: 'completed' }),
@@ -152,6 +203,7 @@ const Inspections = () => {
   const quotationsQ = useQuery({ queryKey: ['inspection-quotations'], queryFn: fetchInspectionQuotations })
   const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms() })
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities() })
+  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }) })
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
   const equipment = equipmentQ.data || []
@@ -163,9 +215,11 @@ const Inspections = () => {
   const createMut = useMutation({
     mutationFn: createInstantInspection,
     onSuccess: (res) => {
-      toast.success(`${res.total} inspection(s) started`)
+      const assetCount = res.items?.[0]?.asset_count || 0
+      toast.success(`${res.total} inspection batch started with ${assetCount} asset${assetCount === 1 ? '' : 's'}`)
       setSelectedInstantEquipmentIds([])
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       setTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
@@ -174,9 +228,11 @@ const Inspections = () => {
   const scheduleMut = useMutation({
     mutationFn: scheduleInspections,
     onSuccess: (res) => {
-      toast.success(`${res.total} upcoming inspection(s) scheduled`)
+      const assetCount = res.items?.[0]?.asset_count || 0
+      toast.success(`${res.total} inspection batch scheduled with ${assetCount} asset${assetCount === 1 ? '' : 's'}`)
       setSelectedEquipmentIds([])
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       setTab(0)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not schedule inspections'),
@@ -187,6 +243,7 @@ const Inspections = () => {
     onSuccess: (res) => {
       toast.success(`${res.total} upcoming inspection(s) generated`)
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not generate schedule'),
   })
@@ -196,21 +253,58 @@ const Inspections = () => {
     onSuccess: () => {
       toast.success('Inspection moved to in progress')
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       setTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
   })
 
-  const completeMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => completeInspection(id, data),
+  const reportMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => saveInspectionReport(id, data),
     onSuccess: () => {
-      toast.success('Inspection completed and invoice generated')
+      toast.success(reportStatus === 'completed' ? 'Inspection report saved and invoice prepared' : 'Inspection moved back to in progress')
       setReportInspection(null)
       setReport(null)
+      setReportStatus('completed')
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] })
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not complete inspection'),
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save inspection report'),
+  })
+
+  const addBatchAssetMut = useMutation({
+    mutationFn: ({ batchId, data }: { batchId: number; data: BatchAssetCreatePayload }) => addInspectionBatchAsset(batchId, data),
+    onSuccess: () => {
+      toast.success('Asset added to inspection batch')
+      setAddAssetOpen(false)
+      setBatchAssetForm(emptyBatchAssetForm())
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-equipment'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not add asset to batch'),
+  })
+
+  const removeBatchAssetMut = useMutation({
+    mutationFn: ({ batchId, inspectionId }: { batchId: number; inspectionId: number }) => removeInspectionBatchAsset(batchId, inspectionId),
+    onSuccess: () => {
+      toast.success('Asset removed from batch')
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspections'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not remove asset from batch'),
+  })
+
+  const techMut = useMutation({
+    mutationFn: ({ inspectionId, inspectorId }: { inspectionId: number; inspectorId: number | null }) => updateInspectionTechnician(inspectionId, inspectorId),
+    onSuccess: () => {
+      toast.success('Technician updated')
+      setTechEdit(null)
+      setSelectedTechId('')
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspections'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not change technician'),
   })
 
   const invoiceMut = useMutation({
@@ -234,7 +328,10 @@ const Inspections = () => {
   })
 
   useEffect(() => {
-    if (reportInspection) setReport(reportInspection.form_data || makeReport(reportInspection))
+    if (reportInspection) {
+      setReport(reportInspection.form_data || makeReport(reportInspection))
+      setReportStatus(reportInspection.status === 'completed' ? 'completed' : 'completed')
+    }
   }, [reportInspection])
 
   useEffect(() => {
@@ -252,13 +349,33 @@ const Inspections = () => {
     })
   }, [invoiceEdit])
 
+  const legacyInProgress = useMemo(
+    () => (inProgressQ.data?.items || []).filter(item => !item.batch_id),
+    [inProgressQ.data?.items],
+  )
+  const legacyCompleted = useMemo(
+    () => (completedQ.data?.items || []).filter(item => !item.batch_id),
+    [completedQ.data?.items],
+  )
+
   const stats = useMemo(() => ({
     upcoming: upcomingQ.data?.total || 0,
     instantItems: equipment.length,
-    inProgress: inProgressQ.data?.total || 0,
-    completed: completedQ.data?.total || 0,
+    inProgress: (inProgressBatchesQ.data?.total || 0) + legacyInProgress.length,
+    completed: (completedBatchesQ.data?.total || 0) + legacyCompleted.length,
     quotations: quotationsQ.data?.total || 0,
-  }), [upcomingQ.data?.total, equipment.length, inProgressQ.data?.total, completedQ.data?.total, quotationsQ.data?.total])
+  }), [upcomingQ.data?.total, equipment.length, inProgressBatchesQ.data?.total, legacyInProgress.length, completedBatchesQ.data?.total, legacyCompleted.length, quotationsQ.data?.total])
+
+  const selectedBatch = batchDetailQ.data
+  const batchTechnicians = useMemo(() => {
+    const users = usersQ.data?.items || []
+    if (!selectedBatch?.facility_id) return users
+    return users.filter((user: UserData) =>
+      user.facility_id === selectedBatch.facility_id ||
+      (user.facilities || []).some(facility => facility.id === selectedBatch.facility_id) ||
+      ['superadmin', 'admin', 'technician'].includes(user.role),
+    )
+  }, [selectedBatch?.facility_id, usersQ.data?.items])
 
   const toggleInstantEquipment = (id: number) => {
     setSelectedInstantEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
@@ -303,9 +420,10 @@ const Inspections = () => {
     if (!reportInspection || !report) return
     const hasFail = Object.values(report.checks || {}).includes('fail')
     const partTotal = (report.parts || []).reduce((sum: number, part: any) => sum + Number(part.price || 0), 0)
-    completeMut.mutate({
+    reportMut.mutate({
       id: reportInspection.id,
       data: {
+        status: reportStatus,
         result: hasFail ? 'fail' : 'pass',
         form_data: report,
         corrective_actions: report.diagnostics?.corrective_action_taken || '',
@@ -320,6 +438,42 @@ const Inspections = () => {
   const saveInvoice = () => {
     if (!invoiceEdit) return
     invoiceMut.mutate({ id: invoiceEdit.id, data: invoiceForm })
+  }
+
+  const openAssetActions = (event: MouseEvent<HTMLElement>, asset: Inspection) => {
+    setAssetActionAnchor(event.currentTarget)
+    setAssetActionItem(asset)
+  }
+
+  const closeAssetActions = () => {
+    setAssetActionAnchor(null)
+    setAssetActionItem(null)
+  }
+
+  const openTechnicianDialog = (asset: Inspection) => {
+    closeAssetActions()
+    setTechEdit(asset)
+    setSelectedTechId(asset.inspector_id || '')
+  }
+
+  const saveTechnician = () => {
+    if (!techEdit) return
+    techMut.mutate({ inspectionId: techEdit.id, inspectorId: selectedTechId ? Number(selectedTechId) : null })
+  }
+
+  const submitBatchAsset = () => {
+    if (!selectedBatch) return
+    if (!batchAssetForm.asset_tag || !batchAssetForm.make || !batchAssetForm.model || !batchAssetForm.serial_number || !batchAssetForm.modality_id) {
+      toast.error('Asset #, make, model, serial, and modality are required')
+      return
+    }
+    addBatchAssetMut.mutate({ batchId: selectedBatch.id, data: batchAssetForm })
+  }
+
+  const printReport = (asset: Inspection) => {
+    closeAssetActions()
+    setViewReport(asset)
+    window.setTimeout(() => window.print(), 250)
   }
 
   const renderKpi = (label: string, value: number, icon: JSX.Element, color: string) => (
@@ -379,6 +533,61 @@ const Inspections = () => {
                       <Chip label={item.invoice?.invoice_number || 'Invoice pending'} sx={{ fontWeight: 900 }} />
                     </Box>
                   )}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
+
+  const renderBatchRows = (items: InspectionBatch[], loading: boolean, mode: 'progress' | 'completed' = 'progress') => (
+    <TableContainer>
+      <Table>
+        <TableHead>
+          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+            <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Assets</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Progress</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>{mode === 'completed' ? 'Completed' : 'Started'}</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {loading ? Array.from({ length: 4 }).map((_, i) => (
+            <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
+          )) : items.length === 0 ? (
+            <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No {mode === 'completed' ? 'completed' : 'in progress'} inspection batches.</TableCell></TableRow>
+          ) : items.map(batch => {
+            const done = batch.completed_count || 0
+            const total = batch.asset_count || 0
+            return (
+              <TableRow key={batch.id} hover>
+                <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{batch.batch_number}</TableCell>
+                <TableCell sx={{ fontWeight: 800 }}>{batch.facility_name || '-'}</TableCell>
+                <TableCell>
+                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{total} asset{total === 1 ? '' : 's'}</Typography>
+                  <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{batch.inspection_frequency || 'instant'} inspection batch</Typography>
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    size="small"
+                    label={`${done} completed of ${total}`}
+                    sx={{ bgcolor: '#EEF2FF', color: '#4F46E5', fontWeight: 900 }}
+                  />
+                </TableCell>
+                <TableCell>{formatDate(mode === 'completed' ? batch.completed_at : (batch.started_at || batch.scheduled_date))}</TableCell>
+                <TableCell align="right">
+                  <Button
+                    startIcon={<AssessmentIcon />}
+                    variant="contained"
+                    onClick={() => setSelectedBatchId(batch.id)}
+                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+                  >
+                    {mode === 'completed' ? 'View' : 'View Batch'}
+                  </Button>
                 </TableCell>
               </TableRow>
             )
@@ -583,8 +792,32 @@ const Inspections = () => {
           </Box>
         )}
 
-        {tab === 2 && renderInspectionRows(inProgressQ.data?.items || [], inProgressQ.isLoading, 'progress')}
-        {tab === 3 && renderInspectionRows(completedQ.data?.items || [], completedQ.isLoading, 'completed')}
+        {tab === 2 && (
+          <Box>
+            {renderBatchRows(inProgressBatchesQ.data?.items || [], inProgressBatchesQ.isLoading)}
+            {legacyInProgress.length > 0 && (
+              <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
+                <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
+                  Legacy Individual Inspections
+                </Typography>
+                {renderInspectionRows(legacyInProgress, inProgressQ.isLoading, 'progress')}
+              </Box>
+            )}
+          </Box>
+        )}
+        {tab === 3 && (
+          <Box>
+            {renderBatchRows(completedBatchesQ.data?.items || [], completedBatchesQ.isLoading, 'completed')}
+            {legacyCompleted.length > 0 && (
+              <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
+                <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
+                  Legacy Individual Inspections
+                </Typography>
+                {renderInspectionRows(legacyCompleted, completedQ.isLoading, 'completed')}
+              </Box>
+            )}
+          </Box>
+        )}
 
         {tab === 4 && (
           <TableContainer>
@@ -675,11 +908,200 @@ const Inspections = () => {
         )}
       </Card>
 
+      <Dialog open={Boolean(selectedBatchId)} onClose={() => setSelectedBatchId(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', fontWeight: 900, color: '#1E1B4B' }}>
+          <Box>
+            Inspection Batch
+            <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+              {selectedBatch?.batch_number || 'Loading'} - {selectedBatch?.facility_name || ''}
+            </Typography>
+          </Box>
+          {selectedBatch?.status !== 'completed' && (
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setAddAssetOpen(true)}
+              sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: '#10B981' }}
+            >
+              Add New Inventory to Batch
+            </Button>
+          )}
+        </DialogTitle>
+        <DialogContent dividers>
+          {batchDetailQ.isLoading ? (
+            <Box sx={{ display: 'grid', gap: 1 }}>
+              {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} height={44} />)}
+            </Box>
+          ) : selectedBatch ? (
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Work Order</Typography>
+                  <Typography sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{selectedBatch.batch_number}</Typography>
+                </Card>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Assets</Typography>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{selectedBatch.asset_count}</Typography>
+                </Card>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Completed</Typography>
+                  <Typography sx={{ color: '#059669', fontWeight: 900 }}>{selectedBatch.completed_count}</Typography>
+                </Card>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Technician</Typography>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{selectedBatch.inspector_name || '-'}</Typography>
+                </Card>
+              </Box>
+
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                      <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Serial</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Tier</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Technician</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(selectedBatch.assets || []).map(asset => {
+                      const chip = statusChip(asset.status)
+                      return (
+                        <TableRow key={asset.id} hover>
+                          <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{asset.asset_tag || asset.part_number || '-'}</TableCell>
+                          <TableCell>{asset.serial_number || '-'}</TableCell>
+                          <TableCell sx={{ fontWeight: 800 }}>{asset.asset_name || asset.equipment_name || '-'}</TableCell>
+                          <TableCell>{asset.tier_name || '-'}</TableCell>
+                          <TableCell>{asset.inspector_name || '-'}</TableCell>
+                          <TableCell><Chip size="small" label={asset.status} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
+                          <TableCell align="right">
+                            {selectedBatch.status === 'completed' ? (
+                              <IconButton size="small" onClick={(event) => openAssetActions(event, asset)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED' }}>
+                                <MoreVertIcon fontSize="small" />
+                              </IconButton>
+                            ) : (
+                              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
+                                <Button size="small" variant="contained" startIcon={<AssignmentTurnedInIcon />} onClick={() => setReportInspection(asset)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
+                                  Report Activity
+                                </Button>
+                                <Button size="small" variant="outlined" startIcon={<PersonIcon />} onClick={() => openTechnicianDialog(asset)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
+                                  Change Tech
+                                </Button>
+                                <IconButton
+                                  size="small"
+                                  disabled={asset.status === 'completed' || removeBatchAssetMut.isPending}
+                                  onClick={() => selectedBatch && removeBatchAssetMut.mutate({ batchId: selectedBatch.id, inspectionId: asset.id })}
+                                  sx={{ bgcolor: '#FEE2E2', color: '#DC2626', '&:disabled': { bgcolor: '#F3F4F6' } }}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          ) : (
+            <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Batch not found.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setSelectedBatchId(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Menu anchorEl={assetActionAnchor} open={Boolean(assetActionAnchor)} onClose={closeAssetActions}>
+        <MenuItem
+          onClick={() => {
+            if (!assetActionItem) return
+            setReportInspection(assetActionItem)
+            closeAssetActions()
+          }}
+        >
+          <AssignmentTurnedInIcon fontSize="small" sx={{ mr: 1 }} /> Report Activity
+        </MenuItem>
+        <MenuItem onClick={() => assetActionItem && printReport(assetActionItem)}>
+          <AssessmentIcon fontSize="small" sx={{ mr: 1 }} /> Print Report
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={Boolean(techEdit)} onClose={() => setTechEdit(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Change Technician</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            select
+            fullWidth
+            label="Technician"
+            value={selectedTechId}
+            onChange={e => setSelectedTechId(e.target.value ? Number(e.target.value) : '')}
+          >
+            <MenuItem value="">Unassigned</MenuItem>
+            {batchTechnicians.map(user => (
+              <MenuItem key={user.id} value={user.id}>{user.full_name || user.username} - {user.role}</MenuItem>
+            ))}
+          </TextField>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setTechEdit(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button onClick={saveTechnician} disabled={techMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={addAssetOpen} onClose={() => setAddAssetOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Add New Inventory to Batch</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
+            <TextField label="Asset # *" value={batchAssetForm.asset_tag} onChange={e => setBatchAssetForm(prev => ({ ...prev, asset_tag: e.target.value }))} />
+            <TextField label="Make *" value={batchAssetForm.make} onChange={e => setBatchAssetForm(prev => ({ ...prev, make: e.target.value }))} />
+            <TextField label="Model *" value={batchAssetForm.model} onChange={e => setBatchAssetForm(prev => ({ ...prev, model: e.target.value }))} />
+            <TextField label="Serial # *" value={batchAssetForm.serial_number} onChange={e => setBatchAssetForm(prev => ({ ...prev, serial_number: e.target.value }))} />
+            <TextField
+              select
+              label="Modality *"
+              value={batchAssetForm.modality_id || ''}
+              onChange={e => setBatchAssetForm(prev => ({ ...prev, modality_id: Number(e.target.value) }))}
+            >
+              {assignableModalities.map(modality => (
+                <MenuItem key={modality.id} value={modality.id}>{modality.name}</MenuItem>
+              ))}
+            </TextField>
+            <TextField select label="PM Scheduling" value={batchAssetForm.pm_scheduling || 'annual'} onChange={e => setBatchAssetForm(prev => ({ ...prev, pm_scheduling: e.target.value }))}>
+              <MenuItem value="quarterly">Quarterly</MenuItem>
+              <MenuItem value="semi_annual">Semi-Annual</MenuItem>
+              <MenuItem value="annual">Annual</MenuItem>
+            </TextField>
+            <TextField label="Location" value={batchAssetForm.location || ''} onChange={e => setBatchAssetForm(prev => ({ ...prev, location: e.target.value }))} />
+            <TextField label="Risk Priority" value={batchAssetForm.risk_priority || ''} onChange={e => setBatchAssetForm(prev => ({ ...prev, risk_priority: e.target.value }))} />
+            <TextField label="Risk Name" value={batchAssetForm.risk_name || ''} onChange={e => setBatchAssetForm(prev => ({ ...prev, risk_name: e.target.value }))} />
+            <TextField label="Last PM Date" type="date" value={batchAssetForm.last_pm_date || ''} onChange={e => setBatchAssetForm(prev => ({ ...prev, last_pm_date: e.target.value || null }))} InputLabelProps={{ shrink: true }} />
+            <TextField label="Installation Date" type="date" value={batchAssetForm.installation_date || ''} onChange={e => setBatchAssetForm(prev => ({ ...prev, installation_date: e.target.value || null }))} InputLabelProps={{ shrink: true }} />
+            <TextField label="Inventory Date" type="date" value={batchAssetForm.inventory_date || ''} onChange={e => setBatchAssetForm(prev => ({ ...prev, inventory_date: e.target.value || null }))} InputLabelProps={{ shrink: true }} />
+            <TextField label="Description" value={batchAssetForm.description || ''} onChange={e => setBatchAssetForm(prev => ({ ...prev, description: e.target.value }))} multiline rows={3} sx={{ gridColumn: '1 / -1' }} />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setAddAssetOpen(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button startIcon={addBatchAssetMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitBatchAsset} disabled={addBatchAssetMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: '#10B981' }}>
+            Add Asset
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={Boolean(reportInspection)} onClose={() => setReportInspection(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           Technician Inspection Report
           <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
-            {reportInspection?.inspection_number} - {reportInspection?.inventory_part_name}
+            {reportInspection?.batch_number || reportInspection?.inspection_number} - {reportInspection?.asset_name || reportInspection?.equipment_name}
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
@@ -774,13 +1196,23 @@ const Inspections = () => {
                   <TextField key={key} label={key.replace(/_/g, ' ')} type={key.includes('date') ? 'date' : 'text'} value={value as string} onChange={e => updateReport('dates', key, e.target.value)} InputLabelProps={{ shrink: true }} />
                 ))}
               </Box>
+              <TextField
+                select
+                label="Report Status"
+                value={reportStatus}
+                onChange={e => setReportStatus(e.target.value as 'completed' | 'in_progress')}
+                sx={{ maxWidth: 260 }}
+              >
+                <MenuItem value="completed">Completed</MenuItem>
+                <MenuItem value="in_progress">In Progress</MenuItem>
+              </TextField>
             </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setReportInspection(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={completeMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={submitReport} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
-            Complete & Generate Invoice
+          <Button startIcon={reportMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={submitReport} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+            {reportStatus === 'completed' ? 'Complete & Generate Invoice' : 'Save as In Progress'}
           </Button>
         </DialogActions>
       </Dialog>

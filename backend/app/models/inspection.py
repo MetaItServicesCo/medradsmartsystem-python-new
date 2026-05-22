@@ -15,11 +15,38 @@ class InspectionResult(str, enum.Enum):
     FAIL = "fail"
     PENDING = "pending"
 
+
+class InspectionBatch(Base):
+    __tablename__ = "inspection_batches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    batch_number = Column(String, unique=True, nullable=False, index=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False, index=True)
+    inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    form_template_id = Column(Integer, ForeignKey("inspection_forms.id"), nullable=False)
+    status = Column(SQLEnum(InspectionStatus), default=InspectionStatus.UPCOMING, index=True)
+    scheduled_date = Column(DateTime, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    inspection_frequency = Column(String, nullable=True, default="instant")
+    inspection_scope = Column(String, nullable=True, default="facility_assets")
+    notes = Column(Text, nullable=True)
+    is_instant = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    facility = relationship("Facility")
+    inspector = relationship("User")
+    form_template = relationship("InspectionForm")
+    inspections = relationship("Inspection", back_populates="batch", cascade="all, delete-orphan")
+
+
 class Inspection(Base):
     __tablename__ = "inspections"
     
     id = Column(Integer, primary_key=True, index=True)
     inspection_number = Column(String, unique=True, nullable=False, index=True)
+    batch_id = Column(Integer, ForeignKey("inspection_batches.id"), nullable=True, index=True)
     equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=True)
     inventory_part_id = Column(Integer, ForeignKey("inventory_parts.id"), nullable=True, index=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False)
@@ -42,6 +69,7 @@ class Inspection(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
+    batch = relationship("InspectionBatch", back_populates="inspections")
     facility = relationship("Facility")
     equipment = relationship("Equipment", back_populates="inspections")
     inventory_part = relationship("InventoryPart")

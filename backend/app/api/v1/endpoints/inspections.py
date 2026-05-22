@@ -12,7 +12,7 @@ from app.db.base import get_db
 from app.models.facility import Facility
 from app.models.facility_tier import FacilityTier
 from app.models.equipment import Equipment, EquipmentStatus
-from app.models.inspection import Inspection, InspectionResult, InspectionStatus
+from app.models.inspection import Inspection, InspectionBatch, InspectionResult, InspectionStatus
 from app.models.inspection_form import InspectionForm
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
@@ -118,6 +118,32 @@ class InspectionComplete(BaseModel):
     tax_amount: Decimal = Decimal("0")
     discount_amount: Decimal = Decimal("0")
     notes: Optional[str] = None
+
+
+class InspectionReportUpdate(InspectionComplete):
+    status: InspectionStatus = InspectionStatus.COMPLETED
+
+
+class InspectionTechnicianUpdate(BaseModel):
+    inspector_id: Optional[int] = None
+
+
+class BatchAssetCreate(BaseModel):
+    asset_tag: str
+    make: str
+    model: str
+    serial_number: str
+    modality_id: int
+    tier_id: Optional[int] = None
+    inspection_form_id: Optional[int] = None
+    description: Optional[str] = None
+    risk_priority: Optional[str] = None
+    risk_name: Optional[str] = None
+    location: Optional[str] = None
+    pm_scheduling: Optional[str] = None
+    last_pm_date: Optional[date] = None
+    installation_date: Optional[date] = None
+    inventory_date: Optional[date] = None
 
 
 class InspectionInvoiceUpdate(BaseModel):
@@ -248,6 +274,33 @@ def _next_inspection_number(db: Session) -> str:
     return f"INSP-{next_num:06d}"
 
 
+def _next_batch_number(db: Session) -> str:
+    last_inspection = db.query(Inspection).order_by(Inspection.id.desc()).first()
+    last_batch = db.query(InspectionBatch).order_by(InspectionBatch.id.desc()).first()
+    next_num = max(last_inspection.id if last_inspection else 0, last_batch.id if last_batch else 0) + 1
+    while True:
+        batch_number = f"INSP-{next_num:06d}"
+        if (
+            not db.query(InspectionBatch.id).filter(InspectionBatch.batch_number == batch_number).first()
+            and not db.query(Inspection.id).filter(Inspection.inspection_number == batch_number).first()
+        ):
+            return batch_number
+        next_num += 1
+
+
+def _batch_asset_number(batch_number: str, position: int) -> str:
+    return f"{batch_number}-{position:03d}"
+
+
+def _next_batch_asset_number(db: Session, batch: InspectionBatch) -> str:
+    position = len(batch.inspections or []) + 1
+    while True:
+        inspection_number = _batch_asset_number(batch.batch_number, position)
+        if not db.query(Inspection.id).filter(Inspection.inspection_number == inspection_number).first():
+            return inspection_number
+        position += 1
+
+
 def _next_invoice_number(db: Session) -> str:
     last = db.query(Invoice).order_by(Invoice.id.desc()).first()
     next_num = (last.id + 1) if last else 1
@@ -272,6 +325,8 @@ def _inspection_response(inspection: Inspection) -> dict[str, Any]:
     data["status"] = _value(data.get("status"))
     data["result"] = _value(data.get("result"))
     data["facility_name"] = inspection.facility.name if inspection.facility else None
+    data["batch_id"] = inspection.batch_id
+    data["batch_number"] = inspection.batch.batch_number if inspection.batch else None
     data["inventory_part_name"] = _part_name(inspection.inventory_part) if inspection.inventory_part else None
     data["equipment_name"] = _equipment_name(inspection.equipment) if inspection.equipment else None
     data["asset_name"] = data["inventory_part_name"] or data["equipment_name"] or "Inspection asset"
@@ -312,15 +367,48 @@ def _inspection_response(inspection: Inspection) -> dict[str, Any]:
     return data
 
 
+def _batch_response(batch: InspectionBatch, include_assets: bool = False) -> dict[str, Any]:
+    inspections = sorted(list(batch.inspections or []), key=lambda item: item.inspection_number or "")
+    completed_count = sum(1 for item in inspections if item.status == InspectionStatus.COMPLETED)
+    in_progress_count = sum(1 for item in inspections if item.status == InspectionStatus.IN_PROGRESS)
+    data = {c.name: getattr(batch, c.name) for c in batch.__table__.columns}
+    data["status"] = _value(data.get("status"))
+    data["facility_name"] = batch.facility.name if batch.facility else None
+    data["inspector_name"] = batch.inspector.full_name if batch.inspector else None
+    data["asset_count"] = len(inspections)
+    data["completed_count"] = completed_count
+    data["in_progress_count"] = in_progress_count
+    data["pending_count"] = max(len(inspections) - completed_count, 0)
+    if include_assets:
+        data["assets"] = [_inspection_response(item) for item in inspections]
+    return data
+
+
+def _sync_batch_status(batch: Optional[InspectionBatch]) -> None:
+    if not batch:
+        return
+    inspections = list(batch.inspections or [])
+    if not inspections:
+        return
+    if all(item.status == InspectionStatus.COMPLETED for item in inspections):
+        batch.status = InspectionStatus.COMPLETED
+        batch.completed_at = datetime.utcnow()
+    elif any(item.status == InspectionStatus.IN_PROGRESS for item in inspections):
+        batch.status = InspectionStatus.IN_PROGRESS
+        batch.completed_at = None
+        if not batch.started_at:
+            batch.started_at = datetime.utcnow()
+    else:
+        batch.status = InspectionStatus.UPCOMING
+        batch.completed_at = None
+    batch.updated_at = datetime.utcnow()
+
+
 def _create_inspection_invoice(
     db: Session,
     inspection: Inspection,
     complete_in: InspectionComplete,
 ) -> Invoice:
-    existing = db.query(Invoice).filter(Invoice.inspection_id == inspection.id).first()
-    if existing:
-        return existing
-
     facility = inspection.facility
     part = inspection.inventory_part
     equipment = inspection.equipment
@@ -342,6 +430,29 @@ def _create_inspection_invoice(
     labor_amount = _money(complete_in.labor_hours) * labor_rate
     subtotal = parts_amount + inspection_charge + other_charges + labor_amount
     total = subtotal + _money(complete_in.tax_amount) - _money(complete_in.discount_amount)
+    invoice_notes = (
+        complete_in.notes
+        or f"Inspection invoice for {_part_name(part) if part else _equipment_name(equipment)}. Tier: {tier.name if tier else 'No tier assigned'}."
+    )
+
+    existing = db.query(Invoice).filter(Invoice.inspection_id == inspection.id).first()
+    if existing:
+        existing.customer_name = facility.billing_name or facility.name
+        existing.customer_email = facility.billing_email or facility.email
+        existing.customer_phone = facility.phone
+        existing.customer_address = _customer_address(facility)
+        existing.subtotal = subtotal
+        existing.tax_amount = complete_in.tax_amount
+        existing.discount_amount = complete_in.discount_amount
+        existing.total_amount = total
+        existing.balance_due = total - _money(existing.amount_paid)
+        if existing.status == InvoiceStatus.CANCELLED:
+            existing.status = InvoiceStatus.PENDING
+        existing.notes = invoice_notes
+        existing.updated_at = datetime.utcnow()
+        db.flush()
+        inspection.quotation_notes = existing.notes
+        return existing
 
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
@@ -362,8 +473,7 @@ def _create_inspection_invoice(
         issue_date=date.today(),
         due_date=date.today() + timedelta(days=30),
         payment_terms="Net 30",
-        notes=complete_in.notes
-        or f"Inspection invoice for {_part_name(part) if part else _equipment_name(equipment)}. Tier: {tier.name if tier else 'No tier assigned'}.",
+        notes=invoice_notes,
     )
     db.add(invoice)
     db.flush()
@@ -574,6 +684,7 @@ def list_inspections(
             joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
             joinedload(Inspection.equipment).joinedload(Equipment.tier),
             joinedload(Inspection.inspector),
+            joinedload(Inspection.batch),
         )
     )
     if status_filter:
@@ -590,6 +701,217 @@ def list_inspections(
     for inspection in inspections:
         inspection._inspection_invoice = invoice_map.get(inspection.id)
     return {"items": [_inspection_response(item) for item in inspections], "total": len(inspections)}
+
+
+@router.get("/batches")
+def list_inspection_batches(
+    db: Session = Depends(get_db),
+    status_filter: Optional[InspectionStatus] = Query(None, alias="status"),
+    facility_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    query = (
+        scope_query_to_user_facilities(db.query(InspectionBatch), InspectionBatch.facility_id, db, current_user)
+        .options(
+            joinedload(InspectionBatch.facility),
+            joinedload(InspectionBatch.inspector),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+        )
+    )
+    if status_filter:
+        query = query.filter(InspectionBatch.status == status_filter)
+    if facility_id:
+        require_facility_access(db, current_user, facility_id)
+        query = query.filter(InspectionBatch.facility_id == facility_id)
+
+    batches = query.order_by(InspectionBatch.created_at.desc()).all()
+    return {"items": [_batch_response(batch) for batch in batches], "total": len(batches)}
+
+
+@router.get("/batches/{batch_id}")
+def get_inspection_batch(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    batch = (
+        db.query(InspectionBatch)
+        .options(
+            joinedload(InspectionBatch.facility),
+            joinedload(InspectionBatch.inspector),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.facility).joinedload(Facility.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.modality),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.inspector),
+        )
+        .filter(InspectionBatch.id == batch_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Inspection batch not found")
+    require_facility_access(db, current_user, batch.facility_id)
+
+    invoice_map = {
+        invoice.inspection_id: invoice
+        for invoice in db.query(Invoice).filter(Invoice.inspection_id.in_([item.id for item in batch.inspections])).all()
+        if invoice.inspection_id
+    }
+    for inspection in batch.inspections:
+        inspection._inspection_invoice = invoice_map.get(inspection.id)
+    return _batch_response(batch, include_assets=True)
+
+
+@router.post("/batches/{batch_id}/assets", status_code=status.HTTP_201_CREATED)
+def add_asset_to_inspection_batch(
+    batch_id: int,
+    payload: BatchAssetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    batch = (
+        db.query(InspectionBatch)
+        .options(joinedload(InspectionBatch.facility), joinedload(InspectionBatch.inspections))
+        .filter(InspectionBatch.id == batch_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Inspection batch not found")
+    require_facility_access(db, current_user, batch.facility_id)
+
+    if not db.query(Modality.id).filter(Modality.id == payload.modality_id).first():
+        raise HTTPException(status_code=404, detail="Modality not found")
+    if payload.tier_id and not db.query(Tier.id).filter(Tier.id == payload.tier_id).first():
+        raise HTTPException(status_code=404, detail="Tier not found")
+    if payload.inspection_form_id and not db.query(InspectionForm.id).filter(InspectionForm.id == payload.inspection_form_id).first():
+        raise HTTPException(status_code=404, detail="Inspection form not found")
+
+    existing_asset = (
+        db.query(Equipment.id)
+        .filter(
+            Equipment.facility_id == batch.facility_id,
+            or_(Equipment.asset_tag == payload.asset_tag, Equipment.serial_number == payload.serial_number),
+        )
+        .first()
+    )
+    if existing_asset:
+        raise HTTPException(status_code=400, detail="Asset tag or serial number already exists in this facility")
+
+    equipment = Equipment(
+        asset_tag=payload.asset_tag,
+        make=payload.make,
+        model=payload.model,
+        serial_number=payload.serial_number,
+        modality_id=payload.modality_id,
+        facility_id=batch.facility_id,
+        tier_id=payload.tier_id,
+        inspection_form_id=payload.inspection_form_id,
+        description=payload.description,
+        risk_priority=payload.risk_priority,
+        risk_name=payload.risk_name,
+        location=payload.location,
+        pm_scheduling=payload.pm_scheduling or batch.inspection_frequency or "annual",
+        last_pm_date=payload.last_pm_date,
+        next_generated_pm_date=next_inspection_date(payload.last_pm_date, payload.pm_scheduling or batch.inspection_frequency or "annual"),
+        installation_date=payload.installation_date,
+        inventory_date=payload.inventory_date,
+        status=EquipmentStatus.ACTIVE,
+    )
+    db.add(equipment)
+    db.flush()
+
+    inspection_status = InspectionStatus.IN_PROGRESS if batch.status == InspectionStatus.COMPLETED else batch.status
+    if inspection_status == InspectionStatus.COMPLETED:
+        inspection_status = InspectionStatus.IN_PROGRESS
+    inspection = Inspection(
+        inspection_number=_next_batch_asset_number(db, batch),
+        batch=batch,
+        equipment_id=equipment.id,
+        facility_id=batch.facility_id,
+        inspector_id=batch.inspector_id or current_user.id,
+        form_template_id=payload.inspection_form_id or batch.form_template_id,
+        status=inspection_status,
+        result=InspectionResult.PENDING,
+        scheduled_date=batch.scheduled_date,
+        started_at=datetime.utcnow() if inspection_status == InspectionStatus.IN_PROGRESS else None,
+        inspection_scope=batch.inspection_scope or "facility_assets",
+        inspection_frequency=batch.inspection_frequency,
+        compliance_requirement="Runtime asset added to inspection batch",
+        criticality=payload.risk_priority or batch.inspection_frequency or "standard",
+        is_instant=batch.is_instant,
+    )
+    db.add(inspection)
+    db.flush()
+    if batch.status == InspectionStatus.COMPLETED:
+        batch.status = InspectionStatus.IN_PROGRESS
+        batch.completed_at = None
+    _sync_batch_status(batch)
+    log_activity(db, "inspections", inspection.id, "ADD_BATCH_ASSET", current_user, {"batch_id": batch.id, "equipment_id": equipment.id})
+    db.commit()
+    db.refresh(batch)
+    return get_inspection_batch(batch.id, db, current_user)
+
+
+@router.delete("/batches/{batch_id}/assets/{inspection_id}")
+def remove_asset_from_inspection_batch(
+    batch_id: int,
+    inspection_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    batch = db.query(InspectionBatch).options(joinedload(InspectionBatch.inspections)).filter(InspectionBatch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Inspection batch not found")
+    require_facility_access(db, current_user, batch.facility_id)
+
+    inspection = db.query(Inspection).filter(Inspection.id == inspection_id, Inspection.batch_id == batch.id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Batch asset inspection not found")
+    if inspection.status == InspectionStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Completed assets cannot be removed from a batch")
+
+    log_activity(db, "inspections", inspection.id, "REMOVE_BATCH_ASSET", current_user, {"batch_id": batch.id, "equipment_id": inspection.equipment_id})
+    db.delete(inspection)
+    db.flush()
+    db.expire(batch, ["inspections"])
+    if batch.inspections:
+        _sync_batch_status(batch)
+    else:
+        batch.status = InspectionStatus.IN_PROGRESS
+        batch.completed_at = None
+        batch.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(batch)
+    return get_inspection_batch(batch.id, db, current_user)
+
+
+@router.patch("/{inspection_id}/technician")
+def update_inspection_technician(
+    inspection_id: int,
+    payload: InspectionTechnicianUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    inspection = (
+        db.query(Inspection)
+        .options(joinedload(Inspection.facility), joinedload(Inspection.inspector), joinedload(Inspection.batch))
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    require_facility_access(db, current_user, inspection.facility_id)
+    if payload.inspector_id:
+        technician = db.query(User).filter(User.id == payload.inspector_id, User.is_active.is_(True)).first()
+        if not technician:
+            raise HTTPException(status_code=404, detail="Technician not found")
+    inspection.inspector_id = payload.inspector_id
+    inspection.updated_at = datetime.utcnow()
+    log_activity(db, "inspections", inspection.id, "CHANGE_TECHNICIAN", current_user, {"inspector_id": payload.inspector_id})
+    db.commit()
+    db.refresh(inspection)
+    return _inspection_response(inspection)
 
 
 @router.post("/schedule", status_code=status.HTTP_201_CREATED)
@@ -615,11 +937,26 @@ def schedule_inspections(
         raise HTTPException(status_code=400, detail="No equipment found for scheduling")
 
     form = _get_default_form(db)
+    batch = InspectionBatch(
+        batch_number=_next_batch_number(db),
+        facility_id=facility.id,
+        inspector_id=current_user.id,
+        form_template_id=form.id,
+        status=InspectionStatus.UPCOMING,
+        scheduled_date=payload.scheduled_date,
+        inspection_frequency=payload.frequency,
+        inspection_scope="equipment_compliance",
+        notes=payload.notes,
+        is_instant=False,
+    )
+    db.add(batch)
+    db.flush()
     created: list[Inspection] = []
-    for equipment in equipment_items:
+    for index, equipment in enumerate(equipment_items, start=1):
         criticality = payload.criticality or _equipment_criticality(equipment)
         inspection = Inspection(
-            inspection_number=_next_inspection_number(db),
+            inspection_number=_batch_asset_number(batch.batch_number, index),
+            batch_id=batch.id,
             equipment_id=equipment.id,
             inventory_part_id=None,
             facility_id=facility.id,
@@ -650,7 +987,8 @@ def schedule_inspections(
         actor_id=current_user.id,
     )
     db.commit()
-    return {"items": [_inspection_response(item) for item in created], "total": len(created)}
+    db.refresh(batch)
+    return {"items": [_batch_response(batch, include_assets=True)], "total": 1}
 
 
 @router.post("/generate-upcoming", status_code=status.HTTP_201_CREATED)
@@ -743,6 +1081,7 @@ def start_scheduled_inspection(
             joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
             joinedload(Inspection.equipment).joinedload(Equipment.tier),
             joinedload(Inspection.inspector),
+            joinedload(Inspection.batch),
         )
         .filter(Inspection.id == inspection_id)
         .first()
@@ -757,6 +1096,7 @@ def start_scheduled_inspection(
     inspection.started_at = datetime.utcnow()
     inspection.inspector_id = current_user.id
     inspection.updated_at = datetime.utcnow()
+    _sync_batch_status(inspection.batch)
     log_activity(db, "inspections", inspection.id, "START", current_user, {"status": "in_progress"})
     db.commit()
     db.refresh(inspection)
@@ -791,10 +1131,26 @@ def create_instant_inspection(
         raise HTTPException(status_code=400, detail="No facility assets found for inspection")
 
     form = _get_default_form(db)
+    batch = InspectionBatch(
+        batch_number=_next_batch_number(db),
+        facility_id=facility.id,
+        inspector_id=current_user.id,
+        form_template_id=form.id,
+        status=InspectionStatus.IN_PROGRESS,
+        scheduled_date=payload.scheduled_date or datetime.utcnow(),
+        started_at=datetime.utcnow(),
+        inspection_frequency=payload.frequency,
+        inspection_scope="facility_assets",
+        notes=payload.notes,
+        is_instant=True,
+    )
+    db.add(batch)
+    db.flush()
     created: list[Inspection] = []
-    for equipment in equipment_items:
+    for index, equipment in enumerate(equipment_items, start=1):
         inspection = Inspection(
-            inspection_number=_next_inspection_number(db),
+            inspection_number=_batch_asset_number(batch.batch_number, index),
+            batch_id=batch.id,
             equipment_id=equipment.id,
             inventory_part_id=None,
             facility_id=facility.id,
@@ -827,7 +1183,8 @@ def create_instant_inspection(
     )
     db.commit()
 
-    return {"items": [_inspection_response(item) for item in created], "total": len(created)}
+    db.refresh(batch)
+    return {"items": [_batch_response(batch, include_assets=True)], "total": 1}
 
 
 @router.put("/{inspection_id}/complete")
@@ -845,6 +1202,7 @@ def complete_inspection(
             joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
             joinedload(Inspection.equipment).joinedload(Equipment.tier),
             joinedload(Inspection.inspector),
+            joinedload(Inspection.batch),
         )
         .filter(Inspection.id == inspection_id)
         .first()
@@ -867,6 +1225,7 @@ def complete_inspection(
             inspection.equipment.last_pm_date,
             inspection.equipment.pm_scheduling,
         )
+    _sync_batch_status(inspection.batch)
 
     invoice = _create_inspection_invoice(db, inspection, payload)
     log_activity(
@@ -888,6 +1247,72 @@ def complete_inspection(
     db.commit()
     db.refresh(inspection)
     inspection._inspection_invoice = invoice
+    return _inspection_response(inspection)
+
+
+@router.put("/{inspection_id}/report")
+def save_inspection_report(
+    inspection_id: int,
+    payload: InspectionReportUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    inspection = (
+        db.query(Inspection)
+        .options(
+            joinedload(Inspection.facility).joinedload(Facility.tier),
+            joinedload(Inspection.facility).joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
+            joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(Inspection.inspector),
+            joinedload(Inspection.batch),
+        )
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    require_facility_access(db, current_user, inspection.facility_id)
+
+    inspection.form_data = payload.form_data
+    inspection.corrective_actions = payload.corrective_actions
+    inspection.updated_at = datetime.utcnow()
+    if not inspection.inspector_id:
+        inspection.inspector_id = current_user.id
+
+    invoice: Optional[Invoice] = None
+    if payload.status == InspectionStatus.IN_PROGRESS:
+        inspection.status = InspectionStatus.IN_PROGRESS
+        inspection.result = InspectionResult.PENDING
+        inspection.completed_at = None
+        if not inspection.started_at:
+            inspection.started_at = datetime.utcnow()
+        existing_invoice = db.query(Invoice).filter(Invoice.inspection_id == inspection.id).first()
+        if existing_invoice:
+            existing_invoice.status = InvoiceStatus.CANCELLED
+            existing_invoice.updated_at = datetime.utcnow()
+        log_payload = {"status": "in_progress", "previous_result": _value(inspection.result)}
+    elif payload.status == InspectionStatus.COMPLETED:
+        inspection.status = InspectionStatus.COMPLETED
+        inspection.result = payload.result
+        inspection.completed_at = datetime.utcnow()
+        if inspection.equipment:
+            inspection.equipment.last_pm_date = inspection.completed_at.date()
+            inspection.equipment.next_generated_pm_date = next_inspection_date(
+                inspection.equipment.last_pm_date,
+                inspection.equipment.pm_scheduling,
+            )
+        invoice = _create_inspection_invoice(db, inspection, payload)
+        log_payload = {"status": "completed", "result": payload.result.value, "invoice_id": invoice.id}
+    else:
+        raise HTTPException(status_code=400, detail="Report can only be saved as completed or in progress")
+
+    _sync_batch_status(inspection.batch)
+    log_activity(db, "inspections", inspection.id, "SAVE_REPORT", current_user, log_payload)
+    db.commit()
+    db.refresh(inspection)
+    if invoice:
+        inspection._inspection_invoice = invoice
     return _inspection_response(inspection)
 
 

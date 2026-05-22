@@ -78,6 +78,8 @@ export interface InspectionInvoice {
 export interface Inspection {
   id: number
   inspection_number: string
+  batch_id: number | null
+  batch_number: string | null
   equipment_id: number | null
   inventory_part_id: number | null
   facility_id: number
@@ -114,6 +116,36 @@ export interface Inspection {
 
 export interface InspectionListResponse {
   items: Inspection[]
+  total: number
+}
+
+export interface InspectionBatch {
+  id: number
+  batch_number: string
+  facility_id: number
+  inspector_id: number | null
+  form_template_id: number
+  status: InspectionStatus
+  scheduled_date: string
+  started_at: string | null
+  completed_at: string | null
+  inspection_frequency: InspectionFrequency | string | null
+  inspection_scope: string | null
+  notes: string | null
+  is_instant: boolean
+  created_at: string
+  updated_at: string
+  facility_name: string | null
+  inspector_name: string | null
+  asset_count: number
+  completed_count: number
+  in_progress_count: number
+  pending_count: number
+  assets?: Inspection[]
+}
+
+export interface InspectionBatchListResponse {
+  items: InspectionBatch[]
   total: number
 }
 
@@ -161,6 +193,28 @@ export interface InspectionCompletePayload {
   tax_amount?: number
   discount_amount?: number
   notes?: string
+}
+
+export interface InspectionReportPayload extends InspectionCompletePayload {
+  status: InspectionStatus
+}
+
+export interface BatchAssetCreatePayload {
+  asset_tag: string
+  make: string
+  model: string
+  serial_number: string
+  modality_id: number
+  tier_id?: number | null
+  inspection_form_id?: number | null
+  description?: string
+  risk_priority?: string
+  risk_name?: string
+  location?: string
+  pm_scheduling?: string
+  last_pm_date?: string | null
+  installation_date?: string | null
+  inventory_date?: string | null
 }
 
 export interface InspectionInvoiceUpdatePayload {
@@ -219,16 +273,28 @@ export const fetchInspections = async (
   return res.data
 }
 
+export const fetchInspectionBatches = async (
+  params: { status?: InspectionStatus; facility_id?: number } = {}
+): Promise<InspectionBatchListResponse> => {
+  const res = await apiClient.get('/inspections/batches', { params })
+  return res.data
+}
+
+export const fetchInspectionBatch = async (id: number): Promise<InspectionBatch> => {
+  const res = await apiClient.get(`/inspections/batches/${id}`)
+  return res.data
+}
+
 export const createInstantInspection = async (
   data: InstantInspectionPayload
-): Promise<InspectionListResponse> => {
+): Promise<InspectionBatchListResponse> => {
   const res = await apiClient.post('/inspections/instant', data)
   return res.data
 }
 
 export const scheduleInspections = async (
   data: InspectionSchedulePayload
-): Promise<InspectionListResponse> => {
+): Promise<InspectionBatchListResponse> => {
   const res = await apiClient.post('/inspections/schedule', data)
   return res.data
 }
@@ -250,6 +316,38 @@ export const completeInspection = async (
   data: InspectionCompletePayload
 ): Promise<Inspection> => {
   const res = await apiClient.put(`/inspections/${id}/complete`, data)
+  return res.data
+}
+
+export const saveInspectionReport = async (
+  id: number,
+  data: InspectionReportPayload
+): Promise<Inspection> => {
+  const res = await apiClient.put(`/inspections/${id}/report`, data)
+  return res.data
+}
+
+export const addInspectionBatchAsset = async (
+  batchId: number,
+  data: BatchAssetCreatePayload
+): Promise<InspectionBatch> => {
+  const res = await apiClient.post(`/inspections/batches/${batchId}/assets`, data)
+  return res.data
+}
+
+export const removeInspectionBatchAsset = async (
+  batchId: number,
+  inspectionId: number
+): Promise<InspectionBatch> => {
+  const res = await apiClient.delete(`/inspections/batches/${batchId}/assets/${inspectionId}`)
+  return res.data
+}
+
+export const updateInspectionTechnician = async (
+  inspectionId: number,
+  inspectorId: number | null
+): Promise<Inspection> => {
+  const res = await apiClient.patch(`/inspections/${inspectionId}/technician`, { inspector_id: inspectorId })
   return res.data
 }
 
