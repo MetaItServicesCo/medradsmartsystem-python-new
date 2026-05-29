@@ -42,6 +42,9 @@ import {
 } from '@/api/sales'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed', '/sales/history']
+const SYSTEM_GRADIENT = 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)'
+const SYSTEM_PANEL_BORDER = '#E9D5FF'
+const SYSTEM_PANEL_BG = '#F8FAFF'
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
@@ -705,19 +708,19 @@ const Sales = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(convertQuotation)} onClose={() => setConvertQuotation(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+      <Dialog open={Boolean(convertQuotation)} onClose={() => setConvertQuotation(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: 'center' }}>
           Sale Quotation
           <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
             Acknowledgement Form
           </Typography>
         </DialogTitle>
-        <DialogContent dividers sx={{ bgcolor: '#F8FAFC' }}>
+        <DialogContent dividers sx={{ bgcolor: SYSTEM_PANEL_BG }}>
           {convertQuotation && (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 340px' }, gap: 2 }}>
               <Box sx={{ display: 'grid', gap: 2 }}>
-                <Card sx={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #DDE6F3' }}>
-                  <Box sx={{ bgcolor: '#2F7DF6', color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>About Facility and Inventory</Box>
+                <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
+                  <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>About Facility and Inventory</Box>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -738,8 +741,8 @@ const Sales = () => {
                   </Table>
                 </Card>
 
-                <Card sx={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #DDE6F3' }}>
-                  <Box sx={{ bgcolor: '#2F7DF6', color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>Parts Used</Box>
+                <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
+                  <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>Parts Used</Box>
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -787,8 +790,8 @@ const Sales = () => {
                 </Card>
               </Box>
 
-              <Card sx={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #DDE6F3', alignSelf: 'start' }}>
-                <Box sx={{ bgcolor: '#2F7DF6', color: '#fff', px: 2, py: 1.3, fontWeight: 900, textAlign: 'center' }}>Invoice Details</Box>
+              <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, alignSelf: 'start', boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
+                <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900, textAlign: 'center' }}>Invoice Details</Box>
                 <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
                   <TextField size="small" label="Worked Hours" type="number" value={invoiceDetails.worked_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, worked_hours: Number(e.target.value) }))} />
                   <TextField size="small" label="Setup Fee" type="number" value={invoiceDetails.setup_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
@@ -825,7 +828,7 @@ const Sales = () => {
             variant="contained"
             disabled={!convertQuotation || convertMut.isPending}
             onClick={() => convertQuotation && convertMut.mutate({ id: convertQuotation.id, data: invoiceDetails })}
-            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}
           >
             {convertMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Convert to Invoice'}
           </Button>
