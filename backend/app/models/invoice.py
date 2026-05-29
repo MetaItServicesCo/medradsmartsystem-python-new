@@ -31,6 +31,7 @@ class Invoice(Base):
     service_request_id = Column(Integer, ForeignKey("service_requests.id"), nullable=True)
     inspection_id = Column(Integer, ForeignKey("inspections.id"), nullable=True)
     rental_id = Column(Integer, ForeignKey("rentals.id"), nullable=True)
+    sales_quotation_id = Column(Integer, ForeignKey("sales_quotations.id"), nullable=True)
     subtotal = Column(Numeric(10, 2), nullable=False)
     tax_amount = Column(Numeric(10, 2), default=0)
     discount_amount = Column(Numeric(10, 2), default=0)
@@ -50,4 +51,5 @@ class Invoice(Base):
     service_request = relationship("ServiceRequest")
     inspection = relationship("Inspection")
     rental = relationship("Rental")
+    sales_quotation = relationship("SalesQuotation", foreign_keys=[sales_quotation_id])
     # payments = relationship("Payment", back_populates="invoice")

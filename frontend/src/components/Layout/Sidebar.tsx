@@ -38,8 +38,11 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
     path: '/sales', 
     module: 'sales',
     subItems: [
-      { text: 'Sales Home', path: '/sales' },
-      { text: 'Billing', path: '/sales/billing' },
+      { text: 'Quotations', path: '/sales/quotations' },
+      { text: 'Invoice', path: '/sales/invoices' },
+      { text: 'In Progress', path: '/sales/in-progress' },
+      { text: 'Completed', path: '/sales/completed' },
+      { text: 'History', path: '/sales/history' },
     ]
   },
   { text: 'Rentals', icon: <LocalShippingIcon />, path: '/rentals', module: 'rentals' },

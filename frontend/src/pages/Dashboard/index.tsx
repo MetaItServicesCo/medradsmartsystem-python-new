@@ -233,7 +233,7 @@ const Dashboard = () => {
       icon: <ReceiptIcon />,
       color: '#E39B23',
       soft: '#FFF6E7',
-      path: '/sales/billing',
+      path: '/sales/invoices',
     },
   ]
 
@@ -336,7 +336,7 @@ const Dashboard = () => {
     { label: 'New Request', detail: 'Create service work', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests' as Module },
     { label: 'Equipment', detail: 'Track assets', icon: <PrecisionManufacturingIcon />, path: '/equipment', module: 'equipment' as Module },
     { label: 'Inventory', detail: 'Review stock health', icon: <Inventory2Icon />, path: '/inventory', module: 'inventory' as Module },
-    { label: 'Billing', detail: 'Check invoices', icon: <ReceiptIcon />, path: '/sales/billing', module: 'sales' as Module },
+    { label: 'Sales Invoices', detail: 'Check invoices', icon: <ReceiptIcon />, path: '/sales/invoices', module: 'sales' as Module },
     { label: 'Reports', detail: 'Open analytics', icon: <AssessmentIcon />, path: '/reports', module: 'reports' as Module },
     { label: 'Chat', detail: 'Team conversations', icon: <ChatBubbleOutlineIcon />, path: '/chat', module: 'chat' as Module },
     { label: 'Calendar', detail: 'Schedule work', icon: <CalendarMonthIcon />, path: '/calendar', module: 'calendar' as Module },

@@ -16,6 +16,7 @@ from app.models.user_facility import UserFacility
 from app.models.equipment_facility import EquipmentFacility
 from app.models.facility_tier import FacilityTier
 from app.models.inventory import InventoryPart, InventoryTransaction
+from app.models.sales import SalesQuotation, SalesQuotationLineItem
 from app.models.chat import (
     FriendRequest, FriendRequestStatus,
     DirectMessage, MessageType,
