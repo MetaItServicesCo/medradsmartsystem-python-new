@@ -59,6 +59,13 @@ export interface SalesQuotation {
   paid_status: SalesPaidStatus | string
   requested_date: string | null
   notes: string | null
+  worked_hours: number
+  setup_fee: number
+  service_fee: number
+  shipping_fee: number
+  application_fee: number
+  tax_rate: number
+  payment_method: string | null
   subtotal: number
   tax_amount: number
   discount_amount: number
@@ -67,6 +74,10 @@ export interface SalesQuotation {
   created_by_name: string | null
   converted_invoice_id: number | null
   converted_invoice_number: string | null
+  converted_invoice_status: SalesInvoiceStatus | string | null
+  converted_invoice_amount_paid: number | null
+  converted_invoice_balance_due: number | null
+  converted_invoice_payment_method: string | null
   created_at: string
   updated_at: string
   history: SalesHistoryItem[]
@@ -93,9 +104,24 @@ export interface SalesInvoice {
   status: SalesInvoiceStatus
   issue_date: string
   due_date: string
+  payment_method: string | null
   notes: string | null
   created_at: string
   updated_at: string
+}
+
+export interface SalesInvoiceCreatePayload {
+  worked_hours?: number
+  setup_fee?: number
+  service_fee?: number
+  shipping_fee?: number
+  application_fee?: number
+  tax_rate?: number
+  discount_amount?: number
+  payment_method?: string | null
+  action?: string | null
+  due_date?: string | null
+  notes?: string | null
 }
 
 export interface SalesQuotationPayload {
@@ -146,8 +172,11 @@ export const deleteSalesQuotation = async (id: number): Promise<void> => {
   await apiClient.delete(`/sales/quotations/${id}`)
 }
 
-export const convertSalesQuotationToInvoice = async (id: number): Promise<SalesInvoice> => {
-  const res = await apiClient.post(`/sales/quotations/${id}/convert-to-invoice`)
+export const convertSalesQuotationToInvoice = async (
+  id: number,
+  data: SalesInvoiceCreatePayload
+): Promise<SalesInvoice> => {
+  const res = await apiClient.post(`/sales/quotations/${id}/convert-to-invoice`, data)
   return res.data
 }
 
@@ -170,7 +199,7 @@ export const fetchSalesInvoices = async (
 
 export const updateSalesInvoice = async (
   id: number,
-  data: { amount_paid?: number; due_date?: string; status?: SalesInvoiceStatus; notes?: string }
+  data: { amount_paid?: number; due_date?: string; status?: SalesInvoiceStatus; payment_method?: string | null; notes?: string }
 ): Promise<SalesInvoice> => {
   const res = await apiClient.put(`/sales/invoices/${id}`, data)
   return res.data

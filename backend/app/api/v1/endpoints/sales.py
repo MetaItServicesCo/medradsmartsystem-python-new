@@ -61,6 +61,21 @@ class SalesInvoiceUpdate(BaseModel):
     amount_paid: Optional[Decimal] = None
     due_date: Optional[date] = None
     status: Optional[InvoiceStatus] = None
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SalesInvoiceCreate(BaseModel):
+    worked_hours: Decimal = Decimal("0")
+    setup_fee: Decimal = Decimal("0")
+    service_fee: Decimal = Decimal("0")
+    shipping_fee: Decimal = Decimal("0")
+    application_fee: Decimal = Decimal("0")
+    tax_rate: Decimal = Decimal("0")
+    discount_amount: Optional[Decimal] = None
+    payment_method: Optional[str] = None
+    action: Optional[str] = None
+    due_date: Optional[date] = None
     notes: Optional[str] = None
 
 
@@ -154,6 +169,7 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
         "issue_date": invoice.issue_date,
         "due_date": invoice.due_date,
+        "payment_method": invoice.payment_method,
         "notes": invoice.notes,
         "created_at": invoice.created_at,
         "updated_at": invoice.updated_at,
@@ -176,6 +192,13 @@ def _quotation_response(quotation: SalesQuotation) -> dict[str, Any]:
         "paid_status": quotation.paid_status,
         "requested_date": quotation.requested_date,
         "notes": quotation.notes,
+        "worked_hours": quotation.worked_hours,
+        "setup_fee": quotation.setup_fee,
+        "service_fee": quotation.service_fee,
+        "shipping_fee": quotation.shipping_fee,
+        "application_fee": quotation.application_fee,
+        "tax_rate": quotation.tax_rate,
+        "payment_method": quotation.payment_method,
         "subtotal": quotation.subtotal,
         "tax_amount": quotation.tax_amount,
         "discount_amount": quotation.discount_amount,
@@ -184,6 +207,16 @@ def _quotation_response(quotation: SalesQuotation) -> dict[str, Any]:
         "created_by_name": quotation.created_by.full_name if quotation.created_by else None,
         "converted_invoice_id": quotation.converted_invoice_id,
         "converted_invoice_number": quotation.converted_invoice.invoice_number if quotation.converted_invoice else None,
+        "converted_invoice_status": (
+            quotation.converted_invoice.status.value
+            if quotation.converted_invoice and hasattr(quotation.converted_invoice.status, "value")
+            else quotation.converted_invoice.status
+            if quotation.converted_invoice
+            else None
+        ),
+        "converted_invoice_amount_paid": quotation.converted_invoice.amount_paid if quotation.converted_invoice else None,
+        "converted_invoice_balance_due": quotation.converted_invoice.balance_due if quotation.converted_invoice else None,
+        "converted_invoice_payment_method": quotation.converted_invoice.payment_method if quotation.converted_invoice else quotation.payment_method,
         "created_at": quotation.created_at,
         "updated_at": quotation.updated_at,
         "history": quotation.history or [],
@@ -384,6 +417,7 @@ def delete_quotation(
 @router.post("/quotations/{quotation_id}/convert-to-invoice")
 def convert_to_invoice(
     quotation_id: int,
+    payload: SalesInvoiceCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -404,6 +438,29 @@ def convert_to_invoice(
     if quotation.converted_invoice:
         return _invoice_response(quotation.converted_invoice)
 
+    worked_hours = _money(payload.worked_hours)
+    setup_fee = _money(payload.setup_fee)
+    service_fee = _money(payload.service_fee)
+    shipping_fee = _money(payload.shipping_fee)
+    application_fee = _money(payload.application_fee)
+    parts_amount = _money(quotation.subtotal)
+    discount_amount = _money(payload.discount_amount if payload.discount_amount is not None else quotation.discount_amount)
+    tax_rate = _money(payload.tax_rate)
+    tax_amount = (parts_amount * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
+    subtotal = parts_amount + worked_hours + setup_fee + service_fee + shipping_fee + application_fee
+    total_amount = subtotal + tax_amount - discount_amount
+
+    quotation.worked_hours = worked_hours
+    quotation.setup_fee = setup_fee
+    quotation.service_fee = service_fee
+    quotation.shipping_fee = shipping_fee
+    quotation.application_fee = application_fee
+    quotation.tax_rate = tax_rate
+    quotation.tax_amount = tax_amount
+    quotation.discount_amount = discount_amount
+    quotation.total_amount = total_amount
+    quotation.payment_method = payload.payment_method
+
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
         invoice_type=InvoiceType.SALES,
@@ -413,24 +470,36 @@ def convert_to_invoice(
         customer_address=quotation.customer_address,
         facility_id=quotation.facility_id,
         sales_quotation_id=quotation.id,
-        subtotal=quotation.subtotal,
-        tax_amount=quotation.tax_amount,
-        discount_amount=quotation.discount_amount,
-        total_amount=quotation.total_amount,
+        subtotal=subtotal,
+        tax_amount=tax_amount,
+        discount_amount=discount_amount,
+        total_amount=total_amount,
         amount_paid=Decimal("0"),
-        balance_due=quotation.total_amount,
+        balance_due=total_amount,
         status=InvoiceStatus.PENDING,
         issue_date=date.today(),
-        due_date=date.today() + timedelta(days=30),
+        due_date=payload.due_date or date.today() + timedelta(days=30),
         payment_terms="Net 30",
-        notes=f"Sales invoice for quotation {quotation.quotation_number} / work order {quotation.work_order}.",
+        payment_method=payload.payment_method,
+        notes=payload.notes or f"Sales invoice for quotation {quotation.quotation_number} / work order {quotation.work_order}.",
     )
     db.add(invoice)
     db.flush()
     quotation.converted_invoice_id = invoice.id
     quotation.status = "in_progress"
     quotation.updated_at = datetime.utcnow()
-    _append_history(quotation, "converted_to_invoice", current_user, {"invoice_id": invoice.id, "invoice_number": invoice.invoice_number})
+    _append_history(
+        quotation,
+        "converted_to_invoice",
+        current_user,
+        {
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "payment_method": payload.payment_method,
+            "action": payload.action,
+            "total_amount": str(total_amount),
+        },
+    )
     log_activity(db, "sales_quotations", quotation.id, "CONVERT_TO_INVOICE", current_user, {"invoice_id": invoice.id})
     db.commit()
     db.refresh(invoice)
@@ -526,7 +595,7 @@ def update_sales_invoice(
         require_facility_access(db, current_user, invoice.facility_id)
 
     update_data = payload.model_dump(exclude_unset=True)
-    for field in ["amount_paid", "due_date", "notes", "status"]:
+    for field in ["amount_paid", "due_date", "notes", "status", "payment_method"]:
         if field in update_data:
             setattr(invoice, field, update_data[field])
     invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
@@ -536,6 +605,7 @@ def update_sales_invoice(
         invoice.status = InvoiceStatus.PARTIALLY_PAID
     if invoice.sales_quotation:
         invoice.sales_quotation.paid_status = "paid" if invoice.status == InvoiceStatus.PAID else "unpaid"
+        invoice.sales_quotation.payment_method = invoice.payment_method
         if invoice.status == InvoiceStatus.PAID and invoice.sales_quotation.status == "in_progress":
             invoice.sales_quotation.status = "completed"
         _append_history(invoice.sales_quotation, "invoice_updated", current_user, {"invoice_id": invoice.id, "status": invoice.status.value})

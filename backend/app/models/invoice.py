@@ -42,6 +42,7 @@ class Invoice(Base):
     issue_date = Column(Date, nullable=False)
     due_date = Column(Date, nullable=False)
     payment_terms = Column(String, nullable=True)
+    payment_method = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
