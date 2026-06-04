@@ -51,6 +51,6 @@ class Invoice(Base):
     facility = relationship("Facility")
     service_request = relationship("ServiceRequest")
     inspection = relationship("Inspection")
-    rental = relationship("Rental")
+    rental = relationship("Rental", foreign_keys=[rental_id])
     sales_quotation = relationship("SalesQuotation", foreign_keys=[sales_quotation_id])
     # payments = relationship("Payment", back_populates="invoice")
