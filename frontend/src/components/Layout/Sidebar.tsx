@@ -45,7 +45,18 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
       { text: 'History', path: '/sales/history' },
     ]
   },
-  { text: 'Rentals', icon: <LocalShippingIcon />, path: '/rentals', module: 'rentals' },
+  { 
+    text: 'Rentals', 
+    icon: <LocalShippingIcon />, 
+    path: '/rentals', 
+    module: 'rentals',
+    subItems: [
+      { text: 'Agreements', path: '/rentals/agreements' },
+      { text: 'Invoice', path: '/rentals/invoices' },
+      { text: 'Products', path: '/rentals/products' },
+      { text: 'History', path: '/rentals/history' },
+    ]
+  },
   { text: 'Equipment', icon: <PrecisionManufacturingIcon />, path: '/equipment', module: 'equipment' },
   { text: 'Inventory', icon: <InventoryIcon />, path: '/inventory', module: 'inventory' },
   { text: 'Reports', icon: <AssessmentIcon />, path: '/reports', module: 'reports' },

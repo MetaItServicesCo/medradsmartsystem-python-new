@@ -296,3 +296,33 @@ def run_migration():
         except Exception as e:
             conn.rollback()
             pass
+
+        # Rentals table columns migration
+        try:
+            conn.execute(text("ALTER TABLE rentals ALTER COLUMN equipment_id DROP NOT NULL"))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            pass
+
+        rental_columns = [
+            "part_id INTEGER REFERENCES inventory_parts(id)",
+            "converted_invoice_id INTEGER REFERENCES invoices(id)",
+            "created_by_id INTEGER REFERENCES users(id)",
+            "history JSON",
+        ]
+        for col in rental_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE rentals ADD COLUMN {col}"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass
+
+        try:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rentals_part_id ON rentals (part_id)"))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            pass
+

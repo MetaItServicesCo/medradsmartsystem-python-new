@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date, ForeignKey, Enum as SQLEnum, Numeric
+from sqlalchemy import Column, Integer, String, Text, DateTime, Date, ForeignKey, Enum as SQLEnum, Numeric, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -19,7 +19,11 @@ class Rental(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     rental_number = Column(String, unique=True, nullable=False, index=True)
-    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=False)
+    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=True)
+    part_id = Column(Integer, ForeignKey("inventory_parts.id"), nullable=True, index=True)
+    converted_invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
     customer_name = Column(String, nullable=False)
     customer_email = Column(String, nullable=False)
     customer_phone = Column(String, nullable=False)
@@ -36,8 +40,13 @@ class Rental(Base):
     initial_meter_reading = Column(Integer, nullable=True)
     final_meter_reading = Column(Integer, nullable=True)
     terms_and_conditions = Column(Text, nullable=True)
+    history = Column(JSON, nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     equipment = relationship("Equipment")
+    part = relationship("InventoryPart")
+    converted_invoice = relationship("Invoice", foreign_keys=[converted_invoice_id])
+    created_by = relationship("User")
