@@ -19,6 +19,7 @@ from app.api.v1.endpoints import (
     inspections,
     sales,
     rentals,
+    attendance,
 )
 
 api_router = APIRouter()
@@ -42,4 +43,5 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(inspections.router, prefix="/inspections", tags=["inspections"])
 api_router.include_router(sales.router, prefix="/sales", tags=["sales"])
 api_router.include_router(rentals.router, prefix="/rentals", tags=["rentals"])
+api_router.include_router(attendance.router, prefix="/attendance", tags=["attendance"])
 # api_router.include_router(reports.router, prefix="/reports", tags=["reports"])

@@ -43,6 +43,7 @@ PERMISSION_MODULES = [
     {"key": "billing", "label": "Billing"},
     {"key": "reports", "label": "Reports"},
     {"key": "rentals", "label": "Rentals"},
+    {"key": "attendance", "label": "Smart Attendance"},
     {"key": "calendar", "label": "Calendar"},
     {"key": "chat", "label": "Chat"},
     {"key": "notifications", "label": "Notifications"},
