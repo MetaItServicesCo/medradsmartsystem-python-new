@@ -129,6 +129,40 @@ def _save_upload(file: UploadFile, prefix: str) -> str:
     return f"/uploads/attendance_faces/{stored_name}"
 
 
+def _stored_upload_path(image_url: str) -> str:
+    uploads_root = os.path.dirname(ATTENDANCE_UPLOAD_DIR)
+    relative_path = image_url.split("/uploads/", 1)[-1] if "/uploads/" in image_url else image_url.lstrip("/")
+    return os.path.join(uploads_root, relative_path.replace("/", os.sep))
+
+
+def _evaluate_face_sample(image_url: str) -> tuple[Optional[float], bool, bool]:
+    """Return quality score, face-found flag, and whether local CV validation ran."""
+    try:
+        import cv2
+    except Exception:
+        return None, False, False
+
+    image_path = _stored_upload_path(image_url)
+    if not os.path.exists(image_path):
+        return None, False, True
+
+    image = cv2.imread(image_path)
+    if image is None:
+        return None, False, True
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    cascade_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+    detector = cv2.CascadeClassifier(cascade_path)
+    faces = detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
+    if len(faces) == 0:
+        return 0.0, False, True
+
+    image_area = max(image.shape[0] * image.shape[1], 1)
+    largest_face_area = max(width * height for (_, _, width, height) in faces)
+    quality_score = min(1.0, max(0.1, largest_face_area / image_area * 4))
+    return round(float(quality_score), 3), True, True
+
+
 @router.get("/profiles", response_model=AttendanceProfileListResponse)
 def read_profiles(
     db: Session = Depends(get_db),
@@ -240,6 +274,67 @@ def upload_face_sample(
     profile.face_status = AttendanceFaceStatus.ENROLLED
     profile.updated_at = datetime.utcnow()
     log_activity(db, "attendance_profiles", profile.id, "ATTENDANCE_FACE_SAMPLE_ADDED", current_user, {"image_url": image_url})
+    db.commit()
+    return _profile_query(db).filter(AttendanceProfile.id == profile.id).first()
+
+
+@router.post("/profiles/{profile_id}/train", response_model=AttendanceProfileResponse)
+def train_face_profile(
+    profile_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_attendance_manager),
+) -> Any:
+    profile = _profile_query(db).filter(AttendanceProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Attendance profile not found")
+    require_facility_access(db, current_user, profile.facility_id)
+
+    samples = (
+        db.query(AttendanceFaceSample)
+        .filter(AttendanceFaceSample.profile_id == profile.id)
+        .order_by(AttendanceFaceSample.captured_at.asc())
+        .all()
+    )
+    if not samples:
+        raise HTTPException(status_code=400, detail="Add at least one face sample before training")
+
+    validation_ran = False
+    detected_faces = 0
+    quality_scores = []
+    for sample in samples:
+        quality_score, has_face, sample_validated = _evaluate_face_sample(sample.image_url)
+        validation_ran = validation_ran or sample_validated
+        if quality_score is not None:
+            sample.quality_score = quality_score
+            quality_scores.append(quality_score)
+        if has_face:
+            detected_faces += 1
+
+    if validation_ran and detected_faces == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No detectable face found in the uploaded samples. Please add a clearer front-facing image.",
+        )
+
+    profile.face_samples_count = len(samples)
+    profile.face_status = AttendanceFaceStatus.ENROLLED
+    profile.face_model_version = f"local-cv-{profile.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    profile.updated_at = datetime.utcnow()
+
+    log_activity(
+        db,
+        "attendance_profiles",
+        profile.id,
+        "ATTENDANCE_FACE_MODEL_TRAINED",
+        current_user,
+        {
+            "samples": len(samples),
+            "detected_faces": detected_faces,
+            "validation_ran": validation_ran,
+            "average_quality": round(sum(quality_scores) / len(quality_scores), 3) if quality_scores else None,
+            "model_version": profile.face_model_version,
+        },
+    )
     db.commit()
     return _profile_query(db).filter(AttendanceProfile.id == profile.id).first()
 

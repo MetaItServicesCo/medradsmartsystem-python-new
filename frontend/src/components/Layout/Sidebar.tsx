@@ -13,6 +13,7 @@ import PeopleIcon from '@mui/icons-material/People'
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import PaymentIcon from '@mui/icons-material/Payment'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
 import LogoutIcon from '@mui/icons-material/Logout'
 import { useAuthStore } from '@/stores/authStore'
@@ -61,6 +62,7 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
   { text: 'Equipment', icon: <PrecisionManufacturingIcon />, path: '/equipment', module: 'equipment' },
   { text: 'Inventory', icon: <InventoryIcon />, path: '/inventory', module: 'inventory' },
   { text: 'Reports', icon: <AssessmentIcon />, path: '/reports', module: 'reports' },
+  { text: 'Billing', icon: <PaymentIcon />, path: '/billing', module: 'billing' },
   { text: 'Attendance', icon: <AccessTimeIcon />, path: '/attendance', module: 'attendance' },
   { text: 'Chat', icon: <ChatBubbleIcon />, path: '/chat', module: 'chat' },
   { text: 'Calendar', icon: <CalendarMonthIcon />, path: '/calendar', module: 'calendar' },

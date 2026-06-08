@@ -127,6 +127,11 @@ export const uploadAttendanceFaceSample = async (profileId: number, file: File):
   return res.data
 }
 
+export const trainAttendanceFaceModel = async (profileId: number): Promise<AttendanceProfile> => {
+  const res = await apiClient.post(`/attendance/profiles/${profileId}/train`)
+  return res.data
+}
+
 export const fetchAttendanceEvents = async (params?: {
   date_from?: string
   date_to?: string

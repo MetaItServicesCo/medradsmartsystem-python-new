@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar,
@@ -30,7 +30,9 @@ import CoffeeIcon from '@mui/icons-material/Coffee'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
 import LoginIcon from '@mui/icons-material/Login'
 import LogoutIcon from '@mui/icons-material/Logout'
+import ModelTrainingIcon from '@mui/icons-material/ModelTraining'
 import SearchIcon from '@mui/icons-material/Search'
+import VideocamIcon from '@mui/icons-material/Videocam'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { toast } from 'react-toastify'
 
@@ -40,6 +42,7 @@ import {
   fetchAttendanceEvents,
   fetchAttendanceProfiles,
   fetchAttendanceSummary,
+  trainAttendanceFaceModel,
   uploadAttendanceFaceSample,
   type AttendanceEvent,
   type AttendanceEventPayload,
@@ -84,8 +87,12 @@ const Attendance = () => {
   const [search, setSearch] = useState('')
   const [selectedDate, setSelectedDate] = useState(todayIso())
   const [eventDialog, setEventDialog] = useState<AttendanceProfile | null>(null)
+  const [enrollDialog, setEnrollDialog] = useState<AttendanceProfile | null>(null)
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
   const [eventType, setEventType] = useState<AttendanceEventPayload['event_type']>('check_in')
   const [remark, setRemark] = useState('')
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const summaryQ = useQuery({
     queryKey: ['attendance-summary', selectedDate],
@@ -101,6 +108,16 @@ const Attendance = () => {
     queryKey: ['attendance-events', selectedDate],
     queryFn: () => fetchAttendanceEvents({ date_from: selectedDate, date_to: selectedDate, limit: 200 }),
   })
+
+  useEffect(() => {
+    if (videoRef.current && cameraStream) {
+      videoRef.current.srcObject = cameraStream
+    }
+  }, [cameraStream])
+
+  useEffect(() => () => {
+    cameraStream?.getTracks().forEach((track) => track.stop())
+  }, [cameraStream])
 
   const invalidateAttendance = () => {
     queryClient.invalidateQueries({ queryKey: ['attendance-summary'] })
@@ -130,6 +147,15 @@ const Attendance = () => {
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to upload face sample'),
   })
 
+  const trainFaceMut = useMutation({
+    mutationFn: (profileId: number) => trainAttendanceFaceModel(profileId),
+    onSuccess: () => {
+      toast.success('Face model trained')
+      invalidateAttendance()
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to train face model'),
+  })
+
   const eventMut = useMutation({
     mutationFn: (payload: AttendanceEventPayload) => createAttendanceEvent(payload),
     onSuccess: () => {
@@ -146,6 +172,7 @@ const Attendance = () => {
   const eventRows = eventsQ.data?.items || []
   const profiles = profilesQ.data?.items || []
   const activeEventProfile = eventDialog
+  const activeEnrollProfile = enrollDialog
 
   const profileOptions = useMemo(() => profiles.filter(item => item.id > 0), [profiles])
 
@@ -174,6 +201,49 @@ const Attendance = () => {
       return
     }
     faceSampleMut.mutate({ profileId: profile.id, file })
+  }
+
+  const openLiveEnroll = async (profile: AttendanceProfile) => {
+    if (profile.id <= 0) {
+      toast.error('Create the attendance profile before live enrollment')
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('Camera access is not available in this browser')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      setEnrollDialog(profile)
+      setCameraStream(stream)
+    } catch {
+      toast.error('Camera permission was denied or no camera was found')
+    }
+  }
+
+  const closeLiveEnroll = () => {
+    cameraStream?.getTracks().forEach((track) => track.stop())
+    setCameraStream(null)
+    setEnrollDialog(null)
+  }
+
+  const captureLiveSample = () => {
+    if (!activeEnrollProfile || !videoRef.current || !canvasRef.current) return
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    canvas.width = video.videoWidth || 640
+    canvas.height = video.videoHeight || 480
+    const context = canvas.getContext('2d')
+    if (!context) return
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        toast.error('Unable to capture face image')
+        return
+      }
+      const file = new File([blob], `live-face-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      faceSampleMut.mutate({ profileId: activeEnrollProfile.id, file })
+    }, 'image/jpeg', 0.92)
   }
 
   return (
@@ -266,16 +336,37 @@ const Attendance = () => {
                         </TableCell>
                         <TableCell>{profile.facility?.name || '-'}</TableCell>
                         <TableCell>{profile.employee_code || profile.user_id}</TableCell>
-                        <TableCell><Chip label={status.label} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900 }} /></TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'grid', gap: 0.5 }}>
+                            <Chip label={status.label} sx={{ width: 'fit-content', bgcolor: status.bg, color: status.color, fontWeight: 900 }} />
+                            {profile.face_model_version && (
+                              <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>
+                                Model: {profile.face_model_version}
+                              </Typography>
+                            )}
+                          </Box>
+                        </TableCell>
                         <TableCell>{profile.face_samples_count}</TableCell>
                         <TableCell align="right">
                           {profile.id <= 0 ? (
                             <Button size="small" onClick={() => createProfileMut.mutate(profile)} disabled={createProfileMut.isPending} sx={{ fontWeight: 900 }}>Create Profile</Button>
                           ) : (
                             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
+                              <Button size="small" startIcon={<VideocamIcon />} onClick={() => openLiveEnroll(profile)} sx={{ fontWeight: 900 }}>
+                                Live Enroll
+                              </Button>
                               <Button component="label" size="small" startIcon={<CameraAltIcon />} sx={{ fontWeight: 900 }}>
-                                Add Face
+                                Upload Image
                                 <input hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => uploadSample(profile, e.target.files?.[0])} />
+                              </Button>
+                              <Button
+                                size="small"
+                                startIcon={<ModelTrainingIcon />}
+                                disabled={trainFaceMut.isPending || profile.face_samples_count < 1}
+                                onClick={() => trainFaceMut.mutate(profile.id)}
+                                sx={{ fontWeight: 900 }}
+                              >
+                                Train
                               </Button>
                               <Button size="small" onClick={() => setEventDialog(profile)} sx={{ fontWeight: 900 }}>Mark Event</Button>
                             </Box>
@@ -323,6 +414,42 @@ const Attendance = () => {
             sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
           >
             Save Event
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(activeEnrollProfile)} onClose={closeLiveEnroll} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Live Face Enrollment</DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
+          <Box>
+            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{activeEnrollProfile?.user.full_name}</Typography>
+            <Typography sx={{ color: '#8B95A7', fontWeight: 700, fontSize: 13 }}>
+              Center the face in the frame, use clear light, then capture one or more samples.
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              borderRadius: '18px',
+              overflow: 'hidden',
+              border: '1px solid #E9E5FF',
+              background: '#111827',
+              aspectRatio: '4 / 3',
+            }}
+          >
+            <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            <canvas ref={canvasRef} hidden />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={closeLiveEnroll} sx={{ fontWeight: 900 }}>Close</Button>
+          <Button
+            variant="contained"
+            startIcon={<CameraAltIcon />}
+            disabled={faceSampleMut.isPending || !cameraStream}
+            onClick={captureLiveSample}
+            sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+          >
+            Capture Sample
           </Button>
         </DialogActions>
       </Dialog>

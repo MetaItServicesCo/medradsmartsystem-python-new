@@ -15,19 +15,20 @@ export type Module =
   | 'inventory'
   | 'reports'
   | 'attendance'
+  | 'billing'
   | 'chat'
   | 'calendar'
 
 export const ROLE_PERMISSIONS: Record<string, Module[]> = {
   superadmin: [
     'dashboard', 'facilities', 'users', 'service-requests', 'inspections',
-    'sales', 'rentals', 'equipment', 'inventory', 'reports', 'chat',
-    'attendance', 'calendar',
+    'sales', 'rentals', 'equipment', 'inventory', 'reports', 'billing',
+    'chat', 'attendance', 'calendar',
   ],
   admin: [
     'dashboard', 'facilities', 'service-requests', 'inspections',
-    'sales', 'rentals', 'equipment', 'inventory', 'reports', 'chat',
-    'attendance', 'calendar',
+    'sales', 'rentals', 'equipment', 'inventory', 'reports', 'billing',
+    'chat', 'attendance', 'calendar',
   ],
   facility_admin: [
     'dashboard', 'facilities', 'service-requests', 'equipment', 'inventory', 'chat',
@@ -38,7 +39,7 @@ export const ROLE_PERMISSIONS: Record<string, Module[]> = {
     'calendar',
   ],
   hr_manager: [
-    'dashboard', 'reports', 'attendance', 'chat',
+    'dashboard', 'reports', 'billing', 'attendance', 'chat',
     'calendar',
   ],
   facility_manager: [
