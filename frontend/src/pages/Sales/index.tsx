@@ -3,13 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, IconButton, InputLabel, Menu, MenuItem, Select,
+  DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CreditCardIcon from '@mui/icons-material/CreditCard'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import HistoryIcon from '@mui/icons-material/History'
@@ -22,6 +23,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 import { toast } from 'react-toastify'
 
 import { fetchFacilities, type Facility } from '@/api/facilities'
+import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import {
   completeSalesQuotation,
   convertSalesQuotationToInvoice,
@@ -45,6 +47,30 @@ const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress'
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)'
 const SYSTEM_PANEL_BORDER = '#E9D5FF'
 const SYSTEM_PANEL_BG = '#F8FAFF'
+const ACTION_MENU_PAPER = {
+  mt: 1,
+  minWidth: 260,
+  borderRadius: '18px',
+  border: '1px solid #E9D5FF',
+  boxShadow: '0 22px 55px rgba(49,46,129,0.18)',
+  overflow: 'hidden',
+  '& .MuiList-root': { p: 0.8 },
+}
+const ACTION_MENU_ITEM = {
+  mx: 0.4,
+  my: 0.3,
+  gap: 1,
+  borderRadius: '12px',
+  fontWeight: 900,
+  color: '#312E81',
+  '&:hover': { bgcolor: '#F5F3FF', color: '#6D28D9' },
+  '&.Mui-disabled': { opacity: 0.45 },
+}
+const ACTION_MENU_DANGER = {
+  ...ACTION_MENU_ITEM,
+  color: '#DC2626',
+  '&:hover': { bgcolor: '#FEF2F2', color: '#B91C1C' },
+}
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
@@ -119,6 +145,7 @@ const Sales = () => {
   const [invoiceActionAnchor, setInvoiceActionAnchor] = useState<HTMLElement | null>(null)
   const [actionInvoice, setActionInvoice] = useState<SalesInvoice | null>(null)
   const [viewInvoice, setViewInvoice] = useState<SalesInvoice | null>(null)
+  const [cardAuthDialog, setCardAuthDialog] = useState<{ quotation?: SalesQuotation; invoice?: SalesInvoice } | null>(null)
   const [invoiceEdit, setInvoiceEdit] = useState<SalesInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState({ amount_paid: 0, due_date: '', status: 'pending', payment_method: '', notes: '' })
   const [convertQuotation, setConvertQuotation] = useState<SalesQuotation | null>(null)
@@ -320,6 +347,12 @@ const Sales = () => {
     setActionInvoice(null)
   }
 
+  const openCardAuthorization = (target: { quotation?: SalesQuotation; invoice?: SalesInvoice }) => {
+    closeActions()
+    closeInvoiceActions()
+    setCardAuthDialog(target)
+  }
+
   const openInvoiceEdit = (invoice: SalesInvoice) => {
     setInvoiceEdit(invoice)
     setInvoiceForm({
@@ -432,6 +465,38 @@ const Sales = () => {
       bank_transfer: 'Bank Transfer',
     }
     return labels[method] || method.replace(/_/g, ' ')
+  }
+
+  const cardAuthorizationQuotation = cardAuthDialog?.quotation
+    || quotations.find(item => item.id === cardAuthDialog?.invoice?.sales_quotation_id)
+    || null
+
+  const cardAuthorizationItems: AuthorizationLineItem[] = cardAuthorizationQuotation
+    ? cardAuthorizationQuotation.line_items.map(line => ({
+      item_number: line.part_number || String(line.part_id),
+      description: line.description,
+      amount: Number(line.unit_price || 0),
+      quantity: Number(line.quantity || 1),
+      total_amount: Number(line.total || 0),
+    }))
+    : cardAuthDialog?.invoice
+      ? [{
+        item_number: cardAuthDialog.invoice.invoice_number,
+        description: cardAuthDialog.invoice.work_order || 'Sales invoice',
+        amount: Number(cardAuthDialog.invoice.total_amount || 0),
+        quantity: 1,
+        total_amount: Number(cardAuthDialog.invoice.total_amount || 0),
+      }]
+      : []
+
+  const submitCardAuthorization = (_payload: CreditCardAuthorizationPayload) => {
+    const quotationId = cardAuthorizationQuotation?.id || cardAuthDialog?.invoice?.sales_quotation_id
+    if (quotationId) {
+      cardAuthMut.mutate(quotationId)
+    } else {
+      toast.success('Credit card authorization form prepared')
+    }
+    setCardAuthDialog(null)
   }
 
   const quotationPaymentPercent = (quotation: SalesQuotation) => {
@@ -688,35 +753,69 @@ const Sales = () => {
         )}
       </Card>
 
-      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions}>
-        <MenuItem disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && openConvertDialog(actionQuotation)}>
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && openConvertDialog(actionQuotation)}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><ReceiptLongIcon fontSize="small" /></ListItemIcon>
           Convert to Invoice
         </MenuItem>
-        <MenuItem onClick={() => actionQuotation && openEdit(actionQuotation)}>Edit</MenuItem>
-        <MenuItem onClick={() => { if (actionQuotation) setViewQuotation(actionQuotation); closeActions() }}>View</MenuItem>
-        <MenuItem disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && deleteQuotationMut.mutate(actionQuotation.id)} sx={{ color: '#DC2626' }}>Delete</MenuItem>
-        <MenuItem onClick={() => actionQuotation && cardAuthMut.mutate(actionQuotation.id)}>Request Credit Card Authorization</MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionQuotation && openEdit(actionQuotation)}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
+          Edit
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionQuotation) setViewQuotation(actionQuotation); closeActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
+          View
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_DANGER} disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && deleteQuotationMut.mutate(actionQuotation.id)}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><DeleteIcon fontSize="small" /></ListItemIcon>
+          Delete
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionQuotation && openCardAuthorization({ quotation: actionQuotation })}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
+          Request Card Authorization
+        </MenuItem>
       </Menu>
 
-      <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions}>
-        <MenuItem onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>View</MenuItem>
-        <MenuItem onClick={() => {
+      <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
+          View
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
           if (actionInvoice) {
             openInvoiceEdit(actionInvoice)
             setInvoiceForm(prev => ({ ...prev, amount_paid: Number(actionInvoice.total_amount || 0), status: 'paid' }))
           }
           closeInvoiceActions()
-        }}>Pay</MenuItem>
-        <MenuItem onClick={() => { if (actionInvoice) openInvoiceEdit(actionInvoice); closeInvoiceActions() }}>Edit</MenuItem>
-        <MenuItem disabled={!actionInvoice?.sales_quotation_id} onClick={() => {
-          if (actionInvoice?.sales_quotation_id) cardAuthMut.mutate(actionInvoice.sales_quotation_id)
-          closeInvoiceActions()
-        }}>Request Card Authorization</MenuItem>
-        <MenuItem disabled={!actionInvoice?.sales_quotation_id} onClick={() => {
+        }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PaymentIcon fontSize="small" /></ListItemIcon>
+          Pay
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) openInvoiceEdit(actionInvoice); closeInvoiceActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
+          Edit
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionInvoice && openCardAuthorization({ invoice: actionInvoice })}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
+          Request Card Authorization
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionInvoice?.sales_quotation_id} onClick={() => {
           if (actionInvoice?.sales_quotation_id) completeMut.mutate(actionInvoice.sales_quotation_id)
           closeInvoiceActions()
-        }}>Sale</MenuItem>
+        }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><ShoppingCartIcon fontSize="small" /></ListItemIcon>
+          Sale
+        </MenuItem>
       </Menu>
+
+      <CreditCardAuthorizationDialog
+        open={Boolean(cardAuthDialog)}
+        customerName={cardAuthDialog?.quotation?.customer_name || cardAuthDialog?.invoice?.customer_name}
+        requestType="Sales"
+        items={cardAuthorizationItems}
+        onClose={() => setCardAuthDialog(null)}
+        onSubmit={submitCardAuthorization}
+      />
 
       <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{editingQuotation ? 'Edit Sales Quotation' : 'Create Sales Quotation'}</DialogTitle>

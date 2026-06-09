@@ -3,13 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, IconButton, InputLabel, Menu, MenuItem, Select,
+  DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CreditCardIcon from '@mui/icons-material/CreditCard'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import HistoryIcon from '@mui/icons-material/History'
@@ -23,6 +24,7 @@ import InfoIcon from '@mui/icons-material/Info'
 import { toast } from 'react-toastify'
 
 import { fetchFacilities } from '@/api/facilities'
+import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import {
   fetchRentalParts,
   fetchRentals,
@@ -49,6 +51,30 @@ const ROUTE_TABS = ['/rentals/agreements', '/rentals/invoices', '/rentals/produc
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)'
 const SYSTEM_PANEL_BORDER = '#BFDBFE'
 const SYSTEM_PANEL_BG = '#F0F9FF'
+const ACTION_MENU_PAPER = {
+  mt: 1,
+  minWidth: 260,
+  borderRadius: '18px',
+  border: '1px solid #BFDBFE',
+  boxShadow: '0 22px 55px rgba(30,64,175,0.18)',
+  overflow: 'hidden',
+  '& .MuiList-root': { p: 0.8 },
+}
+const ACTION_MENU_ITEM = {
+  mx: 0.4,
+  my: 0.3,
+  gap: 1,
+  borderRadius: '12px',
+  fontWeight: 900,
+  color: '#1E3A8A',
+  '&:hover': { bgcolor: '#EFF6FF', color: '#1D4ED8' },
+  '&.Mui-disabled': { opacity: 0.45 },
+}
+const ACTION_MENU_DANGER = {
+  ...ACTION_MENU_ITEM,
+  color: '#DC2626',
+  '&:hover': { bgcolor: '#FEF2F2', color: '#B91C1C' },
+}
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
@@ -133,6 +159,7 @@ const Rentals = () => {
   const [viewInvoice, setViewInvoice] = useState<RentalInvoice | null>(null)
   const [invoiceActionAnchor, setInvoiceActionAnchor] = useState<HTMLElement | null>(null)
   const [actionInvoice, setActionInvoice] = useState<RentalInvoice | null>(null)
+  const [cardAuthDialog, setCardAuthDialog] = useState<{ rental?: Rental; invoice?: RentalInvoice } | null>(null)
 
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
@@ -319,6 +346,12 @@ const Rentals = () => {
     setActionInvoice(null)
   }
 
+  const openCardAuthorization = (target: { rental?: Rental; invoice?: RentalInvoice }) => {
+    closeActions()
+    closeInvoiceActions()
+    setCardAuthDialog(target)
+  }
+
   const openInvoiceEdit = (invoice: RentalInvoice) => {
     setInvoiceEdit(invoice)
     setInvoiceForm({
@@ -409,6 +442,33 @@ const Rentals = () => {
       bank_transfer: 'Bank Transfer',
     }
     return labels[method] || method.replace(/_/g, ' ')
+  }
+
+  const cardAuthorizationRental = cardAuthDialog?.rental
+    || rentals.find(item => item.id === cardAuthDialog?.invoice?.rental_id)
+    || null
+
+  const cardAuthorizationItems: AuthorizationLineItem[] = cardAuthorizationRental
+    ? [{
+      item_number: cardAuthorizationRental.part_number || cardAuthorizationRental.rental_number,
+      description: cardAuthorizationRental.part_description || 'Rental product',
+      amount: Number(cardAuthorizationRental.rental_rate || 0),
+      quantity: Number(cardAuthorizationRental.quantity || 1),
+      total_amount: Number(cardAuthorizationRental.rental_rate || 0) * Number(cardAuthorizationRental.quantity || 1) + Number(cardAuthorizationRental.shipping_fee || 0) + Number(cardAuthorizationRental.setup_fee || 0),
+    }]
+    : cardAuthDialog?.invoice
+      ? [{
+        item_number: cardAuthDialog.invoice.invoice_number,
+        description: cardAuthDialog.invoice.rental_number || 'Rental invoice',
+        amount: Number(cardAuthDialog.invoice.total_amount || 0),
+        quantity: 1,
+        total_amount: Number(cardAuthDialog.invoice.total_amount || 0),
+      }]
+      : []
+
+  const submitCardAuthorization = (_payload: CreditCardAuthorizationPayload) => {
+    toast.success('Rental credit card authorization form prepared')
+    setCardAuthDialog(null)
   }
 
   const applyRentalConvertAction = () => {
@@ -707,40 +767,73 @@ const Rentals = () => {
         {tab === 3 && renderHistory()}
       </Card>
 
-      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions}>
-        <MenuItem disabled={!actionAgreement || actionAgreement.status === 'completed'} onClick={() => actionAgreement && openReturnDialog(actionAgreement)}>
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || actionAgreement.status === 'completed'} onClick={() => actionAgreement && openReturnDialog(actionAgreement)}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CheckCircleIcon fontSize="small" /></ListItemIcon>
           Return Equipment
         </MenuItem>
-        <MenuItem disabled={!actionAgreement || Boolean(actionAgreement.converted_invoice_id)} onClick={() => actionAgreement && openConvertDialog(actionAgreement)}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || Boolean(actionAgreement.converted_invoice_id)} onClick={() => actionAgreement && openConvertDialog(actionAgreement)}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><ReceiptLongIcon fontSize="small" /></ListItemIcon>
           Convert to Invoice
         </MenuItem>
-        <MenuItem disabled={!actionAgreement || actionAgreement.status === 'completed'} onClick={() => actionAgreement && openEdit(actionAgreement)}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || actionAgreement.status === 'completed'} onClick={() => actionAgreement && openEdit(actionAgreement)}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
         </MenuItem>
-        <MenuItem onClick={() => { if (actionAgreement) setViewAgreement(actionAgreement); closeActions() }}>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionAgreement) setViewAgreement(actionAgreement); closeActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View Details
         </MenuItem>
-        <MenuItem disabled={!actionAgreement || Boolean(actionAgreement.converted_invoice_id)} onClick={() => actionAgreement && deleteAgreementMut.mutate(actionAgreement.id)} sx={{ color: '#DC2626' }}>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionAgreement && openCardAuthorization({ rental: actionAgreement })}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
+          Request Credit Card Authorization
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_DANGER} disabled={!actionAgreement || Boolean(actionAgreement.converted_invoice_id)} onClick={() => actionAgreement && deleteAgreementMut.mutate(actionAgreement.id)}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><DeleteIcon fontSize="small" /></ListItemIcon>
           Delete
         </MenuItem>
       </Menu>
 
-      <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions}>
-        <MenuItem onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>View</MenuItem>
-        <MenuItem onClick={() => {
+      <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
+          View
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
           if (actionInvoice) {
             openInvoiceEdit(actionInvoice)
             setInvoiceForm(prev => ({ ...prev, amount_paid: Number(actionInvoice.total_amount || 0), status: 'paid' }))
           }
           closeInvoiceActions()
-        }}>Pay</MenuItem>
-        <MenuItem onClick={() => { if (actionInvoice) openInvoiceEdit(actionInvoice); closeInvoiceActions() }}>Edit</MenuItem>
-        <MenuItem onClick={() => { toast.success('Rental card authorization request noted'); closeInvoiceActions() }}>Request Card Authorization</MenuItem>
-        <MenuItem disabled={!actionInvoice?.rental_id} onClick={() => {
+        }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PaymentIcon fontSize="small" /></ListItemIcon>
+          Pay
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) openInvoiceEdit(actionInvoice); closeInvoiceActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
+          Edit
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionInvoice && openCardAuthorization({ invoice: actionInvoice })}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
+          Request Card Authorization
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionInvoice?.rental_id} onClick={() => {
           if (actionInvoice?.rental_id) returnMut.mutate({ id: actionInvoice.rental_id, data: { actual_return_date: new Date().toISOString().slice(0, 10), return_condition: 'Completed sale workflow', final_meter_reading: null } })
           closeInvoiceActions()
-        }}>Sale</MenuItem>
+        }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><LocalShippingIcon fontSize="small" /></ListItemIcon>
+          Sale
+        </MenuItem>
       </Menu>
+
+      <CreditCardAuthorizationDialog
+        open={Boolean(cardAuthDialog)}
+        customerName={cardAuthDialog?.rental?.customer_name || cardAuthDialog?.invoice?.customer_name}
+        requestType="Rental"
+        items={cardAuthorizationItems}
+        onClose={() => setCardAuthDialog(null)}
+        onSubmit={submitCardAuthorization}
+      />
 
       {/* Agreement Modal CREATE / EDIT */}
       <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
