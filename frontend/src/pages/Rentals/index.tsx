@@ -80,6 +80,10 @@ const emptyAgreement = (): RentalPayload => ({
   billing_frequency: 'monthly',
   rental_rate: 0,
   security_deposit: 0,
+  quantity: 1,
+  shipping_fee: 0,
+  setup_fee: 0,
+  item_condition: 'New',
   start_date: new Date().toISOString().slice(0, 10),
   end_date: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().slice(0, 10),
   initial_condition: '',
@@ -88,14 +92,17 @@ const emptyAgreement = (): RentalPayload => ({
 })
 
 const emptyInvoiceDetails = (): RentalInvoiceCreatePayload => ({
+  labour_hours: 0,
   worked_hours: 0,
   setup_fee: 0,
   service_fee: 0,
   shipping_fee: 0,
   application_fee: 0,
   tax_rate: 0,
+  discount_type: 'fixed',
   discount_amount: 0,
   payment_method: 'bank_transfer',
+  action: 'convert_to_invoice',
   due_date: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().slice(0, 10),
   notes: '',
 })
@@ -123,6 +130,9 @@ const Rentals = () => {
 
   const [invoiceEdit, setInvoiceEdit] = useState<RentalInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState({ amount_paid: 0, due_date: '', status: 'pending', payment_method: '', notes: '' })
+  const [viewInvoice, setViewInvoice] = useState<RentalInvoice | null>(null)
+  const [invoiceActionAnchor, setInvoiceActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionInvoice, setActionInvoice] = useState<RentalInvoice | null>(null)
 
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
@@ -238,6 +248,10 @@ const Rentals = () => {
       billing_frequency: rental.billing_frequency,
       rental_rate: Number(rental.rental_rate),
       security_deposit: Number(rental.security_deposit),
+      quantity: Number(rental.quantity || 1),
+      shipping_fee: Number(rental.shipping_fee || 0),
+      setup_fee: Number(rental.setup_fee || 0),
+      item_condition: rental.item_condition || rental.initial_condition || 'New',
       start_date: rental.start_date || '',
       end_date: rental.end_date || '',
       initial_condition: rental.initial_condition || '',
@@ -254,6 +268,7 @@ const Rentals = () => {
         ...prev,
         part_id: partId,
         rental_rate: Number(part.unit_price || 0),
+        item_condition: part.condition || prev.item_condition || 'New',
       }))
       if (part.facility_id) {
         const fac = facilities.find(f => f.id === part.facility_id)
@@ -280,6 +295,7 @@ const Rentals = () => {
     if (!agreementForm.customer_name) return toast.error('Customer name is required')
     if (!agreementForm.customer_email) return toast.error('Customer email is required')
     if (!agreementForm.rental_rate) return toast.error('Rental rate is required')
+    if (!agreementForm.quantity || agreementForm.quantity < 1) return toast.error('Quantity must be greater than zero')
     saveAgreementMut.mutate()
   }
 
@@ -291,6 +307,16 @@ const Rentals = () => {
   const closeActions = () => {
     setActionAnchor(null)
     setActionAgreement(null)
+  }
+
+  const openInvoiceActions = (event: MouseEvent<HTMLElement>, invoice: RentalInvoice) => {
+    setInvoiceActionAnchor(event.currentTarget)
+    setActionInvoice(invoice)
+  }
+
+  const closeInvoiceActions = () => {
+    setInvoiceActionAnchor(null)
+    setActionInvoice(null)
   }
 
   const openInvoiceEdit = (invoice: RentalInvoice) => {
@@ -310,6 +336,7 @@ const Rentals = () => {
     setInvoiceDetails({
       ...emptyInvoiceDetails(),
       payment_method: rental.converted_invoice_payment_method || 'bank_transfer',
+      action: 'convert_to_invoice',
     })
   }
 
@@ -335,15 +362,16 @@ const Rentals = () => {
   const calculatedBaseRental = useMemo(() => {
     if (!convertAgreement) return 0
     const rate = Number(convertAgreement.rental_rate)
+    const quantity = Number(convertAgreement.quantity || 1)
     const freq = convertAgreement.billing_frequency
     if (freq === 'daily') {
-      return durationDays * rate
+      return durationDays * rate * quantity
     } else if (freq === 'weekly') {
-      return Math.ceil(durationDays / 7) * rate
+      return Math.ceil(durationDays / 7) * rate * quantity
     } else if (freq === 'monthly') {
-      return Math.ceil(durationDays / 30) * rate
+      return Math.ceil(durationDays / 30) * rate * quantity
     }
-    return durationDays * rate
+    return durationDays * rate * quantity
   }, [convertAgreement, durationDays])
 
   const convertTaxAmount = calculatedBaseRental * Number(invoiceDetails.tax_rate || 0) / 100
@@ -351,11 +379,15 @@ const Rentals = () => {
     calculatedBaseRental +
     Number(invoiceDetails.worked_hours || 0) +
     Number(invoiceDetails.setup_fee || 0) +
+    Number(convertAgreement?.setup_fee || 0) +
     Number(invoiceDetails.service_fee || 0) +
     Number(invoiceDetails.shipping_fee || 0) +
+    Number(convertAgreement?.shipping_fee || 0) +
     Number(invoiceDetails.application_fee || 0) +
     convertTaxAmount -
-    Number(invoiceDetails.discount_amount || 0)
+    (invoiceDetails.discount_type === 'percent'
+      ? (calculatedBaseRental + Number(invoiceDetails.worked_hours || 0) + Number(invoiceDetails.setup_fee || 0) + Number(convertAgreement?.setup_fee || 0) + Number(invoiceDetails.service_fee || 0) + Number(invoiceDetails.shipping_fee || 0) + Number(convertAgreement?.shipping_fee || 0) + Number(invoiceDetails.application_fee || 0)) * Number(invoiceDetails.discount_amount || 0) / 100
+      : Number(invoiceDetails.discount_amount || 0))
 
   const renderKpi = (label: string, value: string | number, icon: JSX.Element, color: string) => (
     <Card sx={{ p: 2.2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(59,130,246,0.07)' }}>
@@ -379,6 +411,42 @@ const Rentals = () => {
     return labels[method] || method.replace(/_/g, ' ')
   }
 
+  const applyRentalConvertAction = () => {
+    if (!convertAgreement) return
+    const action = invoiceDetails.action || 'convert_to_invoice'
+    if (action === 'approve') {
+      convertRentalToInvoice(convertAgreement.id, invoiceDetails)
+        .then(() => {
+          toast.success('Rental quotation approved')
+          setConvertAgreement(null)
+          invalidateRentals()
+        })
+        .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not approve rental quotation'))
+      return
+    }
+    if (action === 'reject') {
+      convertRentalToInvoice(convertAgreement.id, invoiceDetails)
+        .then(() => {
+          toast.success('Rental quotation rejected')
+          setConvertAgreement(null)
+          invalidateRentals()
+        })
+        .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not reject rental quotation'))
+      return
+    }
+    if (action === 'mark_pending') {
+      convertRentalToInvoice(convertAgreement.id, invoiceDetails)
+        .then(() => {
+          toast.success('Rental quotation marked pending')
+          setConvertAgreement(null)
+          invalidateRentals()
+        })
+        .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not mark rental quotation pending'))
+      return
+    }
+    convertMut.mutate({ id: convertAgreement.id, data: invoiceDetails })
+  }
+
   const renderAgreementsTable = (items: Rental[], emptyText: string) => (
     <TableContainer>
       <Table>
@@ -388,6 +456,8 @@ const Rentals = () => {
             <TableCell sx={{ fontWeight: 900 }}>Product / Part</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Customer</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Rate</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Qty</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Fees</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Frequency</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Start Date</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>End Date</TableCell>
@@ -397,9 +467,9 @@ const Rentals = () => {
         </TableHead>
         <TableBody>
           {rentalsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={index}><TableCell colSpan={9}><Skeleton /></TableCell></TableRow>
+            <TableRow key={index}><TableCell colSpan={11}><Skeleton /></TableCell></TableRow>
           )) : items.length === 0 ? (
-            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
+            <TableRow><TableCell colSpan={11} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
           ) : items.map(item => {
             const status = statusChip(item.status)
             return (
@@ -410,6 +480,8 @@ const Rentals = () => {
                 </TableCell>
                 <TableCell sx={{ fontWeight: 800 }}>{item.customer_name}</TableCell>
                 <TableCell sx={{ color: '#047857', fontWeight: 800 }}>{money(item.rental_rate)}</TableCell>
+                <TableCell>{item.quantity || 1}</TableCell>
+                <TableCell>{money(Number(item.shipping_fee || 0) + Number(item.setup_fee || 0))}</TableCell>
                 <TableCell sx={{ textTransform: 'capitalize' }}>{item.billing_frequency}</TableCell>
                 <TableCell>{formatDate(item.start_date)}</TableCell>
                 <TableCell>{formatDate(item.end_date)}</TableCell>
@@ -462,7 +534,15 @@ const Rentals = () => {
                 <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
                 <TableCell align="right">
-                  <Button size="small" variant="outlined" startIcon={<PaymentIcon />} onClick={() => openInvoiceEdit(invoice)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Update</Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    endIcon={<MoreVertIcon />}
+                    onClick={(event) => openInvoiceActions(event, invoice)}
+                    sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900, background: SYSTEM_GRADIENT }}
+                  >
+                    Actions
+                  </Button>
                 </TableCell>
               </TableRow>
             )
@@ -645,6 +725,23 @@ const Rentals = () => {
         </MenuItem>
       </Menu>
 
+      <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions}>
+        <MenuItem onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>View</MenuItem>
+        <MenuItem onClick={() => {
+          if (actionInvoice) {
+            openInvoiceEdit(actionInvoice)
+            setInvoiceForm(prev => ({ ...prev, amount_paid: Number(actionInvoice.total_amount || 0), status: 'paid' }))
+          }
+          closeInvoiceActions()
+        }}>Pay</MenuItem>
+        <MenuItem onClick={() => { if (actionInvoice) openInvoiceEdit(actionInvoice); closeInvoiceActions() }}>Edit</MenuItem>
+        <MenuItem onClick={() => { toast.success('Rental card authorization request noted'); closeInvoiceActions() }}>Request Card Authorization</MenuItem>
+        <MenuItem disabled={!actionInvoice?.rental_id} onClick={() => {
+          if (actionInvoice?.rental_id) returnMut.mutate({ id: actionInvoice.rental_id, data: { actual_return_date: new Date().toISOString().slice(0, 10), return_condition: 'Completed sale workflow', final_meter_reading: null } })
+          closeInvoiceActions()
+        }}>Sale</MenuItem>
+      </Menu>
+
       {/* Agreement Modal CREATE / EDIT */}
       <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>
@@ -692,6 +789,12 @@ const Rentals = () => {
 
             <TextField label="Rental Rate (Standard) *" type="number" value={agreementForm.rental_rate} onChange={e => setAgreementForm(prev => ({ ...prev, rental_rate: Number(e.target.value) }))} />
             <TextField label="Security Deposit" type="number" value={agreementForm.security_deposit} onChange={e => setAgreementForm(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} />
+            <TextField label="Quantity" type="number" value={agreementForm.quantity || 1} onChange={e => setAgreementForm(prev => ({ ...prev, quantity: Number(e.target.value) }))} />
+            <TextField label="Shipping Fee" type="number" value={agreementForm.shipping_fee || 0} onChange={e => setAgreementForm(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
+            <TextField label="Setup Fee" type="number" value={agreementForm.setup_fee || 0} onChange={e => setAgreementForm(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
+            <TextField select label="Condition" value={agreementForm.item_condition || 'New'} onChange={e => setAgreementForm(prev => ({ ...prev, item_condition: e.target.value }))}>
+              {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
+            </TextField>
             
             <TextField label="Start Date" type="date" value={agreementForm.start_date} onChange={e => setAgreementForm(prev => ({ ...prev, start_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
             <TextField label="End Date" type="date" value={agreementForm.end_date} onChange={e => setAgreementForm(prev => ({ ...prev, end_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
@@ -774,6 +877,10 @@ const Rentals = () => {
                         <TableCell sx={{ fontWeight: 900 }}>Product / Part</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Billing Cycle</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Rental Rate</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Quantity</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Shipping Fee</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Setup Fee</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Duration Days</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900 }}>Rental Base Total</TableCell>
                       </TableRow>
@@ -783,25 +890,29 @@ const Rentals = () => {
                         <TableCell sx={{ fontWeight: 800 }}>{convertAgreement.part_number ? `${convertAgreement.part_number} - ${convertAgreement.part_description || ''}` : '-'}</TableCell>
                         <TableCell sx={{ textTransform: 'capitalize' }}>{convertAgreement.billing_frequency}</TableCell>
                         <TableCell>{money(convertAgreement.rental_rate)}</TableCell>
+                        <TableCell>{convertAgreement.quantity || 1}</TableCell>
+                        <TableCell>{money(convertAgreement.shipping_fee)}</TableCell>
+                        <TableCell>{money(convertAgreement.setup_fee)}</TableCell>
+                        <TableCell>{convertAgreement.item_condition || '-'}</TableCell>
                         <TableCell>{durationDays} day(s)</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900, color: '#047857' }}>{money(calculatedBaseRental)}</TableCell>
                       </TableRow>
                       {[
                         ['Security Deposit Paid', Number(convertAgreement.security_deposit || 0)],
-                        ['Technician Setup Hours', Number(invoiceDetails.worked_hours || 0)],
-                        ['Setup Fee', Number(invoiceDetails.setup_fee || 0)],
+                        ['Working Hours Fee', Number(invoiceDetails.worked_hours || 0)],
+                        ['Setup Fee', Number(invoiceDetails.setup_fee || 0) + Number(convertAgreement.setup_fee || 0)],
                         ['Service Fee', Number(invoiceDetails.service_fee || 0)],
-                        ['Shipping Fee', Number(invoiceDetails.shipping_fee || 0)],
+                        ['Shipping Fee', Number(invoiceDetails.shipping_fee || 0) + Number(convertAgreement.shipping_fee || 0)],
                         ['Application Fee', Number(invoiceDetails.application_fee || 0)],
                         ['Tax Amount', convertTaxAmount],
                       ].map(([label, value]) => (
                         <TableRow key={String(label)}>
-                          <TableCell colSpan={4} align="right" sx={{ fontWeight: 900, color: '#4B5563' }}>{label}</TableCell>
+                          <TableCell colSpan={8} align="right" sx={{ fontWeight: 900, color: '#4B5563' }}>{label}</TableCell>
                           <TableCell align="right">{money(value as number)}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow sx={{ bgcolor: '#EFF6FF' }}>
-                        <TableCell colSpan={4} align="right" sx={{ fontWeight: 900, fontSize: 15 }}>Grand Total Due</TableCell>
+                        <TableCell colSpan={8} align="right" sx={{ fontWeight: 900, fontSize: 15 }}>Grand Total Due</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900, fontSize: 16, color: '#1E3A8A' }}>{money(convertGrandTotal)}</TableCell>
                       </TableRow>
                     </TableBody>
@@ -811,18 +922,31 @@ const Rentals = () => {
 
               <Card sx={{ borderRadius: '14px', border: `1px solid ${SYSTEM_PANEL_BORDER}`, p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E3A8A' }}>Configure Invoice</Typography>
-                <TextField label="Worked Hours" type="number" size="small" value={invoiceDetails.worked_hours} onChange={e => setInvoiceDetails(p => ({ ...p, worked_hours: Number(e.target.value) }))} />
+                <TextField label="Labour Hours" type="number" size="small" value={invoiceDetails.labour_hours} onChange={e => setInvoiceDetails(p => ({ ...p, labour_hours: Number(e.target.value) }))} />
+                <TextField label="Working Hours Fee" type="number" size="small" value={invoiceDetails.worked_hours} onChange={e => setInvoiceDetails(p => ({ ...p, worked_hours: Number(e.target.value) }))} />
                 <TextField label="Setup Fee" type="number" size="small" value={invoiceDetails.setup_fee} onChange={e => setInvoiceDetails(p => ({ ...p, setup_fee: Number(e.target.value) }))} />
                 <TextField label="Service Fee" type="number" size="small" value={invoiceDetails.service_fee} onChange={e => setInvoiceDetails(p => ({ ...p, service_fee: Number(e.target.value) }))} />
                 <TextField label="Shipping Fee" type="number" size="small" value={invoiceDetails.shipping_fee} onChange={e => setInvoiceDetails(p => ({ ...p, shipping_fee: Number(e.target.value) }))} />
                 <TextField label="Application Fee" type="number" size="small" value={invoiceDetails.application_fee} onChange={e => setInvoiceDetails(p => ({ ...p, application_fee: Number(e.target.value) }))} />
                 <TextField label="Tax Rate (%)" type="number" size="small" value={invoiceDetails.tax_rate} onChange={e => setInvoiceDetails(p => ({ ...p, tax_rate: Number(e.target.value) }))} />
+                <TextField select label="Discount Type" size="small" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(p => ({ ...p, discount_type: e.target.value as 'fixed' | 'percent' }))}>
+                  <MenuItem value="fixed">Fixed</MenuItem>
+                  <MenuItem value="percent">Percent</MenuItem>
+                </TextField>
                 <TextField label="Discount Amount" type="number" size="small" value={invoiceDetails.discount_amount} onChange={e => setInvoiceDetails(p => ({ ...p, discount_amount: Number(e.target.value) }))} />
                 
                 <TextField select label="Payment Method" size="small" value={invoiceDetails.payment_method} onChange={e => setInvoiceDetails(p => ({ ...p, payment_method: e.target.value }))}>
                   <MenuItem value="credit_card">Credit Card</MenuItem>
                   <MenuItem value="cheque">Cheque</MenuItem>
                   <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+                </TextField>
+
+                <TextField select label="Select Action" size="small" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(p => ({ ...p, action: e.target.value }))}>
+                  <MenuItem value="">Select Action</MenuItem>
+                  <MenuItem value="approve">Approve</MenuItem>
+                  <MenuItem value="reject">Reject</MenuItem>
+                  <MenuItem value="mark_pending">Mark Pending</MenuItem>
+                  <MenuItem value="convert_to_invoice">Convert to invoice</MenuItem>
                 </TextField>
 
                 <TextField label="Invoice Due Date" type="date" size="small" value={invoiceDetails.due_date} onChange={e => setInvoiceDetails(p => ({ ...p, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
@@ -833,9 +957,31 @@ const Rentals = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setConvertAgreement(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button variant="contained" startIcon={<ReceiptLongIcon />} onClick={() => convertAgreement && convertMut.mutate({ id: convertAgreement.id, data: invoiceDetails })} sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}>
-            Generate Rental Invoice
+          <Button variant="contained" startIcon={<ReceiptLongIcon />} onClick={applyRentalConvertAction} sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}>
+            Apply Action
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(viewInvoice)} onClose={() => setViewInvoice(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 520, width: '100%' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>Rental Invoice Details</DialogTitle>
+        <DialogContent dividers>
+          {viewInvoice && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <Typography><strong>Invoice:</strong> {viewInvoice.invoice_number}</Typography>
+              <Typography><strong>Agreement:</strong> {viewInvoice.rental_number || '-'}</Typography>
+              <Typography><strong>Customer:</strong> {viewInvoice.customer_name}</Typography>
+              <Typography><strong>Facility:</strong> {viewInvoice.facility_name || '-'}</Typography>
+              <Typography><strong>Total:</strong> {money(viewInvoice.total_amount)}</Typography>
+              <Typography><strong>Paid:</strong> {money(viewInvoice.amount_paid)}</Typography>
+              <Typography><strong>Balance:</strong> {money(viewInvoice.balance_due)}</Typography>
+              <Typography><strong>Payment:</strong> {paymentMethodLabel(viewInvoice.payment_method)}</Typography>
+              <Typography sx={{ gridColumn: '1 / -1' }}><strong>Notes:</strong> {viewInvoice.notes || '-'}</Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setViewInvoice(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, background: SYSTEM_GRADIENT }}>Close</Button>
         </DialogActions>
       </Dialog>
 
@@ -912,6 +1058,14 @@ const Rentals = () => {
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>BILLING FREQUENCY & RATE</Typography>
                   <Typography sx={{ fontWeight: 900, color: '#047857' }}>{money(viewAgreement.rental_rate)} ({viewAgreement.billing_frequency})</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>QUANTITY / CONDITION</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>{viewAgreement.quantity || 1} / {viewAgreement.item_condition || '-'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>ITEM FEES</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>Shipping {money(viewAgreement.shipping_fee)} / Setup {money(viewAgreement.setup_fee)}</Typography>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>SECURITY DEPOSIT</Typography>

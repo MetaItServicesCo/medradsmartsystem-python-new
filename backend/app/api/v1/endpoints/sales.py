@@ -24,6 +24,9 @@ class SalesQuotationItemIn(BaseModel):
     part_id: int
     quantity: int = 1
     unit_price: Optional[Decimal] = None
+    shipping_fee: Decimal = Decimal("0")
+    setup_fee: Decimal = Decimal("0")
+    condition: Optional[str] = None
     description: Optional[str] = None
 
 
@@ -66,12 +69,14 @@ class SalesInvoiceUpdate(BaseModel):
 
 
 class SalesInvoiceCreate(BaseModel):
+    labour_hours: Decimal = Decimal("0")
     worked_hours: Decimal = Decimal("0")
     setup_fee: Decimal = Decimal("0")
     service_fee: Decimal = Decimal("0")
     shipping_fee: Decimal = Decimal("0")
     application_fee: Decimal = Decimal("0")
     tax_rate: Decimal = Decimal("0")
+    discount_type: str = "fixed"
     discount_amount: Optional[Decimal] = None
     payment_method: Optional[str] = None
     action: Optional[str] = None
@@ -144,6 +149,9 @@ def _line_response(line: SalesQuotationLineItem) -> dict[str, Any]:
         "description": line.description,
         "quantity": line.quantity,
         "unit_price": line.unit_price,
+        "shipping_fee": line.shipping_fee,
+        "setup_fee": line.setup_fee,
+        "condition": line.condition,
         "total": line.total,
     }
 
@@ -250,7 +258,9 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
         if part.quantity_on_hand < item.quantity:
             raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number}")
         unit_price = _money(item.unit_price if item.unit_price is not None else part.unit_price)
-        total = unit_price * item.quantity
+        shipping_fee = _money(item.shipping_fee)
+        setup_fee = _money(item.setup_fee)
+        total = (unit_price * item.quantity) + shipping_fee + setup_fee
         subtotal += total
         quotation.line_items.append(
             SalesQuotationLineItem(
@@ -258,6 +268,9 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
                 description=item.description or part.description,
                 quantity=item.quantity,
                 unit_price=unit_price,
+                shipping_fee=shipping_fee,
+                setup_fee=setup_fee,
+                condition=item.condition or part.condition,
                 total=total,
             )
         )
@@ -435,6 +448,30 @@ def convert_to_invoice(
         raise HTTPException(status_code=404, detail="Sales quotation not found")
     if quotation.facility_id is not None:
         require_facility_access(db, current_user, quotation.facility_id)
+
+    action = (payload.action or "convert_to_invoice").lower()
+    if action in {"approve", "approved"}:
+        quotation.status = "approved"
+        quotation.updated_at = datetime.utcnow()
+        _append_history(quotation, "approved", current_user)
+        log_activity(db, "sales_quotations", quotation.id, "APPROVE", current_user, {})
+        db.commit()
+        return _quotation_response(quotation)
+    if action in {"reject", "rejected"}:
+        quotation.status = "rejected"
+        quotation.updated_at = datetime.utcnow()
+        _append_history(quotation, "rejected", current_user)
+        log_activity(db, "sales_quotations", quotation.id, "REJECT", current_user, {})
+        db.commit()
+        return _quotation_response(quotation)
+    if action in {"mark_pending", "pending"}:
+        quotation.status = "pending"
+        quotation.updated_at = datetime.utcnow()
+        _append_history(quotation, "marked_pending", current_user)
+        log_activity(db, "sales_quotations", quotation.id, "MARK_PENDING", current_user, {})
+        db.commit()
+        return _quotation_response(quotation)
+
     if quotation.converted_invoice:
         return _invoice_response(quotation.converted_invoice)
 
@@ -444,10 +481,11 @@ def convert_to_invoice(
     shipping_fee = _money(payload.shipping_fee)
     application_fee = _money(payload.application_fee)
     parts_amount = _money(quotation.subtotal)
-    discount_amount = _money(payload.discount_amount if payload.discount_amount is not None else quotation.discount_amount)
+    raw_discount = _money(payload.discount_amount if payload.discount_amount is not None else quotation.discount_amount)
     tax_rate = _money(payload.tax_rate)
     tax_amount = (parts_amount * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
     subtotal = parts_amount + worked_hours + setup_fee + service_fee + shipping_fee + application_fee
+    discount_amount = (subtotal * raw_discount / Decimal("100")).quantize(Decimal("0.01")) if payload.discount_type == "percent" else raw_discount
     total_amount = subtotal + tax_amount - discount_amount
 
     quotation.worked_hours = worked_hours
@@ -496,7 +534,8 @@ def convert_to_invoice(
             "invoice_id": invoice.id,
             "invoice_number": invoice.invoice_number,
             "payment_method": payload.payment_method,
-            "action": payload.action,
+            "action": action,
+            "discount_type": payload.discount_type,
             "total_amount": str(total_amount),
         },
     )

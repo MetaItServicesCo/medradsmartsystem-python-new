@@ -56,6 +56,9 @@ class SalesQuotationLineItem(Base):
     description = Column(Text, nullable=False)
     quantity = Column(Integer, nullable=False, default=1)
     unit_price = Column(Numeric(10, 2), nullable=False, default=0)
+    shipping_fee = Column(Numeric(10, 2), nullable=False, default=0)
+    setup_fee = Column(Numeric(10, 2), nullable=False, default=0)
+    condition = Column(String, nullable=True)
     total = Column(Numeric(10, 2), nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 

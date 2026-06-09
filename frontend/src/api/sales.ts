@@ -28,6 +28,9 @@ export interface SalesQuotationLineItem {
   description: string
   quantity: number
   unit_price: number
+  shipping_fee: number
+  setup_fee: number
+  condition: string | null
   total: number
 }
 
@@ -111,12 +114,14 @@ export interface SalesInvoice {
 }
 
 export interface SalesInvoiceCreatePayload {
+  labour_hours?: number
   worked_hours?: number
   setup_fee?: number
   service_fee?: number
   shipping_fee?: number
   application_fee?: number
   tax_rate?: number
+  discount_type?: 'fixed' | 'percent'
   discount_amount?: number
   payment_method?: string | null
   action?: string | null
@@ -139,6 +144,9 @@ export interface SalesQuotationPayload {
     part_id: number
     quantity: number
     unit_price?: number
+    shipping_fee?: number
+    setup_fee?: number
+    condition?: string | null
     description?: string
   }>
 }

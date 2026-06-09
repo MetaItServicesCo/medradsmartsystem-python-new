@@ -49,6 +49,8 @@ const SYSTEM_PANEL_BG = '#F8FAFF'
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
     pending: { bg: '#EEF2FF', color: '#4338CA' },
+    approved: { bg: '#D1FAE5', color: '#047857' },
+    rejected: { bg: '#FEE2E2', color: '#DC2626' },
     in_progress: { bg: '#FEF3C7', color: '#B45309' },
     completed: { bg: '#D1FAE5', color: '#047857' },
     paid: { bg: '#D1FAE5', color: '#047857' },
@@ -82,12 +84,14 @@ const emptyQuotation = (): SalesQuotationPayload => ({
 })
 
 const emptyInvoiceDetails = (): SalesInvoiceCreatePayload => ({
+  labour_hours: 0,
   worked_hours: 0,
   setup_fee: 0,
   service_fee: 0,
   shipping_fee: 0,
   application_fee: 0,
   tax_rate: 0,
+  discount_type: 'fixed',
   discount_amount: 0,
   payment_method: '',
   action: '',
@@ -107,8 +111,14 @@ const Sales = () => {
   const [quotationForm, setQuotationForm] = useState<SalesQuotationPayload>(emptyQuotation())
   const [selectedPartId, setSelectedPartId] = useState<number | ''>('')
   const [selectedPartQty, setSelectedPartQty] = useState(1)
+  const [selectedPartShipping, setSelectedPartShipping] = useState(0)
+  const [selectedPartSetup, setSelectedPartSetup] = useState(0)
+  const [selectedPartCondition, setSelectedPartCondition] = useState('New')
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionQuotation, setActionQuotation] = useState<SalesQuotation | null>(null)
+  const [invoiceActionAnchor, setInvoiceActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionInvoice, setActionInvoice] = useState<SalesInvoice | null>(null)
+  const [viewInvoice, setViewInvoice] = useState<SalesInvoice | null>(null)
   const [invoiceEdit, setInvoiceEdit] = useState<SalesInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState({ amount_paid: 0, due_date: '', status: 'pending', payment_method: '', notes: '' })
   const [convertQuotation, setConvertQuotation] = useState<SalesQuotation | null>(null)
@@ -131,7 +141,7 @@ const Sales = () => {
   const parts = partsQ.data?.items || []
   const quotations = quotationsQ.data?.items || []
   const invoices = invoicesQ.data?.items || []
-  const pendingQuotations = quotations.filter(q => q.status === 'pending')
+  const pendingQuotations = quotations.filter(q => !['in_progress', 'completed'].includes(String(q.status)))
   const inProgressQuotations = quotations.filter(q => q.status === 'in_progress')
   const completedQuotations = quotations.filter(q => q.status === 'completed')
   const inProgressTotal = inProgressQuotations.reduce((sum, quotation) => sum + Number(quotation.total_amount || 0), 0)
@@ -245,6 +255,9 @@ const Sales = () => {
         part_id: item.part_id,
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
+        shipping_fee: Number(item.shipping_fee || 0),
+        setup_fee: Number(item.setup_fee || 0),
+        condition: item.condition || 'New',
         description: item.description,
       })),
     })
@@ -263,12 +276,18 @@ const Sales = () => {
           part_id: part.id,
           quantity: selectedPartQty,
           unit_price: Number(part.unit_price || 0),
+          shipping_fee: selectedPartShipping,
+          setup_fee: selectedPartSetup,
+          condition: selectedPartCondition || part.condition || 'New',
           description: `${part.part_number} - ${part.description}`,
         },
       ],
     }))
     setSelectedPartId('')
     setSelectedPartQty(1)
+    setSelectedPartShipping(0)
+    setSelectedPartSetup(0)
+    setSelectedPartCondition('New')
   }
 
   const removeLineItem = (index: number) => {
@@ -291,6 +310,16 @@ const Sales = () => {
     setActionQuotation(null)
   }
 
+  const openInvoiceActions = (event: MouseEvent<HTMLElement>, invoice: SalesInvoice) => {
+    setInvoiceActionAnchor(event.currentTarget)
+    setActionInvoice(invoice)
+  }
+
+  const closeInvoiceActions = () => {
+    setInvoiceActionAnchor(null)
+    setActionInvoice(null)
+  }
+
   const openInvoiceEdit = (invoice: SalesInvoice) => {
     setInvoiceEdit(invoice)
     setInvoiceForm({
@@ -310,10 +339,14 @@ const Sales = () => {
       discount_amount: Number(quotation.discount_amount || 0),
       tax_rate: Number(quotation.tax_rate || 0),
       payment_method: quotation.converted_invoice_payment_method || quotation.payment_method || '',
+      action: 'convert_to_invoice',
     })
   }
 
-  const quotationTotal = quotationForm.items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0), 0)
+  const lineTotal = (item: SalesQuotationPayload['items'][number]) => (
+    Number(item.quantity || 0) * Number(item.unit_price || 0) + Number(item.shipping_fee || 0) + Number(item.setup_fee || 0)
+  )
+  const quotationTotal = quotationForm.items.reduce((sum, item) => sum + lineTotal(item), 0)
   const quotationGrandTotal = quotationTotal + Number(quotationForm.tax_amount || 0) - Number(quotationForm.discount_amount || 0)
   const convertPartsTotal = convertQuotation ? Number(convertQuotation.subtotal || 0) : 0
   const convertTaxAmount = convertPartsTotal * Number(invoiceDetails.tax_rate || 0) / 100
@@ -325,7 +358,45 @@ const Sales = () => {
     Number(invoiceDetails.shipping_fee || 0) +
     Number(invoiceDetails.application_fee || 0) +
     convertTaxAmount -
-    Number(invoiceDetails.discount_amount || 0)
+    (invoiceDetails.discount_type === 'percent'
+      ? (convertPartsTotal + Number(invoiceDetails.worked_hours || 0) + Number(invoiceDetails.setup_fee || 0) + Number(invoiceDetails.service_fee || 0) + Number(invoiceDetails.shipping_fee || 0) + Number(invoiceDetails.application_fee || 0)) * Number(invoiceDetails.discount_amount || 0) / 100
+      : Number(invoiceDetails.discount_amount || 0))
+
+  const applyConvertAction = () => {
+    if (!convertQuotation) return
+    const action = invoiceDetails.action || 'convert_to_invoice'
+    if (action === 'approve') {
+      updateSalesQuotation(convertQuotation.id, { status: 'approved' })
+        .then(() => {
+          toast.success('Quotation approved')
+          setConvertQuotation(null)
+          invalidateSales()
+        })
+        .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not approve quotation'))
+      return
+    }
+    if (action === 'reject') {
+      updateSalesQuotation(convertQuotation.id, { status: 'rejected' })
+        .then(() => {
+          toast.success('Quotation rejected')
+          setConvertQuotation(null)
+          invalidateSales()
+        })
+        .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not reject quotation'))
+      return
+    }
+    if (action === 'mark_pending') {
+      updateSalesQuotation(convertQuotation.id, { status: 'pending' })
+        .then(() => {
+          toast.success('Quotation marked pending')
+          setConvertQuotation(null)
+          invalidateSales()
+        })
+        .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not mark quotation pending'))
+      return
+    }
+    convertMut.mutate({ id: convertQuotation.id, data: invoiceDetails })
+  }
 
   const syncCustomerFromFacility = (facilityId: number | '') => {
     const facility = facilities.find(item => item.id === facilityId)
@@ -477,7 +548,15 @@ const Sales = () => {
                 <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
                 <TableCell align="right">
-                  <Button size="small" variant="outlined" startIcon={<PaymentIcon />} onClick={() => openInvoiceEdit(invoice)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Update</Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    endIcon={<MoreVertIcon />}
+                    onClick={(event) => openInvoiceActions(event, invoice)}
+                    sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}
+                  >
+                    Actions
+                  </Button>
                 </TableCell>
               </TableRow>
             )
@@ -619,6 +698,26 @@ const Sales = () => {
         <MenuItem onClick={() => actionQuotation && cardAuthMut.mutate(actionQuotation.id)}>Request Credit Card Authorization</MenuItem>
       </Menu>
 
+      <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions}>
+        <MenuItem onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>View</MenuItem>
+        <MenuItem onClick={() => {
+          if (actionInvoice) {
+            openInvoiceEdit(actionInvoice)
+            setInvoiceForm(prev => ({ ...prev, amount_paid: Number(actionInvoice.total_amount || 0), status: 'paid' }))
+          }
+          closeInvoiceActions()
+        }}>Pay</MenuItem>
+        <MenuItem onClick={() => { if (actionInvoice) openInvoiceEdit(actionInvoice); closeInvoiceActions() }}>Edit</MenuItem>
+        <MenuItem disabled={!actionInvoice?.sales_quotation_id} onClick={() => {
+          if (actionInvoice?.sales_quotation_id) cardAuthMut.mutate(actionInvoice.sales_quotation_id)
+          closeInvoiceActions()
+        }}>Request Card Authorization</MenuItem>
+        <MenuItem disabled={!actionInvoice?.sales_quotation_id} onClick={() => {
+          if (actionInvoice?.sales_quotation_id) completeMut.mutate(actionInvoice.sales_quotation_id)
+          closeInvoiceActions()
+        }}>Sale</MenuItem>
+      </Menu>
+
       <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{editingQuotation ? 'Edit Sales Quotation' : 'Create Sales Quotation'}</DialogTitle>
         <DialogContent dividers>
@@ -644,7 +743,7 @@ const Sales = () => {
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Sales Parts</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 130px auto' }, gap: 2, mb: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 110px 130px 130px 150px auto' }, gap: 2, mb: 2 }}>
             <TextField select label="Part assigned for sale" value={selectedPartId} onChange={e => setSelectedPartId(Number(e.target.value))}>
               {parts.map((part: SalesPart) => (
                 <MenuItem key={part.id} value={part.id}>
@@ -653,6 +752,11 @@ const Sales = () => {
               ))}
             </TextField>
             <TextField label="Qty" type="number" value={selectedPartQty} onChange={e => setSelectedPartQty(Number(e.target.value))} />
+            <TextField label="Shipping Fee" type="number" value={selectedPartShipping} onChange={e => setSelectedPartShipping(Number(e.target.value))} />
+            <TextField label="Setup Fee" type="number" value={selectedPartSetup} onChange={e => setSelectedPartSetup(Number(e.target.value))} />
+            <TextField select label="Condition" value={selectedPartCondition} onChange={e => setSelectedPartCondition(e.target.value)}>
+              {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
+            </TextField>
             <Button startIcon={<AddIcon />} variant="contained" onClick={addLineItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>Add Part</Button>
           </Box>
 
@@ -660,26 +764,32 @@ const Sales = () => {
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                  <TableCell sx={{ fontWeight: 900 }}>Part</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Qty</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Unit Price</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Item Number</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Item Description</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Quantity</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Shipping Fee</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Setup Fee</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Total</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {quotationForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts selected.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts selected.</TableCell></TableRow>
                 ) : quotationForm.items.map((item, index) => {
                   const part = parts.find(candidate => candidate.id === item.part_id)
                   return (
                     <TableRow key={`${item.part_id}-${index}`}>
                       <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900 }}>{part?.part_number || item.part_id}</TableCell>
                       <TableCell>{item.description}</TableCell>
-                      <TableCell><TextField size="small" type="number" value={item.quantity} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(e.target.value) } : line) }))} sx={{ width: 90 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>
-                      <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(Number(item.quantity) * Number(item.unit_price || 0))}</TableCell>
+                      <TableCell><TextField size="small" type="number" value={item.quantity} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(e.target.value) } : line) }))} sx={{ width: 90 }} /></TableCell>
+                      <TableCell><TextField size="small" type="number" value={item.shipping_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell><TextField size="small" type="number" value={item.setup_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell>{item.condition || 'New'}</TableCell>
+                      <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(lineTotal(item))}</TableCell>
                       <TableCell align="right"><IconButton size="small" onClick={() => removeLineItem(index)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton></TableCell>
                     </TableRow>
                   )
@@ -750,6 +860,8 @@ const Sales = () => {
                         <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Unit Amount</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Quantity</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Shipping Fee</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Setup Fee</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900 }}>Total</TableCell>
                       </TableRow>
@@ -763,13 +875,15 @@ const Sales = () => {
                             <TableCell>{line.description}</TableCell>
                             <TableCell>{money(line.unit_price)}</TableCell>
                             <TableCell>{line.quantity}</TableCell>
-                            <TableCell>{part?.condition || '-'}</TableCell>
+                            <TableCell>{money(line.shipping_fee)}</TableCell>
+                            <TableCell>{money(line.setup_fee)}</TableCell>
+                            <TableCell>{line.condition || part?.condition || '-'}</TableCell>
                             <TableCell align="right" sx={{ fontWeight: 900 }}>{money(line.total)}</TableCell>
                           </TableRow>
                         )
                       })}
                       {[
-                        ['Worked Hours (0/hour)', Number(invoiceDetails.worked_hours || 0)],
+                        [`Working Hours Fee (${Number(invoiceDetails.labour_hours || 0)} hour)`, Number(invoiceDetails.worked_hours || 0)],
                         ['Setup Fee', Number(invoiceDetails.setup_fee || 0)],
                         ['Service Fee', Number(invoiceDetails.service_fee || 0)],
                         ['Shipping Fee', Number(invoiceDetails.shipping_fee || 0)],
@@ -777,12 +891,12 @@ const Sales = () => {
                         ['Tax Amount on Parts', convertTaxAmount],
                       ].map(([label, value]) => (
                         <TableRow key={String(label)}>
-                          <TableCell colSpan={5} align="right" sx={{ fontWeight: 900 }}>{label}</TableCell>
+                          <TableCell colSpan={7} align="right" sx={{ fontWeight: 900 }}>{label}</TableCell>
                           <TableCell align="right">{money(value as number)}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow>
-                        <TableCell colSpan={5} align="right" sx={{ fontWeight: 900 }}>Grand Total</TableCell>
+                        <TableCell colSpan={7} align="right" sx={{ fontWeight: 900 }}>Grand Total</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900 }}>{money(convertGrandTotal)}</TableCell>
                       </TableRow>
                     </TableBody>
@@ -793,14 +907,19 @@ const Sales = () => {
               <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, alignSelf: 'start', boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
                 <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900, textAlign: 'center' }}>Invoice Details</Box>
                 <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                  <TextField size="small" label="Worked Hours" type="number" value={invoiceDetails.worked_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, worked_hours: Number(e.target.value) }))} />
+                  <TextField size="small" label="Labour Hours" type="number" value={invoiceDetails.labour_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, labour_hours: Number(e.target.value) }))} />
                   <TextField size="small" label="Setup Fee" type="number" value={invoiceDetails.setup_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
                   <TextField size="small" label="Service Fee" type="number" value={invoiceDetails.service_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, service_fee: Number(e.target.value) }))} />
+                  <TextField size="small" label="Working Hours Fee" type="number" value={invoiceDetails.worked_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, worked_hours: Number(e.target.value) }))} />
                   <TextField size="small" label="Shipping Fee/Delivery Fee" type="number" value={invoiceDetails.shipping_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
                   <TextField size="small" label="Application Fee" type="number" value={invoiceDetails.application_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, application_fee: Number(e.target.value) }))} />
                   <TextField size="small" label="Parts" value={convertPartsTotal.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" label="Tax Rate (%)" type="number" value={invoiceDetails.tax_rate || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, tax_rate: Number(e.target.value) }))} />
                   <TextField size="small" label="Tax Amount" value={convertTaxAmount.toFixed(2)} InputProps={{ readOnly: true }} />
+                  <TextField size="small" select label="Discount Type" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(prev => ({ ...prev, discount_type: e.target.value as 'fixed' | 'percent' }))}>
+                    <MenuItem value="fixed">Fixed</MenuItem>
+                    <MenuItem value="percent">Percent</MenuItem>
+                  </TextField>
                   <TextField size="small" label="Discount" type="number" value={invoiceDetails.discount_amount || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, discount_amount: Number(e.target.value) }))} />
                   <TextField size="small" label="Grand Total" value={convertGrandTotal.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" select label="Payment Method" value={invoiceDetails.payment_method || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, payment_method: e.target.value }))} sx={{ gridColumn: '1 / -1' }}>
@@ -811,9 +930,10 @@ const Sales = () => {
                   </TextField>
                   <TextField size="small" select label="Select Action" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, action: e.target.value }))} sx={{ gridColumn: '1 / -1' }}>
                     <MenuItem value="">Select Action</MenuItem>
-                    <MenuItem value="send_invoice">Send Invoice</MenuItem>
-                    <MenuItem value="request_payment">Request Payment</MenuItem>
-                    <MenuItem value="save_draft">Save Invoice Draft</MenuItem>
+                    <MenuItem value="approve">Approve</MenuItem>
+                    <MenuItem value="reject">Reject</MenuItem>
+                    <MenuItem value="mark_pending">Mark Pending</MenuItem>
+                    <MenuItem value="convert_to_invoice">Convert to invoice</MenuItem>
                   </TextField>
                   <TextField size="small" label="Due Date" type="date" value={invoiceDetails.due_date || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} sx={{ gridColumn: '1 / -1' }} />
                   <TextField size="small" label="Notes" value={invoiceDetails.notes || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, notes: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
@@ -827,10 +947,10 @@ const Sales = () => {
           <Button
             variant="contained"
             disabled={!convertQuotation || convertMut.isPending}
-            onClick={() => convertQuotation && convertMut.mutate({ id: convertQuotation.id, data: invoiceDetails })}
+            onClick={applyConvertAction}
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}
           >
-            {convertMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Convert to Invoice'}
+            {convertMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Apply Action'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -847,8 +967,30 @@ const Sales = () => {
               </Box>
               <TableContainer>
                 <Table size="small">
-                  <TableHead><TableRow><TableCell>Part</TableCell><TableCell>Description</TableCell><TableCell>Qty</TableCell><TableCell>Total</TableCell></TableRow></TableHead>
-                  <TableBody>{viewQuotation.line_items.map(line => <TableRow key={line.id}><TableCell>{line.part_number}</TableCell><TableCell>{line.description}</TableCell><TableCell>{line.quantity}</TableCell><TableCell>{money(line.total)}</TableCell></TableRow>)}</TableBody>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Part</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell>Qty</TableCell>
+                      <TableCell>Shipping</TableCell>
+                      <TableCell>Setup</TableCell>
+                      <TableCell>Condition</TableCell>
+                      <TableCell>Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {viewQuotation.line_items.map(line => (
+                      <TableRow key={line.id}>
+                        <TableCell>{line.part_number}</TableCell>
+                        <TableCell>{line.description}</TableCell>
+                        <TableCell>{line.quantity}</TableCell>
+                        <TableCell>{money(line.shipping_fee)}</TableCell>
+                        <TableCell>{money(line.setup_fee)}</TableCell>
+                        <TableCell>{line.condition || '-'}</TableCell>
+                        <TableCell>{money(line.total)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
                 </Table>
               </TableContainer>
             </Box>
@@ -856,6 +998,28 @@ const Sales = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setViewQuotation(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(viewInvoice)} onClose={() => setViewInvoice(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Invoice Details</DialogTitle>
+        <DialogContent dividers>
+          {viewInvoice && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <Typography><strong>Invoice:</strong> {viewInvoice.invoice_number}</Typography>
+              <Typography><strong>Work Order:</strong> {viewInvoice.work_order || '-'}</Typography>
+              <Typography><strong>Customer:</strong> {viewInvoice.customer_name}</Typography>
+              <Typography><strong>Facility:</strong> {viewInvoice.facility_name || '-'}</Typography>
+              <Typography><strong>Total:</strong> {money(viewInvoice.total_amount)}</Typography>
+              <Typography><strong>Paid:</strong> {money(viewInvoice.amount_paid)}</Typography>
+              <Typography><strong>Balance:</strong> {money(viewInvoice.balance_due)}</Typography>
+              <Typography><strong>Payment:</strong> {paymentMethodLabel(viewInvoice.payment_method)}</Typography>
+              <Typography sx={{ gridColumn: '1 / -1' }}><strong>Notes:</strong> {viewInvoice.notes || '-'}</Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setViewInvoice(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900 }}>Close</Button>
         </DialogActions>
       </Dialog>
 

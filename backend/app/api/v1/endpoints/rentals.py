@@ -30,6 +30,10 @@ class RentalCreate(BaseModel):
     billing_frequency: BillingFrequency
     rental_rate: Decimal
     security_deposit: Decimal
+    quantity: int = 1
+    shipping_fee: Decimal = Decimal("0")
+    setup_fee: Decimal = Decimal("0")
+    item_condition: Optional[str] = None
     start_date: date
     end_date: date
     initial_condition: Optional[str] = None
@@ -45,6 +49,10 @@ class RentalUpdate(BaseModel):
     billing_frequency: Optional[BillingFrequency] = None
     rental_rate: Optional[Decimal] = None
     security_deposit: Optional[Decimal] = None
+    quantity: Optional[int] = None
+    shipping_fee: Optional[Decimal] = None
+    setup_fee: Optional[Decimal] = None
+    item_condition: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: Optional[RentalStatus] = None
@@ -59,14 +67,17 @@ class RentalReturnPayload(BaseModel):
 
 
 class RentalInvoiceCreate(BaseModel):
+    labour_hours: Decimal = Decimal("0")
     worked_hours: Decimal = Decimal("0")
     setup_fee: Decimal = Decimal("0")
     service_fee: Decimal = Decimal("0")
     shipping_fee: Decimal = Decimal("0")
     application_fee: Decimal = Decimal("0")
     tax_rate: Decimal = Decimal("0")
+    discount_type: str = "fixed"
     discount_amount: Optional[Decimal] = None
     payment_method: Optional[str] = None
+    action: Optional[str] = None
     due_date: Optional[date] = None
     notes: Optional[str] = None
 
@@ -177,6 +188,10 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "billing_frequency": rental.billing_frequency.value if hasattr(rental.billing_frequency, "value") else rental.billing_frequency,
         "rental_rate": rental.rental_rate,
         "security_deposit": rental.security_deposit,
+        "quantity": rental.quantity,
+        "shipping_fee": rental.shipping_fee,
+        "setup_fee": rental.setup_fee,
+        "item_condition": rental.item_condition,
         "start_date": rental.start_date,
         "end_date": rental.end_date,
         "actual_return_date": rental.actual_return_date,
@@ -280,8 +295,11 @@ def create_rental(
     part = _rental_part_query(db, current_user).filter(InventoryPart.id == payload.part_id).first()
     if not part:
         raise HTTPException(status_code=404, detail="Rental product not found in active inventory")
-    
-    if part.quantity_on_hand < 1:
+
+    if payload.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
+
+    if part.quantity_on_hand < payload.quantity:
         raise HTTPException(status_code=400, detail=f"No stock available for {part.part_number}")
 
     # Generate rental record
@@ -296,6 +314,10 @@ def create_rental(
         billing_frequency=payload.billing_frequency,
         rental_rate=payload.rental_rate,
         security_deposit=payload.security_deposit,
+        quantity=payload.quantity,
+        shipping_fee=payload.shipping_fee,
+        setup_fee=payload.setup_fee,
+        item_condition=payload.item_condition or part.condition,
         start_date=payload.start_date,
         end_date=payload.end_date,
         status=RentalStatus.ACTIVE,
@@ -306,7 +328,7 @@ def create_rental(
     )
     
     # Deduct stock
-    part.quantity_on_hand -= 1
+    part.quantity_on_hand -= payload.quantity
     part.updated_at = datetime.utcnow()
 
     _append_history(rental, "created", current_user)
@@ -339,6 +361,17 @@ def update_rental(
         require_facility_access(db, current_user, rental.part.facility_id)
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "quantity" in update_data:
+        next_quantity = int(update_data["quantity"] or 0)
+        if next_quantity <= 0:
+            raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
+        if rental.status == RentalStatus.ACTIVE and rental.part:
+            current_quantity = rental.quantity or 1
+            quantity_delta = next_quantity - current_quantity
+            if quantity_delta > 0 and rental.part.quantity_on_hand < quantity_delta:
+                raise HTTPException(status_code=400, detail=f"Not enough stock for {rental.part.part_number}")
+            rental.part.quantity_on_hand -= quantity_delta
+            rental.part.updated_at = datetime.utcnow()
     for field, value in update_data.items():
         if field == "customer_email" and value is not None:
             value = str(value)
@@ -370,7 +403,7 @@ def delete_rental(
 
     # If the agreement was active, return the stock to inventory
     if rental.status == RentalStatus.ACTIVE and rental.part:
-        rental.part.quantity_on_hand += 1
+        rental.part.quantity_on_hand += rental.quantity or 1
         rental.part.updated_at = datetime.utcnow()
 
     log_activity(db, "rentals", rental.id, "DELETE", current_user, {"rental_number": rental.rental_number})
@@ -409,7 +442,7 @@ def return_rental(
 
     # Restore stock to inventory
     if rental.part:
-        rental.part.quantity_on_hand += 1
+        rental.part.quantity_on_hand += rental.quantity or 1
         rental.part.updated_at = datetime.utcnow()
 
     _append_history(
@@ -446,6 +479,30 @@ def convert_to_invoice(
         
     if rental.part and rental.part.facility_id is not None:
         require_facility_access(db, current_user, rental.part.facility_id)
+
+    action = (payload.action or "convert_to_invoice").lower()
+    if action in {"approve", "approved"}:
+        _append_history(rental, "approved", current_user)
+        rental.updated_at = datetime.utcnow()
+        log_activity(db, "rentals", rental.id, "APPROVE", current_user, {})
+        db.commit()
+        return _rental_response(rental)
+    if action in {"reject", "rejected"}:
+        _append_history(rental, "rejected", current_user)
+        if rental.status == RentalStatus.ACTIVE and rental.part:
+            rental.part.quantity_on_hand += rental.quantity or 1
+            rental.part.updated_at = datetime.utcnow()
+        rental.status = RentalStatus.CANCELLED
+        rental.updated_at = datetime.utcnow()
+        log_activity(db, "rentals", rental.id, "REJECT", current_user, {})
+        db.commit()
+        return _rental_response(rental)
+    if action in {"mark_pending", "pending"}:
+        _append_history(rental, "marked_pending", current_user)
+        rental.updated_at = datetime.utcnow()
+        log_activity(db, "rentals", rental.id, "MARK_PENDING", current_user, {})
+        db.commit()
+        return _rental_response(rental)
         
     if rental.converted_invoice:
         return _invoice_response(rental.converted_invoice)
@@ -461,24 +518,25 @@ def convert_to_invoice(
     freq = rental.billing_frequency.value if hasattr(rental.billing_frequency, "value") else str(rental.billing_frequency).lower()
     
     if freq == "daily":
-        base_rental_amount = Decimal(days) * rate
+        base_rental_amount = Decimal(days) * rate * Decimal(rental.quantity or 1)
     elif freq == "weekly":
-        base_rental_amount = Decimal(ceil(days / 7.0)) * rate
+        base_rental_amount = Decimal(ceil(days / 7.0)) * rate * Decimal(rental.quantity or 1)
     elif freq == "monthly":
-        base_rental_amount = Decimal(ceil(days / 30.0)) * rate
+        base_rental_amount = Decimal(ceil(days / 30.0)) * rate * Decimal(rental.quantity or 1)
     else:
-        base_rental_amount = Decimal(days) * rate
+        base_rental_amount = Decimal(days) * rate * Decimal(rental.quantity or 1)
 
     worked_hours = _money(payload.worked_hours)
-    setup_fee = _money(payload.setup_fee)
+    setup_fee = _money(payload.setup_fee) + _money(rental.setup_fee)
     service_fee = _money(payload.service_fee)
-    shipping_fee = _money(payload.shipping_fee)
+    shipping_fee = _money(payload.shipping_fee) + _money(rental.shipping_fee)
     application_fee = _money(payload.application_fee)
-    discount_amount = _money(payload.discount_amount)
+    raw_discount = _money(payload.discount_amount)
     tax_rate = _money(payload.tax_rate)
     tax_amount = (base_rental_amount * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
     
     subtotal = base_rental_amount + worked_hours + setup_fee + service_fee + shipping_fee + application_fee
+    discount_amount = (subtotal * raw_discount / Decimal("100")).quantize(Decimal("0.01")) if payload.discount_type == "percent" else raw_discount
     total_amount = subtotal + tax_amount - discount_amount
 
     # Create Invoice
@@ -519,6 +577,8 @@ def convert_to_invoice(
             "invoice_id": invoice.id,
             "invoice_number": invoice.invoice_number,
             "payment_method": payload.payment_method,
+            "action": action,
+            "discount_type": payload.discount_type,
             "total_amount": str(total_amount),
         },
     )

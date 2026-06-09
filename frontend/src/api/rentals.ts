@@ -48,6 +48,10 @@ export interface Rental {
   billing_frequency: BillingFrequency
   rental_rate: number
   security_deposit: number
+  quantity: number
+  shipping_fee: number
+  setup_fee: number
+  item_condition: string | null
   start_date: string
   end_date: string
   actual_return_date: string | null
@@ -96,14 +100,17 @@ export interface RentalInvoice {
 }
 
 export interface RentalInvoiceCreatePayload {
+  labour_hours?: number
   worked_hours?: number
   setup_fee?: number
   service_fee?: number
   shipping_fee?: number
   application_fee?: number
   tax_rate?: number
+  discount_type?: 'fixed' | 'percent'
   discount_amount?: number
   payment_method?: string | null
+  action?: string | null
   due_date?: string | null
   notes?: string | null
 }
@@ -117,6 +124,10 @@ export interface RentalPayload {
   billing_frequency: BillingFrequency
   rental_rate: number
   security_deposit: number
+  quantity?: number
+  shipping_fee?: number
+  setup_fee?: number
+  item_condition?: string | null
   start_date: string
   end_date: string
   initial_condition?: string | null
