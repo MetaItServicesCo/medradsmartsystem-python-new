@@ -1,7 +1,7 @@
 from datetime import datetime
 import enum
 
-from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -42,6 +42,7 @@ class AttendanceProfile(Base):
     face_status = Column(SQLEnum(AttendanceFaceStatus), default=AttendanceFaceStatus.NOT_ENROLLED, nullable=False)
     face_samples_count = Column(Integer, default=0, nullable=False)
     face_model_version = Column(String, nullable=True)
+    face_embedding = Column(JSON, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -59,6 +60,7 @@ class AttendanceFaceSample(Base):
     profile_id = Column(Integer, ForeignKey("attendance_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
     image_url = Column(String, nullable=False)
     quality_score = Column(Float, nullable=True)
+    embedding = Column(JSON, nullable=True)
     captured_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     captured_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

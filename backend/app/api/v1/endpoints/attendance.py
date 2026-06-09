@@ -1,9 +1,11 @@
 import os
 import uuid
 from datetime import date, datetime, time, timedelta
+from math import sqrt
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -48,8 +50,24 @@ ATTENDANCE_UPLOAD_DIR = os.path.join(
 )
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
+FACE_MATCH_THRESHOLD = 0.82
+FACE_REVIEW_THRESHOLD = 0.72
 
 get_attendance_manager = require_roles("superadmin", "admin", "hr_manager", "facility_admin", "facility_manager")
+
+
+class FaceRecognitionRequest(BaseModel):
+    event_type: str = AttendanceEventType.CHECK_IN.value
+    facility_id: Optional[int] = None
+    device_label: Optional[str] = "Smart Attendance Camera"
+
+
+class FaceBox(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+    confidence: float
 
 
 def _enum_value(enum_cls, value: str, field: str):
@@ -72,6 +90,38 @@ def _event_query(db: Session):
         joinedload(AttendanceEvent.user),
         joinedload(AttendanceEvent.facility),
     )
+
+
+def _event_payload(event: AttendanceEvent) -> dict[str, Any]:
+    return {
+        "id": event.id,
+        "user_id": event.user_id,
+        "profile_id": event.profile_id,
+        "facility_id": event.facility_id,
+        "event_type": event.event_type.value if hasattr(event.event_type, "value") else event.event_type,
+        "event_time": event.event_time,
+        "timezone": event.timezone,
+        "source": event.source.value if hasattr(event.source, "value") else event.source,
+        "verification_status": event.verification_status.value if hasattr(event.verification_status, "value") else event.verification_status,
+        "confidence": event.confidence,
+        "remark": event.remark,
+        "device_label": event.device_label,
+        "image_url": event.image_url,
+        "created_by_id": event.created_by_id,
+        "created_at": event.created_at,
+        "user": {
+            "id": event.user.id,
+            "full_name": event.user.full_name,
+            "username": event.user.username,
+            "email": event.user.email,
+            "role": event.user.role.value if hasattr(event.user.role, "value") else event.user.role,
+            "avatar_url": event.user.avatar_url,
+        } if event.user else None,
+        "facility": {
+            "id": event.facility.id,
+            "name": event.facility.name,
+        } if event.facility else None,
+    }
 
 
 def _scope_user_query(db: Session, current_user: User):
@@ -135,32 +185,155 @@ def _stored_upload_path(image_url: str) -> str:
     return os.path.join(uploads_root, relative_path.replace("/", os.sep))
 
 
-def _evaluate_face_sample(image_url: str) -> tuple[Optional[float], bool, bool]:
-    """Return quality score, face-found flag, and whether local CV validation ran."""
+def _load_cv2():
     try:
         import cv2
     except Exception:
-        return None, False, False
+        raise HTTPException(status_code=503, detail="Face recognition engine is unavailable. OpenCV is not installed.")
+    return cv2
 
+
+def _decode_image_bytes(content: bytes):
+    cv2 = _load_cv2()
+    try:
+        import numpy as np
+    except Exception:
+        raise HTTPException(status_code=503, detail="Face recognition engine is unavailable. NumPy is not installed.")
+    arr = np.frombuffer(content, dtype=np.uint8)
+    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if image is None:
+        raise HTTPException(status_code=400, detail="Uploaded image could not be read")
+    return image
+
+
+def _read_upload_image(file: UploadFile):
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Image must be JPEG, PNG, or WebP")
+    content = file.file.read()
+    if len(content) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="Image must be 5MB or smaller")
+    return _decode_image_bytes(content), content
+
+
+def _load_stored_image(image_url: str):
+    cv2 = _load_cv2()
     image_path = _stored_upload_path(image_url)
     if not os.path.exists(image_path):
-        return None, False, True
-
+        return None
     image = cv2.imread(image_path)
-    if image is None:
-        return None, False, True
+    return image
 
+
+def _detect_face_regions(image) -> list[dict[str, Any]]:
+    cv2 = _load_cv2()
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     cascade_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
     detector = cv2.CascadeClassifier(cascade_path)
-    faces = detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
-    if len(faces) == 0:
-        return 0.0, False, True
-
+    faces = detector.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=5, minSize=(70, 70))
+    regions: list[dict[str, Any]] = []
     image_area = max(image.shape[0] * image.shape[1], 1)
-    largest_face_area = max(width * height for (_, _, width, height) in faces)
-    quality_score = min(1.0, max(0.1, largest_face_area / image_area * 4))
-    return round(float(quality_score), 3), True, True
+    for x, y, width, height in faces:
+        area_ratio = (width * height) / image_area
+        regions.append(
+            {
+                "x": int(x),
+                "y": int(y),
+                "width": int(width),
+                "height": int(height),
+                "confidence": round(float(min(1.0, max(0.1, area_ratio * 4))), 3),
+            }
+        )
+    regions.sort(key=lambda item: item["width"] * item["height"], reverse=True)
+    return regions
+
+
+def _embedding_from_face(image, face_region: dict[str, Any]) -> list[float]:
+    cv2 = _load_cv2()
+    try:
+        import numpy as np
+    except Exception:
+        raise HTTPException(status_code=503, detail="Face recognition engine is unavailable. NumPy is not installed.")
+
+    x = max(0, int(face_region["x"]))
+    y = max(0, int(face_region["y"]))
+    width = max(1, int(face_region["width"]))
+    height = max(1, int(face_region["height"]))
+    face = image[y : y + height, x : x + width]
+    if face.size == 0:
+        raise HTTPException(status_code=400, detail="Detected face crop is empty")
+
+    gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    resized = cv2.resize(gray, (32, 32), interpolation=cv2.INTER_AREA).astype("float32") / 255.0
+    vector = resized.flatten()
+    vector = vector - float(np.mean(vector))
+    norm = float(np.linalg.norm(vector)) or 1.0
+    vector = vector / norm
+    return [round(float(value), 6) for value in vector.tolist()]
+
+
+def _extract_embedding(image) -> tuple[Optional[list[float]], Optional[dict[str, Any]], list[dict[str, Any]]]:
+    faces = _detect_face_regions(image)
+    if not faces:
+        return None, None, faces
+    face = faces[0]
+    return _embedding_from_face(image, face), face, faces
+
+
+def _mean_embedding(embeddings: list[list[float]]) -> list[float]:
+    if not embeddings:
+        return []
+    length = len(embeddings[0])
+    values = [sum(embedding[index] for embedding in embeddings) / len(embeddings) for index in range(length)]
+    norm = sqrt(sum(value * value for value in values)) or 1.0
+    return [round(float(value / norm), 6) for value in values]
+
+
+def _cosine_similarity(first: list[float], second: list[float]) -> float:
+    if not first or not second or len(first) != len(second):
+        return 0.0
+    return round(float(sum(a * b for a, b in zip(first, second))), 4)
+
+
+def _evaluate_face_sample(image_url: str) -> tuple[Optional[float], bool, bool, Optional[list[float]]]:
+    """Return quality score, face-found flag, whether validation ran, and embedding."""
+    try:
+        image = _load_stored_image(image_url)
+    except HTTPException:
+        return None, False, False, None
+    if image is None:
+        return None, False, True, None
+
+    embedding, face, _faces = _extract_embedding(image)
+    if not face:
+        return 0.0, False, True, None
+    return face["confidence"], True, True, embedding
+
+
+def _profile_candidates(db: Session, current_user: User, facility_id: Optional[int] = None):
+    query = _profile_query(db).filter(AttendanceProfile.face_embedding.isnot(None))
+    if facility_id:
+        require_facility_access(db, current_user, facility_id)
+        query = query.filter(AttendanceProfile.facility_id == facility_id)
+    elif is_facility_scoped_user(current_user):
+        facility_ids = get_user_facility_ids(db, current_user)
+        if not facility_ids:
+            return []
+        query = query.filter(AttendanceProfile.facility_id.in_(facility_ids))
+    elif current_user.role == UserRole.EMPLOYEE:
+        query = query.filter(AttendanceProfile.user_id == current_user.id)
+    return query.all()
+
+
+def _best_face_match(db: Session, current_user: User, embedding: list[float], facility_id: Optional[int] = None):
+    best_profile = None
+    best_score = 0.0
+    for profile in _profile_candidates(db, current_user, facility_id):
+        score = _cosine_similarity(embedding, profile.face_embedding or [])
+        if score > best_score:
+            best_score = score
+            best_profile = profile
+    return best_profile, best_score
 
 
 @router.get("/profiles", response_model=AttendanceProfileListResponse)
@@ -301,24 +474,31 @@ def train_face_profile(
     validation_ran = False
     detected_faces = 0
     quality_scores = []
+    embeddings = []
     for sample in samples:
-        quality_score, has_face, sample_validated = _evaluate_face_sample(sample.image_url)
+        quality_score, has_face, sample_validated, embedding = _evaluate_face_sample(sample.image_url)
         validation_ran = validation_ran or sample_validated
         if quality_score is not None:
             sample.quality_score = quality_score
             quality_scores.append(quality_score)
         if has_face:
             detected_faces += 1
+        if embedding:
+            sample.embedding = embedding
+            embeddings.append(embedding)
 
     if validation_ran and detected_faces == 0:
         raise HTTPException(
             status_code=400,
             detail="No detectable face found in the uploaded samples. Please add a clearer front-facing image.",
         )
+    if not embeddings:
+        raise HTTPException(status_code=503, detail="Face embeddings could not be generated from the uploaded samples.")
 
     profile.face_samples_count = len(samples)
     profile.face_status = AttendanceFaceStatus.ENROLLED
     profile.face_model_version = f"local-cv-{profile.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    profile.face_embedding = _mean_embedding(embeddings)
     profile.updated_at = datetime.utcnow()
 
     log_activity(
@@ -333,10 +513,162 @@ def train_face_profile(
             "validation_ran": validation_ran,
             "average_quality": round(sum(quality_scores) / len(quality_scores), 3) if quality_scores else None,
             "model_version": profile.face_model_version,
+            "embedding_size": len(profile.face_embedding or []),
         },
     )
     db.commit()
     return _profile_query(db).filter(AttendanceProfile.id == profile.id).first()
+
+
+@router.post("/face/detect")
+def detect_face(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_attendance_manager),
+) -> Any:
+    image, _content = _read_upload_image(file)
+    faces = _detect_face_regions(image)
+    return {
+        "faces": faces,
+        "face_count": len(faces),
+    }
+
+
+@router.post("/face/recognize")
+def recognize_face_attendance(
+    file: UploadFile = File(...),
+    event_type: str = Form(AttendanceEventType.CHECK_IN.value),
+    facility_id: Optional[int] = Form(None),
+    device_label: Optional[str] = Form("Smart Attendance Camera"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_attendance_manager),
+) -> Any:
+    image, content = _read_upload_image(file)
+    embedding, face, faces = _extract_embedding(image)
+    if not face or not embedding:
+        return {
+            "matched": False,
+            "verification_status": AttendanceVerificationStatus.REJECTED.value,
+            "confidence": 0,
+            "message": "No face detected",
+            "faces": faces,
+        }
+
+    event_enum = _enum_value(AttendanceEventType, event_type, "event_type")
+    best_profile, score = _best_face_match(db, current_user, embedding, facility_id)
+    if not best_profile:
+        return {
+            "matched": False,
+            "verification_status": AttendanceVerificationStatus.REJECTED.value,
+            "confidence": round(score, 3),
+            "message": "No trained face profiles found",
+            "faces": faces,
+        }
+
+    verification_status = (
+        AttendanceVerificationStatus.VERIFIED
+        if score >= FACE_MATCH_THRESHOLD
+        else AttendanceVerificationStatus.NEEDS_REVIEW
+        if score >= FACE_REVIEW_THRESHOLD
+        else AttendanceVerificationStatus.REJECTED
+    )
+
+    if verification_status == AttendanceVerificationStatus.REJECTED:
+        return {
+            "matched": False,
+            "candidate": {
+                "profile_id": best_profile.id,
+                "user_id": best_profile.user_id,
+                "full_name": best_profile.user.full_name if best_profile.user else None,
+            },
+            "verification_status": verification_status.value,
+            "confidence": round(score, 3),
+            "message": "Face confidence is too low",
+            "faces": faces,
+        }
+
+    recent_cutoff = datetime.utcnow() - timedelta(minutes=3)
+    recent = (
+        db.query(AttendanceEvent)
+        .filter(
+            AttendanceEvent.user_id == best_profile.user_id,
+            AttendanceEvent.event_type == event_enum,
+            AttendanceEvent.source == AttendanceSource.FACE,
+            AttendanceEvent.event_time >= recent_cutoff,
+        )
+        .order_by(AttendanceEvent.event_time.desc())
+        .first()
+    )
+    if recent:
+        return {
+            "matched": True,
+            "duplicate": True,
+            "event": _event_payload(_event_query(db).filter(AttendanceEvent.id == recent.id).first()),
+            "profile": {
+                "profile_id": best_profile.id,
+                "user_id": best_profile.user_id,
+                "full_name": best_profile.user.full_name if best_profile.user else None,
+                "facility_id": best_profile.facility_id,
+            },
+            "verification_status": recent.verification_status.value if hasattr(recent.verification_status, "value") else recent.verification_status,
+            "confidence": round(score, 3),
+            "message": "Attendance already marked recently",
+            "faces": faces,
+        }
+
+    os.makedirs(ATTENDANCE_UPLOAD_DIR, exist_ok=True)
+    stored_name = f"face_event_{uuid.uuid4().hex}.jpg"
+    file_path = os.path.join(ATTENDANCE_UPLOAD_DIR, stored_name)
+    with open(file_path, "wb") as f:
+        f.write(content)
+    image_url = f"/uploads/attendance_faces/{stored_name}"
+
+    event = AttendanceEvent(
+        user_id=best_profile.user_id,
+        profile_id=best_profile.id,
+        facility_id=best_profile.facility_id,
+        event_type=event_enum,
+        event_time=datetime.utcnow(),
+        timezone="Asia/Karachi",
+        source=AttendanceSource.FACE,
+        verification_status=verification_status,
+        confidence=round(score, 3),
+        remark="Marked by face recognition" if verification_status == AttendanceVerificationStatus.VERIFIED else "Face match needs HR review",
+        device_label=device_label,
+        image_url=image_url,
+        created_by_id=current_user.id,
+    )
+    db.add(event)
+    db.flush()
+    log_activity(
+        db,
+        "attendance_events",
+        event.id,
+        "FACE_ATTENDANCE_RECOGNIZED",
+        current_user,
+        {
+            "matched_user_id": best_profile.user_id,
+            "confidence": round(score, 3),
+            "verification_status": verification_status.value,
+            "event_type": event_enum.value,
+        },
+    )
+    db.commit()
+
+    return {
+        "matched": True,
+        "duplicate": False,
+        "event": _event_payload(_event_query(db).filter(AttendanceEvent.id == event.id).first()),
+        "profile": {
+            "profile_id": best_profile.id,
+            "user_id": best_profile.user_id,
+            "full_name": best_profile.user.full_name if best_profile.user else None,
+            "facility_id": best_profile.facility_id,
+        },
+        "verification_status": verification_status.value,
+        "confidence": round(score, 3),
+        "message": "Attendance marked" if verification_status == AttendanceVerificationStatus.VERIFIED else "Attendance marked for HR review",
+        "faces": faces,
+    }
 
 
 @router.get("/events", response_model=AttendanceEventListResponse)

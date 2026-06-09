@@ -39,12 +39,16 @@ import { toast } from 'react-toastify'
 import {
   createAttendanceEvent,
   createAttendanceProfile,
+  detectAttendanceFace,
   fetchAttendanceEvents,
   fetchAttendanceProfiles,
   fetchAttendanceSummary,
+  recognizeAttendanceFace,
   trainAttendanceFaceModel,
   uploadAttendanceFaceSample,
   type AttendanceEvent,
+  type AttendanceFaceBox,
+  type AttendanceFaceRecognitionResponse,
   type AttendanceEventPayload,
   type AttendanceProfile,
 } from '@/api/attendance'
@@ -89,10 +93,19 @@ const Attendance = () => {
   const [eventDialog, setEventDialog] = useState<AttendanceProfile | null>(null)
   const [enrollDialog, setEnrollDialog] = useState<AttendanceProfile | null>(null)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const [attendanceCameraOpen, setAttendanceCameraOpen] = useState(false)
+  const [attendanceStream, setAttendanceStream] = useState<MediaStream | null>(null)
+  const [attendanceEventType, setAttendanceEventType] = useState<AttendanceEventPayload['event_type']>('check_in')
+  const [detectedFaces, setDetectedFaces] = useState<AttendanceFaceBox[]>([])
+  const [recognitionResult, setRecognitionResult] = useState<AttendanceFaceRecognitionResponse | null>(null)
+  const [recognitionBusy, setRecognitionBusy] = useState(false)
   const [eventType, setEventType] = useState<AttendanceEventPayload['event_type']>('check_in')
   const [remark, setRemark] = useState('')
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const attendanceVideoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const attendanceCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const detectionTimerRef = useRef<number | null>(null)
 
   const summaryQ = useQuery({
     queryKey: ['attendance-summary', selectedDate],
@@ -112,12 +125,44 @@ const Attendance = () => {
   useEffect(() => {
     if (videoRef.current && cameraStream) {
       videoRef.current.srcObject = cameraStream
+      videoRef.current.play().catch(() => undefined)
     }
   }, [cameraStream])
 
+  useEffect(() => {
+    if (attendanceVideoRef.current && attendanceStream) {
+      attendanceVideoRef.current.srcObject = attendanceStream
+      attendanceVideoRef.current.play().catch(() => undefined)
+    }
+  }, [attendanceStream])
+
   useEffect(() => () => {
     cameraStream?.getTracks().forEach((track) => track.stop())
+    if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
   }, [cameraStream])
+
+  useEffect(() => () => {
+    attendanceStream?.getTracks().forEach((track) => track.stop())
+    if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
+  }, [attendanceStream])
+
+  useEffect(() => {
+    if (!attendanceCameraOpen || !attendanceStream) return
+    if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
+    detectionTimerRef.current = window.setInterval(async () => {
+      const file = captureFrame(attendanceVideoRef.current, attendanceCanvasRef.current, 'detect-frame.jpg')
+      if (!file) return
+      try {
+        const result = await detectAttendanceFace(file)
+        setDetectedFaces(result.faces || [])
+      } catch {
+        setDetectedFaces([])
+      }
+    }, 1200)
+    return () => {
+      if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
+    }
+  }, [attendanceCameraOpen, attendanceStream])
 
   const invalidateAttendance = () => {
     queryClient.invalidateQueries({ queryKey: ['attendance-summary'] })
@@ -227,23 +272,89 @@ const Attendance = () => {
     setEnrollDialog(null)
   }
 
+  const captureFrame = (video: HTMLVideoElement | null, canvas: HTMLCanvasElement | null, filename: string) => {
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) return null
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const context = canvas.getContext('2d')
+    if (!context) return null
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
+    const binary = atob(dataUrl.split(',')[1])
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+    return new File([bytes], filename, { type: 'image/jpeg' })
+  }
+
+  const openFaceAttendance = async (type: AttendanceEventPayload['event_type']) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('Camera access is not available in this browser')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      setAttendanceEventType(type)
+      setRecognitionResult(null)
+      setDetectedFaces([])
+      setAttendanceCameraOpen(true)
+      setAttendanceStream(stream)
+    } catch {
+      toast.error('Camera permission was denied or no camera was found')
+    }
+  }
+
+  const closeFaceAttendance = () => {
+    attendanceStream?.getTracks().forEach((track) => track.stop())
+    setAttendanceStream(null)
+    setAttendanceCameraOpen(false)
+    setDetectedFaces([])
+    setRecognitionResult(null)
+    if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
+  }
+
+  const scanAndMarkAttendance = async () => {
+    const file = captureFrame(attendanceVideoRef.current, attendanceCanvasRef.current, 'attendance-face.jpg')
+    if (!file) {
+      toast.error('Camera frame is not ready yet')
+      return
+    }
+    setRecognitionBusy(true)
+    try {
+      const result = await recognizeAttendanceFace(file, {
+        event_type: attendanceEventType,
+        device_label: 'Smart Attendance Camera',
+      })
+      setRecognitionResult(result)
+      setDetectedFaces(result.faces || [])
+      if (result.matched && result.verification_status === 'verified') {
+        toast.success(`${result.profile?.full_name || 'User'} matched, attendance marked`)
+        invalidateAttendance()
+      } else if (result.matched && result.verification_status === 'needs_review') {
+        toast.warning(`${result.profile?.full_name || 'User'} matched with low confidence, sent to review`)
+        invalidateAttendance()
+      } else {
+        toast.error(result.message || 'Face was not recognized')
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Face recognition failed')
+    } finally {
+      setRecognitionBusy(false)
+    }
+  }
+
+  const recognitionColor = recognitionResult?.matched
+    ? recognitionResult.verification_status === 'verified'
+      ? '#10B981'
+      : '#F59E0B'
+    : recognitionResult
+    ? '#EF4444'
+    : '#8B5CF6'
+
   const captureLiveSample = () => {
     if (!activeEnrollProfile || !videoRef.current || !canvasRef.current) return
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    canvas.width = video.videoWidth || 640
-    canvas.height = video.videoHeight || 480
-    const context = canvas.getContext('2d')
-    if (!context) return
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        toast.error('Unable to capture face image')
-        return
-      }
-      const file = new File([blob], `live-face-${Date.now()}.jpg`, { type: 'image/jpeg' })
-      faceSampleMut.mutate({ profileId: activeEnrollProfile.id, file })
-    }, 'image/jpeg', 0.92)
+    const file = captureFrame(videoRef.current, canvasRef.current, `live-face-${Date.now()}.jpg`)
+    if (!file) return toast.error('Unable to capture face image')
+    faceSampleMut.mutate({ profileId: activeEnrollProfile.id, file })
   }
 
   return (
@@ -274,9 +385,11 @@ const Attendance = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
           <Box>
             <Typography sx={{ fontWeight: 900, fontSize: 20 }}>Quick Attendance</Typography>
-            <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 700 }}>Manual fallback while camera recognition is being productionized.</Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 700 }}>Use face recognition for daily attendance, with manual controls available as fallback.</Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button onClick={() => openFaceAttendance('check_in')} startIcon={<VideocamIcon />} variant="contained" sx={{ bgcolor: '#111827', color: '#fff', fontWeight: 900, '&:hover': { bgcolor: '#1F2937' } }}>Face Check In</Button>
+            <Button onClick={() => openFaceAttendance('check_out')} startIcon={<VideocamIcon />} variant="contained" sx={{ bgcolor: '#111827', color: '#fff', fontWeight: 900, '&:hover': { bgcolor: '#1F2937' } }}>Face Check Out</Button>
             <Button onClick={() => markOwnAttendance('check_in')} startIcon={<LoginIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Check In</Button>
             <Button onClick={() => markOwnAttendance('break_start')} startIcon={<CoffeeIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Break Start</Button>
             <Button onClick={() => markOwnAttendance('break_end')} startIcon={<DoneAllIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Break End</Button>
@@ -418,6 +531,84 @@ const Attendance = () => {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={attendanceCameraOpen} onClose={closeFaceAttendance} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Face Recognition Attendance
+          <Typography sx={{ color: '#8B95A7', fontWeight: 700, fontSize: 13 }}>
+            {EVENT_LABELS[attendanceEventType]} with live face detection
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
+          <Box
+            sx={{
+              position: 'relative',
+              borderRadius: '18px',
+              overflow: 'hidden',
+              border: `2px solid ${recognitionColor}`,
+              background: '#111827',
+              aspectRatio: '4 / 3',
+            }}
+          >
+            <video
+              ref={attendanceVideoRef}
+              autoPlay
+              muted
+              playsInline
+              onLoadedMetadata={() => attendanceVideoRef.current?.play().catch(() => undefined)}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+            />
+            <canvas ref={attendanceCanvasRef} hidden />
+            {detectedFaces.map((face, index) => {
+              const videoWidth = attendanceVideoRef.current?.videoWidth || 1
+              const videoHeight = attendanceVideoRef.current?.videoHeight || 1
+              return (
+                <Box
+                  key={`${face.x}-${face.y}-${index}`}
+                  sx={{
+                    position: 'absolute',
+                    left: `${(face.x / videoWidth) * 100}%`,
+                    top: `${(face.y / videoHeight) * 100}%`,
+                    width: `${(face.width / videoWidth) * 100}%`,
+                    height: `${(face.height / videoHeight) * 100}%`,
+                    border: `3px solid ${recognitionColor}`,
+                    borderRadius: '12px',
+                    boxShadow: `0 0 22px ${recognitionColor}66`,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <Box sx={{ position: 'absolute', left: 0, top: -30, px: 1, py: 0.3, borderRadius: '8px', bgcolor: recognitionColor, color: '#fff', fontSize: 12, fontWeight: 900 }}>
+                    Face {Math.round((face.confidence || 0) * 100)}%
+                  </Box>
+                </Box>
+              )
+            })}
+          </Box>
+
+          <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E9E5FF', bgcolor: '#F8FAFF' }}>
+            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+              {recognitionResult?.message || (detectedFaces.length ? 'Face detected. Scan to mark attendance.' : 'Waiting for a face...')}
+            </Typography>
+            {recognitionResult && (
+              <Typography sx={{ color: '#6B7280', fontWeight: 800, mt: 0.5 }}>
+                {recognitionResult.profile?.full_name || recognitionResult.candidate?.full_name || 'Unknown'} · Confidence {Math.round(Number(recognitionResult.confidence || 0) * 100)}% · {recognitionResult.verification_status.replace('_', ' ')}
+              </Typography>
+            )}
+          </Card>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={closeFaceAttendance} sx={{ fontWeight: 900 }}>Close</Button>
+          <Button
+            variant="contained"
+            startIcon={recognitionBusy ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <VideocamIcon />}
+            disabled={recognitionBusy || !attendanceStream}
+            onClick={scanAndMarkAttendance}
+            sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+          >
+            Scan & Mark
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={Boolean(activeEnrollProfile)} onClose={closeLiveEnroll} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Live Face Enrollment</DialogTitle>
         <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
@@ -436,7 +627,14 @@ const Attendance = () => {
               aspectRatio: '4 / 3',
             }}
           >
-            <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              onLoadedMetadata={() => videoRef.current?.play().catch(() => undefined)}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
             <canvas ref={canvasRef} hidden />
           </Box>
         </DialogContent>

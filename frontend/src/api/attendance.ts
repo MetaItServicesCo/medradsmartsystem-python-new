@@ -70,6 +70,40 @@ export interface AttendanceSummary {
   latest_events: AttendanceEvent[]
 }
 
+export interface AttendanceFaceBox {
+  x: number
+  y: number
+  width: number
+  height: number
+  confidence: number
+}
+
+export interface AttendanceFaceDetectionResponse {
+  faces: AttendanceFaceBox[]
+  face_count: number
+}
+
+export interface AttendanceFaceRecognitionResponse {
+  matched: boolean
+  duplicate?: boolean
+  verification_status: 'verified' | 'needs_review' | 'rejected'
+  confidence: number
+  message: string
+  faces: AttendanceFaceBox[]
+  profile?: {
+    profile_id: number
+    user_id: number
+    full_name: string | null
+    facility_id?: number | null
+  }
+  candidate?: {
+    profile_id: number
+    user_id: number
+    full_name: string | null
+  }
+  event?: AttendanceEvent
+}
+
 export interface AttendanceEventPayload {
   user_id?: number
   facility_id?: number | null
@@ -129,6 +163,30 @@ export const uploadAttendanceFaceSample = async (profileId: number, file: File):
 
 export const trainAttendanceFaceModel = async (profileId: number): Promise<AttendanceProfile> => {
   const res = await apiClient.post(`/attendance/profiles/${profileId}/train`)
+  return res.data
+}
+
+export const detectAttendanceFace = async (file: File): Promise<AttendanceFaceDetectionResponse> => {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await apiClient.post('/attendance/face/detect', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export const recognizeAttendanceFace = async (
+  file: File,
+  payload: { event_type: AttendanceEventPayload['event_type']; facility_id?: number | null; device_label?: string } = { event_type: 'check_in' }
+): Promise<AttendanceFaceRecognitionResponse> => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('event_type', payload.event_type)
+  if (payload.facility_id) form.append('facility_id', String(payload.facility_id))
+  if (payload.device_label) form.append('device_label', payload.device_label)
+  const res = await apiClient.post('/attendance/face/recognize', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return res.data
 }
 
