@@ -84,6 +84,8 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString('en-US'
   minute: '2-digit',
 })
 
+const CAMERA_WAIT_MS = 8000
+
 const openUserCamera = async () => {
   try {
     return await navigator.mediaDevices.getUserMedia({
@@ -99,6 +101,23 @@ const openUserCamera = async () => {
   }
 }
 
+const cameraErrorMessage = (error: unknown) => {
+  const name = error instanceof DOMException ? error.name : ''
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return 'Camera permission is blocked. Click the camera icon in the address bar and allow camera access.'
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return 'No camera was found on this device.'
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return 'Camera is already in use by another app or browser tab.'
+  }
+  if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+    return 'Camera constraints failed. Retrying with the default camera may help.'
+  }
+  return 'Camera could not be started. Check browser permissions and device camera settings.'
+}
+
 const Attendance = () => {
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.user)
@@ -110,10 +129,12 @@ const Attendance = () => {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraStatus, setCameraStatus] = useState('Camera not started')
+  const [cameraAttempt, setCameraAttempt] = useState(0)
   const [attendanceCameraOpen, setAttendanceCameraOpen] = useState(false)
   const [attendanceStream, setAttendanceStream] = useState<MediaStream | null>(null)
   const [attendanceCameraReady, setAttendanceCameraReady] = useState(false)
   const [attendanceCameraStatus, setAttendanceCameraStatus] = useState('Camera not started')
+  const [attendanceCameraAttempt, setAttendanceCameraAttempt] = useState(0)
   const [attendanceEventType, setAttendanceEventType] = useState<AttendanceEventPayload['event_type']>('check_in')
   const [detectedFaces, setDetectedFaces] = useState<AttendanceFaceBox[]>([])
   const [recognitionResult, setRecognitionResult] = useState<AttendanceFaceRecognitionResponse | null>(null)
@@ -203,6 +224,7 @@ const Attendance = () => {
   useEffect(() => {
     if (!enrollDialog || cameraStream) return
     let cancelled = false
+    let waitTimer: number | undefined
     const start = async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraStatus('Camera access is not available in this browser')
@@ -210,23 +232,70 @@ const Attendance = () => {
         return
       }
       setCameraStatus('Requesting camera permission...')
+      waitTimer = window.setTimeout(() => {
+        if (!cancelled) {
+          setCameraStatus('Still waiting for camera permission. Click the camera icon in the address bar and allow access.')
+        }
+      }, CAMERA_WAIT_MS)
       try {
         const stream = await openUserCamera()
+        if (waitTimer) window.clearTimeout(waitTimer)
         if (cancelled) {
           stream.getTracks().forEach((track) => track.stop())
           return
         }
         setCameraStream(stream)
-      } catch {
-        setCameraStatus('Camera permission was denied or no camera was found')
-        toast.error('Camera permission was denied or no camera was found')
+      } catch (error) {
+        if (waitTimer) window.clearTimeout(waitTimer)
+        const message = cameraErrorMessage(error)
+        setCameraStatus(message)
+        toast.error(message)
       }
     }
     start()
     return () => {
       cancelled = true
+      if (waitTimer) window.clearTimeout(waitTimer)
     }
-  }, [enrollDialog, cameraStream])
+  }, [enrollDialog, cameraStream, cameraAttempt])
+
+  useEffect(() => {
+    if (!attendanceCameraOpen || attendanceStream) return
+    let cancelled = false
+    let waitTimer: number | undefined
+    const start = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setAttendanceCameraStatus('Camera access is not available in this browser')
+        toast.error('Camera access is not available in this browser')
+        return
+      }
+      setAttendanceCameraStatus('Requesting camera permission...')
+      waitTimer = window.setTimeout(() => {
+        if (!cancelled) {
+          setAttendanceCameraStatus('Still waiting for camera permission. Click the camera icon in the address bar and allow access.')
+        }
+      }, CAMERA_WAIT_MS)
+      try {
+        const stream = await openUserCamera()
+        if (waitTimer) window.clearTimeout(waitTimer)
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+        setAttendanceStream(stream)
+      } catch (error) {
+        if (waitTimer) window.clearTimeout(waitTimer)
+        const message = cameraErrorMessage(error)
+        setAttendanceCameraStatus(message)
+        toast.error(message)
+      }
+    }
+    start()
+    return () => {
+      cancelled = true
+      if (waitTimer) window.clearTimeout(waitTimer)
+    }
+  }, [attendanceCameraOpen, attendanceStream, attendanceCameraAttempt])
 
   const invalidateAttendance = () => {
     queryClient.invalidateQueries({ queryKey: ['attendance-summary'] })
@@ -330,6 +399,14 @@ const Attendance = () => {
     setEnrollDialog(null)
   }
 
+  const retryLiveEnrollCamera = () => {
+    cameraStream?.getTracks().forEach((track) => track.stop())
+    setCameraStream(null)
+    setCameraReady(false)
+    setCameraStatus('Requesting camera permission...')
+    setCameraAttempt((attempt) => attempt + 1)
+  }
+
   const captureFrame = (video: HTMLVideoElement | null, canvas: HTMLCanvasElement | null, filename: string) => {
     if (!video || !canvas || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null
     canvas.width = video.videoWidth
@@ -344,23 +421,19 @@ const Attendance = () => {
     return new File([bytes], filename, { type: 'image/jpeg' })
   }
 
-  const openFaceAttendance = async (type: AttendanceEventPayload['event_type']) => {
+  const openFaceAttendance = (type: AttendanceEventPayload['event_type']) => {
     if (!navigator.mediaDevices?.getUserMedia) {
       toast.error('Camera access is not available in this browser')
       return
     }
-    try {
-      setAttendanceCameraReady(false)
-      setAttendanceCameraStatus('Requesting camera permission...')
-      const stream = await openUserCamera()
-      setAttendanceEventType(type)
-      setRecognitionResult(null)
-      setDetectedFaces([])
-      setAttendanceCameraOpen(true)
-      setAttendanceStream(stream)
-    } catch {
-      toast.error('Camera permission was denied or no camera was found')
-    }
+    setAttendanceEventType(type)
+    setRecognitionResult(null)
+    setDetectedFaces([])
+    setAttendanceStream(null)
+    setAttendanceCameraReady(false)
+    setAttendanceCameraStatus('Requesting camera permission...')
+    setAttendanceCameraOpen(true)
+    setAttendanceCameraAttempt((attempt) => attempt + 1)
   }
 
   const closeFaceAttendance = () => {
@@ -372,6 +445,16 @@ const Attendance = () => {
     setDetectedFaces([])
     setRecognitionResult(null)
     if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
+  }
+
+  const retryFaceAttendanceCamera = () => {
+    attendanceStream?.getTracks().forEach((track) => track.stop())
+    setAttendanceStream(null)
+    setAttendanceCameraReady(false)
+    setAttendanceCameraStatus('Requesting camera permission...')
+    setDetectedFaces([])
+    setRecognitionResult(null)
+    setAttendanceCameraAttempt((attempt) => attempt + 1)
   }
 
   const scanAndMarkAttendance = async () => {
@@ -647,6 +730,14 @@ const Attendance = () => {
                   <Typography sx={{ fontSize: 12, color: '#94A3B8', mt: 0.5 }}>
                     Allow camera access and wait for the preview to appear.
                   </Typography>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={retryFaceAttendanceCamera}
+                    sx={{ mt: 1.5, borderRadius: '10px', fontWeight: 900, bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+                  >
+                    Retry Camera
+                  </Button>
                 </Box>
               </Box>
             )}
@@ -712,6 +803,7 @@ const Attendance = () => {
           </Box>
           <Box
             sx={{
+              position: 'relative',
               borderRadius: '18px',
               overflow: 'hidden',
               border: '1px solid #E9E5FF',
@@ -755,6 +847,14 @@ const Attendance = () => {
                   <Typography sx={{ fontSize: 12, color: '#94A3B8', mt: 0.5 }}>
                     If the preview stays dark, check browser camera permissions or choose another camera in Chrome.
                   </Typography>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={retryLiveEnrollCamera}
+                    sx={{ mt: 1.5, borderRadius: '10px', fontWeight: 900, bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+                  >
+                    Retry Camera
+                  </Button>
                 </Box>
               </Box>
             )}
