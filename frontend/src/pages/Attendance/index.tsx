@@ -154,6 +154,10 @@ const waitForVideoFrame = (video: HTMLVideoElement, timeoutMs = 7000) => new Pro
   check()
 })
 
+const hasLiveVideoTrack = (stream: MediaStream | null) => (
+  Boolean(stream?.getVideoTracks().some((track) => track.readyState === 'live' && track.enabled))
+)
+
 const Attendance = () => {
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.user)
@@ -214,7 +218,7 @@ const Attendance = () => {
     try {
       await video.play()
       const hasFrame = await waitForVideoFrame(video)
-      if (hasFrame) {
+      if (hasFrame || hasLiveVideoTrack(stream)) {
         setReady(true)
         setStatus('Camera ready')
       } else {
@@ -224,6 +228,19 @@ const Attendance = () => {
       }
     } catch {
       setStatus('Click inside the browser and allow camera playback')
+    }
+  }
+
+  const markCameraReady = (
+    video: HTMLVideoElement | null,
+    stream: MediaStream | null,
+    setReady: (ready: boolean) => void,
+    setStatus: (status: string) => void,
+  ) => {
+    if (!video || !stream) return
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA || hasLiveVideoTrack(stream)) {
+      setReady(true)
+      setStatus('Camera ready')
     }
   }
 
@@ -750,6 +767,9 @@ const Attendance = () => {
                 setAttendanceCameraReady(true)
                 setAttendanceCameraStatus('Camera ready')
               }}
+              onPlaying={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
+              onTimeUpdate={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
+              onResize={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
               style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
             />
             <canvas ref={attendanceCanvasRef} hidden />
@@ -867,6 +887,9 @@ const Attendance = () => {
                 setCameraReady(true)
                 setCameraStatus('Camera ready')
               }}
+              onPlaying={() => markCameraReady(videoRef.current, cameraStream, setCameraReady, setCameraStatus)}
+              onTimeUpdate={() => markCameraReady(videoRef.current, cameraStream, setCameraReady, setCameraStatus)}
+              onResize={() => markCameraReady(videoRef.current, cameraStream, setCameraReady, setCameraStatus)}
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
             <canvas ref={canvasRef} hidden />
