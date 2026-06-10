@@ -118,6 +118,42 @@ const cameraErrorMessage = (error: unknown) => {
   return 'Camera could not be started. Check browser permissions and device camera settings.'
 }
 
+const waitForVideoFrame = (video: HTMLVideoElement, timeoutMs = 7000) => new Promise<boolean>((resolve) => {
+  const startedAt = Date.now()
+  let settled = false
+  let frameId = 0
+
+  const finish = (ready: boolean) => {
+    if (settled) return
+    settled = true
+    if (frameId) window.cancelAnimationFrame(frameId)
+    resolve(ready)
+  }
+
+  const hasFrame = () => video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0
+
+  const check = () => {
+    if (hasFrame()) {
+      finish(true)
+      return
+    }
+    if (Date.now() - startedAt > timeoutMs) {
+      finish(false)
+      return
+    }
+    frameId = window.requestAnimationFrame(check)
+  }
+
+  const requestVideoFrameCallback = (video as any).requestVideoFrameCallback
+  if (typeof requestVideoFrameCallback === 'function') {
+    requestVideoFrameCallback.call(video, () => {
+      if (hasFrame()) finish(true)
+    })
+  }
+
+  check()
+})
+
 const Attendance = () => {
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.user)
@@ -171,14 +207,20 @@ const Attendance = () => {
     if (!video || !stream) return
     setReady(false)
     setStatus('Starting camera...')
+    video.muted = true
+    video.autoplay = true
+    video.playsInline = true
     video.srcObject = stream
     try {
       await video.play()
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
+      const hasFrame = await waitForVideoFrame(video)
+      if (hasFrame) {
         setReady(true)
         setStatus('Camera ready')
       } else {
-        setStatus('Waiting for camera frame...')
+        const track = stream.getVideoTracks()[0]
+        const label = track?.label ? ` (${track.label})` : ''
+        setStatus(`Camera is active${label}, but no video frame was received. Try Retry Camera or close other camera apps.`)
       }
     } catch {
       setStatus('Click inside the browser and allow camera playback')
