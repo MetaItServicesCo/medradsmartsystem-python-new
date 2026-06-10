@@ -84,6 +84,21 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString('en-US'
   minute: '2-digit',
 })
 
+const openUserCamera = async () => {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    })
+  } catch {
+    return navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+  }
+}
+
 const Attendance = () => {
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.user)
@@ -93,8 +108,12 @@ const Attendance = () => {
   const [eventDialog, setEventDialog] = useState<AttendanceProfile | null>(null)
   const [enrollDialog, setEnrollDialog] = useState<AttendanceProfile | null>(null)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [cameraStatus, setCameraStatus] = useState('Camera not started')
   const [attendanceCameraOpen, setAttendanceCameraOpen] = useState(false)
   const [attendanceStream, setAttendanceStream] = useState<MediaStream | null>(null)
+  const [attendanceCameraReady, setAttendanceCameraReady] = useState(false)
+  const [attendanceCameraStatus, setAttendanceCameraStatus] = useState('Camera not started')
   const [attendanceEventType, setAttendanceEventType] = useState<AttendanceEventPayload['event_type']>('check_in')
   const [detectedFaces, setDetectedFaces] = useState<AttendanceFaceBox[]>([])
   const [recognitionResult, setRecognitionResult] = useState<AttendanceFaceRecognitionResponse | null>(null)
@@ -122,18 +141,35 @@ const Attendance = () => {
     queryFn: () => fetchAttendanceEvents({ date_from: selectedDate, date_to: selectedDate, limit: 200 }),
   })
 
-  useEffect(() => {
-    if (videoRef.current && cameraStream) {
-      videoRef.current.srcObject = cameraStream
-      videoRef.current.play().catch(() => undefined)
+  const attachStreamToVideo = async (
+    video: HTMLVideoElement | null,
+    stream: MediaStream | null,
+    setReady: (ready: boolean) => void,
+    setStatus: (status: string) => void,
+  ) => {
+    if (!video || !stream) return
+    setReady(false)
+    setStatus('Starting camera...')
+    video.srcObject = stream
+    try {
+      await video.play()
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setReady(true)
+        setStatus('Camera ready')
+      } else {
+        setStatus('Waiting for camera frame...')
+      }
+    } catch {
+      setStatus('Click inside the browser and allow camera playback')
     }
+  }
+
+  useEffect(() => {
+    attachStreamToVideo(videoRef.current, cameraStream, setCameraReady, setCameraStatus)
   }, [cameraStream])
 
   useEffect(() => {
-    if (attendanceVideoRef.current && attendanceStream) {
-      attendanceVideoRef.current.srcObject = attendanceStream
-      attendanceVideoRef.current.play().catch(() => undefined)
-    }
+    attachStreamToVideo(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)
   }, [attendanceStream])
 
   useEffect(() => () => {
@@ -163,6 +199,34 @@ const Attendance = () => {
       if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
     }
   }, [attendanceCameraOpen, attendanceStream])
+
+  useEffect(() => {
+    if (!enrollDialog || cameraStream) return
+    let cancelled = false
+    const start = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraStatus('Camera access is not available in this browser')
+        toast.error('Camera access is not available in this browser')
+        return
+      }
+      setCameraStatus('Requesting camera permission...')
+      try {
+        const stream = await openUserCamera()
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+        setCameraStream(stream)
+      } catch {
+        setCameraStatus('Camera permission was denied or no camera was found')
+        toast.error('Camera permission was denied or no camera was found')
+      }
+    }
+    start()
+    return () => {
+      cancelled = true
+    }
+  }, [enrollDialog, cameraStream])
 
   const invalidateAttendance = () => {
     queryClient.invalidateQueries({ queryKey: ['attendance-summary'] })
@@ -253,27 +317,21 @@ const Attendance = () => {
       toast.error('Create the attendance profile before live enrollment')
       return
     }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error('Camera access is not available in this browser')
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
-      setEnrollDialog(profile)
-      setCameraStream(stream)
-    } catch {
-      toast.error('Camera permission was denied or no camera was found')
-    }
+    setCameraReady(false)
+    setCameraStatus('Preparing camera...')
+    setEnrollDialog(profile)
   }
 
   const closeLiveEnroll = () => {
     cameraStream?.getTracks().forEach((track) => track.stop())
     setCameraStream(null)
+    setCameraReady(false)
+    setCameraStatus('Camera not started')
     setEnrollDialog(null)
   }
 
   const captureFrame = (video: HTMLVideoElement | null, canvas: HTMLCanvasElement | null, filename: string) => {
-    if (!video || !canvas || !video.videoWidth || !video.videoHeight) return null
+    if (!video || !canvas || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     const context = canvas.getContext('2d')
@@ -292,7 +350,9 @@ const Attendance = () => {
       return
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      setAttendanceCameraReady(false)
+      setAttendanceCameraStatus('Requesting camera permission...')
+      const stream = await openUserCamera()
       setAttendanceEventType(type)
       setRecognitionResult(null)
       setDetectedFaces([])
@@ -306,6 +366,8 @@ const Attendance = () => {
   const closeFaceAttendance = () => {
     attendanceStream?.getTracks().forEach((track) => track.stop())
     setAttendanceStream(null)
+    setAttendanceCameraReady(false)
+    setAttendanceCameraStatus('Camera not started')
     setAttendanceCameraOpen(false)
     setDetectedFaces([])
     setRecognitionResult(null)
@@ -554,10 +616,40 @@ const Attendance = () => {
               autoPlay
               muted
               playsInline
-              onLoadedMetadata={() => attendanceVideoRef.current?.play().catch(() => undefined)}
+              onLoadedMetadata={() => attachStreamToVideo(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
+              onLoadedData={() => {
+                setAttendanceCameraReady(true)
+                setAttendanceCameraStatus('Camera ready')
+              }}
+              onCanPlay={() => {
+                setAttendanceCameraReady(true)
+                setAttendanceCameraStatus('Camera ready')
+              }}
               style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
             />
             <canvas ref={attendanceCanvasRef} hidden />
+            {!attendanceCameraReady && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#CBD5E1',
+                  background: 'rgba(15,23,42,0.72)',
+                  textAlign: 'center',
+                  p: 3,
+                }}
+              >
+                <Box>
+                  <CircularProgress size={28} sx={{ color: '#A78BFA', mb: 1.5 }} />
+                  <Typography sx={{ fontWeight: 900 }}>{attendanceCameraStatus}</Typography>
+                  <Typography sx={{ fontSize: 12, color: '#94A3B8', mt: 0.5 }}>
+                    Allow camera access and wait for the preview to appear.
+                  </Typography>
+                </Box>
+              </Box>
+            )}
             {detectedFaces.map((face, index) => {
               const videoWidth = attendanceVideoRef.current?.videoWidth || 1
               const videoHeight = attendanceVideoRef.current?.videoHeight || 1
@@ -600,7 +692,7 @@ const Attendance = () => {
           <Button
             variant="contained"
             startIcon={recognitionBusy ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <VideocamIcon />}
-            disabled={recognitionBusy || !attendanceStream}
+            disabled={recognitionBusy || !attendanceStream || !attendanceCameraReady}
             onClick={scanAndMarkAttendance}
             sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
           >
@@ -632,10 +724,40 @@ const Attendance = () => {
               autoPlay
               muted
               playsInline
-              onLoadedMetadata={() => videoRef.current?.play().catch(() => undefined)}
+              onLoadedMetadata={() => attachStreamToVideo(videoRef.current, cameraStream, setCameraReady, setCameraStatus)}
+              onLoadedData={() => {
+                setCameraReady(true)
+                setCameraStatus('Camera ready')
+              }}
+              onCanPlay={() => {
+                setCameraReady(true)
+                setCameraStatus('Camera ready')
+              }}
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
             <canvas ref={canvasRef} hidden />
+            {!cameraReady && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#CBD5E1',
+                  background: 'rgba(15,23,42,0.72)',
+                  textAlign: 'center',
+                  p: 3,
+                }}
+              >
+                <Box>
+                  <CircularProgress size={28} sx={{ color: '#A78BFA', mb: 1.5 }} />
+                  <Typography sx={{ fontWeight: 900 }}>{cameraStatus}</Typography>
+                  <Typography sx={{ fontSize: 12, color: '#94A3B8', mt: 0.5 }}>
+                    If the preview stays dark, check browser camera permissions or choose another camera in Chrome.
+                  </Typography>
+                </Box>
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
@@ -643,7 +765,7 @@ const Attendance = () => {
           <Button
             variant="contained"
             startIcon={<CameraAltIcon />}
-            disabled={faceSampleMut.isPending || !cameraStream}
+            disabled={faceSampleMut.isPending || !cameraStream || !cameraReady}
             onClick={captureLiveSample}
             sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
           >
