@@ -97,6 +97,21 @@ export interface RentalInvoice {
   notes: string | null
   created_at: string
   updated_at: string
+  transactions?: InvoiceTransaction[]
+}
+
+export interface InvoiceTransaction {
+  id: number
+  invoice_id: number
+  facility_id: number | null
+  transaction_type: string
+  amount: number
+  payment_method: string | null
+  reference_number: string | null
+  description: string | null
+  created_by_id: number | null
+  created_by_name: string | null
+  created_at: string
 }
 
 export interface RentalInvoiceCreatePayload {

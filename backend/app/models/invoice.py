@@ -53,4 +53,23 @@ class Invoice(Base):
     inspection = relationship("Inspection")
     rental = relationship("Rental", foreign_keys=[rental_id])
     sales_quotation = relationship("SalesQuotation", foreign_keys=[sales_quotation_id])
-    # payments = relationship("Payment", back_populates="invoice")
+    transactions = relationship("InvoiceTransaction", back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceTransaction.created_at.desc()")
+
+
+class InvoiceTransaction(Base):
+    __tablename__ = "invoice_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False, index=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=True, index=True)
+    transaction_type = Column(String, nullable=False, index=True)
+    amount = Column(Numeric(10, 2), default=0)
+    payment_method = Column(String, nullable=True)
+    reference_number = Column(String, nullable=True, index=True)
+    description = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    invoice = relationship("Invoice", back_populates="transactions")
+    facility = relationship("Facility")
+    created_by = relationship("User")

@@ -16,6 +16,7 @@ from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.rental import Rental, RentalStatus, BillingFrequency
 from app.models.user import User
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
 
 router = APIRouter()
@@ -170,6 +171,7 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "notes": invoice.notes,
         "created_at": invoice.created_at,
         "updated_at": invoice.updated_at,
+        "transactions": [transaction_response(item) for item in invoice.transactions or []],
     }
 
 
@@ -565,6 +567,7 @@ def convert_to_invoice(
     
     db.add(invoice)
     db.flush()
+    record_invoice_created(db, invoice, current_user, f"Rental invoice created from agreement {rental.rental_number}")
     
     rental.converted_invoice_id = invoice.id
     rental.updated_at = datetime.utcnow()
@@ -596,7 +599,7 @@ def list_rental_invoices(
 ) -> Any:
     query = (
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
-        .options(joinedload(Invoice.facility), joinedload(Invoice.rental))
+        .options(joinedload(Invoice.facility), joinedload(Invoice.rental), joinedload(Invoice.transactions))
         .filter(Invoice.invoice_type == InvoiceType.RENTAL)
     )
     if status_filter:
@@ -614,7 +617,7 @@ def update_rental_invoice(
 ) -> Any:
     invoice = (
         db.query(Invoice)
-        .options(joinedload(Invoice.rental), joinedload(Invoice.facility))
+        .options(joinedload(Invoice.rental), joinedload(Invoice.facility), joinedload(Invoice.transactions))
         .filter(invoice_id == Invoice.id, Invoice.invoice_type == InvoiceType.RENTAL)
         .first()
     )
@@ -624,6 +627,8 @@ def update_rental_invoice(
     if invoice.facility_id is not None:
         require_facility_access(db, current_user, invoice.facility_id)
 
+    previous_paid = invoice.amount_paid
+    previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
     for field in ["amount_paid", "due_date", "notes", "status", "payment_method"]:
         if field in update_data:
@@ -642,6 +647,8 @@ def update_rental_invoice(
             _append_history(invoice.rental, "invoice_updated", current_user, {"invoice_id": invoice.id, "status": invoice.status.value})
             
     invoice.updated_at = datetime.utcnow()
+    record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
+    record_status_change(db, invoice, previous_status, current_user)
     log_activity(db, "invoices", invoice.id, "UPDATE_RENTAL_INVOICE", current_user, update_data)
     db.commit()
     db.refresh(invoice)

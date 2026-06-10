@@ -39,10 +39,12 @@ interface BillingItem {
   key: string
   source: BillingSource
   id: number
+  facilityId?: number | null
   number: string
   relatedNumber: string
   facility: string
   customer: string
+  customerEmail?: string | null
   description: string
   amount: number
   paid: number
@@ -51,7 +53,20 @@ interface BillingItem {
   date: string | null
   dueDate?: string | null
   paymentMethod?: string | null
+  transactions?: BillingTransaction[]
   raw: ServiceRequestQuotationList | InspectionInvoice | SalesInvoice | RentalInvoice
+}
+
+interface BillingTransaction {
+  id?: number
+  invoice_id?: number
+  transaction_type: string
+  amount: number
+  payment_method?: string | null
+  reference_number?: string | null
+  description?: string | null
+  created_by_name?: string | null
+  created_at?: string | null
 }
 
 const SOURCE_LABEL: Record<BillingSource, string> = {
@@ -98,6 +113,45 @@ const invoiceStatusForPayment = (total: number, paid: number): 'pending' | 'part
   return 'partially_paid'
 }
 
+const invoiceTransactions = (invoice: SalesInvoice | RentalInvoice | InspectionInvoice): BillingTransaction[] => (
+  (invoice.transactions || []).map(transaction => ({
+    id: transaction.id,
+    invoice_id: transaction.invoice_id,
+    transaction_type: transaction.transaction_type,
+    amount: Number(transaction.amount || 0),
+    payment_method: transaction.payment_method,
+    reference_number: transaction.reference_number,
+    description: transaction.description,
+    created_by_name: transaction.created_by_name,
+    created_at: transaction.created_at,
+  }))
+)
+
+const serviceTransactions = (quotation: ServiceRequestQuotationList): BillingTransaction[] => [
+  {
+    transaction_type: 'invoice_created',
+    amount: Number(quotation.amount || 0),
+    description: `Service quotation ${quotation.quotation_number || quotation.id} created`,
+    created_at: quotation.created_at,
+  },
+  ...((quotation.payments || []).map(payment => ({
+    id: payment.id,
+    transaction_type: 'payment',
+    amount: Number(payment.amount || 0),
+    payment_method: payment.payment_method,
+    reference_number: payment.reference_number,
+    description: payment.notes || 'Payment recorded',
+    created_at: payment.paid_at,
+  }))),
+]
+
+const sameAccount = (left: BillingItem, right: BillingItem) => {
+  if (left.facilityId && right.facilityId) return left.facilityId === right.facilityId
+  if (left.facility !== '-' && right.facility !== '-') return left.facility === right.facility
+  if (left.customerEmail && right.customerEmail) return left.customerEmail === right.customerEmail
+  return left.customer === right.customer
+}
+
 const Billing = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -137,16 +191,19 @@ const Billing = () => {
         key: `service-${q.id}`,
         source: 'service',
         id: q.id,
+        facilityId: (q as any).facility_id || null,
         number: q.quotation_number || `Q-${q.id}`,
         relatedNumber: q.request_number || '-',
         facility: q.facility_name || '-',
         customer: q.facility_name || '-',
+        customerEmail: null,
         description: q.description || 'Service quotation',
         amount,
         paid,
         balance: Math.max(0, amount - paid),
         status: q.status,
         date: q.created_at,
+        transactions: serviceTransactions(q),
         raw: q,
       }
     })
@@ -155,10 +212,12 @@ const Billing = () => {
       key: `inspection-${invoice.id}`,
       source: 'inspection',
       id: invoice.id,
+      facilityId: invoice.facility_id,
       number: invoice.invoice_number,
       relatedNumber: invoice.inspection_number || '-',
       facility: invoice.facility_name || '-',
       customer: invoice.customer_name,
+      customerEmail: invoice.customer_email,
       description: invoice.inventory_part_name || 'Inspection invoice',
       amount: Number(invoice.total_amount || 0),
       paid: Number(invoice.amount_paid || 0),
@@ -166,6 +225,7 @@ const Billing = () => {
       status: invoice.status,
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
+      transactions: invoiceTransactions(invoice),
       raw: invoice,
     }))
 
@@ -173,10 +233,12 @@ const Billing = () => {
       key: `sales-${invoice.id}`,
       source: 'sales',
       id: invoice.id,
+      facilityId: invoice.facility_id,
       number: invoice.invoice_number,
       relatedNumber: invoice.work_order || invoice.sales_quotation_number || '-',
       facility: invoice.facility_name || '-',
       customer: invoice.customer_name,
+      customerEmail: invoice.customer_email,
       description: 'Sales invoice',
       amount: Number(invoice.total_amount || 0),
       paid: Number(invoice.amount_paid || 0),
@@ -185,6 +247,7 @@ const Billing = () => {
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
       paymentMethod: invoice.payment_method,
+      transactions: invoiceTransactions(invoice),
       raw: invoice,
     }))
 
@@ -192,10 +255,12 @@ const Billing = () => {
       key: `rental-${invoice.id}`,
       source: 'rental',
       id: invoice.id,
+      facilityId: invoice.facility_id,
       number: invoice.invoice_number,
       relatedNumber: invoice.rental_number || '-',
       facility: invoice.facility_name || '-',
       customer: invoice.customer_name,
+      customerEmail: invoice.customer_email,
       description: 'Rental invoice',
       amount: Number(invoice.total_amount || 0),
       paid: Number(invoice.amount_paid || 0),
@@ -204,6 +269,7 @@ const Billing = () => {
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
       paymentMethod: invoice.payment_method,
+      transactions: invoiceTransactions(invoice),
       raw: invoice,
     }))
 
@@ -415,6 +481,9 @@ const Billing = () => {
               ) : filteredItems.map(item => {
                 const expanded = expandedKey === item.key
                 const chip = STATUS_CHIP[item.status] || STATUS_CHIP.pending
+                const accountItems = items
+                  .filter(other => sameAccount(item, other))
+                  .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
                 return (
                   <Fragment key={item.key}>
                     <TableRow key={item.key} hover>
@@ -468,7 +537,7 @@ const Billing = () => {
                     <TableRow key={`${item.key}-details`}>
                       <TableCell colSpan={10} sx={{ py: 0, border: expanded ? undefined : 'none' }}>
                         <Collapse in={expanded}>
-                          <BillingDetails item={item} />
+                          <BillingDetailsV2 item={item} accountItems={accountItems} />
                         </Collapse>
                       </TableCell>
                     </TableRow>
@@ -584,6 +653,220 @@ const Kpi = ({ label, value, color }: { label: string; value: string; color: str
     <Typography sx={{ fontWeight: 900, fontSize: 22, color }}>{value}</Typography>
   </Box>
 )
+
+const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountItems: BillingItem[] }) => {
+  const service = item.source === 'service' ? item.raw as ServiceRequestQuotationList : null
+  const rawSubtotal = Number((item.raw as any).subtotal ?? item.amount)
+  const rawTax = Number((item.raw as any).tax_amount || 0)
+  const rawDiscount = Number((item.raw as any).discount_amount || 0)
+  const currentTransactions: BillingTransaction[] = item.transactions?.length
+    ? item.transactions
+    : [
+      {
+        transaction_type: 'invoice_created',
+        amount: item.amount,
+        payment_method: null,
+        reference_number: null,
+        description: `${item.number} created`,
+        created_at: item.date,
+      },
+      ...(item.paid > 0 ? [{
+        transaction_type: 'payment',
+        amount: item.paid,
+        payment_method: item.paymentMethod,
+        reference_number: null,
+        description: 'Payment recorded',
+        created_at: (item.raw as any).updated_at || item.date,
+      }] : []),
+    ]
+  const accountTransactions = accountItems
+    .flatMap(accountItem => (
+      accountItem.transactions?.length
+        ? accountItem.transactions.map(transaction => ({ ...transaction, invoiceNumber: accountItem.number }))
+        : [{
+          transaction_type: 'invoice_created',
+          amount: accountItem.amount,
+          description: `${accountItem.number} created`,
+          created_at: accountItem.date,
+          invoiceNumber: accountItem.number,
+        }]
+    ))
+    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+  const accountTotal = accountItems.reduce((sum, row) => sum + row.amount, 0)
+  const accountPaid = accountItems.reduce((sum, row) => sum + row.paid, 0)
+  const accountBalance = accountItems.reduce((sum, row) => sum + row.balance, 0)
+  const lineRows = service?.line_items?.length
+    ? service.line_items.map(line => ({
+      label: line.description,
+      meta: line.item_type,
+      quantity: line.quantity,
+      price: line.unit_price,
+      total: line.total,
+    }))
+    : [{
+      label: item.description,
+      meta: `${SOURCE_LABEL[item.source]} - ${item.relatedNumber}`,
+      quantity: 1,
+      price: rawSubtotal,
+      total: rawSubtotal,
+    }]
+
+  return (
+    <Box sx={{ p: 2.5, bgcolor: '#FBFCFF' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.55fr 0.9fr' }, gap: 2.5 }}>
+        <Card sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', border: '1px solid #E5E7EB', boxShadow: '0 18px 40px rgba(15,23,42,0.08)' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 2.5 }}>
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+              <Avatar sx={{ bgcolor: '#047857', width: 56, height: 56, fontWeight: 950 }}>
+                {item.customer.slice(0, 2).toUpperCase()}
+              </Avatar>
+              <Box>
+                <Typography sx={{ color: '#111827', fontWeight: 950, fontSize: 24, lineHeight: 1.15 }}>
+                  Invoice for {item.customer}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={methodLabel(item.status)}
+                  sx={{
+                    mt: 0.75,
+                    bgcolor: item.balance <= 0 ? '#D1FAE5' : '#FEF3C7',
+                    color: item.balance <= 0 ? '#047857' : '#B45309',
+                    fontWeight: 900,
+                  }}
+                />
+              </Box>
+            </Box>
+            <Button size="small" variant="contained" onClick={() => window.print()} sx={{ bgcolor: '#111827', fontWeight: 900 }}>
+              Print
+            </Button>
+          </Box>
+
+          <Divider sx={{ mb: 2 }} />
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Typography sx={{ fontWeight: 950, color: '#111827' }}>Balance</Typography>
+              <Typography sx={{ fontWeight: 950, color: item.balance > 0 ? '#DC2626' : '#047857' }}>{money(item.balance)}</Typography>
+            </Box>
+            <Box sx={{ textAlign: { xs: 'left', md: 'right' }, color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
+              <div>Created on {formatDate(item.date)}</div>
+              <div>Due on {formatDate(item.dueDate || item.date)}</div>
+              {item.paid > 0 && <div>Payment received: {money(item.paid)}</div>}
+            </Box>
+          </Box>
+
+          <Box sx={{ p: 2.5, borderRadius: '16px', border: '1px solid #E5E7EB', bgcolor: '#fff' }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 180px' }, gap: 3, mb: 3 }}>
+              <Box>
+                <Typography sx={{ fontWeight: 950, color: '#111827', mb: 0.5 }}>From</Typography>
+                <Typography sx={{ fontWeight: 800 }}>Mr. BioMed Tech Services</Typography>
+                <Typography sx={{ color: '#4B5563', fontSize: 13 }}>555 N. 5th Street Suite 109</Typography>
+                <Typography sx={{ color: '#4B5563', fontSize: 13 }}>Garland, TX 75040</Typography>
+              </Box>
+              <Box>
+                <Typography sx={{ fontWeight: 950, color: '#111827', mb: 0.5 }}>To</Typography>
+                <Typography sx={{ fontWeight: 800 }}>{item.customer}</Typography>
+                <Typography sx={{ color: '#4B5563', fontSize: 13 }}>{item.facility}</Typography>
+                <Typography sx={{ color: '#4B5563', fontSize: 13 }}>{item.customerEmail || '-'}</Typography>
+              </Box>
+              <Box>
+                <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Invoice</strong> {item.number}</Typography>
+                <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Related</strong> {item.relatedNumber}</Typography>
+                <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Type</strong> {SOURCE_LABEL[item.source]}</Typography>
+              </Box>
+            </Box>
+
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 950 }}>Item</TableCell>
+                  <TableCell sx={{ fontWeight: 950 }} align="right">Quantity</TableCell>
+                  <TableCell sx={{ fontWeight: 950 }} align="right">Price</TableCell>
+                  <TableCell sx={{ fontWeight: 950 }} align="right">Total</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {lineRows.map((line, index) => (
+                  <TableRow key={`${line.label}-${index}`}>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 900, color: '#111827' }}>{line.label}</Typography>
+                      <Typography sx={{ color: '#6B7280', fontSize: 12 }}>{line.meta}</Typography>
+                    </TableCell>
+                    <TableCell align="right">{line.quantity}</TableCell>
+                    <TableCell align="right">{money(line.price)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 950 }}>{money(line.total)}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow>
+                  <TableCell colSpan={3} align="right" sx={{ fontWeight: 900 }}>Subtotal</TableCell>
+                  <TableCell align="right">{money(rawSubtotal)}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={3} align="right" sx={{ fontWeight: 900 }}>Tax</TableCell>
+                  <TableCell align="right">{money(rawTax)}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={3} align="right" sx={{ fontWeight: 900 }}>Discount</TableCell>
+                  <TableCell align="right">{money(rawDiscount)}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={3} align="right" sx={{ fontWeight: 950, fontSize: 16 }}>Total</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 950, fontSize: 16 }}>{money(item.amount)}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={3} align="right" sx={{ fontWeight: 950 }}>Balance Due</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 950, color: item.balance > 0 ? '#DC2626' : '#047857' }}>{money(item.balance)}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+
+            <Box sx={{ mt: 2 }}>
+              {currentTransactions.filter(transaction => transaction.transaction_type === 'payment' || transaction.transaction_type === 'refund').map((transaction, index) => (
+                <Typography key={`${transaction.reference_number}-${index}`} sx={{ color: '#4B5563', fontSize: 13, textAlign: 'right' }}>
+                  {transaction.transaction_type === 'refund' ? 'Refund' : 'Payment'} {money(transaction.amount)} received {formatDate(transaction.created_at)} by {methodLabel(transaction.payment_method)}
+                  {transaction.reference_number ? ` - ${transaction.reference_number}` : ''}
+                </Typography>
+              ))}
+            </Box>
+          </Box>
+        </Card>
+
+        <Box sx={{ display: 'grid', gap: 2 }}>
+          <Card sx={{ p: 2.4, borderRadius: '18px', border: '1px solid #E5E7EB' }}>
+            <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Account Summary</Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+              <Kpi label="Account Total" value={money(accountTotal)} color="#7C3AED" />
+              <Kpi label="Collected" value={money(accountPaid)} color="#059669" />
+              <Kpi label="Balance" value={money(accountBalance)} color={accountBalance > 0 ? '#DC2626' : '#059669'} />
+              <Kpi label="Records" value={String(accountItems.length)} color="#2563EB" />
+            </Box>
+          </Card>
+
+          <Card sx={{ p: 2.4, borderRadius: '18px', border: '1px solid #E5E7EB' }}>
+            <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Account Transaction Ledger</Typography>
+            <Box sx={{ maxHeight: 360, overflow: 'auto', display: 'grid', gap: 1 }}>
+              {accountTransactions.length === 0 ? (
+                <Typography sx={{ color: '#9CA3AF', fontWeight: 700 }}>No account transactions found.</Typography>
+              ) : accountTransactions.map((transaction, index) => (
+                <Box key={`${transaction.invoiceNumber}-${transaction.reference_number || index}`} sx={{ p: 1.4, borderRadius: '12px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                    <Typography sx={{ fontWeight: 950, color: '#111827', fontSize: 13 }}>{methodLabel(transaction.transaction_type)}</Typography>
+                    <Typography sx={{ fontWeight: 950, color: transaction.transaction_type === 'refund' ? '#DC2626' : '#047857', fontSize: 13 }}>{money(transaction.amount)}</Typography>
+                  </Box>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12 }}>{transaction.description || transaction.invoiceNumber}</Typography>
+                  <Typography sx={{ color: '#94A3B8', fontSize: 11 }}>
+                    {transaction.invoiceNumber} - {formatDate(transaction.created_at)} - {methodLabel(transaction.payment_method)}
+                    {transaction.reference_number ? ` - ${transaction.reference_number}` : ''}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Card>
+        </Box>
+      </Box>
+    </Box>
+  )
+}
 
 const BillingDetails = ({ item }: { item: BillingItem }) => {
   const service = item.source === 'service' ? item.raw as ServiceRequestQuotationList : null

@@ -20,6 +20,7 @@ from app.models.modality import Modality
 from app.models.tier import Tier
 from app.models.user import User
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
+from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
@@ -314,6 +315,7 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["invoice_type"] = _value(data.get("invoice_type"))
     data["status"] = _value(data.get("status"))
     data["facility_name"] = invoice.facility.name if invoice.facility else None
+    data["transactions"] = [transaction_response(item) for item in invoice.transactions or []]
     return data
 
 
@@ -408,6 +410,7 @@ def _create_inspection_invoice(
     db: Session,
     inspection: Inspection,
     complete_in: InspectionComplete,
+    current_user: Optional[User] = None,
 ) -> Invoice:
     facility = inspection.facility
     part = inspection.inventory_part
@@ -477,6 +480,7 @@ def _create_inspection_invoice(
     )
     db.add(invoice)
     db.flush()
+    record_invoice_created(db, invoice, current_user, f"Inspection invoice created from {inspection.inspection_number}")
     inspection.quotation_notes = invoice.notes
     return invoice
 
@@ -1227,7 +1231,7 @@ def complete_inspection(
         )
     _sync_batch_status(inspection.batch)
 
-    invoice = _create_inspection_invoice(db, inspection, payload)
+    invoice = _create_inspection_invoice(db, inspection, payload, current_user)
     log_activity(
         db,
         "inspections",
@@ -1302,7 +1306,7 @@ def save_inspection_report(
                 inspection.equipment.last_pm_date,
                 inspection.equipment.pm_scheduling,
             )
-        invoice = _create_inspection_invoice(db, inspection, payload)
+        invoice = _create_inspection_invoice(db, inspection, payload, current_user)
         log_payload = {"status": "completed", "result": payload.result.value, "invoice_id": invoice.id}
     else:
         raise HTTPException(status_code=400, detail="Report can only be saved as completed or in progress")
@@ -1325,6 +1329,7 @@ def list_inspection_quotations(
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
         .options(
             joinedload(Invoice.facility),
+            joinedload(Invoice.transactions),
             joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
             joinedload(Invoice.inspection).joinedload(Inspection.equipment),
             joinedload(Invoice.inspection).joinedload(Inspection.inspector),
@@ -1362,7 +1367,7 @@ def update_inspection_invoice(
 ) -> Any:
     invoice = (
         db.query(Invoice)
-        .options(joinedload(Invoice.facility), joinedload(Invoice.inspection))
+        .options(joinedload(Invoice.facility), joinedload(Invoice.inspection), joinedload(Invoice.transactions))
         .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.INSPECTION)
         .first()
     )
@@ -1371,6 +1376,8 @@ def update_inspection_invoice(
     require_facility_access(db, current_user, invoice.facility_id)
 
     before = {c.name: getattr(invoice, c.name) for c in invoice.__table__.columns}
+    previous_paid = invoice.amount_paid
+    previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
     for field in ["subtotal", "tax_amount", "discount_amount", "amount_paid", "due_date", "payment_terms", "notes", "status"]:
         if field in update_data:
@@ -1383,6 +1390,8 @@ def update_inspection_invoice(
 
     invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
     invoice.updated_at = datetime.utcnow()
+    record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
+    record_status_change(db, invoice, previous_status, current_user)
     db.flush()
     log_activity(db, "invoices", invoice.id, "UPDATE", current_user, {"before": before, "after": update_data})
     db.commit()
