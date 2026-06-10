@@ -158,6 +158,10 @@ const hasLiveVideoTrack = (stream: MediaStream | null) => (
   Boolean(stream?.getVideoTracks().some((track) => track.readyState === 'live' && track.enabled))
 )
 
+const hasVideoFrame = (video: HTMLVideoElement | null) => (
+  Boolean(video && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0)
+)
+
 const Attendance = () => {
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.user)
@@ -185,7 +189,7 @@ const Attendance = () => {
   const attendanceVideoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const attendanceCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const detectionTimerRef = useRef<number | null>(null)
+  const attendanceDetectionTimerRef = useRef<number | null>(null)
 
   const summaryQ = useQuery({
     queryKey: ['attendance-summary', selectedDate],
@@ -254,31 +258,41 @@ const Attendance = () => {
 
   useEffect(() => () => {
     cameraStream?.getTracks().forEach((track) => track.stop())
-    if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
   }, [cameraStream])
 
   useEffect(() => () => {
     attendanceStream?.getTracks().forEach((track) => track.stop())
-    if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
+    if (attendanceDetectionTimerRef.current) {
+      window.clearInterval(attendanceDetectionTimerRef.current)
+      attendanceDetectionTimerRef.current = null
+    }
   }, [attendanceStream])
 
   useEffect(() => {
-    if (!attendanceCameraOpen || !attendanceStream) return
-    if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
-    detectionTimerRef.current = window.setInterval(async () => {
+    if (!attendanceCameraOpen || !attendanceStream || !attendanceCameraReady) return
+    if (attendanceDetectionTimerRef.current) window.clearInterval(attendanceDetectionTimerRef.current)
+    let inFlight = false
+    attendanceDetectionTimerRef.current = window.setInterval(async () => {
+      if (inFlight || !hasVideoFrame(attendanceVideoRef.current)) return
       const file = captureFrame(attendanceVideoRef.current, attendanceCanvasRef.current, 'detect-frame.jpg')
       if (!file) return
+      inFlight = true
       try {
         const result = await detectAttendanceFace(file)
         setDetectedFaces(result.faces || [])
       } catch {
         setDetectedFaces([])
+      } finally {
+        inFlight = false
       }
-    }, 1200)
+    }, 2500)
     return () => {
-      if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
+      if (attendanceDetectionTimerRef.current) {
+        window.clearInterval(attendanceDetectionTimerRef.current)
+        attendanceDetectionTimerRef.current = null
+      }
     }
-  }, [attendanceCameraOpen, attendanceStream])
+  }, [attendanceCameraOpen, attendanceStream, attendanceCameraReady])
 
   useEffect(() => {
     if (!enrollDialog || cameraStream) return
@@ -503,7 +517,10 @@ const Attendance = () => {
     setAttendanceCameraOpen(false)
     setDetectedFaces([])
     setRecognitionResult(null)
-    if (detectionTimerRef.current) window.clearInterval(detectionTimerRef.current)
+    if (attendanceDetectionTimerRef.current) {
+      window.clearInterval(attendanceDetectionTimerRef.current)
+      attendanceDetectionTimerRef.current = null
+    }
   }
 
   const retryFaceAttendanceCamera = () => {
