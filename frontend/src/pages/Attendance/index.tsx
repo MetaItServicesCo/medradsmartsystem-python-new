@@ -39,7 +39,6 @@ import { toast } from 'react-toastify'
 import {
   createAttendanceEvent,
   createAttendanceProfile,
-  detectAttendanceFace,
   fetchAttendanceEvents,
   fetchAttendanceProfiles,
   fetchAttendanceSummary,
@@ -91,8 +90,9 @@ const openUserCamera = async () => {
     return await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: 'user',
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 24, max: 30 },
       },
       audio: false,
     })
@@ -189,7 +189,6 @@ const Attendance = () => {
   const attendanceVideoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const attendanceCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const attendanceDetectionTimerRef = useRef<number | null>(null)
 
   const summaryQ = useQuery({
     queryKey: ['attendance-summary', selectedDate],
@@ -213,16 +212,18 @@ const Attendance = () => {
     setStatus: (status: string) => void,
   ) => {
     if (!video || !stream) return
-    setReady(false)
-    setStatus('Starting camera...')
     video.muted = true
     video.autoplay = true
     video.playsInline = true
-    video.srcObject = stream
+    if (video.srcObject !== stream) {
+      setReady(false)
+      setStatus('Starting camera...')
+      video.srcObject = stream
+    }
     try {
       await video.play()
       const hasFrame = await waitForVideoFrame(video)
-      if (hasFrame || hasLiveVideoTrack(stream)) {
+      if (hasFrame) {
         setReady(true)
         setStatus('Camera ready')
       } else {
@@ -242,7 +243,7 @@ const Attendance = () => {
     setStatus: (status: string) => void,
   ) => {
     if (!video || !stream) return
-    if (video.readyState >= HTMLMediaElement.HAVE_METADATA || hasLiveVideoTrack(stream)) {
+    if (hasVideoFrame(video)) {
       setReady(true)
       setStatus('Camera ready')
     }
@@ -262,37 +263,7 @@ const Attendance = () => {
 
   useEffect(() => () => {
     attendanceStream?.getTracks().forEach((track) => track.stop())
-    if (attendanceDetectionTimerRef.current) {
-      window.clearInterval(attendanceDetectionTimerRef.current)
-      attendanceDetectionTimerRef.current = null
-    }
   }, [attendanceStream])
-
-  useEffect(() => {
-    if (!attendanceCameraOpen || !attendanceStream || !attendanceCameraReady) return
-    if (attendanceDetectionTimerRef.current) window.clearInterval(attendanceDetectionTimerRef.current)
-    let inFlight = false
-    attendanceDetectionTimerRef.current = window.setInterval(async () => {
-      if (inFlight || !hasVideoFrame(attendanceVideoRef.current)) return
-      const file = captureFrame(attendanceVideoRef.current, attendanceCanvasRef.current, 'detect-frame.jpg')
-      if (!file) return
-      inFlight = true
-      try {
-        const result = await detectAttendanceFace(file)
-        setDetectedFaces(result.faces || [])
-      } catch {
-        setDetectedFaces([])
-      } finally {
-        inFlight = false
-      }
-    }, 2500)
-    return () => {
-      if (attendanceDetectionTimerRef.current) {
-        window.clearInterval(attendanceDetectionTimerRef.current)
-        attendanceDetectionTimerRef.current = null
-      }
-    }
-  }, [attendanceCameraOpen, attendanceStream, attendanceCameraReady])
 
   useEffect(() => {
     if (!enrollDialog || cameraStream) return
@@ -517,10 +488,6 @@ const Attendance = () => {
     setAttendanceCameraOpen(false)
     setDetectedFaces([])
     setRecognitionResult(null)
-    if (attendanceDetectionTimerRef.current) {
-      window.clearInterval(attendanceDetectionTimerRef.current)
-      attendanceDetectionTimerRef.current = null
-    }
   }
 
   const retryFaceAttendanceCamera = () => {
@@ -775,15 +742,9 @@ const Attendance = () => {
               autoPlay
               muted
               playsInline
-              onLoadedMetadata={() => attachStreamToVideo(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
-              onLoadedData={() => {
-                setAttendanceCameraReady(true)
-                setAttendanceCameraStatus('Camera ready')
-              }}
-              onCanPlay={() => {
-                setAttendanceCameraReady(true)
-                setAttendanceCameraStatus('Camera ready')
-              }}
+              onLoadedMetadata={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
+              onLoadedData={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
+              onCanPlay={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
               onPlaying={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
               onTimeUpdate={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
               onResize={() => markCameraReady(attendanceVideoRef.current, attendanceStream, setAttendanceCameraReady, setAttendanceCameraStatus)}
