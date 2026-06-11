@@ -90,6 +90,19 @@ const paymentMethodLabel = (method?: string | null) => {
   return labels[method] || method.replace(/_/g, ' ')
 }
 
+const softAccentFor = (accent: string) => {
+  const normalized = accent.toLowerCase()
+  const accents: Record<string, string> = {
+    '#7c3aed': '#F5F3FF',
+    '#2563eb': '#EFF6FF',
+    '#059669': '#ECFDF5',
+    '#d97706': '#FFF7ED',
+    '#dc2626': '#FEF2F2',
+    '#0891b2': '#ECFEFF',
+  }
+  return accents[normalized] || '#F8FAFC'
+}
+
 const escapeHtml = (value: unknown) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -122,31 +135,78 @@ const printHtml = (title: string, body: string) => {
 const printStyles = `
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; background: #f3f4f6; color: #111827; font-family: Arial, sans-serif; }
-  .sheet { width: 8.5in; min-height: 11in; margin: 24px auto; padding: 42px; background: #fff; box-shadow: 0 18px 50px rgba(15,23,42,0.16); }
-  .top { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 18px; }
-  .brand { font-size: 24px; font-weight: 800; letter-spacing: 0.02em; }
-  .brand small { display: block; font-size: 11px; color: #6b7280; margin-top: 4px; letter-spacing: 0.12em; }
-  .title { text-align: right; }
-  .title h1 { margin: 0; font-size: 30px; }
-  .pill { display: inline-block; padding: 5px 12px; border-radius: 999px; background: #dcfce7; color: #047857; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-top: 8px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
-  .box { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; }
-  .box h3 { margin: 0 0 8px; font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em; }
-  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; font-size: 13px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
-  th { text-align: left; background: #f9fafb; border-bottom: 1px solid #d1d5db; color: #374151; padding: 10px; font-size: 11px; text-transform: uppercase; }
-  td { border-bottom: 1px solid #e5e7eb; padding: 10px; vertical-align: top; }
+  body { margin: 0; background: #eef2f7; color: #111827; font-family: Arial, sans-serif; }
+  .sheet {
+    --accent: #7C3AED;
+    --accent-soft: #F5F3FF;
+    width: 8.5in;
+    min-height: 11in;
+    margin: 24px auto;
+    padding: 0;
+    background: #fff;
+    box-shadow: 0 20px 60px rgba(15,23,42,0.16);
+    overflow: hidden;
+  }
+  .hero {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    align-items: flex-start;
+    padding: 30px 38px 26px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent) 0%, #0EA5E9 58%, #F59E0B 130%);
+    position: relative;
+  }
+  .hero:after {
+    content: "";
+    position: absolute;
+    right: -76px;
+    top: -90px;
+    width: 230px;
+    height: 230px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.14);
+  }
+  .brand { display: flex; gap: 16px; align-items: center; font-size: 22px; font-weight: 800; letter-spacing: 0.02em; position: relative; z-index: 1; }
+  .brand img { width: 116px; height: 76px; object-fit: contain; background: #fff; border-radius: 14px; padding: 8px; box-shadow: 0 10px 26px rgba(15,23,42,0.18); }
+  .brand small { display: block; font-size: 11px; color: rgba(255,255,255,0.82); margin-top: 5px; letter-spacing: 0.12em; }
+  .company-address { margin: 12px 0 0 132px; color: rgba(255,255,255,0.86); line-height: 1.45; font-size: 12px; position: relative; z-index: 1; }
+  .title { text-align: right; position: relative; z-index: 1; }
+  .title h1 { margin: 0; font-size: 32px; letter-spacing: 0.02em; }
+  .title .module { color: rgba(255,255,255,0.82); font-size: 12px; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .pill { display: inline-block; padding: 7px 13px; border-radius: 999px; background: rgba(255,255,255,0.18); color: #fff; border: 1px solid rgba(255,255,255,0.28); font-size: 11px; font-weight: 800; text-transform: uppercase; margin-top: 12px; }
+  .content { padding: 34px 38px 38px; }
+  .grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 18px; }
+  .box { border: 1px solid #E5E7EB; border-radius: 14px; padding: 16px; background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%); }
+  .box h3 { margin: 0 0 10px; font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; }
+  .box strong.customer { color: #111827; font-size: 17px; }
+  .muted { color: #64748B; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; font-size: 13px; }
+  .meta strong { color: #475569; }
+  .meta span { text-align: right; font-weight: 700; color: #111827; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 24px; font-size: 13px; border: 1px solid #E5E7EB; border-radius: 14px; overflow: hidden; }
+  th { text-align: left; background: var(--accent-soft); color: #334155; padding: 12px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #DDD6FE; }
+  td { border-bottom: 1px solid #EEF2F7; padding: 12px 11px; vertical-align: top; }
+  tr:nth-child(even) td { background: #FAFBFF; }
+  tr:last-child td { border-bottom: 0; }
+  .item-number { color: var(--accent); font-weight: 800; }
+  .item-condition { display: inline-block; margin-top: 5px; color: #64748B; font-size: 11px; }
   .right { text-align: right; }
-  .totals { margin-left: auto; margin-top: 18px; width: 280px; }
-  .totals div { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; }
-  .totals .grand { font-size: 17px; font-weight: 800; border-bottom: 2px solid #111827; }
-  .note { margin-top: 24px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 8px; color: #4b5563; font-size: 13px; }
+  .amount { color: #047857; font-weight: 800; }
+  .totals { margin-left: auto; margin-top: 22px; width: 310px; border: 1px solid #E5E7EB; border-radius: 14px; overflow: hidden; background: #fff; }
+  .totals div { display: flex; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #EEF2F7; }
+  .totals div:last-child { border-bottom: 0; }
+  .totals .grand { font-size: 18px; font-weight: 900; color: #fff; background: linear-gradient(135deg, var(--accent) 0%, #0EA5E9 100%); }
+  .balance { color: #B91C1C; font-weight: 900; }
+  .note { margin-top: 24px; padding: 16px; border: 1px solid #E5E7EB; border-left: 5px solid var(--accent); border-radius: 12px; color: #4b5563; font-size: 13px; background: #F8FAFC; }
   .signature { display: grid; grid-template-columns: 1fr 1fr; gap: 42px; margin-top: 54px; }
-  .line { border-top: 1px solid #111827; padding-top: 8px; font-size: 12px; color: #4b5563; }
+  .line { border-top: 1px solid #334155; padding-top: 8px; font-size: 12px; color: #4b5563; }
+  .footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; gap: 14px; }
   @media print {
     body { background: #fff; }
     .sheet { margin: 0; width: 100%; min-height: auto; box-shadow: none; page-break-after: always; }
+    .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    th, .totals .grand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 `
@@ -164,14 +224,16 @@ const buildPrintableHtml = (
   ledgerTransactions: PrintableLedgerTransaction[],
   moduleLabel: string,
   primaryDocumentLabel: string,
+  accent: string,
 ) => {
   const title = documentLabel(type, primaryDocumentLabel)
+  const accentSoft = softAccentFor(accent)
   const itemRows = lineItems.length ? lineItems.map(item => `
     <tr>
-      <td><strong>${escapeHtml(item.item_number)}</strong><br>${escapeHtml(item.condition || '')}</td>
+      <td><span class="item-number">${escapeHtml(item.item_number)}</span><br><span class="item-condition">${escapeHtml(item.condition || '')}</span></td>
       <td>${escapeHtml(item.description)}</td>
       <td class="right">${escapeHtml(item.quantity)}</td>
-      ${type === 'packing_slip' ? '' : `<td class="right">${escapeHtml(money(item.unit_price))}</td><td class="right">${escapeHtml(money(item.shipping_fee))}</td><td class="right">${escapeHtml(money(item.setup_fee))}</td><td class="right"><strong>${escapeHtml(money(item.total_amount))}</strong></td>`}
+      ${type === 'packing_slip' ? '' : `<td class="right">${escapeHtml(money(item.unit_price))}</td><td class="right">${escapeHtml(money(item.shipping_fee))}</td><td class="right">${escapeHtml(money(item.setup_fee))}</td><td class="right amount">${escapeHtml(money(item.total_amount))}</td>`}
     </tr>
   `).join('') : '<tr><td colspan="7">No line items available.</td></tr>'
 
@@ -183,30 +245,34 @@ const buildPrintableHtml = (
       <td>${escapeHtml(paymentMethodLabel(item.payment_method))}</td>
       <td>${escapeHtml(item.reference_number || '-')}</td>
       <td>${escapeHtml(item.description || '-')}</td>
-      <td class="right"><strong>${escapeHtml(money(item.amount))}</strong></td>
+      <td class="right amount">${escapeHtml(money(item.amount))}</td>
     </tr>
   `).join('') : '<tr><td colspan="7">No account transactions available.</td></tr>'
 
   return `
-    <main class="sheet">
-      <section class="top">
+    <main class="sheet" style="--accent:${escapeHtml(accent)}; --accent-soft:${escapeHtml(accentSoft)}">
+      <section class="hero">
         <div>
-          <div class="brand">Mr. BioMed Tech Services<small>Biomedical Equipment Repair & Rental Services</small></div>
-          <p>555 N. 5th Street Suite 109<br>Garland, TX 75040</p>
+          <div class="brand">
+            <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
+            <div>Mr. BioMed Tech Services<small>Biomedical Equipment Repair & Rental Services</small></div>
+          </div>
+          <p class="company-address">555 N. 5th Street Suite 109<br>Garland, TX 75040</p>
         </div>
         <div class="title">
           <h1>${escapeHtml(title)}</h1>
-          <div>${escapeHtml(moduleLabel)} ${escapeHtml(invoice.invoice_type || '')}</div>
+          <div class="module">${escapeHtml(moduleLabel)} ${escapeHtml(invoice.invoice_type || '')}</div>
           <span class="pill">${escapeHtml(invoice.status)}</span>
         </div>
       </section>
 
+      <section class="content">
       <section class="grid">
         <div class="box">
           <h3>Bill To</h3>
-          <strong>${escapeHtml(invoice.customer_name)}</strong><br>
-          ${escapeHtml(invoice.customer_email || '')}<br>
-          ${escapeHtml(invoice.facility_name || '')}
+          <strong class="customer">${escapeHtml(invoice.customer_name)}</strong><br>
+          <span class="muted">${escapeHtml(invoice.customer_email || '')}</span><br>
+          <span class="muted">${escapeHtml(invoice.facility_name || '')}</span>
         </div>
         <div class="box meta">
           <strong>${escapeHtml(primaryDocumentLabel)} #</strong><span>${escapeHtml(invoice.invoice_number)}</span>
@@ -241,12 +307,17 @@ const buildPrintableHtml = (
           <div><span>Discount</span><strong>${escapeHtml(money(invoice.discount_amount))}</strong></div>
           <div class="grand"><span>Total</span><span>${escapeHtml(money(invoice.total_amount))}</span></div>
           <div><span>Paid</span><strong>${escapeHtml(money(invoice.amount_paid))}</strong></div>
-          <div><span>Balance Due</span><strong>${escapeHtml(money(invoice.balance_due))}</strong></div>
+          <div><span>Balance Due</span><strong class="balance">${escapeHtml(money(invoice.balance_due))}</strong></div>
         </section>
       ` : ''}
 
       ${invoice.notes ? `<section class="note"><strong>Notes:</strong><br>${escapeHtml(invoice.notes)}</section>` : ''}
       ${type === 'packing_slip' ? '<section class="signature"><div class="line">Packed By</div><div class="line">Received By</div></section>' : ''}
+      <section class="footer">
+        <span>Mr. BioMed Tech Services</span>
+        <span>Generated from Medrad Admin Panel</span>
+      </section>
+      </section>
     </main>
   `
 }
@@ -262,6 +333,7 @@ const InvoicePrintDialog = ({
   accent = '#7C3AED',
 }: InvoicePrintDialogProps) => {
   const [documentType, setDocumentType] = useState<PrintDocumentType>('invoice')
+  const previewAccentSoft = softAccentFor(accent)
 
   const previewRows = useMemo(() => {
     if (documentType === 'ledger') {
@@ -282,7 +354,7 @@ const InvoicePrintDialog = ({
 
   const handlePrint = () => {
     if (!invoice) return
-    const html = buildPrintableHtml(invoice, documentType, lineItems, ledgerTransactions, moduleLabel, primaryDocumentLabel)
+    const html = buildPrintableHtml(invoice, documentType, lineItems, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent)
     printHtml(`${invoice.invoice_number} ${documentLabel(documentType, primaryDocumentLabel)}`, html)
   }
 
@@ -316,26 +388,42 @@ const InvoicePrintDialog = ({
               </Box>
             </Box>
 
-            <Card sx={{ p: 3, borderRadius: '16px', border: '1px solid #E5E7EB', bgcolor: '#fff' }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', pb: 2, borderBottom: '2px solid #111827' }}>
-                <Box>
-                  <Typography sx={{ fontWeight: 950, fontSize: 22 }}>Mr. BioMed Tech Services</Typography>
-                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>Biomedical Equipment Repair & Rental Services</Typography>
+            <Card sx={{ borderRadius: '18px', border: '1px solid #E5E7EB', bgcolor: '#fff', overflow: 'hidden', boxShadow: '0 18px 45px rgba(15,23,42,0.08)' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 2,
+                  flexWrap: 'wrap',
+                  p: 3,
+                  color: '#fff',
+                  background: `linear-gradient(135deg, ${accent} 0%, #0EA5E9 65%, #F59E0B 130%)`,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Box sx={{ bgcolor: '#fff', borderRadius: '14px', p: 1, boxShadow: '0 10px 24px rgba(15,23,42,0.18)' }}>
+                    <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 108, height: 70, objectFit: 'contain', display: 'block' }} />
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontWeight: 950, fontSize: 22 }}>Mr. BioMed Tech Services</Typography>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>Biomedical Equipment Repair & Rental Services</Typography>
+                  </Box>
                 </Box>
                 <Box sx={{ textAlign: 'right' }}>
                   <Typography sx={{ fontWeight: 950, fontSize: 24 }}>{documentLabel(documentType, primaryDocumentLabel)}</Typography>
-                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>{invoice.invoice_number}</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{invoice.invoice_number}</Typography>
                 </Box>
               </Box>
 
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, py: 2 }}>
-                <Box>
+              <Box sx={{ p: 3 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, pb: 2 }}>
+                <Box sx={{ p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC' }}>
                   <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Customer</Typography>
                   <Typography sx={{ fontWeight: 900 }}>{invoice.customer_name}</Typography>
                   <Typography sx={{ color: '#6B7280' }}>{invoice.customer_email || '-'}</Typography>
                   <Typography sx={{ color: '#6B7280' }}>{invoice.facility_name || '-'}</Typography>
                 </Box>
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: previewAccentSoft }}>
                   <Typography sx={{ fontWeight: 900 }}>Reference</Typography><Typography>{invoice.reference_number || '-'}</Typography>
                   <Typography sx={{ fontWeight: 900 }}>Issued</Typography><Typography>{formatDate(invoice.issue_date)}</Typography>
                   <Typography sx={{ fontWeight: 900 }}>Due</Typography><Typography>{formatDate(invoice.due_date)}</Typography>
@@ -348,7 +436,7 @@ const InvoicePrintDialog = ({
                 {previewRows.length === 0 ? (
                   <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No rows available for this document.</Typography>
                 ) : previewRows.map((row, index) => (
-                  <Box key={`${row.first}-${index}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 1fr 1fr' }, gap: 1, p: 1.4, borderRadius: '12px', bgcolor: '#F9FAFB' }}>
+                  <Box key={`${row.first}-${index}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 1fr 1fr' }, gap: 1, p: 1.4, borderRadius: '12px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
                     <Typography sx={{ fontWeight: 900 }}>{row.first}</Typography>
                     <Typography>{row.second}</Typography>
                     <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>{row.third}</Typography>
@@ -373,6 +461,7 @@ const InvoicePrintDialog = ({
                   ))}
                 </Box>
               )}
+              </Box>
             </Card>
           </Box>
         )}

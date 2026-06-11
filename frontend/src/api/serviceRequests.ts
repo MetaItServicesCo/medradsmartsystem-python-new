@@ -176,7 +176,7 @@ export interface ServiceRequestHistoryEntry {
   action: string
   user_id?: number
   user?: string
-  changes?: Record<string, { from: unknown; to: unknown }>
+  changes?: Record<string, any>
 }
 
 export interface ServiceRequestListResponse {
@@ -230,6 +230,21 @@ export const updateServiceRequest = async (
   data: ServiceRequestUpdate
 ): Promise<ServiceRequest> => {
   const res = await apiClient.patch(`/service-requests/${id}`, data)
+  return res.data
+}
+
+export const clockInServiceRequest = async (id: number): Promise<ServiceRequest> => {
+  const res = await apiClient.post(`/service-requests/${id}/clock-in`)
+  return res.data
+}
+
+export const clockOutServiceRequest = async (id: number): Promise<ServiceRequest> => {
+  const res = await apiClient.post(`/service-requests/${id}/clock-out`)
+  return res.data
+}
+
+export const addServiceRequestNote = async (id: number, note: string): Promise<ServiceRequest> => {
+  const res = await apiClient.post(`/service-requests/${id}/notes`, { note })
   return res.data
 }
 

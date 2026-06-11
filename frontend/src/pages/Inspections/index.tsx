@@ -1,5 +1,6 @@
 import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, Menu, MenuItem, Select, Skeleton, Tab, Table, TableBody,
@@ -148,6 +149,7 @@ const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
 })
 
 const Inspections = () => {
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState(0)
   const [facilityId, setFacilityId] = useState<number | ''>('')
@@ -168,6 +170,14 @@ const Inspections = () => {
   const [batchAssetForm, setBatchAssetForm] = useState<BatchAssetCreatePayload>(emptyBatchAssetForm())
   const [assetActionAnchor, setAssetActionAnchor] = useState<HTMLElement | null>(null)
   const [assetActionItem, setAssetActionItem] = useState<Inspection | null>(null)
+  const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('tab') === 'quotations' || params.get('highlightInvoice')) {
+      setTab(4)
+    }
+  }, [location.search])
 
   const facilitiesQ = useQuery({ queryKey: ['inspection-facilities'], queryFn: fetchInspectionFacilities })
   const equipmentQ = useQuery({
@@ -365,6 +375,13 @@ const Inspections = () => {
     completed: (completedBatchesQ.data?.total || 0) + legacyCompleted.length,
     quotations: quotationsQ.data?.total || 0,
   }), [upcomingQ.data?.total, equipment.length, inProgressBatchesQ.data?.total, legacyInProgress.length, completedBatchesQ.data?.total, legacyCompleted.length, quotationsQ.data?.total])
+
+  useEffect(() => {
+    if (!highlightInvoiceId || !quotationsQ.data?.items?.length) return
+    window.setTimeout(() => {
+      document.getElementById(`inspection-invoice-${highlightInvoiceId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+  }, [highlightInvoiceId, quotationsQ.data?.items?.length])
 
   const selectedBatch = batchDetailQ.data
   const batchTechnicians = useMemo(() => {
@@ -841,8 +858,19 @@ const Inspections = () => {
                   <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspection quotations yet.</TableCell></TableRow>
                 ) : quotationsQ.data!.items.map(invoice => {
                   const chip = statusChip(invoice.status)
+                  const highlighted = highlightInvoiceId === invoice.id
                   return (
-                    <TableRow key={invoice.id} hover>
+                    <TableRow
+                      key={invoice.id}
+                      id={`inspection-invoice-${invoice.id}`}
+                      hover
+                      sx={highlighted ? {
+                        bgcolor: '#F5F3FF',
+                        outline: '2px solid #7C3AED',
+                        outlineOffset: '-2px',
+                        '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
+                      } : undefined}
+                    >
                       <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{invoice.invoice_number}</TableCell>
                       <TableCell>{invoice.inspection_number || '-'}</TableCell>
                       <TableCell>{invoice.facility_name || '-'}</TableCell>
@@ -851,6 +879,9 @@ const Inspections = () => {
                       <TableCell><Chip size="small" label={invoice.status} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
                       <TableCell>{formatDate(invoice.due_date)}</TableCell>
                       <TableCell align="right">
+                        {highlighted && (
+                          <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
+                        )}
                         <Button startIcon={<EditIcon />} variant="outlined" onClick={() => setInvoiceEdit(invoice)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                           Edit
                         </Button>

@@ -128,6 +128,10 @@ class ServiceRequestUpdate(BaseModel):
     invoice_deleted: Optional[bool] = None
 
 
+class ServiceRequestNoteCreate(BaseModel):
+    note: str
+
+
 class ServiceRequestResponse(BaseModel):
     id: int
     request_number: str

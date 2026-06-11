@@ -572,10 +572,10 @@ const Billing = () => {
                             variant="outlined"
                             startIcon={<VisibilityOutlinedIcon />}
                             onClick={() => {
-                              if (item.source === 'service') navigate(`/service-requests/${(item.raw as ServiceRequestQuotationList).service_request_id}`)
-                              if (item.source === 'sales') navigate('/sales/invoices')
-                              if (item.source === 'rental') navigate('/rentals/invoices')
-                              if (item.source === 'inspection') navigate('/inspections')
+                              if (item.source === 'service') navigate(`/service-requests/${(item.raw as ServiceRequestQuotationList).service_request_id}?highlightBilling=${item.id}`)
+                              if (item.source === 'sales') navigate(`/sales/invoices?highlightInvoice=${item.id}`)
+                              if (item.source === 'rental') navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
+                              if (item.source === 'inspection') navigate(`/inspections?tab=quotations&highlightInvoice=${item.id}`)
                             }}
                             sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none' }}
                           >

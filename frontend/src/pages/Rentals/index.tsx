@@ -169,6 +169,7 @@ const Rentals = () => {
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
+  const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
 
   useEffect(() => {
     if (location.pathname === '/rentals') navigate('/rentals/agreements', { replace: true })
@@ -190,6 +191,13 @@ const Rentals = () => {
   const totalInvoiced = invoices.reduce((sum, invoice) => sum + Number(invoice.total_amount || 0), 0)
   const totalCollected = invoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0)
   const collectionPercent = totalInvoiced > 0 ? Math.min(100, Math.round((totalCollected / totalInvoiced) * 100)) : 0
+
+  useEffect(() => {
+    if (!highlightInvoiceId || invoices.length === 0) return
+    window.setTimeout(() => {
+      document.getElementById(`rental-invoice-${highlightInvoiceId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+  }, [highlightInvoiceId, invoices.length])
 
   const stats = useMemo(() => ({
     agreements: rentals.length,
@@ -656,8 +664,19 @@ const Rentals = () => {
             <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental invoices yet.</TableCell></TableRow>
           ) : invoices.map(invoice => {
             const chip = statusChip(invoice.status)
+            const highlighted = highlightInvoiceId === invoice.id
             return (
-              <TableRow key={invoice.id} hover>
+              <TableRow
+                key={invoice.id}
+                id={`rental-invoice-${invoice.id}`}
+                hover
+                sx={highlighted ? {
+                  bgcolor: '#EFF6FF',
+                  outline: '2px solid #2563EB',
+                  outlineOffset: '-2px',
+                  '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
+                } : undefined}
+              >
                 <TableCell sx={{ fontFamily: 'monospace', color: '#1D4ED8', fontWeight: 900 }}>{invoice.invoice_number}</TableCell>
                 <TableCell sx={{ fontFamily: 'monospace', fontWeight: 800 }}>{invoice.rental_number || '-'}</TableCell>
                 <TableCell sx={{ fontWeight: 800 }}>{invoice.customer_name}</TableCell>
@@ -666,6 +685,9 @@ const Rentals = () => {
                 <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
                 <TableCell align="right">
+                  {highlighted && (
+                    <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 900 }} />
+                  )}
                   <Button
                     size="small"
                     variant="contained"

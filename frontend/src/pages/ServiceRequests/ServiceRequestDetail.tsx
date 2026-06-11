@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -26,9 +26,16 @@ import ThumbDownIcon from '@mui/icons-material/ThumbDown'
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import HistoryIcon from '@mui/icons-material/History'
 import ImageIcon from '@mui/icons-material/Image'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import StopIcon from '@mui/icons-material/Stop'
+import NoteAddIcon from '@mui/icons-material/NoteAdd'
+import AssessmentIcon from '@mui/icons-material/Assessment'
 import { toast } from 'react-toastify'
 
 import {
+  addServiceRequestNote,
+  clockInServiceRequest,
+  clockOutServiceRequest,
   fetchServiceRequest,
   updateServiceRequest,
   type ServiceRequest,
@@ -79,8 +86,9 @@ const ServiceRequestDetail = () => {
 
   const [technicianId, setTechnicianId] = useState<number | ''>('')
   const [resolution, setResolution] = useState('')
-  const [timeSpent, setTimeSpent] = useState('')
   const [totalCost, setTotalCost] = useState('')
+  const [technicianNote, setTechnicianNote] = useState('')
+  const [nowTick, setNowTick] = useState(Date.now())
   const [cancelOpen, setCancelOpen] = useState(false)
   const [imageOpen, setImageOpen] = useState(false)
 
@@ -114,6 +122,43 @@ const ServiceRequestDetail = () => {
     },
   })
 
+  const clockInMutation = useMutation({
+    mutationFn: () => clockInServiceRequest(Number(id)),
+    onSuccess: () => {
+      toast.success('Clocked in. Work session started.')
+      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Clock in failed')
+    },
+  })
+
+  const clockOutMutation = useMutation({
+    mutationFn: () => clockOutServiceRequest(Number(id)),
+    onSuccess: () => {
+      toast.success('Clocked out. Hours were calculated automatically.')
+      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Clock out failed')
+    },
+  })
+
+  const noteMutation = useMutation({
+    mutationFn: (note: string) => addServiceRequestNote(Number(id), note),
+    onSuccess: () => {
+      toast.success('Service note added')
+      setTechnicianNote('')
+      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Could not add note')
+    },
+  })
+
 
 
   const handleAdvanceStatus = () => {
@@ -135,7 +180,6 @@ const ServiceRequestDetail = () => {
     // If completing, include resolution info
     if (next === 'completed') {
       if (resolution.trim()) payload.resolution_description = resolution.trim()
-      if (timeSpent) payload.time_spent_hours = parseFloat(timeSpent)
       if (totalCost) payload.total_cost = parseFloat(totalCost)
     }
 
@@ -151,7 +195,6 @@ const ServiceRequestDetail = () => {
     const payload: ServiceRequestUpdate = {}
     if (technicianId) payload.assigned_technician_id = technicianId as number
     if (resolution.trim()) payload.resolution_description = resolution.trim()
-    if (timeSpent) payload.time_spent_hours = parseFloat(timeSpent)
     if (totalCost) payload.total_cost = parseFloat(totalCost)
     if (Object.keys(payload).length === 0) {
       toast.info('No changes to save')
@@ -164,6 +207,45 @@ const ServiceRequestDetail = () => {
 
   const handleUpdateFlag = (payload: Partial<ServiceRequestUpdate>) => {
     updateMutation.mutate(payload)
+  }
+
+  const activeClockEntry = useMemo(() => {
+    const closedSessions = new Set<string>()
+    for (const entry of [...(sr?.history || [])].reverse()) {
+      const changes = entry.changes || {}
+      const sessionId = changes.session_id
+      if (entry.action === 'technician_clock_out' && sessionId) closedSessions.add(sessionId)
+      if (entry.action === 'technician_clock_in' && sessionId && !closedSessions.has(sessionId)) return entry
+    }
+    return null
+  }, [sr?.history])
+
+  const activeClockStart = activeClockEntry?.changes?.clocked_in_at || activeClockEntry?.timestamp || null
+
+  useEffect(() => {
+    if (!activeClockStart) return undefined
+    const timer = window.setInterval(() => setNowTick(Date.now()), 30000)
+    return () => window.clearInterval(timer)
+  }, [activeClockStart])
+
+  const activeElapsedHours = activeClockStart
+    ? Math.max((nowTick - new Date(activeClockStart).getTime()) / 3600000, 0)
+    : 0
+
+  const formatDuration = (hours: number) => {
+    const totalMinutes = Math.max(Math.floor(hours * 60), 0)
+    const h = Math.floor(totalMinutes / 60)
+    const m = totalMinutes % 60
+    return `${h}h ${m.toString().padStart(2, '0')}m`
+  }
+
+  const handleAddNote = () => {
+    const note = technicianNote.trim()
+    if (!note) {
+      toast.info('Write a note first')
+      return
+    }
+    noteMutation.mutate(note)
   }
 
   const formatDateTime = (d: string | null) => {
@@ -225,6 +307,8 @@ const ServiceRequestDetail = () => {
   const isTerminal = sr.status === 'completed' || sr.status === 'cancelled'
   const nextStatus = NEXT_STATUS[sr.status]
   const requestImageUrl = resolveUploadUrl(sr.request_image_url) || sr.request_image_url || ''
+  const canLogWork = !isTerminal && !!sr.assigned_technician_id && (user?.role === 'superadmin' || user?.role === 'admin' || user?.id === sr.assigned_technician_id)
+  const timeSpentHours = Number(sr.time_spent_hours || 0) + activeElapsedHours
 
   return (
     <Box className="page-enter">
@@ -542,6 +626,87 @@ const ServiceRequestDetail = () => {
 
         {/* Right Column — Actions */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {canLogWork && (
+            <Card sx={{ p: 3, border: activeClockStart ? '1px solid #FBBF24' : '1px solid #D1FAE5' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                <Avatar sx={{ bgcolor: activeClockStart ? '#FEF3C7' : '#D1FAE5', color: activeClockStart ? '#B45309' : '#047857' }}>
+                  <AccessTimeIcon />
+                </Avatar>
+                <Box>
+                  <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '1rem' }}>
+                    Technician Work Session
+                  </Typography>
+                  <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: '0.82rem' }}>
+                    Hours are calculated from clock in/out activity.
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mb: 2 }}>
+                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    Total Time
+                  </Typography>
+                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: '1.25rem' }}>
+                    {timeSpentHours.toFixed(2)} hrs
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: activeClockStart ? '#FFFBEB' : '#F0FDF4', border: '1px solid #EEF2F7' }}>
+                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    Current Session
+                  </Typography>
+                  <Typography sx={{ fontWeight: 950, color: activeClockStart ? '#B45309' : '#047857', fontSize: '1.25rem' }}>
+                    {activeClockStart ? formatDuration(activeElapsedHours) : 'Not active'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+                {!activeClockStart ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<PlayArrowIcon />}
+                    onClick={() => clockInMutation.mutate()}
+                    disabled={clockInMutation.isPending}
+                    sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                  >
+                    Clock In
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    startIcon={<StopIcon />}
+                    onClick={() => clockOutMutation.mutate()}
+                    disabled={clockOutMutation.isPending}
+                    sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: '#DC2626', '&:hover': { bgcolor: '#B91C1C' } }}
+                  >
+                    Clock Out
+                  </Button>
+                )}
+              </Box>
+
+              <TextField
+                label="Technician Note"
+                multiline
+                minRows={2}
+                fullWidth
+                value={technicianNote}
+                onChange={(e) => setTechnicianNote(e.target.value)}
+                placeholder="Add work notes, parts used, findings, or next steps..."
+                sx={{ mb: 1.5 }}
+              />
+              <Button
+                variant="outlined"
+                startIcon={<NoteAddIcon />}
+                onClick={handleAddNote}
+                disabled={noteMutation.isPending}
+                sx={{ borderRadius: '12px', fontWeight: 800, borderColor: '#7C3AED', color: '#7C3AED' }}
+              >
+                Add Note to History
+              </Button>
+            </Card>
+          )}
+
           {/* Status Actions */}
           {!isTerminal && (
             <Card sx={{ p: 3 }}>
@@ -582,24 +747,17 @@ const ServiceRequestDetail = () => {
                     onChange={(e) => setResolution(e.target.value)}
                     placeholder="Describe what was done to resolve the issue..."
                   />
-                  <Box sx={{ display: 'flex', gap: 2 }}>
-                    <TextField
-                      label="Time Spent (hours)"
-                      type="number"
-                      value={timeSpent}
-                      onChange={(e) => setTimeSpent(e.target.value)}
-                      inputProps={{ step: 0.5, min: 0 }}
-                      sx={{ flex: 1 }}
-                    />
-                    <TextField
-                      label="Total Cost ($)"
-                      type="number"
-                      value={totalCost}
-                      onChange={(e) => setTotalCost(e.target.value)}
-                      inputProps={{ step: 0.01, min: 0 }}
-                      sx={{ flex: 1 }}
-                    />
-                  </Box>
+                  <TextField
+                    label="Total Cost ($)"
+                    type="number"
+                    value={totalCost}
+                    onChange={(e) => setTotalCost(e.target.value)}
+                    inputProps={{ step: 0.01, min: 0 }}
+                    fullWidth
+                  />
+                  <Typography sx={{ color: '#64748B', fontSize: '0.82rem', fontWeight: 700 }}>
+                    Total hours are calculated automatically from technician clock in/out sessions.
+                  </Typography>
                 </Box>
               )}
 
@@ -715,8 +873,8 @@ const ServiceRequestDetail = () => {
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
                 <Button
                   variant="outlined"
-                  startIcon={<ReceiptLongIcon />}
-                  onClick={() => toast.info('Report generation is coming soon')}
+                  startIcon={<AssessmentIcon />}
+                  onClick={() => navigate(`/reports?serviceRequest=${sr.id}`)}
                   sx={{ borderRadius: '12px', fontWeight: 600 }}
                 >
                   View Report
@@ -809,23 +967,21 @@ const ServiceRequestDetail = () => {
                   value={resolution || sr.resolution_description || ''}
                   onChange={(e) => setResolution(e.target.value)}
                 />
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <TextField
-                    label="Time Spent (hours)"
-                    type="number"
-                    value={timeSpent || sr.time_spent_hours || ''}
-                    onChange={(e) => setTimeSpent(e.target.value)}
-                    inputProps={{ step: 0.5, min: 0 }}
-                    sx={{ flex: 1 }}
-                  />
-                  <TextField
-                    label="Total Cost ($)"
-                    type="number"
-                    value={totalCost || sr.total_cost || ''}
-                    onChange={(e) => setTotalCost(e.target.value)}
-                    inputProps={{ step: 0.01, min: 0 }}
-                    sx={{ flex: 1 }}
-                  />
+                <TextField
+                  label="Total Cost ($)"
+                  type="number"
+                  value={totalCost || sr.total_cost || ''}
+                  onChange={(e) => setTotalCost(e.target.value)}
+                  inputProps={{ step: 0.01, min: 0 }}
+                  fullWidth
+                />
+                <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    Calculated Service Time
+                  </Typography>
+                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                    {Number(sr.time_spent_hours || 0).toFixed(2)} hrs
+                  </Typography>
                 </Box>
                 <Button
                   variant="outlined"

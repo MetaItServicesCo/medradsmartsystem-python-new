@@ -22,7 +22,7 @@ from app.schemas.service_request import (
     ServiceRequestQuotationCreate, ServiceRequestQuotationUpdate,
     ServiceRequestQuotationResponse, ServiceRequestQuotationListResponse,
     QuotationPaymentCreate, QuotationPaymentResponse,
-    LineItemCreate,
+    LineItemCreate, ServiceRequestNoteCreate,
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
@@ -100,6 +100,39 @@ def _history_entry(action: str, user: User, changes: Optional[dict] = None) -> d
         "user": user.full_name or user.username,
         "changes": changes or {},
     }
+
+
+def _can_work_on_service(user: User, sr: ServiceRequest) -> bool:
+    if user.role in [UserRole.SUPERADMIN, UserRole.ADMIN]:
+        return True
+    return sr.assigned_technician_id == user.id
+
+
+def _active_clock_session(sr: ServiceRequest) -> Optional[dict]:
+    closed_sessions = set()
+    for entry in reversed(sr.history or []):
+        action = entry.get("action")
+        changes = entry.get("changes") or {}
+        session_id = changes.get("session_id")
+        if action == "technician_clock_out" and session_id:
+            closed_sessions.add(session_id)
+        if action == "technician_clock_in" and session_id and session_id not in closed_sessions:
+            return entry
+    return None
+
+
+def _load_service_request_for_work(db: Session, request_id: int, current_user: User) -> ServiceRequest:
+    db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
+    if not db_sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    require_facility_access(db, current_user, db_sr.facility_id)
+    if not _can_work_on_service(current_user, db_sr):
+        raise HTTPException(status_code=403, detail="Only the assigned technician or an admin can update service work")
+    if db_sr.status in [ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED]:
+        raise HTTPException(status_code=400, detail="Completed or cancelled service requests cannot be updated")
+    if not db_sr.assigned_technician_id:
+        raise HTTPException(status_code=400, detail="Assign a technician before starting work")
+    return db_sr
 
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
@@ -381,6 +414,127 @@ def update_service_request(
 
 
 # ── DELETE ───────────────────────────────────────────────────────────────────
+
+@router.post("/{request_id}/clock-in", response_model=ServiceRequestResponse)
+def clock_in_service_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Start a technician work session and move the request into progress."""
+    db_sr = _load_service_request_for_work(db, request_id, current_user)
+    if _active_clock_session(db_sr):
+        raise HTTPException(status_code=400, detail="A work session is already active for this service request")
+
+    now = datetime.utcnow()
+    if db_sr.status == ServiceRequestStatus.ASSIGNED:
+        db_sr.status = ServiceRequestStatus.IN_PROGRESS
+        if not db_sr.started_at:
+            db_sr.started_at = now
+    elif db_sr.status != ServiceRequestStatus.IN_PROGRESS:
+        raise HTTPException(status_code=400, detail="Service request must be assigned before clock-in")
+
+    session_id = uuid.uuid4().hex
+    history = list(db_sr.history or [])
+    history.append(_history_entry("technician_clock_in", current_user, {
+        "session_id": session_id,
+        "clocked_in_at": now.isoformat(),
+    }))
+    db_sr.history = history
+    db.commit()
+    db.refresh(db_sr)
+    return _enrich(
+        db.query(ServiceRequest)
+        .options(
+            joinedload(ServiceRequest.facility),
+            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.requester),
+            joinedload(ServiceRequest.assigned_technician),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+        )
+        .filter(ServiceRequest.id == db_sr.id)
+        .first()
+    )
+
+
+@router.post("/{request_id}/clock-out", response_model=ServiceRequestResponse)
+def clock_out_service_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """End the active technician work session and add its duration to total hours."""
+    db_sr = _load_service_request_for_work(db, request_id, current_user)
+    active = _active_clock_session(db_sr)
+    if not active:
+        raise HTTPException(status_code=400, detail="No active work session found")
+
+    now = datetime.utcnow()
+    changes = active.get("changes") or {}
+    clocked_in_at = datetime.fromisoformat(changes.get("clocked_in_at") or active.get("timestamp"))
+    duration_hours = max((now - clocked_in_at).total_seconds() / 3600, 0)
+    rounded_hours = Decimal(str(round(duration_hours, 2)))
+    existing_hours = Decimal(str(db_sr.time_spent_hours or 0))
+    db_sr.time_spent_hours = existing_hours + rounded_hours
+
+    history = list(db_sr.history or [])
+    history.append(_history_entry("technician_clock_out", current_user, {
+        "session_id": changes.get("session_id"),
+        "clocked_in_at": clocked_in_at.isoformat(),
+        "clocked_out_at": now.isoformat(),
+        "duration_hours": float(rounded_hours),
+        "total_hours": float(db_sr.time_spent_hours or 0),
+    }))
+    db_sr.history = history
+    db.commit()
+    db.refresh(db_sr)
+    return _enrich(
+        db.query(ServiceRequest)
+        .options(
+            joinedload(ServiceRequest.facility),
+            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.requester),
+            joinedload(ServiceRequest.assigned_technician),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+        )
+        .filter(ServiceRequest.id == db_sr.id)
+        .first()
+    )
+
+
+@router.post("/{request_id}/notes", response_model=ServiceRequestResponse)
+def add_service_request_note(
+    request_id: int,
+    note_in: ServiceRequestNoteCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Append a technician/admin service note to the request history."""
+    note = (note_in.note or "").strip()
+    if not note:
+        raise HTTPException(status_code=400, detail="Note is required")
+    db_sr = _load_service_request_for_work(db, request_id, current_user)
+    history = list(db_sr.history or [])
+    history.append(_history_entry("service_note", current_user, {"note": note}))
+    db_sr.history = history
+    db.commit()
+    db.refresh(db_sr)
+    return _enrich(
+        db.query(ServiceRequest)
+        .options(
+            joinedload(ServiceRequest.facility),
+            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.requester),
+            joinedload(ServiceRequest.assigned_technician),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+        )
+        .filter(ServiceRequest.id == db_sr.id)
+        .first()
+    )
+
 
 @router.delete("/{request_id}")
 def delete_service_request(

@@ -156,6 +156,7 @@ const Sales = () => {
   const [invoiceDetails, setInvoiceDetails] = useState<SalesInvoiceCreatePayload>(emptyInvoiceDetails())
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
+  const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
 
   useEffect(() => {
     if (location.pathname === '/sales') navigate('/sales/quotations', { replace: true })
@@ -179,6 +180,13 @@ const Sales = () => {
   const completedTotal = completedQuotations.reduce((sum, quotation) => sum + Number(quotation.total_amount || 0), 0)
   const inProgressPaid = inProgressQuotations.reduce((sum, quotation) => sum + Number(quotation.converted_invoice_amount_paid || 0), 0)
   const inProgressPaymentPercent = inProgressTotal > 0 ? Math.min(100, Math.round((inProgressPaid / inProgressTotal) * 100)) : 0
+
+  useEffect(() => {
+    if (!highlightInvoiceId || invoices.length === 0) return
+    window.setTimeout(() => {
+      document.getElementById(`sales-invoice-${highlightInvoiceId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+  }, [highlightInvoiceId, invoices.length])
 
   const stats = useMemo(() => ({
     quotations: pendingQuotations.length,
@@ -677,8 +685,19 @@ const Sales = () => {
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No sales invoices yet.</TableCell></TableRow>
           ) : invoices.map(invoice => {
             const chip = statusChip(invoice.status)
+            const highlighted = highlightInvoiceId === invoice.id
             return (
-              <TableRow key={invoice.id} hover>
+              <TableRow
+                key={invoice.id}
+                id={`sales-invoice-${invoice.id}`}
+                hover
+                sx={highlighted ? {
+                  bgcolor: '#F5F3FF',
+                  outline: '2px solid #7C3AED',
+                  outlineOffset: '-2px',
+                  '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
+                } : undefined}
+              >
                 <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{invoice.invoice_number}</TableCell>
                 <TableCell sx={{ fontFamily: 'monospace', fontWeight: 800 }}>{invoice.work_order || '-'}</TableCell>
                 <TableCell sx={{ fontWeight: 800 }}>{invoice.customer_name}</TableCell>
@@ -688,6 +707,9 @@ const Sales = () => {
                 <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
                 <TableCell align="right">
+                  {highlighted && (
+                    <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
+                  )}
                   <Button
                     size="small"
                     variant="contained"
