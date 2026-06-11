@@ -17,6 +17,7 @@ import HistoryIcon from '@mui/icons-material/History'
 import Inventory2Icon from '@mui/icons-material/Inventory2'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PaymentIcon from '@mui/icons-material/Payment'
+import PrintIcon from '@mui/icons-material/Print'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -24,6 +25,7 @@ import { toast } from 'react-toastify'
 
 import { fetchFacilities, type Facility } from '@/api/facilities'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
+import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import {
   completeSalesQuotation,
   convertSalesQuotationToInvoice,
@@ -145,6 +147,8 @@ const Sales = () => {
   const [invoiceActionAnchor, setInvoiceActionAnchor] = useState<HTMLElement | null>(null)
   const [actionInvoice, setActionInvoice] = useState<SalesInvoice | null>(null)
   const [viewInvoice, setViewInvoice] = useState<SalesInvoice | null>(null)
+  const [printQuotation, setPrintQuotation] = useState<SalesQuotation | null>(null)
+  const [printInvoice, setPrintInvoice] = useState<SalesInvoice | null>(null)
   const [cardAuthDialog, setCardAuthDialog] = useState<{ quotation?: SalesQuotation; invoice?: SalesInvoice } | null>(null)
   const [invoiceEdit, setInvoiceEdit] = useState<SalesInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState({ amount_paid: 0, due_date: '', status: 'pending', payment_method: '', notes: '' })
@@ -467,6 +471,77 @@ const Sales = () => {
     return labels[method] || method.replace(/_/g, ' ')
   }
 
+  const sameInvoiceAccount = (left: SalesInvoice, right: SalesInvoice) => {
+    if (left.facility_id && right.facility_id) return left.facility_id === right.facility_id
+    return left.customer_name.trim().toLowerCase() === right.customer_name.trim().toLowerCase()
+  }
+
+  const invoiceLineItems = (invoice: SalesInvoice | null): PrintableLineItem[] => {
+    if (!invoice) return []
+    const quotation = quotations.find(item => item.id === invoice.sales_quotation_id)
+    if (quotation?.line_items?.length) {
+      return quotation.line_items.map(line => ({
+        item_number: line.part_number || String(line.part_id),
+        description: line.description || line.part_description || 'Sales item',
+        quantity: Number(line.quantity || 1),
+        unit_price: Number(line.unit_price || 0),
+        shipping_fee: Number(line.shipping_fee || 0),
+        setup_fee: Number(line.setup_fee || 0),
+        condition: line.condition || null,
+        total_amount: Number(line.total || 0),
+      }))
+    }
+    return [{
+      item_number: invoice.invoice_number,
+      description: invoice.notes || 'Sales invoice',
+      quantity: 1,
+      unit_price: Number(invoice.subtotal || invoice.total_amount || 0),
+      shipping_fee: 0,
+      setup_fee: 0,
+      condition: null,
+      total_amount: Number(invoice.subtotal || invoice.total_amount || 0),
+    }]
+  }
+
+  const quotationLineItems = (quotation: SalesQuotation | null): PrintableLineItem[] => {
+    if (!quotation) return []
+    return (quotation.line_items || []).map(line => ({
+      item_number: line.part_number || String(line.part_id),
+      description: line.description || line.part_description || 'Sales item',
+      quantity: Number(line.quantity || 1),
+      unit_price: Number(line.unit_price || 0),
+      shipping_fee: Number(line.shipping_fee || 0),
+      setup_fee: Number(line.setup_fee || 0),
+      condition: line.condition || null,
+      total_amount: Number(line.total || 0),
+    }))
+  }
+
+  const quotationLedgerTransactions = (quotation: SalesQuotation | null): PrintableLedgerTransaction[] => {
+    if (!quotation) return []
+    return invoices
+      .filter(invoice => {
+        if (quotation.facility_id && invoice.facility_id) return quotation.facility_id === invoice.facility_id
+        return quotation.customer_name.trim().toLowerCase() === invoice.customer_name.trim().toLowerCase()
+      })
+      .flatMap(invoice => (invoice.transactions || []).map(transaction => ({
+        ...transaction,
+        invoice_number: invoice.invoice_number,
+      })))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  }
+
+  const invoiceLedgerTransactions = (invoice: SalesInvoice | null): PrintableLedgerTransaction[] => {
+    if (!invoice) return []
+    return invoices
+      .filter(item => sameInvoiceAccount(invoice, item))
+      .flatMap(item => (item.transactions || []).map(transaction => ({
+        ...transaction,
+        invoice_number: item.invoice_number,
+      })))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  }
+
   const cardAuthorizationQuotation = cardAuthDialog?.quotation
     || quotations.find(item => item.id === cardAuthDialog?.invoice?.sales_quotation_id)
     || null
@@ -766,6 +841,10 @@ const Sales = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View
         </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionQuotation) setPrintQuotation(actionQuotation); closeActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>
+          Print Documents
+        </MenuItem>
         <MenuItem sx={ACTION_MENU_DANGER} disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && deleteQuotationMut.mutate(actionQuotation.id)}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><DeleteIcon fontSize="small" /></ListItemIcon>
           Delete
@@ -780,6 +859,10 @@ const Sales = () => {
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setPrintInvoice(actionInvoice); closeInvoiceActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>
+          Print Documents
         </MenuItem>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
           if (actionInvoice) {
@@ -815,6 +898,63 @@ const Sales = () => {
         items={cardAuthorizationItems}
         onClose={() => setCardAuthDialog(null)}
         onSubmit={submitCardAuthorization}
+      />
+
+      <InvoicePrintDialog
+        open={Boolean(printQuotation)}
+        onClose={() => setPrintQuotation(null)}
+        invoice={printQuotation ? {
+          invoice_number: printQuotation.quotation_number,
+          invoice_type: printQuotation.quotation_type,
+          reference_number: printQuotation.work_order,
+          customer_name: printQuotation.customer_name,
+          customer_email: printQuotation.customer_email,
+          facility_name: printQuotation.facility_name,
+          subtotal: Number(printQuotation.subtotal || 0),
+          tax_amount: Number(printQuotation.tax_amount || 0),
+          discount_amount: Number(printQuotation.discount_amount || 0),
+          total_amount: Number(printQuotation.total_amount || 0),
+          amount_paid: Number(printQuotation.converted_invoice_amount_paid || 0),
+          balance_due: Math.max(0, Number(printQuotation.total_amount || 0) - Number(printQuotation.converted_invoice_amount_paid || 0)),
+          status: String(printQuotation.status || ''),
+          issue_date: printQuotation.created_at,
+          due_date: printQuotation.requested_date,
+          payment_method: printQuotation.converted_invoice_payment_method || printQuotation.payment_method,
+          notes: printQuotation.notes,
+        } : null}
+        lineItems={quotationLineItems(printQuotation)}
+        ledgerTransactions={quotationLedgerTransactions(printQuotation)}
+        moduleLabel="Sales"
+        primaryDocumentLabel="Quotation"
+        accent="#7C3AED"
+      />
+
+      <InvoicePrintDialog
+        open={Boolean(printInvoice)}
+        onClose={() => setPrintInvoice(null)}
+        invoice={printInvoice ? {
+          invoice_number: printInvoice.invoice_number,
+          invoice_type: printInvoice.invoice_type,
+          reference_number: printInvoice.work_order || printInvoice.sales_quotation_number,
+          customer_name: printInvoice.customer_name,
+          customer_email: printInvoice.customer_email,
+          facility_name: printInvoice.facility_name,
+          subtotal: Number(printInvoice.subtotal || 0),
+          tax_amount: Number(printInvoice.tax_amount || 0),
+          discount_amount: Number(printInvoice.discount_amount || 0),
+          total_amount: Number(printInvoice.total_amount || 0),
+          amount_paid: Number(printInvoice.amount_paid || 0),
+          balance_due: Number(printInvoice.balance_due || 0),
+          status: String(printInvoice.status || ''),
+          issue_date: printInvoice.issue_date,
+          due_date: printInvoice.due_date,
+          payment_method: printInvoice.payment_method,
+          notes: printInvoice.notes,
+        } : null}
+        lineItems={invoiceLineItems(printInvoice)}
+        ledgerTransactions={invoiceLedgerTransactions(printInvoice)}
+        moduleLabel="Sales"
+        accent="#7C3AED"
       />
 
       <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>

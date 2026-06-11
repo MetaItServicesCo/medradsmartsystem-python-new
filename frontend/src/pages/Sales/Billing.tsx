@@ -15,6 +15,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import PaymentIcon from '@mui/icons-material/Payment'
+import PrintIcon from '@mui/icons-material/Print'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
@@ -28,6 +29,7 @@ import {
   type QuotationPaymentCreate,
   type ServiceRequestQuotationList,
 } from '@/api/serviceRequests'
+import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import { useAuthStore } from '@/stores/authStore'
 
 type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
@@ -162,6 +164,7 @@ const Billing = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [payOpen, setPayOpen] = useState<BillingItem | null>(null)
+  const [printItem, setPrintItem] = useState<BillingItem | null>(null)
   const [tab, setTab] = useState(0)
 
   const [payMethod, setPayMethod] = useState<PayMethod>('credit_card')
@@ -401,6 +404,56 @@ const Billing = () => {
 
   const paying = servicePayMut.isPending || invoicePayMut.isPending
 
+  const printableItem = (item: BillingItem | null) => item ? {
+    invoice_number: item.number,
+    invoice_type: item.source,
+    reference_number: item.relatedNumber,
+    customer_name: item.customer,
+    customer_email: item.customerEmail,
+    facility_name: item.facility,
+    subtotal: Number(item.amount || 0),
+    tax_amount: 0,
+    discount_amount: 0,
+    total_amount: Number(item.amount || 0),
+    amount_paid: Number(item.paid || 0),
+    balance_due: Number(item.balance || 0),
+    status: String(item.status || ''),
+    issue_date: item.date,
+    due_date: item.dueDate,
+    payment_method: item.paymentMethod,
+    notes: item.description,
+  } : null
+
+  const printableLineItems = (item: BillingItem | null): PrintableLineItem[] => item ? [{
+    item_number: item.relatedNumber || item.number,
+    description: item.description,
+    quantity: 1,
+    unit_price: Number(item.amount || 0),
+    shipping_fee: 0,
+    setup_fee: 0,
+    condition: null,
+    total_amount: Number(item.amount || 0),
+  }] : []
+
+  const printableLedgerTransactions = (item: BillingItem | null): PrintableLedgerTransaction[] => {
+    if (!item) return []
+    return items
+      .filter(other => sameAccount(item, other))
+      .flatMap(other => (other.transactions || []).map((transaction, index) => ({
+        id: transaction.id || index,
+        invoice_id: transaction.invoice_id,
+        invoice_number: other.number,
+        transaction_type: transaction.transaction_type,
+        amount: Number(transaction.amount || 0),
+        payment_method: transaction.payment_method,
+        reference_number: transaction.reference_number,
+        description: transaction.description,
+        created_by_name: transaction.created_by_name,
+        created_at: transaction.created_at || other.date || new Date().toISOString(),
+      })))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  }
+
   return (
     <Box className="page-enter" sx={{ maxWidth: 1500, mx: 'auto' }}>
       <Card sx={{ mb: 3, p: 3, borderRadius: '28px', border: '1px solid #E9E5FF', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)', position: 'relative', overflow: 'hidden' }}>
@@ -528,6 +581,15 @@ const Billing = () => {
                           >
                             View
                           </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<PrintIcon />}
+                            onClick={() => setPrintItem(item)}
+                            sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none' }}
+                          >
+                            Print
+                          </Button>
                           <IconButton size="small" onClick={() => setExpandedKey(expanded ? null : item.key)}>
                             {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                           </IconButton>
@@ -548,6 +610,17 @@ const Billing = () => {
           </Table>
         </TableContainer>
       </Card>
+
+      <InvoicePrintDialog
+        open={Boolean(printItem)}
+        onClose={() => setPrintItem(null)}
+        invoice={printableItem(printItem)}
+        lineItems={printableLineItems(printItem)}
+        ledgerTransactions={printableLedgerTransactions(printItem)}
+        moduleLabel={printItem ? SOURCE_LABEL[printItem.source] : 'Billing'}
+        primaryDocumentLabel={printItem?.source === 'service' ? 'Quotation' : 'Invoice'}
+        accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
+      />
 
       <Dialog open={Boolean(payOpen)} onClose={closePayDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>

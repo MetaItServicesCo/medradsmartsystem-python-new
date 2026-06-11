@@ -17,6 +17,7 @@ import HistoryIcon from '@mui/icons-material/History'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PaymentIcon from '@mui/icons-material/Payment'
+import PrintIcon from '@mui/icons-material/Print'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
@@ -25,6 +26,7 @@ import { toast } from 'react-toastify'
 
 import { fetchFacilities } from '@/api/facilities'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
+import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import {
   fetchRentalParts,
   fetchRentals,
@@ -157,6 +159,8 @@ const Rentals = () => {
   const [invoiceEdit, setInvoiceEdit] = useState<RentalInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState({ amount_paid: 0, due_date: '', status: 'pending', payment_method: '', notes: '' })
   const [viewInvoice, setViewInvoice] = useState<RentalInvoice | null>(null)
+  const [printAgreement, setPrintAgreement] = useState<Rental | null>(null)
+  const [printInvoice, setPrintInvoice] = useState<RentalInvoice | null>(null)
   const [invoiceActionAnchor, setInvoiceActionAnchor] = useState<HTMLElement | null>(null)
   const [actionInvoice, setActionInvoice] = useState<RentalInvoice | null>(null)
   const [cardAuthDialog, setCardAuthDialog] = useState<{ rental?: Rental; invoice?: RentalInvoice } | null>(null)
@@ -442,6 +446,74 @@ const Rentals = () => {
       bank_transfer: 'Bank Transfer',
     }
     return labels[method] || method.replace(/_/g, ' ')
+  }
+
+  const sameInvoiceAccount = (left: RentalInvoice, right: RentalInvoice) => {
+    if (left.facility_id && right.facility_id) return left.facility_id === right.facility_id
+    return left.customer_name.trim().toLowerCase() === right.customer_name.trim().toLowerCase()
+  }
+
+  const invoiceLineItems = (invoice: RentalInvoice | null): PrintableLineItem[] => {
+    if (!invoice) return []
+    const rental = rentals.find(item => item.id === invoice.rental_id)
+    if (rental) {
+      return [{
+        item_number: rental.part_number || rental.rental_number,
+        description: rental.part_description || 'Rental product',
+        quantity: Number(rental.quantity || 1),
+        unit_price: Number(rental.rental_rate || 0),
+        shipping_fee: Number(rental.shipping_fee || 0),
+        setup_fee: Number(rental.setup_fee || 0),
+        condition: rental.item_condition || rental.initial_condition || null,
+        total_amount: Number(rental.rental_rate || 0) * Number(rental.quantity || 1) + Number(rental.shipping_fee || 0) + Number(rental.setup_fee || 0),
+      }]
+    }
+    return [{
+      item_number: invoice.invoice_number,
+      description: invoice.notes || 'Rental invoice',
+      quantity: 1,
+      unit_price: Number(invoice.subtotal || invoice.total_amount || 0),
+      shipping_fee: 0,
+      setup_fee: 0,
+      condition: null,
+      total_amount: Number(invoice.subtotal || invoice.total_amount || 0),
+    }]
+  }
+
+  const agreementLineItems = (rental: Rental | null): PrintableLineItem[] => {
+    if (!rental) return []
+    return [{
+      item_number: rental.part_number || rental.rental_number,
+      description: rental.part_description || 'Rental product',
+      quantity: Number(rental.quantity || 1),
+      unit_price: Number(rental.rental_rate || 0),
+      shipping_fee: Number(rental.shipping_fee || 0),
+      setup_fee: Number(rental.setup_fee || 0),
+      condition: rental.item_condition || rental.initial_condition || null,
+      total_amount: Number(rental.rental_rate || 0) * Number(rental.quantity || 1) + Number(rental.shipping_fee || 0) + Number(rental.setup_fee || 0),
+    }]
+  }
+
+  const agreementLedgerTransactions = (rental: Rental | null): PrintableLedgerTransaction[] => {
+    if (!rental) return []
+    return invoices
+      .filter(invoice => rental.customer_name.trim().toLowerCase() === invoice.customer_name.trim().toLowerCase())
+      .flatMap(invoice => (invoice.transactions || []).map(transaction => ({
+        ...transaction,
+        invoice_number: invoice.invoice_number,
+      })))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  }
+
+  const invoiceLedgerTransactions = (invoice: RentalInvoice | null): PrintableLedgerTransaction[] => {
+    if (!invoice) return []
+    return invoices
+      .filter(item => sameInvoiceAccount(invoice, item))
+      .flatMap(item => (item.transactions || []).map(transaction => ({
+        ...transaction,
+        invoice_number: item.invoice_number,
+      })))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
   }
 
   const cardAuthorizationRental = cardAuthDialog?.rental
@@ -784,6 +856,10 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View Details
         </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionAgreement) setPrintAgreement(actionAgreement); closeActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>
+          Print Documents
+        </MenuItem>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionAgreement && openCardAuthorization({ rental: actionAgreement })}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
           Request Credit Card Authorization
@@ -798,6 +874,10 @@ const Rentals = () => {
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setPrintInvoice(actionInvoice); closeInvoiceActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>
+          Print Documents
         </MenuItem>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
           if (actionInvoice) {
@@ -833,6 +913,63 @@ const Rentals = () => {
         items={cardAuthorizationItems}
         onClose={() => setCardAuthDialog(null)}
         onSubmit={submitCardAuthorization}
+      />
+
+      <InvoicePrintDialog
+        open={Boolean(printAgreement)}
+        onClose={() => setPrintAgreement(null)}
+        invoice={printAgreement ? {
+          invoice_number: printAgreement.rental_number,
+          invoice_type: printAgreement.billing_frequency,
+          reference_number: printAgreement.converted_invoice_number,
+          customer_name: printAgreement.customer_name,
+          customer_email: printAgreement.customer_email,
+          facility_name: null,
+          subtotal: agreementLineItems(printAgreement).reduce((sum, item) => sum + item.total_amount, 0),
+          tax_amount: 0,
+          discount_amount: 0,
+          total_amount: agreementLineItems(printAgreement).reduce((sum, item) => sum + item.total_amount, 0),
+          amount_paid: Number(printAgreement.converted_invoice_amount_paid || 0),
+          balance_due: Number(printAgreement.converted_invoice_balance_due || 0),
+          status: String(printAgreement.status || ''),
+          issue_date: printAgreement.created_at,
+          due_date: printAgreement.end_date,
+          payment_method: printAgreement.converted_invoice_payment_method,
+          notes: printAgreement.terms_and_conditions,
+        } : null}
+        lineItems={agreementLineItems(printAgreement)}
+        ledgerTransactions={agreementLedgerTransactions(printAgreement)}
+        moduleLabel="Rental"
+        primaryDocumentLabel="Rental Agreement"
+        accent="#2563EB"
+      />
+
+      <InvoicePrintDialog
+        open={Boolean(printInvoice)}
+        onClose={() => setPrintInvoice(null)}
+        invoice={printInvoice ? {
+          invoice_number: printInvoice.invoice_number,
+          invoice_type: printInvoice.invoice_type,
+          reference_number: printInvoice.rental_number,
+          customer_name: printInvoice.customer_name,
+          customer_email: printInvoice.customer_email,
+          facility_name: printInvoice.facility_name,
+          subtotal: Number(printInvoice.subtotal || 0),
+          tax_amount: Number(printInvoice.tax_amount || 0),
+          discount_amount: Number(printInvoice.discount_amount || 0),
+          total_amount: Number(printInvoice.total_amount || 0),
+          amount_paid: Number(printInvoice.amount_paid || 0),
+          balance_due: Number(printInvoice.balance_due || 0),
+          status: String(printInvoice.status || ''),
+          issue_date: printInvoice.issue_date,
+          due_date: printInvoice.due_date,
+          payment_method: printInvoice.payment_method,
+          notes: printInvoice.notes,
+        } : null}
+        lineItems={invoiceLineItems(printInvoice)}
+        ledgerTransactions={invoiceLedgerTransactions(printInvoice)}
+        moduleLabel="Rental"
+        accent="#2563EB"
       />
 
       {/* Agreement Modal CREATE / EDIT */}
