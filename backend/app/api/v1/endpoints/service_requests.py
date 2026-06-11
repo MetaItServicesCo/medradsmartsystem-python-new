@@ -22,7 +22,7 @@ from app.schemas.service_request import (
     ServiceRequestQuotationCreate, ServiceRequestQuotationUpdate,
     ServiceRequestQuotationResponse, ServiceRequestQuotationListResponse,
     QuotationPaymentCreate, QuotationPaymentResponse,
-    LineItemCreate, ServiceRequestNoteCreate,
+    LineItemCreate, ServiceRequestNoteCreate, ServiceRequestClockOutCreate,
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
@@ -461,14 +461,21 @@ def clock_in_service_request(
 @router.post("/{request_id}/clock-out", response_model=ServiceRequestResponse)
 def clock_out_service_request(
     request_id: int,
+    clock_out: ServiceRequestClockOutCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """End the active technician work session and add its duration to total hours."""
+    """End the active technician work session, add duration, and store session report details."""
     db_sr = _load_service_request_for_work(db, request_id, current_user)
     active = _active_clock_session(db_sr)
     if not active:
         raise HTTPException(status_code=400, detail="No active work session found")
+
+    diagnosis = (clock_out.diagnosis or "").strip()
+    work_done = (clock_out.work_done or "").strip()
+    notes = (clock_out.notes or "").strip()
+    if not diagnosis and not work_done and not notes:
+        raise HTTPException(status_code=400, detail="Add diagnosis, work done, or notes before clocking out")
 
     now = datetime.utcnow()
     changes = active.get("changes") or {}
@@ -485,6 +492,9 @@ def clock_out_service_request(
         "clocked_out_at": now.isoformat(),
         "duration_hours": float(rounded_hours),
         "total_hours": float(db_sr.time_spent_hours or 0),
+        "diagnosis": diagnosis,
+        "work_done": work_done,
+        "notes": notes,
     }))
     db_sr.history = history
     db.commit()

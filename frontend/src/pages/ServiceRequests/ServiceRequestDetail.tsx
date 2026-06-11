@@ -28,12 +28,10 @@ import HistoryIcon from '@mui/icons-material/History'
 import ImageIcon from '@mui/icons-material/Image'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
-import NoteAddIcon from '@mui/icons-material/NoteAdd'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import { toast } from 'react-toastify'
 
 import {
-  addServiceRequestNote,
   clockInServiceRequest,
   clockOutServiceRequest,
   fetchServiceRequest,
@@ -87,7 +85,9 @@ const ServiceRequestDetail = () => {
   const [technicianId, setTechnicianId] = useState<number | ''>('')
   const [resolution, setResolution] = useState('')
   const [totalCost, setTotalCost] = useState('')
-  const [technicianNote, setTechnicianNote] = useState('')
+  const [sessionDiagnosis, setSessionDiagnosis] = useState('')
+  const [sessionWorkDone, setSessionWorkDone] = useState('')
+  const [sessionNotes, setSessionNotes] = useState('')
   const [nowTick, setNowTick] = useState(Date.now())
   const [cancelOpen, setCancelOpen] = useState(false)
   const [imageOpen, setImageOpen] = useState(false)
@@ -135,27 +135,21 @@ const ServiceRequestDetail = () => {
   })
 
   const clockOutMutation = useMutation({
-    mutationFn: () => clockOutServiceRequest(Number(id)),
+    mutationFn: () => clockOutServiceRequest(Number(id), {
+      diagnosis: sessionDiagnosis.trim(),
+      work_done: sessionWorkDone.trim(),
+      notes: sessionNotes.trim(),
+    }),
     onSuccess: () => {
       toast.success('Clocked out. Hours were calculated automatically.')
+      setSessionDiagnosis('')
+      setSessionWorkDone('')
+      setSessionNotes('')
       queryClient.invalidateQueries({ queryKey: ['service-request', id] })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Clock out failed')
-    },
-  })
-
-  const noteMutation = useMutation({
-    mutationFn: (note: string) => addServiceRequestNote(Number(id), note),
-    onSuccess: () => {
-      toast.success('Service note added')
-      setTechnicianNote('')
-      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
-      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || 'Could not add note')
     },
   })
 
@@ -232,22 +226,6 @@ const ServiceRequestDetail = () => {
     ? Math.max((nowTick - new Date(activeClockStart).getTime()) / 3600000, 0)
     : 0
 
-  const formatDuration = (hours: number) => {
-    const totalMinutes = Math.max(Math.floor(hours * 60), 0)
-    const h = Math.floor(totalMinutes / 60)
-    const m = totalMinutes % 60
-    return `${h}h ${m.toString().padStart(2, '0')}m`
-  }
-
-  const handleAddNote = () => {
-    const note = technicianNote.trim()
-    if (!note) {
-      toast.info('Write a note first')
-      return
-    }
-    noteMutation.mutate(note)
-  }
-
   const formatDateTime = (d: string | null) => {
     if (!d) return '—'
     return new Date(d).toLocaleString('en-US', {
@@ -308,7 +286,7 @@ const ServiceRequestDetail = () => {
   const nextStatus = NEXT_STATUS[sr.status]
   const requestImageUrl = resolveUploadUrl(sr.request_image_url) || sr.request_image_url || ''
   const canLogWork = !isTerminal && !!sr.assigned_technician_id && (user?.role === 'superadmin' || user?.role === 'admin' || user?.id === sr.assigned_technician_id)
-  const timeSpentHours = Number(sr.time_spent_hours || 0) + activeElapsedHours
+  const timeSpentHours = Number(sr.time_spent_hours || 0)
 
   return (
     <Box className="page-enter">
@@ -575,7 +553,10 @@ const ServiceRequestDetail = () => {
                         </Typography>
                         {Object.keys(changes).length > 0 && (
                           <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
-                            {Object.entries(changes).slice(0, 4).map(([field, change]) => (
+                            {Object.entries(changes)
+                              .filter(([field]) => field !== 'session_id')
+                              .slice(0, 8)
+                              .map(([field, change]) => (
                               <Typography key={field} sx={{ color: '#475569', fontSize: '0.75rem' }}>
                                 <strong>{field.replace(/_/g, ' ')}:</strong> {renderHistoryChange(change)}
                               </Typography>
@@ -656,7 +637,7 @@ const ServiceRequestDetail = () => {
                     Current Session
                   </Typography>
                   <Typography sx={{ fontWeight: 950, color: activeClockStart ? '#B45309' : '#047857', fontSize: '1.25rem' }}>
-                    {activeClockStart ? formatDuration(activeElapsedHours) : 'Not active'}
+                    {activeClockStart ? `${activeElapsedHours.toFixed(2)} hrs` : '0.00 hrs'}
                   </Typography>
                 </Box>
               </Box>
@@ -676,34 +657,56 @@ const ServiceRequestDetail = () => {
                   <Button
                     variant="contained"
                     startIcon={<StopIcon />}
-                    onClick={() => clockOutMutation.mutate()}
+                    onClick={() => {
+                      if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim()) {
+                        toast.info('Add diagnosis, work done, or notes before clocking out')
+                        return
+                      }
+                      clockOutMutation.mutate()
+                    }}
                     disabled={clockOutMutation.isPending}
                     sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: '#DC2626', '&:hover': { bgcolor: '#B91C1C' } }}
                   >
-                    Clock Out
+                    Clock Out & Save Work
                   </Button>
                 )}
               </Box>
 
-              <TextField
-                label="Technician Note"
-                multiline
-                minRows={2}
-                fullWidth
-                value={technicianNote}
-                onChange={(e) => setTechnicianNote(e.target.value)}
-                placeholder="Add work notes, parts used, findings, or next steps..."
-                sx={{ mb: 1.5 }}
-              />
-              <Button
-                variant="outlined"
-                startIcon={<NoteAddIcon />}
-                onClick={handleAddNote}
-                disabled={noteMutation.isPending}
-                sx={{ borderRadius: '12px', fontWeight: 800, borderColor: '#7C3AED', color: '#7C3AED' }}
-              >
-                Add Note to History
-              </Button>
+              {activeClockStart ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  <TextField
+                    label="Diagnosis"
+                    multiline
+                    minRows={2}
+                    fullWidth
+                    value={sessionDiagnosis}
+                    onChange={(e) => setSessionDiagnosis(e.target.value)}
+                    placeholder="What was diagnosed during this session?"
+                  />
+                  <TextField
+                    label="Work Done"
+                    multiline
+                    minRows={2}
+                    fullWidth
+                    value={sessionWorkDone}
+                    onChange={(e) => setSessionWorkDone(e.target.value)}
+                    placeholder="What work was completed during this session?"
+                  />
+                  <TextField
+                    label="Additional Notes"
+                    multiline
+                    minRows={2}
+                    fullWidth
+                    value={sessionNotes}
+                    onChange={(e) => setSessionNotes(e.target.value)}
+                    placeholder="Parts used, follow-up needed, customer notes, etc."
+                  />
+                </Box>
+              ) : (
+                <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: '0.84rem' }}>
+                  Clock in to start a fresh 0.00 hour session. Diagnosis and work done will be saved when you clock out.
+                </Typography>
+              )}
             </Card>
           )}
 

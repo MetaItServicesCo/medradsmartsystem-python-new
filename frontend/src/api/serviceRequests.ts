@@ -238,8 +238,14 @@ export const clockInServiceRequest = async (id: number): Promise<ServiceRequest>
   return res.data
 }
 
-export const clockOutServiceRequest = async (id: number): Promise<ServiceRequest> => {
-  const res = await apiClient.post(`/service-requests/${id}/clock-out`)
+export interface ServiceRequestClockOutPayload {
+  diagnosis?: string
+  work_done?: string
+  notes?: string
+}
+
+export const clockOutServiceRequest = async (id: number, data: ServiceRequestClockOutPayload): Promise<ServiceRequest> => {
+  const res = await apiClient.post(`/service-requests/${id}/clock-out`, data)
   return res.data
 }
 

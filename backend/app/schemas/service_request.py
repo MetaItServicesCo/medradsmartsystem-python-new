@@ -132,6 +132,12 @@ class ServiceRequestNoteCreate(BaseModel):
     note: str
 
 
+class ServiceRequestClockOutCreate(BaseModel):
+    diagnosis: Optional[str] = None
+    work_done: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class ServiceRequestResponse(BaseModel):
     id: int
     request_number: str
