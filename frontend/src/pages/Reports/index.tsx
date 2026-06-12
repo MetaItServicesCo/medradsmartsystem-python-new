@@ -26,9 +26,17 @@ import BuildIcon from '@mui/icons-material/Build'
 import BusinessIcon from '@mui/icons-material/Business'
 import EngineeringIcon from '@mui/icons-material/Engineering'
 import VisibilityIcon from '@mui/icons-material/Visibility'
+import PrintIcon from '@mui/icons-material/Print'
 import { fetchServiceRequests, type ServiceRequest } from '@/api/serviceRequests'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
+
+const escapeHtml = (value: unknown) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;')
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
@@ -68,10 +76,132 @@ const serviceSessions = (report: ServiceRequest | null) =>
       ...entry.changes,
     }))
 
+const printReport = (report: ServiceRequest) => {
+  const sessions = serviceSessions(report)
+  const sessionRows = sessions.length ? sessions.map((session, index) => `
+    <section class="session">
+      <div class="session-head">
+        <strong>Session ${index + 1}</strong>
+        <span>${escapeHtml(Number(session.duration_hours || 0).toFixed(2))} hrs</span>
+      </div>
+      <div class="times">
+        <div><b>Clock In</b><br>${escapeHtml(formatDateTime(session.clocked_in_at))}</div>
+        <div><b>Clock Out</b><br>${escapeHtml(formatDateTime(session.clocked_out_at || session.timestamp))}</div>
+      </div>
+      <h4>Diagnosis</h4>
+      <p>${escapeHtml(session.diagnosis || '-')}</p>
+      <h4>Work Done</h4>
+      <p>${escapeHtml(session.work_done || '-')}</p>
+      ${session.notes ? `<h4>Notes</h4><p>${escapeHtml(session.notes)}</p>` : ''}
+    </section>
+  `).join('') : '<p class="muted">No technician sessions were recorded.</p>'
+
+  const frame = document.createElement('iframe')
+  frame.style.position = 'fixed'
+  frame.style.right = '0'
+  frame.style.bottom = '0'
+  frame.style.width = '0'
+  frame.style.height = '0'
+  frame.style.border = '0'
+  document.body.appendChild(frame)
+  const doc = frame.contentWindow?.document
+  if (!doc) return
+
+  doc.open()
+  doc.write(`<!doctype html>
+    <html>
+      <head>
+        <title>${escapeHtml(report.request_number)} Service Report</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; background: #eef2f7; color: #111827; font-family: Arial, sans-serif; }
+          .sheet { width: 8.5in; min-height: 11in; margin: 24px auto; background: #fff; box-shadow: 0 20px 60px rgba(15,23,42,0.16); overflow: hidden; }
+          .hero { padding: 30px 38px; color: #fff; background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%); display: flex; justify-content: space-between; gap: 24px; }
+          .brand { display: flex; gap: 16px; align-items: center; font-size: 22px; font-weight: 900; }
+          .brand img { width: 116px; height: 76px; object-fit: contain; background: #fff; border-radius: 14px; padding: 8px; }
+          .hero h1 { margin: 0; text-align: right; font-size: 30px; }
+          .hero .sub { margin-top: 8px; color: rgba(255,255,255,0.84); text-align: right; font-weight: 700; }
+          .content { padding: 34px 38px 38px; }
+          .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+          .box { border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px; background: #F8FAFC; }
+          .box small { display: block; color: #64748B; font-weight: 900; text-transform: uppercase; margin-bottom: 6px; }
+          .box strong { color: #1E1B4B; }
+          .section { border: 1px solid #E5E7EB; border-radius: 16px; padding: 18px; margin-top: 16px; }
+          h2 { margin: 0 0 10px; color: #1E1B4B; font-size: 18px; }
+          .muted { color: #64748B; }
+          .session { border: 1px solid #E5E7EB; border-left: 5px solid #7C3AED; border-radius: 14px; padding: 16px; margin-top: 12px; page-break-inside: avoid; }
+          .session-head { display: flex; justify-content: space-between; color: #1E1B4B; font-size: 16px; }
+          .session-head span { color: #047857; font-weight: 900; }
+          .times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; color: #475569; }
+          h4 { margin: 12px 0 5px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+          p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
+          .summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+          .pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
+          .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; }
+          @media print {
+            body { background: #fff; }
+            .sheet { margin: 0; width: 100%; box-shadow: none; }
+            .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        </style>
+      </head>
+      <body>
+        <main class="sheet">
+          <section class="hero">
+            <div class="brand">
+              <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
+              <div>Mr. BioMed Tech Services<br><span style="font-size:12px;color:rgba(255,255,255,0.82)">Biomedical Equipment Repair & Rental Services</span></div>
+            </div>
+            <div>
+              <h1>Service Completion Report</h1>
+              <div class="sub">${escapeHtml(report.request_number)} - ${escapeHtml(report.facility_name || 'Facility')}</div>
+            </div>
+          </section>
+          <section class="content">
+            <div class="grid">
+              <div class="box"><small>Facility</small><strong>${escapeHtml(report.facility_name || '-')}</strong></div>
+              <div class="box"><small>Equipment</small><strong>${escapeHtml(report.equipment_name || '-')}</strong></div>
+              <div class="box"><small>Technician</small><strong>${escapeHtml(report.technician_name || 'Unassigned')}</strong></div>
+              <div class="box"><small>Completed</small><strong>${escapeHtml(formatDateTime(report.completed_at))}</strong></div>
+            </div>
+            <section class="section">
+              <h2>Service Required</h2>
+              <p>${escapeHtml(report.service_required || report.problem_description || '-')}</p>
+            </section>
+            <section class="section">
+              <h2>Technician Sessions</h2>
+              ${sessionRows}
+            </section>
+            <section class="section">
+              <h2>Completion Summary</h2>
+              <p>${escapeHtml(report.resolution_description || 'No final resolution summary was added.')}</p>
+              <div class="summary">
+                <span class="pill">Total Hours: ${escapeHtml(Number(report.time_spent_hours || 0).toFixed(2))}</span>
+                <span class="pill">Total Cost: ${escapeHtml(money(report.total_cost))}</span>
+                <span class="pill">Billing: ${escapeHtml((report.billing_status || 'pending').replace(/_/g, ' '))}</span>
+              </div>
+            </section>
+            <section class="footer">
+              <span>Mr. BioMed Tech Services</span>
+              <span>Generated from Medrad Admin Panel</span>
+            </section>
+          </section>
+        </main>
+      </body>
+    </html>`)
+  doc.close()
+  frame.onload = () => {
+    frame.contentWindow?.focus()
+    frame.contentWindow?.print()
+    window.setTimeout(() => frame.remove(), 800)
+  }
+}
+
 const Reports = () => {
   const [params] = useSearchParams()
   const highlightedId = Number(params.get('serviceRequest') || 0)
   const [selectedReport, setSelectedReport] = useState<ServiceRequest | null>(null)
+  const [dismissedAutoOpenId, setDismissedAutoOpenId] = useState<number | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['reports', 'completed-service-requests'],
@@ -84,10 +214,15 @@ const Reports = () => {
   const selectedSessions = serviceSessions(selectedReport)
 
   useEffect(() => {
-    if (!highlightedId || selectedReport) return
+    if (!highlightedId || selectedReport || dismissedAutoOpenId === highlightedId) return
     const report = reports.find(item => item.id === highlightedId)
     if (report) setSelectedReport(report)
-  }, [highlightedId, reports, selectedReport])
+  }, [dismissedAutoOpenId, highlightedId, reports, selectedReport])
+
+  const closeReport = () => {
+    if (selectedReport?.id === highlightedId) setDismissedAutoOpenId(highlightedId)
+    setSelectedReport(null)
+  }
 
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
@@ -199,12 +334,12 @@ const Reports = () => {
         </TableContainer>
       </Card>
 
-      <Dialog open={!!selectedReport} onClose={() => setSelectedReport(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
+      <Dialog open={!!selectedReport} onClose={closeReport} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
         <DialogTitle sx={{ p: 0 }}>
           <Box sx={{ p: 3, color: '#fff', background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%)' }}>
             <Typography sx={{ fontWeight: 950, fontSize: 26 }}>Service Completion Report</Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>
-              {selectedReport?.request_number} · {selectedReport?.facility_name || 'Facility'}
+              {selectedReport?.request_number} - {selectedReport?.facility_name || 'Facility'}
             </Typography>
           </Box>
         </DialogTitle>
@@ -283,7 +418,15 @@ const Reports = () => {
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setSelectedReport(null)} sx={{ fontWeight: 900 }}>Close</Button>
+          <Button onClick={closeReport} sx={{ fontWeight: 900 }}>Close</Button>
+          <Button
+            variant="contained"
+            startIcon={<PrintIcon />}
+            onClick={() => selectedReport && printReport(selectedReport)}
+            sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+          >
+            Print Report
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
