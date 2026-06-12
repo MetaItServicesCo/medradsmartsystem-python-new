@@ -691,8 +691,8 @@ const Inspections = () => {
   )
 
   const renderInspectionRows = (items: Inspection[], loading: boolean, mode: 'progress' | 'completed') => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
@@ -745,8 +745,8 @@ const Inspections = () => {
   )
 
   const renderBatchRows = (items: InspectionBatch[], loading: boolean, mode: 'progress' | 'completed' = 'progress') => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
@@ -800,8 +800,8 @@ const Inspections = () => {
   )
 
   const renderUpcomingRows = () => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
@@ -897,8 +897,8 @@ const Inspections = () => {
                 Auto Generate
               </Button>
             </Box>
-            <TableContainer sx={{ mb: 3, border: '1px solid #EEF0F6', borderRadius: '18px' }}>
-              <Table size="small">
+            <TableContainer className="list-scroll-panel" sx={{ mb: 3, border: '1px solid #EEF0F6', borderRadius: '18px' }}>
+              <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                     <TableCell padding="checkbox" />
@@ -961,8 +961,8 @@ const Inspections = () => {
                 {selectedFacility.name}: select assets or leave all unchecked to inspect all facility assets.
               </Typography>
             )}
-            <TableContainer>
-              <Table>
+            <TableContainer className="list-scroll-panel">
+              <Table stickyHeader>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                     <TableCell padding="checkbox" />
@@ -1022,8 +1022,8 @@ const Inspections = () => {
         )}
 
         {tab === 4 && (
-          <TableContainer>
-            <Table>
+          <TableContainer className="list-scroll-panel">
+            <Table stickyHeader>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Invoice #</TableCell>
@@ -1080,8 +1080,8 @@ const Inspections = () => {
         )}
 
         {tab === 5 && (
-          <TableContainer>
-            <Table>
+          <TableContainer className="list-scroll-panel">
+            <Table stickyHeader>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Form</TableCell>
@@ -1170,8 +1170,8 @@ const Inspections = () => {
                 </Card>
               </Box>
 
-              <TableContainer>
-                <Table>
+              <TableContainer className="list-scroll-panel">
+                <Table stickyHeader>
                   <TableHead>
                     <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                       <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>

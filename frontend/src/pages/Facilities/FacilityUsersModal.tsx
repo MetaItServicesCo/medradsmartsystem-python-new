@@ -168,8 +168,8 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
           </Box>
         )}
 
-        <TableContainer>
-          <Table size="small">
+        <TableContainer className="list-scroll-panel">
+          <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>User</TableCell>

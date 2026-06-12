@@ -114,6 +114,10 @@ export interface ServiceRequest {
   resolution_description: string | null
   time_spent_hours: number | null
   total_cost: number | null
+  tier_id: number | null
+  tier_name: string | null
+  tier_labor_rate_per_hour: number | null
+  calculated_service_cost: number | null
   assigned_at: string | null
   started_at: string | null
   completed_at: string | null

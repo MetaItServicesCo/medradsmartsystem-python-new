@@ -83,13 +83,12 @@ const ServiceRequestDetail = () => {
   const queryClient = useQueryClient()
 
   const [technicianId, setTechnicianId] = useState<number | ''>('')
-  const [resolution, setResolution] = useState('')
-  const [totalCost, setTotalCost] = useState('')
   const [sessionDiagnosis, setSessionDiagnosis] = useState('')
   const [sessionWorkDone, setSessionWorkDone] = useState('')
   const [sessionNotes, setSessionNotes] = useState('')
   const [nowTick, setNowTick] = useState(Date.now())
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [changeTechOpen, setChangeTechOpen] = useState(false)
   const [imageOpen, setImageOpen] = useState(false)
 
 
@@ -114,6 +113,7 @@ const ServiceRequestDetail = () => {
       updateServiceRequest(Number(id), data),
     onSuccess: () => {
       toast.success('Service request updated')
+      setChangeTechOpen(false)
       queryClient.invalidateQueries({ queryKey: ['service-request', id] })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
     },
@@ -171,10 +171,15 @@ const ServiceRequestDetail = () => {
       payload.assigned_technician_id = technicianId as number
     }
 
-    // If completing, include resolution info
     if (next === 'completed') {
-      if (resolution.trim()) payload.resolution_description = resolution.trim()
-      if (totalCost) payload.total_cost = parseFloat(totalCost)
+      if (activeClockStart) {
+        toast.warning('Clock out and save the current work session before completing')
+        return
+      }
+      if (timeSpentHours <= 0) {
+        toast.warning('Complete at least one clock in/out session before marking this service complete')
+        return
+      }
     }
 
     updateMutation.mutate(payload)
@@ -185,16 +190,12 @@ const ServiceRequestDetail = () => {
     setCancelOpen(false)
   }
 
-  const handleSaveFields = () => {
-    const payload: ServiceRequestUpdate = {}
-    if (technicianId) payload.assigned_technician_id = technicianId as number
-    if (resolution.trim()) payload.resolution_description = resolution.trim()
-    if (totalCost) payload.total_cost = parseFloat(totalCost)
-    if (Object.keys(payload).length === 0) {
-      toast.info('No changes to save')
+  const handleChangeTechnician = () => {
+    if (!technicianId) {
+      toast.warning('Select a technician first')
       return
     }
-    updateMutation.mutate(payload)
+    updateMutation.mutate({ assigned_technician_id: technicianId as number })
   }
 
 
@@ -225,6 +226,14 @@ const ServiceRequestDetail = () => {
   const activeElapsedHours = activeClockStart
     ? Math.max((nowTick - new Date(activeClockStart).getTime()) / 3600000, 0)
     : 0
+
+  const formatElapsedHours = (hours: number) => {
+    const totalMinutes = Math.max(Math.round(hours * 60), 0)
+    const h = Math.floor(totalMinutes / 60)
+    const m = totalMinutes % 60
+    if (h <= 0) return `${m}m`
+    return `${h}h ${m.toString().padStart(2, '0')}m`
+  }
 
   const formatDateTime = (d: string | null) => {
     if (!d) return '—'
@@ -287,6 +296,10 @@ const ServiceRequestDetail = () => {
   const requestImageUrl = resolveUploadUrl(sr.request_image_url) || sr.request_image_url || ''
   const canLogWork = !isTerminal && !!sr.assigned_technician_id && (user?.role === 'superadmin' || user?.role === 'admin' || user?.id === sr.assigned_technician_id)
   const timeSpentHours = Number(sr.time_spent_hours || 0)
+  const tierLaborRate = Number(sr.tier_labor_rate_per_hour || 0)
+  const calculatedServiceCost = Number(sr.calculated_service_cost ?? (timeSpentHours * tierLaborRate))
+  const activeProjectedHours = timeSpentHours + activeElapsedHours
+  const activeProjectedCost = activeProjectedHours * tierLaborRate
 
   return (
     <Box className="page-enter">
@@ -308,6 +321,7 @@ const ServiceRequestDetail = () => {
           mb: 3, overflow: 'hidden',
           background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #EC4899 100%)',
           color: '#fff', position: 'relative',
+          boxShadow: '0 24px 60px rgba(79,70,229,0.18)',
         }}
       >
         <Box sx={{ position: 'absolute', right: -30, top: -30, opacity: 0.08 }}>
@@ -319,7 +333,7 @@ const ServiceRequestDetail = () => {
               <Typography
                 sx={{
                   fontFamily: 'monospace', fontSize: '0.85rem',
-                  fontWeight: 700, opacity: 0.7, mb: 0.5,
+                  fontWeight: 800, color: 'rgba(255,255,255,0.78)', mb: 0.5,
                 }}
               >
                 {sr.request_number}
@@ -393,7 +407,8 @@ const ServiceRequestDetail = () => {
                 key={step}
                 sx={{
                   flex: 1, textAlign: 'center', fontSize: '0.65rem',
-                  fontWeight: 600, opacity: 0.7, textTransform: 'uppercase',
+                  fontWeight: 800, color: 'rgba(255,255,255,0.82)', textTransform: 'uppercase',
+                  textShadow: '0 1px 8px rgba(15,23,42,0.18)',
                 }}
               >
                 {STATUS_LABELS[step]}
@@ -618,7 +633,7 @@ const ServiceRequestDetail = () => {
                     Technician Work Session
                   </Typography>
                   <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: '0.82rem' }}>
-                    Hours are calculated from clock in/out activity.
+                    Each clock-in starts at 0.00. Saved sessions become the total time.
                   </Typography>
                 </Box>
               </Box>
@@ -626,10 +641,13 @@ const ServiceRequestDetail = () => {
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mb: 2 }}>
                 <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
                   <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
-                    Total Time
+                    Saved Total Time
                   </Typography>
                   <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: '1.25rem' }}>
                     {timeSpentHours.toFixed(2)} hrs
+                  </Typography>
+                  <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
+                    Completed clock-out sessions
                   </Typography>
                 </Box>
                 <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: activeClockStart ? '#FFFBEB' : '#F0FDF4', border: '1px solid #EEF2F7' }}>
@@ -637,9 +655,49 @@ const ServiceRequestDetail = () => {
                     Current Session
                   </Typography>
                   <Typography sx={{ fontWeight: 950, color: activeClockStart ? '#B45309' : '#047857', fontSize: '1.25rem' }}>
-                    {activeClockStart ? `${activeElapsedHours.toFixed(2)} hrs` : '0.00 hrs'}
+                    {activeClockStart ? formatElapsedHours(activeElapsedHours) : 'Not active'}
+                  </Typography>
+                  <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
+                    {activeClockStart ? `${activeElapsedHours.toFixed(2)} hrs will save on clock-out` : 'Starts fresh at clock-in'}
                   </Typography>
                 </Box>
+              </Box>
+
+              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', mb: 2 }}>
+                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>
+                  Billing Calculation
+                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 1.25 }}>
+                  <Box>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                      Asset Tier
+                    </Typography>
+                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                      {sr.tier_name || 'Not assigned'}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                      Labor Rate
+                    </Typography>
+                    <Typography sx={{ fontWeight: 900, color: '#047857' }}>
+                      ${tierLaborRate.toFixed(2)} / hr
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                      Service Cost
+                    </Typography>
+                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>
+                      ${calculatedServiceCost.toFixed(2)}
+                    </Typography>
+                  </Box>
+                </Box>
+                {activeClockStart && tierLaborRate > 0 && (
+                  <Typography sx={{ mt: 1, color: '#B45309', fontSize: '0.78rem', fontWeight: 800 }}>
+                    If clocked out now: {activeProjectedHours.toFixed(2)} hrs x ${tierLaborRate.toFixed(2)} = ${activeProjectedCost.toFixed(2)}
+                  </Typography>
+                )}
               </Box>
 
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
@@ -738,28 +796,13 @@ const ServiceRequestDetail = () => {
                 </FormControl>
               )}
 
-              {/* Resolution fields (for completing) */}
               {sr.status === 'in_progress' && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-                  <TextField
-                    label="Resolution Description"
-                    multiline
-                    rows={3}
-                    fullWidth
-                    value={resolution}
-                    onChange={(e) => setResolution(e.target.value)}
-                    placeholder="Describe what was done to resolve the issue..."
-                  />
-                  <TextField
-                    label="Total Cost ($)"
-                    type="number"
-                    value={totalCost}
-                    onChange={(e) => setTotalCost(e.target.value)}
-                    inputProps={{ step: 0.01, min: 0 }}
-                    fullWidth
-                  />
-                  <Typography sx={{ color: '#64748B', fontSize: '0.82rem', fontWeight: 700 }}>
-                    Total hours are calculated automatically from technician clock in/out sessions.
+                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', mb: 2 }}>
+                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                    Ready to complete?
+                  </Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: '0.84rem', fontWeight: 700, mt: 0.5 }}>
+                    Clock out first. The report uses the saved session diagnosis and work done, and the service cost is calculated from saved hours x asset tier rate.
                   </Typography>
                 </Box>
               )}
@@ -792,10 +835,8 @@ const ServiceRequestDetail = () => {
                       variant="outlined"
                       startIcon={<AssignmentIndIcon />}
                       onClick={() => {
-                        const editSection = document.getElementById('edit-details-section')
-                        if (editSection) {
-                          editSection.scrollIntoView({ behavior: 'smooth' })
-                        }
+                        setTechnicianId(sr.assigned_technician_id || '')
+                        setChangeTechOpen(true)
                       }}
                       sx={{ borderRadius: '12px', fontWeight: 600, borderColor: '#7C3AED', color: '#7C3AED' }}
                     >
@@ -941,17 +982,16 @@ const ServiceRequestDetail = () => {
             </Card>
           )}
 
-          {/* Edit Fields (for non-terminal) */}
-          {!isTerminal && sr.status !== 'new' && (
-            <Card sx={{ p: 3 }} id="edit-details-section">
+          {false && !isTerminal && sr?.status !== 'new' && (
+            <Card sx={{ p: 3 }}>
               <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
-                Edit Details
+                Change Technician
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <FormControl fullWidth>
                   <InputLabel>Reassign Technician</InputLabel>
                   <Select
-                    value={technicianId || sr.assigned_technician_id || ''}
+                    value={technicianId || sr?.assigned_technician_id || ''}
                     label="Reassign Technician"
                     onChange={(e) => setTechnicianId(e.target.value as number)}
                   >
@@ -962,33 +1002,17 @@ const ServiceRequestDetail = () => {
                     ))}
                   </Select>
                 </FormControl>
-                <TextField
-                  label="Resolution Notes"
-                  multiline
-                  rows={3}
-                  fullWidth
-                  value={resolution || sr.resolution_description || ''}
-                  onChange={(e) => setResolution(e.target.value)}
-                />
-                <TextField
-                  label="Total Cost ($)"
-                  type="number"
-                  value={totalCost || sr.total_cost || ''}
-                  onChange={(e) => setTotalCost(e.target.value)}
-                  inputProps={{ step: 0.01, min: 0 }}
-                  fullWidth
-                />
                 <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
                   <Typography sx={{ fontSize: '0.75rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
                     Calculated Service Time
                   </Typography>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-                    {Number(sr.time_spent_hours || 0).toFixed(2)} hrs
+                    {Number(sr?.time_spent_hours || 0).toFixed(2)} hrs
                   </Typography>
                 </Box>
                 <Button
                   variant="outlined"
-                  onClick={handleSaveFields}
+                  onClick={handleChangeTechnician}
                   disabled={updateMutation.isPending}
                   sx={{
                     borderColor: '#7C3AED', color: '#7C3AED',
@@ -996,7 +1020,7 @@ const ServiceRequestDetail = () => {
                     '&:hover': { backgroundColor: '#F5F3FF' },
                   }}
                 >
-                  {updateMutation.isPending ? <CircularProgress size={20} /> : 'Save Changes'}
+                  {updateMutation.isPending ? <CircularProgress size={20} /> : 'Save Technician'}
                 </Button>
               </Box>
             </Card>
@@ -1013,6 +1037,57 @@ const ServiceRequestDetail = () => {
           />
         </Box>
       </Box>
+
+      <Dialog
+        open={changeTechOpen}
+        onClose={() => setChangeTechOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, color: '#1E1B4B' }}>
+          Change Technician
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: '#64748B', fontWeight: 700, mb: 2 }}>
+            Reassign this service request without changing the service history, hours, or billing calculation.
+          </Typography>
+          <FormControl fullWidth>
+            <InputLabel>Technician</InputLabel>
+            <Select
+              value={technicianId || sr.assigned_technician_id || ''}
+              label="Technician"
+              onChange={(e) => setTechnicianId(e.target.value as number)}
+            >
+              {technicians.map((u) => (
+                <MenuItem key={u.id} value={u.id}>
+                  {u.full_name} - {u.email}
+                </MenuItem>
+              ))}
+              {technicians.length === 0 && (
+                <MenuItem disabled value="">No technicians available</MenuItem>
+              )}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setChangeTechOpen(false)} variant="outlined">
+            Close
+          </Button>
+          <Button
+            onClick={handleChangeTechnician}
+            variant="contained"
+            disabled={updateMutation.isPending}
+            sx={{
+              background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
+              borderRadius: '12px',
+              fontWeight: 800,
+            }}
+          >
+            {updateMutation.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Save Technician'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Cancel Confirmation Dialog */}
       <Dialog

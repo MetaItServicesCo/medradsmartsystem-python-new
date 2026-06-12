@@ -256,8 +256,8 @@ const Reports = () => {
           <Chip label="Live Data" sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 900 }} />
         </Box>
 
-        <TableContainer>
-          <Table>
+        <TableContainer className="list-scroll-panel">
+          <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>Report #</TableCell>

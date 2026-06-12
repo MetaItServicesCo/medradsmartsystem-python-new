@@ -320,8 +320,8 @@ const ServiceRequestList = () => {
         </Box>
 
         {/* Table */}
-        <TableContainer>
-          <Table>
+        <TableContainer className="list-scroll-panel">
+          <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>Request #</TableCell>

@@ -196,7 +196,7 @@ const PermissionEditorModal = ({ open, user, onClose }: Props) => {
                 Scope controls which records this user can see or modify inside each module.
               </Typography>
             </Box>
-            <TableContainer sx={{ maxHeight: 560 }}>
+            <TableContainer className="list-scroll-panel" sx={{ maxHeight: 560 }}>
               <Table stickyHeader size="small">
                 <TableHead>
                   <TableRow>

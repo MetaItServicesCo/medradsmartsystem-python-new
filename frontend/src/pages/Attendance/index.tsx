@@ -609,8 +609,8 @@ const Attendance = () => {
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
               sx={{ mb: 2, maxWidth: 420, '& .MuiOutlinedInput-root': { borderRadius: '16px' } }}
             />
-            <TableContainer>
-              <Table>
+            <TableContainer className="list-scroll-panel">
+              <Table stickyHeader>
                 <TableHead>
                   <TableRow>
                     <TableCell>Employee</TableCell>
@@ -921,8 +921,8 @@ const Attendance = () => {
 }
 
 const EventTable = ({ rows }: { rows: AttendanceEvent[] }) => (
-  <TableContainer>
-    <Table>
+  <TableContainer className="list-scroll-panel">
+    <Table stickyHeader>
       <TableHead>
         <TableRow>
           <TableCell>Employee</TableCell>

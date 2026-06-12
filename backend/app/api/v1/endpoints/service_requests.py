@@ -51,6 +51,16 @@ VALID_TRANSITIONS = {
 }
 
 
+def _service_labor_rate(sr: ServiceRequest) -> Decimal:
+    tier = sr.equipment.tier if sr.equipment and sr.equipment.tier else None
+    return Decimal(str(tier.labor_rate_per_hour or 0)) if tier else Decimal("0")
+
+
+def _calculate_service_cost(sr: ServiceRequest) -> Decimal:
+    hours = Decimal(str(sr.time_spent_hours or 0))
+    return (hours * _service_labor_rate(sr)).quantize(Decimal("0.01"))
+
+
 def _enrich(sr: ServiceRequest) -> dict:
     """Convert ORM object to dict with denormalised display names."""
     data = {c.name: getattr(sr, c.name) for c in sr.__table__.columns}
@@ -63,6 +73,11 @@ def _enrich(sr: ServiceRequest) -> dict:
     # Nested names
     data["facility_name"] = sr.facility.name if sr.facility else None
     data["equipment_name"] = f"{sr.equipment.make} {sr.equipment.model}" if sr.equipment else None
+    tier = sr.equipment.tier if sr.equipment and sr.equipment.tier else None
+    data["tier_id"] = tier.id if tier else None
+    data["tier_name"] = tier.name if tier else None
+    data["tier_labor_rate_per_hour"] = tier.labor_rate_per_hour if tier else None
+    data["calculated_service_cost"] = _calculate_service_cost(sr)
     data["requester_name"] = sr.requester.full_name if sr.requester else None
     data["technician_name"] = sr.assigned_technician.full_name if sr.assigned_technician else None
     # Quotations (multiple)
@@ -153,7 +168,7 @@ def list_service_requests(
         scope_query_to_user_facilities(db.query(ServiceRequest), ServiceRequest.facility_id, db, current_user)
         .options(
             joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
@@ -191,7 +206,7 @@ def get_service_request(
         db.query(ServiceRequest)
         .options(
             joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
@@ -312,7 +327,7 @@ def create_service_request(
         db.query(ServiceRequest)
         .options(
             joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
             joinedload(ServiceRequest.quotations),
@@ -359,7 +374,10 @@ def update_service_request(
         elif new_status == ServiceRequestStatus.IN_PROGRESS:
             update_data["started_at"] = datetime.utcnow()
         elif new_status == ServiceRequestStatus.COMPLETED:
+            if _active_clock_session(db_sr):
+                raise HTTPException(status_code=400, detail="Clock out before marking this service request complete")
             update_data["completed_at"] = datetime.utcnow()
+            update_data["total_cost"] = _calculate_service_cost(db_sr)
 
     for field, value in update_data.items():
         before = getattr(db_sr, field, None)
@@ -402,7 +420,7 @@ def update_service_request(
         db.query(ServiceRequest)
         .options(
             joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
@@ -447,7 +465,7 @@ def clock_in_service_request(
         db.query(ServiceRequest)
         .options(
             joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
@@ -484,6 +502,7 @@ def clock_out_service_request(
     rounded_hours = Decimal(str(round(duration_hours, 2)))
     existing_hours = Decimal(str(db_sr.time_spent_hours or 0))
     db_sr.time_spent_hours = existing_hours + rounded_hours
+    db_sr.total_cost = _calculate_service_cost(db_sr)
 
     history = list(db_sr.history or [])
     history.append(_history_entry("technician_clock_out", current_user, {
@@ -503,7 +522,7 @@ def clock_out_service_request(
         db.query(ServiceRequest)
         .options(
             joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
@@ -535,7 +554,7 @@ def add_service_request_note(
         db.query(ServiceRequest)
         .options(
             joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),

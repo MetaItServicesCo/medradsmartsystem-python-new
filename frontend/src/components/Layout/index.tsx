@@ -33,8 +33,10 @@ const Layout = () => {
   return (
     <Box sx={{
       display: 'flex',
+      height: '100vh',
       minHeight: '100vh',
-      background: '#E9EEFA',
+      overflow: 'hidden',
+      background: 'linear-gradient(135deg, #E9EEFA 0%, #F4F7FC 52%, #E8EEFA 100%)',
       p: { xs: 0, md: 1.5 },
       gap: { xs: 0, md: 1.5 },
     }}>
@@ -50,6 +52,7 @@ const Layout = () => {
           borderRadius: { xs: 0, md: '30px' },
           border: { xs: 0, md: '1px solid rgba(255,255,255,0.72)' },
           boxShadow: { xs: 'none', md: '0 24px 70px rgba(71,85,105,0.16)' },
+          isolation: 'isolate',
         }}
       >
         <Header title={title} />
@@ -60,8 +63,9 @@ const Layout = () => {
             p: { xs: 2, md: 3 },
             overflowY: 'auto',
             overflowX: 'hidden',
+            scrollBehavior: 'smooth',
           }}
-          className="page-enter"
+          className="app-main-scroll page-enter"
         >
           <Outlet />
         </Box>

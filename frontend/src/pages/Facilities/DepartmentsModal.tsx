@@ -143,8 +143,8 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
         )}
 
         {/* Table */}
-        <TableContainer>
-          <Table size="small">
+        <TableContainer className="list-scroll-panel">
+          <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>Department</TableCell>

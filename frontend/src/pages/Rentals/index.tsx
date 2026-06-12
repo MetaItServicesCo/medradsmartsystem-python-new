@@ -588,8 +588,8 @@ const Rentals = () => {
   }
 
   const renderAgreementsTable = (items: Rental[], emptyText: string) => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Agreement #</TableCell>
@@ -643,8 +643,8 @@ const Rentals = () => {
   )
 
   const renderInvoices = () => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Invoice #</TableCell>
@@ -707,8 +707,8 @@ const Rentals = () => {
   )
 
   const renderProducts = () => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Part Number</TableCell>
@@ -746,8 +746,8 @@ const Rentals = () => {
   )
 
   const renderHistory = () => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Date</TableCell>

@@ -19,6 +19,9 @@
   --glass-border: rgba(255, 255, 255, 0.4);
   --shadow-premium: 0 18px 45px rgba(49, 46, 129, 0.08);
   --radius-xl: 24px;
+  --surface-soft: #F8FAFC;
+  --surface-muted: #F1F5F9;
+  --focus-ring: rgba(113, 97, 216, 0.32);
 }
 
 *,
@@ -39,6 +42,23 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
 }
 
 /* Scrollbar */
@@ -106,4 +126,134 @@ body {
 .gradient-card-warning {
   background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
   color: white;
+}
+
+.app-main-scroll {
+  scrollbar-gutter: stable;
+}
+
+.app-main-scroll > .MuiBox-root:first-child,
+.app-main-scroll > .MuiCard-root:first-child {
+  position: relative;
+}
+
+.MuiCard-root {
+  color: var(--text-primary);
+}
+
+.MuiCard-root,
+.MuiPaper-root {
+  background-clip: padding-box;
+}
+
+.MuiDialog-paper {
+  max-height: calc(100vh - 48px);
+}
+
+.MuiDialogContent-root {
+  scrollbar-gutter: stable;
+}
+
+.MuiInputBase-input::placeholder {
+  color: #94A3B8;
+  opacity: 1;
+}
+
+.MuiTableContainer-root {
+  scrollbar-gutter: stable;
+}
+
+.MuiTableRow-root.MuiTableRow-hover {
+  transition: background-color 0.15s ease;
+}
+
+.MuiTableCell-root {
+  vertical-align: middle;
+}
+
+/* Work tables scroll inside their panel instead of stretching the whole page. */
+.list-scroll-panel {
+  max-height: min(64vh, 680px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: inherit;
+  background:
+    linear-gradient(#fff 30%, rgba(255,255,255,0)),
+    linear-gradient(rgba(255,255,255,0), #fff 70%) 0 100%,
+    radial-gradient(farthest-side at 50% 0, rgba(49,46,129,0.10), rgba(49,46,129,0)),
+    radial-gradient(farthest-side at 50% 100%, rgba(49,46,129,0.10), rgba(49,46,129,0)) 0 100%;
+  background-repeat: no-repeat;
+  background-size: 100% 18px, 100% 18px, 100% 10px, 100% 10px;
+  background-attachment: local, local, scroll, scroll;
+}
+
+.list-scroll-panel .MuiTableCell-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #F9FAFB;
+  box-shadow: inset 0 -1px 0 #E5E7EB;
+}
+
+.list-scroll-panel .MuiTableCell-root {
+  white-space: nowrap;
+}
+
+.list-scroll-panel .MuiTableCell-root:nth-of-type(2),
+.list-scroll-panel .MuiTableCell-root:nth-of-type(3),
+.list-scroll-panel .MuiTableCell-root:nth-of-type(4) {
+  white-space: normal;
+}
+
+.list-scroll-panel .MuiTableRow-root:last-child .MuiTableCell-root {
+  border-bottom: 0;
+}
+
+.print-surface,
+.invoice-print-surface,
+.report-print-surface {
+  background: #fff;
+  color: #111827;
+}
+
+@media (max-width: 900px) {
+  .list-scroll-panel {
+    max-height: 58vh;
+  }
+
+  .MuiDialog-paper {
+    margin: 12px;
+    width: calc(100% - 24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media print {
+  body {
+    overflow: visible;
+    background: #fff;
+  }
+
+  .app-main-scroll,
+  .list-scroll-panel {
+    overflow: visible !important;
+    max-height: none !important;
+    background: #fff !important;
+  }
+
+  .MuiDialogActions-root,
+  .MuiBackdrop-root,
+  .no-print {
+    display: none !important;
+  }
 }

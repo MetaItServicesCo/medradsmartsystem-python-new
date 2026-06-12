@@ -335,8 +335,8 @@ const Inventory = () => {
             Equipment added from each facility inventory modal appears here with its assigned tier.
           </Typography>
         </Box>
-        <TableContainer>
-          <Table>
+        <TableContainer className="list-scroll-panel">
+          <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>Asset Tag</TableCell>
@@ -410,8 +410,8 @@ const Inventory = () => {
           <FormControlLabel control={<Switch checked={lowStock} onChange={(e) => setLowStock(e.target.checked)} />} label="Low stock" />
         </Box>
 
-        <TableContainer>
-          <Table>
+        <TableContainer className="list-scroll-panel">
+          <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>Part</TableCell>

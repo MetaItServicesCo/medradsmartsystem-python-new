@@ -187,8 +187,8 @@ const Users = () => {
           <CircularProgress sx={{ color: '#7C3AED' }} />
         </Box>
       ) : (
-        <TableContainer component={Paper} sx={{ borderRadius: '16px', overflow: 'hidden' }}>
-          <Table>
+        <TableContainer component={Paper} className="list-scroll-panel" sx={{ borderRadius: '16px' }}>
+          <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>User</TableCell>

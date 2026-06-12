@@ -510,8 +510,8 @@ const Billing = () => {
           <Tab label="Outstanding" />
           <Tab label="Paid" />
         </Tabs>
-        <TableContainer>
-          <Table>
+        <TableContainer className="list-scroll-panel">
+          <Table stickyHeader>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                 <TableCell sx={{ fontWeight: 900 }}>Type</TableCell>

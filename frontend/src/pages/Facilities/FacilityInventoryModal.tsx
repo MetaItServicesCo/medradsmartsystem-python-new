@@ -480,8 +480,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
         )}
 
         {/* Table */}
-        <TableContainer>
-          <Table size="small">
+        <TableContainer className="list-scroll-panel">
+          <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>Asset Tag</TableCell>

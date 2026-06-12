@@ -140,7 +140,7 @@ const Header = ({ title }: HeaderProps) => {
         gap: 3,
         px: { xs: 2, md: 3 },
         py: 2,
-        background: 'rgba(248, 250, 252, 0.86)',
+        background: 'rgba(248, 250, 252, 0.92)',
         backdropFilter: 'blur(18px)',
         borderBottom: '1px solid rgba(226, 232, 240, 0.9)',
         minHeight: 80,
@@ -169,14 +169,14 @@ const Header = ({ title }: HeaderProps) => {
           }
         }}
         sx={{
-          display: 'flex',
+          display: { xs: 'none', sm: 'flex' },
           alignItems: 'center',
           gap: 1.5,
           backgroundColor: '#fff',
           borderRadius: '18px',
           px: 2.5,
           py: 1,
-          width: 320,
+          width: { xs: 0, sm: 260, lg: 360 },
           border: '1px solid #E8ECF4',
           boxShadow: '0 12px 30px rgba(71,85,105,0.06)',
           '&:focus-within': {

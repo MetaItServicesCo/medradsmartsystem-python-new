@@ -589,8 +589,8 @@ const Sales = () => {
   }
 
   const renderQuotationTable = (items: SalesQuotation[], emptyText: string, showComplete = false) => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>#</TableCell>
@@ -663,8 +663,8 @@ const Sales = () => {
   )
 
   const renderInvoices = () => (
-    <TableContainer>
-      <Table>
+    <TableContainer className="list-scroll-panel">
+      <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900 }}>Invoice #</TableCell>
@@ -815,8 +815,8 @@ const Sales = () => {
           </Box>
         )}
         {tab === 4 && (
-          <TableContainer>
-            <Table>
+          <TableContainer className="list-scroll-panel">
+            <Table stickyHeader>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Date</TableCell>
@@ -1021,8 +1021,8 @@ const Sales = () => {
             <Button startIcon={<AddIcon />} variant="contained" onClick={addLineItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>Add Part</Button>
           </Box>
 
-          <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
-            <Table size="small">
+          <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
+            <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Item Number</TableCell>
@@ -1226,8 +1226,8 @@ const Sales = () => {
                 <Card sx={{ p: 2, borderRadius: '14px', border: '1px solid #EEF0F6' }}><Typography sx={{ fontWeight: 900 }}>Customer</Typography><Typography>{viewQuotation.customer_name}</Typography></Card>
                 <Card sx={{ p: 2, borderRadius: '14px', border: '1px solid #EEF0F6' }}><Typography sx={{ fontWeight: 900 }}>Total</Typography><Typography sx={{ color: '#059669', fontWeight: 900 }}>{money(viewQuotation.total_amount)}</Typography></Card>
               </Box>
-              <TableContainer>
-                <Table size="small">
+              <TableContainer className="list-scroll-panel">
+                <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow>
                       <TableCell>Part</TableCell>

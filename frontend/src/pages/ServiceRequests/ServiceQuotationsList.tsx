@@ -43,8 +43,8 @@ const ServiceQuotationsList = () => {
       </Box>
 
       <Card sx={{ overflow: 'hidden', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        <TableContainer>
-          <Table>
+        <TableContainer className="list-scroll-panel">
+          <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>Quotation #</TableCell>
