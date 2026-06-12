@@ -5,7 +5,7 @@ import {
   Box, Card, Typography, Button, Chip, Avatar, TextField,
   FormControl, InputLabel, Select, MenuItem, IconButton,
   Skeleton, Divider, CircularProgress, Dialog, DialogTitle,
-  DialogContent, DialogActions,
+  DialogContent, DialogActions, Checkbox, FormControlLabel,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import BuildIcon from '@mui/icons-material/Build'
@@ -35,6 +35,7 @@ import {
   clockInServiceRequest,
   clockOutServiceRequest,
   fetchServiceRequest,
+  generateServiceInvoice,
   updateServiceRequest,
   type ServiceRequest,
   type ServiceRequestUpdate,
@@ -90,10 +91,18 @@ const ServiceRequestDetail = () => {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [changeTechOpen, setChangeTechOpen] = useState(false)
   const [imageOpen, setImageOpen] = useState(false)
+  const [invoiceOpen, setInvoiceOpen] = useState(false)
+  const [includeQuotations, setIncludeQuotations] = useState(false)
+  const [selectedQuotationIds, setSelectedQuotationIds] = useState<number[]>([])
+  const [invoiceDueDate, setInvoiceDueDate] = useState('')
+  const [invoiceTaxAmount, setInvoiceTaxAmount] = useState('0')
+  const [invoiceDiscountAmount, setInvoiceDiscountAmount] = useState('0')
+  const [invoiceNotes, setInvoiceNotes] = useState('')
 
 
   const user = useAuthStore(state => state.user)
-  const canCreateQuotation = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'technician'
+  const canCreateQuotation = ['superadmin', 'admin', 'technician', 'facility_admin', 'facility_manager'].includes(user?.role || '')
+  const canManageServiceBilling = ['superadmin', 'admin', 'facility_admin', 'facility_manager'].includes(user?.role || '')
 
   const { data: sr, isLoading } = useQuery({
     queryKey: ['service-request', id],
@@ -126,6 +135,7 @@ const ServiceRequestDetail = () => {
     mutationFn: () => clockInServiceRequest(Number(id)),
     onSuccess: () => {
       toast.success('Clocked in. Work session started.')
+      setNowTick(Date.now())
       queryClient.invalidateQueries({ queryKey: ['service-request', id] })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
     },
@@ -150,6 +160,29 @@ const ServiceRequestDetail = () => {
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Clock out failed')
+    },
+  })
+
+  const invoiceMutation = useMutation({
+    mutationFn: () => generateServiceInvoice(Number(id), {
+      include_quotations: includeQuotations,
+      quotation_ids: includeQuotations ? selectedQuotationIds : [],
+      tax_amount: Number(invoiceTaxAmount || 0),
+      discount_amount: Number(invoiceDiscountAmount || 0),
+      due_date: invoiceDueDate || null,
+      notes: invoiceNotes || undefined,
+    }),
+    onSuccess: (invoice) => {
+      toast.success(`Invoice ${invoice.invoice_number} is ready in Billing`)
+      setInvoiceOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['service-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to generate service invoice')
     },
   })
 
@@ -205,15 +238,17 @@ const ServiceRequestDetail = () => {
   }
 
   const activeClockEntry = useMemo(() => {
-    const closedSessions = new Set<string>()
     for (const entry of [...(sr?.history || [])].reverse()) {
-      const changes = entry.changes || {}
-      const sessionId = changes.session_id
-      if (entry.action === 'technician_clock_out' && sessionId) closedSessions.add(sessionId)
-      if (entry.action === 'technician_clock_in' && sessionId && !closedSessions.has(sessionId)) return entry
+      if (entry.action === 'technician_clock_out') return null
+      if (entry.action === 'technician_clock_in') return entry
     }
     return null
   }, [sr?.history])
+
+  const billableQuotations = useMemo(
+    () => (sr?.quotations || []).filter(q => !['paid', 'included_in_invoice', 'cancelled', 'rejected'].includes(String(q.status || '').toLowerCase())),
+    [sr?.quotations]
+  )
 
   const activeClockStart = activeClockEntry?.changes?.clocked_in_at || activeClockEntry?.timestamp || null
 
@@ -300,6 +335,25 @@ const ServiceRequestDetail = () => {
   const calculatedServiceCost = Number(sr.calculated_service_cost ?? (timeSpentHours * tierLaborRate))
   const activeProjectedHours = timeSpentHours + activeElapsedHours
   const activeProjectedCost = activeProjectedHours * tierLaborRate
+  const selectedQuotationTotal = includeQuotations
+    ? billableQuotations
+      .filter(q => selectedQuotationIds.includes(q.id))
+      .reduce((sum, q) => sum + Number(q.amount || 0), 0)
+    : 0
+  const invoicePreviewTotal = Math.max(
+    calculatedServiceCost + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
+    0
+  )
+
+  const openInvoiceDialog = () => {
+    setIncludeQuotations(false)
+    setSelectedQuotationIds(billableQuotations.map(q => q.id))
+    setInvoiceDueDate('')
+    setInvoiceTaxAmount('0')
+    setInvoiceDiscountAmount('0')
+    setInvoiceNotes(`Service invoice for ${sr.request_number}.`)
+    setInvoiceOpen(true)
+  }
 
   return (
     <Box className="page-enter">
@@ -909,7 +963,7 @@ const ServiceRequestDetail = () => {
           )}
 
           {/* Billing & Reporting Actions (if completed — admin/superadmin only) */}
-          {sr.status === 'completed' && canCreateQuotation && (
+          {sr.status === 'completed' && canManageServiceBilling && (
             <Card sx={{ p: 3 }}>
               <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
                 Billing & Reports Actions
@@ -922,6 +976,20 @@ const ServiceRequestDetail = () => {
                   sx={{ borderRadius: '12px', fontWeight: 600 }}
                 >
                   View Report
+                </Button>
+
+                <Button
+                  variant="contained"
+                  startIcon={<ReceiptLongIcon />}
+                  onClick={openInvoiceDialog}
+                  disabled={invoiceMutation.isPending || sr.invoice_deleted}
+                  sx={{
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                    background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
+                  }}
+                >
+                  Generate Invoice
                 </Button>
 
                 <Button
@@ -1085,6 +1153,162 @@ const ServiceRequestDetail = () => {
             }}
           >
             {updateMutation.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Save Technician'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={invoiceOpen}
+        onClose={() => setInvoiceOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Generate Service Invoice
+          <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13, mt: 0.5 }}>
+            Choose whether service quotations should be included in this invoice or billed separately.
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.2fr 0.8fr' }, gap: 2.5 }}>
+            <Box sx={{ display: 'grid', gap: 1.5 }}>
+              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 0.75 }}>Service Labor</Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+                  <Typography sx={{ color: '#64748B', fontWeight: 700 }}>
+                    {timeSpentHours.toFixed(2)} hrs x ${tierLaborRate.toFixed(2)} / hr
+                  </Typography>
+                  <Typography sx={{ fontWeight: 950, color: '#047857' }}>
+                    ${calculatedServiceCost.toFixed(2)}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={includeQuotations}
+                      onChange={(e) => {
+                        setIncludeQuotations(e.target.checked)
+                        if (e.target.checked && selectedQuotationIds.length === 0) {
+                          setSelectedQuotationIds(billableQuotations.map(q => q.id))
+                        }
+                      }}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Include service quotations in this invoice</Typography>
+                      <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 12 }}>
+                        Leave off to bill quotations separately in Billing.
+                      </Typography>
+                    </Box>
+                  }
+                />
+                {includeQuotations && (
+                  <Box sx={{ mt: 1.5, display: 'grid', gap: 1 }}>
+                    {billableQuotations.length === 0 ? (
+                      <Typography sx={{ color: '#94A3B8', fontWeight: 700 }}>No open quotations available to include.</Typography>
+                    ) : billableQuotations.map(q => (
+                      <Box key={q.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, p: 1.25, borderRadius: '12px', bgcolor: '#fff', border: '1px solid #EDE9FE' }}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={selectedQuotationIds.includes(q.id)}
+                              onChange={(e) => {
+                                setSelectedQuotationIds(prev => (
+                                  e.target.checked ? [...new Set([...prev, q.id])] : prev.filter(id => id !== q.id)
+                                ))
+                              }}
+                            />
+                          }
+                          label={
+                            <Box>
+                              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{q.quotation_number}</Typography>
+                              <Typography sx={{ color: '#64748B', fontSize: 12 }}>{q.description || 'Service quotation'}</Typography>
+                            </Box>
+                          }
+                        />
+                        <Typography sx={{ fontWeight: 950, color: '#047857' }}>${Number(q.amount || 0).toFixed(2)}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+
+              <TextField
+                label="Invoice Notes"
+                multiline
+                minRows={2}
+                value={invoiceNotes}
+                onChange={(e) => setInvoiceNotes(e.target.value)}
+                fullWidth
+              />
+            </Box>
+
+            <Box sx={{ p: 2, borderRadius: '18px', bgcolor: '#fff', border: '1px solid #E5E7EB', boxShadow: '0 14px 35px rgba(15,23,42,0.08)', height: 'fit-content' }}>
+              <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1.5 }}>Invoice Summary</Typography>
+              <TextField
+                label="Due Date"
+                type="date"
+                value={invoiceDueDate}
+                onChange={(e) => setInvoiceDueDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+                sx={{ mb: 1.5 }}
+              />
+              <TextField
+                label="Tax Amount ($)"
+                type="number"
+                value={invoiceTaxAmount}
+                onChange={(e) => setInvoiceTaxAmount(e.target.value)}
+                fullWidth
+                sx={{ mb: 1.5 }}
+                inputProps={{ min: 0, step: 0.01 }}
+              />
+              <TextField
+                label="Discount Amount ($)"
+                type="number"
+                value={invoiceDiscountAmount}
+                onChange={(e) => setInvoiceDiscountAmount(e.target.value)}
+                fullWidth
+                sx={{ mb: 2 }}
+                inputProps={{ min: 0, step: 0.01 }}
+              />
+              {[
+                ['Service', calculatedServiceCost],
+                ['Included quotations', selectedQuotationTotal],
+                ['Tax', Number(invoiceTaxAmount || 0)],
+                ['Discount', -Number(invoiceDiscountAmount || 0)],
+              ].map(([label, value]) => (
+                <Box key={String(label)} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: '1px solid #F1F5F9' }}>
+                  <Typography sx={{ color: '#64748B', fontWeight: 800 }}>{label}</Typography>
+                  <Typography sx={{ color: Number(value) < 0 ? '#DC2626' : '#1E1B4B', fontWeight: 900 }}>
+                    ${Number(value).toFixed(2)}
+                  </Typography>
+                </Box>
+              ))}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, p: 1.5, borderRadius: '14px', bgcolor: '#F0FDF4' }}>
+                <Typography sx={{ color: '#047857', fontWeight: 950 }}>Total</Typography>
+                <Typography sx={{ color: '#047857', fontWeight: 950, fontSize: 20 }}>${invoicePreviewTotal.toFixed(2)}</Typography>
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+          <Button onClick={() => setInvoiceOpen(false)} variant="outlined">
+            Close
+          </Button>
+          <Button
+            onClick={() => invoiceMutation.mutate()}
+            variant="contained"
+            disabled={invoiceMutation.isPending}
+            startIcon={invoiceMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ReceiptLongIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+          >
+            Generate Invoice
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,9 +1,10 @@
 import os
 import uuid
 from typing import Any, Optional
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app import crud
@@ -16,6 +17,7 @@ from app.models.service_request import (
 )
 from app.models.facility import Facility
 from app.models.equipment import Equipment
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.schemas.service_request import (
     ServiceRequestCreate, ServiceRequestUpdate,
     ServiceRequestResponse, ServiceRequestListResponse,
@@ -26,6 +28,7 @@ from app.schemas.service_request import (
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 
 router = APIRouter()
 
@@ -49,6 +52,30 @@ VALID_TRANSITIONS = {
     ServiceRequestStatus.COMPLETED: [],   # terminal
     ServiceRequestStatus.CANCELLED: [],   # terminal
 }
+
+
+class ServiceInvoiceCreate(BaseModel):
+    include_quotations: bool = False
+    quotation_ids: Optional[list[int]] = None
+    tax_amount: Decimal = Decimal("0")
+    discount_amount: Decimal = Decimal("0")
+    due_date: Optional[date] = None
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ServiceInvoiceUpdate(BaseModel):
+    amount_paid: Optional[Decimal] = None
+    due_date: Optional[date] = None
+    status: Optional[InvoiceStatus] = None
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+
+
+def _money(value: Any) -> Decimal:
+    if value in (None, ""):
+        return Decimal("0")
+    return Decimal(str(value))
 
 
 def _service_labor_rate(sr: ServiceRequest) -> Decimal:
@@ -124,16 +151,113 @@ def _can_work_on_service(user: User, sr: ServiceRequest) -> bool:
 
 
 def _active_clock_session(sr: ServiceRequest) -> Optional[dict]:
-    closed_sessions = set()
     for entry in reversed(sr.history or []):
         action = entry.get("action")
-        changes = entry.get("changes") or {}
-        session_id = changes.get("session_id")
-        if action == "technician_clock_out" and session_id:
-            closed_sessions.add(session_id)
-        if action == "technician_clock_in" and session_id and session_id not in closed_sessions:
+        if action == "technician_clock_out":
+            return None
+        if action == "technician_clock_in":
             return entry
     return None
+
+
+def _next_service_invoice_number(db: Session) -> str:
+    last = db.query(Invoice).order_by(Invoice.id.desc()).first()
+    next_num = (last.id + 1) if last else 1
+    return f"INV-SERVICE-{next_num:06d}"
+
+
+def _facility_billing_address(facility: Optional[Facility]) -> Optional[str]:
+    if not facility:
+        return None
+    billing_parts = [
+        facility.billing_street,
+        facility.billing_suite,
+        facility.billing_city,
+        facility.billing_state,
+        facility.billing_zip_code,
+    ]
+    billing_address = ", ".join([part for part in billing_parts if part])
+    return billing_address or facility.address
+
+
+def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
+    sr = invoice.service_request
+    if not sr:
+        return []
+    rows: list[dict[str, Any]] = []
+    hours = _money(sr.time_spent_hours).quantize(Decimal("0.01"))
+    labor_rate = _service_labor_rate(sr)
+    labor_total = _calculate_service_cost(sr)
+    rows.append({
+        "item_number": sr.request_number,
+        "description": f"Service labor - {sr.equipment.make} {sr.equipment.model}" if sr.equipment else "Service labor",
+        "quantity": hours,
+        "unit_price": labor_rate,
+        "shipping_fee": Decimal("0"),
+        "setup_fee": Decimal("0"),
+        "condition": None,
+        "total_amount": labor_total,
+    })
+
+    for quotation in sr.quotations or []:
+        if quotation.status != "included_in_invoice":
+            continue
+        if quotation.line_items:
+            for line in quotation.line_items:
+                rows.append({
+                    "item_number": quotation.quotation_number,
+                    "description": line.description,
+                    "quantity": line.quantity,
+                    "unit_price": line.unit_price,
+                    "shipping_fee": Decimal("0"),
+                    "setup_fee": Decimal("0"),
+                    "condition": line.item_type,
+                    "total_amount": line.total,
+                })
+        else:
+            rows.append({
+                "item_number": quotation.quotation_number,
+                "description": quotation.description or "Service quotation",
+                "quantity": Decimal("1"),
+                "unit_price": quotation.amount,
+                "shipping_fee": Decimal("0"),
+                "setup_fee": Decimal("0"),
+                "condition": None,
+                "total_amount": quotation.amount,
+            })
+    return rows
+
+
+def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
+    sr = invoice.service_request
+    return {
+        "id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "invoice_type": invoice.invoice_type.value if hasattr(invoice.invoice_type, "value") else invoice.invoice_type,
+        "service_request_id": invoice.service_request_id,
+        "request_number": sr.request_number if sr else None,
+        "customer_name": invoice.customer_name,
+        "customer_email": invoice.customer_email,
+        "customer_phone": invoice.customer_phone,
+        "customer_address": invoice.customer_address,
+        "facility_id": invoice.facility_id,
+        "facility_name": invoice.facility.name if invoice.facility else None,
+        "subtotal": invoice.subtotal,
+        "tax_amount": invoice.tax_amount,
+        "discount_amount": invoice.discount_amount,
+        "total_amount": invoice.total_amount,
+        "amount_paid": invoice.amount_paid,
+        "balance_due": invoice.balance_due,
+        "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
+        "issue_date": invoice.issue_date,
+        "due_date": invoice.due_date,
+        "payment_method": invoice.payment_method,
+        "notes": invoice.notes,
+        "created_at": invoice.created_at,
+        "updated_at": invoice.updated_at,
+        "transactions": [transaction_response(item) for item in invoice.transactions or []],
+        "line_items": _service_invoice_line_items(invoice),
+    }
 
 
 def _load_service_request_for_work(db: Session, request_id: int, current_user: User) -> ServiceRequest:
@@ -194,6 +318,88 @@ def list_service_requests(
 
 
 # ── GET ONE ──────────────────────────────────────────────────────────────────
+
+# --- SERVICE INVOICES -------------------------------------------------------
+
+@router.get("/invoices")
+def list_service_invoices(
+    db: Session = Depends(get_db),
+    status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """List generated service invoices for billing."""
+    query = (
+        scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
+        .options(
+            joinedload(Invoice.facility),
+            joinedload(Invoice.transactions),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+        )
+        .filter(Invoice.invoice_type == InvoiceType.SERVICE)
+    )
+    if status_filter:
+        query = query.filter(Invoice.status == status_filter)
+    invoices = query.order_by(Invoice.created_at.desc()).all()
+    return {"items": [_service_invoice_response(invoice) for invoice in invoices], "total": len(invoices)}
+
+
+@router.put("/invoices/{invoice_id}")
+def update_service_invoice(
+    invoice_id: int,
+    payload: ServiceInvoiceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Update a generated service invoice and record ledger transactions."""
+    invoice = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.facility),
+            joinedload(Invoice.transactions),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+        )
+        .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.SERVICE)
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Service invoice not found")
+    if invoice.facility_id is not None:
+        require_facility_access(db, current_user, invoice.facility_id)
+
+    previous_paid = invoice.amount_paid
+    previous_status = invoice.status
+    update_data = payload.model_dump(exclude_unset=True)
+    for field in ["amount_paid", "due_date", "notes", "status", "payment_method"]:
+        if field in update_data:
+            setattr(invoice, field, update_data[field])
+
+    invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
+    if invoice.balance_due <= 0:
+        invoice.status = InvoiceStatus.PAID
+    elif _money(invoice.amount_paid) > 0 and invoice.status != InvoiceStatus.CANCELLED:
+        invoice.status = InvoiceStatus.PARTIALLY_PAID
+    invoice.updated_at = datetime.utcnow()
+
+    if invoice.service_request:
+        invoice.service_request.billing_status = "approved"
+        history = list(invoice.service_request.history or [])
+        history.append(_history_entry("service_invoice_updated", current_user, {
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
+            "amount_paid": str(invoice.amount_paid),
+            "balance_due": str(invoice.balance_due),
+        }))
+        invoice.service_request.history = history
+
+    record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
+    record_status_change(db, invoice, previous_status, current_user)
+    db.commit()
+    db.refresh(invoice)
+    return _service_invoice_response(invoice)
+
 
 @router.get("/{request_id}", response_model=ServiceRequestResponse)
 def get_service_request(
@@ -432,6 +638,134 @@ def update_service_request(
 
 
 # ── DELETE ───────────────────────────────────────────────────────────────────
+
+@router.post("/{request_id}/generate-invoice")
+def generate_service_invoice(
+    request_id: int,
+    payload: ServiceInvoiceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Generate a service invoice from completed work, optionally bundling service quotations."""
+    if current_user.role not in [
+        UserRole.SUPERADMIN,
+        UserRole.ADMIN,
+        UserRole.FACILITY_ADMIN,
+        UserRole.FACILITY_MANAGER,
+        UserRole.TECHNICIAN,
+    ]:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    db_sr = (
+        db.query(ServiceRequest)
+        .options(
+            joinedload(ServiceRequest.facility),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+        )
+        .filter(ServiceRequest.id == request_id)
+        .first()
+    )
+    if not db_sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    require_facility_access(db, current_user, db_sr.facility_id)
+    if db_sr.status != ServiceRequestStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Complete the service request before generating an invoice")
+
+    existing_invoice = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.facility),
+            joinedload(Invoice.transactions),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+        )
+        .filter(
+            Invoice.invoice_type == InvoiceType.SERVICE,
+            Invoice.service_request_id == request_id,
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .first()
+    )
+    if existing_invoice:
+        return _service_invoice_response(existing_invoice)
+
+    selected_quotations: list[ServiceRequestQuotation] = []
+    if payload.include_quotations:
+        eligible = [
+            quotation for quotation in (db_sr.quotations or [])
+            if quotation.status not in {"paid", "included_in_invoice", "cancelled", "rejected"}
+        ]
+        selected_ids = set(payload.quotation_ids or [])
+        selected_quotations = [
+            quotation for quotation in eligible
+            if not selected_ids or quotation.id in selected_ids
+        ]
+
+    service_amount = _calculate_service_cost(db_sr)
+    quotation_amount = sum((_money(quotation.amount) for quotation in selected_quotations), Decimal("0"))
+    subtotal = (service_amount + quotation_amount).quantize(Decimal("0.01"))
+    tax_amount = _money(payload.tax_amount).quantize(Decimal("0.01"))
+    discount_amount = _money(payload.discount_amount).quantize(Decimal("0.01"))
+    total_amount = max((subtotal + tax_amount - discount_amount).quantize(Decimal("0.01")), Decimal("0"))
+
+    facility = db_sr.facility
+    invoice = Invoice(
+        invoice_number=_next_service_invoice_number(db),
+        invoice_type=InvoiceType.SERVICE,
+        customer_name=(facility.billing_name or facility.name) if facility else (db_sr.requested_by_name or "Service Customer"),
+        customer_email=(facility.billing_email or facility.email) if facility else "billing@example.com",
+        customer_phone=facility.phone if facility else None,
+        customer_address=_facility_billing_address(facility),
+        facility_id=db_sr.facility_id,
+        service_request_id=db_sr.id,
+        subtotal=subtotal,
+        tax_amount=tax_amount,
+        discount_amount=discount_amount,
+        total_amount=total_amount,
+        amount_paid=Decimal("0"),
+        balance_due=total_amount,
+        status=InvoiceStatus.PENDING,
+        issue_date=date.today(),
+        due_date=payload.due_date or date.today() + timedelta(days=30),
+        payment_terms="Net 30",
+        payment_method=payload.payment_method,
+        notes=payload.notes or f"Service invoice for {db_sr.request_number}.",
+    )
+    db.add(invoice)
+    db.flush()
+    record_invoice_created(db, invoice, current_user, f"Service invoice created for {db_sr.request_number}")
+
+    for quotation in selected_quotations:
+        quotation.status = "included_in_invoice"
+        quotation.updated_at = datetime.utcnow()
+
+    db_sr.billing_status = "approved"
+    db_sr.invoice_deleted = False
+    history = list(db_sr.history or [])
+    history.append(_history_entry("service_invoice_generated", current_user, {
+        "invoice_id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "service_amount": str(service_amount),
+        "included_quotation_ids": [quotation.id for quotation in selected_quotations],
+        "included_quotation_total": str(quotation_amount),
+        "total_amount": str(total_amount),
+        "quotations_billed_separately": not payload.include_quotations,
+    }))
+    db_sr.history = history
+    create_notifications(
+        db,
+        user_ids=[uid for uid in {db_sr.requester_id, db_sr.assigned_technician_id} if uid and uid != current_user.id],
+        title="Service invoice generated",
+        message=f"Invoice {invoice.invoice_number} was generated for {db_sr.request_number}.",
+        notification_type="service_request",
+        link_url=f"/billing?highlightInvoice={invoice.id}",
+        actor_id=current_user.id,
+    )
+    db.commit()
+    db.refresh(invoice)
+    return _service_invoice_response(invoice)
+
 
 @router.post("/{request_id}/clock-in", response_model=ServiceRequestResponse)
 def clock_in_service_request(

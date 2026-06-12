@@ -26,7 +26,10 @@ import { fetchSalesInvoices, updateSalesInvoice, type SalesInvoice } from '@/api
 import {
   createQuotationPayment,
   fetchAllQuotations,
+  fetchServiceInvoices,
+  updateServiceInvoice,
   type QuotationPaymentCreate,
+  type ServiceInvoice,
   type ServiceRequestQuotationList,
 } from '@/api/serviceRequests'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
@@ -40,6 +43,7 @@ type AchChoice = 'ach' | 'mbmts_ach'
 interface BillingItem {
   key: string
   source: BillingSource
+  billingKind?: 'service_invoice' | 'service_quotation'
   id: number
   facilityId?: number | null
   number: string
@@ -56,7 +60,7 @@ interface BillingItem {
   dueDate?: string | null
   paymentMethod?: string | null
   transactions?: BillingTransaction[]
-  raw: ServiceRequestQuotationList | InspectionInvoice | SalesInvoice | RentalInvoice
+  raw: ServiceRequestQuotationList | ServiceInvoice | InspectionInvoice | SalesInvoice | RentalInvoice
 }
 
 interface BillingTransaction {
@@ -109,13 +113,20 @@ const methodLabel = (value?: string | null) => {
   return value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
 }
 
+const billingTypeLabel = (item: BillingItem) => {
+  if (item.source === 'service') {
+    return item.billingKind === 'service_invoice' ? 'Service Invoice' : 'Service Quote'
+  }
+  return SOURCE_LABEL[item.source]
+}
+
 const invoiceStatusForPayment = (total: number, paid: number): 'pending' | 'partially_paid' | 'paid' => {
   if (paid <= 0) return 'pending'
   if (paid >= total) return 'paid'
   return 'partially_paid'
 }
 
-const invoiceTransactions = (invoice: SalesInvoice | RentalInvoice | InspectionInvoice): BillingTransaction[] => (
+const invoiceTransactions = (invoice: SalesInvoice | RentalInvoice | InspectionInvoice | ServiceInvoice): BillingTransaction[] => (
   (invoice.transactions || []).map(transaction => ({
     id: transaction.id,
     invoice_id: transaction.invoice_id,
@@ -158,7 +169,7 @@ const Billing = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
-  const canPay = ['superadmin', 'admin', 'hr_manager'].includes(user?.role || '')
+  const canPay = ['superadmin', 'admin', 'hr_manager', 'facility_admin', 'facility_manager'].includes(user?.role || '')
 
   const [sourceFilter, setSourceFilter] = useState<'all' | BillingSource>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -180,19 +191,46 @@ const Billing = () => {
   const [payRoutingLast4, setPayRoutingLast4] = useState('')
 
   const serviceQ = useQuery({ queryKey: ['billing-service-quotations'], queryFn: fetchAllQuotations })
+  const serviceInvoicesQ = useQuery({ queryKey: ['billing-service-invoices'], queryFn: () => fetchServiceInvoices() })
   const inspectionQ = useQuery({ queryKey: ['billing-inspection-invoices'], queryFn: fetchInspectionQuotations })
   const salesQ = useQuery({ queryKey: ['billing-sales-invoices'], queryFn: () => fetchSalesInvoices() })
   const rentalsQ = useQuery({ queryKey: ['billing-rental-invoices'], queryFn: () => fetchRentalInvoices() })
 
-  const isLoading = serviceQ.isLoading || inspectionQ.isLoading || salesQ.isLoading || rentalsQ.isLoading
+  const isLoading = serviceQ.isLoading || serviceInvoicesQ.isLoading || inspectionQ.isLoading || salesQ.isLoading || rentalsQ.isLoading
 
   const items = useMemo<BillingItem[]>(() => {
-    const serviceItems = (serviceQ.data || []).map((q): BillingItem => {
+    const serviceInvoiceItems = (serviceInvoicesQ.data?.items || []).map((invoice): BillingItem => ({
+      key: `service-invoice-${invoice.id}`,
+      source: 'service',
+      billingKind: 'service_invoice',
+      id: invoice.id,
+      facilityId: invoice.facility_id,
+      number: invoice.invoice_number,
+      relatedNumber: invoice.request_number || '-',
+      facility: invoice.facility_name || '-',
+      customer: invoice.customer_name,
+      customerEmail: invoice.customer_email,
+      description: invoice.notes || 'Service invoice',
+      amount: Number(invoice.total_amount || 0),
+      paid: Number(invoice.amount_paid || 0),
+      balance: Number(invoice.balance_due || 0),
+      status: invoice.status,
+      date: invoice.issue_date || invoice.created_at,
+      dueDate: invoice.due_date,
+      paymentMethod: invoice.payment_method,
+      transactions: invoiceTransactions(invoice),
+      raw: invoice,
+    }))
+
+    const serviceItems = (serviceQ.data || [])
+      .filter(q => q.status !== 'included_in_invoice')
+      .map((q): BillingItem => {
       const amount = Number(q.amount || 0)
       const paid = (q.payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
       return {
         key: `service-${q.id}`,
         source: 'service',
+        billingKind: 'service_quotation',
         id: q.id,
         facilityId: (q as any).facility_id || null,
         number: q.quotation_number || `Q-${q.id}`,
@@ -276,9 +314,9 @@ const Billing = () => {
       raw: invoice,
     }))
 
-    return [...serviceItems, ...inspectionItems, ...salesItems, ...rentalItems]
+    return [...serviceInvoiceItems, ...serviceItems, ...inspectionItems, ...salesItems, ...rentalItems]
       .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
-  }, [inspectionQ.data, rentalsQ.data, salesQ.data, serviceQ.data])
+  }, [inspectionQ.data, rentalsQ.data, salesQ.data, serviceInvoicesQ.data, serviceQ.data])
 
   const filteredItems = items.filter(item => {
     if (sourceFilter !== 'all' && item.source !== sourceFilter) return false
@@ -296,6 +334,7 @@ const Billing = () => {
 
   const invalidateBilling = () => {
     queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] })
+    queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] })
     queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
     queryClient.invalidateQueries({ queryKey: ['billing-sales-invoices'] })
     queryClient.invalidateQueries({ queryKey: ['billing-rental-invoices'] })
@@ -303,6 +342,7 @@ const Billing = () => {
     queryClient.invalidateQueries({ queryKey: ['sales-invoices'] })
     queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
     queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] })
+    queryClient.invalidateQueries({ queryKey: ['service-invoices'] })
   }
 
   const servicePayMut = useMutation({
@@ -327,6 +367,9 @@ const Billing = () => {
       }
       if (item.source === 'rental') {
         return updateRentalInvoice(item.id, { amount_paid: nextPaid, status, payment_method: method, notes: commonNotes })
+      }
+      if (item.source === 'service' && item.billingKind === 'service_invoice') {
+        return updateServiceInvoice(item.id, { amount_paid: nextPaid, status, payment_method: method, notes: commonNotes })
       }
       return updateInspectionInvoice(item.id, { amount_paid: nextPaid, status, notes: commonNotes })
     },
@@ -372,7 +415,7 @@ const Billing = () => {
     const actualMethod = payMethod === 'ach' ? achChoice : payMethod
     const notes = payNotes || undefined
 
-    if (payOpen.source === 'service') {
+    if (payOpen.source === 'service' && payOpen.billingKind !== 'service_invoice') {
       const data: QuotationPaymentCreate = {
         payment_method: actualMethod as any,
         amount,
@@ -411,9 +454,9 @@ const Billing = () => {
     customer_name: item.customer,
     customer_email: item.customerEmail,
     facility_name: item.facility,
-    subtotal: Number(item.amount || 0),
-    tax_amount: 0,
-    discount_amount: 0,
+    subtotal: Number((item.raw as any).subtotal ?? item.amount ?? 0),
+    tax_amount: Number((item.raw as any).tax_amount || 0),
+    discount_amount: Number((item.raw as any).discount_amount || 0),
     total_amount: Number(item.amount || 0),
     amount_paid: Number(item.paid || 0),
     balance_due: Number(item.balance || 0),
@@ -424,16 +467,49 @@ const Billing = () => {
     notes: item.description,
   } : null
 
-  const printableLineItems = (item: BillingItem | null): PrintableLineItem[] => item ? [{
-    item_number: item.relatedNumber || item.number,
-    description: item.description,
-    quantity: 1,
-    unit_price: Number(item.amount || 0),
-    shipping_fee: 0,
-    setup_fee: 0,
-    condition: null,
-    total_amount: Number(item.amount || 0),
-  }] : []
+  const printableLineItems = (item: BillingItem | null): PrintableLineItem[] => {
+    if (!item) return []
+    if (item.source === 'service' && item.billingKind === 'service_invoice') {
+      const invoice = item.raw as ServiceInvoice
+      if (invoice.line_items?.length) {
+        return invoice.line_items.map(line => ({
+          item_number: line.item_number || item.relatedNumber || item.number,
+          description: line.description,
+          quantity: Number(line.quantity || 0),
+          unit_price: Number(line.unit_price || 0),
+          shipping_fee: Number(line.shipping_fee || 0),
+          setup_fee: Number(line.setup_fee || 0),
+          condition: line.condition,
+          total_amount: Number(line.total_amount || 0),
+        }))
+      }
+    }
+    if (item.source === 'service' && item.billingKind !== 'service_invoice') {
+      const quotation = item.raw as ServiceRequestQuotationList
+      if (quotation.line_items?.length) {
+        return quotation.line_items.map(line => ({
+          item_number: quotation.quotation_number,
+          description: line.description,
+          quantity: Number(line.quantity || 0),
+          unit_price: Number(line.unit_price || 0),
+          shipping_fee: 0,
+          setup_fee: 0,
+          condition: line.item_type,
+          total_amount: Number(line.total || 0),
+        }))
+      }
+    }
+    return [{
+      item_number: item.relatedNumber || item.number,
+      description: item.description,
+      quantity: 1,
+      unit_price: Number(item.amount || 0),
+      shipping_fee: 0,
+      setup_fee: 0,
+      condition: null,
+      total_amount: Number(item.amount || 0),
+    }]
+  }
 
   const printableLedgerTransactions = (item: BillingItem | null): PrintableLedgerTransaction[] => {
     if (!item) return []
@@ -541,7 +617,7 @@ const Billing = () => {
                   <Fragment key={item.key}>
                     <TableRow key={item.key} hover>
                       <TableCell>
-                        <Chip label={SOURCE_LABEL[item.source]} sx={{ bgcolor: `${SOURCE_COLOR[item.source]}16`, color: SOURCE_COLOR[item.source], fontWeight: 900 }} />
+                        <Chip label={billingTypeLabel(item)} sx={{ bgcolor: `${SOURCE_COLOR[item.source]}16`, color: SOURCE_COLOR[item.source], fontWeight: 900 }} />
                       </TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900, color: '#5B21B6' }}>{item.number}</TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontWeight: 800 }}>{item.relatedNumber}</TableCell>
@@ -572,7 +648,7 @@ const Billing = () => {
                             variant="outlined"
                             startIcon={<VisibilityOutlinedIcon />}
                             onClick={() => {
-                              if (item.source === 'service') navigate(`/service-requests/${(item.raw as ServiceRequestQuotationList).service_request_id}?highlightBilling=${item.id}`)
+                              if (item.source === 'service') navigate(`/service-requests/${(item.raw as any).service_request_id}?highlightBilling=${item.id}`)
                               if (item.source === 'sales') navigate(`/sales/invoices?highlightInvoice=${item.id}`)
                               if (item.source === 'rental') navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
                               if (item.source === 'inspection') navigate(`/inspections?tab=quotations&highlightInvoice=${item.id}`)
@@ -618,7 +694,7 @@ const Billing = () => {
         lineItems={printableLineItems(printItem)}
         ledgerTransactions={printableLedgerTransactions(printItem)}
         moduleLabel={printItem ? SOURCE_LABEL[printItem.source] : 'Billing'}
-        primaryDocumentLabel={printItem?.source === 'service' ? 'Quotation' : 'Invoice'}
+        primaryDocumentLabel={printItem?.source === 'service' && printItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
         accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
       />
 
@@ -728,7 +804,8 @@ const Kpi = ({ label, value, color }: { label: string; value: string; color: str
 )
 
 const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountItems: BillingItem[] }) => {
-  const service = item.source === 'service' ? item.raw as ServiceRequestQuotationList : null
+  const serviceQuotation = item.source === 'service' && item.billingKind !== 'service_invoice' ? item.raw as ServiceRequestQuotationList : null
+  const serviceInvoice = item.source === 'service' && item.billingKind === 'service_invoice' ? item.raw as ServiceInvoice : null
   const rawSubtotal = Number((item.raw as any).subtotal ?? item.amount)
   const rawTax = Number((item.raw as any).tax_amount || 0)
   const rawDiscount = Number((item.raw as any).discount_amount || 0)
@@ -768,8 +845,16 @@ const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountIt
   const accountTotal = accountItems.reduce((sum, row) => sum + row.amount, 0)
   const accountPaid = accountItems.reduce((sum, row) => sum + row.paid, 0)
   const accountBalance = accountItems.reduce((sum, row) => sum + row.balance, 0)
-  const lineRows = service?.line_items?.length
-    ? service.line_items.map(line => ({
+  const lineRows = serviceInvoice?.line_items?.length
+    ? serviceInvoice.line_items.map(line => ({
+      label: line.description,
+      meta: line.condition || 'service invoice',
+      quantity: Number(line.quantity || 0),
+      price: Number(line.unit_price || 0),
+      total: Number(line.total_amount || 0),
+    }))
+    : serviceQuotation?.line_items?.length
+    ? serviceQuotation.line_items.map(line => ({
       label: line.description,
       meta: line.item_type,
       quantity: line.quantity,
@@ -845,7 +930,7 @@ const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountIt
               <Box>
                 <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Invoice</strong> {item.number}</Typography>
                 <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Related</strong> {item.relatedNumber}</Typography>
-                <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Type</strong> {SOURCE_LABEL[item.source]}</Typography>
+                <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Type</strong> {billingTypeLabel(item)}</Typography>
               </Box>
             </Box>
 

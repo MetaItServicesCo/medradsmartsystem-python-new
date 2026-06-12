@@ -61,6 +61,78 @@ export interface QuotationPaymentCreate {
   mbmts_bank_address?: string
 }
 
+export interface InvoiceTransaction {
+  id: number
+  invoice_id: number
+  facility_id?: number | null
+  transaction_type: string
+  amount: number
+  payment_method?: string | null
+  reference_number?: string | null
+  description?: string | null
+  created_by_id?: number | null
+  created_by_name?: string | null
+  created_at?: string | null
+}
+
+export interface ServiceInvoiceLineItem {
+  item_number?: string | null
+  description: string
+  quantity: number
+  unit_price: number
+  shipping_fee?: number
+  setup_fee?: number
+  condition?: string | null
+  total_amount: number
+}
+
+export interface ServiceInvoice {
+  id: number
+  invoice_number: string
+  invoice_type: 'service'
+  service_request_id: number
+  request_number?: string | null
+  customer_name: string
+  customer_email: string
+  customer_phone?: string | null
+  customer_address?: string | null
+  facility_id?: number | null
+  facility_name?: string | null
+  subtotal: number
+  tax_amount: number
+  discount_amount: number
+  total_amount: number
+  amount_paid: number
+  balance_due: number
+  status: string
+  issue_date: string | null
+  due_date: string | null
+  payment_method?: string | null
+  notes?: string | null
+  created_at: string
+  updated_at: string
+  transactions?: InvoiceTransaction[]
+  line_items?: ServiceInvoiceLineItem[]
+}
+
+export interface ServiceInvoiceCreatePayload {
+  include_quotations: boolean
+  quotation_ids?: number[]
+  tax_amount?: number
+  discount_amount?: number
+  due_date?: string | null
+  payment_method?: string | null
+  notes?: string
+}
+
+export interface ServiceInvoiceUpdatePayload {
+  amount_paid?: number
+  due_date?: string
+  status?: string
+  payment_method?: string | null
+  notes?: string
+}
+
 // ── Quotation ───────────────────────────────────────────────────────────────
 
 export interface ServiceRequestQuotation {
@@ -255,6 +327,29 @@ export const clockOutServiceRequest = async (id: number, data: ServiceRequestClo
 
 export const addServiceRequestNote = async (id: number, note: string): Promise<ServiceRequest> => {
   const res = await apiClient.post(`/service-requests/${id}/notes`, { note })
+  return res.data
+}
+
+export const fetchServiceInvoices = async (
+  params: { status?: string } = {}
+): Promise<{ items: ServiceInvoice[]; total: number }> => {
+  const res = await apiClient.get('/service-requests/invoices', { params })
+  return res.data
+}
+
+export const generateServiceInvoice = async (
+  requestId: number,
+  data: ServiceInvoiceCreatePayload
+): Promise<ServiceInvoice> => {
+  const res = await apiClient.post(`/service-requests/${requestId}/generate-invoice`, data)
+  return res.data
+}
+
+export const updateServiceInvoice = async (
+  invoiceId: number,
+  data: ServiceInvoiceUpdatePayload
+): Promise<ServiceInvoice> => {
+  const res = await apiClient.put(`/service-requests/invoices/${invoiceId}`, data)
   return res.data
 }
 
