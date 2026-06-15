@@ -272,8 +272,9 @@ const ServiceRequestDetail = () => {
     return () => window.clearInterval(timer)
   }, [activeClockStart])
 
+  const parseUTC = (s: string) => new Date(/Z|[+-]\d{2}:/.test(s) ? s : s + 'Z')
   const activeElapsedHours = activeClockStart
-    ? Math.max((nowTick - new Date(activeClockStart).getTime()) / 3600000, 0)
+    ? Math.max((nowTick - parseUTC(activeClockStart).getTime()) / 3600000, 0)
     : 0
 
   const formatElapsedHours = (hours: number) => {
@@ -286,7 +287,8 @@ const ServiceRequestDetail = () => {
 
   const formatDateTime = (d: string | null) => {
     if (!d) return '—'
-    return new Date(d).toLocaleString('en-US', {
+    const utc = /Z|[+-]\d{2}:/.test(d) ? d : d + 'Z'
+    return new Date(utc).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     })

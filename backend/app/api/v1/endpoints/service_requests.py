@@ -1,7 +1,7 @@
 import os
 import uuid
 from typing import Any, Optional
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
@@ -793,7 +793,7 @@ def clock_in_service_request(
     history = list(db_sr.history or [])
     history.append(_history_entry("technician_clock_in", current_user, {
         "session_id": session_id,
-        "clocked_in_at": now.isoformat(),
+        "clocked_in_at": now.isoformat() + "Z",
     }))
     db_sr.history = history
     db.commit()
@@ -832,9 +832,12 @@ def clock_out_service_request(
     if not diagnosis and not work_done and not notes:
         raise HTTPException(status_code=400, detail="Add diagnosis, work done, or notes before clocking out")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     changes = active.get("changes") or {}
-    clocked_in_at = datetime.fromisoformat(changes.get("clocked_in_at") or active.get("timestamp"))
+    clocked_in_str = changes.get("clocked_in_at") or active.get("timestamp")
+    clocked_in_at = datetime.fromisoformat(clocked_in_str)
+    if clocked_in_at.tzinfo is None:
+        clocked_in_at = clocked_in_at.replace(tzinfo=timezone.utc)
     duration_hours = max((now - clocked_in_at).total_seconds() / 3600, 0)
     rounded_hours = Decimal(str(round(duration_hours, 2)))
     existing_hours = Decimal(str(db_sr.time_spent_hours or 0))
