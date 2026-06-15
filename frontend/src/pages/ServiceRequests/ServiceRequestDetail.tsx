@@ -29,6 +29,7 @@ import ImageIcon from '@mui/icons-material/Image'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
 import AssessmentIcon from '@mui/icons-material/Assessment'
+import EditIcon from '@mui/icons-material/Edit'
 import { toast } from 'react-toastify'
 
 import {
@@ -98,6 +99,8 @@ const ServiceRequestDetail = () => {
   const [invoiceTaxAmount, setInvoiceTaxAmount] = useState('0')
   const [invoiceDiscountAmount, setInvoiceDiscountAmount] = useState('0')
   const [invoiceNotes, setInvoiceNotes] = useState('')
+  const [editingTime, setEditingTime] = useState(false)
+  const [editTimeValue, setEditTimeValue] = useState('')
 
 
   const user = useAuthStore(state => state.user)
@@ -235,6 +238,17 @@ const ServiceRequestDetail = () => {
 
   const handleUpdateFlag = (payload: Partial<ServiceRequestUpdate>) => {
     updateMutation.mutate(payload)
+  }
+
+  const handleSaveTime = () => {
+    const newHours = parseFloat(editTimeValue)
+    if (isNaN(newHours) || newHours < 0) {
+      toast.error('Enter a valid number of hours (e.g. 2.5)')
+      return
+    }
+    updateMutation.mutate({ time_spent_hours: Math.round(newHours * 100) / 100 }, {
+      onSuccess: () => setEditingTime(false),
+    })
   }
 
   const activeClockEntry = useMemo(() => {
@@ -694,15 +708,60 @@ const ServiceRequestDetail = () => {
 
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mb: 2 }}>
                 <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
-                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
-                    Saved Total Time
-                  </Typography>
-                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: '1.25rem' }}>
-                    {timeSpentHours.toFixed(2)} hrs
-                  </Typography>
-                  <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
-                    Completed clock-out sessions
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                      Saved Total Time
+                    </Typography>
+                    {canManageServiceBilling && !editingTime && (
+                      <IconButton
+                        size="small"
+                        onClick={() => { setEditTimeValue(timeSpentHours.toFixed(2)); setEditingTime(true) }}
+                        sx={{ p: 0.25, color: '#94A3B8', '&:hover': { color: '#7C3AED' } }}
+                      >
+                        <EditIcon sx={{ fontSize: '0.85rem' }} />
+                      </IconButton>
+                    )}
+                  </Box>
+                  {editingTime ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={editTimeValue}
+                        onChange={(e) => setEditTimeValue(e.target.value)}
+                        inputProps={{ min: 0, step: 0.01 }}
+                        sx={{ width: 90 }}
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTime(); if (e.key === 'Escape') setEditingTime(false) }}
+                      />
+                      <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleSaveTime}
+                        disabled={updateMutation.isPending}
+                        sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => setEditingTime(false)}
+                        sx={{ minWidth: 0, px: 1, py: 0.4, fontSize: '0.75rem' }}
+                      >
+                        Cancel
+                      </Button>
+                    </Box>
+                  ) : (
+                    <>
+                      <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: '1.25rem' }}>
+                        {timeSpentHours.toFixed(2)} hrs
+                      </Typography>
+                      <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
+                        Completed clock-out sessions
+                      </Typography>
+                    </>
+                  )}
                 </Box>
                 <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: activeClockStart ? '#FFFBEB' : '#F0FDF4', border: '1px solid #EEF2F7' }}>
                   <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
@@ -938,14 +997,43 @@ const ServiceRequestDetail = () => {
                 </Typography>
               )}
               <Box sx={{ display: 'flex', gap: 3 }}>
-                {sr.time_spent_hours && (
+                {sr.time_spent_hours != null && (
                   <Box>
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
-                      Time Spent
-                    </Typography>
-                    <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
-                      {sr.time_spent_hours} hrs
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                        Time Spent
+                      </Typography>
+                      {canManageServiceBilling && !editingTime && (
+                        <IconButton
+                          size="small"
+                          onClick={() => { setEditTimeValue(Number(sr.time_spent_hours || 0).toFixed(2)); setEditingTime(true) }}
+                          sx={{ p: 0.25, color: '#9CA3AF', '&:hover': { color: '#7C3AED' } }}
+                        >
+                          <EditIcon sx={{ fontSize: '0.78rem' }} />
+                        </IconButton>
+                      )}
+                    </Box>
+                    {editingTime ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={editTimeValue}
+                          onChange={(e) => setEditTimeValue(e.target.value)}
+                          inputProps={{ min: 0, step: 0.01 }}
+                          sx={{ width: 90 }}
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTime(); if (e.key === 'Escape') setEditingTime(false) }}
+                        />
+                        <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
+                        <Button size="small" variant="contained" onClick={handleSaveTime} disabled={updateMutation.isPending} sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}>Save</Button>
+                        <Button size="small" onClick={() => setEditingTime(false)} sx={{ minWidth: 0, px: 1, py: 0.4, fontSize: '0.75rem' }}>Cancel</Button>
+                      </Box>
+                    ) : (
+                      <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+                        {sr.time_spent_hours} hrs
+                      </Typography>
+                    )}
                   </Box>
                 )}
                 {sr.total_cost && (

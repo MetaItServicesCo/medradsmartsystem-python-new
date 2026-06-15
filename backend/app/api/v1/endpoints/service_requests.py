@@ -591,6 +591,9 @@ def update_service_request(
             changes[field] = {"from": _history_value(before), "to": _history_value(value)}
         setattr(db_sr, field, value)
 
+    if "time_spent_hours" in update_data and "total_cost" not in update_data:
+        db_sr.total_cost = _calculate_service_cost(db_sr)
+
     if changes:
         history = list(db_sr.history or [])
         history.append(_history_entry("status_changed" if "status" in changes else "updated", current_user, changes))

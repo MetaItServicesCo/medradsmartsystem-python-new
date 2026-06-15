@@ -104,7 +104,7 @@ const Sidebar = () => {
     <Box
       sx={{
         width: 72,
-        minHeight: { xs: '100vh', md: 'calc(100vh - 24px)' },
+        height: { xs: '100vh', md: 'calc(100vh - 24px)' },
         background: 'linear-gradient(180deg, #7161D8 0%, #5C4BBC 100%)',
         display: 'flex',
         flexDirection: 'column',
@@ -112,6 +112,7 @@ const Sidebar = () => {
         py: 3,
         gap: 1,
         flexShrink: 0,
+        overflow: 'hidden',
         boxShadow: '0 24px 60px rgba(89,76,190,0.22)',
         position: 'relative',
         zIndex: 10,
@@ -141,7 +142,15 @@ const Sidebar = () => {
       </Box>
 
       {/* Nav items */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, width: '100%', px: 1.5 }}>
+      <Box sx={{
+        display: 'flex', flexDirection: 'column', gap: 1, flex: 1, width: '100%', px: 1.5,
+        overflowY: 'auto', minHeight: 0,
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'rgba(255,255,255,0.2) transparent',
+        '&::-webkit-scrollbar': { width: '3px' },
+        '&::-webkit-scrollbar-track': { background: 'transparent' },
+        '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.2)', borderRadius: '3px' },
+      }}>
         {menuItems.map((item) => {
           const active = isActive(item.path, item.subItems)
           return (
