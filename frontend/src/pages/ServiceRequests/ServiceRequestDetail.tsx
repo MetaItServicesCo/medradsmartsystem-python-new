@@ -33,6 +33,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import { toast } from 'react-toastify'
 
 import {
+  adjustActiveSession,
   clockInServiceRequest,
   clockOutServiceRequest,
   fetchServiceRequest,
@@ -101,6 +102,8 @@ const ServiceRequestDetail = () => {
   const [invoiceNotes, setInvoiceNotes] = useState('')
   const [editingTime, setEditingTime] = useState(false)
   const [editTimeValue, setEditTimeValue] = useState('')
+  const [editingSession, setEditingSession] = useState(false)
+  const [editSessionValue, setEditSessionValue] = useState('')
 
 
   const user = useAuthStore(state => state.user)
@@ -163,6 +166,18 @@ const ServiceRequestDetail = () => {
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Clock out failed')
+    },
+  })
+
+  const adjustSessionMutation = useMutation({
+    mutationFn: (hours: number) => adjustActiveSession(Number(id), hours),
+    onSuccess: () => {
+      setNowTick(Date.now())
+      setEditingSession(false)
+      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to adjust session time')
     },
   })
 
@@ -766,15 +781,71 @@ const ServiceRequestDetail = () => {
                   )}
                 </Box>
                 <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: activeClockStart ? '#FFFBEB' : '#F0FDF4', border: '1px solid #EEF2F7' }}>
-                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
-                    Current Session
-                  </Typography>
-                  <Typography sx={{ fontWeight: 950, color: activeClockStart ? '#B45309' : '#047857', fontSize: '1.25rem' }}>
-                    {activeClockStart ? formatElapsedHours(activeElapsedHours) : 'Not active'}
-                  </Typography>
-                  <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
-                    {activeClockStart ? `${activeElapsedHours.toFixed(2)} hrs will save on clock-out` : 'Starts fresh at clock-in'}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                      Current Session
+                    </Typography>
+                    {canManageServiceBilling && activeClockStart && !editingSession && (
+                      <IconButton
+                        size="small"
+                        onClick={() => { setEditSessionValue(activeElapsedHours.toFixed(2)); setEditingSession(true) }}
+                        sx={{ p: 0.25, color: '#94A3B8', '&:hover': { color: '#B45309' } }}
+                      >
+                        <EditIcon sx={{ fontSize: '0.85rem' }} />
+                      </IconButton>
+                    )}
+                  </Box>
+                  {editingSession ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={editSessionValue}
+                        onChange={(e) => setEditSessionValue(e.target.value)}
+                        inputProps={{ min: 0, step: 0.01 }}
+                        sx={{ width: 90 }}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const h = parseFloat(editSessionValue)
+                            if (!isNaN(h) && h >= 0) adjustSessionMutation.mutate(h)
+                            else toast.error('Enter a valid number of hours')
+                          }
+                          if (e.key === 'Escape') setEditingSession(false)
+                        }}
+                      />
+                      <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => {
+                          const h = parseFloat(editSessionValue)
+                          if (!isNaN(h) && h >= 0) adjustSessionMutation.mutate(h)
+                          else toast.error('Enter a valid number of hours')
+                        }}
+                        disabled={adjustSessionMutation.isPending}
+                        sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#B45309', '&:hover': { bgcolor: '#92400E' } }}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => setEditingSession(false)}
+                        sx={{ minWidth: 0, px: 1, py: 0.4, fontSize: '0.75rem' }}
+                      >
+                        Cancel
+                      </Button>
+                    </Box>
+                  ) : (
+                    <>
+                      <Typography sx={{ fontWeight: 950, color: activeClockStart ? '#B45309' : '#047857', fontSize: '1.25rem' }}>
+                        {activeClockStart ? formatElapsedHours(activeElapsedHours) : 'Not active'}
+                      </Typography>
+                      <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
+                        {activeClockStart ? `${activeElapsedHours.toFixed(2)} hrs will save on clock-out` : 'Starts fresh at clock-in'}
+                      </Typography>
+                    </>
+                  )}
                 </Box>
               </Box>
 

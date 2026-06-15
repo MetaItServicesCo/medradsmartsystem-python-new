@@ -813,6 +813,63 @@ def clock_in_service_request(
     )
 
 
+class ActiveSessionAdjust(BaseModel):
+    session_hours: float
+
+
+@router.patch("/{request_id}/active-session", response_model=ServiceRequestResponse)
+def adjust_active_session(
+    request_id: int,
+    body: ActiveSessionAdjust,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Admin-only: adjust the effective start time of the active clock session."""
+    if current_user.role not in [
+        UserRole.SUPERADMIN, UserRole.ADMIN,
+        UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER,
+    ]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
+    if not db_sr:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    history = list(db_sr.history or [])
+    active_idx = None
+    for i in range(len(history) - 1, -1, -1):
+        action = history[i].get("action")
+        if action == "technician_clock_out":
+            break
+        if action == "technician_clock_in":
+            active_idx = i
+            break
+
+    if active_idx is None:
+        raise HTTPException(status_code=400, detail="No active clock session found")
+
+    hours = max(float(body.session_hours), 0)
+    new_start = datetime.now(timezone.utc) - timedelta(hours=hours)
+    history[active_idx]["changes"]["clocked_in_at"] = new_start.isoformat()
+    db_sr.history = history
+    db.commit()
+    db.refresh(db_sr)
+
+    return _enrich(
+        db.query(ServiceRequest)
+        .options(
+            joinedload(ServiceRequest.facility),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+            joinedload(ServiceRequest.requester),
+            joinedload(ServiceRequest.assigned_technician),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+        )
+        .filter(ServiceRequest.id == db_sr.id)
+        .first()
+    )
+
+
 @router.post("/{request_id}/clock-out", response_model=ServiceRequestResponse)
 def clock_out_service_request(
     request_id: int,

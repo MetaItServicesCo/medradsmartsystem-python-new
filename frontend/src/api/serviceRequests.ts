@@ -325,6 +325,11 @@ export const clockOutServiceRequest = async (id: number, data: ServiceRequestClo
   return res.data
 }
 
+export const adjustActiveSession = async (id: number, sessionHours: number): Promise<ServiceRequest> => {
+  const res = await apiClient.patch(`/service-requests/${id}/active-session`, { session_hours: sessionHours })
+  return res.data
+}
+
 export const addServiceRequestNote = async (id: number, note: string): Promise<ServiceRequest> => {
   const res = await apiClient.post(`/service-requests/${id}/notes`, { note })
   return res.data
