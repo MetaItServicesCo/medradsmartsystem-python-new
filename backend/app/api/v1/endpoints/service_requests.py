@@ -1,3 +1,4 @@
+import copy
 import os
 import uuid
 from typing import Any, Optional
@@ -6,6 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app import crud
 from app.core.deps import get_current_user, get_admin_user
@@ -850,8 +852,10 @@ def adjust_active_session(
 
     hours = max(float(body.session_hours), 0)
     new_start = datetime.now(timezone.utc) - timedelta(hours=hours)
+    history = copy.deepcopy(db_sr.history or [])
     history[active_idx]["changes"]["clocked_in_at"] = new_start.isoformat()
     db_sr.history = history
+    flag_modified(db_sr, "history")
     db.commit()
     db.refresh(db_sr)
 

@@ -171,10 +171,10 @@ const ServiceRequestDetail = () => {
 
   const adjustSessionMutation = useMutation({
     mutationFn: (hours: number) => adjustActiveSession(Number(id), hours),
-    onSuccess: () => {
+    onSuccess: (updatedSr) => {
+      queryClient.setQueryData(['service-request', id], updatedSr)
       setNowTick(Date.now())
       setEditingSession(false)
-      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Failed to adjust session time')
