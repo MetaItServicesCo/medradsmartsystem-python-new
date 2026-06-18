@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, Menu, MenuItem, Select, Skeleton, Tab, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Typography,
+  TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
@@ -21,6 +21,7 @@ import SaveIcon from '@mui/icons-material/Save'
 import EventAvailableIcon from '@mui/icons-material/EventAvailable'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import AssessmentIcon from '@mui/icons-material/Assessment'
+import PrintIcon from '@mui/icons-material/Print'
 import { toast } from 'react-toastify'
 
 import {
@@ -94,7 +95,71 @@ const escapeHtml = (value: unknown) => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#039;')
 
-const printInspectionReport = (inspection: Inspection) => {
+// ─── Print CSS ───────────────────────────────────────────────────────────────
+
+const REPORT_CSS = `
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #eef2f7; color: #111827; font-family: Arial, sans-serif; }
+  .sheet { width: 8.5in; min-height: 11in; margin: 24px auto; background: #fff; box-shadow: 0 20px 60px rgba(15,23,42,0.16); overflow: hidden; }
+  .page-break { page-break-after: always; }
+  .hero { display: flex; justify-content: space-between; gap: 24px; padding: 30px 38px; color: #fff; background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%); }
+  .brand { display: flex; gap: 16px; align-items: center; font-size: 22px; font-weight: 900; }
+  .brand img { width: 116px; height: 76px; object-fit: contain; background: #fff; border-radius: 14px; padding: 8px; }
+  .hero h1 { margin: 0; text-align: right; font-size: 30px; }
+  .hero .sub { margin-top: 8px; color: rgba(255,255,255,0.84); text-align: right; font-weight: 700; }
+  .content { padding: 34px 38px 38px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+  .box { border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px; background: #F8FAFC; }
+  .box small { display: block; color: #64748B; font-weight: 900; text-transform: uppercase; margin-bottom: 6px; }
+  .box strong { color: #1E1B4B; }
+  .section { border: 1px solid #E5E7EB; border-radius: 16px; padding: 18px; margin-top: 16px; page-break-inside: avoid; }
+  h2 { margin: 0 0 12px; color: #1E1B4B; font-size: 18px; }
+  h3 { margin: 18px 0 8px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #E5E7EB; border-radius: 14px; overflow: hidden; margin-top: 10px; font-size: 12px; }
+  th { text-align: left; background: #F5F3FF; color: #334155; padding: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+  td { border-top: 1px solid #EEF2F7; padding: 10px; vertical-align: top; }
+  tfoot td { font-weight: 900; }
+  .right { text-align: right; }
+  .amount { color: #047857; font-weight: 900; }
+  .total-row td { background: #F0FDF4; color: #047857; font-size: 14px; }
+  .bal-row td { background: #FEF2F2; color: #DC2626; }
+  .status { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #EEF2FF; color: #4F46E5; font-weight: 900; text-transform: capitalize; }
+  .status.pass, .status.yes, .status.completed { background: #ECFDF5; color: #047857; }
+  .status.fail, .status.no { background: #FEF2F2; color: #B91C1C; }
+  .status.na, .status.n\\/a { background: #F1F5F9; color: #475569; }
+  .status.paid { background: #ECFDF5; color: #047857; }
+  .status.overdue, .status.cancelled { background: #FEF2F2; color: #B91C1C; }
+  .summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+  .pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
+  .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; }
+  @media print {
+    body { background: #fff; }
+    .sheet { margin: 0; width: 100%; box-shadow: none; }
+    .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .total-row td, .bal-row td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+`
+
+const openPrintFrame = (title: string, body: string) => {
+  const frame = document.createElement('iframe')
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+  document.body.appendChild(frame)
+  const doc = frame.contentWindow?.document
+  if (!doc) return
+  doc.open()
+  doc.write(`<!doctype html><html><head><title>${escapeHtml(title)}</title><style>${REPORT_CSS}</style></head><body>${body}</body></html>`)
+  doc.close()
+  frame.onload = () => {
+    frame.contentWindow?.focus()
+    frame.contentWindow?.print()
+    window.setTimeout(() => frame.remove(), 800)
+  }
+}
+
+const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): string => {
   const rawInspection = inspection as any
   const data = inspection.form_data || makeReport(inspection)
   const checks = Object.entries(data.checks || {})
@@ -142,135 +207,158 @@ const printInspectionReport = (inspection: Inspection) => {
     </tr>
   `).join('') : '<tr><td colspan="3">No test equipment recorded.</td></tr>'
 
-  const frame = document.createElement('iframe')
-  frame.style.position = 'fixed'
-  frame.style.right = '0'
-  frame.style.bottom = '0'
-  frame.style.width = '0'
-  frame.style.height = '0'
-  frame.style.border = '0'
-  document.body.appendChild(frame)
+  return `
+    <main class="sheet">
+      <section class="hero">
+        <div class="brand">
+          <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
+          <div>Mr. BioMed Tech Services<br><span style="font-size:12px;color:rgba(255,255,255,0.82)">Biomedical Equipment Repair &amp; Rental Services</span></div>
+        </div>
+        <div>
+          <h1>Inspection Report</h1>
+          <div class="sub">${escapeHtml(inspection.inspection_number)} - ${escapeHtml(inspection.asset_name || inspection.equipment_name || 'Asset')}</div>
+          ${batchNumber ? `<div class="sub" style="font-size:12px">Batch: ${escapeHtml(batchNumber)}</div>` : ''}
+        </div>
+      </section>
+      <section class="content">
+        <div class="grid">
+          <div class="box"><small>Facility</small><strong>${escapeHtml(inspection.facility_name || '-')}</strong></div>
+          <div class="box"><small>Asset</small><strong>${escapeHtml(inspection.asset_name || data.identity?.description || '-')}</strong></div>
+          <div class="box"><small>Serial #</small><strong>${escapeHtml(inspection.serial_number || data.identity?.serial_number || '-')}</strong></div>
+          <div class="box"><small>Result</small><strong>${escapeHtml(inspection.result || '-')}</strong></div>
+        </div>
+        <div class="grid">
+          <div class="box"><small>Make / Model</small><strong>${escapeHtml([inspection.make || data.identity?.make, inspection.model || data.identity?.model].filter(Boolean).join(' ') || '-')}</strong></div>
+          <div class="box"><small>Tier</small><strong>${escapeHtml(inspection.tier_name || '-')}</strong></div>
+          <div class="box"><small>Technician</small><strong>${escapeHtml(inspection.inspector_name || data.dates?.inspected_by || '-')}</strong></div>
+          <div class="box"><small>Completed</small><strong>${escapeHtml(formatDate(inspection.completed_at || data.dates?.inspection_date))}</strong></div>
+        </div>
+        <section class="section">
+          <h2>Inspection Checks</h2>
+          <table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody>${checkRows}</tbody></table>
+        </section>
+        <section class="section">
+          <h2>Diagnostics</h2>
+          <h3>Reported Problem</h3><p>${escapeHtml(data.diagnostics?.reported_problem || '-')}</p>
+          <h3>Problem Found</h3><p>${escapeHtml(data.diagnostics?.problem_found || '-')}</p>
+          <h3>Summary</h3><p>${escapeHtml(data.diagnostics?.summary || '-')}</p>
+          <h3>Corrective Action</h3><p>${escapeHtml(inspection.corrective_actions || data.diagnostics?.corrective_action_taken || '-')}</p>
+        </section>
+        <section class="section">
+          <h2>Measurements</h2>
+          <table><thead><tr><th>Name</th><th>Set</th><th>Read</th><th>Unit</th><th>Status</th><th>Notes</th></tr></thead><tbody>${measurementRows}</tbody></table>
+        </section>
+        <section class="section">
+          <h2>Parts Used</h2>
+          <table><thead><tr><th>Part #</th><th>Description</th><th>Condition</th><th class="right">Amount</th></tr></thead><tbody>${partRows}</tbody></table>
+        </section>
+        <section class="section">
+          <h2>Test Equipment</h2>
+          <table><thead><tr><th>Description</th><th>Make</th><th>Serial #</th></tr></thead><tbody>${testEquipmentRows}</tbody></table>
+        </section>
+        <section class="section">
+          <h2>Compliance &amp; Billing</h2>
+          <h3>Certification</h3><p>${escapeHtml(data.compliance?.certified || '-')}</p>
+          <h3>Standard</h3><p>${escapeHtml(data.compliance?.standard || '-')}</p>
+          <h3>Recommendations</h3><p>${escapeHtml(data.compliance?.recommendations || '-')}</p>
+          <div class="summary">
+            <span class="pill">Parts: ${escapeHtml(money(data.billing?.parts || rawInspection.parts_amount || 0))}</span>
+            <span class="pill">Inspection: ${escapeHtml(money(data.billing?.inspection_charges || rawInspection.inspection_charge || 0))}</span>
+            <span class="pill">Other: ${escapeHtml(money(data.billing?.others || rawInspection.other_charges || 0))}</span>
+            <span class="pill">Total: ${escapeHtml(money(billingTotal))}</span>
+            <span class="pill">Invoice: ${escapeHtml(inspection.invoice?.invoice_number || 'Pending')}</span>
+          </div>
+        </section>
+        <section class="footer">
+          <span>Mr. BioMed Tech Services</span>
+          <span>Generated from Medrad Admin Panel</span>
+        </section>
+      </section>
+    </main>
+  `
+}
 
-  const doc = frame.contentWindow?.document
-  if (!doc) return
-  doc.open()
-  doc.write(`<!doctype html>
-    <html>
-      <head>
-        <title>${escapeHtml(inspection.inspection_number)} Inspection Report</title>
-        <style>
-          * { box-sizing: border-box; }
-          body { margin: 0; background: #eef2f7; color: #111827; font-family: Arial, sans-serif; }
-          .sheet { width: 8.5in; min-height: 11in; margin: 24px auto; background: #fff; box-shadow: 0 20px 60px rgba(15,23,42,0.16); overflow: hidden; }
-          .hero { display: flex; justify-content: space-between; gap: 24px; padding: 30px 38px; color: #fff; background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%); }
-          .brand { display: flex; gap: 16px; align-items: center; font-size: 22px; font-weight: 900; }
-          .brand img { width: 116px; height: 76px; object-fit: contain; background: #fff; border-radius: 14px; padding: 8px; }
-          .hero h1 { margin: 0; text-align: right; font-size: 30px; }
-          .hero .sub { margin-top: 8px; color: rgba(255,255,255,0.84); text-align: right; font-weight: 700; }
-          .content { padding: 34px 38px 38px; }
-          .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-          .box { border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px; background: #F8FAFC; }
-          .box small { display: block; color: #64748B; font-weight: 900; text-transform: uppercase; margin-bottom: 6px; }
-          .box strong { color: #1E1B4B; }
-          .section { border: 1px solid #E5E7EB; border-radius: 16px; padding: 18px; margin-top: 16px; page-break-inside: avoid; }
-          h2 { margin: 0 0 12px; color: #1E1B4B; font-size: 18px; }
-          h3 { margin: 18px 0 8px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
-          p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
-          table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #E5E7EB; border-radius: 14px; overflow: hidden; margin-top: 10px; font-size: 12px; }
-          th { text-align: left; background: #F5F3FF; color: #334155; padding: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
-          td { border-top: 1px solid #EEF2F7; padding: 10px; vertical-align: top; }
-          .right { text-align: right; }
-          .amount { color: #047857; font-weight: 900; }
-          .status { display: inline-block; padding: 5px 9px; border-radius: 999px; background: #EEF2FF; color: #4F46E5; font-weight: 900; text-transform: capitalize; }
-          .status.pass, .status.yes, .status.completed { background: #ECFDF5; color: #047857; }
-          .status.fail, .status.no { background: #FEF2F2; color: #B91C1C; }
-          .status.na, .status.n\\/a { background: #F1F5F9; color: #475569; }
-          .summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
-          .pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
-          .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; }
-          @media print {
-            body { background: #fff; }
-            .sheet { margin: 0; width: 100%; box-shadow: none; }
-            .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          }
-        </style>
-      </head>
-      <body>
-        <main class="sheet">
-          <section class="hero">
-            <div class="brand">
-              <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
-              <div>Mr. BioMed Tech Services<br><span style="font-size:12px;color:rgba(255,255,255,0.82)">Biomedical Equipment Repair & Rental Services</span></div>
-            </div>
-            <div>
-              <h1>Inspection Report</h1>
-              <div class="sub">${escapeHtml(inspection.inspection_number)} - ${escapeHtml(inspection.asset_name || inspection.equipment_name || 'Asset')}</div>
-            </div>
-          </section>
-          <section class="content">
-            <div class="grid">
-              <div class="box"><small>Facility</small><strong>${escapeHtml(inspection.facility_name || '-')}</strong></div>
-              <div class="box"><small>Asset</small><strong>${escapeHtml(inspection.asset_name || data.identity?.description || '-')}</strong></div>
-              <div class="box"><small>Serial #</small><strong>${escapeHtml(inspection.serial_number || data.identity?.serial_number || '-')}</strong></div>
-              <div class="box"><small>Result</small><strong>${escapeHtml(inspection.result || '-')}</strong></div>
-            </div>
-            <div class="grid">
-              <div class="box"><small>Make / Model</small><strong>${escapeHtml([inspection.make || data.identity?.make, inspection.model || data.identity?.model].filter(Boolean).join(' ') || '-')}</strong></div>
-              <div class="box"><small>Tier</small><strong>${escapeHtml(inspection.tier_name || '-')}</strong></div>
-              <div class="box"><small>Technician</small><strong>${escapeHtml(inspection.inspector_name || data.dates?.inspected_by || '-')}</strong></div>
-              <div class="box"><small>Completed</small><strong>${escapeHtml(formatDate(inspection.completed_at || data.dates?.inspection_date))}</strong></div>
-            </div>
-            <section class="section">
-              <h2>Inspection Checks</h2>
-              <table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody>${checkRows}</tbody></table>
-            </section>
-            <section class="section">
-              <h2>Diagnostics</h2>
-              <h3>Reported Problem</h3><p>${escapeHtml(data.diagnostics?.reported_problem || '-')}</p>
-              <h3>Problem Found</h3><p>${escapeHtml(data.diagnostics?.problem_found || '-')}</p>
-              <h3>Summary</h3><p>${escapeHtml(data.diagnostics?.summary || '-')}</p>
-              <h3>Corrective Action</h3><p>${escapeHtml(inspection.corrective_actions || data.diagnostics?.corrective_action_taken || '-')}</p>
-            </section>
-            <section class="section">
-              <h2>Measurements</h2>
-              <table><thead><tr><th>Name</th><th>Set</th><th>Read</th><th>Unit</th><th>Status</th><th>Notes</th></tr></thead><tbody>${measurementRows}</tbody></table>
-            </section>
-            <section class="section">
-              <h2>Parts Used</h2>
-              <table><thead><tr><th>Part #</th><th>Description</th><th>Condition</th><th class="right">Amount</th></tr></thead><tbody>${partRows}</tbody></table>
-            </section>
-            <section class="section">
-              <h2>Test Equipment</h2>
-              <table><thead><tr><th>Description</th><th>Make</th><th>Serial #</th></tr></thead><tbody>${testEquipmentRows}</tbody></table>
-            </section>
-            <section class="section">
-              <h2>Compliance & Billing</h2>
-              <h3>Certification</h3><p>${escapeHtml(data.compliance?.certified || '-')}</p>
-              <h3>Standard</h3><p>${escapeHtml(data.compliance?.standard || '-')}</p>
-              <h3>Recommendations</h3><p>${escapeHtml(data.compliance?.recommendations || '-')}</p>
-              <div class="summary">
-                <span class="pill">Parts: ${escapeHtml(money(data.billing?.parts || rawInspection.parts_amount || 0))}</span>
-                <span class="pill">Inspection: ${escapeHtml(money(data.billing?.inspection_charges || rawInspection.inspection_charge || 0))}</span>
-                <span class="pill">Other: ${escapeHtml(money(data.billing?.others || rawInspection.other_charges || 0))}</span>
-                <span class="pill">Total: ${escapeHtml(money(billingTotal))}</span>
-                <span class="pill">Invoice: ${escapeHtml(inspection.invoice?.invoice_number || 'Pending')}</span>
-              </div>
-            </section>
-            <section class="footer">
-              <span>Mr. BioMed Tech Services</span>
-              <span>Generated from Medrad Admin Panel</span>
-            </section>
-          </section>
-        </main>
-      </body>
-    </html>`)
-  doc.close()
-  frame.onload = () => {
-    frame.contentWindow?.focus()
-    frame.contentWindow?.print()
-    window.setTimeout(() => frame.remove(), 800)
-  }
+const printInspectionReport = (inspection: Inspection) => {
+  openPrintFrame(
+    `${inspection.inspection_number} Inspection Report`,
+    buildReportSheetHtml(inspection),
+  )
+}
+
+const printBatchReport = (batch: InspectionBatch) => {
+  const assets = batch.assets || []
+  if (!assets.length) { toast.info('No assets in this batch.'); return }
+  const body = assets.map((asset, i) => {
+    const html = buildReportSheetHtml(asset, batch.batch_number)
+    return i < assets.length - 1 ? html.replace('<main class="sheet">', '<main class="sheet page-break">') : html
+  }).join('')
+  openPrintFrame(`${batch.batch_number} Batch Inspection Report`, body)
+}
+
+const buildInvoiceSheetHtml = (invoice: InspectionInvoice, pageBreak = false): string => {
+  const travel = Number(invoice.travel_charges || 0)
+  const service = Number(invoice.service_charges || 0)
+  return `
+    <main class="sheet${pageBreak ? ' page-break' : ''}">
+      <section class="hero" style="background:linear-gradient(135deg,#2563EB 0%,#4F46E5 55%,#7C3AED 100%)">
+        <div class="brand">
+          <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
+          <div>Mr. BioMed Tech Services<br><span style="font-size:12px;color:rgba(255,255,255,0.82)">Biomedical Equipment Repair &amp; Rental Services</span></div>
+        </div>
+        <div>
+          <h1>Inspection Invoice</h1>
+          <div class="sub">${escapeHtml(invoice.invoice_number)}</div>
+          ${invoice.inspection_number ? `<div class="sub" style="font-size:12px">Inspection: ${escapeHtml(invoice.inspection_number)}</div>` : ''}
+        </div>
+      </section>
+      <section class="content">
+        <div class="grid2">
+          <div class="box"><small>Bill To</small><strong>${escapeHtml(invoice.customer_name || '-')}</strong><div style="color:#64748B;font-size:12px;margin-top:4px">${escapeHtml(invoice.customer_email || '')}</div></div>
+          <div class="box"><small>Facility</small><strong>${escapeHtml(invoice.facility_name || '-')}</strong></div>
+          <div class="box"><small>Issue Date</small><strong>${escapeHtml(formatDate(invoice.issue_date))}</strong></div>
+          <div class="box"><small>Due Date</small><strong>${escapeHtml(formatDate(invoice.due_date))}</strong></div>
+        </div>
+        <table>
+          <thead><tr><th>Description</th><th>Item</th><th class="right">Amount</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Inspection Service${invoice.inspection_number ? ` — ${escapeHtml(invoice.inspection_number)}` : ''}</td>
+              <td>${escapeHtml(invoice.inventory_part_name || '-')}</td>
+              <td class="right amount">${escapeHtml(money(invoice.subtotal))}</td>
+            </tr>
+            ${travel > 0 ? `<tr><td>Travel Charges</td><td>—</td><td class="right amount">${escapeHtml(money(travel))}</td></tr>` : ''}
+            ${service > 0 ? `<tr><td>Service Charges</td><td>—</td><td class="right amount">${escapeHtml(money(service))}</td></tr>` : ''}
+            ${Number(invoice.tax_amount || 0) > 0 ? `<tr><td>Tax</td><td>—</td><td class="right">${escapeHtml(money(invoice.tax_amount))}</td></tr>` : ''}
+            ${Number(invoice.discount_amount || 0) > 0 ? `<tr><td>Discount</td><td>—</td><td class="right">-${escapeHtml(money(invoice.discount_amount))}</td></tr>` : ''}
+          </tbody>
+          <tfoot>
+            <tr class="total-row"><td colspan="2" class="right">Total</td><td class="right">${escapeHtml(money(invoice.total_amount))}</td></tr>
+            <tr><td colspan="2" class="right" style="color:#64748B">Amount Paid</td><td class="right" style="color:#2563EB;font-weight:900">${escapeHtml(money(invoice.amount_paid))}</td></tr>
+            <tr class="bal-row"><td colspan="2" class="right">Balance Due</td><td class="right">${escapeHtml(money(invoice.balance_due))}</td></tr>
+          </tfoot>
+        </table>
+        <div style="margin-top:20px;display:flex;gap:12px;align-items:center">
+          <span class="status ${escapeHtml(invoice.status)}">${escapeHtml(invoice.status)}</span>
+          ${invoice.notes ? `<span style="color:#64748B;font-size:13px">${escapeHtml(invoice.notes)}</span>` : ''}
+        </div>
+        <div class="footer">
+          <span>Mr. BioMed Tech Services</span>
+          <span>Generated from Medrad Admin Panel</span>
+        </div>
+      </section>
+    </main>
+  `
+}
+
+const printInspectionInvoice = (invoice: InspectionInvoice) => {
+  openPrintFrame(`${invoice.invoice_number} Inspection Invoice`, buildInvoiceSheetHtml(invoice))
+}
+
+const printBatchInvoices = (batch: InspectionBatch) => {
+  const invoices = (batch.assets || []).filter(a => a.invoice).map(a => a.invoice!)
+  if (!invoices.length) { toast.info('No invoices in this batch yet.'); return }
+  const body = invoices.map((inv, i) => buildInvoiceSheetHtml(inv, i < invoices.length - 1)).join('')
+  openPrintFrame(`${batch.batch_number} Batch Invoices`, body)
 }
 
 const makeReport = (inspection: Inspection) => ({
@@ -784,14 +872,48 @@ const Inspections = () => {
                 </TableCell>
                 <TableCell>{formatDate(mode === 'completed' ? batch.completed_at : (batch.started_at || batch.scheduled_date))}</TableCell>
                 <TableCell align="right">
-                  <Button
-                    startIcon={<AssessmentIcon />}
-                    variant="contained"
-                    onClick={() => setSelectedBatchId(batch.id)}
-                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
-                  >
-                    {mode === 'completed' ? 'View' : 'View Batch'}
-                  </Button>
+                  <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center' }}>
+                    {mode === 'completed' && (
+                      <>
+                        <Tooltip title="Print All Reports">
+                          <IconButton
+                            size="small"
+                            onClick={async () => {
+                              try {
+                                const detail = await fetchInspectionBatch(batch.id)
+                                printBatchReport(detail)
+                              } catch { toast.error('Could not load batch') }
+                            }}
+                            sx={{ bgcolor: '#EEF2FF', color: '#4F46E5', '&:hover': { bgcolor: '#E0E7FF' } }}
+                          >
+                            <AssessmentIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Print All Invoices">
+                          <IconButton
+                            size="small"
+                            onClick={async () => {
+                              try {
+                                const detail = await fetchInspectionBatch(batch.id)
+                                printBatchInvoices(detail)
+                              } catch { toast.error('Could not load batch') }
+                            }}
+                            sx={{ bgcolor: '#F0FDF4', color: '#059669', '&:hover': { bgcolor: '#DCFCE7' } }}
+                          >
+                            <PrintIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </>
+                    )}
+                    <Button
+                      startIcon={<AssessmentIcon />}
+                      variant="contained"
+                      onClick={() => setSelectedBatchId(batch.id)}
+                      sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+                    >
+                      {mode === 'completed' ? 'View' : 'View Batch'}
+                    </Button>
+                  </Box>
                 </TableCell>
               </TableRow>
             )
@@ -1069,6 +1191,9 @@ const Inspections = () => {
                         {highlighted && (
                           <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
                         )}
+                        <Button startIcon={<PrintIcon />} variant="outlined" onClick={() => printInspectionInvoice(invoice)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, mr: 1 }}>
+                          Print
+                        </Button>
                         <Button startIcon={<EditIcon />} variant="outlined" onClick={() => setInvoiceEdit(invoice)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                           Edit
                         </Button>
@@ -1231,7 +1356,29 @@ const Inspections = () => {
             <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Batch not found.</Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
+        <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+          {selectedBatch && (
+            <>
+              <Button
+                startIcon={<AssessmentIcon />}
+                variant="outlined"
+                onClick={() => printBatchReport(selectedBatch)}
+                disabled={!selectedBatch.assets?.length}
+                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+              >
+                Print All Reports
+              </Button>
+              <Button
+                startIcon={<PrintIcon />}
+                variant="outlined"
+                onClick={() => printBatchInvoices(selectedBatch)}
+                disabled={!selectedBatch.assets?.some(a => a.invoice)}
+                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: '#059669', borderColor: '#059669', '&:hover': { borderColor: '#047857', bgcolor: '#F0FDF4' } }}
+              >
+                Print All Invoices
+              </Button>
+            </>
+          )}
           <Button onClick={() => setSelectedBatchId(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Close</Button>
         </DialogActions>
       </Dialog>
