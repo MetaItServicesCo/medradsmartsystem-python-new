@@ -154,6 +154,17 @@ canvas {
   scrollbar-gutter: stable;
 }
 
+/* Remove spinner arrows from all number inputs — manual entry only */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 .MuiInputBase-input::placeholder {
   color: #94A3B8;
   opacity: 1;

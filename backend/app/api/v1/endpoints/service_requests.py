@@ -64,6 +64,8 @@ class ServiceInvoiceCreate(BaseModel):
     due_date: Optional[date] = None
     payment_method: Optional[str] = None
     notes: Optional[str] = None
+    travel_charges: Decimal = Decimal("0")
+    labor_fee_override: Optional[Decimal] = None
 
 
 class ServiceInvoiceUpdate(BaseModel):
@@ -182,6 +184,33 @@ def _facility_billing_address(facility: Optional[Facility]) -> Optional[str]:
     return billing_address or facility.address
 
 
+def _parse_fee_notes(notes: Optional[str]) -> tuple[Optional[Decimal], Optional[Decimal]]:
+    """Parse __FEES__:labor=X,travel=Y:: prefix. Returns (labor_override, travel_charges)."""
+    if not notes or not notes.startswith("__FEES__:"):
+        return None, None
+    fee_part, _, _ = notes[len("__FEES__:"):].partition("::")
+    labor: Optional[Decimal] = None
+    travel: Optional[Decimal] = None
+    for kv in fee_part.split(","):
+        k, _, v = kv.partition("=")
+        try:
+            if k.strip() == "labor":
+                labor = _money(v.strip())
+            elif k.strip() == "travel":
+                travel = _money(v.strip())
+        except Exception:
+            pass
+    return labor, travel
+
+
+def _strip_fee_prefix(notes: Optional[str]) -> Optional[str]:
+    """Remove __FEES__:..:: prefix from stored notes before returning to client."""
+    if not notes or not notes.startswith("__FEES__:"):
+        return notes
+    _, _, rest = notes.partition("::")
+    return rest or None
+
+
 def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
     sr = invoice.service_request
     if not sr:
@@ -189,7 +218,8 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     hours = _money(sr.time_spent_hours).quantize(Decimal("0.01"))
     labor_rate = _service_labor_rate(sr)
-    labor_total = _calculate_service_cost(sr)
+    labor_override, travel_override = _parse_fee_notes(invoice.notes)
+    labor_total = labor_override if labor_override is not None else _calculate_service_cost(sr)
     rows.append({
         "item_number": sr.request_number,
         "description": f"Service labor - {sr.equipment.make} {sr.equipment.model}" if sr.equipment else "Service labor",
@@ -200,6 +230,17 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
         "condition": None,
         "total_amount": labor_total,
     })
+    if travel_override is not None and travel_override > Decimal("0"):
+        rows.append({
+            "item_number": sr.request_number,
+            "description": "Travel Charges",
+            "quantity": Decimal("1"),
+            "unit_price": travel_override,
+            "shipping_fee": Decimal("0"),
+            "setup_fee": Decimal("0"),
+            "condition": None,
+            "total_amount": travel_override,
+        })
 
     for quotation in sr.quotations or []:
         if quotation.status != "included_in_invoice":
@@ -254,7 +295,7 @@ def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
         "issue_date": invoice.issue_date,
         "due_date": invoice.due_date,
         "payment_method": invoice.payment_method,
-        "notes": invoice.notes,
+        "notes": _strip_fee_prefix(invoice.notes),
         "created_at": invoice.created_at,
         "updated_at": invoice.updated_at,
         "transactions": [transaction_response(item) for item in invoice.transactions or []],
@@ -707,9 +748,14 @@ def generate_service_invoice(
             if not selected_ids or quotation.id in selected_ids
         ]
 
-    service_amount = _calculate_service_cost(db_sr)
+    service_amount = (
+        _money(payload.labor_fee_override).quantize(Decimal("0.01"))
+        if payload.labor_fee_override is not None
+        else _calculate_service_cost(db_sr)
+    )
+    travel_charges = _money(payload.travel_charges).quantize(Decimal("0.01"))
     quotation_amount = sum((_money(quotation.amount) for quotation in selected_quotations), Decimal("0"))
-    subtotal = (service_amount + quotation_amount).quantize(Decimal("0.01"))
+    subtotal = (service_amount + travel_charges + quotation_amount).quantize(Decimal("0.01"))
     tax_amount = _money(payload.tax_amount).quantize(Decimal("0.01"))
     discount_amount = _money(payload.discount_amount).quantize(Decimal("0.01"))
     total_amount = max((subtotal + tax_amount - discount_amount).quantize(Decimal("0.01")), Decimal("0"))
@@ -735,7 +781,7 @@ def generate_service_invoice(
         due_date=payload.due_date or date.today() + timedelta(days=30),
         payment_terms="Net 30",
         payment_method=payload.payment_method,
-        notes=payload.notes or f"Service invoice for {db_sr.request_number}.",
+        notes=f"__FEES__:labor={service_amount},travel={travel_charges}::{payload.notes or f'Service invoice for {db_sr.request_number}.'}",
     )
     db.add(invoice)
     db.flush()

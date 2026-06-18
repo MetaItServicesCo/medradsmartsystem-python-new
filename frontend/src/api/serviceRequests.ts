@@ -123,6 +123,8 @@ export interface ServiceInvoiceCreatePayload {
   due_date?: string | null
   payment_method?: string | null
   notes?: string
+  travel_charges?: number
+  labor_fee_override?: number
 }
 
 export interface ServiceInvoiceUpdatePayload {

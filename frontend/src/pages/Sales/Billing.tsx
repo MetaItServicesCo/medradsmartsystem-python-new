@@ -499,6 +499,45 @@ const Billing = () => {
         }))
       }
     }
+    if (item.source === 'inspection') {
+      const invoice = item.raw as InspectionInvoice
+      const baseAmount = Number((invoice as any).subtotal || item.amount || 0)
+      const rows: PrintableLineItem[] = [{
+        item_number: item.relatedNumber || item.number,
+        description: item.description,
+        quantity: 1,
+        unit_price: baseAmount,
+        shipping_fee: 0,
+        setup_fee: 0,
+        condition: null,
+        total_amount: baseAmount,
+      }]
+      if (Number(invoice.travel_charges || 0) > 0) {
+        rows.push({
+          item_number: item.relatedNumber || item.number,
+          description: 'Travel Charges',
+          quantity: 1,
+          unit_price: Number(invoice.travel_charges),
+          shipping_fee: 0,
+          setup_fee: 0,
+          condition: null,
+          total_amount: Number(invoice.travel_charges),
+        })
+      }
+      if (Number(invoice.service_charges || 0) > 0) {
+        rows.push({
+          item_number: item.relatedNumber || item.number,
+          description: 'Service Charges',
+          quantity: 1,
+          unit_price: Number(invoice.service_charges),
+          shipping_fee: 0,
+          setup_fee: 0,
+          condition: null,
+          total_amount: Number(invoice.service_charges),
+        })
+      }
+      return rows
+    }
     return [{
       item_number: item.relatedNumber || item.number,
       description: item.description,

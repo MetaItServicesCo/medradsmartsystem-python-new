@@ -157,6 +157,8 @@ class InspectionInvoiceUpdate(BaseModel):
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[InvoiceStatus] = None
+    travel_charges: Optional[Decimal] = None
+    service_charges: Optional[Decimal] = None
 
 
 class InspectionFormUpdate(BaseModel):
@@ -173,6 +175,32 @@ def _money(value: Any) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
     return Decimal(str(value))
+
+
+def _parse_inspection_fees(notes: Optional[str]) -> tuple[Optional[Decimal], Optional[Decimal]]:
+    """Parse __FEES__:travel=X,service=Y:: prefix from inspection invoice notes."""
+    if not notes or not notes.startswith("__FEES__:"):
+        return None, None
+    fee_part, _, _ = notes[len("__FEES__:"):].partition("::")
+    travel: Optional[Decimal] = None
+    service: Optional[Decimal] = None
+    for kv in fee_part.split(","):
+        k, _, v = kv.partition("=")
+        try:
+            if k.strip() == "travel":
+                travel = _money(v.strip())
+            elif k.strip() == "service":
+                service = _money(v.strip())
+        except Exception:
+            pass
+    return travel, service
+
+
+def _strip_inspection_fee_prefix(notes: Optional[str]) -> Optional[str]:
+    if not notes or not notes.startswith("__FEES__:"):
+        return notes
+    _, _, rest = notes.partition("::")
+    return rest or None
 
 
 def _part_name(part: Optional[InventoryPart]) -> str:
@@ -316,6 +344,10 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["status"] = _value(data.get("status"))
     data["facility_name"] = invoice.facility.name if invoice.facility else None
     data["transactions"] = [transaction_response(item) for item in invoice.transactions or []]
+    travel, service = _parse_inspection_fees(invoice.notes)
+    data["travel_charges"] = travel
+    data["service_charges"] = service
+    data["notes"] = _strip_inspection_fee_prefix(invoice.notes)
     return data
 
 
@@ -1379,14 +1411,29 @@ def update_inspection_invoice(
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
-    for field in ["subtotal", "tax_amount", "discount_amount", "amount_paid", "due_date", "payment_terms", "notes", "status"]:
+
+    # Extract fee fields before standard field assignment
+    travel_charges = _money(update_data.pop("travel_charges", None))
+    service_charges = _money(update_data.pop("service_charges", None))
+
+    for field in ["subtotal", "tax_amount", "discount_amount", "amount_paid", "due_date", "payment_terms", "status"]:
         if field in update_data:
             setattr(invoice, field, update_data[field])
+
+    # Rebuild notes with fee prefix if any fee is set
+    user_notes = update_data.get("notes", _strip_inspection_fee_prefix(invoice.notes)) or ""
+    if travel_charges > Decimal("0") or service_charges > Decimal("0"):
+        invoice.notes = f"__FEES__:travel={travel_charges},service={service_charges}::{user_notes}"
+    else:
+        invoice.notes = user_notes or None
 
     if "total_amount" in update_data and update_data["total_amount"] is not None:
         invoice.total_amount = update_data["total_amount"]
     else:
-        invoice.total_amount = _money(invoice.subtotal) + _money(invoice.tax_amount) - _money(invoice.discount_amount)
+        invoice.total_amount = (
+            _money(invoice.subtotal) + travel_charges + service_charges
+            + _money(invoice.tax_amount) - _money(invoice.discount_amount)
+        )
 
     invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
     invoice.updated_at = datetime.utcnow()

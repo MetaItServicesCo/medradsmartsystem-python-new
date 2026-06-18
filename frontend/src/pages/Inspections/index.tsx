@@ -542,6 +542,8 @@ const Inspections = () => {
       payment_terms: invoiceEdit.payment_terms || 'Net 30',
       status: invoiceEdit.status,
       notes: invoiceEdit.notes || '',
+      travel_charges: Number(invoiceEdit.travel_charges || 0),
+      service_charges: Number(invoiceEdit.service_charges || 0),
     })
   }, [invoiceEdit])
 
@@ -1481,6 +1483,20 @@ const Inspections = () => {
             {['subtotal', 'tax_amount', 'discount_amount', 'total_amount', 'amount_paid'].map(key => (
               <TextField key={key} label={key.replace(/_/g, ' ')} type="number" value={invoiceForm[key] ?? ''} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, [key]: Number(e.target.value) }))} />
             ))}
+            <TextField
+              label="Travel Charges ($)"
+              type="number"
+              value={invoiceForm.travel_charges ?? 0}
+              onChange={e => setInvoiceForm((prev: any) => ({ ...prev, travel_charges: Number(e.target.value) }))}
+              inputProps={{ min: 0, step: 0.01 }}
+            />
+            <TextField
+              label="Service Charges ($)"
+              type="number"
+              value={invoiceForm.service_charges ?? 0}
+              onChange={e => setInvoiceForm((prev: any) => ({ ...prev, service_charges: Number(e.target.value) }))}
+              inputProps={{ min: 0, step: 0.01 }}
+            />
             <TextField label="Due date" type="date" value={invoiceForm.due_date || ''} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
             <TextField select label="Status" value={invoiceForm.status || 'pending'} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, status: e.target.value }))}>
               <MenuItem value="pending">Pending</MenuItem>

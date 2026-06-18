@@ -74,6 +74,8 @@ export interface InspectionInvoice {
   inventory_part_name?: string | null
   inspector_name?: string | null
   transactions?: InvoiceTransaction[]
+  travel_charges?: number | null
+  service_charges?: number | null
 }
 
 export interface InvoiceTransaction {
@@ -242,6 +244,8 @@ export interface InspectionInvoiceUpdatePayload {
   payment_terms?: string
   notes?: string
   status?: InvoiceStatus
+  travel_charges?: number
+  service_charges?: number
 }
 
 export const fetchInspectionFacilities = async (): Promise<InspectionFacility[]> => {

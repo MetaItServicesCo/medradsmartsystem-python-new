@@ -20,7 +20,7 @@ import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import { toast } from 'react-toastify'
 import { fetchFacilities } from '@/api/facilities'
 import { fetchTiers } from '@/api/tiers'
-import { fetchEquipment, type EquipmentItem } from '@/api/equipment'
+
 import {
   createInventoryPart, createInventoryTransaction, deleteInventoryPart,
   exportInventoryPartsCsv, fetchInventoryParts, fetchInventoryTransactions, updateInventoryPart,
@@ -104,30 +104,9 @@ const Inventory = () => {
       limit: 500,
     }),
   })
-  const { data: equipmentData, isLoading: equipmentLoading } = useQuery({
-    queryKey: ['equipment', 'inventory-module', facilityId],
-    queryFn: () => fetchEquipment(facilityId || undefined),
-  })
-
   const facilities = facilitiesData?.items ?? []
   const tiers = tiersData?.items ?? []
   const parts = data?.items ?? []
-  const equipmentItems = useMemo(() => {
-    const all = equipmentData?.items ?? []
-    return all.filter((item: EquipmentItem) => {
-      if (tierId && item.tier_id !== tierId) return false
-      if (!search) return true
-      const needle = search.toLowerCase()
-      return [
-        item.asset_tag,
-        item.make,
-        item.model,
-        item.serial_number,
-        facilities.find((f) => f.id === item.facility_id)?.name || '',
-        tiers.find((t) => t.id === item.tier_id)?.name || '',
-      ].some((value) => value.toLowerCase().includes(needle))
-    })
-  }, [equipmentData?.items, facilities, search, tierId, tiers])
 
   const stats = useMemo(() => {
     const totalUnits = parts.reduce((sum, p) => sum + p.quantity_on_hand, 0)
@@ -308,7 +287,6 @@ const Inventory = () => {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2, mb: 3 }}>
         {[
-          ['Equipment', equipmentItems.length, <InventoryIcon />],
           ['Parts', parts.length, <InventoryIcon />],
           ['Units On Hand', stats.totalUnits, <ReceiptLongIcon />],
           ['Low Stock', stats.low, <LowPriorityIcon />],
@@ -325,65 +303,6 @@ const Inventory = () => {
           </Card>
         ))}
       </Box>
-
-      <Card sx={{ overflow: 'hidden', mb: 3 }}>
-        <Box sx={{ p: 2.5, borderBottom: '1px solid #E5E7EB' }}>
-          <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-            Facility Equipment Inventory
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#6B7280' }}>
-            Equipment added from each facility inventory modal appears here with its assigned tier.
-          </Typography>
-        </Box>
-        <TableContainer className="list-scroll-panel">
-          <Table stickyHeader>
-            <TableHead>
-              <TableRow>
-                <TableCell>Asset Tag</TableCell>
-                <TableCell>Assignment</TableCell>
-                <TableCell>Make / Model</TableCell>
-                <TableCell>Serial #</TableCell>
-                <TableCell>Status</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {equipmentLoading ? Array.from({ length: 3 }).map((_, i) => (
-                <TableRow key={i}>{Array.from({ length: 5 }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
-              )) : equipmentItems.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                    <InventoryIcon sx={{ fontSize: 40, color: '#D1D5DB', mb: 1 }} />
-                    <Typography color="text.secondary">No facility equipment inventory found</Typography>
-                  </TableCell>
-                </TableRow>
-              ) : equipmentItems.map((item) => {
-                const facility = facilities.find((f) => f.id === item.facility_id)
-                const tier = tiers.find((t) => t.id === item.tier_id)
-                return (
-                  <TableRow key={item.id} hover>
-                    <TableCell>
-                      <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.asset_tag}</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">{facility?.name || `Facility #${item.facility_id}`}</Typography>
-                      <Typography variant="caption" sx={{ color: tier ? '#7C3AED' : '#9CA3AF', fontWeight: tier ? 700 : 400 }}>
-                        {tier?.name || 'No tier'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{item.make} {item.model}</TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{item.serial_number}</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip label={item.status.replace('_', ' ')} size="small" sx={{ textTransform: 'capitalize', fontWeight: 700 }} />
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Card>
 
       <Card sx={{ overflow: 'hidden' }}>
         <Box sx={{ p: 2.5, borderBottom: '1px solid #E5E7EB' }}>

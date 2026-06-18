@@ -100,6 +100,8 @@ const ServiceRequestDetail = () => {
   const [invoiceTaxAmount, setInvoiceTaxAmount] = useState('0')
   const [invoiceDiscountAmount, setInvoiceDiscountAmount] = useState('0')
   const [invoiceNotes, setInvoiceNotes] = useState('')
+  const [invoiceTravelCharges, setInvoiceTravelCharges] = useState('0')
+  const [invoiceLaborFees, setInvoiceLaborFees] = useState('0')
   const [editingTime, setEditingTime] = useState(false)
   const [editTimeValue, setEditTimeValue] = useState('')
   const [editingSession, setEditingSession] = useState(false)
@@ -189,6 +191,8 @@ const ServiceRequestDetail = () => {
       discount_amount: Number(invoiceDiscountAmount || 0),
       due_date: invoiceDueDate || null,
       notes: invoiceNotes || undefined,
+      travel_charges: Number(invoiceTravelCharges || 0),
+      labor_fee_override: Number(invoiceLaborFees || 0),
     }),
     onSuccess: (invoice) => {
       toast.success(`Invoice ${invoice.invoice_number} is ready in Billing`)
@@ -372,7 +376,7 @@ const ServiceRequestDetail = () => {
       .reduce((sum, q) => sum + Number(q.amount || 0), 0)
     : 0
   const invoicePreviewTotal = Math.max(
-    calculatedServiceCost + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
+    Number(invoiceLaborFees || 0) + Number(invoiceTravelCharges || 0) + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
     0
   )
 
@@ -383,6 +387,8 @@ const ServiceRequestDetail = () => {
     setInvoiceTaxAmount('0')
     setInvoiceDiscountAmount('0')
     setInvoiceNotes(`Service invoice for ${sr.request_number}.`)
+    setInvoiceLaborFees(calculatedServiceCost.toFixed(2))
+    setInvoiceTravelCharges('0')
     setInvoiceOpen(true)
   }
 
@@ -1346,6 +1352,25 @@ const ServiceRequestDetail = () => {
                 </Box>
               </Box>
 
+              <TextField
+                label="Labor Fees ($)"
+                type="number"
+                value={invoiceLaborFees}
+                onChange={(e) => setInvoiceLaborFees(e.target.value)}
+                fullWidth
+                inputProps={{ min: 0, step: 0.01 }}
+                helperText="Pre-filled from tier labor rate × hours. Edit to override."
+              />
+
+              <TextField
+                label="Travel Charges ($)"
+                type="number"
+                value={invoiceTravelCharges}
+                onChange={(e) => setInvoiceTravelCharges(e.target.value)}
+                fullWidth
+                inputProps={{ min: 0, step: 0.01 }}
+              />
+
               <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
                 <FormControlLabel
                   control={
@@ -1439,7 +1464,8 @@ const ServiceRequestDetail = () => {
                 inputProps={{ min: 0, step: 0.01 }}
               />
               {[
-                ['Service', calculatedServiceCost],
+                ['Labor Fees', Number(invoiceLaborFees || 0)],
+                ['Travel Charges', Number(invoiceTravelCharges || 0)],
                 ['Included quotations', selectedQuotationTotal],
                 ['Tax', Number(invoiceTaxAmount || 0)],
                 ['Discount', -Number(invoiceDiscountAmount || 0)],
