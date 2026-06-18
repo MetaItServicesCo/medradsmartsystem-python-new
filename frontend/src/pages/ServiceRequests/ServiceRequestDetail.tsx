@@ -40,6 +40,7 @@ import {
   fetchServiceInvoices,
   generateServiceInvoice,
   updateServiceRequest,
+  updateServiceInvoice,
   type ServiceRequest,
   type ServiceRequestUpdate,
   type ServiceRequestStatus as SRStatus,
@@ -107,6 +108,11 @@ const ServiceRequestDetail = () => {
   const [editTimeValue, setEditTimeValue] = useState('')
   const [editingSession, setEditingSession] = useState(false)
   const [editSessionValue, setEditSessionValue] = useState('')
+  const [editInvoiceOpen, setEditInvoiceOpen] = useState(false)
+  const [editInvoiceAmountPaid, setEditInvoiceAmountPaid] = useState('0')
+  const [editInvoiceStatus, setEditInvoiceStatus] = useState('')
+  const [editInvoiceDueDate, setEditInvoiceDueDate] = useState('')
+  const [editInvoiceNotes, setEditInvoiceNotes] = useState('')
 
 
   const user = useAuthStore(state => state.user)
@@ -224,7 +230,36 @@ const ServiceRequestDetail = () => {
     },
   })
 
+  const openEditInvoice = () => {
+    if (!resolvedInvoice) return
+    setEditInvoiceAmountPaid(String(resolvedInvoice.amount_paid ?? 0))
+    setEditInvoiceStatus(resolvedInvoice.status ?? '')
+    setEditInvoiceDueDate(resolvedInvoice.due_date ? resolvedInvoice.due_date.split('T')[0] : '')
+    setEditInvoiceNotes(resolvedInvoice.notes ?? '')
+    setEditInvoiceOpen(true)
+  }
 
+  const editInvoiceMutation = useMutation({
+    mutationFn: () => updateServiceInvoice(resolvedInvoice!.id, {
+      amount_paid: Number(editInvoiceAmountPaid || 0),
+      status: editInvoiceStatus || undefined,
+      due_date: editInvoiceDueDate || undefined,
+      notes: editInvoiceNotes || undefined,
+    }),
+    onSuccess: (updated) => {
+      toast.success('Invoice updated')
+      setEditInvoiceOpen(false)
+      queryClient.setQueryData(['service-request', id], (old: any) =>
+        old ? { ...old, service_invoice: updated } : old
+      )
+      queryClient.setQueryData(['service-invoices-for-sr', id], { items: [updated], total: 1 })
+      queryClient.invalidateQueries({ queryKey: ['service-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to update invoice')
+    },
+  })
 
   const handleAdvanceStatus = () => {
     if (!sr) return
@@ -1164,15 +1199,15 @@ const ServiceRequestDetail = () => {
                 {resolvedInvoice && !sr.invoice_deleted ? (
                   <Button
                     variant="contained"
-                    startIcon={<ReceiptLongIcon />}
-                    onClick={() => navigate(`/billing?source=service&highlightInvoice=${resolvedInvoice.id}`)}
+                    startIcon={<EditIcon />}
+                    onClick={openEditInvoice}
                     sx={{
                       borderRadius: '12px',
                       fontWeight: 800,
                       background: 'linear-gradient(135deg, #059669 0%, #0891B2 100%)',
                     }}
                   >
-                    View Invoice ({resolvedInvoice.invoice_number})
+                    Edit Invoice ({resolvedInvoice.invoice_number})
                   </Button>
                 ) : (
                   <Button
@@ -1527,6 +1562,72 @@ const ServiceRequestDetail = () => {
             sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
           >
             Generate Invoice
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Invoice Dialog */}
+      <Dialog open={editInvoiceOpen} onClose={() => setEditInvoiceOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <EditIcon sx={{ color: '#059669' }} />
+            Edit Invoice
+          </Box>
+          {resolvedInvoice && (
+            <Typography sx={{ fontSize: 13, color: '#6B7280', mt: 0.5 }}>
+              {resolvedInvoice.invoice_number} · Total <strong>${Number(resolvedInvoice.total_amount || 0).toFixed(2)}</strong>
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Status</InputLabel>
+            <Select value={editInvoiceStatus} label="Status" onChange={e => setEditInvoiceStatus(e.target.value)}>
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="paid">Paid</MenuItem>
+              <MenuItem value="partially_paid">Partially Paid</MenuItem>
+              <MenuItem value="overdue">Overdue</MenuItem>
+              <MenuItem value="cancelled">Cancelled</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            label="Amount Paid ($)"
+            type="number"
+            fullWidth
+            size="small"
+            value={editInvoiceAmountPaid}
+            onChange={e => setEditInvoiceAmountPaid(e.target.value)}
+            inputProps={{ min: 0, step: 0.01 }}
+          />
+          <TextField
+            label="Due Date"
+            type="date"
+            fullWidth
+            size="small"
+            value={editInvoiceDueDate}
+            onChange={e => setEditInvoiceDueDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            label="Notes"
+            multiline
+            rows={3}
+            fullWidth
+            size="small"
+            value={editInvoiceNotes}
+            onChange={e => setEditInvoiceNotes(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setEditInvoiceOpen(false)} sx={{ fontWeight: 700 }}>Cancel</Button>
+          <Button
+            onClick={() => editInvoiceMutation.mutate()}
+            variant="contained"
+            disabled={editInvoiceMutation.isPending}
+            startIcon={editInvoiceMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <EditIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #059669 0%, #0891B2 100%)' }}
+          >
+            Save Changes
           </Button>
         </DialogActions>
       </Dialog>
