@@ -8,8 +8,8 @@ import ServiceRequests from './pages/ServiceRequests'
 import Inspections from './pages/Inspections'
 import Sales from './pages/Sales'
 import Rentals from './pages/Rentals'
-import Equipment from './pages/Equipment'
 import Inventory from './pages/Inventory'
+import HR from './pages/HR'
 import Reports from './pages/Reports'
 import Users from './pages/Users'
 import Chat from './pages/Chat'
@@ -41,8 +41,8 @@ function App() {
         <Route path="inspections/*" element={<Inspections />} />
         <Route path="sales/*" element={<Sales />} />
         <Route path="rentals/*" element={<Rentals />} />
-        <Route path="equipment/*" element={<Equipment />} />
         <Route path="inventory/*" element={<Inventory />} />
+        <Route path="hr/*" element={<HR />} />
         <Route path="reports/*" element={<Reports />} />
         <Route path="attendance/*" element={<Attendance />} />
         <Route path="billing/*" element={<Billing />} />

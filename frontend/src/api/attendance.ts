@@ -195,10 +195,19 @@ export const fetchAttendanceEvents = async (params?: {
   date_to?: string
   user_id?: number
   facility_id?: number
+  verification_status?: string
   skip?: number
   limit?: number
 }): Promise<AttendanceEventListResponse> => {
   const res = await apiClient.get('/attendance/events', { params })
+  return res.data
+}
+
+export const reviewAttendanceEvent = async (
+  eventId: number,
+  payload: { verification_status: 'verified' | 'rejected'; remark?: string }
+): Promise<AttendanceEvent> => {
+  const res = await apiClient.patch(`/attendance/events/${eventId}/review`, payload)
   return res.data
 }
 

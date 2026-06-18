@@ -573,15 +573,13 @@ const Attendance = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
           <Box>
             <Typography sx={{ fontWeight: 900, fontSize: 20 }}>Quick Attendance</Typography>
-            <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 700 }}>Use face recognition for daily attendance, with manual controls available as fallback.</Typography>
+            <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 700 }}>All attendance and break actions require face recognition.</Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button onClick={() => openFaceAttendance('check_in')} startIcon={<VideocamIcon />} variant="contained" sx={{ bgcolor: '#111827', color: '#fff', fontWeight: 900, '&:hover': { bgcolor: '#1F2937' } }}>Face Check In</Button>
             <Button onClick={() => openFaceAttendance('check_out')} startIcon={<VideocamIcon />} variant="contained" sx={{ bgcolor: '#111827', color: '#fff', fontWeight: 900, '&:hover': { bgcolor: '#1F2937' } }}>Face Check Out</Button>
-            <Button onClick={() => markOwnAttendance('check_in')} startIcon={<LoginIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Check In</Button>
-            <Button onClick={() => markOwnAttendance('break_start')} startIcon={<CoffeeIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Break Start</Button>
-            <Button onClick={() => markOwnAttendance('break_end')} startIcon={<DoneAllIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Break End</Button>
-            <Button onClick={() => markOwnAttendance('check_out')} startIcon={<LogoutIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Check Out</Button>
+            <Button onClick={() => openFaceAttendance('break_start')} startIcon={<CoffeeIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Face Break Start</Button>
+            <Button onClick={() => openFaceAttendance('break_end')} startIcon={<DoneAllIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Face Break End</Button>
           </Box>
         </Box>
       </Card>

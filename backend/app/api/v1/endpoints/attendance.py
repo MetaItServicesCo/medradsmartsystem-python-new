@@ -679,6 +679,7 @@ def read_events(
     date_to: Optional[date] = Query(None),
     user_id: Optional[int] = Query(None),
     facility_id: Optional[int] = Query(None),
+    verification_status: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
 ) -> Any:
@@ -694,6 +695,9 @@ def read_events(
     if facility_id:
         require_facility_access(db, current_user, facility_id)
         query = query.filter(AttendanceEvent.facility_id == facility_id)
+    if verification_status:
+        vs = _enum_value(AttendanceVerificationStatus, verification_status, "verification_status")
+        query = query.filter(AttendanceEvent.verification_status == vs)
 
     total = query.count()
     items = query.order_by(desc(AttendanceEvent.event_time)).offset(skip).limit(limit).all()
@@ -738,6 +742,32 @@ def create_event(
     db.add(event)
     db.flush()
     log_activity(db, "attendance_events", event.id, "ATTENDANCE_EVENT_CREATED", current_user, event_in.model_dump())
+    db.commit()
+    return _event_query(db).filter(AttendanceEvent.id == event.id).first()
+
+
+class AttendanceEventReview(BaseModel):
+    verification_status: str
+    remark: Optional[str] = None
+
+
+@router.patch("/events/{event_id}/review")
+def review_attendance_event(
+    event_id: int,
+    review: AttendanceEventReview,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_attendance_manager),
+) -> Any:
+    event = _event_query(db).filter(AttendanceEvent.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    new_status = _enum_value(AttendanceVerificationStatus, review.verification_status, "verification_status")
+    event.verification_status = new_status
+    if review.remark is not None:
+        event.remark = review.remark
+    log_activity(db, "attendance_events", event.id, "ATTENDANCE_EVENT_REVIEWED", current_user, {
+        "verification_status": review.verification_status,
+    })
     db.commit()
     return _event_query(db).filter(AttendanceEvent.id == event.id).first()
 
