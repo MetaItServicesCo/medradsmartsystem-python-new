@@ -339,7 +339,7 @@ export const addServiceRequestNote = async (id: number, note: string): Promise<S
 }
 
 export const fetchServiceInvoices = async (
-  params: { status?: string } = {}
+  params: { status?: string; service_request_id?: number } = {}
 ): Promise<{ items: ServiceInvoice[]; total: number }> => {
   const res = await apiClient.get('/service-requests/invoices', { params })
   return res.data

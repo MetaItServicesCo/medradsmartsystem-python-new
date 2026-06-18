@@ -37,6 +37,7 @@ import {
   clockInServiceRequest,
   clockOutServiceRequest,
   fetchServiceRequest,
+  fetchServiceInvoices,
   generateServiceInvoice,
   updateServiceRequest,
   type ServiceRequest,
@@ -117,6 +118,15 @@ const ServiceRequestDetail = () => {
     queryFn: () => fetchServiceRequest(Number(id)),
     enabled: !!id,
   })
+
+  // Secondary invoice check — fallback for backends that don't yet embed service_invoice in the SR response
+  const { data: srInvoicesData } = useQuery({
+    queryKey: ['service-invoices-for-sr', id],
+    queryFn: () => fetchServiceInvoices({ service_request_id: Number(id) }),
+    enabled: !!id && !sr?.service_invoice,
+    staleTime: 30_000,
+  })
+  const resolvedInvoice = sr?.service_invoice ?? (srInvoicesData?.items?.find(inv => inv.status !== 'cancelled') ?? null)
 
   // Fetch technicians for assignment
   const { data: usersData } = useQuery({
@@ -201,6 +211,8 @@ const ServiceRequestDetail = () => {
       queryClient.setQueryData(['service-request', id], (old: any) =>
         old ? { ...old, service_invoice: invoice } : old
       )
+      // Also seed the secondary invoice cache so resolvedInvoice picks it up instantly
+      queryClient.setQueryData(['service-invoices-for-sr', id], { items: [invoice], total: 1 })
       queryClient.invalidateQueries({ queryKey: ['service-request', id] })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
       queryClient.invalidateQueries({ queryKey: ['service-invoices'] })
@@ -1149,18 +1161,18 @@ const ServiceRequestDetail = () => {
                   View Report
                 </Button>
 
-                {sr.service_invoice && !sr.invoice_deleted ? (
+                {resolvedInvoice && !sr.invoice_deleted ? (
                   <Button
                     variant="contained"
                     startIcon={<ReceiptLongIcon />}
-                    onClick={() => navigate(`/billing?source=service&highlightInvoice=${sr.service_invoice!.id}`)}
+                    onClick={() => navigate(`/billing?source=service&highlightInvoice=${resolvedInvoice.id}`)}
                     sx={{
                       borderRadius: '12px',
                       fontWeight: 800,
                       background: 'linear-gradient(135deg, #059669 0%, #0891B2 100%)',
                     }}
                   >
-                    View Invoice ({sr.service_invoice.invoice_number})
+                    View Invoice ({resolvedInvoice.invoice_number})
                   </Button>
                 ) : (
                   <Button
