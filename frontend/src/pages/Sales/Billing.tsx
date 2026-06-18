@@ -447,25 +447,47 @@ const Billing = () => {
 
   const paying = servicePayMut.isPending || invoicePayMut.isPending
 
-  const printableItem = (item: BillingItem | null) => item ? {
-    invoice_number: item.number,
-    invoice_type: item.source,
-    reference_number: item.relatedNumber,
-    customer_name: item.customer,
-    customer_email: item.customerEmail,
-    facility_name: item.facility,
-    subtotal: Number((item.raw as any).subtotal ?? item.amount ?? 0),
-    tax_amount: Number((item.raw as any).tax_amount || 0),
-    discount_amount: Number((item.raw as any).discount_amount || 0),
-    total_amount: Number(item.amount || 0),
-    amount_paid: Number(item.paid || 0),
-    balance_due: Number(item.balance || 0),
-    status: String(item.status || ''),
-    issue_date: item.date,
-    due_date: item.dueDate,
-    payment_method: item.paymentMethod,
-    notes: item.description,
-  } : null
+  const printableItem = (item: BillingItem | null) => {
+    if (!item) return null
+    const base = {
+      invoice_number: item.number,
+      invoice_type: item.source,
+      reference_number: item.relatedNumber,
+      customer_name: item.customer,
+      customer_email: item.customerEmail,
+      facility_name: item.facility,
+      subtotal: Number((item.raw as any).subtotal ?? item.amount ?? 0),
+      tax_amount: Number((item.raw as any).tax_amount || 0),
+      discount_amount: Number((item.raw as any).discount_amount || 0),
+      total_amount: Number(item.amount || 0),
+      amount_paid: Number(item.paid || 0),
+      balance_due: Number(item.balance || 0),
+      status: String(item.status || ''),
+      issue_date: item.date,
+      due_date: item.dueDate,
+      payment_method: item.paymentMethod,
+      notes: item.description,
+    }
+    if (item.source === 'service' && item.billingKind === 'service_invoice') {
+      const invoice = item.raw as ServiceInvoice
+      const laborLine = invoice.line_items?.find(l => l.description?.startsWith('Service labor'))
+      const travelLine = invoice.line_items?.find(l => l.description === 'Travel Charges')
+      return {
+        ...base,
+        ...(Number(laborLine?.total_amount || 0) > 0 ? { labor_fees: Number(laborLine!.total_amount) } : {}),
+        ...(Number(travelLine?.total_amount || 0) > 0 ? { travel_charges: Number(travelLine!.total_amount) } : {}),
+      }
+    }
+    if (item.source === 'inspection') {
+      const invoice = item.raw as InspectionInvoice
+      return {
+        ...base,
+        ...(Number(invoice.travel_charges || 0) > 0 ? { travel_charges: Number(invoice.travel_charges) } : {}),
+        ...(Number(invoice.service_charges || 0) > 0 ? { service_charges: Number(invoice.service_charges) } : {}),
+      }
+    }
+    return base
+  }
 
   const printableLineItems = (item: BillingItem | null): PrintableLineItem[] => {
     if (!item) return []

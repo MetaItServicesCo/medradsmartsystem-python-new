@@ -43,6 +43,10 @@ export interface PrintableInvoice {
   shipping_fee_extra?: number | null
   application_fee_extra?: number | null
   additional_service_fees?: number | null
+  // Service / Inspection invoice fee breakdown
+  labor_fees?: number | null
+  travel_charges?: number | null
+  service_charges?: number | null
 }
 
 export interface PrintableLineItem {
@@ -310,6 +314,9 @@ const buildPrintableHtml = (
 
       ${type === 'invoice' ? `
         <section class="totals">
+          ${invoice.labor_fees ? `<div><span>Labor Fees</span><strong>${escapeHtml(money(invoice.labor_fees))}</strong></div>` : ''}
+          ${invoice.travel_charges ? `<div><span>Travel Charges</span><strong>${escapeHtml(money(invoice.travel_charges))}</strong></div>` : ''}
+          ${invoice.service_charges ? `<div><span>Service Charges</span><strong>${escapeHtml(money(invoice.service_charges))}</strong></div>` : ''}
           ${invoice.parts_total != null ? `<div><span>Parts / Rental Total</span><strong>${escapeHtml(money(invoice.parts_total))}</strong></div>` : ''}
           ${invoice.worked_hours_fee ? `<div><span>Working Hours Fee</span><strong>${escapeHtml(money(invoice.worked_hours_fee))}</strong></div>` : ''}
           ${invoice.setup_fee_extra ? `<div><span>Setup Fee</span><strong>${escapeHtml(money(invoice.setup_fee_extra))}</strong></div>` : ''}

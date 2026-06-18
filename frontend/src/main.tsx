@@ -10,6 +10,14 @@ import theme from './theme'
 import './theme/global.css'
 import ErrorBoundary from './components/ErrorBoundary'
 
+// Select-all on focus so the leading zero doesn't stick when the user starts typing
+document.addEventListener('focusin', (e) => {
+  const el = e.target
+  if (el instanceof HTMLInputElement && el.type === 'number') {
+    el.select()
+  }
+})
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
