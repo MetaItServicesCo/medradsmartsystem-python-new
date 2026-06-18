@@ -197,6 +197,10 @@ const ServiceRequestDetail = () => {
     onSuccess: (invoice) => {
       toast.success(`Invoice ${invoice.invoice_number} is ready in Billing`)
       setInvoiceOpen(false)
+      // Immediately stamp the invoice into cached SR so the button switches without a round-trip
+      queryClient.setQueryData(['service-request', id], (old: any) =>
+        old ? { ...old, service_invoice: invoice } : old
+      )
       queryClient.invalidateQueries({ queryKey: ['service-request', id] })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
       queryClient.invalidateQueries({ queryKey: ['service-invoices'] })
