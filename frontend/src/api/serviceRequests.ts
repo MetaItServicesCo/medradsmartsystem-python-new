@@ -201,6 +201,7 @@ export interface ServiceRequest {
   billing_status: 'pending' | 'approved' | 'not_approved'
   cc_auth_requested: boolean
   invoice_deleted: boolean
+  service_invoice?: ServiceInvoice | null
   history: ServiceRequestHistoryEntry[]
 
   // Denormalized display names

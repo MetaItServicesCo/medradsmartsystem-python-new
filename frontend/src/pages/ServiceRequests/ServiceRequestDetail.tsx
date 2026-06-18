@@ -1145,19 +1145,34 @@ const ServiceRequestDetail = () => {
                   View Report
                 </Button>
 
-                <Button
-                  variant="contained"
-                  startIcon={<ReceiptLongIcon />}
-                  onClick={openInvoiceDialog}
-                  disabled={invoiceMutation.isPending || sr.invoice_deleted}
-                  sx={{
-                    borderRadius: '12px',
-                    fontWeight: 800,
-                    background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
-                  }}
-                >
-                  Generate Invoice
-                </Button>
+                {sr.service_invoice && !sr.invoice_deleted ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<ReceiptLongIcon />}
+                    onClick={() => navigate(`/billing?source=service&highlightInvoice=${sr.service_invoice!.id}`)}
+                    sx={{
+                      borderRadius: '12px',
+                      fontWeight: 800,
+                      background: 'linear-gradient(135deg, #059669 0%, #0891B2 100%)',
+                    }}
+                  >
+                    View Invoice ({sr.service_invoice.invoice_number})
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    startIcon={<ReceiptLongIcon />}
+                    onClick={openInvoiceDialog}
+                    disabled={invoiceMutation.isPending || sr.invoice_deleted}
+                    sx={{
+                      borderRadius: '12px',
+                      fontWeight: 800,
+                      background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
+                    }}
+                  >
+                    Generate Invoice
+                  </Button>
+                )}
 
                 <Button
                   variant="outlined"

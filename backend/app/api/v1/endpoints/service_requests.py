@@ -467,7 +467,24 @@ def get_service_request(
     if not sr:
         raise HTTPException(status_code=404, detail="Service request not found")
     require_facility_access(db, current_user, sr.facility_id)
-    return _enrich(sr)
+    data = _enrich(sr)
+    active_invoice = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.facility),
+            joinedload(Invoice.transactions),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+        )
+        .filter(
+            Invoice.service_request_id == sr.id,
+            Invoice.invoice_type == InvoiceType.SERVICE,
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .first()
+    )
+    data["service_invoice"] = _service_invoice_response(active_invoice) if active_invoice else None
+    return data
 
 
 @router.post("/upload")
