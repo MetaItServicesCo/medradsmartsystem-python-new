@@ -223,6 +223,7 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
       <section class="content">
         <div class="grid">
           <div class="box"><small>Facility</small><strong>${escapeHtml(inspection.facility_name || '-')}</strong></div>
+          ${inspection.invoice?.customer_name ? `<div class="box"><small>Customer</small><strong>${escapeHtml(inspection.invoice.customer_name)}</strong>${inspection.invoice.customer_phone ? `<div style="color:#64748B;font-size:11px">${escapeHtml(inspection.invoice.customer_phone)}</div>` : ''}${inspection.invoice.customer_address ? `<div style="color:#64748B;font-size:11px">${escapeHtml(inspection.invoice.customer_address)}</div>` : ''}</div>` : ''}
           <div class="box"><small>Asset</small><strong>${escapeHtml(inspection.asset_name || data.identity?.description || '-')}</strong></div>
           <div class="box"><small>Serial #</small><strong>${escapeHtml(inspection.serial_number || data.identity?.serial_number || '-')}</strong></div>
           <div class="box"><small>Result</small><strong>${escapeHtml(inspection.result || '-')}</strong></div>
@@ -313,7 +314,7 @@ const buildInvoiceSheetHtml = (invoice: InspectionInvoice, pageBreak = false): s
       </section>
       <section class="content">
         <div class="grid2">
-          <div class="box"><small>Bill To</small><strong>${escapeHtml(invoice.customer_name || '-')}</strong><div style="color:#64748B;font-size:12px;margin-top:4px">${escapeHtml(invoice.customer_email || '')}</div></div>
+          <div class="box"><small>Bill To</small><strong>${escapeHtml(invoice.customer_name || '-')}</strong>${invoice.customer_email ? `<div style="color:#64748B;font-size:12px;margin-top:4px">${escapeHtml(invoice.customer_email)}</div>` : ''}${invoice.customer_phone ? `<div style="color:#64748B;font-size:12px">${escapeHtml(invoice.customer_phone)}</div>` : ''}${invoice.customer_address ? `<div style="color:#64748B;font-size:12px">${escapeHtml(invoice.customer_address)}</div>` : ''}</div>
           <div class="box"><small>Facility</small><strong>${escapeHtml(invoice.facility_name || '-')}</strong></div>
           <div class="box"><small>Issue Date</small><strong>${escapeHtml(formatDate(invoice.issue_date))}</strong></div>
           <div class="box"><small>Due Date</small><strong>${escapeHtml(formatDate(invoice.due_date))}</strong></div>

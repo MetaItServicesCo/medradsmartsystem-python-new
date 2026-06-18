@@ -23,6 +23,8 @@ export interface PrintableInvoice {
   reference_number?: string | null
   customer_name: string
   customer_email?: string | null
+  customer_phone?: string | null
+  customer_address?: string | null
   facility_name?: string | null
   subtotal: number
   tax_amount: number
@@ -283,7 +285,9 @@ const buildPrintableHtml = (
         <div class="box">
           <h3>Bill To</h3>
           <strong class="customer">${escapeHtml(invoice.customer_name)}</strong><br>
-          <span class="muted">${escapeHtml(invoice.customer_email || '')}</span><br>
+          ${invoice.customer_email ? `<span class="muted">${escapeHtml(invoice.customer_email)}</span><br>` : ''}
+          ${invoice.customer_phone ? `<span class="muted">${escapeHtml(invoice.customer_phone)}</span><br>` : ''}
+          ${invoice.customer_address ? `<span class="muted">${escapeHtml(invoice.customer_address)}</span><br>` : ''}
           <span class="muted">${escapeHtml(invoice.facility_name || '')}</span>
         </div>
         <div class="box meta">

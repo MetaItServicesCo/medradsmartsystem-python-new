@@ -455,6 +455,8 @@ const Billing = () => {
       reference_number: item.relatedNumber,
       customer_name: item.customer,
       customer_email: item.customerEmail,
+      customer_phone: (item.raw as any).customer_phone || null,
+      customer_address: (item.raw as any).customer_address || null,
       facility_name: item.facility,
       subtotal: Number((item.raw as any).subtotal ?? item.amount ?? 0),
       tax_amount: Number((item.raw as any).tax_amount || 0),
