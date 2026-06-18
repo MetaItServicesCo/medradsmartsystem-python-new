@@ -954,25 +954,37 @@ const Sales = () => {
       <InvoicePrintDialog
         open={Boolean(printInvoice)}
         onClose={() => setPrintInvoice(null)}
-        invoice={printInvoice ? {
-          invoice_number: printInvoice.invoice_number,
-          invoice_type: printInvoice.invoice_type,
-          reference_number: printInvoice.work_order || printInvoice.sales_quotation_number,
-          customer_name: printInvoice.customer_name,
-          customer_email: printInvoice.customer_email,
-          facility_name: printInvoice.facility_name,
-          subtotal: Number(printInvoice.subtotal || 0),
-          tax_amount: Number(printInvoice.tax_amount || 0),
-          discount_amount: Number(printInvoice.discount_amount || 0),
-          total_amount: Number(printInvoice.total_amount || 0),
-          amount_paid: Number(printInvoice.amount_paid || 0),
-          balance_due: Number(printInvoice.balance_due || 0),
-          status: String(printInvoice.status || ''),
-          issue_date: printInvoice.issue_date,
-          due_date: printInvoice.due_date,
-          payment_method: printInvoice.payment_method,
-          notes: printInvoice.notes,
-        } : null}
+        invoice={printInvoice ? (() => {
+          const q = quotations.find(item => item.id === printInvoice.sales_quotation_id)
+          const hasExtraFees = q && (Number(q.worked_hours) > 0 || Number(q.setup_fee) > 0 || Number(q.service_fee) > 0 || Number(q.shipping_fee) > 0 || Number(q.application_fee) > 0)
+          return {
+            invoice_number: printInvoice.invoice_number,
+            invoice_type: printInvoice.invoice_type,
+            reference_number: printInvoice.work_order || printInvoice.sales_quotation_number,
+            customer_name: printInvoice.customer_name,
+            customer_email: printInvoice.customer_email,
+            facility_name: printInvoice.facility_name,
+            subtotal: Number(printInvoice.subtotal || 0),
+            tax_amount: Number(printInvoice.tax_amount || 0),
+            discount_amount: Number(printInvoice.discount_amount || 0),
+            total_amount: Number(printInvoice.total_amount || 0),
+            amount_paid: Number(printInvoice.amount_paid || 0),
+            balance_due: Number(printInvoice.balance_due || 0),
+            status: String(printInvoice.status || ''),
+            issue_date: printInvoice.issue_date,
+            due_date: printInvoice.due_date,
+            payment_method: printInvoice.payment_method,
+            notes: printInvoice.notes,
+            ...(hasExtraFees && q ? {
+              parts_total: Number(q.subtotal || 0),
+              worked_hours_fee: Number(q.worked_hours || 0) || null,
+              setup_fee_extra: Number(q.setup_fee || 0) || null,
+              service_fee_extra: Number(q.service_fee || 0) || null,
+              shipping_fee_extra: Number(q.shipping_fee || 0) || null,
+              application_fee_extra: Number(q.application_fee || 0) || null,
+            } : {}),
+          }
+        })() : null}
         lineItems={invoiceLineItems(printInvoice)}
         ledgerTransactions={invoiceLedgerTransactions(printInvoice)}
         moduleLabel="Sales"
@@ -1168,34 +1180,34 @@ const Sales = () => {
               <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, alignSelf: 'start', boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
                 <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900, textAlign: 'center' }}>Invoice Details</Box>
                 <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                  <TextField size="small" label="Labour Hours" type="number" value={invoiceDetails.labour_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, labour_hours: Number(e.target.value) }))} />
-                  <TextField size="small" label="Setup Fee" type="number" value={invoiceDetails.setup_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
-                  <TextField size="small" label="Service Fee" type="number" value={invoiceDetails.service_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, service_fee: Number(e.target.value) }))} />
-                  <TextField size="small" label="Working Hours Fee" type="number" value={invoiceDetails.worked_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, worked_hours: Number(e.target.value) }))} />
-                  <TextField size="small" label="Shipping Fee/Delivery Fee" type="number" value={invoiceDetails.shipping_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
-                  <TextField size="small" label="Application Fee" type="number" value={invoiceDetails.application_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, application_fee: Number(e.target.value) }))} />
-                  <TextField size="small" label="Parts" value={convertPartsTotal.toFixed(2)} InputProps={{ readOnly: true }} />
-                  <TextField size="small" label="Tax Rate (%)" type="number" value={invoiceDetails.tax_rate || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, tax_rate: Number(e.target.value) }))} />
-                  <TextField size="small" label="Tax Amount" value={convertTaxAmount.toFixed(2)} InputProps={{ readOnly: true }} />
-                  <TextField size="small" select label="Discount Type" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(prev => ({ ...prev, discount_type: e.target.value as 'fixed' | 'percent' }))}>
-                    <MenuItem value="fixed">Fixed</MenuItem>
-                    <MenuItem value="percent">Percent</MenuItem>
+                  <TextField size="small" select label="Select Action" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, action: e.target.value }))} sx={{ gridColumn: '1 / -1' }}>
+                    <MenuItem value="">Select Action</MenuItem>
+                    <MenuItem value="approve">Approve Quotation</MenuItem>
+                    <MenuItem value="reject">Reject Quotation</MenuItem>
+                    <MenuItem value="mark_pending">Mark as Pending</MenuItem>
+                    <MenuItem value="convert_to_invoice">Convert to Invoice</MenuItem>
                   </TextField>
-                  <TextField size="small" label="Discount" type="number" value={invoiceDetails.discount_amount || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, discount_amount: Number(e.target.value) }))} />
-                  <TextField size="small" label="Grand Total" value={convertGrandTotal.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" select label="Payment Method" value={invoiceDetails.payment_method || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, payment_method: e.target.value }))} sx={{ gridColumn: '1 / -1' }}>
                     <MenuItem value="">Select payment method</MenuItem>
                     <MenuItem value="credit_card">Credit Card</MenuItem>
                     <MenuItem value="cheque">Cheque</MenuItem>
                     <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
                   </TextField>
-                  <TextField size="small" select label="Select Action" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, action: e.target.value }))} sx={{ gridColumn: '1 / -1' }}>
-                    <MenuItem value="">Select Action</MenuItem>
-                    <MenuItem value="approve">Approve</MenuItem>
-                    <MenuItem value="reject">Reject</MenuItem>
-                    <MenuItem value="mark_pending">Mark Pending</MenuItem>
-                    <MenuItem value="convert_to_invoice">Convert to invoice</MenuItem>
+                  <TextField size="small" label="Labour Hours" type="number" value={invoiceDetails.labour_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, labour_hours: Number(e.target.value) }))} />
+                  <TextField size="small" label="Working Hours Fee ($)" type="number" value={invoiceDetails.worked_hours || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, worked_hours: Number(e.target.value) }))} />
+                  <TextField size="small" label="Service Fee" type="number" value={invoiceDetails.service_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, service_fee: Number(e.target.value) }))} />
+                  <TextField size="small" label="Setup Fee" type="number" value={invoiceDetails.setup_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
+                  <TextField size="small" label="Shipping / Delivery Fee" type="number" value={invoiceDetails.shipping_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
+                  <TextField size="small" label="Application Fee" type="number" value={invoiceDetails.application_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, application_fee: Number(e.target.value) }))} />
+                  <TextField size="small" label="Parts Total" value={convertPartsTotal.toFixed(2)} InputProps={{ readOnly: true }} />
+                  <TextField size="small" label="Tax Rate (%)" type="number" value={invoiceDetails.tax_rate || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, tax_rate: Number(e.target.value) }))} />
+                  <TextField size="small" label="Tax Amount" value={convertTaxAmount.toFixed(2)} InputProps={{ readOnly: true }} />
+                  <TextField size="small" select label="Discount Type" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(prev => ({ ...prev, discount_type: e.target.value as 'fixed' | 'percent' }))}>
+                    <MenuItem value="fixed">Fixed ($)</MenuItem>
+                    <MenuItem value="percent">Percent (%)</MenuItem>
                   </TextField>
+                  <TextField size="small" label="Discount" type="number" value={invoiceDetails.discount_amount || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, discount_amount: Number(e.target.value) }))} />
+                  <TextField size="small" label="Grand Total" value={convertGrandTotal.toFixed(2)} InputProps={{ readOnly: true }} sx={{ gridColumn: '1 / -1' }} />
                   <TextField size="small" label="Due Date" type="date" value={invoiceDetails.due_date || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} sx={{ gridColumn: '1 / -1' }} />
                   <TextField size="small" label="Notes" value={invoiceDetails.notes || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, notes: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
                 </Box>

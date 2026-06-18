@@ -35,6 +35,14 @@ export interface PrintableInvoice {
   due_date?: string | null
   payment_method?: string | null
   notes?: string | null
+  // Optional fee breakdown (shown before subtotal in print)
+  parts_total?: number | null
+  worked_hours_fee?: number | null
+  setup_fee_extra?: number | null
+  service_fee_extra?: number | null
+  shipping_fee_extra?: number | null
+  application_fee_extra?: number | null
+  additional_service_fees?: number | null
 }
 
 export interface PrintableLineItem {
@@ -302,6 +310,13 @@ const buildPrintableHtml = (
 
       ${type === 'invoice' ? `
         <section class="totals">
+          ${invoice.parts_total != null ? `<div><span>Parts / Rental Total</span><strong>${escapeHtml(money(invoice.parts_total))}</strong></div>` : ''}
+          ${invoice.worked_hours_fee ? `<div><span>Working Hours Fee</span><strong>${escapeHtml(money(invoice.worked_hours_fee))}</strong></div>` : ''}
+          ${invoice.setup_fee_extra ? `<div><span>Setup Fee</span><strong>${escapeHtml(money(invoice.setup_fee_extra))}</strong></div>` : ''}
+          ${invoice.service_fee_extra ? `<div><span>Service Fee</span><strong>${escapeHtml(money(invoice.service_fee_extra))}</strong></div>` : ''}
+          ${invoice.shipping_fee_extra ? `<div><span>Shipping / Delivery Fee</span><strong>${escapeHtml(money(invoice.shipping_fee_extra))}</strong></div>` : ''}
+          ${invoice.application_fee_extra ? `<div><span>Application / Training Fee</span><strong>${escapeHtml(money(invoice.application_fee_extra))}</strong></div>` : ''}
+          ${invoice.additional_service_fees ? `<div><span>Additional Service Fees</span><strong>${escapeHtml(money(invoice.additional_service_fees))}</strong></div>` : ''}
           <div><span>Subtotal</span><strong>${escapeHtml(money(invoice.subtotal))}</strong></div>
           <div><span>Tax</span><strong>${escapeHtml(money(invoice.tax_amount))}</strong></div>
           <div><span>Discount</span><strong>${escapeHtml(money(invoice.discount_amount))}</strong></div>

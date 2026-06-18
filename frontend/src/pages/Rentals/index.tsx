@@ -969,25 +969,37 @@ const Rentals = () => {
       <InvoicePrintDialog
         open={Boolean(printInvoice)}
         onClose={() => setPrintInvoice(null)}
-        invoice={printInvoice ? {
-          invoice_number: printInvoice.invoice_number,
-          invoice_type: printInvoice.invoice_type,
-          reference_number: printInvoice.rental_number,
-          customer_name: printInvoice.customer_name,
-          customer_email: printInvoice.customer_email,
-          facility_name: printInvoice.facility_name,
-          subtotal: Number(printInvoice.subtotal || 0),
-          tax_amount: Number(printInvoice.tax_amount || 0),
-          discount_amount: Number(printInvoice.discount_amount || 0),
-          total_amount: Number(printInvoice.total_amount || 0),
-          amount_paid: Number(printInvoice.amount_paid || 0),
-          balance_due: Number(printInvoice.balance_due || 0),
-          status: String(printInvoice.status || ''),
-          issue_date: printInvoice.issue_date,
-          due_date: printInvoice.due_date,
-          payment_method: printInvoice.payment_method,
-          notes: printInvoice.notes,
-        } : null}
+        invoice={printInvoice ? (() => {
+          const rental = rentals.find(item => item.id === printInvoice.rental_id)
+          const baseRentalTotal = rental
+            ? Number(rental.rental_rate || 0) * Number(rental.quantity || 1) + Number(rental.shipping_fee || 0) + Number(rental.setup_fee || 0)
+            : 0
+          const additionalFees = Number(printInvoice.subtotal || 0) - baseRentalTotal
+          const hasAdditionalFees = additionalFees > 0.005
+          return {
+            invoice_number: printInvoice.invoice_number,
+            invoice_type: printInvoice.invoice_type,
+            reference_number: printInvoice.rental_number,
+            customer_name: printInvoice.customer_name,
+            customer_email: printInvoice.customer_email,
+            facility_name: printInvoice.facility_name,
+            subtotal: Number(printInvoice.subtotal || 0),
+            tax_amount: Number(printInvoice.tax_amount || 0),
+            discount_amount: Number(printInvoice.discount_amount || 0),
+            total_amount: Number(printInvoice.total_amount || 0),
+            amount_paid: Number(printInvoice.amount_paid || 0),
+            balance_due: Number(printInvoice.balance_due || 0),
+            status: String(printInvoice.status || ''),
+            issue_date: printInvoice.issue_date,
+            due_date: printInvoice.due_date,
+            payment_method: printInvoice.payment_method,
+            notes: printInvoice.notes,
+            ...(hasAdditionalFees ? {
+              parts_total: baseRentalTotal,
+              additional_service_fees: additionalFees,
+            } : {}),
+          }
+        })() : null}
         lineItems={invoiceLineItems(printInvoice)}
         ledgerTransactions={invoiceLedgerTransactions(printInvoice)}
         moduleLabel="Rental"
@@ -1174,33 +1186,30 @@ const Rentals = () => {
 
               <Card sx={{ borderRadius: '14px', border: `1px solid ${SYSTEM_PANEL_BORDER}`, p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E3A8A' }}>Configure Invoice</Typography>
-                <TextField label="Labour Hours" type="number" size="small" value={invoiceDetails.labour_hours} onChange={e => setInvoiceDetails(p => ({ ...p, labour_hours: Number(e.target.value) }))} />
-                <TextField label="Working Hours Fee" type="number" size="small" value={invoiceDetails.worked_hours} onChange={e => setInvoiceDetails(p => ({ ...p, worked_hours: Number(e.target.value) }))} />
-                <TextField label="Setup Fee" type="number" size="small" value={invoiceDetails.setup_fee} onChange={e => setInvoiceDetails(p => ({ ...p, setup_fee: Number(e.target.value) }))} />
-                <TextField label="Service Fee" type="number" size="small" value={invoiceDetails.service_fee} onChange={e => setInvoiceDetails(p => ({ ...p, service_fee: Number(e.target.value) }))} />
-                <TextField label="Shipping Fee" type="number" size="small" value={invoiceDetails.shipping_fee} onChange={e => setInvoiceDetails(p => ({ ...p, shipping_fee: Number(e.target.value) }))} />
-                <TextField label="Application Fee" type="number" size="small" value={invoiceDetails.application_fee} onChange={e => setInvoiceDetails(p => ({ ...p, application_fee: Number(e.target.value) }))} />
-                <TextField label="Tax Rate (%)" type="number" size="small" value={invoiceDetails.tax_rate} onChange={e => setInvoiceDetails(p => ({ ...p, tax_rate: Number(e.target.value) }))} />
-                <TextField select label="Discount Type" size="small" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(p => ({ ...p, discount_type: e.target.value as 'fixed' | 'percent' }))}>
-                  <MenuItem value="fixed">Fixed</MenuItem>
-                  <MenuItem value="percent">Percent</MenuItem>
+                <TextField select label="Select Action" size="small" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(p => ({ ...p, action: e.target.value }))}>
+                  <MenuItem value="">Select Action</MenuItem>
+                  <MenuItem value="approve">Approve Quotation</MenuItem>
+                  <MenuItem value="reject">Reject Quotation</MenuItem>
+                  <MenuItem value="mark_pending">Mark as Pending</MenuItem>
+                  <MenuItem value="convert_to_invoice">Convert to Invoice</MenuItem>
                 </TextField>
-                <TextField label="Discount Amount" type="number" size="small" value={invoiceDetails.discount_amount} onChange={e => setInvoiceDetails(p => ({ ...p, discount_amount: Number(e.target.value) }))} />
-                
                 <TextField select label="Payment Method" size="small" value={invoiceDetails.payment_method} onChange={e => setInvoiceDetails(p => ({ ...p, payment_method: e.target.value }))}>
                   <MenuItem value="credit_card">Credit Card</MenuItem>
                   <MenuItem value="cheque">Cheque</MenuItem>
                   <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
                 </TextField>
-
-                <TextField select label="Select Action" size="small" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(p => ({ ...p, action: e.target.value }))}>
-                  <MenuItem value="">Select Action</MenuItem>
-                  <MenuItem value="approve">Approve</MenuItem>
-                  <MenuItem value="reject">Reject</MenuItem>
-                  <MenuItem value="mark_pending">Mark Pending</MenuItem>
-                  <MenuItem value="convert_to_invoice">Convert to invoice</MenuItem>
+                <TextField label="Labour Hours" type="number" size="small" value={invoiceDetails.labour_hours} onChange={e => setInvoiceDetails(p => ({ ...p, labour_hours: Number(e.target.value) }))} />
+                <TextField label="Working Hours Fee ($)" type="number" size="small" value={invoiceDetails.worked_hours} onChange={e => setInvoiceDetails(p => ({ ...p, worked_hours: Number(e.target.value) }))} />
+                <TextField label="Service Fee" type="number" size="small" value={invoiceDetails.service_fee} onChange={e => setInvoiceDetails(p => ({ ...p, service_fee: Number(e.target.value) }))} />
+                <TextField label="Setup Fee" type="number" size="small" value={invoiceDetails.setup_fee} onChange={e => setInvoiceDetails(p => ({ ...p, setup_fee: Number(e.target.value) }))} />
+                <TextField label="Shipping / Delivery Fee" type="number" size="small" value={invoiceDetails.shipping_fee} onChange={e => setInvoiceDetails(p => ({ ...p, shipping_fee: Number(e.target.value) }))} />
+                <TextField label="Application / Training Fee" type="number" size="small" value={invoiceDetails.application_fee} onChange={e => setInvoiceDetails(p => ({ ...p, application_fee: Number(e.target.value) }))} />
+                <TextField label="Tax Rate (%)" type="number" size="small" value={invoiceDetails.tax_rate} onChange={e => setInvoiceDetails(p => ({ ...p, tax_rate: Number(e.target.value) }))} />
+                <TextField select label="Discount Type" size="small" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(p => ({ ...p, discount_type: e.target.value as 'fixed' | 'percent' }))}>
+                  <MenuItem value="fixed">Fixed ($)</MenuItem>
+                  <MenuItem value="percent">Percent (%)</MenuItem>
                 </TextField>
-
+                <TextField label="Discount Amount" type="number" size="small" value={invoiceDetails.discount_amount} onChange={e => setInvoiceDetails(p => ({ ...p, discount_amount: Number(e.target.value) }))} />
                 <TextField label="Invoice Due Date" type="date" size="small" value={invoiceDetails.due_date} onChange={e => setInvoiceDetails(p => ({ ...p, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
                 <TextField label="Billing Notes" size="small" multiline rows={2} value={invoiceDetails.notes} onChange={e => setInvoiceDetails(p => ({ ...p, notes: e.target.value }))} />
               </Card>
