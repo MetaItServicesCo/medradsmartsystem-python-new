@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Optional
@@ -119,7 +120,8 @@ def _history_entry(action: str, user: User, details: Optional[dict[str, Any]] = 
 
 def _append_history(quotation: SalesQuotation, action: str, user: User, details: Optional[dict[str, Any]] = None) -> None:
     history = list(quotation.history or [])
-    history.append(_history_entry(action, user, details))
+    safe_details = json.loads(json.dumps(details or {}, default=str)) if details else None
+    history.append(_history_entry(action, user, safe_details))
     quotation.history = history
 
 

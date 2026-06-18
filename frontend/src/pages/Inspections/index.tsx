@@ -731,7 +731,9 @@ const Inspections = () => {
 
   const saveInvoice = () => {
     if (!invoiceEdit) return
-    invoiceMut.mutate({ id: invoiceEdit.id, data: invoiceForm })
+    // Omit total_amount so the backend always recalculates it from subtotal + charges + tax - discount
+    const { total_amount: _omit, ...invoicePayload } = invoiceForm
+    invoiceMut.mutate({ id: invoiceEdit.id, data: invoicePayload })
   }
 
   const openAssetActions = (event: MouseEvent<HTMLElement>, asset: Inspection) => {
