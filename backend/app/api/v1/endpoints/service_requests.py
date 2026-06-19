@@ -331,6 +331,8 @@ def list_service_requests(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """List service requests with filters."""
+    if current_user.role == UserRole.HR_MANAGER:
+        raise HTTPException(status_code=403, detail="HR managers do not have access to service requests")
     query = (
         scope_query_to_user_facilities(db.query(ServiceRequest), ServiceRequest.facility_id, db, current_user)
         .options(
@@ -358,6 +360,10 @@ def list_service_requests(
     # Technicians only see service requests they are assigned to
     if current_user.role == UserRole.TECHNICIAN:
         query = query.filter(ServiceRequest.assigned_technician_id == current_user.id)
+
+    # Employees and clients only see requests they submitted
+    if current_user.role in (UserRole.EMPLOYEE, UserRole.CLIENT):
+        query = query.filter(ServiceRequest.requester_id == current_user.id)
 
     total = query.count()
     items = query.order_by(ServiceRequest.created_at.desc()).offset(skip).limit(limit).all()
@@ -458,6 +464,8 @@ def get_service_request(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Get a single service request by ID."""
+    if current_user.role == UserRole.HR_MANAGER:
+        raise HTTPException(status_code=403, detail="HR managers do not have access to service requests")
     sr = (
         db.query(ServiceRequest)
         .options(
@@ -477,6 +485,9 @@ def get_service_request(
     # Technicians can only view service requests assigned to them
     if current_user.role == UserRole.TECHNICIAN and sr.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only view service requests assigned to you")
+    # Employees and clients can only view requests they submitted
+    if current_user.role in (UserRole.EMPLOYEE, UserRole.CLIENT) and sr.requester_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only view service requests you submitted")
     data = _enrich(sr)
     active_invoice = (
         db.query(Invoice)
