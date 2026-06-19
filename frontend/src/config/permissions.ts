@@ -31,7 +31,7 @@ export const ROLE_PERMISSIONS: Record<string, Module[]> = {
     'chat', 'attendance', 'calendar',
   ],
   facility_admin: [
-    'dashboard', 'facilities', 'service-requests', 'inventory', 'chat',
+    'dashboard', 'facilities', 'service-requests', 'inventory', 'billing', 'chat',
     'calendar',
   ],
   technician: [
@@ -43,7 +43,7 @@ export const ROLE_PERMISSIONS: Record<string, Module[]> = {
     'calendar',
   ],
   facility_manager: [
-    'dashboard', 'facilities', 'inspections', 'chat',
+    'dashboard', 'facilities', 'inspections', 'billing', 'chat',
     'calendar',
   ],
   employee: [

@@ -355,6 +355,10 @@ def list_service_requests(
             | ServiceRequest.problem_description.ilike(f"%{search}%")
         )
 
+    # Technicians only see service requests they are assigned to
+    if current_user.role == UserRole.TECHNICIAN:
+        query = query.filter(ServiceRequest.assigned_technician_id == current_user.id)
+
     total = query.count()
     items = query.order_by(ServiceRequest.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [_enrich(sr) for sr in items], "total": total}
@@ -470,6 +474,9 @@ def get_service_request(
     if not sr:
         raise HTTPException(status_code=404, detail="Service request not found")
     require_facility_access(db, current_user, sr.facility_id)
+    # Technicians can only view service requests assigned to them
+    if current_user.role == UserRole.TECHNICIAN and sr.assigned_technician_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only view service requests assigned to you")
     data = _enrich(sr)
     active_invoice = (
         db.query(Invoice)
@@ -1068,6 +1075,8 @@ def create_quotation(
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
     require_facility_access(db, current_user, db_sr.facility_id)
+    if current_user.role == UserRole.TECHNICIAN and db_sr.assigned_technician_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only create quotations for service requests assigned to you")
 
     if db_sr.status == ServiceRequestStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Cannot create quotation for a completed service request")
@@ -1145,6 +1154,8 @@ def update_quotation(
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
     require_facility_access(db, current_user, db_quotation.service_request.facility_id)
+    if current_user.role == UserRole.TECHNICIAN and db_quotation.service_request.assigned_technician_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only edit quotations for service requests assigned to you")
 
     if db_quotation.service_request.status == ServiceRequestStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Cannot edit quotation after service is completed")
@@ -1235,6 +1246,8 @@ def delete_quotation(
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
     require_facility_access(db, current_user, db_quotation.service_request.facility_id)
+    if current_user.role == UserRole.TECHNICIAN and db_quotation.service_request.assigned_technician_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only delete quotations for service requests assigned to you")
 
     if db_quotation.service_request.status == ServiceRequestStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Cannot delete quotation after service is completed")

@@ -169,7 +169,8 @@ const Billing = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
-  const canPay = ['superadmin', 'admin', 'hr_manager', 'facility_admin', 'facility_manager'].includes(user?.role || '')
+  // Only the invoice's owning side (facility admin/manager) may record payment — not the service company's own staff
+  const canPay = ['facility_admin', 'facility_manager'].includes(user?.role || '')
 
   const [sourceFilter, setSourceFilter] = useState<'all' | BillingSource>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
