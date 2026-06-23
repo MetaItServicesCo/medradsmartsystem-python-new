@@ -140,7 +140,7 @@ const printReport = (report: ServiceRequest) => {
           .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; }
           @media print {
             body { background: #fff; }
-            .sheet { margin: 0; width: 100%; box-shadow: none; }
+            .sheet { margin: 0; width: 100%; min-height: 0; box-shadow: none; }
             .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           }
         </style>

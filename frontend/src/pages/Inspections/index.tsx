@@ -137,7 +137,7 @@ const REPORT_CSS = `
   .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; }
   @media print {
     body { background: #fff; }
-    .sheet { margin: 0; width: 100%; box-shadow: none; }
+    .sheet { margin: 0; width: 100%; min-height: 0; box-shadow: none; }
     .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .total-row td, .bal-row td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1490,6 +1490,15 @@ const Inspections = () => {
         </MenuItem>
         <MenuItem onClick={() => assetActionItem && handlePrintReport(assetActionItem)}>
           <AssessmentIcon fontSize="small" sx={{ mr: 1 }} /> Print Report
+        </MenuItem>
+        <MenuItem
+          disabled={!assetActionItem?.invoice}
+          onClick={() => {
+            if (assetActionItem?.invoice) printInspectionInvoice(assetActionItem.invoice)
+            closeAssetActions()
+          }}
+        >
+          <ReceiptLongIcon fontSize="small" sx={{ mr: 1 }} /> Print Invoice
         </MenuItem>
       </Menu>
 

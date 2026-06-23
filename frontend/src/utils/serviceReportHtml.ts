@@ -56,7 +56,7 @@ export const buildServiceReportSheet = (sr: any): string => {
     : '<p class="muted">No technician sessions recorded.</p>'
 
   return `
-    <main class="sheet">
+    <main class="sheet" style="break-before:page;page-break-before:always;">
       <section class="hero report-hero">
         <div class="brand">
           <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />

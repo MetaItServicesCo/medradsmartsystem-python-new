@@ -229,7 +229,7 @@ const printStyles = `
   .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
   @media print {
     body { background: #fff; }
-    .sheet { margin: 0; width: 100%; min-height: auto; box-shadow: none; page-break-after: always; }
+    .sheet { margin: 0; width: 100%; min-height: 0; box-shadow: none; }
     .hero, .report-hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     th, .totals .grand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
