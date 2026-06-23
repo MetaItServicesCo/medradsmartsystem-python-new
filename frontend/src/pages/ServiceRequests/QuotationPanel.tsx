@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { NumericField } from '../../components/NumericField'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Box, Card, Typography, Button, TextField, IconButton, Chip,
@@ -318,8 +319,8 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                 </Select>
               </FormControl>
               <TextField size="small" label="Description" value={li.description} onChange={e => updateLineItem(idx, 'description', e.target.value)} sx={{ flex: 2 }} />
-              <TextField size="small" label="Qty" type="number" value={li.quantity} onChange={e => updateLineItem(idx, 'quantity', parseFloat(e.target.value) || 0)} sx={{ width: 80 }} inputProps={{ min: 0, step: 0.5 }} />
-              <TextField size="small" label="Unit $" type="number" value={li.unit_price} onChange={e => updateLineItem(idx, 'unit_price', parseFloat(e.target.value) || 0)} sx={{ width: 100 }} inputProps={{ min: 0, step: 0.01 }} />
+              <NumericField size="small" label="Qty" value={li.quantity} onChange={val => updateLineItem(idx, 'quantity', val)} sx={{ width: 80 }} inputProps={{ min: 0, step: 0.5 }} />
+              <NumericField size="small" label="Unit $" value={li.unit_price} onChange={val => updateLineItem(idx, 'unit_price', val)} sx={{ width: 100 }} inputProps={{ min: 0, step: 0.01 }} />
               <Typography sx={{ fontWeight: 700, minWidth: 80, textAlign: 'right' }}>${li.total.toFixed(2)}</Typography>
               <IconButton size="small" color="error" onClick={() => setLineItems(lineItems.filter((_, i) => i !== idx))} disabled={lineItems.length === 1}>
                 <DeleteOutlineIcon fontSize="small" />

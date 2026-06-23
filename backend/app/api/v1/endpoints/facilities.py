@@ -91,8 +91,8 @@ def read_facilities(
             )
         )
     total = query.count()
-    items = query.offset(skip).limit(limit).all()
-    
+    items = query.order_by(Facility.created_at.desc()).offset(skip).limit(limit).all()
+
     results = [_facility_response(db, item) for item in items]
 
     return {"items": results, "total": total, "skip": skip, "limit": limit}

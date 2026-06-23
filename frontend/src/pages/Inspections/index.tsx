@@ -1,4 +1,5 @@
 import { type MouseEvent, useEffect, useMemo, useState } from 'react'
+import { NumericField } from '../../components/NumericField'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
 import {
@@ -229,7 +230,7 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
           <div class="box"><small>Result</small><strong>${escapeHtml(inspection.result || '-')}</strong></div>
         </div>
         <div class="grid">
-          <div class="box"><small>Make / Model</small><strong>${escapeHtml([inspection.make || data.identity?.make, inspection.model || data.identity?.model].filter(Boolean).join(' ') || '-')}</strong></div>
+          <div class="box"><small>Asset / Part</small><strong>${escapeHtml(inspection.inventory_part_name || inspection.asset_name || inspection.equipment_name || '-')}</strong></div>
           <div class="box"><small>Tier</small><strong>${escapeHtml(inspection.tier_name || '-')}</strong></div>
           <div class="box"><small>Technician</small><strong>${escapeHtml(inspection.inspector_name || data.dates?.inspected_by || '-')}</strong></div>
           <div class="box"><small>Completed</small><strong>${escapeHtml(formatDate(inspection.completed_at || data.dates?.inspection_date))}</strong></div>
@@ -324,7 +325,7 @@ const buildInvoiceSheetHtml = (invoice: InspectionInvoice, pageBreak = false): s
           <tbody>
             <tr>
               <td>Inspection Service${invoice.inspection_number ? ` — ${escapeHtml(invoice.inspection_number)}` : ''}</td>
-              <td>${escapeHtml(invoice.inventory_part_name || '-')}</td>
+              <td>${escapeHtml(invoice.inventory_part_name || (invoice as any).asset_name || (invoice as any).equipment_name || '-')}</td>
               <td class="right amount">${escapeHtml(money(invoice.subtotal))}</td>
             </tr>
             ${travel > 0 ? `<tr><td>Travel Charges</td><td>—</td><td class="right amount">${escapeHtml(money(travel))}</td></tr>` : ''}
@@ -1156,7 +1157,7 @@ const Inspections = () => {
                   <TableCell sx={{ fontWeight: 900 }}>Invoice #</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Inventory</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Asset / Part</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Due</TableCell>
@@ -1186,7 +1187,7 @@ const Inspections = () => {
                       <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{invoice.invoice_number}</TableCell>
                       <TableCell>{invoice.inspection_number || '-'}</TableCell>
                       <TableCell>{invoice.facility_name || '-'}</TableCell>
-                      <TableCell>{invoice.inventory_part_name || '-'}</TableCell>
+                      <TableCell>{invoice.inventory_part_name || (invoice as any).asset_name || (invoice as any).equipment_name || '-'}</TableCell>
                       <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
                       <TableCell><Chip size="small" label={invoice.status} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
                       <TableCell>{formatDate(invoice.due_date)}</TableCell>
@@ -1539,7 +1540,7 @@ const Inspections = () => {
                     <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 0.8fr 1fr', gap: 1, mb: 1 }}>
                       <TextField size="small" label="Description" value={part.description} onChange={e => updateArrayReport('parts', index, 'description', e.target.value)} />
                       <TextField size="small" label="Part #" value={part.part_number} onChange={e => updateArrayReport('parts', index, 'part_number', e.target.value)} />
-                      <TextField size="small" label="Price" type="number" value={part.price} onChange={e => updateArrayReport('parts', index, 'price', Number(e.target.value))} />
+                      <NumericField size="small" label="Price" value={part.price} onChange={val => updateArrayReport('parts', index, 'price', val)} />
                       <TextField size="small" label="Condition" value={part.condition} onChange={e => updateArrayReport('parts', index, 'condition', e.target.value)} />
                     </Box>
                   ))}
@@ -1555,9 +1556,9 @@ const Inspections = () => {
                 </Card>
               </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-                <TextField label="Parts" type="number" value={report.billing.parts} onChange={e => updateReport('billing', 'parts', Number(e.target.value))} />
-                <TextField label="Inspection Charges" type="number" value={report.billing.inspection_charges} onChange={e => updateReport('billing', 'inspection_charges', Number(e.target.value))} />
-                <TextField label="Others" type="number" value={report.billing.others} onChange={e => updateReport('billing', 'others', Number(e.target.value))} />
+                <NumericField label="Parts" value={report.billing.parts} onChange={val => updateReport('billing', 'parts', val)} />
+                <NumericField label="Inspection Charges" value={report.billing.inspection_charges} onChange={val => updateReport('billing', 'inspection_charges', val)} />
+                <NumericField label="Others" value={report.billing.others} onChange={val => updateReport('billing', 'others', val)} />
               </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
                 {Object.entries(report.dates).map(([key, value]) => (
@@ -1631,20 +1632,18 @@ const Inspections = () => {
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, pt: 1 }}>
             {['subtotal', 'tax_amount', 'discount_amount', 'total_amount', 'amount_paid'].map(key => (
-              <TextField key={key} label={key.replace(/_/g, ' ')} type="number" value={invoiceForm[key] ?? ''} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, [key]: Number(e.target.value) }))} />
+              <NumericField key={key} label={key.replace(/_/g, ' ')} value={Number(invoiceForm[key] ?? 0)} onChange={val => setInvoiceForm((prev: any) => ({ ...prev, [key]: val }))} />
             ))}
-            <TextField
+            <NumericField
               label="Travel Charges ($)"
-              type="number"
-              value={invoiceForm.travel_charges ?? 0}
-              onChange={e => setInvoiceForm((prev: any) => ({ ...prev, travel_charges: Number(e.target.value) }))}
+              value={Number(invoiceForm.travel_charges ?? 0)}
+              onChange={val => setInvoiceForm((prev: any) => ({ ...prev, travel_charges: val }))}
               inputProps={{ min: 0, step: 0.01 }}
             />
-            <TextField
+            <NumericField
               label="Service Charges ($)"
-              type="number"
-              value={invoiceForm.service_charges ?? 0}
-              onChange={e => setInvoiceForm((prev: any) => ({ ...prev, service_charges: Number(e.target.value) }))}
+              value={Number(invoiceForm.service_charges ?? 0)}
+              onChange={val => setInvoiceForm((prev: any) => ({ ...prev, service_charges: val }))}
               inputProps={{ min: 0, step: 0.01 }}
             />
             <TextField label="Due date" type="date" value={invoiceForm.due_date || ''} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} />

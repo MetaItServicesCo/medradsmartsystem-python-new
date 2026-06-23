@@ -1002,7 +1002,7 @@ const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountIt
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 950 }}>Item</TableCell>
-                  <TableCell sx={{ fontWeight: 950 }} align="right">Quantity</TableCell>
+                  <TableCell sx={{ fontWeight: 950 }} align="right">{serviceInvoice ? 'Hours' : 'Quantity'}</TableCell>
                   <TableCell sx={{ fontWeight: 950 }} align="right">Price</TableCell>
                   <TableCell sx={{ fontWeight: 950 }} align="right">Total</TableCell>
                 </TableRow>
