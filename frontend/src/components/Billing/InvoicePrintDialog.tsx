@@ -60,6 +60,8 @@ export interface PrintableLineItem {
   setup_fee?: number
   condition?: string | null
   total_amount: number
+  /** Per-row unit label (e.g. 'Hours', 'Miles', 'Qty'). When set, overrides the column-level quantityLabel for this row. */
+  unitLabel?: string
 }
 
 export interface PrintableLedgerTransaction {
@@ -256,14 +258,20 @@ const buildPrintableHtml = (
 ) => {
   const title = documentLabel(type, primaryDocumentLabel)
   const accentSoft = softAccentFor(accent)
-  const itemRows = lineItems.length ? lineItems.map(item => `
+  const hasPerItemUnits = lineItems.some(i => i.unitLabel)
+  const qtyHeader = hasPerItemUnits ? 'Unit' : quantityLabel
+  const itemRows = lineItems.length ? lineItems.map(item => {
+    const qtyCell = item.unitLabel
+      ? `${escapeHtml(item.quantity)} ${escapeHtml(item.unitLabel)}`
+      : escapeHtml(item.quantity)
+    return `
     <tr>
       <td><span class="item-number">${escapeHtml(item.item_number)}</span><br><span class="item-condition">${escapeHtml(item.condition || '')}</span></td>
       <td>${escapeHtml(item.description)}</td>
-      <td class="right">${escapeHtml(item.quantity)}</td>
+      <td class="right">${qtyCell}</td>
       ${type === 'packing_slip' ? '' : `<td class="right">${escapeHtml(money(item.unit_price))}</td><td class="right">${escapeHtml(money(item.shipping_fee))}</td><td class="right">${escapeHtml(money(item.setup_fee))}</td><td class="right amount">${escapeHtml(money(item.total_amount))}</td>`}
     </tr>
-  `).join('') : '<tr><td colspan="7">No line items available.</td></tr>'
+  `}).join('') : '<tr><td colspan="7">No line items available.</td></tr>'
 
   const ledgerRows = ledgerTransactions.length ? ledgerTransactions.map(item => `
     <tr>
@@ -322,7 +330,7 @@ const buildPrintableHtml = (
         <table>
           <thead>
             <tr>
-              <th>Item</th><th>Description</th><th class="right">${escapeHtml(quantityLabel)}</th>
+              <th>Item</th><th>Description</th><th class="right">${escapeHtml(qtyHeader)}</th>
               ${type === 'packing_slip' ? '' : '<th class="right">Price</th><th class="right">Shipping</th><th class="right">Setup</th><th class="right">Total</th>'}
             </tr>
           </thead>
@@ -389,7 +397,7 @@ const InvoicePrintDialog = ({
     return lineItems.map(item => ({
       first: item.item_number,
       second: item.description,
-      third: `${quantityLabel} ${item.quantity}`,
+      third: item.unitLabel ? `${item.quantity} ${item.unitLabel}` : `${quantityLabel} ${item.quantity}`,
       amount: documentType === 'packing_slip' ? item.condition || '-' : money(item.total_amount),
     }))
   }, [documentType, invoice?.invoice_number, ledgerTransactions, lineItems, quantityLabel])

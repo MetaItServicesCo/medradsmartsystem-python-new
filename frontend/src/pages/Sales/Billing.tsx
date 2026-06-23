@@ -505,6 +505,13 @@ const Billing = () => {
     return base
   }
 
+  const serviceLineUnitLabel = (description: string, condition?: string | null): string => {
+    if (/travel/i.test(description)) return 'Miles'
+    if (/labor/i.test(description) || condition === 'labor') return 'Hours'
+    if (condition === 'part') return 'Qty'
+    return 'Qty'
+  }
+
   const printableLineItems = (item: BillingItem | null): PrintableLineItem[] => {
     if (!item) return []
     if (item.source === 'service' && item.billingKind === 'service_invoice') {
@@ -519,6 +526,7 @@ const Billing = () => {
           setup_fee: Number(line.setup_fee || 0),
           condition: line.condition,
           total_amount: Number(line.total_amount || 0),
+          unitLabel: serviceLineUnitLabel(line.description, line.condition),
         }))
       }
     }
