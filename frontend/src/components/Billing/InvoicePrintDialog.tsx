@@ -83,6 +83,8 @@ interface InvoicePrintDialogProps {
   moduleLabel: string
   primaryDocumentLabel?: string
   accent?: string
+  /** Override the "Qty" column header label (e.g. "Hours" for service invoices). */
+  quantityLabel?: string
   /** Optional HTML appended after the invoice sheet (e.g. service report). */
   appendHtml?: string
 }
@@ -229,7 +231,7 @@ const printStyles = `
   .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
   @media print {
     body { background: #fff; }
-    .sheet { margin: 0; width: 100%; min-height: 0; box-shadow: none; }
+    .sheet { margin: 0; width: 100%; min-height: 0; overflow: visible; box-shadow: none; }
     .hero, .report-hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     th, .totals .grand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
@@ -250,6 +252,7 @@ const buildPrintableHtml = (
   moduleLabel: string,
   primaryDocumentLabel: string,
   accent: string,
+  quantityLabel = 'Qty',
 ) => {
   const title = documentLabel(type, primaryDocumentLabel)
   const accentSoft = softAccentFor(accent)
@@ -319,7 +322,7 @@ const buildPrintableHtml = (
         <table>
           <thead>
             <tr>
-              <th>Item</th><th>Description</th><th class="right">Qty</th>
+              <th>Item</th><th>Description</th><th class="right">${escapeHtml(quantityLabel)}</th>
               ${type === 'packing_slip' ? '' : '<th class="right">Price</th><th class="right">Shipping</th><th class="right">Setup</th><th class="right">Total</th>'}
             </tr>
           </thead>
@@ -368,6 +371,7 @@ const InvoicePrintDialog = ({
   moduleLabel,
   primaryDocumentLabel = 'Invoice',
   accent = '#7C3AED',
+  quantityLabel = 'Qty',
   appendHtml,
 }: InvoicePrintDialogProps) => {
   const [documentType, setDocumentType] = useState<PrintDocumentType>('invoice')
@@ -385,14 +389,14 @@ const InvoicePrintDialog = ({
     return lineItems.map(item => ({
       first: item.item_number,
       second: item.description,
-      third: `Qty ${item.quantity}`,
+      third: `${quantityLabel} ${item.quantity}`,
       amount: documentType === 'packing_slip' ? item.condition || '-' : money(item.total_amount),
     }))
-  }, [documentType, invoice?.invoice_number, ledgerTransactions, lineItems])
+  }, [documentType, invoice?.invoice_number, ledgerTransactions, lineItems, quantityLabel])
 
   const handlePrint = () => {
     if (!invoice) return
-    const html = buildPrintableHtml(invoice, documentType, lineItems, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent)
+    const html = buildPrintableHtml(invoice, documentType, lineItems, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel)
     printHtml(`${invoice.invoice_number} ${documentLabel(documentType, primaryDocumentLabel)}`, html + (appendHtml || ''))
   }
 

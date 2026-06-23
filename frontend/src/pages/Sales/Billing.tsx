@@ -773,6 +773,7 @@ const Billing = () => {
         moduleLabel={printItem ? SOURCE_LABEL[printItem.source] : 'Billing'}
         primaryDocumentLabel={printItem?.source === 'service' && printItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
         accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
+        quantityLabel={printItem?.source === 'service' && printItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
         appendHtml={printSrData ? buildServiceReportSheet(printSrData) : undefined}
       />
 
