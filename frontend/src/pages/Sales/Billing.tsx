@@ -27,6 +27,7 @@ import {
   createQuotationPayment,
   fetchAllQuotations,
   fetchServiceInvoices,
+  fetchServiceRequest,
   updateServiceInvoice,
   type QuotationPaymentCreate,
   type ServiceInvoice,
@@ -34,6 +35,7 @@ import {
 } from '@/api/serviceRequests'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import { useAuthStore } from '@/stores/authStore'
+import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
 
 type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
 type BillingStatus = 'draft' | 'sent' | 'approved' | 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'rejected' | 'cancelled'
@@ -193,6 +195,17 @@ const Billing = () => {
 
   const serviceQ = useQuery({ queryKey: ['billing-service-quotations'], queryFn: fetchAllQuotations })
   const serviceInvoicesQ = useQuery({ queryKey: ['billing-service-invoices'], queryFn: () => fetchServiceInvoices() })
+
+  // Fetch full SR data (with history) when printing a service invoice — needed to append the service report
+  const printSrId = printItem?.source === 'service' && printItem?.billingKind === 'service_invoice'
+    ? (printItem.raw as ServiceInvoice).service_request_id
+    : null
+  const { data: printSrData } = useQuery({
+    queryKey: ['service-request', printSrId],
+    queryFn: () => fetchServiceRequest(printSrId!),
+    enabled: !!printSrId,
+    staleTime: 60_000,
+  })
   const inspectionQ = useQuery({ queryKey: ['billing-inspection-invoices'], queryFn: fetchInspectionQuotations })
   const salesQ = useQuery({ queryKey: ['billing-sales-invoices'], queryFn: () => fetchSalesInvoices() })
   const rentalsQ = useQuery({ queryKey: ['billing-rental-invoices'], queryFn: () => fetchRentalInvoices() })
@@ -760,6 +773,7 @@ const Billing = () => {
         moduleLabel={printItem ? SOURCE_LABEL[printItem.source] : 'Billing'}
         primaryDocumentLabel={printItem?.source === 'service' && printItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
         accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
+        appendHtml={printSrData ? buildServiceReportSheet(printSrData) : undefined}
       />
 
       <Dialog open={Boolean(payOpen)} onClose={closePayDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>

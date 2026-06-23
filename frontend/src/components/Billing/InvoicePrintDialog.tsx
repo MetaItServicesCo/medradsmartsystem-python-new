@@ -83,6 +83,8 @@ interface InvoicePrintDialogProps {
   moduleLabel: string
   primaryDocumentLabel?: string
   accent?: string
+  /** Optional HTML appended after the invoice sheet (e.g. service report). */
+  appendHtml?: string
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
@@ -216,10 +218,19 @@ const printStyles = `
   .signature { display: grid; grid-template-columns: 1fr 1fr; gap: 42px; margin-top: 54px; }
   .line { border-top: 1px solid #334155; padding-top: 8px; font-size: 12px; color: #4b5563; }
   .footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; gap: 14px; }
+  .report-hero { background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%) !important; }
+  .report-section { border: 1px solid #E5E7EB; border-radius: 16px; padding: 18px; margin-top: 16px; }
+  .report-session { border: 1px solid #E5E7EB; border-left: 5px solid #7C3AED; border-radius: 14px; padding: 16px; margin-top: 12px; page-break-inside: avoid; }
+  .report-session-head { display: flex; justify-content: space-between; color: #1E1B4B; font-size: 16px; }
+  .report-session-head span { color: #047857; font-weight: 900; }
+  .report-times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; color: #475569; }
+  .report-h4 { margin: 12px 0 5px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .report-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+  .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
   @media print {
     body { background: #fff; }
     .sheet { margin: 0; width: 100%; min-height: auto; box-shadow: none; page-break-after: always; }
-    .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .hero, .report-hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     th, .totals .grand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
@@ -357,6 +368,7 @@ const InvoicePrintDialog = ({
   moduleLabel,
   primaryDocumentLabel = 'Invoice',
   accent = '#7C3AED',
+  appendHtml,
 }: InvoicePrintDialogProps) => {
   const [documentType, setDocumentType] = useState<PrintDocumentType>('invoice')
   const previewAccentSoft = softAccentFor(accent)
@@ -381,7 +393,7 @@ const InvoicePrintDialog = ({
   const handlePrint = () => {
     if (!invoice) return
     const html = buildPrintableHtml(invoice, documentType, lineItems, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent)
-    printHtml(`${invoice.invoice_number} ${documentLabel(documentType, primaryDocumentLabel)}`, html)
+    printHtml(`${invoice.invoice_number} ${documentLabel(documentType, primaryDocumentLabel)}`, html + (appendHtml || ''))
   }
 
   return (

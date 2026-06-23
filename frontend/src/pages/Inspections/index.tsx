@@ -363,6 +363,74 @@ const printBatchInvoices = (batch: InspectionBatch) => {
   openPrintFrame(`${batch.batch_number} Batch Invoices`, body)
 }
 
+const printBatchSummaryInvoice = (batch: InspectionBatch) => {
+  const invoices = (batch.assets || []).filter(a => a.invoice).map(a => a.invoice!)
+  if (!invoices.length) { toast.info('No invoices in this batch yet.'); return }
+  const first = invoices[0]
+  const esc = escapeHtml
+  const fmt = money
+
+  const subtotal = invoices.reduce((s, inv) => s + Number(inv.subtotal || 0), 0)
+  const travel   = invoices.reduce((s, inv) => s + Number((inv as any).travel_charges || 0), 0)
+  const service  = invoices.reduce((s, inv) => s + Number((inv as any).service_charges || 0), 0)
+  const tax      = invoices.reduce((s, inv) => s + Number(inv.tax_amount || 0), 0)
+  const discount = invoices.reduce((s, inv) => s + Number(inv.discount_amount || 0), 0)
+  const total    = subtotal + travel + service + tax - discount
+  const paid     = invoices.reduce((s, inv) => s + Number(inv.amount_paid || 0), 0)
+  const balance  = total - paid
+
+  const lineRows = invoices.map(inv => {
+    const asset = inv.inventory_part_name || (inv as any).asset_name || (inv as any).equipment_name || '-'
+    return `<tr>
+      <td>${esc(inv.inspection_number || '-')}</td>
+      <td>${esc(asset)}</td>
+      <td class="right amount">${esc(fmt(inv.subtotal))}</td>
+    </tr>`
+  }).join('')
+
+  const body = `
+    <main class="sheet">
+      <section class="hero">
+        <div class="brand">
+          <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
+          <div>Mr. BioMed Tech Services<br><span style="font-size:12px;color:rgba(255,255,255,0.82)">Biomedical Equipment Repair &amp; Rental Services</span></div>
+        </div>
+        <div>
+          <h1 style="margin:0;font-size:28px;text-align:right;">Batch Summary Invoice</h1>
+          <div style="text-align:right;color:rgba(255,255,255,0.84);font-weight:700;margin-top:6px;">${esc(batch.batch_number)}</div>
+        </div>
+      </section>
+      <section class="content">
+        <div class="grid2">
+          <div class="box"><small>Bill To</small><strong>${esc(first.customer_name || '-')}</strong>${first.customer_email ? `<div style="color:#64748B;font-size:12px;margin-top:4px">${esc(first.customer_email)}</div>` : ''}</div>
+          <div class="box"><small>Facility</small><strong>${esc(first.facility_name || '-')}</strong></div>
+          <div class="box"><small>Inspections</small><strong>${invoices.length} items</strong></div>
+          <div class="box"><small>Issue Date</small><strong>${esc(formatDate(first.issue_date))}</strong></div>
+        </div>
+        <table>
+          <thead><tr><th>Inspection #</th><th>Asset / Part</th><th class="right">Amount</th></tr></thead>
+          <tbody>
+            ${lineRows}
+            ${travel > 0 ? `<tr><td colspan="2">Travel Charges</td><td class="right amount">${esc(fmt(travel))}</td></tr>` : ''}
+            ${service > 0 ? `<tr><td colspan="2">Service Charges</td><td class="right amount">${esc(fmt(service))}</td></tr>` : ''}
+            ${tax > 0 ? `<tr><td colspan="2">Tax</td><td class="right">${esc(fmt(tax))}</td></tr>` : ''}
+            ${discount > 0 ? `<tr><td colspan="2">Discount</td><td class="right">-${esc(fmt(discount))}</td></tr>` : ''}
+          </tbody>
+          <tfoot>
+            <tr class="total-row"><td colspan="2" class="right">Total</td><td class="right">${esc(fmt(total))}</td></tr>
+            <tr><td colspan="2" class="right" style="color:#64748B">Amount Paid</td><td class="right" style="color:#2563EB;font-weight:900">${esc(fmt(paid))}</td></tr>
+            <tr class="bal-row"><td colspan="2" class="right">Balance Due</td><td class="right">${esc(fmt(balance))}</td></tr>
+          </tfoot>
+        </table>
+        <div class="footer">
+          <span>Mr. BioMed Tech Services</span>
+          <span>Generated from Medrad Admin Panel</span>
+        </div>
+      </section>
+    </main>`
+  openPrintFrame(`${batch.batch_number} Batch Summary Invoice`, body)
+}
+
 const makeReport = (inspection: Inspection) => ({
   identity: {
     asset_number: inspection.asset_tag || inspection.part_number || '',
@@ -907,6 +975,20 @@ const Inspections = () => {
                             <PrintIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
+                        <Tooltip title="Print Batch Summary Invoice">
+                          <IconButton
+                            size="small"
+                            onClick={async () => {
+                              try {
+                                const detail = await fetchInspectionBatch(batch.id)
+                                printBatchSummaryInvoice(detail)
+                              } catch { toast.error('Could not load batch') }
+                            }}
+                            sx={{ bgcolor: '#FFF7ED', color: '#D97706', '&:hover': { bgcolor: '#FEF3C7' } }}
+                          >
+                            <ReceiptLongIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </>
                     )}
                     <Button
@@ -1380,6 +1462,15 @@ const Inspections = () => {
                 sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: '#059669', borderColor: '#059669', '&:hover': { borderColor: '#047857', bgcolor: '#F0FDF4' } }}
               >
                 Print All Invoices
+              </Button>
+              <Button
+                startIcon={<ReceiptLongIcon />}
+                variant="outlined"
+                onClick={() => printBatchSummaryInvoice(selectedBatch)}
+                disabled={!selectedBatch.assets?.some(a => a.invoice)}
+                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: '#D97706', borderColor: '#D97706', '&:hover': { borderColor: '#B45309', bgcolor: '#FFF7ED' } }}
+              >
+                Print Batch Summary
               </Button>
             </>
           )}

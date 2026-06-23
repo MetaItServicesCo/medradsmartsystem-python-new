@@ -271,6 +271,38 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
     return rows
 
 
+def _sync_last_session_timestamps(sr: ServiceRequest, new_total: Decimal) -> None:
+    """When time_spent_hours is manually edited, backfill the last clock-out
+    entry's clocked_out_at so history stays consistent with the corrected total."""
+    history = list(sr.history or [])
+    clock_outs = [(i, e) for i, e in enumerate(history) if e.get("action") == "technician_clock_out"]
+    if not clock_outs:
+        return
+    last_idx, last_entry = clock_outs[-1]
+    other_total = sum(
+        Decimal(str(e.get("changes", {}).get("duration_hours", 0) or 0))
+        for _, e in clock_outs[:-1]
+    )
+    last_hours = max(new_total - other_total, Decimal("0"))
+    changes = copy.deepcopy(last_entry.get("changes", {}))
+    clocked_in_str = changes.get("clocked_in_at") or last_entry.get("timestamp")
+    if not clocked_in_str:
+        return
+    try:
+        clocked_in = datetime.fromisoformat(str(clocked_in_str).replace("Z", "+00:00"))
+        if clocked_in.tzinfo is None:
+            clocked_in = clocked_in.replace(tzinfo=timezone.utc)
+        changes["clocked_out_at"] = (clocked_in + timedelta(hours=float(last_hours))).isoformat()
+        changes["duration_hours"] = float(last_hours)
+        changes["total_hours"] = float(new_total)
+        history_copy = copy.deepcopy(list(sr.history or []))
+        history_copy[last_idx]["changes"] = changes
+        sr.history = history_copy
+        flag_modified(sr, "history")
+    except (ValueError, TypeError):
+        pass
+
+
 def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
     sr = invoice.service_request
     return {
@@ -674,6 +706,7 @@ def update_service_request(
 
     if "time_spent_hours" in update_data and "total_cost" not in update_data:
         db_sr.total_cost = _calculate_service_cost(db_sr)
+        _sync_last_session_timestamps(db_sr, Decimal(str(update_data["time_spent_hours"])))
 
     if changes:
         history = list(db_sr.history or [])
