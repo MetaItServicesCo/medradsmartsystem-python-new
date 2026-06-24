@@ -134,11 +134,11 @@ function SimpleDialog({ open, title, fields, initial, onClose, onSave }: {
   )
 }
 
-function KpiCard({ label, value, icon, color }: { label: string; value: any; icon: React.ReactNode; color: string }) {
+function KpiCard({ label, value, icon, gradient }: { label: string; value: any; icon: React.ReactNode; gradient: string }) {
   return (
     <Card sx={{ flex: 1, minWidth: 150 }}>
       <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Avatar sx={{ bgcolor: color, width: 48, height: 48 }}>{icon}</Avatar>
+        <Avatar sx={{ background: gradient, width: 48, height: 48 }}>{icon}</Avatar>
         <Box>
           <Typography variant="h5" fontWeight={700}>{value ?? '—'}</Typography>
           <Typography variant="caption" color="text.secondary">{label}</Typography>
@@ -149,7 +149,14 @@ function KpiCard({ label, value, icon, color }: { label: string; value: any; ico
 }
 
 function Th({ children }: { children: React.ReactNode }) {
-  return <TableCell sx={{ color: 'white', fontWeight: 600 }}>{children}</TableCell>
+  return (
+    <TableCell sx={{
+      bgcolor: 'primary.main', color: 'white', fontWeight: 700,
+      fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em',
+    }}>
+      {children}
+    </TableCell>
+  )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -164,10 +171,10 @@ function DashboardSection() {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Typography variant="h6" fontWeight={700}>HR Dashboard</Typography>
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <KpiCard label="Total Employees" value={d.total_employees} icon={<PeopleIcon />} color="#1976d2" />
-        <KpiCard label="Pending Leaves" value={d.pending_leave_requests} icon={<BeachAccessIcon />} color="#ed6c02" />
-        <KpiCard label="Open Positions" value={d.open_job_openings} icon={<WorkIcon />} color="#2e7d32" />
-        <KpiCard label="Upcoming Meetings" value={d.upcoming_meetings} icon={<VideoCallIcon />} color="#7b1fa2" />
+        <KpiCard label="Total Employees" value={d.total_employees} icon={<PeopleIcon />} gradient="linear-gradient(135deg,#7161D8,#9B8EF0)" />
+        <KpiCard label="Pending Leaves" value={d.pending_leave_requests} icon={<BeachAccessIcon />} gradient="linear-gradient(135deg,#F05D92,#F9A8C7)" />
+        <KpiCard label="Open Positions" value={d.open_job_openings} icon={<WorkIcon />} gradient="linear-gradient(135deg,#7161D8,#F05D92)" />
+        <KpiCard label="Upcoming Meetings" value={d.upcoming_meetings} icon={<VideoCallIcon />} gradient="linear-gradient(135deg,#5445B3,#7161D8)" />
       </Box>
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
@@ -312,10 +319,10 @@ function CalendarSection() {
       {/* Controls */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <IconButton onClick={() => navigate(-1)} size="small" sx={{ bgcolor: 'text.primary', color: 'white', '&:hover': { bgcolor: 'text.secondary' } }}>
+          <IconButton onClick={() => navigate(-1)} size="small" sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } }}>
             <ChevronLeftIcon />
           </IconButton>
-          <IconButton onClick={() => navigate(1)} size="small" sx={{ bgcolor: 'text.primary', color: 'white', '&:hover': { bgcolor: 'text.secondary' } }}>
+          <IconButton onClick={() => navigate(1)} size="small" sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } }}>
             <ChevronRightIcon />
           </IconButton>
           <Button size="small" variant="outlined" sx={{ ml: 0.5 }} onClick={() => setViewDate(new Date())}>today</Button>
@@ -324,7 +331,7 @@ function CalendarSection() {
         <Box sx={{ display: 'flex', border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
           {(['month', 'week', 'day'] as CalView[]).map(v => (
             <Button key={v} size="small" onClick={() => setView(v)}
-              sx={{ borderRadius: 0, bgcolor: view === v ? 'text.primary' : 'transparent', color: view === v ? 'white' : 'text.primary', minWidth: 64 }}>
+              sx={{ borderRadius: 0, bgcolor: view === v ? 'primary.main' : 'transparent', color: view === v ? 'white' : 'text.primary', minWidth: 64 }}>
               {v}
             </Button>
           ))}
@@ -425,7 +432,7 @@ function EmployeesSection() {
       {isLoading ? <CircularProgress /> : (
         <TableContainer component={Paper}>
           <Table size="small">
-            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+            <TableHead><TableRow>
               {['#','Name','Email','Role','Department','Facility'].map(h => <Th key={h}>{h}</Th>)}
             </TableRow></TableHead>
             <TableBody>
@@ -486,7 +493,7 @@ function HolidaysTab() {
       </Box>
       <TableContainer component={Paper}>
         <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+          <TableHead><TableRow>
             {['Name','Date','Type','Description',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
@@ -535,7 +542,7 @@ function AnnouncementsTab() {
       </Box>
       <TableContainer component={Paper}>
         <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+          <TableHead><TableRow>
             {['Title','Priority','Expires',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
@@ -748,7 +755,7 @@ function AttendancePoliciesTab() {
       </Box>
       <TableContainer component={Paper}>
         <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+          <TableHead><TableRow>
             {['Name','Hours/Day','Days/Week','Grace (min)',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
@@ -816,7 +823,7 @@ function LeaveRequestsTab() {
       </Box>
       <TableContainer component={Paper}>
         <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+          <TableHead><TableRow>
             {['Employee','Type','From','To','Days','Status',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
@@ -874,7 +881,7 @@ function LeaveTypesTab() {
       </Box>
       <TableContainer component={Paper}>
         <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+          <TableHead><TableRow>
             {['Name','Max Days','Paid','Description',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
@@ -922,7 +929,7 @@ function LeavePoliciesTab() {
       </Box>
       <TableContainer component={Paper}>
         <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+          <TableHead><TableRow>
             {['Name','Days Allowed','Description',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
@@ -1000,7 +1007,7 @@ function TimesheetsSection() {
       {isLoading ? <CircularProgress /> : (
         <TableContainer component={Paper}>
           <Table size="small">
-            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+            <TableHead><TableRow>
               {['#','Employee','Date','Hours','Project','Status','Submitted On','Actions'].map(h => <Th key={h}>{h}</Th>)}
             </TableRow></TableHead>
             <TableBody>
@@ -1017,7 +1024,7 @@ function TimesheetsSection() {
                     </TableCell>
                     <TableCell>{fmt(ts.work_date)}</TableCell>
                     <TableCell sx={{ color: 'primary.main', fontWeight: 700 }}>{ts.hours?.toFixed(2)}h</TableCell>
-                    <TableCell>{ts.project ? <Chip size="small" label={ts.project} variant="outlined" sx={{ borderColor: '#7c3aed', color: '#7c3aed' }} /> : '—'}</TableCell>
+                    <TableCell>{ts.project ? <Chip size="small" label={ts.project} variant="outlined" sx={{ borderColor: 'primary.main', color: 'primary.main' }} /> : '—'}</TableCell>
                     <TableCell><Chip size="small" label={ts.status} color={sColor(ts.status) as any} /></TableCell>
                     <TableCell>{ts.submitted_at ? fmt(ts.submitted_at) : '—'}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
@@ -1066,7 +1073,7 @@ function JobOpeningsTab() {
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Opening</Button>
       </Box>
       <TableContainer component={Paper}><Table size="small">
-        <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Title','Department','Location','Status','Closing',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+        <TableHead><TableRow>{['Title','Department','Location','Status','Closing',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
         <TableBody>{list.map((o: any) => (
           <TableRow key={o.id} hover>
             <TableCell>{o.title}</TableCell><TableCell>{o.department ?? '—'}</TableCell><TableCell>{o.location ?? '—'}</TableCell>
@@ -1099,7 +1106,7 @@ function CandidatesTab() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Candidate</Button></Box>
       <TableContainer component={Paper}><Table size="small">
-        <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Name','Email','Phone','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+        <TableHead><TableRow>{['Name','Email','Phone','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
         <TableBody>{list.map((c: any) => (
           <TableRow key={c.id} hover>
             <TableCell>{c.first_name} {c.last_name}</TableCell><TableCell>{c.email}</TableCell><TableCell>{c.phone ?? '—'}</TableCell>
@@ -1148,7 +1155,7 @@ function mkLifecycleTab(
       <Box>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add {label}</Button></Box>
         <TableContainer component={Paper}><Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{[...columns.map(c => c.label), ''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+          <TableHead><TableRow>{[...columns.map(c => c.label), ''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
           <TableBody>{list.map((row: any) => (
             <TableRow key={row.id} hover>
               {columns.map(c => <TableCell key={c.key}>{c.render ? c.render(row) : (row[c.key] ?? '—')}</TableCell>)}
@@ -1234,7 +1241,7 @@ function PayrollSection() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setRunDlg({ open: true })}>New Payroll Run</Button></Box>
           <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Period Start','Period End','Total Gross','Total Net','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableHead><TableRow>{['Period Start','Period End','Total Gross','Total Net','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
             <TableBody>{runs.map((r: any) => (
               <TableRow key={r.id} hover>
                 <TableCell>{fmt(r.period_start)}</TableCell><TableCell>{fmt(r.period_end)}</TableCell>
@@ -1255,7 +1262,7 @@ function PayrollSection() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setCfgDlg({ open: true })}>Add Config</Button></Box>
           <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Employee','Base Salary','Hourly Rate','Pay Frequency','Effective',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableHead><TableRow>{['Employee','Base Salary','Hourly Rate','Pay Frequency','Effective',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
             <TableBody>{configs.map((c: any) => (
               <TableRow key={c.id} hover>
                 <TableCell>{c.user?.full_name ?? c.user?.email ?? c.user_id}</TableCell>
@@ -1277,7 +1284,7 @@ function PayrollSection() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setTaxDlg({ open: true })}>Add Bracket</Button></Box>
           <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Name','Min Income','Max Income','Rate (%)','Effective From',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableHead><TableRow>{['Name','Min Income','Max Income','Rate (%)','Effective From',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
             <TableBody>{brackets.map((b: any) => (
               <TableRow key={b.id} hover>
                 <TableCell>{b.name}</TableCell><TableCell>${Number(b.min_income ?? 0).toLocaleString()}</TableCell>
@@ -1318,7 +1325,7 @@ function MeetingsSection() {
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Schedule Meeting</Button>
       </Box>
       <TableContainer component={Paper}><Table size="small">
-        <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Title','Scheduled','Location','Status','Minutes',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+        <TableHead><TableRow>{['Title','Scheduled','Location','Status','Minutes',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
         <TableBody>{list.map((m: any) => (
           <TableRow key={m.id} hover>
             <TableCell>{m.title}</TableCell>
@@ -1399,7 +1406,7 @@ function DocumentsSection() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDocDlg({ open: true })}>Add Document</Button></Box>
           <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Title','Employee','Category',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableHead><TableRow>{['Title','Employee','Category',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
             <TableBody>{docs.map((d: any) => (
               <TableRow key={d.id} hover>
                 <TableCell>{d.title}</TableCell><TableCell>{d.user?.full_name ?? d.user?.email ?? d.user_id}</TableCell>
@@ -1418,7 +1425,7 @@ function DocumentsSection() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setCtrDlg({ open: true })}>New Contract</Button></Box>
           <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Title','Employee','Start','End','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableHead><TableRow>{['Title','Employee','Start','End','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
             <TableBody>{contracts.map((c: any) => (
               <TableRow key={c.id} hover>
                 <TableCell>{c.title}</TableCell><TableCell>{c.user?.full_name ?? c.user?.email ?? c.user_id}</TableCell>
@@ -1438,7 +1445,7 @@ function DocumentsSection() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setAckDlg(true)}>Record Acknowledgment</Button></Box>
           <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Employee','Acknowledged','Notes'].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableHead><TableRow>{['Employee','Acknowledged','Notes'].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
             <TableBody>{acks.map((a: any) => (
               <TableRow key={a.id} hover>
                 <TableCell>{a.user?.full_name ?? a.user?.email ?? a.user_id}</TableCell>
