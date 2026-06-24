@@ -249,3 +249,13 @@ export const fetchAcknowledgments = (params?: Record<string, any>) =>
   apiClient.get(`${BASE}/acknowledgments`, { params }).then(r => r.data)
 export const createAcknowledgment = (data: any) =>
   apiClient.post(`${BASE}/acknowledgments`, data).then(r => r.data)
+
+// ── Timesheets ─────────────────────────────────────────────────────────────
+export const fetchTimesheets = (params?: Record<string, any>) =>
+  apiClient.get(`${BASE}/timesheets`, { params }).then(r => r.data)
+export const createTimesheet = (data: any) =>
+  apiClient.post(`${BASE}/timesheets`, data).then(r => r.data)
+export const updateTimesheet = (id: number, data: any) =>
+  apiClient.put(`${BASE}/timesheets/${id}`, data).then(r => r.data)
+export const deleteTimesheet = (id: number) =>
+  apiClient.delete(`${BASE}/timesheets/${id}`)

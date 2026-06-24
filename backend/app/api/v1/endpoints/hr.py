@@ -26,6 +26,7 @@ from app.models.hr import (
     OnboardingChecklist, OnboardingChecklistItem,
     PayFrequency, PayrollConfig, PayrollRun, PayrollRunStatus, Payslip,
     TaxBracket,
+    Timesheet, TimesheetStatus,
 )
 from app.models.user import User, UserRole
 from app.schemas.hr import (
@@ -57,6 +58,7 @@ from app.schemas.hr import (
     PayrollRunCreate, PayrollRunResponse, PayrollRunUpdate,
     PayslipResponse,
     TaxBracketCreate, TaxBracketResponse, TaxBracketUpdate,
+    TimesheetCreate, TimesheetResponse, TimesheetUpdate,
     UserMini,
 )
 
@@ -1738,3 +1740,88 @@ def create_acknowledgment(
     db.commit()
     db.refresh(obj)
     return db.query(EmployeeAcknowledgment).options(joinedload(EmployeeAcknowledgment.user)).filter(EmployeeAcknowledgment.id == obj.id).first()
+
+
+# ── Timesheets ────────────────────────────────────────────────────────────────
+
+def _timesheet_query(db: Session):
+    return db.query(Timesheet).options(
+        joinedload(Timesheet.user),
+        joinedload(Timesheet.reviewed_by),
+    )
+
+
+@router.get("/timesheets", response_model=dict)
+def list_timesheets(
+    user_id: Optional[int] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    status: Optional[TimesheetStatus] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    q = _timesheet_query(db)
+    if user_id:
+        q = q.filter(Timesheet.user_id == user_id)
+    if date_from:
+        q = q.filter(Timesheet.work_date >= date_from)
+    if date_to:
+        q = q.filter(Timesheet.work_date <= date_to)
+    if status:
+        q = q.filter(Timesheet.status == status)
+    total = q.count()
+    items = q.order_by(desc(Timesheet.work_date)).offset(skip).limit(limit).all()
+    return {"total": total, "items": items}
+
+
+@router.post("/timesheets", response_model=TimesheetResponse, status_code=201)
+def create_timesheet(
+    payload: TimesheetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    data = payload.model_dump()
+    if data.get("status") == TimesheetStatus.SUBMITTED:
+        data["submitted_at"] = datetime.utcnow()
+    obj = Timesheet(**data)
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return _timesheet_query(db).filter(Timesheet.id == obj.id).first()
+
+
+@router.put("/timesheets/{ts_id}", response_model=TimesheetResponse)
+def update_timesheet(
+    ts_id: int,
+    payload: TimesheetUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    obj = db.query(Timesheet).filter(Timesheet.id == ts_id).first()
+    if not obj:
+        raise HTTPException(404, "Timesheet not found")
+    data = payload.model_dump(exclude_none=True)
+    if data.get("status") == TimesheetStatus.SUBMITTED and not obj.submitted_at:
+        data["submitted_at"] = datetime.utcnow()
+    if data.get("status") in (TimesheetStatus.APPROVED, TimesheetStatus.REJECTED):
+        data["reviewed_by_id"] = current_user.id
+        data["reviewed_at"] = datetime.utcnow()
+    for k, v in data.items():
+        setattr(obj, k, v)
+    db.commit()
+    return _timesheet_query(db).filter(Timesheet.id == ts_id).first()
+
+
+@router.delete("/timesheets/{ts_id}", status_code=204)
+def delete_timesheet(
+    ts_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    obj = db.query(Timesheet).filter(Timesheet.id == ts_id).first()
+    if not obj:
+        raise HTTPException(404, "Not found")
+    db.delete(obj)
+    db.commit()

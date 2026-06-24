@@ -45,4 +45,5 @@ from app.models.hr import (
     Meeting, MeetingStatus, MeetingAttendee, MeetingMinutes, RSVPStatus,
     DocumentCategory, ContractType, DocumentTemplate, ContractTemplate,
     EmployeeDocument, EmployeeContract, ContractStatus, EmployeeAcknowledgment,
+    Timesheet, TimesheetStatus,
 )

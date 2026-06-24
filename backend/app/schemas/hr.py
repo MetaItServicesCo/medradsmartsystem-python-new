@@ -10,6 +10,7 @@ from app.models.hr import (
     AnnouncementPriority, CandidateStatus, ContractStatus, HolidayType,
     JobOpeningStatus, LeaveRequestStatus, MeetingStatus, OfferStatus,
     PayFrequency, PayrollRunStatus, RSVPStatus, ResignationStatus, TerminationType,
+    TimesheetStatus,
 )
 
 
@@ -827,6 +828,43 @@ class EmployeeAcknowledgmentResponse(BaseModel):
     acknowledged_at: datetime
     notes: Optional[str]
     user: Optional[UserMini] = None
+    model_config = {"from_attributes": True}
+
+
+# ── Timesheets ────────────────────────────────────────────────────────────────
+
+class TimesheetCreate(BaseModel):
+    user_id: int
+    work_date: date
+    hours: float
+    project: Optional[str] = None
+    description: Optional[str] = None
+    status: TimesheetStatus = TimesheetStatus.DRAFT
+
+class TimesheetUpdate(BaseModel):
+    work_date: Optional[date] = None
+    hours: Optional[float] = None
+    project: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[TimesheetStatus] = None
+    review_notes: Optional[str] = None
+
+class TimesheetResponse(BaseModel):
+    id: int
+    user_id: int
+    work_date: date
+    hours: float
+    project: Optional[str]
+    description: Optional[str]
+    status: TimesheetStatus
+    submitted_at: Optional[datetime]
+    reviewed_by_id: Optional[int]
+    reviewed_at: Optional[datetime]
+    review_notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    user: Optional[UserMini] = None
+    reviewed_by: Optional[UserMini] = None
     model_config = {"from_attributes": True}
 
 

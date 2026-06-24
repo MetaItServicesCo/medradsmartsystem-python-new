@@ -1,37 +1,36 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, Divider,
-  FormControl, Grid, IconButton, InputLabel, List, ListItemButton,
-  ListItemIcon, ListItemText, MenuItem, Paper, Select, Tab, Table,
-  TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
-  TextField, Tooltip, Typography,
+  FormControl, Grid, IconButton, InputLabel, List, MenuItem,
+  Paper, Select, Tab, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import AnnouncementIcon from '@mui/icons-material/Announcement'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import BeachAccessIcon from '@mui/icons-material/BeachAccess'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
-import CardGiftcardIcon from '@mui/icons-material/CardGiftcard'
-import DescriptionIcon from '@mui/icons-material/Description'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents'
-import ExitToAppIcon from '@mui/icons-material/ExitToApp'
 import FolderIcon from '@mui/icons-material/Folder'
-import GavelIcon from '@mui/icons-material/Gavel'
 import GroupsIcon from '@mui/icons-material/Groups'
-import HowToRegIcon from '@mui/icons-material/HowToReg'
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
 import PeopleIcon from '@mui/icons-material/People'
-import PolicyIcon from '@mui/icons-material/Policy'
 import SpeedIcon from '@mui/icons-material/Speed'
+import TimerIcon from '@mui/icons-material/Timer'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import VideoCallIcon from '@mui/icons-material/VideoCall'
 import WorkIcon from '@mui/icons-material/Work'
-import DeleteIcon from '@mui/icons-material/Delete'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import AnnouncementIcon from '@mui/icons-material/Announcement'
+import CheckIcon from '@mui/icons-material/Check'
+import CloseIcon from '@mui/icons-material/Close'
 import { toast } from 'react-toastify'
+
 import {
   fetchHRDashboard, fetchHREmployees,
   fetchLeaveTypes, createLeaveType, updateLeaveType, deleteLeaveType,
@@ -59,66 +58,49 @@ import {
   fetchEmployeeDocuments, createEmployeeDocument, updateEmployeeDocument, deleteEmployeeDocument,
   fetchEmployeeContracts, createEmployeeContract, updateEmployeeContract, deleteEmployeeContract,
   fetchAcknowledgments, createAcknowledgment,
+  fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet,
 } from '@/api/hr'
+import { fetchAttendanceEvents } from '@/api/attendance'
 
-// ── Nav items ───────────────────────────────────────────────────────────────
+// ── Nav ──────────────────────────────────────────────────────────────────────
 
 const NAV = [
-  { key: 'dashboard',   label: 'Dashboard',          icon: <SpeedIcon /> },
-  { key: 'calendar',    label: 'Calendar',            icon: <CalendarMonthIcon /> },
-  { key: 'employees',   label: 'Employees',           icon: <PeopleIcon /> },
-  { key: 'org',         label: 'Organization',        icon: <GroupsIcon /> },
-  { key: 'attendance',  label: 'Attendance',          icon: <AccessTimeIcon /> },
-  { key: 'leave',       label: 'Leave Management',    icon: <BeachAccessIcon /> },
-  { key: 'recruitment', label: 'Recruitment',         icon: <WorkIcon /> },
-  { key: 'lifecycle',   label: 'Employee Lifecycle',  icon: <TrendingUpIcon /> },
-  { key: 'payroll',     label: 'Payroll',             icon: <MonetizationOnIcon /> },
-  { key: 'meetings',    label: 'Meetings',            icon: <VideoCallIcon /> },
-  { key: 'documents',   label: 'Documents',           icon: <FolderIcon /> },
+  { key: 'dashboard',   label: 'Dashboard',         icon: <SpeedIcon /> },
+  { key: 'calendar',    label: 'Calendar',           icon: <CalendarMonthIcon /> },
+  { key: 'employees',   label: 'Employees',          icon: <PeopleIcon /> },
+  { key: 'org',         label: 'Organization',       icon: <GroupsIcon /> },
+  { key: 'attendance',  label: 'Attendance',         icon: <AccessTimeIcon /> },
+  { key: 'leave',       label: 'Leave Management',   icon: <BeachAccessIcon /> },
+  { key: 'timesheets',  label: 'Timesheets',         icon: <TimerIcon /> },
+  { key: 'recruitment', label: 'Recruitment',        icon: <WorkIcon /> },
+  { key: 'lifecycle',   label: 'Employee Lifecycle', icon: <TrendingUpIcon /> },
+  { key: 'payroll',     label: 'Payroll',            icon: <MonetizationOnIcon /> },
+  { key: 'meetings',    label: 'Meetings',           icon: <VideoCallIcon /> },
+  { key: 'documents',   label: 'Documents',          icon: <FolderIcon /> },
 ]
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const fmt = (d?: string | null) => d ? new Date(d).toLocaleDateString() : '—'
 
-function useCrud<T = any>(queryKey: string[], fetcher: () => Promise<T[]>) {
-  return useQuery({ queryKey, queryFn: fetcher })
-}
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+interface FieldDef { key: string; label: string; type?: 'text'|'number'|'date'|'select'|'textarea'; options?: string[] }
 
 function CrudDeleteBtn({ onDelete }: { onDelete: () => void }) {
-  return (
-    <Tooltip title="Delete">
-      <IconButton size="small" color="error" onClick={onDelete}><DeleteIcon fontSize="small" /></IconButton>
-    </Tooltip>
-  )
+  return <Tooltip title="Delete"><IconButton size="small" color="error" onClick={onDelete}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
 }
-
 function CrudEditBtn({ onEdit }: { onEdit: () => void }) {
-  return (
-    <Tooltip title="Edit">
-      <IconButton size="small" onClick={onEdit}><EditIcon fontSize="small" /></IconButton>
-    </Tooltip>
-  )
+  return <Tooltip title="Edit"><IconButton size="small" onClick={onEdit}><EditIcon fontSize="small" /></IconButton></Tooltip>
 }
 
-// ── Simple field dialog ──────────────────────────────────────────────────────
-
-interface FieldDef { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select' | 'textarea'; options?: string[] }
-
-function SimpleDialog({
-  open, title, fields, initial, onClose, onSave,
-}: {
+function SimpleDialog({ open, title, fields, initial, onClose, onSave }: {
   open: boolean; title: string; fields: FieldDef[]
-  initial: Record<string, any>; onClose: () => void; onSave: (data: Record<string, any>) => void
+  initial: Record<string, any>; onClose: () => void; onSave: (d: Record<string, any>) => void
 }) {
   const [form, setForm] = useState<Record<string, any>>(initial)
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }))
-
-  const handleSave = () => {
-    onSave(form)
-    onClose()
-  }
-
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{title}</DialogTitle>
@@ -138,27 +120,23 @@ function SimpleDialog({
           )
           return (
             <TextField key={f.key} label={f.label} size="small" fullWidth
-              type={f.type ?? 'text'}
-              value={form[f.key] ?? ''}
+              type={f.type ?? 'text'} value={form[f.key] ?? ''}
               onChange={e => set(f.key, f.type === 'number' ? Number(e.target.value) : e.target.value)}
-              InputLabelProps={f.type === 'date' ? { shrink: true } : undefined}
-            />
+              InputLabelProps={f.type === 'date' ? { shrink: true } : undefined} />
           )
         })}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave}>Save</Button>
+        <Button variant="contained" onClick={() => { onSave(form); onClose() }}>Save</Button>
       </DialogActions>
     </Dialog>
   )
 }
 
-// ── KPI card ────────────────────────────────────────────────────────────────
-
 function KpiCard({ label, value, icon, color }: { label: string; value: any; icon: React.ReactNode; color: string }) {
   return (
-    <Card sx={{ flex: 1, minWidth: 160 }}>
+    <Card sx={{ flex: 1, minWidth: 150 }}>
       <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <Avatar sx={{ bgcolor: color, width: 48, height: 48 }}>{icon}</Avatar>
         <Box>
@@ -168,6 +146,10 @@ function KpiCard({ label, value, icon, color }: { label: string; value: any; ico
       </CardContent>
     </Card>
   )
+}
+
+function Th({ children }: { children: React.ReactNode }) {
+  return <TableCell sx={{ color: 'white', fontWeight: 600 }}>{children}</TableCell>
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -184,10 +166,9 @@ function DashboardSection() {
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <KpiCard label="Total Employees" value={d.total_employees} icon={<PeopleIcon />} color="#1976d2" />
         <KpiCard label="Pending Leaves" value={d.pending_leave_requests} icon={<BeachAccessIcon />} color="#ed6c02" />
-        <KpiCard label="Open Positions" value={d.open_positions} icon={<WorkIcon />} color="#2e7d32" />
-        <KpiCard label="Meetings This Month" value={d.meetings_this_month} icon={<VideoCallIcon />} color="#7b1fa2" />
+        <KpiCard label="Open Positions" value={d.open_job_openings} icon={<WorkIcon />} color="#2e7d32" />
+        <KpiCard label="Upcoming Meetings" value={d.upcoming_meetings} icon={<VideoCallIcon />} color="#7b1fa2" />
       </Box>
-
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
           <Card>
@@ -208,9 +189,9 @@ function DashboardSection() {
           <Card>
             <CardContent>
               <Typography variant="subtitle1" fontWeight={700} gutterBottom>Upcoming Holidays</Typography>
-              {(d.upcoming_holidays ?? []).length === 0
+              {(d.upcoming_holidays_list ?? []).length === 0
                 ? <Typography color="text.secondary" variant="body2">No upcoming holidays</Typography>
-                : (d.upcoming_holidays ?? []).map((h: any) => (
+                : (d.upcoming_holidays_list ?? []).map((h: any) => (
                   <Box key={h.id} sx={{ mb: 1, display: 'flex', justifyContent: 'space-between' }}>
                     <Typography variant="body2">{h.name}</Typography>
                     <Typography variant="caption" color="text.secondary">{fmt(h.date)}</Typography>
@@ -228,43 +209,199 @@ function DashboardSection() {
 // CALENDAR
 // ══════════════════════════════════════════════════════════════════════════════
 
+type CalView = 'month' | 'week' | 'day'
+
+interface CalEvent { id: string; date: string; endDate?: string; label: string; color: string; type: string }
+
 function CalendarSection() {
-  const year = new Date().getFullYear()
+  const [viewDate, setViewDate] = useState(new Date())
+  const [view, setView] = useState<CalView>('month')
+  const year = viewDate.getFullYear()
+  const month = viewDate.getMonth()
+
   const { data: holidays = [] } = useQuery({ queryKey: ['hr-holidays', year], queryFn: () => fetchHolidays(year) })
-  const { data: meetings = [] } = useQuery({ queryKey: ['hr-meetings'], queryFn: () => fetchMeetings() })
-  const events = [
-    ...(holidays as any[]).map((h: any) => ({ date: h.date, label: h.name, color: '#2e7d32' })),
-    ...(meetings as any[]).map((m: any) => ({ date: m.scheduled_at?.slice(0, 10), label: m.title, color: '#1976d2' })),
-  ].filter(e => e.date).sort((a, b) => a.date.localeCompare(b.date))
+  const { data: meetingsData } = useQuery({ queryKey: ['hr-meetings'], queryFn: () => fetchMeetings() })
+  const { data: leavesData } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved' }) })
+
+  const events: CalEvent[] = useMemo(() => {
+    const evts: CalEvent[] = []
+    ;(holidays as any[]).forEach((h: any) => {
+      evts.push({ id: `h-${h.id}`, date: h.date, label: h.name, color: '#2e7d32', type: 'Holiday' })
+    })
+    const meetings = (meetingsData as any)?.items ?? (Array.isArray(meetingsData) ? meetingsData : [])
+    meetings.forEach((m: any) => {
+      if (m.scheduled_at) {
+        evts.push({ id: `m-${m.id}`, date: m.scheduled_at.slice(0, 10), label: m.title, color: '#1976d2', type: 'Meeting' })
+      }
+    })
+    const leaves = (leavesData as any)?.items ?? (Array.isArray(leavesData) ? leavesData : [])
+    leaves.forEach((l: any) => {
+      if (l.start_date) {
+        const name = l.user?.full_name ?? l.user?.email ?? 'Employee'
+        const typeName = l.leave_type?.name ?? 'Leave'
+        evts.push({ id: `l-${l.id}`, date: l.start_date, endDate: l.end_date, label: `${name} – ${typeName}`, color: '#ed6c02', type: 'Leave' })
+      }
+    })
+    return evts
+  }, [holidays, meetingsData, leavesData])
+
+  const eventsForDate = (dateStr: string) => events.filter(e => {
+    if (!e.endDate) return e.date === dateStr
+    return dateStr >= e.date && dateStr <= e.endDate
+  })
+
+  const navigate = (dir: number) => {
+    const d = new Date(viewDate)
+    if (view === 'month') d.setMonth(d.getMonth() + dir)
+    else if (view === 'week') d.setDate(d.getDate() + dir * 7)
+    else d.setDate(d.getDate() + dir)
+    setViewDate(d)
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Build calendar grid for month view
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: (string | null)[] = []
+  for (let i = 0; i < firstDay; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    cells.push(ds)
+  }
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  // Week view: 7 days starting from Sunday of current week
+  const weekStart = new Date(viewDate)
+  weekStart.setDate(viewDate.getDate() - viewDate.getDay())
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart)
+    d.setDate(weekStart.getDate() + i)
+    return d.toISOString().slice(0, 10)
+  })
+
+  const titleStr = view === 'month'
+    ? `${MONTHS[month]} ${year}`
+    : view === 'week'
+    ? `Week of ${new Date(weekDays[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(weekDays[6]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+
+  const EventChip = ({ e }: { e: CalEvent }) => (
+    <Box sx={{
+      bgcolor: e.color, color: '#fff', borderRadius: '3px',
+      px: 0.5, py: 0.1, mb: 0.25, fontSize: '11px',
+      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      cursor: 'default',
+    }} title={`${e.type}: ${e.label}`}>
+      {e.label}
+    </Box>
+  )
 
   return (
     <Box>
-      <Typography variant="h6" fontWeight={700} gutterBottom>HR Calendar</Typography>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead>
-            <TableRow sx={{ bgcolor: 'primary.main' }}>
-              <TableCell sx={{ color: 'white' }}>Date</TableCell>
-              <TableCell sx={{ color: 'white' }}>Event</TableCell>
-              <TableCell sx={{ color: 'white' }}>Type</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {events.length === 0
-              ? <TableRow><TableCell colSpan={3} align="center">No events</TableCell></TableRow>
-              : events.map((e, i) => (
-                <TableRow key={i}>
-                  <TableCell>{fmt(e.date)}</TableCell>
-                  <TableCell>{e.label}</TableCell>
-                  <TableCell>
-                    <Chip size="small" label={e.color === '#2e7d32' ? 'Holiday' : 'Meeting'}
-                      sx={{ bgcolor: e.color, color: 'white' }} />
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      {/* Legend */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+        {[{ color: '#1976d2', label: 'Meetings' }, { color: '#2e7d32', label: 'Holidays' }, { color: '#ed6c02', label: 'Leaves' }].map(l => (
+          <Box key={l.label} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: l.color }} />
+            <Typography variant="body2">{l.label}</Typography>
+          </Box>
+        ))}
+      </Box>
+
+      {/* Controls */}
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <IconButton onClick={() => navigate(-1)} size="small" sx={{ bgcolor: 'text.primary', color: 'white', '&:hover': { bgcolor: 'text.secondary' } }}>
+            <ChevronLeftIcon />
+          </IconButton>
+          <IconButton onClick={() => navigate(1)} size="small" sx={{ bgcolor: 'text.primary', color: 'white', '&:hover': { bgcolor: 'text.secondary' } }}>
+            <ChevronRightIcon />
+          </IconButton>
+          <Button size="small" variant="outlined" sx={{ ml: 0.5 }} onClick={() => setViewDate(new Date())}>today</Button>
+        </Box>
+        <Typography variant="h6" fontWeight={700} sx={{ flex: 1, textAlign: 'center' }}>{titleStr}</Typography>
+        <Box sx={{ display: 'flex', border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+          {(['month', 'week', 'day'] as CalView[]).map(v => (
+            <Button key={v} size="small" onClick={() => setView(v)}
+              sx={{ borderRadius: 0, bgcolor: view === v ? 'text.primary' : 'transparent', color: view === v ? 'white' : 'text.primary', minWidth: 64 }}>
+              {v}
+            </Button>
+          ))}
+        </Box>
+      </Box>
+
+      {/* Month view */}
+      {view === 'month' && (
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', bgcolor: 'grey.100' }}>
+            {DAYS.map(d => (
+              <Box key={d} sx={{ p: 1, textAlign: 'center', fontWeight: 700, fontSize: 13 }}>{d}</Box>
+            ))}
+          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
+            {cells.map((dateStr, i) => {
+              const isToday = dateStr === today
+              const dayEvts = dateStr ? eventsForDate(dateStr) : []
+              return (
+                <Box key={i} sx={{
+                  minHeight: 100, p: 0.5, borderTop: '1px solid', borderRight: i % 7 !== 6 ? '1px solid' : 'none',
+                  borderColor: 'divider',
+                  bgcolor: isToday ? '#fffde7' : 'transparent',
+                }}>
+                  {dateStr && (
+                    <>
+                      <Typography variant="caption" sx={{ fontWeight: isToday ? 700 : 400, color: isToday ? 'primary.main' : 'text.secondary' }}>
+                        {Number(dateStr.slice(8))}
+                      </Typography>
+                      {dayEvts.slice(0, 3).map(e => <EventChip key={e.id} e={e} />)}
+                      {dayEvts.length > 3 && <Typography variant="caption" color="text.secondary">+{dayEvts.length - 3} more</Typography>}
+                    </>
+                  )}
+                </Box>
+              )
+            })}
+          </Box>
+        </Paper>
+      )}
+
+      {/* Week view */}
+      {view === 'week' && (
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
+            {weekDays.map((ds, i) => {
+              const d = new Date(ds)
+              const isToday = ds === today
+              const dayEvts = eventsForDate(ds)
+              return (
+                <Box key={ds} sx={{
+                  minHeight: 200, p: 1, borderRight: i < 6 ? '1px solid' : 'none', borderColor: 'divider',
+                  bgcolor: isToday ? '#fffde7' : 'transparent',
+                }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, color: isToday ? 'primary.main' : 'text.secondary' }}>
+                    {DAYS[d.getDay()]} {d.getDate()}
+                  </Typography>
+                  {dayEvts.map(e => <EventChip key={e.id} e={e} />)}
+                </Box>
+              )
+            })}
+          </Box>
+        </Paper>
+      )}
+
+      {/* Day view */}
+      {view === 'day' && (
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          {eventsForDate(viewDate.toISOString().slice(0, 10)).length === 0
+            ? <Typography color="text.secondary">No events this day</Typography>
+            : eventsForDate(viewDate.toISOString().slice(0, 10)).map(e => (
+              <Box key={e.id} sx={{ p: 1.5, mb: 1, bgcolor: e.color, color: 'white', borderRadius: 1 }}>
+                <Typography variant="body2" fontWeight={700}>{e.label}</Typography>
+                <Typography variant="caption">{e.type}</Typography>
+              </Box>
+            ))}
+        </Paper>
+      )}
     </Box>
   )
 }
@@ -276,8 +413,10 @@ function CalendarSection() {
 function EmployeesSection() {
   const [search, setSearch] = useState('')
   const { data: employees = [], isLoading } = useQuery({
-    queryKey: ['hr-employees', search], queryFn: () => fetchHREmployees(search ? { search } : undefined),
+    queryKey: ['hr-employees', search],
+    queryFn: () => fetchHREmployees(search ? { search } : undefined),
   })
+  const list: any[] = Array.isArray(employees) ? employees : (employees as any).items ?? []
   return (
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Employees</Typography>
@@ -286,19 +425,26 @@ function EmployeesSection() {
       {isLoading ? <CircularProgress /> : (
         <TableContainer component={Paper}>
           <Table size="small">
-            <TableHead>
-              <TableRow sx={{ bgcolor: 'primary.main' }}>
-                {['Name', 'Email', 'Role', 'Department', 'Facility'].map(h => (
-                  <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
+            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+              {['#','Name','Email','Role','Department','Facility'].map(h => <Th key={h}>{h}</Th>)}
+            </TableRow></TableHead>
             <TableBody>
-              {(employees as any[]).length === 0
-                ? <TableRow><TableCell colSpan={5} align="center">No employees found</TableCell></TableRow>
-                : (employees as any[]).map((e: any) => (
+              {list.length === 0
+                ? <TableRow><TableCell colSpan={6} align="center">No employees found</TableCell></TableRow>
+                : list.map((e: any, i: number) => (
                   <TableRow key={e.id} hover>
-                    <TableCell>{e.full_name ?? `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim()}</TableCell>
+                    <TableCell>{i + 1}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Avatar src={e.avatar_url} sx={{ width: 30, height: 30 }}>
+                          {(e.full_name ?? e.email)?.[0]?.toUpperCase()}
+                        </Avatar>
+                        <Box>
+                          <Typography variant="body2">{e.full_name ?? (`${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email)}</Typography>
+                          <Typography variant="caption" color="text.secondary">{e.role}</Typography>
+                        </Box>
+                      </Box>
+                    </TableCell>
                     <TableCell>{e.email}</TableCell>
                     <TableCell><Chip size="small" label={e.role} /></TableCell>
                     <TableCell>{e.department?.name ?? '—'}</TableCell>
@@ -314,7 +460,7 @@ function EmployeesSection() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ORGANIZATION (Holidays + Announcements)
+// ORGANIZATION
 // ══════════════════════════════════════════════════════════════════════════════
 
 function HolidaysTab() {
@@ -325,17 +471,14 @@ function HolidaysTab() {
   const FIELDS: FieldDef[] = [
     { key: 'name', label: 'Holiday Name' },
     { key: 'date', label: 'Date', type: 'date' },
-    { key: 'holiday_type', label: 'Type', type: 'select', options: ['public', 'optional', 'company'] },
+    { key: 'type', label: 'Type', type: 'select', options: ['public', 'optional', 'company'] },
     { key: 'description', label: 'Description', type: 'textarea' },
   ]
   const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateHoliday(dlg.item.id, data) : createHoliday(data),
+    mutationFn: (d: any) => dlg.item ? updateHoliday(dlg.item.id, d) : createHoliday(d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-holidays'] }); toast.success('Saved') },
   })
-  const del = useMutation({
-    mutationFn: deleteHoliday,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-holidays'] }); toast.success('Deleted') },
-  })
+  const del = useMutation({ mutationFn: deleteHoliday, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-holidays'] }); toast.success('Deleted') } })
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
@@ -344,16 +487,16 @@ function HolidaysTab() {
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Name', 'Date', 'Type', 'Description', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
+            {['Name','Date','Type','Description',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
             {(holidays as any[]).map((h: any) => (
               <TableRow key={h.id} hover>
                 <TableCell>{h.name}</TableCell>
                 <TableCell>{fmt(h.date)}</TableCell>
-                <TableCell><Chip size="small" label={h.holiday_type} /></TableCell>
+                <TableCell><Chip size="small" label={h.type ?? h.holiday_type} /></TableCell>
                 <TableCell>{h.description ?? '—'}</TableCell>
-                <TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
                   <CrudEditBtn onEdit={() => setDlg({ open: true, item: h })} />
                   <CrudDeleteBtn onDelete={() => del.mutate(h.id)} />
                 </TableCell>
@@ -364,7 +507,7 @@ function HolidaysTab() {
       </TableContainer>
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Holiday' : 'Add Holiday'}
         fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
+        onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
@@ -375,18 +518,16 @@ function AnnouncementsTab() {
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const FIELDS: FieldDef[] = [
     { key: 'title', label: 'Title' },
-    { key: 'body', label: 'Body', type: 'textarea' },
+    { key: 'content', label: 'Body', type: 'textarea' },
     { key: 'priority', label: 'Priority', type: 'select', options: ['low', 'normal', 'high', 'urgent'] },
     { key: 'expires_at', label: 'Expires At', type: 'date' },
   ]
   const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateAnnouncement(dlg.item.id, data) : createAnnouncement(data),
+    mutationFn: (d: any) => dlg.item ? updateAnnouncement(dlg.item.id, d) : createAnnouncement(d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-announcements'] }); toast.success('Saved') },
   })
-  const del = useMutation({
-    mutationFn: deleteAnnouncement,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-announcements'] }); toast.success('Deleted') },
-  })
+  const del = useMutation({ mutationFn: deleteAnnouncement, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-announcements'] }); toast.success('Deleted') } })
+  const list: any[] = Array.isArray(announcements) ? announcements : (announcements as any).items ?? []
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
@@ -395,15 +536,15 @@ function AnnouncementsTab() {
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Title', 'Priority', 'Expires', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
+            {['Title','Priority','Expires',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
-            {(announcements as any[]).map((a: any) => (
+            {list.map((a: any) => (
               <TableRow key={a.id} hover>
                 <TableCell>{a.title}</TableCell>
-                <TableCell><Chip size="small" label={a.priority} color={a.priority === 'urgent' ? 'error' : 'default'} /></TableCell>
+                <TableCell><Chip size="small" label={a.priority} color={a.priority === 'urgent' ? 'error' : a.priority === 'high' ? 'warning' : 'default'} /></TableCell>
                 <TableCell>{fmt(a.expires_at)}</TableCell>
-                <TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
                   <CrudEditBtn onEdit={() => setDlg({ open: true, item: a })} />
                   <CrudDeleteBtn onDelete={() => del.mutate(a.id)} />
                 </TableCell>
@@ -414,7 +555,7 @@ function AnnouncementsTab() {
       </TableContainer>
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Announcement' : 'Add Announcement'}
         fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
+        onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
@@ -425,8 +566,7 @@ function OrgSection() {
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Organization</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Holidays" />
-        <Tab label="Announcements" />
+        <Tab label="Holidays" /><Tab label="Announcements" />
       </Tabs>
       {tab === 0 && <HolidaysTab />}
       {tab === 1 && <AnnouncementsTab />}
@@ -438,25 +578,169 @@ function OrgSection() {
 // ATTENDANCE
 // ══════════════════════════════════════════════════════════════════════════════
 
+const STATUS_ICONS: Record<string, { icon: string; color: string; title: string }> = {
+  present:   { icon: '✓', color: '#2e7d32', title: 'Present' },
+  absent:    { icon: '✗', color: '#d32f2f', title: 'Absent' },
+  half_day:  { icon: '½', color: '#ed6c02', title: 'Half Day' },
+  on_leave:  { icon: '🚩', color: '#ef5350', title: 'On Leave' },
+  holiday:   { icon: '⭐', color: '#2e7d32', title: 'Holiday' },
+  day_off:   { icon: '⊘', color: '#9e9e9e', title: 'Day Off' },
+  future:    { icon: '–', color: '#bdbdbd', title: 'Future' },
+  not_added: { icon: '○', color: '#9e9e9e', title: 'Not Added' },
+}
+
+function AttendanceRecordsTab() {
+  const now = new Date()
+  const [selYear, setSelYear] = useState(now.getFullYear())
+  const [selMonth, setSelMonth] = useState(now.getMonth())
+
+  const firstDate = `${selYear}-${String(selMonth + 1).padStart(2, '0')}-01`
+  const lastDay = new Date(selYear, selMonth + 1, 0).getDate()
+  const lastDate = `${selYear}-${String(selMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees() })
+  const { data: eventsData } = useQuery({
+    queryKey: ['attendance-events-month', firstDate, lastDate],
+    queryFn: () => fetchAttendanceEvents({ date_from: firstDate, date_to: lastDate, limit: 5000 }),
+  })
+  const { data: holidaysData = [] } = useQuery({ queryKey: ['hr-holidays', selYear], queryFn: () => fetchHolidays(selYear) })
+  const { data: leavesData } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved' }) })
+
+  const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
+  const events: any[] = (eventsData as any)?.items ?? []
+  const holidays: any[] = holidaysData as any[]
+  const leaves: any[] = (leavesData as any)?.items ?? (Array.isArray(leavesData) ? leavesData : [])
+
+  const holidayDates = new Set(holidays.map((h: any) => h.date))
+  const today = new Date().toISOString().slice(0, 10)
+
+  const days = Array.from({ length: lastDay }, (_, i) => {
+    const d = i + 1
+    return `${selYear}-${String(selMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  })
+
+  const getStatus = (userId: number, dateStr: string): string => {
+    const dt = new Date(dateStr)
+    const dow = dt.getDay()
+    if (dateStr > today) return 'future'
+    if (dow === 0 || dow === 6) return 'day_off'
+    if (holidayDates.has(dateStr)) return 'holiday'
+    const onLeave = leaves.some((l: any) =>
+      l.user_id === userId && dateStr >= l.start_date && dateStr <= l.end_date
+    )
+    if (onLeave) return 'on_leave'
+    const dayEvents = events.filter((e: any) => e.user_id === userId && e.event_time?.slice(0, 10) === dateStr)
+    if (dayEvents.length === 0) return 'not_added'
+    const hasCheckin = dayEvents.some((e: any) => e.event_type === 'check_in')
+    if (hasCheckin) return 'present'
+    return 'not_added'
+  }
+
+  const countPresent = (userId: number) =>
+    days.filter(d => getStatus(userId, d) === 'present').length
+
+  const prevMonth = () => { if (selMonth === 0) { setSelMonth(11); setSelYear(y => y - 1) } else setSelMonth(m => m - 1) }
+  const nextMonth = () => { if (selMonth === 11) { setSelMonth(0); setSelYear(y => y + 1) } else setSelMonth(m => m + 1) }
+
+  return (
+    <Box>
+      {/* Legend */}
+      <Paper variant="outlined" sx={{ p: 1.5, mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        {Object.entries(STATUS_ICONS).map(([k, v]) => (
+          <Box key={k} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography sx={{ color: v.color, fontWeight: 700, fontSize: 14 }}>{v.icon}</Typography>
+            <Typography variant="caption">{v.title}</Typography>
+          </Box>
+        ))}
+      </Paper>
+
+      {/* Month nav */}
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+        <IconButton size="small" onClick={prevMonth}><ChevronLeftIcon /></IconButton>
+        <Typography fontWeight={700}>{MONTHS[selMonth]} {selYear}</Typography>
+        <IconButton size="small" onClick={nextMonth}><ChevronRightIcon /></IconButton>
+      </Box>
+
+      <TableContainer component={Paper} sx={{ maxHeight: 520, overflow: 'auto' }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ bgcolor: 'background.paper', minWidth: 200, fontWeight: 700, position: 'sticky', left: 0, zIndex: 3 }}>
+                Employee
+              </TableCell>
+              {days.map(d => {
+                const dt = new Date(d)
+                const dow = dt.getDay()
+                const isWeekend = dow === 0 || dow === 6
+                return (
+                  <TableCell key={d} align="center" sx={{
+                    bgcolor: isWeekend ? 'grey.100' : 'background.paper',
+                    fontWeight: 600, minWidth: 36, px: 0.5,
+                  }}>
+                    <Typography variant="caption" display="block" sx={{ fontWeight: 700 }}>{dt.getDate()}</Typography>
+                    <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: 9 }}>{DAYS[dow].slice(0, 3)}</Typography>
+                  </TableCell>
+                )
+              })}
+              <TableCell sx={{ bgcolor: 'background.paper', fontWeight: 700, minWidth: 80 }}>Total</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {employees.map((emp: any) => {
+              const present = countPresent(emp.id)
+              return (
+                <TableRow key={emp.id} hover>
+                  <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 1, borderRight: '1px solid', borderColor: 'divider' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar src={emp.avatar_url} sx={{ width: 28, height: 28, fontSize: 12 }}>
+                        {(emp.full_name ?? emp.email)?.[0]?.toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ lineHeight: 1.2 }}>{emp.full_name ?? emp.email}</Typography>
+                        <Typography variant="caption" color="text.secondary">{emp.role}</Typography>
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  {days.map(d => {
+                    const status = getStatus(emp.id, d)
+                    const si = STATUS_ICONS[status] ?? STATUS_ICONS.not_added
+                    return (
+                      <TableCell key={d} align="center" sx={{ px: 0.25, py: 0.5 }}>
+                        <Tooltip title={si.title}>
+                          <Typography sx={{ color: si.color, fontWeight: 700, fontSize: 14, lineHeight: 1 }}>{si.icon}</Typography>
+                        </Tooltip>
+                      </TableCell>
+                    )
+                  })}
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={700}>{present}/{days.filter(d => { const dow = new Date(d).getDay(); return dow !== 0 && dow !== 6 && !holidayDates.has(d) && d <= today }).length}</Typography>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  )
+}
+
 function AttendancePoliciesTab() {
   const qc = useQueryClient()
   const { data: policies = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const FIELDS: FieldDef[] = [
     { key: 'name', label: 'Policy Name' },
-    { key: 'work_start_time', label: 'Work Start Time' },
-    { key: 'work_end_time', label: 'Work End Time' },
-    { key: 'grace_minutes', label: 'Grace Minutes', type: 'number' },
-    { key: 'weekly_hours', label: 'Weekly Hours', type: 'number' },
+    { key: 'work_hours_per_day', label: 'Work Hours/Day', type: 'number' },
+    { key: 'work_days_per_week', label: 'Work Days/Week', type: 'number' },
+    { key: 'grace_period_minutes', label: 'Grace Period (min)', type: 'number' },
   ]
   const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateAttendancePolicy(dlg.item.id, data) : createAttendancePolicy(data),
+    mutationFn: (d: any) => dlg.item ? updateAttendancePolicy(dlg.item.id, d) : createAttendancePolicy(d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }); toast.success('Saved') },
   })
-  const del = useMutation({
-    mutationFn: deleteAttendancePolicy,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }); toast.success('Deleted') },
-  })
+  const del = useMutation({ mutationFn: deleteAttendancePolicy, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }); toast.success('Deleted') } })
+  const list: any[] = Array.isArray(policies) ? policies : (policies as any).items ?? []
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
@@ -465,17 +749,16 @@ function AttendancePoliciesTab() {
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Name', 'Start', 'End', 'Grace (min)', 'Weekly Hours', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
+            {['Name','Hours/Day','Days/Week','Grace (min)',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
-            {(policies as any[]).map((p: any) => (
+            {list.map((p: any) => (
               <TableRow key={p.id} hover>
                 <TableCell>{p.name}</TableCell>
-                <TableCell>{p.work_start_time ?? '—'}</TableCell>
-                <TableCell>{p.work_end_time ?? '—'}</TableCell>
-                <TableCell>{p.grace_minutes ?? '—'}</TableCell>
-                <TableCell>{p.weekly_hours ?? '—'}</TableCell>
-                <TableCell>
+                <TableCell>{p.work_hours_per_day ?? '—'}</TableCell>
+                <TableCell>{p.work_days_per_week ?? '—'}</TableCell>
+                <TableCell>{p.grace_period_minutes ?? '—'}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
                   <CrudEditBtn onEdit={() => setDlg({ open: true, item: p })} />
                   <CrudDeleteBtn onDelete={() => del.mutate(p.id)} />
                 </TableCell>
@@ -486,7 +769,7 @@ function AttendancePoliciesTab() {
       </TableContainer>
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Policy' : 'Add Policy'}
         fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
+        onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
@@ -497,9 +780,10 @@ function AttendanceSection() {
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Attendance</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Policies" />
+        <Tab label="Attendance Records" /><Tab label="Policies" />
       </Tabs>
-      {tab === 0 && <AttendancePoliciesTab />}
+      {tab === 0 && <AttendanceRecordsTab />}
+      {tab === 1 && <AttendancePoliciesTab />}
     </Box>
   )
 }
@@ -510,24 +794,21 @@ function AttendanceSection() {
 
 function LeaveRequestsTab() {
   const qc = useQueryClient()
-  const { data: requests = [] } = useQuery({ queryKey: ['hr-leave-requests'], queryFn: () => fetchLeaveRequests() })
-  const { data: leaveTypes = [] } = useQuery({ queryKey: ['hr-leave-types'], queryFn: fetchLeaveTypes })
+  const { data: requests } = useQuery({ queryKey: ['hr-leave-requests'], queryFn: () => fetchLeaveRequests() })
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const FIELDS: FieldDef[] = [
     { key: 'start_date', label: 'Start Date', type: 'date' },
     { key: 'end_date', label: 'End Date', type: 'date' },
     { key: 'reason', label: 'Reason', type: 'textarea' },
-    { key: 'status', label: 'Status', type: 'select', options: ['pending', 'approved', 'rejected', 'cancelled'] },
+    { key: 'status', label: 'Status', type: 'select', options: ['pending','approved','rejected','cancelled'] },
   ]
   const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateLeaveRequest(dlg.item.id, data) : createLeaveRequest(data),
+    mutationFn: (d: any) => dlg.item ? updateLeaveRequest(dlg.item.id, d) : createLeaveRequest(d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-requests'] }); toast.success('Saved') },
   })
-  const del = useMutation({
-    mutationFn: deleteLeaveRequest,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-requests'] }); toast.success('Deleted') },
-  })
-  const statusColor = (s: string) => s === 'approved' ? 'success' : s === 'rejected' ? 'error' : s === 'cancelled' ? 'default' : 'warning'
+  const del = useMutation({ mutationFn: deleteLeaveRequest, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-requests'] }); toast.success('Deleted') } })
+  const list: any[] = (requests as any)?.items ?? (Array.isArray(requests) ? requests : [])
+  const sColor = (s: string) => s === 'approved' ? 'success' : s === 'rejected' ? 'error' : 'warning'
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
@@ -536,17 +817,25 @@ function LeaveRequestsTab() {
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Employee', 'Type', 'From', 'To', 'Status', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
+            {['Employee','Type','From','To','Days','Status',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
-            {(requests as any[]).map((r: any) => (
+            {list.map((r: any) => (
               <TableRow key={r.id} hover>
-                <TableCell>{r.user?.full_name ?? r.user?.email ?? r.user_id}</TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Avatar sx={{ width: 26, height: 26, fontSize: 11 }}>{(r.user?.full_name ?? r.user?.email ?? '?')[0]?.toUpperCase()}</Avatar>
+                    <Box>
+                      <Typography variant="body2">{r.user?.full_name ?? r.user?.email ?? r.user_id}</Typography>
+                    </Box>
+                  </Box>
+                </TableCell>
                 <TableCell>{r.leave_type?.name ?? '—'}</TableCell>
                 <TableCell>{fmt(r.start_date)}</TableCell>
                 <TableCell>{fmt(r.end_date)}</TableCell>
-                <TableCell><Chip size="small" label={r.status} color={statusColor(r.status) as any} /></TableCell>
-                <TableCell>
+                <TableCell>{r.total_days ?? '—'}</TableCell>
+                <TableCell><Chip size="small" label={r.status} color={sColor(r.status) as any} /></TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
                   <CrudEditBtn onEdit={() => setDlg({ open: true, item: r })} />
                   <CrudDeleteBtn onDelete={() => del.mutate(r.id)} />
                 </TableCell>
@@ -557,7 +846,7 @@ function LeaveRequestsTab() {
       </TableContainer>
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Request' : 'New Leave Request'}
         fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
+        onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
@@ -568,21 +857,16 @@ function LeaveTypesTab() {
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const FIELDS: FieldDef[] = [
     { key: 'name', label: 'Name' },
-    { key: 'max_days_per_year', label: 'Max Days / Year', type: 'number' },
-    { key: 'is_paid', label: 'Paid?', type: 'select', options: ['true', 'false'] },
+    { key: 'max_days_per_year', label: 'Max Days/Year', type: 'number' },
+    { key: 'is_paid', label: 'Paid?', type: 'select', options: ['true','false'] },
     { key: 'description', label: 'Description', type: 'textarea' },
   ]
   const mut = useMutation({
-    mutationFn: (data: any) => {
-      const d = { ...data, is_paid: data.is_paid === 'true' }
-      return dlg.item ? updateLeaveType(dlg.item.id, d) : createLeaveType(d)
-    },
+    mutationFn: (d: any) => { const data = { ...d, is_paid: d.is_paid === 'true' }; return dlg.item ? updateLeaveType(dlg.item.id, data) : createLeaveType(data) },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-types'] }); toast.success('Saved') },
   })
-  const del = useMutation({
-    mutationFn: deleteLeaveType,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-types'] }); toast.success('Deleted') },
-  })
+  const del = useMutation({ mutationFn: deleteLeaveType, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-types'] }); toast.success('Deleted') } })
+  const list: any[] = Array.isArray(types) ? types : (types as any).items ?? []
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
@@ -591,16 +875,16 @@ function LeaveTypesTab() {
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Name', 'Max Days', 'Paid', 'Description', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
+            {['Name','Max Days','Paid','Description',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
-            {(types as any[]).map((t: any) => (
+            {list.map((t: any) => (
               <TableRow key={t.id} hover>
                 <TableCell>{t.name}</TableCell>
-                <TableCell>{t.max_days_per_year ?? '—'}</TableCell>
+                <TableCell>{t.max_days_per_year}</TableCell>
                 <TableCell><Chip size="small" label={t.is_paid ? 'Yes' : 'No'} color={t.is_paid ? 'success' : 'default'} /></TableCell>
                 <TableCell>{t.description ?? '—'}</TableCell>
-                <TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
                   <CrudEditBtn onEdit={() => setDlg({ open: true, item: { ...t, is_paid: String(t.is_paid) } })} />
                   <CrudDeleteBtn onDelete={() => del.mutate(t.id)} />
                 </TableCell>
@@ -611,7 +895,7 @@ function LeaveTypesTab() {
       </TableContainer>
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Leave Type' : 'Add Leave Type'}
         fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
+        onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
@@ -622,18 +906,15 @@ function LeavePoliciesTab() {
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const FIELDS: FieldDef[] = [
     { key: 'name', label: 'Policy Name' },
-    { key: 'accrual_rate', label: 'Accrual Rate', type: 'number' },
-    { key: 'max_carry_forward', label: 'Max Carry Forward', type: 'number' },
+    { key: 'days_allowed', label: 'Days Allowed', type: 'number' },
     { key: 'description', label: 'Description', type: 'textarea' },
   ]
   const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateLeavePolicy(dlg.item.id, data) : createLeavePolicy(data),
+    mutationFn: (d: any) => dlg.item ? updateLeavePolicy(dlg.item.id, d) : createLeavePolicy(d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-policies'] }); toast.success('Saved') },
   })
-  const del = useMutation({
-    mutationFn: deleteLeavePolicy,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-policies'] }); toast.success('Deleted') },
-  })
+  const del = useMutation({ mutationFn: deleteLeavePolicy, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-policies'] }); toast.success('Deleted') } })
+  const list: any[] = Array.isArray(policies) ? policies : (policies as any).items ?? []
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
@@ -642,15 +923,15 @@ function LeavePoliciesTab() {
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Name', 'Accrual Rate', 'Max Carry Forward', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
+            {['Name','Days Allowed','Description',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
-            {(policies as any[]).map((p: any) => (
+            {list.map((p: any) => (
               <TableRow key={p.id} hover>
                 <TableCell>{p.name}</TableCell>
-                <TableCell>{p.accrual_rate ?? '—'}</TableCell>
-                <TableCell>{p.max_carry_forward ?? '—'}</TableCell>
-                <TableCell>
+                <TableCell>{p.days_allowed}</TableCell>
+                <TableCell>{p.description ?? '—'}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
                   <CrudEditBtn onEdit={() => setDlg({ open: true, item: p })} />
                   <CrudDeleteBtn onDelete={() => del.mutate(p.id)} />
                 </TableCell>
@@ -661,7 +942,7 @@ function LeavePoliciesTab() {
       </TableContainer>
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Policy' : 'Add Policy'}
         fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
+        onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
@@ -672,13 +953,92 @@ function LeaveSection() {
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Leave Management</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Requests" />
-        <Tab label="Leave Types" />
-        <Tab label="Policies" />
+        <Tab label="Requests" /><Tab label="Leave Types" /><Tab label="Policies" />
       </Tabs>
       {tab === 0 && <LeaveRequestsTab />}
       {tab === 1 && <LeaveTypesTab />}
       {tab === 2 && <LeavePoliciesTab />}
+    </Box>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TIMESHEETS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function TimesheetsSection() {
+  const qc = useQueryClient()
+  const { data: tsData, isLoading } = useQuery({ queryKey: ['hr-timesheets'], queryFn: () => fetchTimesheets({ limit: 200 }) })
+  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+  const list: any[] = (tsData as any)?.items ?? (Array.isArray(tsData) ? tsData : [])
+
+  const FIELDS: FieldDef[] = [
+    { key: 'work_date', label: 'Date', type: 'date' },
+    { key: 'hours', label: 'Hours', type: 'number' },
+    { key: 'project', label: 'Project' },
+    { key: 'description', label: 'Description', type: 'textarea' },
+    { key: 'status', label: 'Status', type: 'select', options: ['draft','submitted','approved','rejected'] },
+  ]
+
+  const mut = useMutation({
+    mutationFn: (d: any) => dlg.item ? updateTimesheet(dlg.item.id, d) : createTimesheet(d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Saved') },
+  })
+  const del = useMutation({ mutationFn: deleteTimesheet, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Deleted') } })
+
+  const approve = (id: number) => updateTimesheet(id, { status: 'approved' }).then(() => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Approved') })
+  const reject = (id: number) => updateTimesheet(id, { status: 'rejected' }).then(() => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Rejected') })
+
+  const sColor = (s: string) => s === 'approved' ? 'success' : s === 'rejected' ? 'error' : s === 'submitted' ? 'warning' : 'default'
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6" fontWeight={700}>Timesheets</Typography>
+        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Log Time</Button>
+      </Box>
+      {isLoading ? <CircularProgress /> : (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
+              {['#','Employee','Date','Hours','Project','Status','Submitted On','Actions'].map(h => <Th key={h}>{h}</Th>)}
+            </TableRow></TableHead>
+            <TableBody>
+              {list.length === 0
+                ? <TableRow><TableCell colSpan={8} align="center">No timesheet entries</TableCell></TableRow>
+                : list.map((ts: any, i: number) => (
+                  <TableRow key={ts.id} hover>
+                    <TableCell>{i + 1}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Avatar sx={{ width: 26, height: 26, fontSize: 11 }}>{(ts.user?.full_name ?? ts.user?.email ?? '?')[0]?.toUpperCase()}</Avatar>
+                        <Typography variant="body2">{ts.user?.full_name ?? ts.user?.email ?? ts.user_id}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>{fmt(ts.work_date)}</TableCell>
+                    <TableCell sx={{ color: 'primary.main', fontWeight: 700 }}>{ts.hours?.toFixed(2)}h</TableCell>
+                    <TableCell>{ts.project ? <Chip size="small" label={ts.project} variant="outlined" sx={{ borderColor: '#7c3aed', color: '#7c3aed' }} /> : '—'}</TableCell>
+                    <TableCell><Chip size="small" label={ts.status} color={sColor(ts.status) as any} /></TableCell>
+                    <TableCell>{ts.submitted_at ? fmt(ts.submitted_at) : '—'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Tooltip title="View/Edit"><IconButton size="small" onClick={() => setDlg({ open: true, item: ts })}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                      {ts.status === 'submitted' && (
+                        <>
+                          <Tooltip title="Approve"><IconButton size="small" color="success" onClick={() => approve(ts.id)}><CheckIcon fontSize="small" /></IconButton></Tooltip>
+                          <Tooltip title="Reject"><IconButton size="small" color="error" onClick={() => reject(ts.id)}><CloseIcon fontSize="small" /></IconButton></Tooltip>
+                        </>
+                      )}
+                      <CrudDeleteBtn onDelete={() => del.mutate(ts.id)} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Timesheet' : 'Log Time'}
+        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
+        onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
@@ -689,209 +1049,66 @@ function LeaveSection() {
 
 function JobOpeningsTab() {
   const qc = useQueryClient()
-  const { data: openings = [] } = useQuery({ queryKey: ['hr-job-openings'], queryFn: () => fetchJobOpenings() })
+  const { data } = useQuery({ queryKey: ['hr-job-openings'], queryFn: () => fetchJobOpenings() })
+  const list: any[] = (data as any)?.items ?? (Array.isArray(data) ? data : [])
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const FIELDS: FieldDef[] = [
-    { key: 'title', label: 'Job Title' },
-    { key: 'department', label: 'Department' },
-    { key: 'location', label: 'Location' },
-    { key: 'status', label: 'Status', type: 'select', options: ['open', 'closed', 'on_hold', 'filled'] },
+    { key: 'title', label: 'Job Title' }, { key: 'department', label: 'Department' }, { key: 'location', label: 'Location' },
+    { key: 'status', label: 'Status', type: 'select', options: ['open','closed','on_hold','filled'] },
     { key: 'description', label: 'Description', type: 'textarea' },
-    { key: 'posted_date', label: 'Posted Date', type: 'date' },
-    { key: 'closing_date', label: 'Closing Date', type: 'date' },
+    { key: 'closes_at', label: 'Closing Date', type: 'date' },
   ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateJobOpening(dlg.item.id, data) : createJobOpening(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-job-openings'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteJobOpening,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-job-openings'] }); toast.success('Deleted') },
-  })
+  const mut = useMutation({ mutationFn: (d: any) => dlg.item ? updateJobOpening(dlg.item.id, d) : createJobOpening(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-job-openings'] }); toast.success('Saved') } })
+  const del = useMutation({ mutationFn: deleteJobOpening, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-job-openings'] }); toast.success('Deleted') } })
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Opening</Button>
       </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Title', 'Department', 'Location', 'Status', 'Closing', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(openings as any[]).map((o: any) => (
-              <TableRow key={o.id} hover>
-                <TableCell>{o.title}</TableCell>
-                <TableCell>{o.department ?? '—'}</TableCell>
-                <TableCell>{o.location ?? '—'}</TableCell>
-                <TableCell><Chip size="small" label={o.status} color={o.status === 'open' ? 'success' : 'default'} /></TableCell>
-                <TableCell>{fmt(o.closing_date)}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: o })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(o.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Opening' : 'Add Job Opening'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
+      <TableContainer component={Paper}><Table size="small">
+        <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Title','Department','Location','Status','Closing',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+        <TableBody>{list.map((o: any) => (
+          <TableRow key={o.id} hover>
+            <TableCell>{o.title}</TableCell><TableCell>{o.department ?? '—'}</TableCell><TableCell>{o.location ?? '—'}</TableCell>
+            <TableCell><Chip size="small" label={o.status} color={o.status === 'open' ? 'success' : 'default'} /></TableCell>
+            <TableCell>{fmt(o.closes_at)}</TableCell>
+            <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setDlg({ open: true, item: o })} /><CrudDeleteBtn onDelete={() => del.mutate(o.id)} /></TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table></TableContainer>
+      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Opening' : 'Add Opening'} fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })} onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
 
 function CandidatesTab() {
   const qc = useQueryClient()
-  const { data: candidates = [] } = useQuery({ queryKey: ['hr-candidates'], queryFn: () => fetchCandidates() })
+  const { data } = useQuery({ queryKey: ['hr-candidates'], queryFn: () => fetchCandidates() })
+  const list: any[] = (data as any)?.items ?? (Array.isArray(data) ? data : [])
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const FIELDS: FieldDef[] = [
-    { key: 'full_name', label: 'Full Name' },
-    { key: 'email', label: 'Email' },
-    { key: 'phone', label: 'Phone' },
-    { key: 'status', label: 'Status', type: 'select', options: ['applied', 'screening', 'interview', 'offer', 'hired', 'rejected'] },
+    { key: 'first_name', label: 'First Name' }, { key: 'last_name', label: 'Last Name' },
+    { key: 'email', label: 'Email' }, { key: 'phone', label: 'Phone' },
+    { key: 'status', label: 'Status', type: 'select', options: ['applied','screening','interview','offered','hired','rejected'] },
     { key: 'notes', label: 'Notes', type: 'textarea' },
   ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateCandidate(dlg.item.id, data) : createCandidate(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-candidates'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteCandidate,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-candidates'] }); toast.success('Deleted') },
-  })
+  const mut = useMutation({ mutationFn: (d: any) => dlg.item ? updateCandidate(dlg.item.id, d) : createCandidate(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-candidates'] }); toast.success('Saved') } })
+  const del = useMutation({ mutationFn: deleteCandidate, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-candidates'] }); toast.success('Deleted') } })
+  const sColor = (s: string) => s === 'hired' ? 'success' : s === 'rejected' ? 'error' : 'default'
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Candidate</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Name', 'Email', 'Phone', 'Status', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(candidates as any[]).map((c: any) => (
-              <TableRow key={c.id} hover>
-                <TableCell>{c.full_name}</TableCell>
-                <TableCell>{c.email ?? '—'}</TableCell>
-                <TableCell>{c.phone ?? '—'}</TableCell>
-                <TableCell><Chip size="small" label={c.status} color={c.status === 'hired' ? 'success' : c.status === 'rejected' ? 'error' : 'default'} /></TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: c })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(c.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Candidate' : 'Add Candidate'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function OffersTab() {
-  const qc = useQueryClient()
-  const { data: offers = [] } = useQuery({ queryKey: ['hr-job-offers'], queryFn: () => fetchJobOffers() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'position_title', label: 'Position Title' },
-    { key: 'salary_offered', label: 'Salary', type: 'number' },
-    { key: 'offer_date', label: 'Offer Date', type: 'date' },
-    { key: 'expiry_date', label: 'Expiry Date', type: 'date' },
-    { key: 'status', label: 'Status', type: 'select', options: ['draft', 'sent', 'accepted', 'declined', 'expired'] },
-    { key: 'notes', label: 'Notes', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateJobOffer(dlg.item.id, data) : createJobOffer(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-job-offers'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteJobOffer,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-job-offers'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>New Offer</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Position', 'Salary', 'Offer Date', 'Expiry', 'Status', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(offers as any[]).map((o: any) => (
-              <TableRow key={o.id} hover>
-                <TableCell>{o.position_title}</TableCell>
-                <TableCell>{o.salary_offered ? `$${Number(o.salary_offered).toLocaleString()}` : '—'}</TableCell>
-                <TableCell>{fmt(o.offer_date)}</TableCell>
-                <TableCell>{fmt(o.expiry_date)}</TableCell>
-                <TableCell><Chip size="small" label={o.status} color={o.status === 'accepted' ? 'success' : o.status === 'declined' ? 'error' : 'default'} /></TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: o })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(o.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Offer' : 'New Job Offer'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function OnboardingTab() {
-  const qc = useQueryClient()
-  const { data: checklists = [] } = useQuery({ queryKey: ['hr-onboarding-checklists'], queryFn: fetchOnboardingChecklists })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'title', label: 'Checklist Title' },
-    { key: 'description', label: 'Description', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateOnboardingChecklist(dlg.item.id, data) : createOnboardingChecklist(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-onboarding-checklists'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteOnboardingChecklist,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-onboarding-checklists'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>New Checklist</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Title', 'Description', 'Items', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(checklists as any[]).map((c: any) => (
-              <TableRow key={c.id} hover>
-                <TableCell>{c.title}</TableCell>
-                <TableCell>{c.description ?? '—'}</TableCell>
-                <TableCell>{c.items?.length ?? 0}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: c })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(c.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Checklist' : 'New Checklist'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Candidate</Button></Box>
+      <TableContainer component={Paper}><Table size="small">
+        <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Name','Email','Phone','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+        <TableBody>{list.map((c: any) => (
+          <TableRow key={c.id} hover>
+            <TableCell>{c.first_name} {c.last_name}</TableCell><TableCell>{c.email}</TableCell><TableCell>{c.phone ?? '—'}</TableCell>
+            <TableCell><Chip size="small" label={c.status} color={sColor(c.status) as any} /></TableCell>
+            <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setDlg({ open: true, item: c })} /><CrudDeleteBtn onDelete={() => del.mutate(c.id)} /></TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table></TableContainer>
+      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Candidate' : 'Add Candidate'} fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })} onSave={d => mut.mutate(d)} />
     </Box>
   )
 }
@@ -902,226 +1119,68 @@ function RecruitmentSection() {
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Recruitment</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Job Openings" />
-        <Tab label="Candidates" />
-        <Tab label="Offers" />
-        <Tab label="Onboarding" />
+        <Tab label="Job Openings" /><Tab label="Candidates" />
       </Tabs>
       {tab === 0 && <JobOpeningsTab />}
       {tab === 1 && <CandidatesTab />}
-      {tab === 2 && <OffersTab />}
-      {tab === 3 && <OnboardingTab />}
     </Box>
   )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// EMPLOYEE LIFECYCLE
+// LIFECYCLE
 // ══════════════════════════════════════════════════════════════════════════════
 
-function AwardsTab() {
-  const qc = useQueryClient()
-  const { data: awards = [] } = useQuery({ queryKey: ['hr-awards'], queryFn: () => fetchAwards() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'award_name', label: 'Award Name' },
-    { key: 'award_date', label: 'Award Date', type: 'date' },
-    { key: 'description', label: 'Description', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateAward(dlg.item.id, data) : createAward(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-awards'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteAward,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-awards'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Award</Button>
+function mkLifecycleTab(
+  label: string, queryKey: string, fetcher: () => Promise<any>,
+  creator: (d: any) => Promise<any>, updater: (id: number, d: any) => Promise<any>,
+  deleter: (id: number) => Promise<any>, fields: FieldDef[],
+  columns: { key: string; label: string; render?: (row: any) => React.ReactNode }[]
+) {
+  return function Tab() {
+    const qc = useQueryClient()
+    const { data } = useQuery({ queryKey: [queryKey], queryFn: fetcher })
+    const list: any[] = (data as any)?.items ?? (Array.isArray(data) ? data : [])
+    const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+    const mut = useMutation({ mutationFn: (d: any) => dlg.item ? updater(dlg.item.id, d) : creator(d), onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); toast.success('Saved') } })
+    const del = useMutation({ mutationFn: deleter, onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); toast.success('Deleted') } })
+    return (
+      <Box>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add {label}</Button></Box>
+        <TableContainer component={Paper}><Table size="small">
+          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{[...columns.map(c => c.label), ''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+          <TableBody>{list.map((row: any) => (
+            <TableRow key={row.id} hover>
+              {columns.map(c => <TableCell key={c.key}>{c.render ? c.render(row) : (row[c.key] ?? '—')}</TableCell>)}
+              <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setDlg({ open: true, item: row })} /><CrudDeleteBtn onDelete={() => del.mutate(row.id)} /></TableCell>
+            </TableRow>
+          ))}</TableBody>
+        </Table></TableContainer>
+        <SimpleDialog open={dlg.open} title={dlg.item ? `Edit ${label}` : `Add ${label}`} fields={fields} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })} onSave={d => mut.mutate(d)} />
       </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Award', 'Employee', 'Date', 'Description', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(awards as any[]).map((a: any) => (
-              <TableRow key={a.id} hover>
-                <TableCell>{a.award_name}</TableCell>
-                <TableCell>{a.user?.full_name ?? a.user?.email ?? a.user_id}</TableCell>
-                <TableCell>{fmt(a.award_date)}</TableCell>
-                <TableCell>{a.description ?? '—'}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: a })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(a.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Award' : 'Add Award'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
+    )
+  }
 }
 
-function PromotionsTab() {
-  const qc = useQueryClient()
-  const { data: promotions = [] } = useQuery({ queryKey: ['hr-promotions'], queryFn: () => fetchPromotions() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'old_title', label: 'Previous Title' },
-    { key: 'new_title', label: 'New Title' },
-    { key: 'effective_date', label: 'Effective Date', type: 'date' },
-    { key: 'salary_change', label: 'Salary Change', type: 'number' },
-    { key: 'notes', label: 'Notes', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updatePromotion(dlg.item.id, data) : createPromotion(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-promotions'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deletePromotion,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-promotions'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Promotion</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Employee', 'From', 'To', 'Effective', 'Salary Change', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(promotions as any[]).map((p: any) => (
-              <TableRow key={p.id} hover>
-                <TableCell>{p.user?.full_name ?? p.user?.email ?? p.user_id}</TableCell>
-                <TableCell>{p.old_title ?? '—'}</TableCell>
-                <TableCell>{p.new_title}</TableCell>
-                <TableCell>{fmt(p.effective_date)}</TableCell>
-                <TableCell>{p.salary_change != null ? `$${Number(p.salary_change).toLocaleString()}` : '—'}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: p })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(p.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Promotion' : 'Add Promotion'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
+const AwardsTab = mkLifecycleTab('Award', 'hr-awards', () => fetchAwards(), createAward, updateAward, deleteAward,
+  [{ key: 'title', label: 'Award Name' }, { key: 'award_date', label: 'Award Date', type: 'date' }, { key: 'description', label: 'Description', type: 'textarea' }],
+  [{ key: 'emp', label: 'Employee', render: (r) => r.user?.full_name ?? r.user?.email ?? r.user_id }, { key: 'title', label: 'Award' }, { key: 'award_date', label: 'Date', render: (r) => fmt(r.award_date) }]
+)
 
-function ResignationsTab() {
-  const qc = useQueryClient()
-  const { data: resignations = [] } = useQuery({ queryKey: ['hr-resignations'], queryFn: () => fetchResignations() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'resignation_date', label: 'Resignation Date', type: 'date' },
-    { key: 'last_working_date', label: 'Last Working Date', type: 'date' },
-    { key: 'reason', label: 'Reason', type: 'textarea' },
-    { key: 'status', label: 'Status', type: 'select', options: ['pending', 'accepted', 'rejected', 'withdrawn'] },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateResignation(dlg.item.id, data) : createResignation(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-resignations'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteResignation,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-resignations'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Record Resignation</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Employee', 'Resigned', 'Last Day', 'Status', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(resignations as any[]).map((r: any) => (
-              <TableRow key={r.id} hover>
-                <TableCell>{r.user?.full_name ?? r.user?.email ?? r.user_id}</TableCell>
-                <TableCell>{fmt(r.resignation_date)}</TableCell>
-                <TableCell>{fmt(r.last_working_date)}</TableCell>
-                <TableCell><Chip size="small" label={r.status} color={r.status === 'accepted' ? 'warning' : 'default'} /></TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: r })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(r.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Resignation' : 'Record Resignation'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
+const PromotionsTab = mkLifecycleTab('Promotion', 'hr-promotions', () => fetchPromotions(), createPromotion, updatePromotion, deletePromotion,
+  [{ key: 'previous_title', label: 'Previous Title' }, { key: 'new_title', label: 'New Title' }, { key: 'effective_date', label: 'Effective Date', type: 'date' }],
+  [{ key: 'emp', label: 'Employee', render: (r) => r.user?.full_name ?? r.user?.email ?? r.user_id }, { key: 'previous_title', label: 'From' }, { key: 'new_title', label: 'To' }, { key: 'effective_date', label: 'Effective', render: (r) => fmt(r.effective_date) }]
+)
 
-function TerminationsTab() {
-  const qc = useQueryClient()
-  const { data: terminations = [] } = useQuery({ queryKey: ['hr-terminations'], queryFn: () => fetchTerminations() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'termination_date', label: 'Termination Date', type: 'date' },
-    { key: 'termination_type', label: 'Type', type: 'select', options: ['voluntary', 'involuntary', 'layoff', 'contract_end', 'retirement'] },
-    { key: 'reason', label: 'Reason', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateTermination(dlg.item.id, data) : createTermination(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-terminations'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteTermination,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-terminations'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Record Termination</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Employee', 'Date', 'Type', 'Reason', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(terminations as any[]).map((t: any) => (
-              <TableRow key={t.id} hover>
-                <TableCell>{t.user?.full_name ?? t.user?.email ?? t.user_id}</TableCell>
-                <TableCell>{fmt(t.termination_date)}</TableCell>
-                <TableCell><Chip size="small" label={t.termination_type} /></TableCell>
-                <TableCell>{t.reason ?? '—'}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: t })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(t.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Termination' : 'Record Termination'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
+const ResignationsTab = mkLifecycleTab('Resignation', 'hr-resignations', () => fetchResignations(), createResignation, updateResignation, deleteResignation,
+  [{ key: 'last_working_day', label: 'Last Working Day', type: 'date' }, { key: 'reason', label: 'Reason', type: 'textarea' }, { key: 'status', label: 'Status', type: 'select', options: ['submitted','accepted','rejected','withdrawn'] }],
+  [{ key: 'emp', label: 'Employee', render: (r) => r.user?.full_name ?? r.user?.email ?? r.user_id }, { key: 'submitted_at', label: 'Submitted', render: (r) => fmt(r.submitted_at) }, { key: 'last_working_day', label: 'Last Day', render: (r) => fmt(r.last_working_day) }, { key: 'status', label: 'Status', render: (r) => <Chip size="small" label={r.status} /> }]
+)
+
+const TerminationsTab = mkLifecycleTab('Termination', 'hr-terminations', () => fetchTerminations(), createTermination, updateTermination, deleteTermination,
+  [{ key: 'termination_date', label: 'Date', type: 'date' }, { key: 'termination_type', label: 'Type', type: 'select', options: ['voluntary','involuntary','retirement','redundancy'] }, { key: 'reason', label: 'Reason', type: 'textarea' }],
+  [{ key: 'emp', label: 'Employee', render: (r) => r.user?.full_name ?? r.user?.email ?? r.user_id }, { key: 'termination_date', label: 'Date', render: (r) => fmt(r.termination_date) }, { key: 'termination_type', label: 'Type', render: (r) => <Chip size="small" label={r.termination_type} /> }]
+)
 
 function LifecycleSection() {
   const [tab, setTab] = useState(0)
@@ -1129,10 +1188,7 @@ function LifecycleSection() {
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Employee Lifecycle</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Awards" />
-        <Tab label="Promotions" />
-        <Tab label="Resignations" />
-        <Tab label="Terminations" />
+        <Tab label="Awards" /><Tab label="Promotions" /><Tab label="Resignations" /><Tab label="Terminations" />
       </Tabs>
       {tab === 0 && <AwardsTab />}
       {tab === 1 && <PromotionsTab />}
@@ -1146,169 +1202,96 @@ function LifecycleSection() {
 // PAYROLL
 // ══════════════════════════════════════════════════════════════════════════════
 
-function TaxBracketsTab() {
-  const qc = useQueryClient()
-  const { data: brackets = [] } = useQuery({ queryKey: ['hr-tax-brackets'], queryFn: fetchTaxBrackets })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'name', label: 'Bracket Name' },
-    { key: 'min_income', label: 'Min Income', type: 'number' },
-    { key: 'max_income', label: 'Max Income', type: 'number' },
-    { key: 'tax_rate', label: 'Tax Rate (%)', type: 'number' },
-    { key: 'filing_status', label: 'Filing Status', type: 'select', options: ['single', 'married', 'head_of_household'] },
-    { key: 'tax_year', label: 'Tax Year', type: 'number' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateTaxBracket(dlg.item.id, data) : createTaxBracket(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-tax-brackets'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteTaxBracket,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-tax-brackets'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Bracket</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Name', 'Min Income', 'Max Income', 'Rate', 'Filing', 'Year', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(brackets as any[]).map((b: any) => (
-              <TableRow key={b.id} hover>
-                <TableCell>{b.name}</TableCell>
-                <TableCell>${Number(b.min_income ?? 0).toLocaleString()}</TableCell>
-                <TableCell>{b.max_income ? `$${Number(b.max_income).toLocaleString()}` : '∞'}</TableCell>
-                <TableCell>{b.tax_rate}%</TableCell>
-                <TableCell>{b.filing_status ?? '—'}</TableCell>
-                <TableCell>{b.tax_year ?? '—'}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: b })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(b.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Tax Bracket' : 'Add Tax Bracket'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function PayrollRunsTab() {
-  const qc = useQueryClient()
-  const { data: runs = [] } = useQuery({ queryKey: ['hr-payroll-runs'], queryFn: () => fetchPayrollRuns() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'pay_period_start', label: 'Period Start', type: 'date' },
-    { key: 'pay_period_end', label: 'Period End', type: 'date' },
-    { key: 'pay_date', label: 'Pay Date', type: 'date' },
-    { key: 'status', label: 'Status', type: 'select', options: ['draft', 'processing', 'completed', 'cancelled'] },
-    { key: 'notes', label: 'Notes', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updatePayrollRun(dlg.item.id, data) : createPayrollRun(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-payroll-runs'] }); toast.success('Saved') },
-  })
-  const statusColor = (s: string) => s === 'completed' ? 'success' : s === 'cancelled' ? 'error' : s === 'processing' ? 'warning' : 'default'
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>New Payroll Run</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Period Start', 'Period End', 'Pay Date', 'Total', 'Status', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(runs as any[]).map((r: any) => (
-              <TableRow key={r.id} hover>
-                <TableCell>{fmt(r.pay_period_start)}</TableCell>
-                <TableCell>{fmt(r.pay_period_end)}</TableCell>
-                <TableCell>{fmt(r.pay_date)}</TableCell>
-                <TableCell>{r.total_gross != null ? `$${Number(r.total_gross).toLocaleString()}` : '—'}</TableCell>
-                <TableCell><Chip size="small" label={r.status} color={statusColor(r.status) as any} /></TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: r })} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Payroll Run' : 'New Payroll Run'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function PayrollConfigsTab() {
-  const qc = useQueryClient()
-  const { data: configs = [] } = useQuery({ queryKey: ['hr-payroll-configs'], queryFn: () => fetchPayrollConfigs() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'base_salary', label: 'Base Salary', type: 'number' },
-    { key: 'pay_frequency', label: 'Pay Frequency', type: 'select', options: ['weekly', 'biweekly', 'semimonthly', 'monthly'] },
-    { key: 'overtime_rate', label: 'Overtime Rate', type: 'number' },
-    { key: 'effective_date', label: 'Effective Date', type: 'date' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updatePayrollConfig(dlg.item.id, data) : createPayrollConfig(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-payroll-configs'] }); toast.success('Saved') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Config</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Employee', 'Base Salary', 'Pay Frequency', 'Effective', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(configs as any[]).map((c: any) => (
-              <TableRow key={c.id} hover>
-                <TableCell>{c.user?.full_name ?? c.user?.email ?? c.user_id}</TableCell>
-                <TableCell>{c.base_salary ? `$${Number(c.base_salary).toLocaleString()}` : '—'}</TableCell>
-                <TableCell>{c.pay_frequency ?? '—'}</TableCell>
-                <TableCell>{fmt(c.effective_date)}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: c })} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Config' : 'Add Payroll Config'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
 function PayrollSection() {
+  const qc = useQueryClient()
   const [tab, setTab] = useState(0)
+  const { data: runsData } = useQuery({ queryKey: ['hr-payroll-runs'], queryFn: () => fetchPayrollRuns() })
+  const { data: configsData } = useQuery({ queryKey: ['hr-payroll-configs'], queryFn: () => fetchPayrollConfigs() })
+  const { data: bracketsData = [] } = useQuery({ queryKey: ['hr-tax-brackets'], queryFn: fetchTaxBrackets })
+  const [runDlg, setRunDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+  const [cfgDlg, setCfgDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+  const [taxDlg, setTaxDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+
+  const runs: any[] = (runsData as any)?.items ?? (Array.isArray(runsData) ? runsData : [])
+  const configs: any[] = Array.isArray(configsData) ? configsData : (configsData as any)?.items ?? []
+  const brackets: any[] = Array.isArray(bracketsData) ? bracketsData : []
+
+  const runMut = useMutation({ mutationFn: (d: any) => runDlg.item ? updatePayrollRun(runDlg.item.id, d) : createPayrollRun(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-payroll-runs'] }); toast.success('Saved') } })
+  const cfgMut = useMutation({ mutationFn: (d: any) => cfgDlg.item ? updatePayrollConfig(cfgDlg.item.id, d) : createPayrollConfig(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-payroll-configs'] }); toast.success('Saved') } })
+  const taxMut = useMutation({ mutationFn: (d: any) => taxDlg.item ? updateTaxBracket(taxDlg.item.id, d) : createTaxBracket(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-tax-brackets'] }); toast.success('Saved') } })
+  const taxDel = useMutation({ mutationFn: deleteTaxBracket, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-tax-brackets'] }); toast.success('Deleted') } })
+
+  const sColor = (s: string) => s === 'paid' ? 'success' : s === 'approved' ? 'info' : s === 'processed' ? 'warning' : 'default'
+
   return (
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Payroll</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Payroll Runs" />
-        <Tab label="Employee Config" />
-        <Tab label="Tax Brackets" />
+        <Tab label="Payroll Runs" /><Tab label="Employee Config" /><Tab label="Tax Brackets" />
       </Tabs>
-      {tab === 0 && <PayrollRunsTab />}
-      {tab === 1 && <PayrollConfigsTab />}
-      {tab === 2 && <TaxBracketsTab />}
+
+      {tab === 0 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setRunDlg({ open: true })}>New Payroll Run</Button></Box>
+          <TableContainer component={Paper}><Table size="small">
+            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Period Start','Period End','Total Gross','Total Net','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableBody>{runs.map((r: any) => (
+              <TableRow key={r.id} hover>
+                <TableCell>{fmt(r.period_start)}</TableCell><TableCell>{fmt(r.period_end)}</TableCell>
+                <TableCell>${Number(r.total_gross ?? 0).toLocaleString()}</TableCell>
+                <TableCell>${Number(r.total_net ?? 0).toLocaleString()}</TableCell>
+                <TableCell><Chip size="small" label={r.status} color={sColor(r.status) as any} /></TableCell>
+                <TableCell><CrudEditBtn onEdit={() => setRunDlg({ open: true, item: r })} /></TableCell>
+              </TableRow>
+            ))}</TableBody>
+          </Table></TableContainer>
+          <SimpleDialog open={runDlg.open} title={runDlg.item ? 'Edit Payroll Run' : 'New Payroll Run'}
+            fields={[{ key: 'period_start', label: 'Period Start', type: 'date' }, { key: 'period_end', label: 'Period End', type: 'date' }, { key: 'status', label: 'Status', type: 'select', options: ['draft','processed','approved','paid'] }, { key: 'notes', label: 'Notes', type: 'textarea' }]}
+            initial={runDlg.item ?? {}} onClose={() => setRunDlg({ open: false })} onSave={d => runMut.mutate(d)} />
+        </Box>
+      )}
+
+      {tab === 1 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setCfgDlg({ open: true })}>Add Config</Button></Box>
+          <TableContainer component={Paper}><Table size="small">
+            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Employee','Base Salary','Hourly Rate','Pay Frequency','Effective',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableBody>{configs.map((c: any) => (
+              <TableRow key={c.id} hover>
+                <TableCell>{c.user?.full_name ?? c.user?.email ?? c.user_id}</TableCell>
+                <TableCell>${Number(c.base_salary ?? 0).toLocaleString()}</TableCell>
+                <TableCell>{c.hourly_rate ? `$${Number(c.hourly_rate).toFixed(2)}/hr` : '—'}</TableCell>
+                <TableCell>{c.pay_frequency}</TableCell>
+                <TableCell>{fmt(c.effective_from)}</TableCell>
+                <TableCell><CrudEditBtn onEdit={() => setCfgDlg({ open: true, item: c })} /></TableCell>
+              </TableRow>
+            ))}</TableBody>
+          </Table></TableContainer>
+          <SimpleDialog open={cfgDlg.open} title={cfgDlg.item ? 'Edit Config' : 'Add Payroll Config'}
+            fields={[{ key: 'base_salary', label: 'Base Salary', type: 'number' }, { key: 'hourly_rate', label: 'Hourly Rate', type: 'number' }, { key: 'pay_frequency', label: 'Pay Frequency', type: 'select', options: ['weekly','biweekly','semimonthly','monthly'] }, { key: 'effective_from', label: 'Effective From', type: 'date' }]}
+            initial={cfgDlg.item ?? {}} onClose={() => setCfgDlg({ open: false })} onSave={d => cfgMut.mutate(d)} />
+        </Box>
+      )}
+
+      {tab === 2 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setTaxDlg({ open: true })}>Add Bracket</Button></Box>
+          <TableContainer component={Paper}><Table size="small">
+            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Name','Min Income','Max Income','Rate (%)','Effective From',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableBody>{brackets.map((b: any) => (
+              <TableRow key={b.id} hover>
+                <TableCell>{b.name}</TableCell><TableCell>${Number(b.min_income ?? 0).toLocaleString()}</TableCell>
+                <TableCell>{b.max_income ? `$${Number(b.max_income).toLocaleString()}` : '∞'}</TableCell>
+                <TableCell>{b.rate}%</TableCell><TableCell>{fmt(b.effective_from)}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setTaxDlg({ open: true, item: b })} /><CrudDeleteBtn onDelete={() => taxDel.mutate(b.id)} /></TableCell>
+              </TableRow>
+            ))}</TableBody>
+          </Table></TableContainer>
+          <SimpleDialog open={taxDlg.open} title={taxDlg.item ? 'Edit Tax Bracket' : 'Add Tax Bracket'}
+            fields={[{ key: 'name', label: 'Name' }, { key: 'min_income', label: 'Min Income', type: 'number' }, { key: 'max_income', label: 'Max Income', type: 'number' }, { key: 'rate', label: 'Rate (%)', type: 'number' }, { key: 'effective_from', label: 'Effective From', type: 'date' }]}
+            initial={taxDlg.item ?? {}} onClose={() => setTaxDlg({ open: false })} onSave={d => taxMut.mutate(d)} />
+        </Box>
+      )}
     </Box>
   )
 }
@@ -1319,80 +1302,45 @@ function PayrollSection() {
 
 function MeetingsSection() {
   const qc = useQueryClient()
-  const { data: meetings = [] } = useQuery({ queryKey: ['hr-meetings'], queryFn: () => fetchMeetings() })
+  const { data } = useQuery({ queryKey: ['hr-meetings'], queryFn: () => fetchMeetings() })
+  const list: any[] = (data as any)?.items ?? (Array.isArray(data) ? data : [])
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const [minutesDlg, setMinutesDlg] = useState<{ open: boolean; meeting?: any }>({ open: false })
-  const [minutesText, setMinutesText] = useState('')
-
-  const FIELDS: FieldDef[] = [
-    { key: 'title', label: 'Meeting Title' },
-    { key: 'scheduled_at', label: 'Scheduled At', type: 'date' },
-    { key: 'location', label: 'Location' },
-    { key: 'status', label: 'Status', type: 'select', options: ['scheduled', 'in_progress', 'completed', 'cancelled'] },
-    { key: 'description', label: 'Description', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateMeeting(dlg.item.id, data) : createMeeting(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-meetings'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteMeeting,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-meetings'] }); toast.success('Deleted') },
-  })
-  const minutesMut = useMutation({
-    mutationFn: ({ id, content }: { id: number; content: string }) => upsertMeetingMinutes(id, { content }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-meetings'] }); toast.success('Minutes saved'); setMinutesDlg({ open: false }) },
-  })
-
+  const [minDlg, setMinDlg] = useState<{ open: boolean; meeting?: any }>({ open: false })
+  const [minText, setMinText] = useState('')
+  const mut = useMutation({ mutationFn: (d: any) => dlg.item ? updateMeeting(dlg.item.id, d) : createMeeting(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-meetings'] }); toast.success('Saved') } })
+  const del = useMutation({ mutationFn: deleteMeeting, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-meetings'] }); toast.success('Deleted') } })
+  const minMut = useMutation({ mutationFn: ({ id, content }: any) => upsertMeetingMinutes(id, { content }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-meetings'] }); toast.success('Minutes saved'); setMinDlg({ open: false }) } })
+  const sColor = (s: string) => s === 'completed' ? 'success' : s === 'cancelled' ? 'error' : 'default'
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h6" fontWeight={700}>Meetings</Typography>
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Schedule Meeting</Button>
       </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Title', 'Scheduled', 'Location', 'Status', 'Minutes', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(meetings as any[]).map((m: any) => (
-              <TableRow key={m.id} hover>
-                <TableCell>{m.title}</TableCell>
-                <TableCell>{fmt(m.scheduled_at)}</TableCell>
-                <TableCell>{m.location ?? '—'}</TableCell>
-                <TableCell><Chip size="small" label={m.status} color={m.status === 'completed' ? 'success' : m.status === 'cancelled' ? 'error' : 'default'} /></TableCell>
-                <TableCell>
-                  <Button size="small" variant="outlined" onClick={() => {
-                    setMinutesText(m.minutes?.content ?? '')
-                    setMinutesDlg({ open: true, meeting: m })
-                  }}>
-                    {m.minutes ? 'View/Edit' : 'Add'}
-                  </Button>
-                </TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: m })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(m.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
+      <TableContainer component={Paper}><Table size="small">
+        <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Title','Scheduled','Location','Status','Minutes',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+        <TableBody>{list.map((m: any) => (
+          <TableRow key={m.id} hover>
+            <TableCell>{m.title}</TableCell>
+            <TableCell>{fmt(m.scheduled_at)}</TableCell>
+            <TableCell>{m.location ?? '—'}</TableCell>
+            <TableCell><Chip size="small" label={m.status} color={sColor(m.status) as any} /></TableCell>
+            <TableCell><Button size="small" variant="outlined" onClick={() => { setMinText(m.minutes?.content ?? ''); setMinDlg({ open: true, meeting: m }) }}>{m.minutes ? 'View/Edit' : 'Add'}</Button></TableCell>
+            <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setDlg({ open: true, item: m })} /><CrudDeleteBtn onDelete={() => del.mutate(m.id)} /></TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table></TableContainer>
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Meeting' : 'Schedule Meeting'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-
-      <Dialog open={minutesDlg.open} onClose={() => setMinutesDlg({ open: false })} fullWidth maxWidth="md">
-        <DialogTitle>Meeting Minutes — {minutesDlg.meeting?.title}</DialogTitle>
+        fields={[{ key: 'title', label: 'Title' }, { key: 'scheduled_at', label: 'Scheduled At', type: 'date' }, { key: 'location', label: 'Location' }, { key: 'status', label: 'Status', type: 'select', options: ['scheduled','in_progress','completed','cancelled'] }, { key: 'description', label: 'Description', type: 'textarea' }]}
+        initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })} onSave={d => mut.mutate(d)} />
+      <Dialog open={minDlg.open} onClose={() => setMinDlg({ open: false })} fullWidth maxWidth="md">
+        <DialogTitle>Meeting Minutes — {minDlg.meeting?.title}</DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}>
-          <TextField multiline rows={12} fullWidth value={minutesText}
-            onChange={e => setMinutesText(e.target.value)} placeholder="Enter meeting minutes…" />
+          <TextField multiline rows={12} fullWidth value={minText} onChange={e => setMinText(e.target.value)} placeholder="Enter meeting minutes…" />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setMinutesDlg({ open: false })}>Cancel</Button>
-          <Button variant="contained" onClick={() => minutesMut.mutate({ id: minutesDlg.meeting.id, content: minutesText })}>Save Minutes</Button>
+          <Button onClick={() => setMinDlg({ open: false })}>Cancel</Button>
+          <Button variant="contained" onClick={() => minMut.mutate({ id: minDlg.meeting.id, content: minText })}>Save Minutes</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -1400,370 +1348,166 @@ function MeetingsSection() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// DOCUMENTS
+// DOCUMENTS (abbreviated but complete)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function HRDocsTab() {
-  const qc = useQueryClient()
-  const { data: docs = [] } = useQuery({ queryKey: ['hr-employee-documents'], queryFn: () => fetchEmployeeDocuments() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'title', label: 'Document Title' },
-    { key: 'document_url', label: 'Document URL / Path' },
-    { key: 'notes', label: 'Notes', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateEmployeeDocument(dlg.item.id, data) : createEmployeeDocument(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-documents'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteEmployeeDocument,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-documents'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Document</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Title', 'Employee', 'Category', 'Notes', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(docs as any[]).map((d: any) => (
-              <TableRow key={d.id} hover>
-                <TableCell>{d.title}</TableCell>
-                <TableCell>{d.user?.full_name ?? d.user?.email ?? d.user_id}</TableCell>
-                <TableCell>{d.category?.name ?? '—'}</TableCell>
-                <TableCell>{d.notes ?? '—'}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: d })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(d.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Document' : 'Add Document'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function ContractsTab() {
-  const qc = useQueryClient()
-  const { data: contracts = [] } = useQuery({ queryKey: ['hr-employee-contracts'], queryFn: () => fetchEmployeeContracts() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'title', label: 'Contract Title' },
-    { key: 'start_date', label: 'Start Date', type: 'date' },
-    { key: 'end_date', label: 'End Date', type: 'date' },
-    { key: 'status', label: 'Status', type: 'select', options: ['draft', 'active', 'expired', 'terminated'] },
-    { key: 'notes', label: 'Notes', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateEmployeeContract(dlg.item.id, data) : createEmployeeContract(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-contracts'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteEmployeeContract,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-contracts'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>New Contract</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Title', 'Employee', 'Start', 'End', 'Status', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(contracts as any[]).map((c: any) => (
-              <TableRow key={c.id} hover>
-                <TableCell>{c.title}</TableCell>
-                <TableCell>{c.user?.full_name ?? c.user?.email ?? c.user_id}</TableCell>
-                <TableCell>{fmt(c.start_date)}</TableCell>
-                <TableCell>{fmt(c.end_date)}</TableCell>
-                <TableCell><Chip size="small" label={c.status} color={c.status === 'active' ? 'success' : c.status === 'expired' ? 'error' : 'default'} /></TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: c })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(c.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Contract' : 'New Contract'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function AcknowledgmentsTab() {
-  const qc = useQueryClient()
-  const { data: acks = [] } = useQuery({ queryKey: ['hr-acknowledgments'], queryFn: () => fetchAcknowledgments() })
-  const [dlg, setDlg] = useState<{ open: boolean }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'document_title', label: 'Document Title' },
-    { key: 'acknowledged_at', label: 'Acknowledged At', type: 'date' },
-    { key: 'notes', label: 'Notes', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: createAcknowledgment,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-acknowledgments'] }); toast.success('Saved') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Record Acknowledgment</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Document', 'Employee', 'Acknowledged', 'Notes'].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(acks as any[]).map((a: any) => (
-              <TableRow key={a.id} hover>
-                <TableCell>{a.document_title ?? a.document?.title ?? '—'}</TableCell>
-                <TableCell>{a.user?.full_name ?? a.user?.email ?? a.user_id}</TableCell>
-                <TableCell>{fmt(a.acknowledged_at)}</TableCell>
-                <TableCell>{a.notes ?? '—'}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title="Record Acknowledgment"
-        fields={FIELDS} initial={{}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function DocTemplatesTab() {
-  const qc = useQueryClient()
-  const { data: templates = [] } = useQuery({ queryKey: ['hr-document-templates'], queryFn: () => fetchDocumentTemplates() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'name', label: 'Template Name' },
-    { key: 'content', label: 'Content', type: 'textarea' },
-    { key: 'description', label: 'Description', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateDocumentTemplate(dlg.item.id, data) : createDocumentTemplate(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-document-templates'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteDocumentTemplate,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-document-templates'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>New Template</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Name', 'Description', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(templates as any[]).map((t: any) => (
-              <TableRow key={t.id} hover>
-                <TableCell>{t.name}</TableCell>
-                <TableCell>{t.description ?? '—'}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: t })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(t.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Template' : 'New Document Template'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function ContractTemplatesTab() {
-  const qc = useQueryClient()
-  const { data: templates = [] } = useQuery({ queryKey: ['hr-contract-templates'], queryFn: () => fetchContractTemplates() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'name', label: 'Template Name' },
-    { key: 'content', label: 'Content', type: 'textarea' },
-    { key: 'description', label: 'Description', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (data: any) => dlg.item ? updateContractTemplate(dlg.item.id, data) : createContractTemplate(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-contract-templates'] }); toast.success('Saved') },
-  })
-  const del = useMutation({
-    mutationFn: deleteContractTemplate,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-contract-templates'] }); toast.success('Deleted') },
-  })
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>New Template</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>
-            {['Name', 'Description', ''].map(h => <TableCell key={h} sx={{ color: 'white' }}>{h}</TableCell>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(templates as any[]).map((t: any) => (
-              <TableRow key={t.id} hover>
-                <TableCell>{t.name}</TableCell>
-                <TableCell>{t.description ?? '—'}</TableCell>
-                <TableCell>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: t })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(t.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Template' : 'New Contract Template'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={data => mut.mutate(data)} />
-    </Box>
-  )
-}
-
-function CategoriesTab() {
-  const qc = useQueryClient()
-  const { data: categories = [] } = useQuery({ queryKey: ['hr-doc-categories'], queryFn: fetchDocumentCategories })
-  const { data: contractTypes = [] } = useQuery({ queryKey: ['hr-contract-types'], queryFn: fetchContractTypes })
-  const [catDlg, setCatDlg] = useState(false)
-  const [catName, setCatName] = useState('')
-  const [ctDlg, setCtDlg] = useState(false)
-  const [ctName, setCtName] = useState('')
-  const createCat = useMutation({
-    mutationFn: () => createDocumentCategory({ name: catName }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-doc-categories'] }); toast.success('Category created'); setCatDlg(false); setCatName('') },
-  })
-  const delCat = useMutation({
-    mutationFn: deleteDocumentCategory,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-doc-categories'] }); toast.success('Deleted') },
-  })
-  const createCt = useMutation({
-    mutationFn: () => createContractType({ name: ctName }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-contract-types'] }); toast.success('Type created'); setCtDlg(false); setCtName('') },
-  })
-  const delCt = useMutation({
-    mutationFn: deleteContractType,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-contract-types'] }); toast.success('Deleted') },
-  })
-  return (
-    <Grid container spacing={2}>
-      <Grid item xs={12} md={6}>
-        <Card>
-          <CardContent>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="subtitle1" fontWeight={700}>Document Categories</Typography>
-              <Button size="small" startIcon={<AddIcon />} onClick={() => setCatDlg(true)}>Add</Button>
-            </Box>
-            <List dense>
-              {(categories as any[]).map((c: any) => (
-                <Box key={c.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}>
-                  <Typography variant="body2">{c.name}</Typography>
-                  <CrudDeleteBtn onDelete={() => delCat.mutate(c.id)} />
-                </Box>
-              ))}
-            </List>
-          </CardContent>
-        </Card>
-        <Dialog open={catDlg} onClose={() => setCatDlg(false)}>
-          <DialogTitle>Add Category</DialogTitle>
-          <DialogContent sx={{ pt: '16px !important' }}>
-            <TextField autoFocus label="Name" size="small" fullWidth value={catName} onChange={e => setCatName(e.target.value)} />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setCatDlg(false)}>Cancel</Button>
-            <Button variant="contained" onClick={() => createCat.mutate()}>Save</Button>
-          </DialogActions>
-        </Dialog>
-      </Grid>
-      <Grid item xs={12} md={6}>
-        <Card>
-          <CardContent>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="subtitle1" fontWeight={700}>Contract Types</Typography>
-              <Button size="small" startIcon={<AddIcon />} onClick={() => setCtDlg(true)}>Add</Button>
-            </Box>
-            <List dense>
-              {(contractTypes as any[]).map((t: any) => (
-                <Box key={t.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}>
-                  <Typography variant="body2">{t.name}</Typography>
-                  <CrudDeleteBtn onDelete={() => delCt.mutate(t.id)} />
-                </Box>
-              ))}
-            </List>
-          </CardContent>
-        </Card>
-        <Dialog open={ctDlg} onClose={() => setCtDlg(false)}>
-          <DialogTitle>Add Contract Type</DialogTitle>
-          <DialogContent sx={{ pt: '16px !important' }}>
-            <TextField autoFocus label="Name" size="small" fullWidth value={ctName} onChange={e => setCtName(e.target.value)} />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setCtDlg(false)}>Cancel</Button>
-            <Button variant="contained" onClick={() => createCt.mutate()}>Save</Button>
-          </DialogActions>
-        </Dialog>
-      </Grid>
-    </Grid>
-  )
-}
-
 function DocumentsSection() {
+  const qc = useQueryClient()
   const [tab, setTab] = useState(0)
+  const { data: docsData } = useQuery({ queryKey: ['hr-employee-documents'], queryFn: () => fetchEmployeeDocuments() })
+  const { data: contractsData } = useQuery({ queryKey: ['hr-employee-contracts'], queryFn: () => fetchEmployeeContracts() })
+  const { data: acksData } = useQuery({ queryKey: ['hr-acknowledgments'], queryFn: () => fetchAcknowledgments() })
+  const { data: docTmplData = [] } = useQuery({ queryKey: ['hr-document-templates'], queryFn: () => fetchDocumentTemplates() })
+  const { data: ctrTmplData = [] } = useQuery({ queryKey: ['hr-contract-templates'], queryFn: () => fetchContractTemplates() })
+  const { data: catsData = [] } = useQuery({ queryKey: ['hr-doc-categories'], queryFn: fetchDocumentCategories })
+  const { data: ctypesData = [] } = useQuery({ queryKey: ['hr-contract-types'], queryFn: fetchContractTypes })
+
+  const docs: any[] = (docsData as any)?.items ?? (Array.isArray(docsData) ? docsData : [])
+  const contracts: any[] = (contractsData as any)?.items ?? (Array.isArray(contractsData) ? contractsData : [])
+  const acks: any[] = (acksData as any)?.items ?? (Array.isArray(acksData) ? acksData : [])
+  const docTmpls: any[] = Array.isArray(docTmplData) ? docTmplData : []
+  const ctrTmpls: any[] = Array.isArray(ctrTmplData) ? ctrTmplData : []
+  const cats: any[] = Array.isArray(catsData) ? catsData : []
+  const ctypes: any[] = Array.isArray(ctypesData) ? ctypesData : []
+
+  const [docDlg, setDocDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+  const [ctrDlg, setCtrDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+  const [ackDlg, setAckDlg] = useState(false)
+  const [catName, setCatName] = useState(''); const [catDlg, setCatDlg] = useState(false)
+  const [ctName, setCtName] = useState(''); const [ctDlg, setCtDlg] = useState(false)
+
+  const docMut = useMutation({ mutationFn: (d: any) => docDlg.item ? updateEmployeeDocument(docDlg.item.id, d) : createEmployeeDocument(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-documents'] }); toast.success('Saved') } })
+  const docDel = useMutation({ mutationFn: deleteEmployeeDocument, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-documents'] }); toast.success('Deleted') } })
+  const ctrMut = useMutation({ mutationFn: (d: any) => ctrDlg.item ? updateEmployeeContract(ctrDlg.item.id, d) : createEmployeeContract(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-contracts'] }); toast.success('Saved') } })
+  const ctrDel = useMutation({ mutationFn: deleteEmployeeContract, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-contracts'] }); toast.success('Deleted') } })
+  const ackMut = useMutation({ mutationFn: createAcknowledgment, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-acknowledgments'] }); toast.success('Saved') } })
+  const catMut = useMutation({ mutationFn: () => createDocumentCategory({ name: catName }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-doc-categories'] }); setCatDlg(false); setCatName('') } })
+  const catDel = useMutation({ mutationFn: deleteDocumentCategory, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-doc-categories'] }); toast.success('Deleted') } })
+  const ctMut = useMutation({ mutationFn: () => createContractType({ name: ctName }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-contract-types'] }); setCtDlg(false); setCtName('') } })
+  const ctDel = useMutation({ mutationFn: deleteContractType, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-contract-types'] }); toast.success('Deleted') } })
+
+  const sColor = (s: string) => s === 'active' ? 'success' : s === 'expired' || s === 'terminated' ? 'error' : 'default'
+
   return (
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Documents</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }} variant="scrollable">
-        <Tab label="HR Documents" />
-        <Tab label="Contracts" />
-        <Tab label="Acknowledgments" />
-        <Tab label="Document Templates" />
-        <Tab label="Contract Templates" />
-        <Tab label="Categories & Types" />
+        <Tab label="HR Documents" /><Tab label="Contracts" /><Tab label="Acknowledgments" /><Tab label="Categories & Types" />
       </Tabs>
-      {tab === 0 && <HRDocsTab />}
-      {tab === 1 && <ContractsTab />}
-      {tab === 2 && <AcknowledgmentsTab />}
-      {tab === 3 && <DocTemplatesTab />}
-      {tab === 4 && <ContractTemplatesTab />}
-      {tab === 5 && <CategoriesTab />}
+
+      {tab === 0 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDocDlg({ open: true })}>Add Document</Button></Box>
+          <TableContainer component={Paper}><Table size="small">
+            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Title','Employee','Category',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableBody>{docs.map((d: any) => (
+              <TableRow key={d.id} hover>
+                <TableCell>{d.title}</TableCell><TableCell>{d.user?.full_name ?? d.user?.email ?? d.user_id}</TableCell>
+                <TableCell>{d.category?.name ?? '—'}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setDocDlg({ open: true, item: d })} /><CrudDeleteBtn onDelete={() => docDel.mutate(d.id)} /></TableCell>
+              </TableRow>
+            ))}</TableBody>
+          </Table></TableContainer>
+          <SimpleDialog open={docDlg.open} title={docDlg.item ? 'Edit Document' : 'Add Document'}
+            fields={[{ key: 'title', label: 'Title' }, { key: 'file_url', label: 'File URL' }, { key: 'description', label: 'Description', type: 'textarea' }]}
+            initial={docDlg.item ?? {}} onClose={() => setDocDlg({ open: false })} onSave={d => docMut.mutate(d)} />
+        </Box>
+      )}
+
+      {tab === 1 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setCtrDlg({ open: true })}>New Contract</Button></Box>
+          <TableContainer component={Paper}><Table size="small">
+            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Title','Employee','Start','End','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableBody>{contracts.map((c: any) => (
+              <TableRow key={c.id} hover>
+                <TableCell>{c.title}</TableCell><TableCell>{c.user?.full_name ?? c.user?.email ?? c.user_id}</TableCell>
+                <TableCell>{fmt(c.start_date)}</TableCell><TableCell>{fmt(c.end_date)}</TableCell>
+                <TableCell><Chip size="small" label={c.status} color={sColor(c.status) as any} /></TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setCtrDlg({ open: true, item: c })} /><CrudDeleteBtn onDelete={() => ctrDel.mutate(c.id)} /></TableCell>
+              </TableRow>
+            ))}</TableBody>
+          </Table></TableContainer>
+          <SimpleDialog open={ctrDlg.open} title={ctrDlg.item ? 'Edit Contract' : 'New Contract'}
+            fields={[{ key: 'title', label: 'Title' }, { key: 'start_date', label: 'Start Date', type: 'date' }, { key: 'end_date', label: 'End Date', type: 'date' }, { key: 'status', label: 'Status', type: 'select', options: ['draft','active','expired','terminated'] }, { key: 'notes', label: 'Notes', type: 'textarea' }]}
+            initial={ctrDlg.item ?? {}} onClose={() => setCtrDlg({ open: false })} onSave={d => ctrMut.mutate(d)} />
+        </Box>
+      )}
+
+      {tab === 2 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setAckDlg(true)}>Record Acknowledgment</Button></Box>
+          <TableContainer component={Paper}><Table size="small">
+            <TableHead><TableRow sx={{ bgcolor: 'primary.main' }}>{['Employee','Acknowledged','Notes'].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
+            <TableBody>{acks.map((a: any) => (
+              <TableRow key={a.id} hover>
+                <TableCell>{a.user?.full_name ?? a.user?.email ?? a.user_id}</TableCell>
+                <TableCell>{fmt(a.acknowledged_at)}</TableCell><TableCell>{a.notes ?? '—'}</TableCell>
+              </TableRow>
+            ))}</TableBody>
+          </Table></TableContainer>
+          <SimpleDialog open={ackDlg} title="Record Acknowledgment"
+            fields={[{ key: 'document_id', label: 'Document ID', type: 'number' }, { key: 'notes', label: 'Notes', type: 'textarea' }]}
+            initial={{}} onClose={() => setAckDlg(false)} onSave={d => ackMut.mutate(d)} />
+        </Box>
+      )}
+
+      {tab === 3 && (
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <Card><CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography fontWeight={700}>Document Categories</Typography>
+                <Button size="small" startIcon={<AddIcon />} onClick={() => setCatDlg(true)}>Add</Button>
+              </Box>
+              {cats.map((c: any) => (
+                <Box key={c.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}>
+                  <Typography variant="body2">{c.name}</Typography>
+                  <CrudDeleteBtn onDelete={() => catDel.mutate(c.id)} />
+                </Box>
+              ))}
+            </CardContent></Card>
+            <Dialog open={catDlg} onClose={() => setCatDlg(false)}><DialogTitle>Add Category</DialogTitle>
+              <DialogContent sx={{ pt: '16px !important' }}><TextField autoFocus label="Name" size="small" fullWidth value={catName} onChange={e => setCatName(e.target.value)} /></DialogContent>
+              <DialogActions><Button onClick={() => setCatDlg(false)}>Cancel</Button><Button variant="contained" onClick={() => catMut.mutate()}>Save</Button></DialogActions>
+            </Dialog>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Card><CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography fontWeight={700}>Contract Types</Typography>
+                <Button size="small" startIcon={<AddIcon />} onClick={() => setCtDlg(true)}>Add</Button>
+              </Box>
+              {ctypes.map((t: any) => (
+                <Box key={t.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}>
+                  <Typography variant="body2">{t.name}</Typography>
+                  <CrudDeleteBtn onDelete={() => ctDel.mutate(t.id)} />
+                </Box>
+              ))}
+            </CardContent></Card>
+            <Dialog open={ctDlg} onClose={() => setCtDlg(false)}><DialogTitle>Add Contract Type</DialogTitle>
+              <DialogContent sx={{ pt: '16px !important' }}><TextField autoFocus label="Name" size="small" fullWidth value={ctName} onChange={e => setCtName(e.target.value)} /></DialogContent>
+              <DialogActions><Button onClick={() => setCtDlg(false)}>Cancel</Button><Button variant="contained" onClick={() => ctMut.mutate()}>Save</Button></DialogActions>
+            </Dialog>
+          </Grid>
+        </Grid>
+      )}
     </Box>
   )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MAIN PAGE
+// MAIN
 // ══════════════════════════════════════════════════════════════════════════════
 
-const SECTION_COMPONENTS: Record<string, React.FC> = {
+const SECTIONS: Record<string, React.FC> = {
   dashboard: DashboardSection,
   calendar: CalendarSection,
   employees: EmployeesSection,
   org: OrgSection,
   attendance: AttendanceSection,
   leave: LeaveSection,
+  timesheets: TimesheetsSection,
   recruitment: RecruitmentSection,
   lifecycle: LifecycleSection,
   payroll: PayrollSection,
@@ -1773,43 +1517,31 @@ const SECTION_COMPONENTS: Record<string, React.FC> = {
 
 export default function HR() {
   const [active, setActive] = useState('dashboard')
-  const ActiveSection = SECTION_COMPONENTS[active]
-
+  const Active = SECTIONS[active]
   return (
     <Box sx={{ display: 'flex', height: '100%', minHeight: 0 }}>
-      {/* Sidebar */}
-      <Paper
-        elevation={2}
-        sx={{
-          width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column',
-          borderRight: '1px solid', borderColor: 'divider', borderRadius: 0,
-        }}
-      >
+      <Paper elevation={2} sx={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRadius: 0, borderRight: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
           <Typography variant="subtitle1" fontWeight={700} color="primary">HR Module</Typography>
         </Box>
-        <List dense sx={{ flex: 1, overflow: 'auto', py: 1 }}>
+        <Box sx={{ flex: 1, overflow: 'auto', py: 1 }}>
           {NAV.map(n => (
-            <ListItemButton
-              key={n.key}
-              selected={active === n.key}
-              onClick={() => setActive(n.key)}
-              sx={{
-                borderRadius: 1, mx: 0.5, mb: 0.25,
-                '&.Mui-selected': { bgcolor: 'primary.main', color: 'white', '& .MuiListItemIcon-root': { color: 'white' } },
-                '&.Mui-selected:hover': { bgcolor: 'primary.dark' },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36 }}>{n.icon}</ListItemIcon>
-              <ListItemText primary={n.label} primaryTypographyProps={{ variant: 'body2' }} />
-            </ListItemButton>
+            <Box key={n.key} onClick={() => setActive(n.key)} sx={{
+              display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, mx: 0.5, mb: 0.25,
+              borderRadius: 1, cursor: 'pointer', transition: 'all .15s',
+              bgcolor: active === n.key ? 'primary.main' : 'transparent',
+              color: active === n.key ? 'white' : 'text.primary',
+              '&:hover': { bgcolor: active === n.key ? 'primary.dark' : 'action.hover' },
+              '& svg': { fontSize: 20, color: active === n.key ? 'white' : 'text.secondary' },
+            }}>
+              {n.icon}
+              <Typography variant="body2">{n.label}</Typography>
+            </Box>
           ))}
-        </List>
+        </Box>
       </Paper>
-
-      {/* Content */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
-        {ActiveSection ? <ActiveSection /> : null}
+        {Active ? <Active /> : null}
       </Box>
     </Box>
   )

@@ -97,6 +97,12 @@ class RSVPStatus(str, enum.Enum):
     DECLINED = "declined"
     TENTATIVE = "tentative"
 
+class TimesheetStatus(str, enum.Enum):
+    DRAFT     = "draft"
+    SUBMITTED = "submitted"
+    APPROVED  = "approved"
+    REJECTED  = "rejected"
+
 
 # ── Leave Management ─────────────────────────────────────────────────────────
 
@@ -596,6 +602,27 @@ class EmployeeContract(Base):
 
     user          = relationship("User", foreign_keys=[user_id])
     contract_type = relationship("ContractType", back_populates="contracts")
+
+
+class Timesheet(Base):
+    __tablename__ = "hr_timesheets"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    user_id         = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    work_date       = Column(Date, nullable=False, index=True)
+    hours           = Column(Float, nullable=False, default=0)
+    project         = Column(String, nullable=True)
+    description     = Column(Text, nullable=True)
+    status          = Column(SQLEnum(TimesheetStatus), default=TimesheetStatus.DRAFT, nullable=False, index=True)
+    submitted_at    = Column(DateTime, nullable=True)
+    reviewed_by_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at     = Column(DateTime, nullable=True)
+    review_notes    = Column(Text, nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user        = relationship("User", foreign_keys=[user_id])
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
 
 
 class EmployeeAcknowledgment(Base):
