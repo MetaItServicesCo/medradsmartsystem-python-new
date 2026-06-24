@@ -33,3 +33,16 @@ from app.models.chat import (
     WorkspaceMessage,
 )
 from app.models.calendar import CalendarEvent
+from app.models.hr import (
+    LeaveType, LeavePolicy, LeaveRequest, LeaveRequestStatus,
+    AttendancePolicy,
+    Holiday, HolidayType, Announcement, AnnouncementPriority,
+    JobOpening, JobOpeningStatus, Candidate, CandidateStatus, JobOffer, OfferStatus,
+    OnboardingChecklist, OnboardingChecklistItem,
+    EmployeeAward, EmployeePromotion, EmployeeResignation, ResignationStatus,
+    EmployeeTermination, TerminationType,
+    TaxBracket, PayrollConfig, PayrollRun, PayrollRunStatus, Payslip, PayFrequency,
+    Meeting, MeetingStatus, MeetingAttendee, MeetingMinutes, RSVPStatus,
+    DocumentCategory, ContractType, DocumentTemplate, ContractTemplate,
+    EmployeeDocument, EmployeeContract, ContractStatus, EmployeeAcknowledgment,
+)
