@@ -420,7 +420,13 @@ function CalendarSection() {
 // EMPLOYEES
 // ══════════════════════════════════════════════════════════════════════════════
 
-const EMPTY_WAGE_FORM = { base_salary: '', hourly_rate: '', pay_frequency: 'monthly', effective_from: new Date().toISOString().slice(0, 10) }
+const CURRENCIES = [
+  { code: 'USD', symbol: '$',  label: 'USD — US Dollar' },
+  { code: 'PKR', symbol: '₨', label: 'PKR — Pakistani Rupee' },
+]
+const currencySymbol = (code: string) => CURRENCIES.find(c => c.code === code)?.symbol ?? code
+
+const EMPTY_WAGE_FORM = { currency: 'USD', base_salary: '', hourly_rate: '', pay_frequency: 'monthly', effective_from: new Date().toISOString().slice(0, 10) }
 
 function EmployeesSection() {
   const qc = useQueryClient()
@@ -450,7 +456,7 @@ function EmployeesSection() {
   const openWage = (emp: any) => {
     const existing = wageMap[emp.id]
     setWageForm(existing
-      ? { base_salary: existing.base_salary ?? '', hourly_rate: existing.hourly_rate ?? '', pay_frequency: existing.pay_frequency ?? 'monthly', effective_from: existing.effective_from }
+      ? { currency: existing.currency ?? 'USD', base_salary: existing.base_salary ?? '', hourly_rate: existing.hourly_rate ?? '', pay_frequency: existing.pay_frequency ?? 'monthly', effective_from: existing.effective_from }
       : { ...EMPTY_WAGE_FORM })
     setWageDlg({ open: true, emp })
   }
@@ -467,8 +473,9 @@ function EmployeesSection() {
 
   const formatWage = (cfg: any) => {
     if (!cfg) return null
-    if (cfg.hourly_rate && Number(cfg.hourly_rate) > 0) return `$${Number(cfg.hourly_rate).toFixed(2)}/hr`
-    if (cfg.base_salary && Number(cfg.base_salary) > 0) return `$${Number(cfg.base_salary).toLocaleString()}/mo`
+    const sym = currencySymbol(cfg.currency ?? 'USD')
+    if (cfg.hourly_rate && Number(cfg.hourly_rate) > 0) return `${sym}${Number(cfg.hourly_rate).toFixed(2)}/hr`
+    if (cfg.base_salary && Number(cfg.base_salary) > 0) return `${sym}${Number(cfg.base_salary).toLocaleString()}/mo`
     return null
   }
 
@@ -538,19 +545,33 @@ function EmployeesSection() {
           </Box>
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Currency</InputLabel>
+            <Select label="Currency" value={wageForm.currency}
+              onChange={e => setWageForm((p: any) => ({ ...p, currency: e.target.value }))}>
+              {CURRENCIES.map(c => (
+                <MenuItem key={c.code} value={c.code}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography fontWeight={700} sx={{ minWidth: 28 }}>{c.symbol}</Typography>
+                    <Typography variant="body2">{c.label}</Typography>
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Typography variant="caption" color="text.secondary">
             Hourly rate takes priority over base salary. Leave one blank if not applicable.
           </Typography>
           <TextField
-            label="Hourly Rate ($)"
+            label={`Hourly Rate (${currencySymbol(wageForm.currency)})`}
             type="number" size="small" fullWidth
             value={wageForm.hourly_rate}
             inputProps={{ min: 0, step: 0.01 }}
             onChange={e => setWageForm((p: any) => ({ ...p, hourly_rate: e.target.value }))}
-            helperText="Daily rate = hourly × 8"
+            helperText={`Daily rate = hourly × 8`}
           />
           <TextField
-            label="Base Monthly Salary ($)"
+            label={`Base Monthly Salary (${currencySymbol(wageForm.currency)})`}
             type="number" size="small" fullWidth
             value={wageForm.base_salary}
             inputProps={{ min: 0, step: 1 }}
@@ -572,6 +593,7 @@ function EmployeesSection() {
             disabled={wageMut.isPending || (!wageForm.hourly_rate && !wageForm.base_salary)}
             onClick={() => wageMut.mutate({
               user_id: wageDlg.emp?.id,
+              currency: wageForm.currency,
               hourly_rate: wageForm.hourly_rate ? Number(wageForm.hourly_rate) : null,
               base_salary: wageForm.base_salary ? Number(wageForm.base_salary) : 0,
               pay_frequency: wageForm.pay_frequency,

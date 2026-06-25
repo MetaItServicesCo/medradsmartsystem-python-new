@@ -442,6 +442,7 @@ class PayrollConfig(Base):
 
     id                   = Column(Integer, primary_key=True, index=True)
     user_id              = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    currency             = Column(String(3), nullable=False, default="USD")
     base_salary          = Column(Numeric(12, 2), nullable=False, default=0)
     hourly_rate          = Column(Numeric(10, 4), nullable=True)
     overtime_multiplier  = Column(Float, default=1.5, nullable=False)

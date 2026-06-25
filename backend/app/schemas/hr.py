@@ -569,6 +569,7 @@ class TaxBracketResponse(BaseModel):
 
 class PayrollConfigCreate(BaseModel):
     user_id: int
+    currency: str = "USD"
     base_salary: Decimal
     hourly_rate: Optional[Decimal] = None
     overtime_multiplier: float = 1.5
@@ -576,6 +577,7 @@ class PayrollConfigCreate(BaseModel):
     effective_from: date
 
 class PayrollConfigUpdate(BaseModel):
+    currency: Optional[str] = None
     base_salary: Optional[Decimal] = None
     hourly_rate: Optional[Decimal] = None
     overtime_multiplier: Optional[float] = None
@@ -586,6 +588,7 @@ class PayrollConfigUpdate(BaseModel):
 class PayrollConfigResponse(BaseModel):
     id: int
     user_id: int
+    currency: str
     base_salary: Decimal
     hourly_rate: Optional[Decimal]
     overtime_multiplier: float
