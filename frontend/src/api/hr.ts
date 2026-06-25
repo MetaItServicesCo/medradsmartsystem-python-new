@@ -261,3 +261,11 @@ export const deleteTimesheet = (id: number) =>
   apiClient.delete(`${BASE}/timesheets/${id}`)
 export const generateTimesheets = (data: { year: number; month: number; user_id?: number }) =>
   apiClient.post(`${BASE}/timesheets/generate`, data).then(r => r.data)
+
+// ── Employee Policy Assignments ─────────────────────────────────────────────
+export const fetchEmployeePolicyAssignments = () =>
+  apiClient.get(`${BASE}/employee-policy-assignments`).then(r => r.data)
+export const createEmployeePolicyAssignment = (data: any) =>
+  apiClient.post(`${BASE}/employee-policy-assignments`, data).then(r => r.data)
+export const deleteEmployeePolicyAssignment = (id: number) =>
+  apiClient.delete(`${BASE}/employee-policy-assignments/${id}`)

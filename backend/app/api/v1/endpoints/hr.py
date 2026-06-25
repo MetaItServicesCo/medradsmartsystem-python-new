@@ -27,6 +27,7 @@ from app.models.hr import (
     PayFrequency, PayrollConfig, PayrollRun, PayrollRunStatus, Payslip,
     TaxBracket,
     Timesheet, TimesheetStatus, DayStatus,
+    EmployeePolicyAssignment,
 )
 from app.models.user import User, UserRole
 from app.schemas.hr import (
@@ -59,6 +60,7 @@ from app.schemas.hr import (
     PayslipResponse,
     TaxBracketCreate, TaxBracketResponse, TaxBracketUpdate,
     TimesheetCreate, TimesheetResponse, TimesheetUpdate, GenerateTimesheetRequest,
+    EmployeePolicyAssignmentCreate, EmployeePolicyAssignmentResponse,
     UserMini,
 )
 
@@ -445,6 +447,53 @@ def delete_attendance_policy(
     current_user: User = Depends(require_hr),
 ):
     obj = db.query(AttendancePolicy).filter(AttendancePolicy.id == ap_id).first()
+    if not obj:
+        raise HTTPException(404, "Not found")
+    db.delete(obj)
+    db.commit()
+
+
+# ── Employee Policy Assignments ───────────────────────────────────────────────
+
+def _epa_query(db: Session):
+    return db.query(EmployeePolicyAssignment).options(
+        joinedload(EmployeePolicyAssignment.user),
+        joinedload(EmployeePolicyAssignment.policy),
+    )
+
+@router.get("/employee-policy-assignments", response_model=List[EmployeePolicyAssignmentResponse])
+def list_employee_policy_assignments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    return _epa_query(db).order_by(EmployeePolicyAssignment.user_id).all()
+
+@router.post("/employee-policy-assignments", response_model=EmployeePolicyAssignmentResponse, status_code=201)
+def create_employee_policy_assignment(
+    payload: EmployeePolicyAssignmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    # Upsert: one assignment per employee
+    existing = db.query(EmployeePolicyAssignment).filter(EmployeePolicyAssignment.user_id == payload.user_id).first()
+    if existing:
+        for k, v in payload.model_dump().items():
+            setattr(existing, k, v)
+        db.commit()
+        return _epa_query(db).filter(EmployeePolicyAssignment.id == existing.id).first()
+    obj = EmployeePolicyAssignment(**payload.model_dump())
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return _epa_query(db).filter(EmployeePolicyAssignment.id == obj.id).first()
+
+@router.delete("/employee-policy-assignments/{epa_id}", status_code=204)
+def delete_employee_policy_assignment(
+    epa_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    obj = db.query(EmployeePolicyAssignment).filter(EmployeePolicyAssignment.id == epa_id).first()
     if not obj:
         raise HTTPException(404, "Not found")
     db.delete(obj)
@@ -1787,13 +1836,65 @@ def generate_timesheets(
 
     created = updated = 0
 
+    def _to_local(dt_utc: datetime, tz_str: str) -> datetime:
+        try:
+            from zoneinfo import ZoneInfo
+            return dt_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo(tz_str))
+        except Exception:
+            return dt_utc
+
+    def _check_late(check_in_utc: datetime, policy: "AttendancePolicy") -> tuple:
+        if not policy or not policy.shift_start_time:
+            return False, 0.0
+        local_in = _to_local(check_in_utc, policy.timezone or "UTC")
+        h, m = map(int, policy.shift_start_time.split(":"))
+        shift_start = local_in.replace(hour=h, minute=m, second=0, microsecond=0)
+        deadline = shift_start + timedelta(minutes=policy.late_arrival_grace_minutes or 0)
+        if local_in > deadline:
+            return True, round((local_in - deadline).total_seconds() / 60, 1)
+        return False, 0.0
+
+    def _check_early_departure(check_out_utc: datetime, policy: "AttendancePolicy") -> tuple:
+        if not policy or not policy.shift_end_time:
+            return False, 0.0
+        local_out = _to_local(check_out_utc, policy.timezone or "UTC")
+        h, m = map(int, policy.shift_end_time.split(":"))
+        shift_end = local_out.replace(hour=h, minute=m, second=0, microsecond=0)
+        # Handle overnight shift (end time < start time means next-day end)
+        if policy.shift_start_time:
+            sh, sm = map(int, policy.shift_start_time.split(":"))
+            if (h * 60 + m) < (sh * 60 + sm):
+                shift_end += timedelta(days=1)
+        grace = timedelta(minutes=policy.early_departure_grace_minutes or 0)
+        if local_out < (shift_end - grace):
+            return True, round((shift_end - local_out).total_seconds() / 60, 1)
+        return False, 0.0
+
+    def _count_consecutive_late(db: Session, user_id: int, before_date: date) -> int:
+        """Count how many consecutive working days before `before_date` were late."""
+        count = 0
+        d = before_date - timedelta(days=1)
+        for _ in range(10):  # look back max 10 days
+            if d.weekday() >= 5:
+                d -= timedelta(days=1)
+                continue
+            ts = db.query(Timesheet).filter(
+                Timesheet.user_id == user_id,
+                Timesheet.work_date == d,
+            ).first()
+            if ts and ts.is_late:
+                count += 1
+                d -= timedelta(days=1)
+            else:
+                break
+        return count
+
     for emp in employees:
-        # Daily rate from most-recent active PayrollConfig
+        # Daily rate
         config = db.query(PayrollConfig).filter(
             PayrollConfig.user_id == emp.id,
             PayrollConfig.effective_from <= month_end,
         ).order_by(desc(PayrollConfig.effective_from)).first()
-
         if config:
             if config.hourly_rate and float(config.hourly_rate) > 0:
                 daily_rate = float(config.hourly_rate) * 8
@@ -1804,18 +1905,29 @@ def generate_timesheets(
         else:
             daily_rate = 0.0
 
-        # Attendance events for this employee this month
+        # Policy for this employee
+        assignment = db.query(EmployeePolicyAssignment).filter(
+            EmployeePolicyAssignment.user_id == emp.id
+        ).first()
+        policy = assignment.policy if assignment else None
+
+        # Attendance events — fetch extra day on each side for overnight shifts
         raw_events = db.query(AttendanceEvent).filter(
             AttendanceEvent.user_id == emp.id,
-            AttendanceEvent.event_time >= datetime.combine(month_start, datetime.min.time()),
-            AttendanceEvent.event_time < datetime.combine(month_end, datetime.max.time()),
+            AttendanceEvent.event_time >= datetime.combine(month_start - timedelta(days=1), datetime.min.time()),
+            AttendanceEvent.event_time < datetime.combine(month_end + timedelta(days=2), datetime.min.time()),
         ).all()
+
+        # Group by UTC date (or local date if policy timezone known)
         events_by_date: dict[date, list] = {}
         for evt in raw_events:
-            d = evt.event_time.date()
+            if policy and policy.timezone:
+                d = _to_local(evt.event_time, policy.timezone).date()
+            else:
+                d = evt.event_time.date()
             events_by_date.setdefault(d, []).append(evt)
 
-        # Leave dates for this employee
+        # Leave dates
         leave_dates: set[date] = set()
         for lr in approved_leaves:
             if lr.user_id != emp.id:
@@ -1828,10 +1940,17 @@ def generate_timesheets(
 
         for day_num in range(1, days_in_month + 1):
             work_date = date(year, month, day_num)
-            if work_date.weekday() >= 5:  # skip Sat/Sun
+            if work_date.weekday() >= 5:
                 continue
-            if work_date > today:          # skip future
+            if work_date > today:
                 continue
+
+            is_late = False
+            late_min = 0.0
+            is_early_dep = False
+            early_dep_min = 0.0
+            policy_deduction = 0.0
+            deduction_reason = None
 
             if work_date in holiday_dates:
                 day_status = DayStatus.HOLIDAY
@@ -1853,42 +1972,68 @@ def generate_timesheets(
                     hours_worked = 0.0
                     wage = 0.0
                 else:
-                    first_in  = min(e.event_time for e in ins)
-                    last_out  = max(e.event_time for e in outs)
-                    gross_h   = (last_out - first_in).total_seconds() / 3600
-                    break_h   = 0.0
+                    first_in = min(e.event_time for e in ins)
+                    last_out = max(e.event_time for e in outs)
+                    gross_h  = (last_out - first_in).total_seconds() / 3600
+                    break_h  = 0.0
                     if bks and bke:
                         break_h = (max(e.event_time for e in bke) - min(e.event_time for e in bks)).total_seconds() / 3600
                     hours_worked = round(max(gross_h - break_h, 0), 2)
 
-                    # Rules: ≥9h gross = Full Day; >4h = Early Leave (full pay); ≤4h = Half Day
                     if gross_h >= 9:
                         day_status = DayStatus.FULL_DAY
                         wage = daily_rate
                     elif gross_h > 4:
                         day_status = DayStatus.EARLY_LEAVE
-                        wage = daily_rate          # full pay, flagged
+                        wage = daily_rate
                     else:
                         day_status = DayStatus.HALF_DAY
                         wage = daily_rate * 0.5
+
+                    # Policy checks
+                    if policy:
+                        is_late, late_min = _check_late(first_in, policy)
+                        is_early_dep, early_dep_min = _check_early_departure(last_out, policy)
+
+                        # Consecutive late strike
+                        if is_late:
+                            consecutive = _count_consecutive_late(db, emp.id, work_date)
+                            limit = policy.consecutive_late_limit or 3
+                            if (consecutive + 1) >= limit:
+                                action = policy.late_strike_action or "full_day"
+                                if action == "full_day":
+                                    policy_deduction = daily_rate
+                                elif action == "half_day":
+                                    policy_deduction = daily_rate * 0.5
+                                if policy_deduction > 0:
+                                    deduction_reason = (
+                                        f"Policy '{policy.name}': {consecutive + 1} consecutive "
+                                        f"late arrivals (limit {limit})"
+                                    )
+
+            net_wage = max(0, wage - policy_deduction)
 
             existing = db.query(Timesheet).filter(
                 Timesheet.user_id == emp.id,
                 Timesheet.work_date == work_date,
             ).first()
 
+            ts_data = dict(
+                day_status=day_status, hours_worked=hours_worked, hours=hours_worked,
+                daily_wage_earned=net_wage, policy_id=policy.id if policy else None,
+                is_late=is_late, late_minutes=late_min,
+                is_early_departure=is_early_dep, early_departure_minutes=early_dep_min,
+                policy_deduction=policy_deduction, deduction_reason=deduction_reason,
+            )
+
             if existing:
-                existing.day_status        = day_status
-                existing.hours_worked      = hours_worked
-                existing.hours             = hours_worked
-                existing.daily_wage_earned = wage
+                for k, v in ts_data.items():
+                    setattr(existing, k, v)
                 updated += 1
             else:
                 db.add(Timesheet(
                     user_id=emp.id, work_date=work_date,
-                    hours=hours_worked, hours_worked=hours_worked,
-                    day_status=day_status, daily_wage_earned=wage,
-                    status=TimesheetStatus.DRAFT,
+                    status=TimesheetStatus.DRAFT, **ts_data,
                 ))
                 created += 1
 

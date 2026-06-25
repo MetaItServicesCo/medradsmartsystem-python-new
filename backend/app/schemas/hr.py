@@ -128,20 +128,38 @@ class LeaveRequestResponse(BaseModel):
 class AttendancePolicyCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    shift_start_time: Optional[str] = None
+    shift_end_time: Optional[str] = None
+    timezone: str = "UTC"
+    late_arrival_grace_minutes: int = 15
+    early_departure_grace_minutes: int = 15
+    grace_period_minutes: int = 15
     work_hours_per_day: float = 8.0
     work_days_per_week: int = 5
     overtime_threshold: float = 8.0
-    grace_period_minutes: int = 15
+    overtime_rate_per_hour: Optional[float] = None
+    consecutive_late_limit: int = 3
+    late_strike_action: str = "full_day"
+    is_active: bool = True
     is_default: bool = False
     applicable_roles: Optional[List[str]] = None
 
 class AttendancePolicyUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    shift_start_time: Optional[str] = None
+    shift_end_time: Optional[str] = None
+    timezone: Optional[str] = None
+    late_arrival_grace_minutes: Optional[int] = None
+    early_departure_grace_minutes: Optional[int] = None
+    grace_period_minutes: Optional[int] = None
     work_hours_per_day: Optional[float] = None
     work_days_per_week: Optional[int] = None
     overtime_threshold: Optional[float] = None
-    grace_period_minutes: Optional[int] = None
+    overtime_rate_per_hour: Optional[float] = None
+    consecutive_late_limit: Optional[int] = None
+    late_strike_action: Optional[str] = None
+    is_active: Optional[bool] = None
     is_default: Optional[bool] = None
     applicable_roles: Optional[List[str]] = None
 
@@ -149,14 +167,38 @@ class AttendancePolicyResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    shift_start_time: Optional[str]
+    shift_end_time: Optional[str]
+    timezone: str
+    late_arrival_grace_minutes: int
+    early_departure_grace_minutes: int
+    grace_period_minutes: int
     work_hours_per_day: float
     work_days_per_week: int
     overtime_threshold: float
-    grace_period_minutes: int
+    overtime_rate_per_hour: Optional[Any]
+    consecutive_late_limit: int
+    late_strike_action: str
+    is_active: bool
     is_default: bool
     applicable_roles: Optional[List[str]]
     created_at: datetime
     updated_at: datetime
+    model_config = {"from_attributes": True}
+
+class EmployeePolicyAssignmentCreate(BaseModel):
+    user_id: int
+    policy_id: Optional[int] = None
+    effective_from: date
+
+class EmployeePolicyAssignmentResponse(BaseModel):
+    id: int
+    user_id: int
+    policy_id: Optional[int]
+    effective_from: date
+    created_at: datetime
+    user: Optional[UserMini] = None
+    policy: Optional[AttendancePolicyResponse] = None
     model_config = {"from_attributes": True}
 
 
@@ -860,6 +902,13 @@ class TimesheetResponse(BaseModel):
     hours_worked: Optional[float]
     day_status: Optional[DayStatus]
     daily_wage_earned: Optional[float]
+    policy_id: Optional[int]
+    is_late: Optional[bool]
+    late_minutes: Optional[float]
+    is_early_departure: Optional[bool]
+    early_departure_minutes: Optional[float]
+    policy_deduction: Optional[float]
+    deduction_reason: Optional[str]
     project: Optional[str]
     description: Optional[str]
     status: TimesheetStatus

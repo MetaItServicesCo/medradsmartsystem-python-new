@@ -175,17 +175,48 @@ class LeaveRequest(Base):
 class AttendancePolicy(Base):
     __tablename__ = "hr_attendance_policies"
 
-    id                     = Column(Integer, primary_key=True, index=True)
-    name                   = Column(String, nullable=False)
-    description            = Column(Text, nullable=True)
-    work_hours_per_day     = Column(Float, default=8.0, nullable=False)
-    work_days_per_week     = Column(Integer, default=5, nullable=False)
-    overtime_threshold     = Column(Float, default=8.0, nullable=False)
-    grace_period_minutes   = Column(Integer, default=15, nullable=False)
-    is_default             = Column(Boolean, default=False, nullable=False)
-    applicable_roles       = Column(JSON, nullable=True)
-    created_at             = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at             = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    id                            = Column(Integer, primary_key=True, index=True)
+    name                          = Column(String, nullable=False)
+    description                   = Column(Text, nullable=True)
+    # Shift definition
+    shift_start_time              = Column(String(5), nullable=True)   # "HH:MM" in local time
+    shift_end_time                = Column(String(5), nullable=True)   # "HH:MM" in local time
+    timezone                      = Column(String(50), default="UTC", nullable=False)
+    # Grace windows
+    late_arrival_grace_minutes    = Column(Integer, default=15, nullable=False)
+    early_departure_grace_minutes = Column(Integer, default=15, nullable=False)
+    # Legacy — kept for backwards-compat
+    grace_period_minutes          = Column(Integer, default=15, nullable=False)
+    # Work config
+    work_hours_per_day            = Column(Float, default=8.0, nullable=False)
+    work_days_per_week            = Column(Integer, default=5, nullable=False)
+    overtime_threshold            = Column(Float, default=8.0, nullable=False)
+    overtime_rate_per_hour        = Column(Numeric(10, 2), nullable=True)
+    # Strike rules
+    consecutive_late_limit        = Column(Integer, default=3, nullable=False)
+    # none / half_day / full_day
+    late_strike_action            = Column(String(20), default="full_day", nullable=False)
+    is_active                     = Column(Boolean, default=True, nullable=False)
+    is_default                    = Column(Boolean, default=False, nullable=False)
+    applicable_roles              = Column(JSON, nullable=True)
+    created_at                    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at                    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    assignments = relationship("EmployeePolicyAssignment", back_populates="policy")
+
+
+class EmployeePolicyAssignment(Base):
+    """Links an employee to an attendance policy."""
+    __tablename__ = "hr_employee_policy_assignments"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    user_id        = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    policy_id      = Column(Integer, ForeignKey("hr_attendance_policies.id", ondelete="SET NULL"), nullable=True, index=True)
+    effective_from = Column(Date, nullable=False)
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user   = relationship("User", foreign_keys=[user_id])
+    policy = relationship("AttendancePolicy", back_populates="assignments")
 
 
 # ── Organization Structure ───────────────────────────────────────────────────
@@ -615,25 +646,35 @@ class EmployeeContract(Base):
 class Timesheet(Base):
     __tablename__ = "hr_timesheets"
 
-    id                 = Column(Integer, primary_key=True, index=True)
-    user_id            = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    work_date          = Column(Date, nullable=False, index=True)
-    hours              = Column(Float, nullable=False, default=0)
-    hours_worked       = Column(Float, nullable=True)
-    day_status         = Column(SQLEnum(DayStatus), nullable=True, index=True)
-    daily_wage_earned  = Column(Float, nullable=True)
-    project            = Column(String, nullable=True)
-    description        = Column(Text, nullable=True)
-    status             = Column(SQLEnum(TimesheetStatus), default=TimesheetStatus.DRAFT, nullable=False, index=True)
-    submitted_at       = Column(DateTime, nullable=True)
-    reviewed_by_id     = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    reviewed_at        = Column(DateTime, nullable=True)
-    review_notes       = Column(Text, nullable=True)
-    created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    id                      = Column(Integer, primary_key=True, index=True)
+    user_id                 = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    work_date               = Column(Date, nullable=False, index=True)
+    hours                   = Column(Float, nullable=False, default=0)
+    hours_worked            = Column(Float, nullable=True)
+    day_status              = Column(SQLEnum(DayStatus), nullable=True, index=True)
+    daily_wage_earned       = Column(Float, nullable=True)
+    # Policy-driven flags
+    policy_id               = Column(Integer, ForeignKey("hr_attendance_policies.id", ondelete="SET NULL"), nullable=True)
+    is_late                 = Column(Boolean, default=False, nullable=True)
+    late_minutes            = Column(Float, nullable=True)
+    is_early_departure      = Column(Boolean, default=False, nullable=True)
+    early_departure_minutes = Column(Float, nullable=True)
+    policy_deduction        = Column(Float, default=0.0, nullable=True)
+    deduction_reason        = Column(Text, nullable=True)
+    # HR review
+    project                 = Column(String, nullable=True)
+    description             = Column(Text, nullable=True)
+    status                  = Column(SQLEnum(TimesheetStatus), default=TimesheetStatus.DRAFT, nullable=False, index=True)
+    submitted_at            = Column(DateTime, nullable=True)
+    reviewed_by_id          = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at             = Column(DateTime, nullable=True)
+    review_notes            = Column(Text, nullable=True)
+    created_at              = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at              = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    user        = relationship("User", foreign_keys=[user_id])
-    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
+    user            = relationship("User", foreign_keys=[user_id])
+    reviewed_by     = relationship("User", foreign_keys=[reviewed_by_id])
+    assigned_policy = relationship("AttendancePolicy", foreign_keys=[policy_id])
 
 
 class EmployeeAcknowledgment(Base):

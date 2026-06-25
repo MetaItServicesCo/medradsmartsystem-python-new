@@ -59,6 +59,7 @@ import {
   fetchEmployeeContracts, createEmployeeContract, updateEmployeeContract, deleteEmployeeContract,
   fetchAcknowledgments, createAcknowledgment,
   fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet, generateTimesheets,
+  fetchEmployeePolicyAssignments, createEmployeePolicyAssignment, deleteEmployeePolicyAssignment,
 } from '@/api/hr'
 import { fetchAttendanceEvents } from '@/api/attendance'
 
@@ -732,51 +733,301 @@ function AttendanceRecordsTab() {
   )
 }
 
+const SHIFT_PRESETS = [
+  { label: 'Pakistan (6PM–3AM PKT)', start: '18:00', end: '03:00', tz: 'Asia/Karachi' },
+  { label: 'US Central (9AM–5PM CT)', start: '09:00', end: '17:00', tz: 'America/Chicago' },
+]
+
 function AttendancePoliciesTab() {
   const qc = useQueryClient()
-  const { data: policies = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
+  const { data: rawPolicies = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
+  const list: any[] = Array.isArray(rawPolicies) ? rawPolicies : (rawPolicies as any).items ?? []
+
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'name', label: 'Policy Name' },
-    { key: 'work_hours_per_day', label: 'Work Hours/Day', type: 'number' },
-    { key: 'work_days_per_week', label: 'Work Days/Week', type: 'number' },
-    { key: 'grace_period_minutes', label: 'Grace Period (min)', type: 'number' },
-  ]
+  const [form, setForm] = useState<any>({
+    name: '', shift_start_time: '', shift_end_time: '', timezone: 'UTC',
+    late_arrival_grace_minutes: 15, early_departure_grace_minutes: 15,
+    overtime_rate_per_hour: '', consecutive_late_limit: 3,
+    late_strike_action: 'full_day', is_active: true, description: '',
+  })
+  const openAdd = () => { setForm({ name: '', shift_start_time: '', shift_end_time: '', timezone: 'UTC', late_arrival_grace_minutes: 15, early_departure_grace_minutes: 15, overtime_rate_per_hour: '', consecutive_late_limit: 3, late_strike_action: 'full_day', is_active: true, description: '' }); setDlg({ open: true }) }
+  const openEdit = (p: any) => { setForm({ ...p, overtime_rate_per_hour: p.overtime_rate_per_hour ?? '' }); setDlg({ open: true, item: p }) }
+  const set = (k: string, v: any) => setForm((prev: any) => ({ ...prev, [k]: v }))
+
   const mut = useMutation({
     mutationFn: (d: any) => dlg.item ? updateAttendancePolicy(dlg.item.id, d) : createAttendancePolicy(d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }); toast.success('Saved') },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }); toast.success('Saved'); setDlg({ open: false }) },
   })
   const del = useMutation({ mutationFn: deleteAttendancePolicy, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }); toast.success('Deleted') } })
-  const list: any[] = Array.isArray(policies) ? policies : (policies as any).items ?? []
+  const toggle = (p: any) => updateAttendancePolicy(p.id, { is_active: !p.is_active }).then(() => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }) })
+
+  // KPI summary
+  const active = list.filter(p => p.is_active)
+  const avgGrace = list.length ? Math.round(list.reduce((s, p) => s + (p.late_arrival_grace_minutes ?? 0), 0) / list.length) : 0
+  const avgOT = list.filter(p => p.overtime_rate_per_hour).length
+    ? (list.filter(p => p.overtime_rate_per_hour).reduce((s, p) => s + Number(p.overtime_rate_per_hour), 0) / list.filter(p => p.overtime_rate_per_hour).length)
+    : 0
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Policy</Button>
+      {/* KPI Cards */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Total Policies', value: list.length, icon: '🛡️' },
+          { label: 'Active Policies', value: active.length, icon: '✅' },
+          { label: 'Avg Late Grace', value: `${avgGrace} min`, icon: '⏰' },
+          { label: 'Avg Overtime Rate', value: avgOT > 0 ? `$${avgOT.toFixed(2)}/hr` : '—', icon: '💵' },
+        ].map(k => (
+          <Card key={k.label} sx={{ flex: 1, minWidth: 160 }}>
+            <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">{k.label}</Typography>
+                <Typography variant="h5" fontWeight={800}>{k.value}</Typography>
+              </Box>
+              <Typography fontSize={28}>{k.icon}</Typography>
+            </CardContent>
+          </Card>
+        ))}
+      </Box>
+
+      {/* Add button */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button startIcon={<AddIcon />} variant="contained" onClick={openAdd}>Add Policy</Button>
+      </Box>
+
+      {/* Policy Cards Grid */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
+        {list.map((p: any) => (
+          <Card key={p.id} sx={{ position: 'relative', borderLeft: `4px solid ${p.is_active ? '#7161D8' : '#e0e0e0'}` }}>
+            <CardContent>
+              {/* Header row */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                  <Avatar sx={{ bgcolor: 'rgba(113,97,216,0.12)', width: 44, height: 44 }}>
+                    <Typography fontSize={20}>🛡️</Typography>
+                  </Avatar>
+                  <Typography variant="subtitle1" fontWeight={800} sx={{ lineHeight: 1.3 }}>{p.name}</Typography>
+                </Box>
+                {/* Action icons */}
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  <Tooltip title="Edit"><IconButton size="small" sx={{ color: 'warning.main' }} onClick={() => openEdit(p)}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                  <Tooltip title={p.is_active ? 'Deactivate' : 'Activate'}>
+                    <IconButton size="small" sx={{ color: p.is_active ? 'success.main' : 'text.secondary' }} onClick={() => toggle(p)}>
+                      {p.is_active ? <CheckIcon fontSize="small" /> : <CloseIcon fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete"><IconButton size="small" sx={{ color: 'error.main' }} onClick={() => del.mutate(p.id)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                </Box>
+              </Box>
+
+              {/* Active badge */}
+              <Chip size="small" label={p.is_active ? 'Active' : 'Inactive'} color={p.is_active ? 'success' : 'default'} sx={{ mb: 1.5 }} />
+
+              {/* Shift info */}
+              {p.shift_start_time && (
+                <Typography variant="caption" color="primary.main" sx={{ display: 'block', mb: 1, fontWeight: 700 }}>
+                  🕐 {p.shift_start_time} – {p.shift_end_time} ({p.timezone})
+                </Typography>
+              )}
+
+              {/* Grace / Rate grid */}
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 1 }}>
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography fontSize={14}>⏰</Typography>
+                    <Typography variant="body2" fontWeight={700}>{p.late_arrival_grace_minutes ?? p.grace_period_minutes ?? 0} minutes</Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">Late Arrival Grace</Typography>
+                </Box>
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography fontSize={14} color="success.main">💵</Typography>
+                    <Typography variant="body2" fontWeight={700}>
+                      {p.overtime_rate_per_hour ? `$${Number(p.overtime_rate_per_hour).toFixed(2)}/hr` : '—'}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">Overtime Rate</Typography>
+                </Box>
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography fontSize={14} color="info.main">⏱</Typography>
+                    <Typography variant="body2" fontWeight={700}>{p.early_departure_grace_minutes ?? 0} minutes</Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">Early Departure Grace</Typography>
+                </Box>
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography fontSize={14} color="error.main">⚠️</Typography>
+                    <Typography variant="body2" fontWeight={700}>{p.consecutive_late_limit ?? 3} days → {p.late_strike_action === 'full_day' ? '1 day deducted' : p.late_strike_action === 'half_day' ? 'half day deducted' : 'flagged'}</Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">Consecutive Late Rule</Typography>
+                </Box>
+              </Box>
+
+              {p.description && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', borderTop: '1px solid', borderColor: 'divider', pt: 1 }}>
+                  {p.description.length > 80 ? p.description.slice(0, 80) + '…' : p.description}
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </Box>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={dlg.open} onClose={() => setDlg({ open: false })} fullWidth maxWidth="sm">
+        <DialogTitle>{dlg.item ? 'Edit Policy' : 'Add Attendance Policy'}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <TextField label="Policy Name" size="small" value={form.name} onChange={e => set('name', e.target.value)} />
+
+          {/* Shift presets */}
+          {!dlg.item && (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {SHIFT_PRESETS.map(s => (
+                <Button key={s.label} size="small" variant="outlined" onClick={() => setForm((p: any) => ({ ...p, shift_start_time: s.start, shift_end_time: s.end, timezone: s.tz }))}>
+                  {s.label}
+                </Button>
+              ))}
+            </Box>
+          )}
+
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField label="Shift Start (HH:MM)" size="small" sx={{ flex: 1 }} value={form.shift_start_time} onChange={e => set('shift_start_time', e.target.value)} placeholder="09:00" />
+            <TextField label="Shift End (HH:MM)" size="small" sx={{ flex: 1 }} value={form.shift_end_time} onChange={e => set('shift_end_time', e.target.value)} placeholder="17:00" />
+          </Box>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Timezone</InputLabel>
+            <Select label="Timezone" value={form.timezone ?? 'UTC'} onChange={e => set('timezone', e.target.value)}>
+              {['UTC','Asia/Karachi','America/Chicago','America/New_York','America/Los_Angeles','Europe/London'].map(tz => <MenuItem key={tz} value={tz}>{tz}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField label="Late Arrival Grace (min)" size="small" type="number" sx={{ flex: 1 }} value={form.late_arrival_grace_minutes} onChange={e => set('late_arrival_grace_minutes', Number(e.target.value))} />
+            <TextField label="Early Departure Grace (min)" size="small" type="number" sx={{ flex: 1 }} value={form.early_departure_grace_minutes} onChange={e => set('early_departure_grace_minutes', Number(e.target.value))} />
+          </Box>
+          <TextField label="Overtime Rate ($/hr)" size="small" type="number" value={form.overtime_rate_per_hour} onChange={e => set('overtime_rate_per_hour', e.target.value)} />
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField label="Consecutive Late Days Limit" size="small" type="number" sx={{ flex: 1 }} value={form.consecutive_late_limit} onChange={e => set('consecutive_late_limit', Number(e.target.value))} />
+            <FormControl size="small" sx={{ flex: 1 }}>
+              <InputLabel>Strike Action</InputLabel>
+              <Select label="Strike Action" value={form.late_strike_action ?? 'full_day'} onChange={e => set('late_strike_action', e.target.value)}>
+                <MenuItem value="none">Flag only (no deduction)</MenuItem>
+                <MenuItem value="half_day">Deduct half day</MenuItem>
+                <MenuItem value="full_day">Deduct full day</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+          <TextField label="Description" size="small" multiline rows={2} value={form.description} onChange={e => set('description', e.target.value)} />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Status</InputLabel>
+            <Select label="Status" value={form.is_active ? 'active' : 'inactive'} onChange={e => set('is_active', e.target.value === 'active')}>
+              <MenuItem value="active">Active</MenuItem>
+              <MenuItem value="inactive">Inactive</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlg({ open: false })}>Cancel</Button>
+          <Button variant="contained" onClick={() => mut.mutate(form)} disabled={mut.isPending}>Save</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+}
+
+function PolicyAssignmentsTab() {
+  const qc = useQueryClient()
+  const { data: assignments = [] } = useQuery({ queryKey: ['hr-employee-policy-assignments'], queryFn: fetchEmployeePolicyAssignments })
+  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees() })
+  const { data: policyData = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
+  const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
+  const policies: any[] = Array.isArray(policyData) ? policyData : []
+  const list: any[] = Array.isArray(assignments) ? assignments : (assignments as any)?.items ?? []
+
+  const [dlg, setDlg] = useState(false)
+  const [form, setForm] = useState<any>({ user_id: '', policy_id: '', effective_from: new Date().toISOString().slice(0, 10) })
+
+  const mut = useMutation({
+    mutationFn: (d: any) => createEmployeePolicyAssignment(d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-policy-assignments'] }); toast.success('Policy assigned'); setDlg(false) },
+  })
+  const del = useMutation({
+    mutationFn: deleteEmployeePolicyAssignment,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-policy-assignments'] }); toast.success('Removed') },
+  })
+
+  // Build a map of user_id → assignment for quick lookup
+  const assignedMap = Object.fromEntries(list.map((a: any) => [a.user_id, a]))
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg(true)}>Assign Policy</Button>
       </Box>
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow>
-            {['Name','Hours/Day','Days/Week','Grace (min)',''].map(h => <Th key={h}>{h}</Th>)}
+            {['Employee','Assigned Policy','Shift','Effective From',''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
-            {list.map((p: any) => (
-              <TableRow key={p.id} hover>
-                <TableCell>{p.name}</TableCell>
-                <TableCell>{p.work_hours_per_day ?? '—'}</TableCell>
-                <TableCell>{p.work_days_per_week ?? '—'}</TableCell>
-                <TableCell>{p.grace_period_minutes ?? '—'}</TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: p })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(p.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
+            {employees.map((emp: any) => {
+              const a = assignedMap[emp.id]
+              return (
+                <TableRow key={emp.id} hover>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar src={emp.avatar_url} sx={{ width: 28, height: 28, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                        {(emp.full_name ?? emp.email)?.[0]?.toUpperCase()}
+                      </Avatar>
+                      <Typography variant="body2">{emp.full_name ?? emp.email}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    {a?.policy
+                      ? <Chip size="small" label={a.policy.name} sx={{ bgcolor: 'primary.main', color: 'white' }} />
+                      : <Typography variant="caption" color="text.secondary">No policy</Typography>}
+                  </TableCell>
+                  <TableCell>
+                    {a?.policy?.shift_start_time
+                      ? <Typography variant="caption">{a.policy.shift_start_time}–{a.policy.shift_end_time} ({a.policy.timezone})</Typography>
+                      : '—'}
+                  </TableCell>
+                  <TableCell>{a ? new Date(a.effective_from).toLocaleDateString() : '—'}</TableCell>
+                  <TableCell>
+                    {a
+                      ? <CrudDeleteBtn onDelete={() => del.mutate(a.id)} />
+                      : <Button size="small" variant="outlined" onClick={() => { setForm({ user_id: emp.id, policy_id: '', effective_from: new Date().toISOString().slice(0, 10) }); setDlg(true) }}>Assign</Button>}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Policy' : 'Add Policy'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={d => mut.mutate(d)} />
+
+      <Dialog open={dlg} onClose={() => setDlg(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Assign Attendance Policy</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Employee</InputLabel>
+            <Select label="Employee" value={form.user_id} onChange={e => setForm((p: any) => ({ ...p, user_id: e.target.value }))}>
+              {employees.map((e: any) => <MenuItem key={e.id} value={e.id}>{e.full_name ?? e.email}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Policy</InputLabel>
+            <Select label="Policy" value={form.policy_id} onChange={e => setForm((p: any) => ({ ...p, policy_id: e.target.value }))}>
+              {policies.map((p: any) => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField label="Effective From" type="date" size="small" value={form.effective_from} InputLabelProps={{ shrink: true }}
+            onChange={e => setForm((p: any) => ({ ...p, effective_from: e.target.value }))} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlg(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => mut.mutate(form)} disabled={mut.isPending}>Assign</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
@@ -787,10 +1038,11 @@ function AttendanceSection() {
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Attendance</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Attendance Records" /><Tab label="Policies" />
+        <Tab label="Attendance Records" /><Tab label="Policies" /><Tab label="Policy Assignments" />
       </Tabs>
       {tab === 0 && <AttendanceRecordsTab />}
       {tab === 1 && <AttendancePoliciesTab />}
+      {tab === 2 && <PolicyAssignmentsTab />}
     </Box>
   )
 }

@@ -35,7 +35,7 @@ from app.models.chat import (
 from app.models.calendar import CalendarEvent
 from app.models.hr import (
     LeaveType, LeavePolicy, LeaveRequest, LeaveRequestStatus,
-    AttendancePolicy,
+    AttendancePolicy, EmployeePolicyAssignment,
     Holiday, HolidayType, Announcement, AnnouncementPriority,
     JobOpening, JobOpeningStatus, Candidate, CandidateStatus, JobOffer, OfferStatus,
     OnboardingChecklist, OnboardingChecklistItem,
