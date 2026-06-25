@@ -21,6 +21,7 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents'
 import FolderIcon from '@mui/icons-material/Folder'
 import GroupsIcon from '@mui/icons-material/Groups'
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
 import PeopleIcon from '@mui/icons-material/People'
 import SpeedIcon from '@mui/icons-material/Speed'
 import TimerIcon from '@mui/icons-material/Timer'
@@ -419,13 +420,58 @@ function CalendarSection() {
 // EMPLOYEES
 // ══════════════════════════════════════════════════════════════════════════════
 
+const EMPTY_WAGE_FORM = { base_salary: '', hourly_rate: '', pay_frequency: 'monthly', effective_from: new Date().toISOString().slice(0, 10) }
+
 function EmployeesSection() {
+  const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const { data: employees = [], isLoading } = useQuery({
     queryKey: ['hr-employees', search],
     queryFn: () => fetchHREmployees(search ? { search } : undefined),
   })
   const list: any[] = Array.isArray(employees) ? employees : (employees as any).items ?? []
+
+  const { data: payrollConfigsRaw = [] } = useQuery({
+    queryKey: ['hr-payroll-configs-all'],
+    queryFn: () => fetchPayrollConfigs(),
+  })
+  const allConfigs: any[] = Array.isArray(payrollConfigsRaw) ? payrollConfigsRaw : (payrollConfigsRaw as any).items ?? []
+  // latest config per employee
+  const wageMap: Record<number, any> = {}
+  for (const c of allConfigs) {
+    if (!wageMap[c.user_id] || new Date(c.effective_from) > new Date(wageMap[c.user_id].effective_from)) {
+      wageMap[c.user_id] = c
+    }
+  }
+
+  const [wageDlg, setWageDlg] = useState<{ open: boolean; emp?: any }>({ open: false })
+  const [wageForm, setWageForm] = useState<any>(EMPTY_WAGE_FORM)
+
+  const openWage = (emp: any) => {
+    const existing = wageMap[emp.id]
+    setWageForm(existing
+      ? { base_salary: existing.base_salary ?? '', hourly_rate: existing.hourly_rate ?? '', pay_frequency: existing.pay_frequency ?? 'monthly', effective_from: existing.effective_from }
+      : { ...EMPTY_WAGE_FORM })
+    setWageDlg({ open: true, emp })
+  }
+
+  const wageMut = useMutation({
+    mutationFn: (d: any) => createPayrollConfig(d),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hr-payroll-configs-all'] })
+      toast.success('Wage saved')
+      setWageDlg({ open: false })
+    },
+    onError: () => toast.error('Failed to save wage'),
+  })
+
+  const formatWage = (cfg: any) => {
+    if (!cfg) return null
+    if (cfg.hourly_rate && Number(cfg.hourly_rate) > 0) return `$${Number(cfg.hourly_rate).toFixed(2)}/hr`
+    if (cfg.base_salary && Number(cfg.base_salary) > 0) return `$${Number(cfg.base_salary).toLocaleString()}/mo`
+    return null
+  }
+
   return (
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Employees</Typography>
@@ -435,35 +481,107 @@ function EmployeesSection() {
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead><TableRow>
-              {['#','Name','Email','Role','Department','Facility'].map(h => <Th key={h}>{h}</Th>)}
+              {['#', 'Name', 'Email', 'Role', 'Department', 'Facility', 'Wage', ''].map(h => <Th key={h}>{h}</Th>)}
             </TableRow></TableHead>
             <TableBody>
               {list.length === 0
-                ? <TableRow><TableCell colSpan={6} align="center">No employees found</TableCell></TableRow>
-                : list.map((e: any, i: number) => (
-                  <TableRow key={e.id} hover>
-                    <TableCell>{i + 1}</TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Avatar src={e.avatar_url} sx={{ width: 30, height: 30 }}>
-                          {(e.full_name ?? e.email)?.[0]?.toUpperCase()}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="body2">{e.full_name ?? (`${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email)}</Typography>
-                          <Typography variant="caption" color="text.secondary">{e.role}</Typography>
+                ? <TableRow><TableCell colSpan={8} align="center">No employees found</TableCell></TableRow>
+                : list.map((e: any, i: number) => {
+                  const wage = formatWage(wageMap[e.id])
+                  return (
+                    <TableRow key={e.id} hover>
+                      <TableCell>{i + 1}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Avatar src={e.avatar_url} sx={{ width: 30, height: 30 }}>
+                            {(e.full_name ?? e.email)?.[0]?.toUpperCase()}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body2">{e.full_name ?? (`${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || e.email)}</Typography>
+                            <Typography variant="caption" color="text.secondary">{e.role}</Typography>
+                          </Box>
                         </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell>{e.email}</TableCell>
-                    <TableCell><Chip size="small" label={e.role} /></TableCell>
-                    <TableCell>{e.department?.name ?? '—'}</TableCell>
-                    <TableCell>{e.facility?.name ?? '—'}</TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell>{e.email}</TableCell>
+                      <TableCell><Chip size="small" label={e.role} /></TableCell>
+                      <TableCell>{e.department?.name ?? '—'}</TableCell>
+                      <TableCell>{e.facility?.name ?? '—'}</TableCell>
+                      <TableCell>
+                        {wage
+                          ? <Chip size="small" icon={<AttachMoneyIcon />} label={wage} sx={{ bgcolor: 'rgba(113,97,216,0.1)', color: 'primary.main', fontWeight: 700 }} />
+                          : <Typography variant="caption" color="error.main">Not set</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip title={wage ? 'Update Wage' : 'Set Wage'}>
+                          <IconButton size="small" sx={{ color: wage ? 'primary.main' : 'warning.main' }} onClick={() => openWage(e)}>
+                            <AttachMoneyIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
             </TableBody>
           </Table>
         </TableContainer>
       )}
+
+      {/* Set Wage Dialog */}
+      <Dialog open={wageDlg.open} onClose={() => setWageDlg({ open: false })} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}><AttachMoneyIcon fontSize="small" /></Avatar>
+            <Box>
+              <Typography fontWeight={700}>{wageDlg.emp?.full_name ?? wageDlg.emp?.email}</Typography>
+              <Typography variant="caption" color="text.secondary">Set wage / salary</Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <Typography variant="caption" color="text.secondary">
+            Hourly rate takes priority over base salary. Leave one blank if not applicable.
+          </Typography>
+          <TextField
+            label="Hourly Rate ($)"
+            type="number" size="small" fullWidth
+            value={wageForm.hourly_rate}
+            inputProps={{ min: 0, step: 0.01 }}
+            onChange={e => setWageForm((p: any) => ({ ...p, hourly_rate: e.target.value }))}
+            helperText="Daily rate = hourly × 8"
+          />
+          <TextField
+            label="Base Monthly Salary ($)"
+            type="number" size="small" fullWidth
+            value={wageForm.base_salary}
+            inputProps={{ min: 0, step: 1 }}
+            onChange={e => setWageForm((p: any) => ({ ...p, base_salary: e.target.value }))}
+            helperText="Daily rate = salary ÷ 22 working days"
+          />
+          <TextField
+            label="Effective From"
+            type="date" size="small" fullWidth
+            value={wageForm.effective_from}
+            InputLabelProps={{ shrink: true }}
+            onChange={e => setWageForm((p: any) => ({ ...p, effective_from: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWageDlg({ open: false })}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={wageMut.isPending || (!wageForm.hourly_rate && !wageForm.base_salary)}
+            onClick={() => wageMut.mutate({
+              user_id: wageDlg.emp?.id,
+              hourly_rate: wageForm.hourly_rate ? Number(wageForm.hourly_rate) : null,
+              base_salary: wageForm.base_salary ? Number(wageForm.base_salary) : 0,
+              pay_frequency: wageForm.pay_frequency,
+              effective_from: wageForm.effective_from,
+            })}
+          >
+            Save Wage
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
