@@ -59,7 +59,6 @@ import {
   fetchEmployeeContracts, createEmployeeContract, updateEmployeeContract, deleteEmployeeContract,
   fetchAcknowledgments, createAcknowledgment,
   fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet, generateTimesheets,
-  fetchEmployeePolicyAssignments, createEmployeePolicyAssignment, deleteEmployeePolicyAssignment,
 } from '@/api/hr'
 import { fetchAttendanceEvents } from '@/api/attendance'
 
@@ -759,10 +758,15 @@ function AttendancePoliciesTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }); toast.success('Saved'); setDlg({ open: false }) },
   })
   const del = useMutation({ mutationFn: deleteAttendancePolicy, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }); toast.success('Deleted') } })
-  const toggle = (p: any) => updateAttendancePolicy(p.id, { is_active: !p.is_active }).then(() => { qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] }) })
+  const setAsDefault = (p: any) => {
+    updateAttendancePolicy(p.id, { is_default: true }).then(() => {
+      qc.invalidateQueries({ queryKey: ['hr-attendance-policies'] })
+      toast.success(`"${p.name}" is now the global policy`)
+    })
+  }
 
   // KPI summary
-  const active = list.filter(p => p.is_active)
+  const globalPolicy = list.find(p => p.is_default)
   const avgGrace = list.length ? Math.round(list.reduce((s, p) => s + (p.late_arrival_grace_minutes ?? 0), 0) / list.length) : 0
   const avgOT = list.filter(p => p.overtime_rate_per_hour).length
     ? (list.filter(p => p.overtime_rate_per_hour).reduce((s, p) => s + Number(p.overtime_rate_per_hour), 0) / list.filter(p => p.overtime_rate_per_hour).length)
@@ -774,7 +778,7 @@ function AttendancePoliciesTab() {
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
         {[
           { label: 'Total Policies', value: list.length, icon: '🛡️' },
-          { label: 'Active Policies', value: active.length, icon: '✅' },
+          { label: 'Global Policy', value: globalPolicy?.name ?? 'Not set', icon: '🌐' },
           { label: 'Avg Late Grace', value: `${avgGrace} min`, icon: '⏰' },
           { label: 'Avg Overtime Rate', value: avgOT > 0 ? `$${avgOT.toFixed(2)}/hr` : '—', icon: '💵' },
         ].map(k => (
@@ -798,7 +802,7 @@ function AttendancePoliciesTab() {
       {/* Policy Cards Grid */}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
         {list.map((p: any) => (
-          <Card key={p.id} sx={{ position: 'relative', borderLeft: `4px solid ${p.is_active ? '#7161D8' : '#e0e0e0'}` }}>
+          <Card key={p.id} sx={{ position: 'relative', borderLeft: `4px solid ${p.is_default ? '#F05D92' : p.is_active ? '#7161D8' : '#e0e0e0'}` }}>
             <CardContent>
               {/* Header row */}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
@@ -811,17 +815,20 @@ function AttendancePoliciesTab() {
                 {/* Action icons */}
                 <Box sx={{ display: 'flex', gap: 0.5 }}>
                   <Tooltip title="Edit"><IconButton size="small" sx={{ color: 'warning.main' }} onClick={() => openEdit(p)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-                  <Tooltip title={p.is_active ? 'Deactivate' : 'Activate'}>
-                    <IconButton size="small" sx={{ color: p.is_active ? 'success.main' : 'text.secondary' }} onClick={() => toggle(p)}>
-                      {p.is_active ? <CheckIcon fontSize="small" /> : <CloseIcon fontSize="small" />}
+                  <Tooltip title={p.is_default ? 'Currently applied to all employees' : 'Apply to all employees'}>
+                    <IconButton size="small" sx={{ color: p.is_default ? 'primary.main' : 'text.disabled' }} onClick={() => !p.is_default && setAsDefault(p)}>
+                      <CheckIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Delete"><IconButton size="small" sx={{ color: 'error.main' }} onClick={() => del.mutate(p.id)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                 </Box>
               </Box>
 
-              {/* Active badge */}
-              <Chip size="small" label={p.is_active ? 'Active' : 'Inactive'} color={p.is_active ? 'success' : 'default'} sx={{ mb: 1.5 }} />
+              {/* Status badges */}
+              <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+                <Chip size="small" label={p.is_active ? 'Active' : 'Inactive'} color={p.is_active ? 'success' : 'default'} />
+                {p.is_default && <Chip size="small" label="Global" sx={{ bgcolor: 'primary.main', color: 'white', fontWeight: 700 }} />}
+              </Box>
 
               {/* Shift info */}
               {p.shift_start_time && (
@@ -935,114 +942,16 @@ function AttendancePoliciesTab() {
   )
 }
 
-function PolicyAssignmentsTab() {
-  const qc = useQueryClient()
-  const { data: assignments = [] } = useQuery({ queryKey: ['hr-employee-policy-assignments'], queryFn: fetchEmployeePolicyAssignments })
-  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees() })
-  const { data: policyData = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
-  const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
-  const policies: any[] = Array.isArray(policyData) ? policyData : []
-  const list: any[] = Array.isArray(assignments) ? assignments : (assignments as any)?.items ?? []
-
-  const [dlg, setDlg] = useState(false)
-  const [form, setForm] = useState<any>({ user_id: '', policy_id: '', effective_from: new Date().toISOString().slice(0, 10) })
-
-  const mut = useMutation({
-    mutationFn: (d: any) => createEmployeePolicyAssignment(d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-policy-assignments'] }); toast.success('Policy assigned'); setDlg(false) },
-  })
-  const del = useMutation({
-    mutationFn: deleteEmployeePolicyAssignment,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-policy-assignments'] }); toast.success('Removed') },
-  })
-
-  // Build a map of user_id → assignment for quick lookup
-  const assignedMap = Object.fromEntries(list.map((a: any) => [a.user_id, a]))
-
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg(true)}>Assign Policy</Button>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow>
-            {['Employee','Assigned Policy','Shift','Effective From',''].map(h => <Th key={h}>{h}</Th>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {employees.map((emp: any) => {
-              const a = assignedMap[emp.id]
-              return (
-                <TableRow key={emp.id} hover>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar src={emp.avatar_url} sx={{ width: 28, height: 28, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
-                        {(emp.full_name ?? emp.email)?.[0]?.toUpperCase()}
-                      </Avatar>
-                      <Typography variant="body2">{emp.full_name ?? emp.email}</Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    {a?.policy
-                      ? <Chip size="small" label={a.policy.name} sx={{ bgcolor: 'primary.main', color: 'white' }} />
-                      : <Typography variant="caption" color="text.secondary">No policy</Typography>}
-                  </TableCell>
-                  <TableCell>
-                    {a?.policy?.shift_start_time
-                      ? <Typography variant="caption">{a.policy.shift_start_time}–{a.policy.shift_end_time} ({a.policy.timezone})</Typography>
-                      : '—'}
-                  </TableCell>
-                  <TableCell>{a ? new Date(a.effective_from).toLocaleDateString() : '—'}</TableCell>
-                  <TableCell>
-                    {a
-                      ? <CrudDeleteBtn onDelete={() => del.mutate(a.id)} />
-                      : <Button size="small" variant="outlined" onClick={() => { setForm({ user_id: emp.id, policy_id: '', effective_from: new Date().toISOString().slice(0, 10) }); setDlg(true) }}>Assign</Button>}
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      <Dialog open={dlg} onClose={() => setDlg(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Assign Attendance Policy</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          <FormControl size="small" fullWidth>
-            <InputLabel>Employee</InputLabel>
-            <Select label="Employee" value={form.user_id} onChange={e => setForm((p: any) => ({ ...p, user_id: e.target.value }))}>
-              {employees.map((e: any) => <MenuItem key={e.id} value={e.id}>{e.full_name ?? e.email}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" fullWidth>
-            <InputLabel>Policy</InputLabel>
-            <Select label="Policy" value={form.policy_id} onChange={e => setForm((p: any) => ({ ...p, policy_id: e.target.value }))}>
-              {policies.map((p: any) => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <TextField label="Effective From" type="date" size="small" value={form.effective_from} InputLabelProps={{ shrink: true }}
-            onChange={e => setForm((p: any) => ({ ...p, effective_from: e.target.value }))} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDlg(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => mut.mutate(form)} disabled={mut.isPending}>Assign</Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
-  )
-}
-
 function AttendanceSection() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Attendance</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Attendance Records" /><Tab label="Policies" /><Tab label="Policy Assignments" />
+        <Tab label="Attendance Records" /><Tab label="Policies" />
       </Tabs>
       {tab === 0 && <AttendanceRecordsTab />}
       {tab === 1 && <AttendancePoliciesTab />}
-      {tab === 2 && <PolicyAssignmentsTab />}
     </Box>
   )
 }
