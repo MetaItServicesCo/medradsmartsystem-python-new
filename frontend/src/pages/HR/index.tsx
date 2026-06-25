@@ -59,6 +59,7 @@ import {
   fetchEmployeeContracts, createEmployeeContract, updateEmployeeContract, deleteEmployeeContract,
   fetchAcknowledgments, createAcknowledgment,
   fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet, generateTimesheets,
+  fetchEmployeePolicyAssignments, createEmployeePolicyAssignment, deleteEmployeePolicyAssignment,
 } from '@/api/hr'
 import { fetchAttendanceEvents } from '@/api/attendance'
 
@@ -942,16 +943,133 @@ function AttendancePoliciesTab() {
   )
 }
 
+function PolicyAssignmentsTab() {
+  const qc = useQueryClient()
+  const { data: assignments = [] } = useQuery({ queryKey: ['hr-employee-policy-assignments'], queryFn: fetchEmployeePolicyAssignments })
+  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees() })
+  const { data: policyData = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
+  const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
+  const policies: any[] = Array.isArray(policyData) ? policyData : (policyData as any)?.items ?? []
+  const list: any[] = Array.isArray(assignments) ? assignments : (assignments as any)?.items ?? []
+
+  const globalPolicy = policies.find((p: any) => p.is_default)
+
+  const [dlg, setDlg] = useState(false)
+  const [form, setForm] = useState<any>({ user_id: '', policy_id: '', effective_from: new Date().toISOString().slice(0, 10) })
+
+  const mut = useMutation({
+    mutationFn: (d: any) => createEmployeePolicyAssignment(d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-policy-assignments'] }); toast.success('Policy assigned'); setDlg(false) },
+  })
+  const del = useMutation({
+    mutationFn: deleteEmployeePolicyAssignment,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-policy-assignments'] }); toast.success('Removed — employee will use global policy') },
+  })
+
+  const assignedMap = Object.fromEntries(list.map((a: any) => [a.user_id, a]))
+
+  return (
+    <Box>
+      {globalPolicy && (
+        <Box sx={{ mb: 2, p: 1.5, borderRadius: 1, bgcolor: 'rgba(113,97,216,0.07)', border: '1px solid', borderColor: 'primary.light', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography fontSize={18}>🌐</Typography>
+          <Typography variant="body2">
+            Global default: <strong>{globalPolicy.name}</strong> — applies to all employees without a specific assignment.
+          </Typography>
+        </Box>
+      )}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => { setForm({ user_id: '', policy_id: '', effective_from: new Date().toISOString().slice(0, 10) }); setDlg(true) }}>Assign Policy</Button>
+      </Box>
+      <TableContainer component={Paper}>
+        <Table size="small">
+          <TableHead><TableRow>
+            {['Employee', 'Assigned Policy', 'Shift', 'Effective From', ''].map(h => <Th key={h}>{h}</Th>)}
+          </TableRow></TableHead>
+          <TableBody>
+            {employees.map((emp: any) => {
+              const a = assignedMap[emp.id]
+              const effectivePolicy = a?.policy ?? globalPolicy
+              const isOverride = !!a
+              return (
+                <TableRow key={emp.id} hover>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar src={emp.avatar_url} sx={{ width: 28, height: 28, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                        {(emp.full_name ?? emp.email)?.[0]?.toUpperCase()}
+                      </Avatar>
+                      <Typography variant="body2">{emp.full_name ?? emp.email}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    {effectivePolicy
+                      ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Chip size="small" label={effectivePolicy.name} sx={{ bgcolor: isOverride ? 'secondary.main' : 'primary.main', color: 'white' }} />
+                          {!isOverride && <Chip size="small" label="global" variant="outlined" />}
+                        </Box>
+                      : <Typography variant="caption" color="text.secondary">No policy</Typography>}
+                  </TableCell>
+                  <TableCell>
+                    {effectivePolicy?.shift_start_time
+                      ? <Typography variant="caption">{effectivePolicy.shift_start_time}–{effectivePolicy.shift_end_time} ({effectivePolicy.timezone})</Typography>
+                      : '—'}
+                  </TableCell>
+                  <TableCell>{a ? new Date(a.effective_from).toLocaleDateString() : <Typography variant="caption" color="text.secondary">—</Typography>}</TableCell>
+                  <TableCell>
+                    {isOverride
+                      ? <Tooltip title="Remove override (revert to global)">
+                          <IconButton size="small" sx={{ color: 'error.main' }} onClick={() => del.mutate(a.id)}><DeleteIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                      : <Button size="small" variant="outlined" sx={{ fontSize: 11 }}
+                          onClick={() => { setForm({ user_id: emp.id, policy_id: '', effective_from: new Date().toISOString().slice(0, 10) }); setDlg(true) }}>
+                          Override
+                        </Button>}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      <Dialog open={dlg} onClose={() => setDlg(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Assign Attendance Policy</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Employee</InputLabel>
+            <Select label="Employee" value={form.user_id} onChange={e => setForm((p: any) => ({ ...p, user_id: e.target.value }))}>
+              {employees.map((e: any) => <MenuItem key={e.id} value={e.id}>{e.full_name ?? e.email}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Policy</InputLabel>
+            <Select label="Policy" value={form.policy_id} onChange={e => setForm((p: any) => ({ ...p, policy_id: e.target.value }))}>
+              {policies.map((p: any) => <MenuItem key={p.id} value={p.id}>{p.name}{p.is_default ? ' (Global)' : ''}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField label="Effective From" type="date" size="small" value={form.effective_from} InputLabelProps={{ shrink: true }}
+            onChange={e => setForm((p: any) => ({ ...p, effective_from: e.target.value }))} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlg(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => mut.mutate(form)} disabled={mut.isPending}>Assign</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+}
+
 function AttendanceSection() {
   const [tab, setTab] = useState(0)
   return (
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Attendance</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Attendance Records" /><Tab label="Policies" />
+        <Tab label="Attendance Records" /><Tab label="Policies" /><Tab label="Policy Assignments" />
       </Tabs>
       {tab === 0 && <AttendanceRecordsTab />}
       {tab === 1 && <AttendancePoliciesTab />}
+      {tab === 2 && <PolicyAssignmentsTab />}
     </Box>
   )
 }

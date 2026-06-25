@@ -1911,8 +1911,11 @@ def generate_timesheets(
         else:
             daily_rate = 0.0
 
-        # Use the globally assigned policy (is_default=True applies to all employees)
-        policy = global_policy
+        # Per-employee assignment overrides the global default
+        assignment = db.query(EmployeePolicyAssignment).filter(
+            EmployeePolicyAssignment.user_id == emp.id
+        ).first()
+        policy = assignment.policy if assignment else global_policy
 
         # Attendance events — fetch extra day on each side for overnight shifts
         raw_events = db.query(AttendanceEvent).filter(
