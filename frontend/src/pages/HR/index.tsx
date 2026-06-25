@@ -59,6 +59,7 @@ import {
   fetchEmployeeContracts, createEmployeeContract, updateEmployeeContract, deleteEmployeeContract,
   fetchAcknowledgments, createAcknowledgment,
   fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet, generateTimesheets,
+  fetchEmployeeSubmissions, reviewEmployeeSubmission,
   fetchEmployeePolicyAssignments, createEmployeePolicyAssignment, deleteEmployeePolicyAssignment,
 } from '@/api/hr'
 import { fetchAttendanceEvents } from '@/api/attendance'
@@ -1261,7 +1262,150 @@ const DAY_STATUS_META: Record<string, { label: string; color: 'success'|'error'|
   holiday:     { label: 'Holiday',     color: 'default' },
 }
 
-function TimesheetsSection() {
+function EmployeeSubmissionsTab() {
+  const qc = useQueryClient()
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['hr-employee-submissions'],
+    queryFn: () => fetchEmployeeSubmissions({ limit: 200 }),
+  })
+  const list: any[] = (raw as any)?.items ?? (Array.isArray(raw) ? raw : [])
+
+  const [reviewDlg, setReviewDlg] = useState<{ open: boolean; item?: any; action?: 'approve' | 'reject' }>({ open: false })
+  const [notes, setNotes] = useState('')
+
+  const reviewMut = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      reviewEmployeeSubmission(id, { status, review_notes: notes || undefined }),
+    onSuccess: (_, { status }) => {
+      qc.invalidateQueries({ queryKey: ['hr-employee-submissions'] })
+      toast.success(status === 'approved' ? 'Approved' : 'Rejected')
+      setReviewDlg({ open: false })
+      setNotes('')
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? 'Error'),
+  })
+
+  const pending = list.filter(i => i.status === 'submitted').length
+  const approved = list.filter(i => i.status === 'approved').length
+  const totalHours = list.filter(i => i.status === 'approved').reduce((s, i) => s + (i.hours ?? 0), 0)
+
+  return (
+    <Box>
+      {/* KPIs */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Pending Review', value: pending, color: '#f59e0b' },
+          { label: 'Approved', value: approved, color: '#22c55e' },
+          { label: 'Total Approved Hours', value: `${totalHours.toFixed(1)}h`, color: '#7161D8' },
+          { label: 'Total Submissions', value: list.length, color: '#6b7280' },
+        ].map(k => (
+          <Card key={k.label} sx={{ flex: 1, minWidth: 140 }}>
+            <CardContent sx={{ py: '12px !important' }}>
+              <Typography variant="caption" color="text.secondary">{k.label}</Typography>
+              <Typography variant="h5" fontWeight={800} sx={{ color: k.color }}>{k.value}</Typography>
+            </CardContent>
+          </Card>
+        ))}
+      </Box>
+
+      {isLoading ? <CircularProgress /> : (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead><TableRow>
+              {['Employee', 'Date', 'Task', 'Project', 'Hours', 'Submitted', 'Status', 'Actions'].map(h => <Th key={h}>{h}</Th>)}
+            </TableRow></TableHead>
+            <TableBody>
+              {list.length === 0
+                ? <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>No employee submissions yet.</TableCell></TableRow>
+                : list.map((ts: any) => (
+                  <TableRow key={ts.id} hover>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                          {(ts.user?.full_name ?? ts.user?.email ?? '?')[0]?.toUpperCase()}
+                        </Avatar>
+                        <Typography variant="body2">{ts.user?.full_name ?? ts.user?.email ?? ts.user_id}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>{fmt(ts.work_date)}</TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={600}>{ts.task_title ?? '—'}</Typography></TableCell>
+                    <TableCell>
+                      {ts.project
+                        ? <Chip size="small" label={ts.project} variant="outlined" sx={{ borderColor: 'primary.main', color: 'primary.main' }} />
+                        : '—'}
+                    </TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={700}>{ts.hours}h</Typography></TableCell>
+                    <TableCell>
+                      <Typography variant="caption">{ts.submitted_at ? new Date(ts.submitted_at).toLocaleDateString() : '—'}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip size="small"
+                        label={ts.status}
+                        color={ts.status === 'approved' ? 'success' : ts.status === 'rejected' ? 'error' : ts.status === 'submitted' ? 'warning' : 'default'}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {ts.status === 'submitted' && (
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <Tooltip title="Approve">
+                            <IconButton size="small" color="success"
+                              onClick={() => { setNotes(''); setReviewDlg({ open: true, item: ts, action: 'approve' }) }}>
+                              <CheckIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Reject">
+                            <IconButton size="small" color="error"
+                              onClick={() => { setNotes(''); setReviewDlg({ open: true, item: ts, action: 'reject' }) }}>
+                              <CloseIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      )}
+                      {ts.review_notes && (
+                        <Tooltip title={ts.review_notes}>
+                          <Typography variant="caption" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'help', color: 'text.secondary' }}>
+                            {ts.review_notes}
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {/* Review Dialog */}
+      <Dialog open={reviewDlg.open} onClose={() => setReviewDlg({ open: false })} maxWidth="xs" fullWidth>
+        <DialogTitle>{reviewDlg.action === 'approve' ? 'Approve Timesheet' : 'Reject Timesheet'}</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            <strong>{reviewDlg.item?.user?.full_name ?? reviewDlg.item?.user?.email}</strong> — {reviewDlg.item?.task_title} on {reviewDlg.item ? fmt(reviewDlg.item.work_date) : ''} ({reviewDlg.item?.hours}h)
+          </Typography>
+          <TextField
+            label={reviewDlg.action === 'reject' ? 'Reason for rejection (required)' : 'Notes (optional)'}
+            size="small" fullWidth multiline rows={2}
+            value={notes} onChange={e => setNotes(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReviewDlg({ open: false })}>Cancel</Button>
+          <Button
+            variant="contained"
+            color={reviewDlg.action === 'approve' ? 'success' : 'error'}
+            disabled={reviewMut.isPending || (reviewDlg.action === 'reject' && !notes.trim())}
+            onClick={() => reviewMut.mutate({ id: reviewDlg.item!.id, status: reviewDlg.action === 'approve' ? 'approved' : 'rejected' })}
+          >
+            {reviewDlg.action === 'approve' ? 'Approve' : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+}
+
+function AttendanceTimesheetsTab() {
   const qc = useQueryClient()
   const now = new Date()
   const [filterYear, setFilterYear]   = useState(now.getFullYear())
@@ -1321,13 +1465,10 @@ function TimesheetsSection() {
 
   return (
     <Box>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6" fontWeight={700}>Timesheets</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="outlined" size="small" onClick={() => setGenDlg(true)}>Generate from Attendance</Button>
-          <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={openAdd}>Add Manual</Button>
-        </Box>
+      {/* Actions */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
+        <Button variant="outlined" size="small" onClick={() => setGenDlg(true)}>Generate from Attendance</Button>
+        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={openAdd}>Add Manual</Button>
       </Box>
 
       {/* Month filter */}
@@ -1483,6 +1624,21 @@ function TimesheetsSection() {
           </Button>
         </DialogActions>
       </Dialog>
+    </Box>
+  )
+}
+
+function TimesheetsSection() {
+  const [tab, setTab] = useState(0)
+  return (
+    <Box>
+      <Typography variant="h6" fontWeight={700} gutterBottom>Timesheets</Typography>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+        <Tab label="Attendance Records" />
+        <Tab label="Employee Submissions" />
+      </Tabs>
+      {tab === 0 && <AttendanceTimesheetsTab />}
+      {tab === 1 && <EmployeeSubmissionsTab />}
     </Box>
   )
 }

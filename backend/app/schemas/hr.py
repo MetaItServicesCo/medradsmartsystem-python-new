@@ -880,18 +880,39 @@ class TimesheetCreate(BaseModel):
     work_date: date
     hours: float
     day_status: Optional[DayStatus] = None
+    task_title: Optional[str] = None
     project: Optional[str] = None
     description: Optional[str] = None
     status: TimesheetStatus = TimesheetStatus.DRAFT
+    source: str = "attendance"
 
 class TimesheetUpdate(BaseModel):
     work_date: Optional[date] = None
     hours: Optional[float] = None
     day_status: Optional[DayStatus] = None
     daily_wage_earned: Optional[float] = None
+    task_title: Optional[str] = None
     project: Optional[str] = None
     description: Optional[str] = None
     status: Optional[TimesheetStatus] = None
+    review_notes: Optional[str] = None
+
+class MyTimesheetCreate(BaseModel):
+    work_date: date
+    task_title: str
+    project: Optional[str] = None
+    hours: float
+    description: Optional[str] = None
+
+class MyTimesheetUpdate(BaseModel):
+    work_date: Optional[date] = None
+    task_title: Optional[str] = None
+    project: Optional[str] = None
+    hours: Optional[float] = None
+    description: Optional[str] = None
+
+class TimesheetReview(BaseModel):
+    status: TimesheetStatus  # APPROVED or REJECTED
     review_notes: Optional[str] = None
 
 class TimesheetResponse(BaseModel):
@@ -909,6 +930,8 @@ class TimesheetResponse(BaseModel):
     early_departure_minutes: Optional[float]
     policy_deduction: Optional[float]
     deduction_reason: Optional[str]
+    source: str = "attendance"
+    task_title: Optional[str]
     project: Optional[str]
     description: Optional[str]
     status: TimesheetStatus

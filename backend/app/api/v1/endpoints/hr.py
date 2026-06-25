@@ -60,6 +60,7 @@ from app.schemas.hr import (
     PayslipResponse,
     TaxBracketCreate, TaxBracketResponse, TaxBracketUpdate,
     TimesheetCreate, TimesheetResponse, TimesheetUpdate, GenerateTimesheetRequest,
+    MyTimesheetCreate, MyTimesheetUpdate, TimesheetReview,
     EmployeePolicyAssignmentCreate, EmployeePolicyAssignmentResponse,
     UserMini,
 )
@@ -2121,3 +2122,162 @@ def delete_timesheet(
         raise HTTPException(404, "Not found")
     db.delete(obj)
     db.commit()
+
+
+# ── Employee Self-Service Timesheets ──────────────────────────────────────────
+
+@router.get("/my-timesheets", response_model=dict)
+def list_my_timesheets(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    status: Optional[TimesheetStatus] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = _timesheet_query(db).filter(
+        Timesheet.user_id == current_user.id,
+        Timesheet.source == "manual",
+    )
+    if date_from:
+        q = q.filter(Timesheet.work_date >= date_from)
+    if date_to:
+        q = q.filter(Timesheet.work_date <= date_to)
+    if status:
+        q = q.filter(Timesheet.status == status)
+    total = q.count()
+    items = q.order_by(desc(Timesheet.work_date)).offset(skip).limit(limit).all()
+    return {"total": total, "items": items}
+
+
+@router.post("/my-timesheets", response_model=TimesheetResponse, status_code=201)
+def create_my_timesheet(
+    payload: MyTimesheetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    obj = Timesheet(
+        user_id=current_user.id,
+        source="manual",
+        status=TimesheetStatus.DRAFT,
+        **payload.model_dump(),
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return _timesheet_query(db).filter(Timesheet.id == obj.id).first()
+
+
+@router.put("/my-timesheets/{ts_id}", response_model=TimesheetResponse)
+def update_my_timesheet(
+    ts_id: int,
+    payload: MyTimesheetUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    obj = db.query(Timesheet).filter(
+        Timesheet.id == ts_id,
+        Timesheet.user_id == current_user.id,
+        Timesheet.source == "manual",
+    ).first()
+    if not obj:
+        raise HTTPException(404, "Not found")
+    if obj.status != TimesheetStatus.DRAFT:
+        raise HTTPException(400, "Only draft timesheets can be edited")
+    for k, v in payload.model_dump(exclude_none=True).items():
+        setattr(obj, k, v)
+    db.commit()
+    return _timesheet_query(db).filter(Timesheet.id == ts_id).first()
+
+
+@router.delete("/my-timesheets/{ts_id}", status_code=204)
+def delete_my_timesheet(
+    ts_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    obj = db.query(Timesheet).filter(
+        Timesheet.id == ts_id,
+        Timesheet.user_id == current_user.id,
+        Timesheet.source == "manual",
+    ).first()
+    if not obj:
+        raise HTTPException(404, "Not found")
+    if obj.status not in (TimesheetStatus.DRAFT, TimesheetStatus.REJECTED):
+        raise HTTPException(400, "Cannot delete a submitted or approved timesheet")
+    db.delete(obj)
+    db.commit()
+
+
+@router.post("/my-timesheets/{ts_id}/submit", response_model=TimesheetResponse)
+def submit_my_timesheet(
+    ts_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    obj = db.query(Timesheet).filter(
+        Timesheet.id == ts_id,
+        Timesheet.user_id == current_user.id,
+        Timesheet.source == "manual",
+    ).first()
+    if not obj:
+        raise HTTPException(404, "Not found")
+    if obj.status != TimesheetStatus.DRAFT:
+        raise HTTPException(400, "Only draft timesheets can be submitted")
+    obj.status = TimesheetStatus.SUBMITTED
+    obj.submitted_at = datetime.utcnow()
+    db.commit()
+    return _timesheet_query(db).filter(Timesheet.id == ts_id).first()
+
+
+# ── HR Review of Employee Submissions ─────────────────────────────────────────
+
+@router.get("/employee-submissions", response_model=dict)
+def list_employee_submissions(
+    user_id: Optional[int] = None,
+    status: Optional[TimesheetStatus] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    q = _timesheet_query(db).filter(Timesheet.source == "manual")
+    if user_id:
+        q = q.filter(Timesheet.user_id == user_id)
+    if status:
+        q = q.filter(Timesheet.status == status)
+    if date_from:
+        q = q.filter(Timesheet.work_date >= date_from)
+    if date_to:
+        q = q.filter(Timesheet.work_date <= date_to)
+    total = q.count()
+    items = q.order_by(desc(Timesheet.submitted_at)).offset(skip).limit(limit).all()
+    return {"total": total, "items": items}
+
+
+@router.post("/employee-submissions/{ts_id}/review", response_model=TimesheetResponse)
+def review_employee_submission(
+    ts_id: int,
+    payload: TimesheetReview,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    obj = db.query(Timesheet).filter(
+        Timesheet.id == ts_id,
+        Timesheet.source == "manual",
+    ).first()
+    if not obj:
+        raise HTTPException(404, "Not found")
+    if obj.status != TimesheetStatus.SUBMITTED:
+        raise HTTPException(400, "Only submitted timesheets can be reviewed")
+    if payload.status not in (TimesheetStatus.APPROVED, TimesheetStatus.REJECTED):
+        raise HTTPException(400, "Status must be approved or rejected")
+    obj.status = payload.status
+    obj.review_notes = payload.review_notes
+    obj.reviewed_by_id = current_user.id
+    obj.reviewed_at = datetime.utcnow()
+    db.commit()
+    return _timesheet_query(db).filter(Timesheet.id == ts_id).first()

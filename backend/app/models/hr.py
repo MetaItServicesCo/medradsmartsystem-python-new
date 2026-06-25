@@ -661,7 +661,9 @@ class Timesheet(Base):
     early_departure_minutes = Column(Float, nullable=True)
     policy_deduction        = Column(Float, default=0.0, nullable=True)
     deduction_reason        = Column(Text, nullable=True)
-    # HR review
+    # Source: 'attendance' = system-generated, 'manual' = employee self-reported
+    source                  = Column(String(20), default="attendance", nullable=False)
+    task_title              = Column(String(255), nullable=True)
     project                 = Column(String, nullable=True)
     description             = Column(Text, nullable=True)
     status                  = Column(SQLEnum(TimesheetStatus), default=TimesheetStatus.DRAFT, nullable=False, index=True)

@@ -262,6 +262,24 @@ export const deleteTimesheet = (id: number) =>
 export const generateTimesheets = (data: { year: number; month: number; user_id?: number }) =>
   apiClient.post(`${BASE}/timesheets/generate`, data).then(r => r.data)
 
+// ── My Timesheets (employee self-service) ──────────────────────────────────
+export const fetchMyTimesheets = (params?: Record<string, any>) =>
+  apiClient.get(`${BASE}/my-timesheets`, { params }).then(r => r.data)
+export const createMyTimesheet = (data: any) =>
+  apiClient.post(`${BASE}/my-timesheets`, data).then(r => r.data)
+export const updateMyTimesheet = (id: number, data: any) =>
+  apiClient.put(`${BASE}/my-timesheets/${id}`, data).then(r => r.data)
+export const deleteMyTimesheet = (id: number) =>
+  apiClient.delete(`${BASE}/my-timesheets/${id}`)
+export const submitMyTimesheet = (id: number) =>
+  apiClient.post(`${BASE}/my-timesheets/${id}/submit`).then(r => r.data)
+
+// ── Employee Submissions (HR review) ───────────────────────────────────────
+export const fetchEmployeeSubmissions = (params?: Record<string, any>) =>
+  apiClient.get(`${BASE}/employee-submissions`, { params }).then(r => r.data)
+export const reviewEmployeeSubmission = (id: number, data: { status: string; review_notes?: string }) =>
+  apiClient.post(`${BASE}/employee-submissions/${id}/review`, data).then(r => r.data)
+
 // ── Employee Policy Assignments ─────────────────────────────────────────────
 export const fetchEmployeePolicyAssignments = () =>
   apiClient.get(`${BASE}/employee-policy-assignments`).then(r => r.data)

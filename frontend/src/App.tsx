@@ -17,6 +17,7 @@ import Calendar from './pages/Calendar'
 import Profile from './pages/Profile'
 import Attendance from './pages/Attendance'
 import Billing from './pages/Sales/Billing'
+import MyTimesheets from './pages/MyTimesheets'
 
 function App() {
   const { isAuthenticated } = useAuthStore()
@@ -45,6 +46,7 @@ function App() {
         <Route path="hr/*" element={<HR />} />
         <Route path="reports/*" element={<Reports />} />
         <Route path="attendance/*" element={<Attendance />} />
+        <Route path="my-timesheets" element={<MyTimesheets />} />
         <Route path="billing/*" element={<Billing />} />
       </Route>
     </Routes>
