@@ -2007,11 +2007,12 @@ def generate_timesheets(
                             consecutive = _count_consecutive_late(db, emp.id, work_date)
                             limit = policy.consecutive_late_limit or 3
                             if (consecutive + 1) >= limit:
-                                action = policy.late_strike_action or "full_day"
+                                action = policy.late_strike_action or "none"
                                 if action == "full_day":
                                     policy_deduction = daily_rate
                                 elif action == "half_day":
                                     policy_deduction = daily_rate * 0.5
+                                # action == "none" → flagged only, no deduction
                                 if policy_deduction > 0:
                                     deduction_reason = (
                                         f"Policy '{policy.name}': {consecutive + 1} consecutive "
