@@ -58,7 +58,7 @@ import {
   fetchEmployeeDocuments, createEmployeeDocument, updateEmployeeDocument, deleteEmployeeDocument,
   fetchEmployeeContracts, createEmployeeContract, updateEmployeeContract, deleteEmployeeContract,
   fetchAcknowledgments, createAcknowledgment,
-  fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet,
+  fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet, generateTimesheets,
 } from '@/api/hr'
 import { fetchAttendanceEvents } from '@/api/attendance'
 
@@ -973,79 +973,237 @@ function LeaveSection() {
 // TIMESHEETS
 // ══════════════════════════════════════════════════════════════════════════════
 
+const DAY_STATUS_META: Record<string, { label: string; color: 'success'|'error'|'warning'|'info'|'default' }> = {
+  full_day:    { label: 'Full Day',    color: 'success' },
+  half_day:    { label: 'Half Day',    color: 'warning' },
+  early_leave: { label: 'Early Leave', color: 'info' },
+  absent:      { label: 'Absent',      color: 'error' },
+  on_leave:    { label: 'On Leave',    color: 'default' },
+  holiday:     { label: 'Holiday',     color: 'default' },
+}
+
 function TimesheetsSection() {
   const qc = useQueryClient()
-  const { data: tsData, isLoading } = useQuery({ queryKey: ['hr-timesheets'], queryFn: () => fetchTimesheets({ limit: 200 }) })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+  const now = new Date()
+  const [filterYear, setFilterYear]   = useState(now.getFullYear())
+  const [filterMonth, setFilterMonth] = useState(now.getMonth() + 1)
+
+  const dateFrom = `${filterYear}-${String(filterMonth).padStart(2,'0')}-01`
+  const dateTo   = new Date(filterYear, filterMonth, 0).toISOString().slice(0,10)
+
+  const { data: tsData, isLoading } = useQuery({
+    queryKey: ['hr-timesheets', filterYear, filterMonth],
+    queryFn: () => fetchTimesheets({ date_from: dateFrom, date_to: dateTo, limit: 500 }),
+  })
   const list: any[] = (tsData as any)?.items ?? (Array.isArray(tsData) ? tsData : [])
 
-  const FIELDS: FieldDef[] = [
-    { key: 'work_date', label: 'Date', type: 'date' },
-    { key: 'hours', label: 'Hours', type: 'number' },
-    { key: 'project', label: 'Project' },
-    { key: 'description', label: 'Description', type: 'textarea' },
-    { key: 'status', label: 'Status', type: 'select', options: ['draft','submitted','approved','rejected'] },
-  ]
+  // Manual add/edit dialog
+  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+  const [form, setForm] = useState<any>({})
+  const openAdd = () => { setForm({}); setDlg({ open: true }) }
+  const openEdit = (ts: any) => { setForm({ ...ts, work_date: ts.work_date }); setDlg({ open: true, item: ts }) }
+
+  // Generate from attendance dialog
+  const [genDlg, setGenDlg] = useState(false)
+  const [genYear, setGenYear]   = useState(now.getFullYear())
+  const [genMonth, setGenMonth] = useState(now.getMonth() + 1)
 
   const mut = useMutation({
     mutationFn: (d: any) => dlg.item ? updateTimesheet(dlg.item.id, d) : createTimesheet(d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Saved') },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Saved'); setDlg({ open: false }) },
+    onError: () => toast.error('Save failed'),
   })
-  const del = useMutation({ mutationFn: deleteTimesheet, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Deleted') } })
+  const del = useMutation({
+    mutationFn: deleteTimesheet,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Deleted') },
+  })
+  const genMut = useMutation({
+    mutationFn: () => generateTimesheets({ year: genYear, month: genMonth }),
+    onSuccess: (r: any) => {
+      qc.invalidateQueries({ queryKey: ['hr-timesheets'] })
+      toast.success(`Generated: ${r.created} new, ${r.updated} updated`)
+      setGenDlg(false)
+    },
+    onError: () => toast.error('Generation failed'),
+  })
 
   const approve = (id: number) => updateTimesheet(id, { status: 'approved' }).then(() => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Approved') })
-  const reject = (id: number) => updateTimesheet(id, { status: 'rejected' }).then(() => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Rejected') })
+  const reject  = (id: number) => updateTimesheet(id, { status: 'rejected' }).then(() => { qc.invalidateQueries({ queryKey: ['hr-timesheets'] }); toast.success('Rejected') })
 
-  const sColor = (s: string) => s === 'approved' ? 'success' : s === 'rejected' ? 'error' : s === 'submitted' ? 'warning' : 'default'
+  const reviewColor = (s: string) => s === 'approved' ? 'success' : s === 'rejected' ? 'error' : s === 'submitted' ? 'warning' : 'default'
+
+  // Monthly totals
+  const totalWage    = list.reduce((s, t) => s + (t.daily_wage_earned ?? 0), 0)
+  const totalHours   = list.reduce((s, t) => s + (t.hours_worked ?? t.hours ?? 0), 0)
+  const fullDays     = list.filter(t => t.day_status === 'full_day').length
+  const halfDays     = list.filter(t => t.day_status === 'half_day').length
+  const earlyLeaves  = list.filter(t => t.day_status === 'early_leave').length
+  const absences     = list.filter(t => t.day_status === 'absent').length
 
   return (
     <Box>
+      {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6" fontWeight={700}>Timesheets</Typography>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Log Time</Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" size="small" onClick={() => setGenDlg(true)}>Generate from Attendance</Button>
+          <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={openAdd}>Add Manual</Button>
+        </Box>
       </Box>
+
+      {/* Month filter */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <FormControl size="small" sx={{ minWidth: 100 }}>
+          <InputLabel>Month</InputLabel>
+          <Select label="Month" value={filterMonth} onChange={e => setFilterMonth(Number(e.target.value))}>
+            {MONTHS.map((m, i) => <MenuItem key={i} value={i+1}>{m}</MenuItem>)}
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 90 }}>
+          <InputLabel>Year</InputLabel>
+          <Select label="Year" value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}>
+            {[now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1].map(y => <MenuItem key={y} value={y}>{y}</MenuItem>)}
+          </Select>
+        </FormControl>
+
+        {/* Summary chips */}
+        {list.length > 0 && (
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Chip size="small" label={`✓ ${fullDays} Full`} color="success" />
+            <Chip size="small" label={`½ ${halfDays} Half`} color="warning" />
+            <Chip size="small" label={`←| ${earlyLeaves} Early`} color="info" />
+            <Chip size="small" label={`✗ ${absences} Absent`} color="error" />
+            <Chip size="small" label={`${totalHours.toFixed(1)}h total`} sx={{ bgcolor: 'primary.main', color: 'white' }} />
+            <Chip size="small" label={`$${totalWage.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} earned`} sx={{ bgcolor: 'secondary.main', color: 'white' }} />
+          </Box>
+        )}
+      </Box>
+
       {isLoading ? <CircularProgress /> : (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead><TableRow>
-              {['#','Employee','Date','Hours','Project','Status','Submitted On','Actions'].map(h => <Th key={h}>{h}</Th>)}
+              {['#','Employee','Date','Day Status','Hours','Daily Wage','Project','Review Status','Actions'].map(h => <Th key={h}>{h}</Th>)}
             </TableRow></TableHead>
             <TableBody>
               {list.length === 0
-                ? <TableRow><TableCell colSpan={8} align="center">No timesheet entries</TableCell></TableRow>
-                : list.map((ts: any, i: number) => (
-                  <TableRow key={ts.id} hover>
-                    <TableCell>{i + 1}</TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Avatar sx={{ width: 26, height: 26, fontSize: 11 }}>{(ts.user?.full_name ?? ts.user?.email ?? '?')[0]?.toUpperCase()}</Avatar>
-                        <Typography variant="body2">{ts.user?.full_name ?? ts.user?.email ?? ts.user_id}</Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell>{fmt(ts.work_date)}</TableCell>
-                    <TableCell sx={{ color: 'primary.main', fontWeight: 700 }}>{ts.hours?.toFixed(2)}h</TableCell>
-                    <TableCell>{ts.project ? <Chip size="small" label={ts.project} variant="outlined" sx={{ borderColor: 'primary.main', color: 'primary.main' }} /> : '—'}</TableCell>
-                    <TableCell><Chip size="small" label={ts.status} color={sColor(ts.status) as any} /></TableCell>
-                    <TableCell>{ts.submitted_at ? fmt(ts.submitted_at) : '—'}</TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Tooltip title="View/Edit"><IconButton size="small" onClick={() => setDlg({ open: true, item: ts })}><EditIcon fontSize="small" /></IconButton></Tooltip>
-                      {ts.status === 'submitted' && (
-                        <>
-                          <Tooltip title="Approve"><IconButton size="small" color="success" onClick={() => approve(ts.id)}><CheckIcon fontSize="small" /></IconButton></Tooltip>
-                          <Tooltip title="Reject"><IconButton size="small" color="error" onClick={() => reject(ts.id)}><CloseIcon fontSize="small" /></IconButton></Tooltip>
-                        </>
-                      )}
-                      <CrudDeleteBtn onDelete={() => del.mutate(ts.id)} />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                ? <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>No timesheet records for this month. Use "Generate from Attendance" to auto-populate.</TableCell></TableRow>
+                : list.map((ts: any, i: number) => {
+                  const ds = DAY_STATUS_META[ts.day_status] ?? { label: ts.day_status ?? '—', color: 'default' }
+                  return (
+                    <TableRow key={ts.id} hover>
+                      <TableCell>{i + 1}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                            {(ts.user?.full_name ?? ts.user?.email ?? '?')[0]?.toUpperCase()}
+                          </Avatar>
+                          <Typography variant="body2">{ts.user?.full_name ?? ts.user?.email ?? ts.user_id}</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>{fmt(ts.work_date)}</TableCell>
+                      <TableCell>
+                        {ts.day_status
+                          ? <Chip size="small" label={ds.label} color={ds.color} />
+                          : <Typography variant="caption" color="text.secondary">Manual</Typography>}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>
+                        {(ts.hours_worked ?? ts.hours ?? 0).toFixed(2)}h
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>
+                        {ts.daily_wage_earned != null
+                          ? `$${Number(ts.daily_wage_earned).toFixed(2)}`
+                          : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {ts.project
+                          ? <Chip size="small" label={ts.project} variant="outlined" sx={{ borderColor: 'primary.main', color: 'primary.main' }} />
+                          : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={ts.status} color={reviewColor(ts.status) as any} />
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        <Tooltip title="Edit"><IconButton size="small" onClick={() => openEdit(ts)}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                        {ts.status === 'submitted' && (
+                          <>
+                            <Tooltip title="Approve"><IconButton size="small" color="success" onClick={() => approve(ts.id)}><CheckIcon fontSize="small" /></IconButton></Tooltip>
+                            <Tooltip title="Reject"><IconButton size="small" color="error" onClick={() => reject(ts.id)}><CloseIcon fontSize="small" /></IconButton></Tooltip>
+                          </>
+                        )}
+                        <CrudDeleteBtn onDelete={() => del.mutate(ts.id)} />
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
             </TableBody>
           </Table>
         </TableContainer>
       )}
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Timesheet' : 'Log Time'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={d => mut.mutate(d)} />
+
+      {/* Manual add/edit dialog */}
+      <Dialog open={dlg.open} onClose={() => setDlg({ open: false })} fullWidth maxWidth="sm">
+        <DialogTitle>{dlg.item ? 'Edit Timesheet Entry' : 'Add Manual Timesheet Entry'}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          {!dlg.item && (
+            <TextField label="Employee ID" size="small" type="number" value={form.user_id ?? ''}
+              onChange={e => setForm((p: any) => ({ ...p, user_id: Number(e.target.value) }))} />
+          )}
+          <TextField label="Work Date" size="small" type="date" value={form.work_date ?? ''} InputLabelProps={{ shrink: true }}
+            onChange={e => setForm((p: any) => ({ ...p, work_date: e.target.value }))} />
+          <TextField label="Hours Worked" size="small" type="number" value={form.hours ?? ''}
+            onChange={e => setForm((p: any) => ({ ...p, hours: Number(e.target.value), hours_worked: Number(e.target.value) }))} />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Day Status</InputLabel>
+            <Select label="Day Status" value={form.day_status ?? ''} onChange={e => setForm((p: any) => ({ ...p, day_status: e.target.value }))}>
+              {Object.entries(DAY_STATUS_META).map(([k, v]) => <MenuItem key={k} value={k}>{v.label}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField label="Project" size="small" value={form.project ?? ''}
+            onChange={e => setForm((p: any) => ({ ...p, project: e.target.value }))} />
+          <TextField label="Description" size="small" multiline rows={2} value={form.description ?? ''}
+            onChange={e => setForm((p: any) => ({ ...p, description: e.target.value }))} />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Review Status</InputLabel>
+            <Select label="Review Status" value={form.status ?? 'draft'} onChange={e => setForm((p: any) => ({ ...p, status: e.target.value }))}>
+              {['draft','submitted','approved','rejected'].map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlg({ open: false })}>Cancel</Button>
+          <Button variant="contained" onClick={() => mut.mutate(form)} disabled={mut.isPending}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Generate from Attendance dialog */}
+      <Dialog open={genDlg} onClose={() => setGenDlg(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Generate Timesheets from Attendance</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <Typography variant="body2" color="text.secondary">
+            Reads each employee's clock-in / clock-out events and creates timesheet entries.<br />
+            Rules: ≥9h = Full Day · &gt;4h = Early Leave (full pay, flagged) · ≤4h = Half Day · No punch = Absent
+          </Typography>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Month</InputLabel>
+            <Select label="Month" value={genMonth} onChange={e => setGenMonth(Number(e.target.value))}>
+              {MONTHS.map((m, i) => <MenuItem key={i} value={i+1}>{m}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Year</InputLabel>
+            <Select label="Year" value={genYear} onChange={e => setGenYear(Number(e.target.value))}>
+              {[now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1].map(y => <MenuItem key={y} value={y}>{y}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGenDlg(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => genMut.mutate()} disabled={genMut.isPending}>
+            {genMut.isPending ? 'Generating…' : 'Generate'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

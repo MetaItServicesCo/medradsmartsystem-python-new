@@ -259,3 +259,5 @@ export const updateTimesheet = (id: number, data: any) =>
   apiClient.put(`${BASE}/timesheets/${id}`, data).then(r => r.data)
 export const deleteTimesheet = (id: number) =>
   apiClient.delete(`${BASE}/timesheets/${id}`)
+export const generateTimesheets = (data: { year: number; month: number; user_id?: number }) =>
+  apiClient.post(`${BASE}/timesheets/generate`, data).then(r => r.data)

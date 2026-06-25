@@ -7,7 +7,7 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, EmailStr
 
 from app.models.hr import (
-    AnnouncementPriority, CandidateStatus, ContractStatus, HolidayType,
+    AnnouncementPriority, CandidateStatus, ContractStatus, DayStatus, HolidayType,
     JobOpeningStatus, LeaveRequestStatus, MeetingStatus, OfferStatus,
     PayFrequency, PayrollRunStatus, RSVPStatus, ResignationStatus, TerminationType,
     TimesheetStatus,
@@ -837,6 +837,7 @@ class TimesheetCreate(BaseModel):
     user_id: int
     work_date: date
     hours: float
+    day_status: Optional[DayStatus] = None
     project: Optional[str] = None
     description: Optional[str] = None
     status: TimesheetStatus = TimesheetStatus.DRAFT
@@ -844,6 +845,8 @@ class TimesheetCreate(BaseModel):
 class TimesheetUpdate(BaseModel):
     work_date: Optional[date] = None
     hours: Optional[float] = None
+    day_status: Optional[DayStatus] = None
+    daily_wage_earned: Optional[float] = None
     project: Optional[str] = None
     description: Optional[str] = None
     status: Optional[TimesheetStatus] = None
@@ -854,6 +857,9 @@ class TimesheetResponse(BaseModel):
     user_id: int
     work_date: date
     hours: float
+    hours_worked: Optional[float]
+    day_status: Optional[DayStatus]
+    daily_wage_earned: Optional[float]
     project: Optional[str]
     description: Optional[str]
     status: TimesheetStatus
@@ -866,6 +872,11 @@ class TimesheetResponse(BaseModel):
     user: Optional[UserMini] = None
     reviewed_by: Optional[UserMini] = None
     model_config = {"from_attributes": True}
+
+class GenerateTimesheetRequest(BaseModel):
+    year: int
+    month: int
+    user_id: Optional[int] = None
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────

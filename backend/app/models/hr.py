@@ -103,6 +103,14 @@ class TimesheetStatus(str, enum.Enum):
     APPROVED  = "approved"
     REJECTED  = "rejected"
 
+class DayStatus(str, enum.Enum):
+    FULL_DAY    = "full_day"
+    HALF_DAY    = "half_day"
+    EARLY_LEAVE = "early_leave"
+    ABSENT      = "absent"
+    ON_LEAVE    = "on_leave"
+    HOLIDAY     = "holiday"
+
 
 # ── Leave Management ─────────────────────────────────────────────────────────
 
@@ -607,19 +615,22 @@ class EmployeeContract(Base):
 class Timesheet(Base):
     __tablename__ = "hr_timesheets"
 
-    id              = Column(Integer, primary_key=True, index=True)
-    user_id         = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    work_date       = Column(Date, nullable=False, index=True)
-    hours           = Column(Float, nullable=False, default=0)
-    project         = Column(String, nullable=True)
-    description     = Column(Text, nullable=True)
-    status          = Column(SQLEnum(TimesheetStatus), default=TimesheetStatus.DRAFT, nullable=False, index=True)
-    submitted_at    = Column(DateTime, nullable=True)
-    reviewed_by_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    reviewed_at     = Column(DateTime, nullable=True)
-    review_notes    = Column(Text, nullable=True)
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    id                 = Column(Integer, primary_key=True, index=True)
+    user_id            = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    work_date          = Column(Date, nullable=False, index=True)
+    hours              = Column(Float, nullable=False, default=0)
+    hours_worked       = Column(Float, nullable=True)
+    day_status         = Column(SQLEnum(DayStatus), nullable=True, index=True)
+    daily_wage_earned  = Column(Float, nullable=True)
+    project            = Column(String, nullable=True)
+    description        = Column(Text, nullable=True)
+    status             = Column(SQLEnum(TimesheetStatus), default=TimesheetStatus.DRAFT, nullable=False, index=True)
+    submitted_at       = Column(DateTime, nullable=True)
+    reviewed_by_id     = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at        = Column(DateTime, nullable=True)
+    review_notes       = Column(Text, nullable=True)
+    created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     user        = relationship("User", foreign_keys=[user_id])
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])

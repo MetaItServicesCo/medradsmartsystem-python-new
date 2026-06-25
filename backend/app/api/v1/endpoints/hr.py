@@ -26,7 +26,7 @@ from app.models.hr import (
     OnboardingChecklist, OnboardingChecklistItem,
     PayFrequency, PayrollConfig, PayrollRun, PayrollRunStatus, Payslip,
     TaxBracket,
-    Timesheet, TimesheetStatus,
+    Timesheet, TimesheetStatus, DayStatus,
 )
 from app.models.user import User, UserRole
 from app.schemas.hr import (
@@ -58,7 +58,7 @@ from app.schemas.hr import (
     PayrollRunCreate, PayrollRunResponse, PayrollRunUpdate,
     PayslipResponse,
     TaxBracketCreate, TaxBracketResponse, TaxBracketUpdate,
-    TimesheetCreate, TimesheetResponse, TimesheetUpdate,
+    TimesheetCreate, TimesheetResponse, TimesheetUpdate, GenerateTimesheetRequest,
     UserMini,
 )
 
@@ -1749,6 +1749,151 @@ def _timesheet_query(db: Session):
         joinedload(Timesheet.user),
         joinedload(Timesheet.reviewed_by),
     )
+
+
+@router.post("/timesheets/generate", response_model=dict)
+def generate_timesheets(
+    payload: GenerateTimesheetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    """Auto-generate timesheet entries from attendance events for a given month."""
+    from calendar import monthrange
+    from app.models.attendance import AttendanceEvent, AttendanceEventType
+
+    year, month = payload.year, payload.month
+    _, days_in_month = monthrange(year, month)
+    month_start = date(year, month, 1)
+    month_end = date(year, month, days_in_month)
+    today = date.today()
+
+    # Employees to process
+    emp_q = db.query(User).filter(User.is_active == True)
+    if payload.user_id:
+        emp_q = emp_q.filter(User.id == payload.user_id)
+    employees = emp_q.all()
+
+    # Holiday dates this month
+    holiday_dates = {h.date for h in db.query(Holiday).filter(
+        Holiday.date >= month_start, Holiday.date <= month_end,
+    ).all()}
+
+    # Approved leaves this month
+    approved_leaves = db.query(LeaveRequest).filter(
+        LeaveRequest.status == LeaveRequestStatus.APPROVED,
+        LeaveRequest.start_date <= month_end,
+        LeaveRequest.end_date >= month_start,
+    ).all()
+
+    created = updated = 0
+
+    for emp in employees:
+        # Daily rate from most-recent active PayrollConfig
+        config = db.query(PayrollConfig).filter(
+            PayrollConfig.user_id == emp.id,
+            PayrollConfig.effective_from <= month_end,
+        ).order_by(desc(PayrollConfig.effective_from)).first()
+
+        if config:
+            if config.hourly_rate and float(config.hourly_rate) > 0:
+                daily_rate = float(config.hourly_rate) * 8
+            elif config.base_salary and float(config.base_salary) > 0:
+                daily_rate = float(config.base_salary) / 22
+            else:
+                daily_rate = 0.0
+        else:
+            daily_rate = 0.0
+
+        # Attendance events for this employee this month
+        raw_events = db.query(AttendanceEvent).filter(
+            AttendanceEvent.user_id == emp.id,
+            AttendanceEvent.event_time >= datetime.combine(month_start, datetime.min.time()),
+            AttendanceEvent.event_time < datetime.combine(month_end, datetime.max.time()),
+        ).all()
+        events_by_date: dict[date, list] = {}
+        for evt in raw_events:
+            d = evt.event_time.date()
+            events_by_date.setdefault(d, []).append(evt)
+
+        # Leave dates for this employee
+        leave_dates: set[date] = set()
+        for lr in approved_leaves:
+            if lr.user_id != emp.id:
+                continue
+            d = lr.start_date
+            while d <= lr.end_date:
+                if month_start <= d <= month_end:
+                    leave_dates.add(d)
+                d += timedelta(days=1)
+
+        for day_num in range(1, days_in_month + 1):
+            work_date = date(year, month, day_num)
+            if work_date.weekday() >= 5:  # skip Sat/Sun
+                continue
+            if work_date > today:          # skip future
+                continue
+
+            if work_date in holiday_dates:
+                day_status = DayStatus.HOLIDAY
+                hours_worked = 0.0
+                wage = 0.0
+            elif work_date in leave_dates:
+                day_status = DayStatus.ON_LEAVE
+                hours_worked = 0.0
+                wage = 0.0
+            else:
+                day_events = events_by_date.get(work_date, [])
+                ins  = [e for e in day_events if e.event_type == AttendanceEventType.CHECK_IN]
+                outs = [e for e in day_events if e.event_type == AttendanceEventType.CHECK_OUT]
+                bks  = [e for e in day_events if e.event_type == AttendanceEventType.BREAK_START]
+                bke  = [e for e in day_events if e.event_type == AttendanceEventType.BREAK_END]
+
+                if not ins or not outs:
+                    day_status = DayStatus.ABSENT
+                    hours_worked = 0.0
+                    wage = 0.0
+                else:
+                    first_in  = min(e.event_time for e in ins)
+                    last_out  = max(e.event_time for e in outs)
+                    gross_h   = (last_out - first_in).total_seconds() / 3600
+                    break_h   = 0.0
+                    if bks and bke:
+                        break_h = (max(e.event_time for e in bke) - min(e.event_time for e in bks)).total_seconds() / 3600
+                    hours_worked = round(max(gross_h - break_h, 0), 2)
+
+                    # Rules: ≥9h gross = Full Day; >4h = Early Leave (full pay); ≤4h = Half Day
+                    if gross_h >= 9:
+                        day_status = DayStatus.FULL_DAY
+                        wage = daily_rate
+                    elif gross_h > 4:
+                        day_status = DayStatus.EARLY_LEAVE
+                        wage = daily_rate          # full pay, flagged
+                    else:
+                        day_status = DayStatus.HALF_DAY
+                        wage = daily_rate * 0.5
+
+            existing = db.query(Timesheet).filter(
+                Timesheet.user_id == emp.id,
+                Timesheet.work_date == work_date,
+            ).first()
+
+            if existing:
+                existing.day_status        = day_status
+                existing.hours_worked      = hours_worked
+                existing.hours             = hours_worked
+                existing.daily_wage_earned = wage
+                updated += 1
+            else:
+                db.add(Timesheet(
+                    user_id=emp.id, work_date=work_date,
+                    hours=hours_worked, hours_worked=hours_worked,
+                    day_status=day_status, daily_wage_earned=wage,
+                    status=TimesheetStatus.DRAFT,
+                ))
+                created += 1
+
+    db.commit()
+    return {"created": created, "updated": updated}
 
 
 @router.get("/timesheets", response_model=dict)
