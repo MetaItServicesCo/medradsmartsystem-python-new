@@ -1292,6 +1292,71 @@ def update_payroll_run(
     return obj
 
 
+@router.post("/payroll-runs/{pr_id}/process", response_model=PayrollRunResponse)
+def process_payroll_run(
+    pr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    run = db.query(PayrollRun).filter(PayrollRun.id == pr_id).first()
+    if not run:
+        raise HTTPException(404, "Payroll run not found")
+    if run.status == PayrollRunStatus.PAID:
+        raise HTTPException(400, "Cannot reprocess a paid payroll run")
+
+    # Remove previous payslips so re-processing is safe
+    db.query(Payslip).filter(Payslip.payroll_run_id == run.id).delete()
+
+    employees = db.query(User).filter(User.is_active == True).all()
+
+    total_gross = 0.0
+    total_deductions = 0.0
+    total_net = 0.0
+
+    for emp in employees:
+        timesheets = db.query(Timesheet).filter(
+            Timesheet.user_id == emp.id,
+            Timesheet.work_date >= run.period_start,
+            Timesheet.work_date <= run.period_end,
+            Timesheet.source == "attendance",
+        ).all()
+
+        if not timesheets:
+            continue
+
+        gross_pay      = sum(float(t.daily_wage_earned or 0) for t in timesheets)
+        deductions     = sum(float(t.policy_deduction or 0) for t in timesheets)
+        work_hours     = sum(float(t.hours_worked or 0) for t in timesheets)
+        net_pay        = max(0.0, gross_pay - deductions)
+
+        slip = Payslip(
+            payroll_run_id=run.id,
+            user_id=emp.id,
+            gross_pay=round(gross_pay, 2),
+            tax_amount=0,
+            deductions=round(deductions, 2),
+            net_pay=round(net_pay, 2),
+            work_hours=round(work_hours, 2),
+        )
+        db.add(slip)
+
+        total_gross      += gross_pay
+        total_deductions += deductions
+        total_net        += net_pay
+
+    run.status      = PayrollRunStatus.PROCESSED
+    run.total_gross = round(total_gross, 2)
+    run.total_tax   = 0
+    run.total_net   = round(total_net, 2)
+    run.run_date    = datetime.utcnow()
+    db.commit()
+
+    return db.query(PayrollRun).options(
+        joinedload(PayrollRun.payslips).joinedload(Payslip.user),
+        joinedload(PayrollRun.processed_by),
+    ).filter(PayrollRun.id == pr_id).first()
+
+
 @router.post("/payroll-runs/{pr_id}/payslips", response_model=PayslipResponse, status_code=201)
 def add_payslip(
     pr_id: int,

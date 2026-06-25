@@ -175,6 +175,8 @@ export const createPayrollRun = (data: any) =>
   apiClient.post(`${BASE}/payroll-runs`, data).then(r => r.data)
 export const updatePayrollRun = (id: number, data: any) =>
   apiClient.put(`${BASE}/payroll-runs/${id}`, data).then(r => r.data)
+export const processPayrollRun = (id: number) =>
+  apiClient.post(`${BASE}/payroll-runs/${id}/process`).then(r => r.data)
 
 // ── Meetings ───────────────────────────────────────────────────────────────
 export const fetchMeetings = (params?: Record<string, any>) =>
