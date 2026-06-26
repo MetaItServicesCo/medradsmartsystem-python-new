@@ -1353,9 +1353,22 @@ def process_payroll_run(
         deductions = sum(float(t.policy_deduction or 0) for t in timesheets)
         work_hours = sum(float(t.hours_worked or 0) for t in timesheets)
 
-        taxable         = max(0.0, gross_pay - deductions)
-        tax_amount, tax_notes = _calc_tax(taxable)
-        net_pay         = max(0.0, taxable - tax_amount)
+        taxable = max(0.0, gross_pay - deductions)
+
+        # Per-employee tax percentage overrides bracket system when set
+        config = db.query(PayrollConfig).filter(
+            PayrollConfig.user_id == emp.id,
+            PayrollConfig.effective_from <= run.period_end,
+        ).order_by(desc(PayrollConfig.effective_from)).first()
+
+        emp_tax_pct = float(config.tax_percentage or 0) if config else 0.0
+        if emp_tax_pct > 0:
+            tax_amount = round(taxable * emp_tax_pct / 100, 2)
+            tax_notes  = f"Flat {emp_tax_pct}% tax on {taxable:.2f}"
+        else:
+            tax_amount, tax_notes = _calc_tax(taxable)
+
+        net_pay = max(0.0, taxable - tax_amount)
 
         slip = Payslip(
             payroll_run_id=run.id,

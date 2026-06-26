@@ -445,6 +445,7 @@ class PayrollConfig(Base):
     currency             = Column(String(3), nullable=False, default="USD")
     base_salary          = Column(Numeric(12, 2), nullable=False, default=0)
     hourly_rate          = Column(Numeric(10, 4), nullable=True)
+    tax_percentage       = Column(Float, default=0.0, nullable=False)
     overtime_multiplier  = Column(Float, default=1.5, nullable=False)
     pay_frequency        = Column(SQLEnum(PayFrequency), default=PayFrequency.MONTHLY, nullable=False)
     effective_from       = Column(Date, nullable=False)

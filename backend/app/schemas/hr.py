@@ -572,6 +572,7 @@ class PayrollConfigCreate(BaseModel):
     currency: str = "USD"
     base_salary: Decimal
     hourly_rate: Optional[Decimal] = None
+    tax_percentage: float = 0.0
     overtime_multiplier: float = 1.5
     pay_frequency: PayFrequency = PayFrequency.MONTHLY
     effective_from: date
@@ -580,6 +581,7 @@ class PayrollConfigUpdate(BaseModel):
     currency: Optional[str] = None
     base_salary: Optional[Decimal] = None
     hourly_rate: Optional[Decimal] = None
+    tax_percentage: Optional[float] = None
     overtime_multiplier: Optional[float] = None
     pay_frequency: Optional[PayFrequency] = None
     effective_from: Optional[date] = None
@@ -591,6 +593,7 @@ class PayrollConfigResponse(BaseModel):
     currency: str
     base_salary: Decimal
     hourly_rate: Optional[Decimal]
+    tax_percentage: float
     overtime_multiplier: float
     pay_frequency: PayFrequency
     effective_from: date

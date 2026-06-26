@@ -426,7 +426,7 @@ const CURRENCIES = [
 ]
 const currencySymbol = (code: string) => CURRENCIES.find(c => c.code === code)?.symbol ?? code
 
-const EMPTY_WAGE_FORM = { currency: 'USD', base_salary: '', hourly_rate: '', pay_frequency: 'monthly', effective_from: new Date().toISOString().slice(0, 10) }
+const EMPTY_WAGE_FORM = { currency: 'USD', base_salary: '', hourly_rate: '', tax_percentage: '', pay_frequency: 'monthly', effective_from: new Date().toISOString().slice(0, 10) }
 
 function EmployeesSection() {
   const qc = useQueryClient()
@@ -456,7 +456,7 @@ function EmployeesSection() {
   const openWage = (emp: any) => {
     const existing = wageMap[emp.id]
     setWageForm(existing
-      ? { currency: existing.currency ?? 'USD', base_salary: existing.base_salary ?? '', hourly_rate: existing.hourly_rate ?? '', pay_frequency: existing.pay_frequency ?? 'monthly', effective_from: existing.effective_from }
+      ? { currency: existing.currency ?? 'USD', base_salary: existing.base_salary ?? '', hourly_rate: existing.hourly_rate ?? '', tax_percentage: existing.tax_percentage ?? '', pay_frequency: existing.pay_frequency ?? 'monthly', effective_from: existing.effective_from }
       : { ...EMPTY_WAGE_FORM })
     setWageDlg({ open: true, emp })
   }
@@ -474,8 +474,9 @@ function EmployeesSection() {
   const formatWage = (cfg: any) => {
     if (!cfg) return null
     const sym = currencySymbol(cfg.currency ?? 'USD')
-    if (cfg.hourly_rate && Number(cfg.hourly_rate) > 0) return `${sym}${Number(cfg.hourly_rate).toFixed(2)}/hr`
-    if (cfg.base_salary && Number(cfg.base_salary) > 0) return `${sym}${Number(cfg.base_salary).toLocaleString()}/mo`
+    const tax = cfg.tax_percentage && Number(cfg.tax_percentage) > 0 ? ` · ${cfg.tax_percentage}% tax` : ''
+    if (cfg.hourly_rate && Number(cfg.hourly_rate) > 0) return `${sym}${Number(cfg.hourly_rate).toFixed(2)}/hr${tax}`
+    if (cfg.base_salary && Number(cfg.base_salary) > 0) return `${sym}${Number(cfg.base_salary).toLocaleString()}/mo${tax}`
     return null
   }
 
@@ -579,6 +580,14 @@ function EmployeesSection() {
             helperText="Daily rate = salary ÷ 22 working days"
           />
           <TextField
+            label="Tax Percentage (%)"
+            type="number" size="small" fullWidth
+            value={wageForm.tax_percentage}
+            inputProps={{ min: 0, max: 100, step: 0.5 }}
+            onChange={e => setWageForm((p: any) => ({ ...p, tax_percentage: e.target.value }))}
+            helperText="Auto-deducted from net pay every payroll run. Leave 0 to use tax brackets instead."
+          />
+          <TextField
             label="Effective From"
             type="date" size="small" fullWidth
             value={wageForm.effective_from}
@@ -596,6 +605,7 @@ function EmployeesSection() {
               currency: wageForm.currency,
               hourly_rate: wageForm.hourly_rate ? Number(wageForm.hourly_rate) : null,
               base_salary: wageForm.base_salary ? Number(wageForm.base_salary) : 0,
+              tax_percentage: wageForm.tax_percentage ? Number(wageForm.tax_percentage) : 0,
               pay_frequency: wageForm.pay_frequency,
               effective_from: wageForm.effective_from,
             })}
