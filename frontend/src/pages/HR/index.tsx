@@ -762,13 +762,13 @@ function AttendanceRecordsTab() {
   const lastDay = new Date(selYear, selMonth + 1, 0).getDate()
   const lastDate = `${selYear}-${String(selMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees() })
+  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees({ limit: 1000 }) })
   const { data: eventsData } = useQuery({
     queryKey: ['attendance-events-month', firstDate, lastDate],
     queryFn: () => fetchAttendanceEvents({ date_from: firstDate, date_to: lastDate, limit: 5000 }),
   })
   const { data: holidaysData = [] } = useQuery({ queryKey: ['hr-holidays', selYear], queryFn: () => fetchHolidays(selYear) })
-  const { data: leavesData } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved' }), staleTime: 0 })
+  const { data: leavesData, isLoading: leavesLoading } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved', limit: 1000 }), staleTime: 0 })
 
   const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
   const events: any[] = (eventsData as any)?.items ?? []
@@ -776,7 +776,9 @@ function AttendanceRecordsTab() {
   const leaves: any[] = (leavesData as any)?.items ?? (Array.isArray(leavesData) ? leavesData : [])
 
   const holidayDates = new Set(holidays.map((h: any) => h.date))
-  const today = new Date().toISOString().slice(0, 10)
+  // Use local date (not UTC) so timezone differences don't push "today" into yesterday
+  const _now = new Date()
+  const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
 
   const days = Array.from({ length: lastDay }, (_, i) => {
     const d = i + 1
@@ -825,6 +827,11 @@ function AttendanceRecordsTab() {
         <IconButton size="small" onClick={nextMonth}><ChevronRightIcon /></IconButton>
       </Box>
 
+      {leavesLoading && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          Refreshing leave data…
+        </Typography>
+      )}
       <TableContainer component={Paper} sx={{ maxHeight: 520, overflow: 'auto' }}>
         <Table size="small" stickyHeader>
           <TableHead>
