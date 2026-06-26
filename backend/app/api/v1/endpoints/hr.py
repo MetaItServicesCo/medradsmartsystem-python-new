@@ -398,6 +398,29 @@ def update_leave_request(
             link_url="/my-leave",
             actor_id=current_user.id,
         )
+
+        # When approved, mark each day in the leave period as ON_LEAVE in attendance
+        if is_approved:
+            current_date = obj.start_date
+            while current_date <= obj.end_date:
+                existing = db.query(Timesheet).filter(
+                    Timesheet.user_id == obj.user_id,
+                    Timesheet.work_date == current_date,
+                    Timesheet.source == "attendance",
+                ).first()
+                if existing:
+                    existing.day_status = DayStatus.ON_LEAVE
+                else:
+                    db.add(Timesheet(
+                        user_id=obj.user_id,
+                        work_date=current_date,
+                        source="attendance",
+                        day_status=DayStatus.ON_LEAVE,
+                        status=TimesheetStatus.APPROVED,
+                        hours=0,
+                    ))
+                current_date += timedelta(days=1)
+
         db.commit()
 
     return _lr_query(db).filter(LeaveRequest.id == lr_id).first()

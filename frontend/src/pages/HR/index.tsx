@@ -1303,8 +1303,11 @@ function LeaveRequestsTab() {
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? '#7161D8', flexShrink: 0 }} />
-                      <Typography variant="body2">{r.leave_type?.name ?? '—'}</Typography>
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? '#6b7280', flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ fontStyle: r.leave_type ? 'normal' : 'italic', color: r.leave_type ? 'text.primary' : 'text.secondary' }}>
+                        {r.leave_type?.name ?? (r.reason ? r.reason.split(':')[0] : 'Custom')}
+                      </Typography>
+                      {!r.leave_type && <Chip size="small" label="Custom" sx={{ fontSize: 10, height: 16 }} />}
                     </Box>
                   </TableCell>
                   <TableCell>{fmt(r.start_date)}</TableCell>
@@ -1369,7 +1372,7 @@ function LeaveRequestsTab() {
             <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Typography variant="body2" fontWeight={600}>{reviewDlg.item.user?.full_name ?? reviewDlg.item.user?.email}</Typography>
               <Typography variant="caption" color="text.secondary">
-                {reviewDlg.item.leave_type?.name} · {fmt(reviewDlg.item.start_date)} – {fmt(reviewDlg.item.end_date)} ({reviewDlg.item.total_days} day(s))
+                {reviewDlg.item.leave_type?.name ?? (reviewDlg.item.reason ? reviewDlg.item.reason.split(':')[0] : 'Custom Leave')} · {fmt(reviewDlg.item.start_date)} – {fmt(reviewDlg.item.end_date)} ({reviewDlg.item.total_days} day(s))
               </Typography>
             </Box>
           )}

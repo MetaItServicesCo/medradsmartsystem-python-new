@@ -93,7 +93,7 @@ class LeavePolicyResponse(BaseModel):
 # ── Leave Requests ────────────────────────────────────────────────────────────
 
 class LeaveRequestCreate(BaseModel):
-    leave_type_id: int
+    leave_type_id: Optional[int] = None
     start_date: date
     end_date: date
     reason: Optional[str] = None

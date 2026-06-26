@@ -25,9 +25,9 @@ const STATUS_META: Record<string, { label: string; color: 'default' | 'warning' 
   cancelled: { label: 'Cancelled', color: 'default', icon: <EventBusyIcon fontSize="small" /> },
 }
 
+const CUSTOM_VALUE = '__custom__'
 const fmt = (d?: string | null) => d ? new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
-
-const EMPTY_FORM = { leave_type_id: '', start_date: '', end_date: '', reason: '' }
+const EMPTY_FORM = { leave_type_id: '', custom_leave_name: '', start_date: '', end_date: '', reason: '' }
 
 function KpiCard({ label, value, icon, gradient }: { label: string; value: number; icon: React.ReactNode; gradient: string }) {
   return (
@@ -118,34 +118,46 @@ export default function MyLeave() {
 
   const statusFilter = (['', 'pending', 'approved', 'rejected', 'cancelled'] as const)[tab] || undefined
 
-  const { data: raw } = useQuery({
-    queryKey: ['my-leave-requests', statusFilter],
-    queryFn: () => fetchLeaveRequests(statusFilter ? { status: statusFilter } : undefined),
+  // Unfiltered — for KPI counts only
+  const { data: allRaw } = useQuery({
+    queryKey: ['my-leave-requests', 'all'],
+    queryFn: () => fetchLeaveRequests(),
+    staleTime: 0,
   })
+  const allItems: any[] = Array.isArray(allRaw) ? allRaw : (allRaw as any)?.items ?? []
+
+  // Filtered — for the table
+  const { data: raw } = useQuery({
+    queryKey: ['my-leave-requests', statusFilter ?? ''],
+    queryFn: () => fetchLeaveRequests(statusFilter ? { status: statusFilter } : undefined),
+    staleTime: 0,
+  })
+  const items: any[] = Array.isArray(raw) ? raw : (raw as any)?.items ?? []
+
   const { data: leaveTypesRaw } = useQuery({ queryKey: ['leave-types'], queryFn: fetchLeaveTypes })
+  const leaveTypes: any[] = Array.isArray(leaveTypesRaw) ? leaveTypesRaw : (leaveTypesRaw as any)?.items ?? []
+  const activeTypes = leaveTypes.filter((t: any) => t.is_active !== false)
+
   const { data: approvedRaw } = useQuery({
     queryKey: ['my-leave-requests', 'approved'],
     queryFn: () => fetchLeaveRequests({ status: 'approved' }),
+    staleTime: 0,
   })
+  const approved: any[] = Array.isArray(approvedRaw) ? approvedRaw : (approvedRaw as any)?.items ?? []
 
-  const items: any[]       = Array.isArray(raw) ? raw : raw?.items ?? []
-  const leaveTypes: any[]  = Array.isArray(leaveTypesRaw) ? leaveTypesRaw : leaveTypesRaw?.items ?? []
-  const approved: any[]    = Array.isArray(approvedRaw) ? approvedRaw : approvedRaw?.items ?? []
+  const counts = useMemo(() => ({
+    total:    allItems.length,
+    pending:  allItems.filter((r: any) => r.status === 'pending').length,
+    approved: allItems.filter((r: any) => r.status === 'approved').length,
+    rejected: allItems.filter((r: any) => r.status === 'rejected').length,
+  }), [allItems])
 
-  const counts = useMemo(() => {
-    const allItems: any[] = Array.isArray(raw) ? raw : raw?.items ?? []
-    return {
-      total:    allItems.length,
-      pending:  allItems.filter(r => r.status === 'pending').length,
-      approved: allItems.filter(r => r.status === 'approved').length,
-      rejected: allItems.filter(r => r.status === 'rejected').length,
-    }
-  }, [raw])
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['my-leave-requests'] })
 
   const createMut = useMutation({
     mutationFn: createLeaveRequest,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['my-leave-requests'] })
+      invalidate()
       toast.success('Leave request submitted')
       setDlg(false)
       setForm(EMPTY_FORM)
@@ -156,25 +168,43 @@ export default function MyLeave() {
   const cancelMut = useMutation({
     mutationFn: deleteLeaveRequest,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['my-leave-requests'] })
+      invalidate()
       toast.success('Request cancelled')
       setCancelId(null)
     },
   })
+
+  const isCustom = form.leave_type_id === CUSTOM_VALUE
 
   const handleSubmit = () => {
     if (!form.leave_type_id || !form.start_date || !form.end_date) {
       toast.error('Leave type, start date, and end date are required')
       return
     }
+    if (isCustom && !form.custom_leave_name.trim()) {
+      toast.error('Please enter a name for your custom leave')
+      return
+    }
     if (new Date(form.end_date) < new Date(form.start_date)) {
       toast.error('End date cannot be before start date')
       return
     }
-    createMut.mutate({ leave_type_id: Number(form.leave_type_id), start_date: form.start_date, end_date: form.end_date, reason: form.reason || undefined })
+    const reason = isCustom
+      ? `${form.custom_leave_name.trim()}${form.reason ? ': ' + form.reason : ''}`
+      : (form.reason || undefined)
+    createMut.mutate({
+      leave_type_id: isCustom ? null : Number(form.leave_type_id),
+      start_date: form.start_date,
+      end_date: form.end_date,
+      reason,
+    } as any)
   }
 
   const f = (k: string) => (e: any) => setForm((p: any) => ({ ...p, [k]: e.target.value }))
+
+  const dayCount = form.start_date && form.end_date && new Date(form.end_date) >= new Date(form.start_date)
+    ? Math.round((new Date(form.end_date).getTime() - new Date(form.start_date).getTime()) / 86400000) + 1
+    : 0
 
   return (
     <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
@@ -187,20 +217,39 @@ export default function MyLeave() {
         <Button startIcon={<AddIcon />} variant="contained" onClick={() => setDlg(true)}>Apply for Leave</Button>
       </Box>
 
-      {/* KPI Cards */}
+      {/* KPI Cards — always from unfiltered dataset */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <KpiCard label="Total Requests" value={counts.total} icon={<BeachAccessIcon />} gradient="linear-gradient(135deg,#7161D8,#9B8EE8)" />
-        <KpiCard label="Pending"        value={counts.pending}  icon={<HourglassEmptyIcon />} gradient="linear-gradient(135deg,#f57c00,#ffa726)" />
-        <KpiCard label="Approved"       value={counts.approved} icon={<CheckCircleIcon />}     gradient="linear-gradient(135deg,#2e7d32,#43a047)" />
-        <KpiCard label="Rejected"       value={counts.rejected} icon={<CancelIcon />}          gradient="linear-gradient(135deg,#c62828,#e53935)" />
+        <KpiCard label="Total Requests" value={counts.total}    icon={<BeachAccessIcon />}      gradient="linear-gradient(135deg,#7161D8,#9B8EE8)" />
+        <KpiCard label="Pending"        value={counts.pending}  icon={<HourglassEmptyIcon />}   gradient="linear-gradient(135deg,#f57c00,#ffa726)" />
+        <KpiCard label="Approved"       value={counts.approved} icon={<CheckCircleIcon />}       gradient="linear-gradient(135deg,#2e7d32,#43a047)" />
+        <KpiCard label="Rejected"       value={counts.rejected} icon={<CancelIcon />}            gradient="linear-gradient(135deg,#c62828,#e53935)" />
       </Box>
+
+      {/* Available leave types banner */}
+      {activeTypes.length > 0 && (
+        <Paper sx={{ p: 2, mb: 3, borderRadius: 2, bgcolor: 'grey.50' }}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Leave Types Offered by HR
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {activeTypes.map((t: any) => (
+              <Chip
+                key={t.id}
+                size="small"
+                label={`${t.name}${t.max_days_per_year > 0 ? ` · ${t.max_days_per_year}d/yr` : ''}${t.is_paid ? ' · Paid' : ' · Unpaid'}`}
+                sx={{ bgcolor: t.color ? `${t.color}22` : 'primary.50', color: t.color ?? 'primary.main', border: `1px solid ${t.color ?? '#7161D8'}44`, fontWeight: 600 }}
+              />
+            ))}
+          </Box>
+        </Paper>
+      )}
 
       <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Table side */}
         <Box sx={{ flex: 1, minWidth: 480 }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
             <Tab label="All" />
-            <Tab label="Pending" />
+            <Tab label={`Pending${counts.pending > 0 ? ` (${counts.pending})` : ''}`} />
             <Tab label="Approved" />
             <Tab label="Rejected" />
             <Tab label="Cancelled" />
@@ -224,12 +273,18 @@ export default function MyLeave() {
                   </TableRow>
                 ) : items.map((r: any) => {
                   const meta = STATUS_META[r.status] ?? STATUS_META.pending
+                  const typeName = r.leave_type?.name ?? null
+                  const isCustomLeave = !typeName
+                  const displayName = typeName ?? (r.reason ? r.reason.split(':')[0] : 'Custom')
                   return (
                     <TableRow key={r.id} hover>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? '#7161D8', flexShrink: 0 }} />
-                          <Typography variant="body2" fontWeight={500}>{r.leave_type?.name ?? '—'}</Typography>
+                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? (isCustomLeave ? '#6b7280' : '#7161D8'), flexShrink: 0 }} />
+                          <Typography variant="body2" fontWeight={500} sx={{ color: isCustomLeave ? 'text.secondary' : 'text.primary', fontStyle: isCustomLeave ? 'italic' : 'normal' }}>
+                            {displayName}
+                          </Typography>
+                          {isCustomLeave && <Chip size="small" label="Custom" sx={{ fontSize: 10, height: 16, ml: 0.5 }} />}
                         </Box>
                       </TableCell>
                       <TableCell><Typography variant="body2">{fmt(r.start_date)}</Typography></TableCell>
@@ -268,35 +323,58 @@ export default function MyLeave() {
       </Box>
 
       {/* Apply Dialog */}
-      <Dialog open={dlg} onClose={() => setDlg(false)} maxWidth="xs" fullWidth>
+      <Dialog open={dlg} onClose={() => { setDlg(false); setForm(EMPTY_FORM) }} maxWidth="xs" fullWidth>
         <DialogTitle>Apply for Leave</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
           <FormControl size="small" fullWidth required>
             <InputLabel>Leave Type</InputLabel>
             <Select value={form.leave_type_id} label="Leave Type" onChange={f('leave_type_id')}>
-              {leaveTypes.filter((t: any) => t.is_active !== false).map((t: any) => (
+              {activeTypes.map((t: any) => (
                 <MenuItem key={t.id} value={t.id}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: t.color ?? '#7161D8' }} />
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: t.color ?? '#7161D8', flexShrink: 0 }} />
                     {t.name} {t.max_days_per_year > 0 ? `(max ${t.max_days_per_year}d/yr)` : ''}
+                    {!t.is_paid && <Chip size="small" label="Unpaid" sx={{ ml: 0.5, fontSize: 10, height: 16 }} />}
                   </Box>
                 </MenuItem>
               ))}
+              <MenuItem value={CUSTOM_VALUE}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#6b7280', flexShrink: 0 }} />
+                  Other / Custom
+                </Box>
+              </MenuItem>
             </Select>
           </FormControl>
+
+          {isCustom && (
+            <TextField
+              label="Leave Name" size="small" fullWidth required
+              value={form.custom_leave_name}
+              onChange={f('custom_leave_name')}
+              placeholder="e.g. Personal errand, Family emergency…"
+            />
+          )}
+
           <TextField label="Start Date" type="date" size="small" fullWidth required InputLabelProps={{ shrink: true }}
             value={form.start_date} onChange={f('start_date')} />
           <TextField label="End Date" type="date" size="small" fullWidth required InputLabelProps={{ shrink: true }}
             value={form.end_date} onChange={f('end_date')}
             inputProps={{ min: form.start_date }}
           />
-          {form.start_date && form.end_date && new Date(form.end_date) >= new Date(form.start_date) && (
+
+          {dayCount > 0 && (
             <Alert severity="info" sx={{ py: 0.5 }}>
-              {Math.max(1, Math.round((new Date(form.end_date).getTime() - new Date(form.start_date).getTime()) / 86400000) + 1)} day(s) requested
+              {dayCount} day{dayCount !== 1 ? 's' : ''} requested
             </Alert>
           )}
-          <TextField label="Reason (optional)" multiline rows={3} size="small" fullWidth
-            value={form.reason} onChange={f('reason')} placeholder="Describe the reason for your leave..." />
+
+          <TextField
+            label={isCustom ? 'Reason (required for custom leave)' : 'Reason (optional)'}
+            multiline rows={3} size="small" fullWidth
+            value={form.reason} onChange={f('reason')}
+            placeholder="Describe the reason for your leave…"
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setDlg(false); setForm(EMPTY_FORM) }}>Cancel</Button>
