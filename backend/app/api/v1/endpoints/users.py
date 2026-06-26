@@ -25,6 +25,7 @@ from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_
 router = APIRouter()
 
 get_superadmin_user = require_roles("superadmin")
+get_superadmin_or_hr = require_roles("superadmin", "hr_manager")
 PROFILE_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "profile_pictures")
 ALLOWED_PROFILE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_PROFILE_IMAGE_SIZE = 5 * 1024 * 1024
@@ -511,9 +512,9 @@ def deactivate_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_superadmin_user),
+    current_user: User = Depends(get_superadmin_or_hr),
 ) -> Any:
-    """Hard-delete a user from the system. Super admin only."""
+    """Hard-delete a user from the system. Super admin or HR manager only."""
     db_user = crud_user.get(db, id=user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -522,9 +523,11 @@ def delete_user(
 
     userData = {"username": db_user.username, "email": db_user.email}
 
-    # Nullify any FK references that lack CASCADE/SET NULL at the DB level
-    # so PostgreSQL doesn't block the delete with a constraint error.
-    nullify_stmts = [
+    # Before deleting the user, clear all FK references that don't have
+    # ON DELETE CASCADE / SET NULL at the DB level.
+    # Each statement runs in its own savepoint so a single failure (e.g., column
+    # is still NOT NULL before the migration runs) does not roll back the others.
+    cleanup_stmts = [
         "UPDATE audit_logs SET changed_by_id = NULL WHERE changed_by_id = :uid",
         "DELETE FROM calendar_events WHERE user_id = :uid",
         "UPDATE inspection_batches SET inspector_id = NULL WHERE inspector_id = :uid",
@@ -538,14 +541,23 @@ def delete_user(
         "UPDATE service_requests SET requester_id = NULL WHERE requester_id = :uid",
         "UPDATE service_requests SET assigned_technician_id = NULL WHERE assigned_technician_id = :uid",
     ]
-    for stmt in nullify_stmts:
+    for stmt in cleanup_stmts:
+        sp = db.begin_nested()  # savepoint — isolates each cleanup statement
         try:
             db.execute(text(stmt), {"uid": user_id})
+            sp.commit()
         except Exception:
-            db.rollback()
-            raise
+            sp.rollback()  # skip this one, keep going
 
-    crud_user.remove(db, id=user_id)
+    try:
+        crud_user.remove(db, id=user_id)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete this user — they still have references in the system. Run database migrations and try again.",
+        ) from exc
+
     log_activity(db, "users", user_id, "DELETE", current_user, userData)
     
     return {
