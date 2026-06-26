@@ -344,7 +344,7 @@ def list_leave_requests(
         q = q.filter(LeaveRequest.status == status)
     total = q.count()
     items = q.order_by(desc(LeaveRequest.created_at)).offset(skip).limit(limit).all()
-    return {"total": total, "items": items}
+    return {"total": total, "items": [LeaveRequestResponse.model_validate(i) for i in items]}
 
 
 @router.post("/leave-requests", response_model=LeaveRequestResponse, status_code=201)
