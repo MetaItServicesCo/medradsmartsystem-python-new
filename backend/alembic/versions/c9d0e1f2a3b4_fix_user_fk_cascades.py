@@ -54,7 +54,7 @@ def _recreate_fk(table: str, col: str, ref: str, on_delete: str, old_name: str =
 
     # Also try dropping by querying information_schema
     result = bind.execute(text(
-        "SELECT constraint_name FROM information_schema.table_constraints tc "
+        "SELECT tc.constraint_name FROM information_schema.table_constraints tc "
         "JOIN information_schema.key_column_usage kcu "
         "  ON tc.constraint_name = kcu.constraint_name AND tc.table_name = kcu.table_name "
         "WHERE tc.table_name = :t AND kcu.column_name = :c AND tc.constraint_type = 'FOREIGN KEY'"
