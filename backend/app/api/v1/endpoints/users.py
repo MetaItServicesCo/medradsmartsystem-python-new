@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_admin_user, require_roles
@@ -519,9 +520,31 @@ def delete_user(
     if db_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
 
-    # Important: deleting user might fail if there are FK constraints
-    # but CRUDBase will try to execute it.
     userData = {"username": db_user.username, "email": db_user.email}
+
+    # Nullify any FK references that lack CASCADE/SET NULL at the DB level
+    # so PostgreSQL doesn't block the delete with a constraint error.
+    nullify_stmts = [
+        "UPDATE audit_logs SET changed_by_id = NULL WHERE changed_by_id = :uid",
+        "DELETE FROM calendar_events WHERE user_id = :uid",
+        "UPDATE inspection_batches SET inspector_id = NULL WHERE inspector_id = :uid",
+        "UPDATE inspections SET inspector_id = NULL WHERE inspector_id = :uid",
+        "UPDATE inventory_transactions SET created_by_id = NULL WHERE created_by_id = :uid",
+        "UPDATE invoices SET created_by_id = NULL WHERE created_by_id = :uid",
+        "UPDATE notifications SET actor_id = NULL WHERE actor_id = :uid",
+        "UPDATE rentals SET created_by_id = NULL WHERE created_by_id = :uid",
+        "UPDATE sales_quotations SET created_by_id = NULL WHERE created_by_id = :uid",
+        "UPDATE service_request_quotations SET created_by_id = NULL WHERE created_by_id = :uid",
+        "UPDATE service_requests SET requester_id = NULL WHERE requester_id = :uid",
+        "UPDATE service_requests SET assigned_technician_id = NULL WHERE assigned_technician_id = :uid",
+    ]
+    for stmt in nullify_stmts:
+        try:
+            db.execute(text(stmt), {"uid": user_id})
+        except Exception:
+            db.rollback()
+            raise
+
     crud_user.remove(db, id=user_id)
     log_activity(db, "users", user_id, "DELETE", current_user, userData)
     
