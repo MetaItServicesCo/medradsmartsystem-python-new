@@ -627,6 +627,12 @@ function EmployeesSection() {
 // ORGANIZATION
 // ══════════════════════════════════════════════════════════════════════════════
 
+const HOLIDAY_TYPE_META: Record<string, { color: string; label: string }> = {
+  public:   { color: '#2e7d32', label: 'Public' },
+  company:  { color: '#7161D8', label: 'Company' },
+  optional: { color: '#f57c00', label: 'Optional' },
+}
+
 function HolidaysTab() {
   const qc = useQueryClient()
   const year = new Date().getFullYear()
@@ -640,40 +646,60 @@ function HolidaysTab() {
   ]
   const mut = useMutation({
     mutationFn: (d: any) => dlg.item ? updateHoliday(dlg.item.id, d) : createHoliday(d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-holidays'] }); toast.success('Saved') },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-holidays'] }); toast.success('Saved'); setDlg({ open: false }) },
   })
   const del = useMutation({ mutationFn: deleteHoliday, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-holidays'] }); toast.success('Deleted') } })
+  const list: any[] = Array.isArray(holidays) ? holidays : (holidays as any).items ?? []
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Holiday</Button>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button startIcon={<AddIcon />} variant="contained" onClick={() => setDlg({ open: true })}>Add Holiday</Button>
       </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow>
-            {['Name','Date','Type','Description',''].map(h => <Th key={h}>{h}</Th>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {(holidays as any[]).map((h: any) => (
-              <TableRow key={h.id} hover>
-                <TableCell>{h.name}</TableCell>
-                <TableCell>{fmt(h.date)}</TableCell>
-                <TableCell><Chip size="small" label={h.type ?? h.holiday_type} /></TableCell>
-                <TableCell>{h.description ?? '—'}</TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: h })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(h.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      {list.length === 0 ? (
+        <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
+          <Typography color="text.secondary">No holidays added yet.</Typography>
+        </Paper>
+      ) : (
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+          {list.map((h: any) => {
+            const type = h.type ?? h.holiday_type ?? 'public'
+            const meta = HOLIDAY_TYPE_META[type] ?? { color: '#9e9e9e', label: type }
+            return (
+              <Paper key={h.id} variant="outlined" sx={{ p: 2.5, borderRadius: 3, borderLeft: `4px solid ${meta.color}`, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography sx={{ fontSize: 20 }}>⭐</Typography>
+                    <Typography fontWeight={700} variant="body1">{h.name}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <CrudEditBtn onEdit={() => setDlg({ open: true, item: h })} />
+                    <CrudDeleteBtn onDelete={() => del.mutate(h.id)} />
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip size="small" label={meta.label} sx={{ bgcolor: `${meta.color}18`, color: meta.color, fontWeight: 600, border: `1px solid ${meta.color}44` }} />
+                  <Typography variant="body2" fontWeight={600} color="text.secondary">{fmt(h.date)}</Typography>
+                </Box>
+                {h.description && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>{h.description}</Typography>
+                )}
+              </Paper>
+            )
+          })}
+        </Box>
+      )}
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Holiday' : 'Add Holiday'}
         fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
         onSave={d => mut.mutate(d)} />
     </Box>
   )
+}
+
+const PRIORITY_META: Record<string, { color: string; label: string; chipColor: 'error' | 'warning' | 'primary' | 'default' }> = {
+  urgent: { color: '#c62828', label: 'Urgent',  chipColor: 'error'   },
+  high:   { color: '#f57c00', label: 'High',    chipColor: 'warning' },
+  normal: { color: '#7161D8', label: 'Normal',  chipColor: 'primary' },
+  low:    { color: '#9e9e9e', label: 'Low',     chipColor: 'default' },
 }
 
 function AnnouncementsTab() {
@@ -688,35 +714,53 @@ function AnnouncementsTab() {
   ]
   const mut = useMutation({
     mutationFn: (d: any) => dlg.item ? updateAnnouncement(dlg.item.id, d) : createAnnouncement(d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-announcements'] }); toast.success('Saved') },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-announcements'] }); toast.success('Saved'); setDlg({ open: false }) },
   })
   const del = useMutation({ mutationFn: deleteAnnouncement, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-announcements'] }); toast.success('Deleted') } })
   const list: any[] = Array.isArray(announcements) ? announcements : (announcements as any).items ?? []
+  const today = new Date().toISOString().slice(0, 10)
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Announcement</Button>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button startIcon={<AddIcon />} variant="contained" onClick={() => setDlg({ open: true })}>Add Announcement</Button>
       </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow>
-            {['Title','Priority','Expires',''].map(h => <Th key={h}>{h}</Th>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {list.map((a: any) => (
-              <TableRow key={a.id} hover>
-                <TableCell>{a.title}</TableCell>
-                <TableCell><Chip size="small" label={a.priority} color={a.priority === 'urgent' ? 'error' : a.priority === 'high' ? 'warning' : 'default'} /></TableCell>
-                <TableCell>{fmt(a.expires_at)}</TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: a })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(a.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      {list.length === 0 ? (
+        <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
+          <Typography color="text.secondary">No announcements yet.</Typography>
+        </Paper>
+      ) : (
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
+          {list.map((a: any) => {
+            const p = a.priority ?? 'normal'
+            const meta = PRIORITY_META[p] ?? PRIORITY_META.normal
+            const expired = a.expires_at && a.expires_at < today
+            return (
+              <Paper key={a.id} variant="outlined" sx={{ p: 2.5, borderRadius: 3, borderLeft: `4px solid ${meta.color}`, display: 'flex', flexDirection: 'column', gap: 1, opacity: expired ? 0.6 : 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                  <Typography fontWeight={700} variant="body1" sx={{ flex: 1 }}>{a.title}</Typography>
+                  <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                    <CrudEditBtn onEdit={() => setDlg({ open: true, item: a })} />
+                    <CrudDeleteBtn onDelete={() => del.mutate(a.id)} />
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip size="small" color={meta.chipColor} label={meta.label} />
+                  {a.expires_at && (
+                    <Typography variant="caption" color={expired ? 'error' : 'text.secondary'}>
+                      {expired ? 'Expired ' : 'Expires '}{fmt(a.expires_at)}
+                    </Typography>
+                  )}
+                </Box>
+                {a.content && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {a.content}
+                  </Typography>
+                )}
+              </Paper>
+            )
+          })}
+        </Box>
+      )}
       <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Announcement' : 'Add Announcement'}
         fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
         onSave={d => mut.mutate(d)} />
@@ -789,11 +833,12 @@ function AttendanceRecordsTab() {
     const dt = new Date(dateStr)
     const dow = dt.getDay()
     if (dow === 0 || dow === 6) return 'day_off'
-    if (holidayDates.has(dateStr)) return 'holiday'
+    // Approved leave takes priority over holidays and future status
     const onLeave = leaves.some((l: any) =>
       l.user_id === userId && dateStr >= l.start_date && dateStr <= l.end_date
     )
     if (onLeave) return 'on_leave'
+    if (holidayDates.has(dateStr)) return 'holiday'
     if (dateStr > today) return 'future'
     const dayEvents = events.filter((e: any) => e.user_id === userId && e.event_time?.slice(0, 10) === dateStr)
     if (dayEvents.length === 0) return 'not_added'
