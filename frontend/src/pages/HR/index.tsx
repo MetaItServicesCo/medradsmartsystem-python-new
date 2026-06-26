@@ -1234,59 +1234,165 @@ function AttendanceSection() {
 
 function LeaveRequestsTab() {
   const qc = useQueryClient()
-  const { data: requests } = useQuery({ queryKey: ['hr-leave-requests'], queryFn: () => fetchLeaveRequests() })
-  const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'start_date', label: 'Start Date', type: 'date' },
-    { key: 'end_date', label: 'End Date', type: 'date' },
-    { key: 'reason', label: 'Reason', type: 'textarea' },
-    { key: 'status', label: 'Status', type: 'select', options: ['pending','approved','rejected','cancelled'] },
-  ]
-  const mut = useMutation({
-    mutationFn: (d: any) => dlg.item ? updateLeaveRequest(dlg.item.id, d) : createLeaveRequest(d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-requests'] }); toast.success('Saved') },
+  const [statusFilter, setStatusFilter] = useState<string>('pending')
+  const [reviewDlg, setReviewDlg] = useState<{ open: boolean; item?: any; action?: 'approved' | 'rejected' }>({ open: false })
+  const [comments, setComments] = useState('')
+
+  const { data: requests } = useQuery({
+    queryKey: ['hr-leave-requests', statusFilter],
+    queryFn: () => fetchLeaveRequests(statusFilter ? { status: statusFilter } : undefined),
   })
-  const del = useMutation({ mutationFn: deleteLeaveRequest, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-requests'] }); toast.success('Deleted') } })
+
+  const reviewMut = useMutation({
+    mutationFn: ({ id, status, comments }: { id: number; status: string; comments: string }) =>
+      updateLeaveRequest(id, { status, comments }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hr-leave-requests'] })
+      toast.success(reviewDlg.action === 'approved' ? 'Leave approved' : 'Leave rejected')
+      setReviewDlg({ open: false })
+      setComments('')
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? 'Action failed'),
+  })
+
   const list: any[] = (requests as any)?.items ?? (Array.isArray(requests) ? requests : [])
-  const sColor = (s: string) => s === 'approved' ? 'success' : s === 'rejected' ? 'error' : 'warning'
+
+  const sColor = (s: string) => s === 'approved' ? 'success' : s === 'rejected' ? 'error' : s === 'cancelled' ? 'default' : 'warning'
+
+  const openReview = (item: any, action: 'approved' | 'rejected') => {
+    setComments('')
+    setReviewDlg({ open: true, item, action })
+  }
+
+  const STATUS_FILTERS = ['pending', 'approved', 'rejected', 'cancelled', '']
+  const STATUS_LABELS  = ['Pending', 'Approved', 'Rejected', 'Cancelled', 'All']
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>New Request</Button>
+      {/* Status filter chips */}
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        {STATUS_FILTERS.map((s, i) => (
+          <Chip
+            key={s}
+            label={STATUS_LABELS[i]}
+            onClick={() => setStatusFilter(s)}
+            color={statusFilter === s ? (s === 'approved' ? 'success' : s === 'rejected' ? 'error' : s === 'cancelled' ? 'default' : 'primary') : 'default'}
+            variant={statusFilter === s ? 'filled' : 'outlined'}
+            size="small"
+          />
+        ))}
       </Box>
+
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead><TableRow>
-            {['Employee','Type','From','To','Days','Status',''].map(h => <Th key={h}>{h}</Th>)}
+            {['Employee', 'Type', 'From', 'To', 'Days', 'Reason', 'Status', 'Reviewed By', ''].map(h => <Th key={h}>{h}</Th>)}
           </TableRow></TableHead>
           <TableBody>
-            {list.map((r: any) => (
-              <TableRow key={r.id} hover>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Avatar sx={{ width: 26, height: 26, fontSize: 11 }}>{(r.user?.full_name ?? r.user?.email ?? '?')[0]?.toUpperCase()}</Avatar>
-                    <Box>
+            {list.length === 0
+              ? <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>No {statusFilter || ''} leave requests.</TableCell></TableRow>
+              : list.map((r: any) => (
+                <TableRow key={r.id} hover>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar sx={{ width: 26, height: 26, fontSize: 11, bgcolor: 'primary.light' }}>
+                        {(r.user?.full_name ?? r.user?.email ?? '?')[0]?.toUpperCase()}
+                      </Avatar>
                       <Typography variant="body2">{r.user?.full_name ?? r.user?.email ?? r.user_id}</Typography>
                     </Box>
-                  </Box>
-                </TableCell>
-                <TableCell>{r.leave_type?.name ?? '—'}</TableCell>
-                <TableCell>{fmt(r.start_date)}</TableCell>
-                <TableCell>{fmt(r.end_date)}</TableCell>
-                <TableCell>{r.total_days ?? '—'}</TableCell>
-                <TableCell><Chip size="small" label={r.status} color={sColor(r.status) as any} /></TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: r })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(r.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? '#7161D8', flexShrink: 0 }} />
+                      <Typography variant="body2">{r.leave_type?.name ?? '—'}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>{fmt(r.start_date)}</TableCell>
+                  <TableCell>{fmt(r.end_date)}</TableCell>
+                  <TableCell><Typography variant="body2" fontWeight={600}>{r.total_days}</Typography></TableCell>
+                  <TableCell>
+                    {r.reason
+                      ? <Tooltip title={r.reason}><Typography variant="caption" color="text.secondary" sx={{ maxWidth: 120, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</Typography></Tooltip>
+                      : <Typography variant="caption" color="text.disabled">—</Typography>}
+                  </TableCell>
+                  <TableCell>
+                    <Chip size="small" label={r.status} color={sColor(r.status) as any} sx={{ fontWeight: 600 }} />
+                    {r.comments && (
+                      <Tooltip title={`HR note: ${r.comments}`}>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.comments}
+                        </Typography>
+                      </Tooltip>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {r.approved_by
+                      ? <Box>
+                          <Typography variant="caption" fontWeight={500}>{r.approved_by.full_name ?? r.approved_by.email}</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {r.approved_at ? new Date(r.approved_at).toLocaleDateString() : ''}
+                          </Typography>
+                        </Box>
+                      : <Typography variant="caption" color="text.disabled">—</Typography>}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    {r.status === 'pending' && (
+                      <>
+                        <Tooltip title="Approve">
+                          <Button size="small" variant="contained" color="success" sx={{ mr: 0.5, fontSize: 11, minWidth: 'auto', px: 1 }}
+                            onClick={() => openReview(r, 'approved')}>
+                            ✓
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="Reject">
+                          <Button size="small" variant="contained" color="error" sx={{ fontSize: 11, minWidth: 'auto', px: 1 }}
+                            onClick={() => openReview(r, 'rejected')}>
+                            ✕
+                          </Button>
+                        </Tooltip>
+                      </>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
           </TableBody>
         </Table>
       </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Request' : 'New Leave Request'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={d => mut.mutate(d)} />
+
+      {/* Approve / Reject dialog */}
+      <Dialog open={reviewDlg.open} onClose={() => setReviewDlg({ open: false })} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ color: reviewDlg.action === 'approved' ? 'success.main' : 'error.main' }}>
+          {reviewDlg.action === 'approved' ? 'Approve Leave' : 'Reject Leave'}
+        </DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          {reviewDlg.item && (
+            <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="body2" fontWeight={600}>{reviewDlg.item.user?.full_name ?? reviewDlg.item.user?.email}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {reviewDlg.item.leave_type?.name} · {fmt(reviewDlg.item.start_date)} – {fmt(reviewDlg.item.end_date)} ({reviewDlg.item.total_days} day(s))
+              </Typography>
+            </Box>
+          )}
+          <TextField
+            label="Comments (optional)"
+            multiline rows={3} fullWidth size="small"
+            value={comments}
+            onChange={e => setComments(e.target.value)}
+            placeholder={reviewDlg.action === 'rejected' ? 'Reason for rejection...' : 'Any notes for the employee...'}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReviewDlg({ open: false })}>Cancel</Button>
+          <Button
+            variant="contained"
+            color={reviewDlg.action === 'approved' ? 'success' : 'error'}
+            disabled={reviewMut.isPending}
+            onClick={() => reviewMut.mutate({ id: reviewDlg.item.id, status: reviewDlg.action!, comments })}
+          >
+            {reviewDlg.action === 'approved' ? 'Approve' : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

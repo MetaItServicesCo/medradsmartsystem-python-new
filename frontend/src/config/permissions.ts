@@ -17,6 +17,7 @@ export type Module =
   | 'billing'
   | 'hr'
   | 'my-timesheets'
+  | 'my-leave'
   | 'chat'
   | 'calendar'
 
@@ -24,30 +25,30 @@ export const ROLE_PERMISSIONS: Record<string, Module[]> = {
   superadmin: [
     'dashboard', 'facilities', 'users', 'service-requests', 'inspections',
     'sales', 'rentals', 'inventory', 'reports', 'billing',
-    'hr', 'my-timesheets', 'chat', 'attendance', 'calendar',
+    'hr', 'my-timesheets', 'my-leave', 'chat', 'attendance', 'calendar',
   ],
   admin: [
     'dashboard', 'facilities', 'service-requests', 'inspections',
     'sales', 'rentals', 'inventory', 'reports', 'billing',
-    'my-timesheets', 'chat', 'attendance', 'calendar',
+    'my-timesheets', 'my-leave', 'chat', 'attendance', 'calendar',
   ],
   facility_admin: [
     'dashboard', 'facilities', 'service-requests', 'inventory', 'billing',
-    'my-timesheets', 'chat', 'calendar',
+    'my-timesheets', 'my-leave', 'chat', 'calendar',
   ],
   technician: [
     'dashboard', 'service-requests', 'inspections',
-    'my-timesheets', 'chat', 'calendar',
+    'my-timesheets', 'my-leave', 'chat', 'calendar',
   ],
   hr_manager: [
-    'dashboard', 'users', 'attendance', 'hr', 'my-timesheets', 'chat', 'calendar',
+    'dashboard', 'users', 'attendance', 'hr', 'my-timesheets', 'my-leave', 'chat', 'calendar',
   ],
   facility_manager: [
     'dashboard', 'facilities', 'inspections', 'billing',
-    'my-timesheets', 'chat', 'calendar',
+    'my-timesheets', 'my-leave', 'chat', 'calendar',
   ],
   employee: [
-    'dashboard', 'service-requests', 'my-timesheets', 'chat', 'calendar',
+    'dashboard', 'service-requests', 'my-timesheets', 'my-leave', 'chat', 'calendar',
   ],
   client: [
     'dashboard', 'service-requests', 'chat', 'calendar',

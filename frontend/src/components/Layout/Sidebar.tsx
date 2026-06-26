@@ -14,6 +14,7 @@ import ChatBubbleIcon from '@mui/icons-material/ChatBubble'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import TimerIcon from '@mui/icons-material/Timer'
+import BeachAccessIcon from '@mui/icons-material/BeachAccess'
 import PaymentIcon from '@mui/icons-material/Payment'
 import GroupsIcon from '@mui/icons-material/Groups'
 import LogoutIcon from '@mui/icons-material/Logout'
@@ -63,6 +64,7 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
   { text: 'Inventory', icon: <InventoryIcon />, path: '/inventory', module: 'inventory' },
   { text: 'HR', icon: <GroupsIcon />, path: '/hr', module: 'hr' },
   { text: 'My Timesheets', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets' },
+  { text: 'My Leave', icon: <BeachAccessIcon />, path: '/my-leave', module: 'my-leave' },
   { text: 'Reports', icon: <AssessmentIcon />, path: '/reports', module: 'reports' },
   { text: 'Billing', icon: <PaymentIcon />, path: '/billing', module: 'billing' },
   { text: 'Attendance', icon: <AccessTimeIcon />, path: '/attendance', module: 'attendance' },
