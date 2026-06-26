@@ -8,6 +8,7 @@ import {
   TableHead, TableRow, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import DownloadIcon from '@mui/icons-material/Download'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import AnnouncementIcon from '@mui/icons-material/Announcement'
 import AssignmentIcon from '@mui/icons-material/Assignment'
@@ -59,6 +60,7 @@ import {
   fetchEmployeeContracts, createEmployeeContract, updateEmployeeContract, deleteEmployeeContract,
   fetchAcknowledgments, createAcknowledgment,
   fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet, generateTimesheets,
+  downloadAttendanceSheet, downloadTimesheetSubmissions,
   fetchEmployeeSubmissions, reviewEmployeeSubmission,
   fetchEmployeePolicyAssignments, createEmployeePolicyAssignment, deleteEmployeePolicyAssignment,
 } from '@/api/hr'
@@ -1241,6 +1243,8 @@ function LeaveRequestsTab() {
   const { data: requests } = useQuery({
     queryKey: ['hr-leave-requests', statusFilter],
     queryFn: () => fetchLeaveRequests(statusFilter ? { status: statusFilter } : undefined),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 
   const reviewMut = useMutation({
@@ -1404,47 +1408,129 @@ function LeaveTypesTab() {
   const qc = useQueryClient()
   const { data: types = [] } = useQuery({ queryKey: ['hr-leave-types'], queryFn: fetchLeaveTypes })
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const FIELDS: FieldDef[] = [
-    { key: 'name', label: 'Name' },
-    { key: 'max_days_per_year', label: 'Max Days/Year', type: 'number' },
-    { key: 'is_paid', label: 'Paid?', type: 'select', options: ['true','false'] },
-    { key: 'description', label: 'Description', type: 'textarea' },
-  ]
-  const mut = useMutation({
-    mutationFn: (d: any) => { const data = { ...d, is_paid: d.is_paid === 'true' }; return dlg.item ? updateLeaveType(dlg.item.id, data) : createLeaveType(data) },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-types'] }); toast.success('Saved') },
-  })
-  const del = useMutation({ mutationFn: deleteLeaveType, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-types'] }); toast.success('Deleted') } })
+  const [form, setForm] = useState<any>({ name: '', max_days_per_year: 0, is_paid: true, color: '#7161D8', description: '', carry_forward_days: 0, is_active: true })
+
   const list: any[] = Array.isArray(types) ? types : (types as any).items ?? []
+  const activeCount = list.filter((t: any) => t.is_active !== false).length
+  const paidCount   = list.filter((t: any) => t.is_paid).length
+
+  const openAdd  = () => { setForm({ name: '', max_days_per_year: 0, is_paid: true, color: '#7161D8', description: '', carry_forward_days: 0, is_active: true }); setDlg({ open: true }) }
+  const openEdit = (t: any) => { setForm({ ...t }); setDlg({ open: true, item: t }) }
+  const set = (k: string, v: any) => setForm((p: any) => ({ ...p, [k]: v }))
+
+  const mut = useMutation({
+    mutationFn: (d: any) => dlg.item ? updateLeaveType(dlg.item.id, d) : createLeaveType(d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-types'] }); qc.invalidateQueries({ queryKey: ['leave-types'] }); toast.success('Saved'); setDlg({ open: false }) },
+  })
+  const del = useMutation({ mutationFn: deleteLeaveType, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-leave-types'] }); qc.invalidateQueries({ queryKey: ['leave-types'] }); toast.success('Deleted') } })
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDlg({ open: true })}>Add Type</Button>
+      {/* KPI Cards */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Total Leave Types', value: list.length, icon: '🏖️' },
+          { label: 'Active Types',      value: activeCount,  icon: '✅' },
+          { label: 'Paid Leave Types',  value: paidCount,    icon: '💵' },
+          { label: 'Unpaid Types',      value: list.length - paidCount, icon: '🔄' },
+        ].map(k => (
+          <Card key={k.label} sx={{ flex: 1, minWidth: 150 }}>
+            <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">{k.label}</Typography>
+                <Typography variant="h5" fontWeight={800}>{k.value}</Typography>
+              </Box>
+              <Typography fontSize={28}>{k.icon}</Typography>
+            </CardContent>
+          </Card>
+        ))}
       </Box>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead><TableRow>
-            {['Name','Max Days','Paid','Description',''].map(h => <Th key={h}>{h}</Th>)}
-          </TableRow></TableHead>
-          <TableBody>
-            {list.map((t: any) => (
-              <TableRow key={t.id} hover>
-                <TableCell>{t.name}</TableCell>
-                <TableCell>{t.max_days_per_year}</TableCell>
-                <TableCell><Chip size="small" label={t.is_paid ? 'Yes' : 'No'} color={t.is_paid ? 'success' : 'default'} /></TableCell>
-                <TableCell>{t.description ?? '—'}</TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                  <CrudEditBtn onEdit={() => setDlg({ open: true, item: { ...t, is_paid: String(t.is_paid) } })} />
-                  <CrudDeleteBtn onDelete={() => del.mutate(t.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <SimpleDialog open={dlg.open} title={dlg.item ? 'Edit Leave Type' : 'Add Leave Type'}
-        fields={FIELDS} initial={dlg.item ?? {}} onClose={() => setDlg({ open: false })}
-        onSave={d => mut.mutate(d)} />
+
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button startIcon={<AddIcon />} variant="contained" onClick={openAdd}>Add Leave Type</Button>
+      </Box>
+
+      {/* Cards Grid */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+        {list.length === 0 ? (
+          <Typography color="text.secondary" sx={{ gridColumn: '1/-1', py: 4, textAlign: 'center' }}>
+            No leave types yet. Add one to let employees apply for leave.
+          </Typography>
+        ) : list.map((t: any) => (
+          <Card key={t.id} sx={{ position: 'relative', borderLeft: `4px solid ${t.color ?? '#7161D8'}`, opacity: t.is_active === false ? 0.6 : 1 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                  <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: `${t.color ?? '#7161D8'}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Box sx={{ width: 18, height: 18, borderRadius: '50%', bgcolor: t.color ?? '#7161D8' }} />
+                  </Box>
+                  <Typography variant="subtitle1" fontWeight={800}>{t.name}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  <Tooltip title="Edit"><IconButton size="small" sx={{ color: 'warning.main' }} onClick={() => openEdit(t)}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                  <Tooltip title="Delete"><IconButton size="small" sx={{ color: 'error.main' }} onClick={() => del.mutate(t.id)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+                <Chip size="small" label={t.is_active !== false ? 'Active' : 'Inactive'} color={t.is_active !== false ? 'success' : 'default'} />
+                <Chip size="small" label={t.is_paid ? 'Paid' : 'Unpaid'} color={t.is_paid ? 'primary' : 'default'} variant="outlined" />
+              </Box>
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                <Box>
+                  <Typography variant="body2" fontWeight={700}>{t.max_days_per_year > 0 ? `${t.max_days_per_year} days` : 'Unlimited'}</Typography>
+                  <Typography variant="caption" color="text.secondary">Per Year</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" fontWeight={700}>{t.carry_forward_days ?? 0} days</Typography>
+                  <Typography variant="caption" color="text.secondary">Carry Forward</Typography>
+                </Box>
+              </Box>
+
+              {t.description && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, borderTop: '1px solid', borderColor: 'divider', pt: 1 }}>
+                  {t.description}
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </Box>
+
+      {/* Add / Edit Dialog */}
+      <Dialog open={dlg.open} onClose={() => setDlg({ open: false })} maxWidth="sm" fullWidth>
+        <DialogTitle>{dlg.item ? 'Edit Leave Type' : 'Add Leave Type'}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <TextField label="Name" size="small" fullWidth required value={form.name ?? ''} onChange={e => set('name', e.target.value)} />
+          <TextField label="Max Days Per Year (0 = unlimited)" type="number" size="small" fullWidth value={form.max_days_per_year ?? 0} onChange={e => set('max_days_per_year', Number(e.target.value))} />
+          <TextField label="Carry Forward Days" type="number" size="small" fullWidth value={form.carry_forward_days ?? 0} onChange={e => set('carry_forward_days', Number(e.target.value))} />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Type</InputLabel>
+            <Select label="Type" value={form.is_paid ? 'true' : 'false'} onChange={e => set('is_paid', e.target.value === 'true')}>
+              <MenuItem value="true">Paid</MenuItem>
+              <MenuItem value="false">Unpaid</MenuItem>
+            </Select>
+          </FormControl>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <TextField label="Color" size="small" type="color" value={form.color ?? '#7161D8'} onChange={e => set('color', e.target.value)} sx={{ width: 90 }} inputProps={{ style: { padding: 4, height: 32 } }} />
+            <Box sx={{ width: 32, height: 32, borderRadius: 1, bgcolor: form.color ?? '#7161D8' }} />
+            <Typography variant="caption" color="text.secondary">Colour shown on leave requests</Typography>
+          </Box>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Status</InputLabel>
+            <Select label="Status" value={form.is_active !== false ? 'true' : 'false'} onChange={e => set('is_active', e.target.value === 'true')}>
+              <MenuItem value="true">Active (visible to employees)</MenuItem>
+              <MenuItem value="false">Inactive (hidden)</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField label="Description (optional)" size="small" fullWidth multiline rows={2} value={form.description ?? ''} onChange={e => set('description', e.target.value)} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDlg({ open: false })}>Cancel</Button>
+          <Button variant="contained" onClick={() => mut.mutate(form)} disabled={mut.isPending || !form.name}>Save</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
@@ -1588,8 +1674,8 @@ function EmployeeSubmissionsTab() {
         ))}
       </Box>
 
-      {/* Status filter chips */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+      {/* Status filter chips + download */}
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         {FILTERS.map(f => (
           <Chip
             key={f.value}
@@ -1600,6 +1686,14 @@ function EmployeeSubmissionsTab() {
             size="small"
           />
         ))}
+        <Box sx={{ ml: 'auto' }}>
+          <Button
+            startIcon={<DownloadIcon />} variant="outlined" size="small" color="success"
+            onClick={() => downloadTimesheetSubmissions(statusFilter ? { status: statusFilter } : {}, `timesheets_${statusFilter || 'all'}.csv`).catch(() => toast.error('Download failed'))}
+          >
+            Download CSV
+          </Button>
+        </Box>
       </Box>
 
       {isLoading ? <CircularProgress /> : (
@@ -1786,6 +1880,12 @@ function AttendanceTimesheetsTab() {
     <Box>
       {/* Actions */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
+        <Button
+          startIcon={<DownloadIcon />} variant="outlined" size="small" color="success"
+          onClick={() => downloadAttendanceSheet({ date_from: dateFrom, date_to: dateTo }, `attendance_${filterYear}_${String(filterMonth).padStart(2,'0')}.csv`).catch(() => toast.error('Download failed'))}
+        >
+          Download CSV
+        </Button>
         <Button variant="outlined" size="small" onClick={() => setGenDlg(true)}>Generate from Attendance</Button>
         <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={openAdd}>Add Manual</Button>
       </Box>

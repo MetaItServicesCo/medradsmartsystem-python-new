@@ -282,6 +282,31 @@ export const fetchEmployeeSubmissions = (params?: Record<string, any>) =>
 export const reviewEmployeeSubmission = (id: number, data: { status: string; review_notes?: string }) =>
   apiClient.post(`${BASE}/employee-submissions/${id}/review`, data).then(r => r.data)
 
+// ── CSV Exports ────────────────────────────────────────────────────────────
+export const downloadAttendanceSheet = async (params: Record<string, any>, filename: string) => {
+  const response = await apiClient.get(`${BASE}/timesheets/export`, { params, responseType: 'blob' })
+  const url = window.URL.createObjectURL(response.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}
+
+export const downloadTimesheetSubmissions = async (params: Record<string, any>, filename: string) => {
+  const response = await apiClient.get(`${BASE}/employee-submissions/export`, { params, responseType: 'blob' })
+  const url = window.URL.createObjectURL(response.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}
+
 // ── Employee Policy Assignments ─────────────────────────────────────────────
 export const fetchEmployeePolicyAssignments = () =>
   apiClient.get(`${BASE}/employee-policy-assignments`).then(r => r.data)

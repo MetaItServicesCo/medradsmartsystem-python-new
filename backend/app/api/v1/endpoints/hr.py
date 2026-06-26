@@ -1,11 +1,14 @@
 """HR module API endpoints — leave management, org structure, recruitment,
 employee lifecycle, payroll, meetings, and documents."""
 
+import csv
+import io
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -2336,8 +2339,10 @@ def update_my_timesheet(
     ).first()
     if not obj:
         raise HTTPException(404, "Not found")
-    if obj.status != TimesheetStatus.DRAFT:
-        raise HTTPException(400, "Only draft timesheets can be edited")
+    if obj.status not in (TimesheetStatus.DRAFT, TimesheetStatus.REJECTED):
+        raise HTTPException(400, "Only draft or rejected timesheets can be edited")
+    if obj.status == TimesheetStatus.REJECTED:
+        obj.status = TimesheetStatus.DRAFT
     for k, v in payload.model_dump(exclude_none=True).items():
         setattr(obj, k, v)
     db.commit()
@@ -2376,8 +2381,8 @@ def submit_my_timesheet(
     ).first()
     if not obj:
         raise HTTPException(404, "Not found")
-    if obj.status != TimesheetStatus.DRAFT:
-        raise HTTPException(400, "Only draft timesheets can be submitted")
+    if obj.status not in (TimesheetStatus.DRAFT, TimesheetStatus.REJECTED):
+        raise HTTPException(400, "Only draft or rejected timesheets can be submitted")
     obj.status = TimesheetStatus.SUBMITTED
     obj.submitted_at = datetime.utcnow()
     db.commit()
@@ -2451,3 +2456,97 @@ def review_employee_submission(
     db.commit()
 
     return _timesheet_query(db).filter(Timesheet.id == ts_id).first()
+
+
+# ── CSV Exports (HR only) ─────────────────────────────────────────────────────
+
+@router.get("/timesheets/export")
+def export_attendance_sheet(
+    user_id: Optional[int] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_hr),
+):
+    q = (
+        db.query(Timesheet)
+        .options(joinedload(Timesheet.user))
+        .filter(Timesheet.source == "attendance")
+    )
+    if user_id:
+        q = q.filter(Timesheet.user_id == user_id)
+    if date_from:
+        q = q.filter(Timesheet.work_date >= date_from)
+    if date_to:
+        q = q.filter(Timesheet.work_date <= date_to)
+    rows = q.order_by(Timesheet.work_date).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "Employee", "Email", "Hours", "Day Status", "Is Late", "Late Minutes", "Deduction Reason"])
+    for r in rows:
+        writer.writerow([
+            r.work_date,
+            r.user.full_name if r.user else "",
+            r.user.email if r.user else "",
+            r.hours or 0,
+            r.day_status.value if r.day_status else "",
+            "Yes" if r.is_late else "No",
+            r.late_minutes or 0,
+            r.deduction_reason or "",
+        ])
+    output.seek(0)
+    fname = f"attendance_{date_from or 'all'}_{date_to or 'all'}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/employee-submissions/export")
+def export_employee_submissions(
+    user_id: Optional[int] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    status: Optional[TimesheetStatus] = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_hr),
+):
+    q = (
+        db.query(Timesheet)
+        .options(joinedload(Timesheet.user), joinedload(Timesheet.reviewed_by))
+        .filter(Timesheet.source == "manual")
+    )
+    if user_id:
+        q = q.filter(Timesheet.user_id == user_id)
+    if status:
+        q = q.filter(Timesheet.status == status)
+    if date_from:
+        q = q.filter(Timesheet.work_date >= date_from)
+    if date_to:
+        q = q.filter(Timesheet.work_date <= date_to)
+    rows = q.order_by(Timesheet.work_date).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "Employee", "Email", "Task", "Project", "Hours", "Status", "HR Notes", "Reviewed By"])
+    for r in rows:
+        writer.writerow([
+            r.work_date,
+            r.user.full_name if r.user else "",
+            r.user.email if r.user else "",
+            r.task_title or "",
+            r.project or "",
+            r.hours or 0,
+            r.status.value if r.status else "",
+            r.review_notes or "",
+            r.reviewed_by.full_name if r.reviewed_by else "",
+        ])
+    output.seek(0)
+    fname = f"timesheets_{date_from or 'all'}_{date_to or 'all'}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
