@@ -1523,40 +1523,58 @@ const DAY_STATUS_META: Record<string, { label: string; color: 'success'|'error'|
 
 function EmployeeSubmissionsTab() {
   const qc = useQueryClient()
-  const { data: raw, isLoading } = useQuery({
-    queryKey: ['hr-employee-submissions'],
-    queryFn: () => fetchEmployeeSubmissions({ limit: 200 }),
-  })
-  const list: any[] = (raw as any)?.items ?? (Array.isArray(raw) ? raw : [])
-
+  const [statusFilter, setStatusFilter] = useState<string>('submitted')
   const [reviewDlg, setReviewDlg] = useState<{ open: boolean; item?: any; action?: 'approve' | 'reject' }>({ open: false })
   const [notes, setNotes] = useState('')
+
+  // Always fetch all for KPI counts
+  const { data: allRaw } = useQuery({
+    queryKey: ['hr-employee-submissions-all'],
+    queryFn: () => fetchEmployeeSubmissions({ limit: 500 }),
+    staleTime: 0,
+  })
+  const allList: any[] = (allRaw as any)?.items ?? (Array.isArray(allRaw) ? allRaw : [])
+
+  // Filtered list for the table
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['hr-employee-submissions', statusFilter],
+    queryFn: () => fetchEmployeeSubmissions(statusFilter ? { status: statusFilter, limit: 200 } : { limit: 200 }),
+    staleTime: 0,
+  })
+  const list: any[] = (raw as any)?.items ?? (Array.isArray(raw) ? raw : [])
 
   const reviewMut = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) =>
       reviewEmployeeSubmission(id, { status, review_notes: notes || undefined }),
     onSuccess: (_, { status }) => {
       qc.invalidateQueries({ queryKey: ['hr-employee-submissions'] })
-      toast.success(status === 'approved' ? 'Approved' : 'Rejected')
+      toast.success(status === 'approved' ? 'Timesheet approved' : 'Timesheet rejected')
       setReviewDlg({ open: false })
       setNotes('')
     },
     onError: (e: any) => toast.error(e?.response?.data?.detail ?? 'Error'),
   })
 
-  const pending = list.filter(i => i.status === 'submitted').length
-  const approved = list.filter(i => i.status === 'approved').length
-  const totalHours = list.filter(i => i.status === 'approved').reduce((s, i) => s + (i.hours ?? 0), 0)
+  const pendingCnt  = allList.filter(i => i.status === 'submitted').length
+  const approvedCnt = allList.filter(i => i.status === 'approved').length
+  const totalHours  = allList.filter(i => i.status === 'approved').reduce((s: number, i: any) => s + (Number(i.hours) || 0), 0)
+
+  const FILTERS = [
+    { value: 'submitted', label: `Pending Review${pendingCnt > 0 ? ` (${pendingCnt})` : ''}`, color: 'warning' as const },
+    { value: 'approved',  label: 'Approved',  color: 'success' as const },
+    { value: 'rejected',  label: 'Rejected',  color: 'error' as const },
+    { value: '',          label: 'All',       color: 'default' as const },
+  ]
 
   return (
     <Box>
       {/* KPIs */}
       <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         {[
-          { label: 'Pending Review', value: pending, color: '#f59e0b' },
-          { label: 'Approved', value: approved, color: '#22c55e' },
+          { label: 'Pending Review',       value: pendingCnt,               color: '#f59e0b' },
+          { label: 'Approved',             value: approvedCnt,              color: '#22c55e' },
           { label: 'Total Approved Hours', value: `${totalHours.toFixed(1)}h`, color: '#7161D8' },
-          { label: 'Total Submissions', value: list.length, color: '#6b7280' },
+          { label: 'Total Entries',        value: allList.length,           color: '#6b7280' },
         ].map(k => (
           <Card key={k.label} sx={{ flex: 1, minWidth: 140 }}>
             <CardContent sx={{ py: '12px !important' }}>
@@ -1567,17 +1585,33 @@ function EmployeeSubmissionsTab() {
         ))}
       </Box>
 
+      {/* Status filter chips */}
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        {FILTERS.map(f => (
+          <Chip
+            key={f.value}
+            label={f.label}
+            onClick={() => setStatusFilter(f.value)}
+            color={statusFilter === f.value ? f.color : 'default'}
+            variant={statusFilter === f.value ? 'filled' : 'outlined'}
+            size="small"
+          />
+        ))}
+      </Box>
+
       {isLoading ? <CircularProgress /> : (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead><TableRow>
-              {['Employee', 'Date', 'Task', 'Project', 'Hours', 'Submitted', 'Status', 'Actions'].map(h => <Th key={h}>{h}</Th>)}
+              {['Employee', 'Date', 'Task', 'Project', 'Hours', 'Submitted', 'Status', 'HR Notes', ''].map(h => <Th key={h}>{h}</Th>)}
             </TableRow></TableHead>
             <TableBody>
               {list.length === 0
-                ? <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>No employee submissions yet.</TableCell></TableRow>
+                ? <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    {statusFilter === 'submitted' ? 'No pending submissions — all caught up!' : `No ${statusFilter || ''} timesheets found.`}
+                  </TableCell></TableRow>
                 : list.map((ts: any) => (
-                  <TableRow key={ts.id} hover>
+                  <TableRow key={ts.id} hover sx={ts.status === 'submitted' ? { bgcolor: 'rgba(245,158,11,0.04)' } : undefined}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
@@ -1587,11 +1621,20 @@ function EmployeeSubmissionsTab() {
                       </Box>
                     </TableCell>
                     <TableCell>{fmt(ts.work_date)}</TableCell>
-                    <TableCell><Typography variant="body2" fontWeight={600}>{ts.task_title ?? '—'}</Typography></TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={600}>{ts.task_title ?? '—'}</Typography>
+                      {ts.description && (
+                        <Tooltip title={ts.description}>
+                          <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 160, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'help' }}>
+                            {ts.description}
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {ts.project
                         ? <Chip size="small" label={ts.project} variant="outlined" sx={{ borderColor: 'primary.main', color: 'primary.main' }} />
-                        : '—'}
+                        : <Typography variant="caption" color="text.disabled">—</Typography>}
                     </TableCell>
                     <TableCell><Typography variant="body2" fontWeight={700}>{ts.hours}h</Typography></TableCell>
                     <TableCell>
@@ -1599,33 +1642,36 @@ function EmployeeSubmissionsTab() {
                     </TableCell>
                     <TableCell>
                       <Chip size="small"
-                        label={ts.status}
+                        label={ts.status === 'submitted' ? 'Pending' : ts.status}
                         color={ts.status === 'approved' ? 'success' : ts.status === 'rejected' ? 'error' : ts.status === 'submitted' ? 'warning' : 'default'}
+                        sx={{ fontWeight: 600 }}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ maxWidth: 130 }}>
+                      {ts.review_notes
+                        ? <Tooltip title={ts.review_notes}>
+                            <Typography variant="caption" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'help', color: 'text.secondary' }}>
+                              {ts.review_notes}
+                            </Typography>
+                          </Tooltip>
+                        : <Typography variant="caption" color="text.disabled">—</Typography>}
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {ts.status === 'submitted' && (
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           <Tooltip title="Approve">
-                            <IconButton size="small" color="success"
+                            <Button size="small" variant="contained" color="success" sx={{ fontSize: 11, minWidth: 'auto', px: 1.5 }}
                               onClick={() => { setNotes(''); setReviewDlg({ open: true, item: ts, action: 'approve' }) }}>
-                              <CheckIcon fontSize="small" />
-                            </IconButton>
+                              ✓
+                            </Button>
                           </Tooltip>
                           <Tooltip title="Reject">
-                            <IconButton size="small" color="error"
+                            <Button size="small" variant="contained" color="error" sx={{ fontSize: 11, minWidth: 'auto', px: 1.5 }}
                               onClick={() => { setNotes(''); setReviewDlg({ open: true, item: ts, action: 'reject' }) }}>
-                              <CloseIcon fontSize="small" />
-                            </IconButton>
+                              ✕
+                            </Button>
                           </Tooltip>
                         </Box>
-                      )}
-                      {ts.review_notes && (
-                        <Tooltip title={ts.review_notes}>
-                          <Typography variant="caption" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', cursor: 'help', color: 'text.secondary' }}>
-                            {ts.review_notes}
-                          </Typography>
-                        </Tooltip>
                       )}
                     </TableCell>
                   </TableRow>
@@ -1637,15 +1683,26 @@ function EmployeeSubmissionsTab() {
 
       {/* Review Dialog */}
       <Dialog open={reviewDlg.open} onClose={() => setReviewDlg({ open: false })} maxWidth="xs" fullWidth>
-        <DialogTitle>{reviewDlg.action === 'approve' ? 'Approve Timesheet' : 'Reject Timesheet'}</DialogTitle>
-        <DialogContent sx={{ pt: '16px !important' }}>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            <strong>{reviewDlg.item?.user?.full_name ?? reviewDlg.item?.user?.email}</strong> — {reviewDlg.item?.task_title} on {reviewDlg.item ? fmt(reviewDlg.item.work_date) : ''} ({reviewDlg.item?.hours}h)
-          </Typography>
+        <DialogTitle sx={{ color: reviewDlg.action === 'approve' ? 'success.main' : 'error.main' }}>
+          {reviewDlg.action === 'approve' ? 'Approve Timesheet' : 'Reject Timesheet'}
+        </DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          {reviewDlg.item && (
+            <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="body2" fontWeight={600}>{reviewDlg.item.user?.full_name ?? reviewDlg.item.user?.email}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {reviewDlg.item.task_title} · {fmt(reviewDlg.item.work_date)} · {reviewDlg.item.hours}h
+              </Typography>
+              {reviewDlg.item.description && (
+                <Typography variant="caption" color="text.secondary" display="block">{reviewDlg.item.description}</Typography>
+              )}
+            </Box>
+          )}
           <TextField
-            label={reviewDlg.action === 'reject' ? 'Reason for rejection (required)' : 'Notes (optional)'}
-            size="small" fullWidth multiline rows={2}
+            label={reviewDlg.action === 'reject' ? 'Reason for rejection (required)' : 'Notes for employee (optional)'}
+            size="small" fullWidth multiline rows={3}
             value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder={reviewDlg.action === 'reject' ? 'Explain why this is being rejected...' : 'Any feedback for the employee...'}
           />
         </DialogContent>
         <DialogActions>
