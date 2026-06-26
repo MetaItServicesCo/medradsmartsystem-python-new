@@ -235,6 +235,22 @@ export const updateEmployeeDocument = (id: number, data: any) =>
   apiClient.put(`${BASE}/employee-documents/${id}`, data).then(r => r.data)
 export const deleteEmployeeDocument = (id: number) =>
   apiClient.delete(`${BASE}/employee-documents/${id}`)
+export const uploadEmployeeDocumentFile = (id: number, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return apiClient.post(`${BASE}/employee-documents/${id}/upload`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+export const downloadEmployeeDocument = async (id: number, fileName?: string) => {
+  const res = await apiClient.get(`${BASE}/employee-documents/${id}/download`, { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName || `document-${id}`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 // ── Employee Contracts ─────────────────────────────────────────────────────
 export const fetchEmployeeContracts = (params?: Record<string, any>) =>

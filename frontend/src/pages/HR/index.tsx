@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, Divider,
-  FormControl, Grid, IconButton, InputLabel, List, MenuItem,
+  FormControl, Grid, IconButton, InputAdornment, InputLabel, List, MenuItem,
   Paper, Select, Tab, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
@@ -11,6 +11,7 @@ import AddIcon from '@mui/icons-material/Add'
 import DownloadIcon from '@mui/icons-material/Download'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import AnnouncementIcon from '@mui/icons-material/Announcement'
+import ArticleIcon from '@mui/icons-material/Article'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import BeachAccessIcon from '@mui/icons-material/BeachAccess'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
@@ -24,9 +25,12 @@ import GroupsIcon from '@mui/icons-material/Groups'
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
 import PeopleIcon from '@mui/icons-material/People'
+import SearchIcon from '@mui/icons-material/Search'
 import SpeedIcon from '@mui/icons-material/Speed'
 import TimerIcon from '@mui/icons-material/Timer'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import UploadFileIcon from '@mui/icons-material/UploadFile'
+import VisibilityIcon from '@mui/icons-material/Visibility'
 import VideoCallIcon from '@mui/icons-material/VideoCall'
 import WorkIcon from '@mui/icons-material/Work'
 import CheckIcon from '@mui/icons-material/Check'
@@ -57,6 +61,7 @@ import {
   fetchDocumentTemplates, createDocumentTemplate, updateDocumentTemplate, deleteDocumentTemplate,
   fetchContractTemplates, createContractTemplate, updateContractTemplate, deleteContractTemplate,
   fetchEmployeeDocuments, createEmployeeDocument, updateEmployeeDocument, deleteEmployeeDocument,
+  uploadEmployeeDocumentFile, downloadEmployeeDocument,
   fetchEmployeeContracts, createEmployeeContract, updateEmployeeContract, deleteEmployeeContract,
   fetchAcknowledgments, createAcknowledgment,
   fetchTimesheets, createTimesheet, updateTimesheet, deleteTimesheet, generateTimesheets,
@@ -2494,42 +2499,87 @@ function MeetingsSection() {
 // DOCUMENTS (abbreviated but complete)
 // ══════════════════════════════════════════════════════════════════════════════
 
+const DOC_STATUS_META: Record<string, { label: string; color: 'default' | 'success' | 'error' | 'warning' | 'primary' }> = {
+  draft:     { label: 'Draft',     color: 'default'  },
+  published: { label: 'Published', color: 'success'  },
+  expired:   { label: 'Expired',   color: 'error'    },
+}
+
 function DocumentsSection() {
   const qc = useQueryClient()
   const [tab, setTab] = useState(0)
-  const { data: docsData } = useQuery({ queryKey: ['hr-employee-documents'], queryFn: () => fetchEmployeeDocuments() })
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadTargetId, setUploadTargetId] = useState<number | null>(null)
+
+  const docsParams: Record<string, any> = {}
+  if (statusFilter) docsParams.status = statusFilter
+  if (search) docsParams.search = search
+
+  const { data: docsData } = useQuery({ queryKey: ['hr-employee-documents', docsParams], queryFn: () => fetchEmployeeDocuments(docsParams), staleTime: 0 })
   const { data: contractsData } = useQuery({ queryKey: ['hr-employee-contracts'], queryFn: () => fetchEmployeeContracts() })
   const { data: acksData } = useQuery({ queryKey: ['hr-acknowledgments'], queryFn: () => fetchAcknowledgments() })
-  const { data: docTmplData = [] } = useQuery({ queryKey: ['hr-document-templates'], queryFn: () => fetchDocumentTemplates() })
-  const { data: ctrTmplData = [] } = useQuery({ queryKey: ['hr-contract-templates'], queryFn: () => fetchContractTemplates() })
   const { data: catsData = [] } = useQuery({ queryKey: ['hr-doc-categories'], queryFn: fetchDocumentCategories })
   const { data: ctypesData = [] } = useQuery({ queryKey: ['hr-contract-types'], queryFn: fetchContractTypes })
+  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees({ limit: 1000 }) })
 
-  const docs: any[] = (docsData as any)?.items ?? (Array.isArray(docsData) ? docsData : [])
+  const docs: any[] = (docsData as any)?.items ?? []
+  const kpi: any = (docsData as any)?.kpi ?? { total: 0, published: 0, expiring_soon: 0, needs_acknowledgment: 0 }
   const contracts: any[] = (contractsData as any)?.items ?? (Array.isArray(contractsData) ? contractsData : [])
   const acks: any[] = (acksData as any)?.items ?? (Array.isArray(acksData) ? acksData : [])
-  const docTmpls: any[] = Array.isArray(docTmplData) ? docTmplData : []
-  const ctrTmpls: any[] = Array.isArray(ctrTmplData) ? ctrTmplData : []
   const cats: any[] = Array.isArray(catsData) ? catsData : []
   const ctypes: any[] = Array.isArray(ctypesData) ? ctypesData : []
+  const employees: any[] = (empData as any)?.items ?? (Array.isArray(empData) ? empData : [])
 
   const [docDlg, setDocDlg] = useState<{ open: boolean; item?: any }>({ open: false })
+  const [viewDlg, setViewDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const [ctrDlg, setCtrDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const [ackDlg, setAckDlg] = useState(false)
   const [catName, setCatName] = useState(''); const [catDlg, setCatDlg] = useState(false)
   const [ctName, setCtName] = useState(''); const [ctDlg, setCtDlg] = useState(false)
 
-  const docMut = useMutation({ mutationFn: (d: any) => docDlg.item ? updateEmployeeDocument(docDlg.item.id, d) : createEmployeeDocument(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-documents'] }); toast.success('Saved') } })
-  const docDel = useMutation({ mutationFn: deleteEmployeeDocument, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-documents'] }); toast.success('Deleted') } })
-  const ctrMut = useMutation({ mutationFn: (d: any) => ctrDlg.item ? updateEmployeeContract(ctrDlg.item.id, d) : createEmployeeContract(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-contracts'] }); toast.success('Saved') } })
+  const [docForm, setDocForm] = useState<any>({})
+
+  const invalidateDocs = () => qc.invalidateQueries({ queryKey: ['hr-employee-documents'] })
+
+  const docMut = useMutation({
+    mutationFn: (d: any) => docDlg.item ? updateEmployeeDocument(docDlg.item.id, d) : createEmployeeDocument(d),
+    onSuccess: () => { invalidateDocs(); setDocDlg({ open: false }); toast.success('Saved') }
+  })
+  const docDel = useMutation({ mutationFn: deleteEmployeeDocument, onSuccess: () => { invalidateDocs(); toast.success('Deleted') } })
+  const uploadMut = useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => uploadEmployeeDocumentFile(id, file),
+    onSuccess: () => { invalidateDocs(); toast.success('File uploaded') },
+    onError: () => toast.error('Upload failed'),
+  })
+  const ctrMut = useMutation({ mutationFn: (d: any) => ctrDlg.item ? updateEmployeeContract(ctrDlg.item.id, d) : createEmployeeContract(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-contracts'] }); setCtrDlg({ open: false }); toast.success('Saved') } })
   const ctrDel = useMutation({ mutationFn: deleteEmployeeContract, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-employee-contracts'] }); toast.success('Deleted') } })
-  const ackMut = useMutation({ mutationFn: createAcknowledgment, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-acknowledgments'] }); toast.success('Saved') } })
+  const ackMut = useMutation({ mutationFn: createAcknowledgment, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-acknowledgments'] }); setAckDlg(false); toast.success('Saved') } })
   const catMut = useMutation({ mutationFn: () => createDocumentCategory({ name: catName }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-doc-categories'] }); setCatDlg(false); setCatName('') } })
   const catDel = useMutation({ mutationFn: deleteDocumentCategory, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-doc-categories'] }); toast.success('Deleted') } })
   const ctMut = useMutation({ mutationFn: () => createContractType({ name: ctName }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-contract-types'] }); setCtDlg(false); setCtName('') } })
   const ctDel = useMutation({ mutationFn: deleteContractType, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-contract-types'] }); toast.success('Deleted') } })
 
+  const openCreate = () => { setDocForm({ status: 'draft', version: '1.0', doc_type: 'document', requires_acknowledgment: false }); setDocDlg({ open: true }) }
+  const openEdit = (item: any) => { setDocForm({ ...item }); setDocDlg({ open: true, item }) }
+  const saveDoc = () => docMut.mutate(docForm)
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file && uploadTargetId != null) uploadMut.mutate({ id: uploadTargetId, file })
+    e.target.value = ''
+  }
+  const triggerUpload = (id: number) => { setUploadTargetId(id); fileInputRef.current?.click() }
+
   const sColor = (s: string) => s === 'active' ? 'success' : s === 'expired' || s === 'terminated' ? 'error' : 'default'
+
+  const KPI_CARDS = [
+    { label: 'Total Documents', value: kpi.total, color: '#7161D8', icon: <ArticleIcon sx={{ fontSize: 28, color: '#7161D8' }} /> },
+    { label: 'Published', value: kpi.published, color: '#2e7d32', icon: <CheckIcon sx={{ fontSize: 28, color: '#2e7d32' }} /> },
+    { label: 'Expiring Soon', value: kpi.expiring_soon, color: '#f57c00', icon: <TimerIcon sx={{ fontSize: 28, color: '#f57c00' }} /> },
+    { label: 'Needs Acknowledgment', value: kpi.needs_acknowledgment, color: '#0288d1', icon: <AssignmentIcon sx={{ fontSize: 28, color: '#0288d1' }} /> },
+  ]
 
   return (
     <Box>
@@ -2540,20 +2590,250 @@ function DocumentsSection() {
 
       {tab === 0 && (
         <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setDocDlg({ open: true })}>Add Document</Button></Box>
-          <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow>{['Title','Employee','Category',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
-            <TableBody>{docs.map((d: any) => (
-              <TableRow key={d.id} hover>
-                <TableCell>{d.title}</TableCell><TableCell>{d.user?.full_name ?? d.user?.email ?? d.user_id}</TableCell>
-                <TableCell>{d.category?.name ?? '—'}</TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setDocDlg({ open: true, item: d })} /><CrudDeleteBtn onDelete={() => docDel.mutate(d.id)} /></TableCell>
-              </TableRow>
-            ))}</TableBody>
-          </Table></TableContainer>
-          <SimpleDialog open={docDlg.open} title={docDlg.item ? 'Edit Document' : 'Add Document'}
-            fields={[{ key: 'title', label: 'Title' }, { key: 'file_url', label: 'File URL' }, { key: 'description', label: 'Description', type: 'textarea' }]}
-            initial={docDlg.item ?? {}} onClose={() => setDocDlg({ open: false })} onSave={d => docMut.mutate(d)} />
+          {/* KPI Cards */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            {KPI_CARDS.map(k => (
+              <Grid item xs={6} sm={3} key={k.label}>
+                <Card variant="outlined" sx={{ borderRadius: 2, borderLeft: `4px solid ${k.color}` }}>
+                  <CardContent sx={{ py: '12px !important', px: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box>
+                        <Typography variant="h4" fontWeight={700} sx={{ color: k.color, lineHeight: 1.2 }}>{k.value}</Typography>
+                        <Typography variant="caption" color="text.secondary">{k.label}</Typography>
+                      </Box>
+                      {k.icon}
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* Toolbar */}
+          <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <TextField
+              size="small" placeholder="Search documents…" value={search} onChange={e => setSearch(e.target.value)}
+              sx={{ flex: 1, minWidth: 200 }}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+            />
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Status</InputLabel>
+              <Select value={statusFilter} label="Status" onChange={e => setStatusFilter(e.target.value)}>
+                <MenuItem value="">All</MenuItem>
+                <MenuItem value="draft">Draft</MenuItem>
+                <MenuItem value="published">Published</MenuItem>
+                <MenuItem value="expired">Expired</MenuItem>
+              </Select>
+            </FormControl>
+            <Button startIcon={<UploadFileIcon />} variant="outlined" size="small" onClick={() => {
+              if (docs.length === 0) { toast.info('Create a document first, then upload a file to it'); return }
+              triggerUpload(docs[0].id)
+            }}>Upload Template</Button>
+            <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={openCreate}>New Document</Button>
+          </Box>
+
+          {/* Document Cards */}
+          {docs.length === 0 ? (
+            <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
+              <ArticleIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+              <Typography color="text.secondary">No documents found. Create your first document.</Typography>
+            </Paper>
+          ) : (
+            <Grid container spacing={2}>
+              {docs.map((d: any) => {
+                const catColor = d.category?.color ?? '#7161D8'
+                const statusMeta = DOC_STATUS_META[d.status] ?? DOC_STATUS_META.draft
+                const isExpired = d.expires_at && new Date(d.expires_at) < new Date()
+                return (
+                  <Grid item xs={12} sm={6} md={4} key={d.id}>
+                    <Card variant="outlined" sx={{ borderRadius: 2, borderLeft: `4px solid ${catColor}`, opacity: isExpired ? 0.75 : 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                      <CardContent sx={{ flex: 1, pb: '8px !important' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography fontWeight={700} sx={{ fontSize: '0.95rem', flex: 1, pr: 1, lineHeight: 1.3 }} noWrap title={d.title}>{d.title}</Typography>
+                          <Chip size="small" label={`v${d.version ?? '1.0'}`} sx={{ fontSize: '0.7rem', height: 20, bgcolor: 'grey.100' }} />
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 0.5, mb: 1, flexWrap: 'wrap' }}>
+                          <Chip size="small" label={statusMeta.label} color={statusMeta.color} sx={{ fontSize: '0.72rem', height: 20 }} />
+                          {d.category && <Chip size="small" label={d.category.name} sx={{ fontSize: '0.72rem', height: 20, bgcolor: catColor + '22', color: catColor, fontWeight: 600 }} />}
+                          {d.requires_acknowledgment && <Chip size="small" label="Ack. Required" color="info" sx={{ fontSize: '0.72rem', height: 20 }} />}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {d.user?.full_name ?? d.user?.email ?? `Employee #${d.user_id}`}
+                        </Typography>
+                        {d.description && (
+                          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                            {d.description}
+                          </Typography>
+                        )}
+                        {d.expires_at && (
+                          <Typography variant="caption" color={isExpired ? 'error' : 'text.secondary'} display="block" sx={{ mt: 0.5 }}>
+                            {isExpired ? 'Expired' : 'Expires'}: {fmt(d.expires_at)}
+                          </Typography>
+                        )}
+                      </CardContent>
+                      <Box sx={{ px: 2, pb: 1.5, pt: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid', borderColor: 'divider', mt: 'auto' }}>
+                        <Typography variant="caption" color="text.disabled">
+                          Updated {fmt(d.updated_at)} · {d.download_count ?? 0} downloads
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          {d.file_url && (
+                            <Tooltip title="Download file">
+                              <IconButton size="small" onClick={() => downloadEmployeeDocument(d.id, d.file_name)} sx={{ color: '#2e7d32' }}>
+                                <DownloadIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          <Tooltip title="View / Edit content">
+                            <IconButton size="small" onClick={() => setViewDlg({ open: true, item: d })} sx={{ color: 'primary.main' }}>
+                              <VisibilityIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit">
+                            <IconButton size="small" onClick={() => openEdit(d)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Upload file">
+                            <IconButton size="small" onClick={() => triggerUpload(d.id)}>
+                              <UploadFileIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete">
+                            <IconButton size="small" color="error" onClick={() => docDel.mutate(d.id)}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </Box>
+                    </Card>
+                  </Grid>
+                )
+              })}
+            </Grid>
+          )}
+
+          {/* Hidden file input */}
+          <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileChange} />
+
+          {/* Create / Edit Document Dialog */}
+          <Dialog open={docDlg.open} onClose={() => setDocDlg({ open: false })} maxWidth="md" fullWidth>
+            <DialogTitle>{docDlg.item ? 'Edit Document' : 'New Document'}</DialogTitle>
+            <DialogContent sx={{ pt: '16px !important' }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={8}>
+                  <TextField fullWidth size="small" label="Title" value={docForm.title ?? ''} onChange={e => setDocForm((f: any) => ({ ...f, title: e.target.value }))} />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField fullWidth size="small" label="Version" value={docForm.version ?? '1.0'} onChange={e => setDocForm((f: any) => ({ ...f, version: e.target.value }))} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Employee</InputLabel>
+                    <Select value={docForm.user_id ?? ''} label="Employee" onChange={e => setDocForm((f: any) => ({ ...f, user_id: e.target.value }))}>
+                      {employees.map((u: any) => <MenuItem key={u.id} value={u.id}>{u.full_name ?? u.email}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Category</InputLabel>
+                    <Select value={docForm.category_id ?? ''} label="Category" onChange={e => setDocForm((f: any) => ({ ...f, category_id: e.target.value || null }))}>
+                      <MenuItem value="">None</MenuItem>
+                      {cats.map((c: any) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Status</InputLabel>
+                    <Select value={docForm.status ?? 'draft'} label="Status" onChange={e => setDocForm((f: any) => ({ ...f, status: e.target.value }))}>
+                      <MenuItem value="draft">Draft</MenuItem>
+                      <MenuItem value="published">Published</MenuItem>
+                      <MenuItem value="expired">Expired</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Type</InputLabel>
+                    <Select value={docForm.doc_type ?? 'document'} label="Type" onChange={e => setDocForm((f: any) => ({ ...f, doc_type: e.target.value }))}>
+                      <MenuItem value="document">Document</MenuItem>
+                      <MenuItem value="template">Template</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField fullWidth size="small" label="Expires At" type="date" InputLabelProps={{ shrink: true }} value={docForm.expires_at ?? ''} onChange={e => setDocForm((f: any) => ({ ...f, expires_at: e.target.value || null }))} />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField fullWidth size="small" label="Description" multiline rows={2} value={docForm.description ?? ''} onChange={e => setDocForm((f: any) => ({ ...f, description: e.target.value }))} />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Document Content (editor)</Typography>
+                  <TextField
+                    fullWidth multiline rows={10} size="small"
+                    placeholder="Write your document content here…"
+                    value={docForm.content ?? ''}
+                    onChange={e => setDocForm((f: any) => ({ ...f, content: e.target.value }))}
+                    sx={{ fontFamily: 'monospace', '& textarea': { fontFamily: 'inherit' } }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControl fullWidth size="small">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="caption">Requires Acknowledgment</Typography>
+                      <Select value={docForm.requires_acknowledgment ? 'yes' : 'no'} size="small" sx={{ minWidth: 80 }}
+                        onChange={e => setDocForm((f: any) => ({ ...f, requires_acknowledgment: e.target.value === 'yes' }))}>
+                        <MenuItem value="no">No</MenuItem>
+                        <MenuItem value="yes">Yes</MenuItem>
+                      </Select>
+                    </Box>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setDocDlg({ open: false })}>Cancel</Button>
+              <Button variant="contained" onClick={saveDoc} disabled={docMut.isPending}>Save</Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* View / Content Dialog */}
+          <Dialog open={viewDlg.open} onClose={() => setViewDlg({ open: false })} maxWidth="md" fullWidth>
+            <DialogTitle>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography fontWeight={700}>{viewDlg.item?.title}</Typography>
+                  <Typography variant="caption" color="text.secondary">v{viewDlg.item?.version ?? '1.0'} · {viewDlg.item?.user?.full_name}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  {viewDlg.item?.file_url && (
+                    <Button size="small" startIcon={<DownloadIcon />} variant="outlined" onClick={() => downloadEmployeeDocument(viewDlg.item.id, viewDlg.item.file_name)}>
+                      Download
+                    </Button>
+                  )}
+                  <Button size="small" startIcon={<EditIcon />} onClick={() => { setViewDlg({ open: false }); openEdit(viewDlg.item) }}>Edit</Button>
+                </Box>
+              </Box>
+            </DialogTitle>
+            <DialogContent sx={{ pt: '8px !important' }}>
+              {viewDlg.item?.description && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{viewDlg.item.description}</Typography>
+              )}
+              <Divider sx={{ mb: 2 }} />
+              {viewDlg.item?.content ? (
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, bgcolor: 'grey.50', minHeight: 200, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.875rem' }}>
+                  {viewDlg.item.content}
+                </Paper>
+              ) : (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <ArticleIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                  <Typography color="text.secondary">No content. {viewDlg.item?.file_url ? 'Download the attached file.' : 'Edit this document to add content.'}</Typography>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions><Button onClick={() => setViewDlg({ open: false })}>Close</Button></DialogActions>
+          </Dialog>
         </Box>
       )}
 
@@ -2605,7 +2885,10 @@ function DocumentsSection() {
               </Box>
               {cats.map((c: any) => (
                 <Box key={c.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}>
-                  <Typography variant="body2">{c.name}</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c.color ?? '#7161D8' }} />
+                    <Typography variant="body2">{c.name}</Typography>
+                  </Box>
                   <CrudDeleteBtn onDelete={() => catDel.mutate(c.id)} />
                 </Box>
               ))}

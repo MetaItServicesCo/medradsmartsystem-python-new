@@ -3,14 +3,18 @@ employee lifecycle, payroll, meetings, and documents."""
 
 import csv
 import io
+import os
+import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload
+
+HR_DOC_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "hr_documents")
 
 from app.core.deps import get_current_user, require_roles
 from app.db.base import get_db
@@ -1791,8 +1795,11 @@ def _doc_query(db: Session):
 def list_employee_documents(
     user_id: Optional[int] = None,
     category_id: Optional[int] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    doc_type: Optional[str] = None,
+    search: Optional[str] = None,
     skip: int = 0,
-    limit: int = 50,
+    limit: int = 100,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_hr),
 ):
@@ -1801,9 +1808,29 @@ def list_employee_documents(
         q = q.filter(EmployeeDocument.user_id == user_id)
     if category_id:
         q = q.filter(EmployeeDocument.category_id == category_id)
+    if status_filter:
+        q = q.filter(EmployeeDocument.status == status_filter)
+    if doc_type:
+        q = q.filter(EmployeeDocument.doc_type == doc_type)
+    if search:
+        q = q.filter(EmployeeDocument.title.ilike(f"%{search}%"))
     total = q.count()
     items = q.order_by(desc(EmployeeDocument.created_at)).offset(skip).limit(limit).all()
-    return {"total": total, "items": items}
+
+    today = date.today()
+    soon = today + timedelta(days=30)
+    all_docs = db.query(EmployeeDocument)
+    kpi = {
+        "total": all_docs.count(),
+        "published": all_docs.filter(EmployeeDocument.status == "published").count(),
+        "expiring_soon": all_docs.filter(
+            EmployeeDocument.expires_at != None,
+            EmployeeDocument.expires_at >= today,
+            EmployeeDocument.expires_at <= soon,
+        ).count(),
+        "needs_acknowledgment": all_docs.filter(EmployeeDocument.requires_acknowledgment == True).count(),
+    }
+    return {"total": total, "items": items, "kpi": kpi}
 
 
 @router.post("/employee-documents", response_model=EmployeeDocumentResponse, status_code=201)
@@ -1846,6 +1873,52 @@ def delete_employee_document(
         raise HTTPException(404, "Not found")
     db.delete(obj)
     db.commit()
+
+
+@router.post("/employee-documents/{ed_id}/upload", response_model=EmployeeDocumentResponse)
+async def upload_employee_document_file(
+    ed_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    obj = db.query(EmployeeDocument).filter(EmployeeDocument.id == ed_id).first()
+    if not obj:
+        raise HTTPException(404, "Not found")
+    content = await file.read()
+    os.makedirs(HR_DOC_UPLOAD_DIR, exist_ok=True)
+    ext = os.path.splitext(file.filename or "file")[1]
+    stored_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(HR_DOC_UPLOAD_DIR, stored_name)
+    with open(file_path, "wb") as f:
+        f.write(content)
+    obj.file_url = f"/uploads/hr_documents/{stored_name}"
+    obj.file_name = file.filename or stored_name
+    db.commit()
+    return _doc_query(db).filter(EmployeeDocument.id == ed_id).first()
+
+
+@router.get("/employee-documents/{ed_id}/download")
+def download_employee_document(
+    ed_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_hr),
+):
+    obj = db.query(EmployeeDocument).filter(EmployeeDocument.id == ed_id).first()
+    if not obj:
+        raise HTTPException(404, "Not found")
+    if not obj.file_url:
+        raise HTTPException(400, "No file attached to this document")
+    file_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..",
+        obj.file_url.lstrip("/").replace("/", os.sep)
+    )
+    if not os.path.exists(file_path):
+        raise HTTPException(404, "File not found on server")
+    obj.download_count = (obj.download_count or 0) + 1
+    db.commit()
+    filename = obj.file_name or os.path.basename(file_path)
+    return FileResponse(file_path, filename=filename, media_type="application/octet-stream")
 
 
 # ── Employee Contracts ────────────────────────────────────────────────────────

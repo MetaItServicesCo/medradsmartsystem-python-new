@@ -800,17 +800,31 @@ class EmployeeDocumentCreate(BaseModel):
     category_id: Optional[int] = None
     title: str
     description: Optional[str] = None
+    content: Optional[str] = None
     file_url: Optional[str] = None
+    file_name: Optional[str] = None
     document_date: Optional[date] = None
     is_confidential: bool = False
+    status: str = "draft"
+    version: str = "1.0"
+    doc_type: str = "document"
+    expires_at: Optional[date] = None
+    requires_acknowledgment: bool = False
 
 class EmployeeDocumentUpdate(BaseModel):
     category_id: Optional[int] = None
     title: Optional[str] = None
     description: Optional[str] = None
+    content: Optional[str] = None
     file_url: Optional[str] = None
+    file_name: Optional[str] = None
     document_date: Optional[date] = None
     is_confidential: Optional[bool] = None
+    status: Optional[str] = None
+    version: Optional[str] = None
+    doc_type: Optional[str] = None
+    expires_at: Optional[date] = None
+    requires_acknowledgment: Optional[bool] = None
 
 class EmployeeDocumentResponse(BaseModel):
     id: int
@@ -818,9 +832,17 @@ class EmployeeDocumentResponse(BaseModel):
     category_id: Optional[int]
     title: str
     description: Optional[str]
+    content: Optional[str]
     file_url: Optional[str]
+    file_name: Optional[str]
     document_date: Optional[date]
     is_confidential: bool
+    status: str
+    version: Optional[str]
+    doc_type: str
+    expires_at: Optional[date]
+    requires_acknowledgment: bool
+    download_count: int
     uploaded_by_id: Optional[int]
     created_at: datetime
     updated_at: datetime

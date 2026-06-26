@@ -326,3 +326,22 @@ def run_migration():
             conn.rollback()
             pass
 
+        # EmployeeDocument new fields
+        hr_employee_document_columns = [
+            "content TEXT",
+            "file_name VARCHAR",
+            "status VARCHAR DEFAULT 'draft'",
+            "version VARCHAR DEFAULT '1.0'",
+            "doc_type VARCHAR DEFAULT 'document'",
+            "expires_at DATE",
+            "requires_acknowledgment BOOLEAN DEFAULT FALSE",
+            "download_count INTEGER DEFAULT 0",
+        ]
+        for col in hr_employee_document_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE hr_employee_documents ADD COLUMN {col}"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                pass
+
