@@ -48,7 +48,6 @@ import {
   fetchPromotions, createPromotion, updatePromotion, deletePromotion,
   fetchResignations, createResignation, updateResignation, deleteResignation,
   fetchTerminations, createTermination, updateTermination, deleteTermination,
-  fetchTaxBrackets, createTaxBracket, updateTaxBracket, deleteTaxBracket,
   fetchPayrollConfigs, createPayrollConfig, updatePayrollConfig,
   fetchPayrollRuns, createPayrollRun, updatePayrollRun, processPayrollRun,
   fetchMeetings, createMeeting, updateMeeting, deleteMeeting, upsertMeetingMinutes,
@@ -421,10 +420,13 @@ function CalendarSection() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 const CURRENCIES = [
-  { code: 'USD', symbol: '$',  label: 'USD — US Dollar' },
-  { code: 'PKR', symbol: '₨', label: 'PKR — Pakistani Rupee' },
+  { code: 'USD', symbol: '$',   label: 'USD — US Dollar' },
+  { code: 'PKR', symbol: 'PKR', label: 'PKR — Pakistani Rupee' },
 ]
-const currencySymbol = (code: string) => CURRENCIES.find(c => c.code === code)?.symbol ?? code
+const currencySymbol = (code: string | null | undefined) => {
+  if (!code) return '$'
+  return CURRENCIES.find(c => c.code === code)?.symbol ?? code
+}
 
 const EMPTY_WAGE_FORM = { currency: 'USD', base_salary: '', hourly_rate: '', tax_percentage: '', pay_frequency: 'monthly', effective_from: new Date().toISOString().slice(0, 10) }
 
@@ -473,10 +475,11 @@ function EmployeesSection() {
 
   const formatWage = (cfg: any) => {
     if (!cfg) return null
-    const sym = currencySymbol(cfg.currency ?? 'USD')
+    const currency = cfg.currency || 'USD'
+    const prefix = currency === 'USD' ? '$' : `${currency} `
     const tax = cfg.tax_percentage && Number(cfg.tax_percentage) > 0 ? ` · ${cfg.tax_percentage}% tax` : ''
-    if (cfg.hourly_rate && Number(cfg.hourly_rate) > 0) return `${sym}${Number(cfg.hourly_rate).toFixed(2)}/hr${tax}`
-    if (cfg.base_salary && Number(cfg.base_salary) > 0) return `${sym}${Number(cfg.base_salary).toLocaleString()}/mo${tax}`
+    if (cfg.hourly_rate && Number(cfg.hourly_rate) > 0) return `${prefix}${Number(cfg.hourly_rate).toFixed(2)}/hr${tax}`
+    if (cfg.base_salary && Number(cfg.base_salary) > 0) return `${prefix}${Number(cfg.base_salary).toLocaleString()}/mo${tax}`
     return null
   }
 
@@ -1954,23 +1957,13 @@ function LifecycleSection() {
 
 function PayrollSection() {
   const qc = useQueryClient()
-  const [tab, setTab] = useState(0)
   const { data: runsData } = useQuery({ queryKey: ['hr-payroll-runs'], queryFn: () => fetchPayrollRuns() })
-  const { data: configsData } = useQuery({ queryKey: ['hr-payroll-configs'], queryFn: () => fetchPayrollConfigs() })
-  const { data: bracketsData = [] } = useQuery({ queryKey: ['hr-tax-brackets'], queryFn: fetchTaxBrackets })
   const [runDlg, setRunDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const [cfgDlg, setCfgDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const [taxDlg, setTaxDlg] = useState<{ open: boolean; item?: any }>({ open: false })
   const [slipRun, setSlipRun] = useState<any>(null)
 
   const runs: any[] = (runsData as any)?.items ?? (Array.isArray(runsData) ? runsData : [])
-  const configs: any[] = Array.isArray(configsData) ? configsData : (configsData as any)?.items ?? []
-  const brackets: any[] = Array.isArray(bracketsData) ? bracketsData : []
 
   const runMut = useMutation({ mutationFn: (d: any) => runDlg.item ? updatePayrollRun(runDlg.item.id, d) : createPayrollRun(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-payroll-runs'] }); toast.success('Saved'); setRunDlg({ open: false }) } })
-  const cfgMut = useMutation({ mutationFn: (d: any) => cfgDlg.item ? updatePayrollConfig(cfgDlg.item.id, d) : createPayrollConfig(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-payroll-configs'] }); toast.success('Saved') } })
-  const taxMut = useMutation({ mutationFn: (d: any) => taxDlg.item ? updateTaxBracket(taxDlg.item.id, d) : createTaxBracket(d), onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-tax-brackets'] }); toast.success('Saved') } })
-  const taxDel = useMutation({ mutationFn: deleteTaxBracket, onSuccess: () => { qc.invalidateQueries({ queryKey: ['hr-tax-brackets'] }); toast.success('Deleted') } })
   const processMut = useMutation({
     mutationFn: processPayrollRun,
     onSuccess: (updated: any) => {
@@ -1986,194 +1979,144 @@ function PayrollSection() {
   return (
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Payroll</Typography>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Payroll Runs" /><Tab label="Employee Config" /><Tab label="Tax Brackets" />
-      </Tabs>
 
-      {tab === 0 && (
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-            <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setRunDlg({ open: true })}>New Payroll Run</Button>
-          </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setRunDlg({ open: true })}>New Payroll Run</Button>
+      </Box>
 
-          <TableContainer component={Paper}>
+      <TableContainer component={Paper}>
+        <Table size="small">
+          <TableHead><TableRow>
+            {['Period', 'Employees', 'Total Gross', 'Deductions', 'Tax', 'Total Net', 'Status', 'Run Date', ''].map(h => <Th key={h}>{h}</Th>)}
+          </TableRow></TableHead>
+          <TableBody>
+            {runs.length === 0
+              ? <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>No payroll runs yet. Create one and process it to generate payslips.</TableCell></TableRow>
+              : runs.map((r: any) => {
+                const totalDeductions = (r.payslips ?? []).reduce((s: number, p: any) => s + Number(p.deductions ?? 0), 0)
+                return (
+                  <TableRow key={r.id} hover>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={600}>{fmt(r.period_start)} – {fmt(r.period_end)}</Typography>
+                    </TableCell>
+                    <TableCell>{r.payslips?.length ?? 0}</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{Number(r.total_gross ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                    <TableCell sx={{ color: 'error.main' }}>{totalDeductions > 0 ? `−${totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</TableCell>
+                    <TableCell sx={{ color: 'warning.main' }}>{Number(r.total_tax ?? 0) > 0 ? `−${Number(r.total_tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: 'success.main' }}>{Number(r.total_net ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                    <TableCell><Chip size="small" label={r.status} color={sColor(r.status) as any} /></TableCell>
+                    <TableCell><Typography variant="caption">{r.run_date ? new Date(r.run_date).toLocaleDateString() : '—'}</Typography></TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {r.status === 'draft' && (
+                        <Tooltip title="Process payroll — sums attendance timesheets for this period">
+                          <Button size="small" variant="contained" sx={{ mr: 0.5, fontSize: 11 }}
+                            disabled={processMut.isPending}
+                            onClick={() => processMut.mutate(r.id)}>
+                            Process
+                          </Button>
+                        </Tooltip>
+                      )}
+                      {(r.payslips?.length ?? 0) > 0 && (
+                        <Tooltip title="View payslips">
+                          <Button size="small" variant="outlined" sx={{ fontSize: 11 }} onClick={() => setSlipRun(r)}>
+                            Payslips
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* New Run Dialog */}
+      <Dialog open={runDlg.open} onClose={() => setRunDlg({ open: false })} maxWidth="xs" fullWidth>
+        <DialogTitle>{runDlg.item ? 'Edit Payroll Run' : 'New Payroll Run'}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <TextField label="Period Start" type="date" size="small" InputLabelProps={{ shrink: true }}
+            defaultValue={runDlg.item?.period_start ?? ''}
+            onChange={e => setRunDlg(p => ({ ...p, item: { ...p.item, period_start: e.target.value } }))} />
+          <TextField label="Period End" type="date" size="small" InputLabelProps={{ shrink: true }}
+            defaultValue={runDlg.item?.period_end ?? ''}
+            onChange={e => setRunDlg(p => ({ ...p, item: { ...p.item, period_end: e.target.value } }))} />
+          <TextField label="Notes" size="small" multiline rows={2}
+            defaultValue={runDlg.item?.notes ?? ''}
+            onChange={e => setRunDlg(p => ({ ...p, item: { ...p.item, notes: e.target.value } }))} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRunDlg({ open: false })}>Cancel</Button>
+          <Button variant="contained" onClick={() => runMut.mutate({ period_start: runDlg.item?.period_start, period_end: runDlg.item?.period_end, notes: runDlg.item?.notes })} disabled={runMut.isPending}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Payslips Dialog */}
+      <Dialog open={!!slipRun} onClose={() => setSlipRun(null)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Payslips — {slipRun ? `${fmt(slipRun.period_start)} to ${fmt(slipRun.period_end)}` : ''}
+          <Chip size="small" label={slipRun?.status} color={sColor(slipRun?.status ?? '')} sx={{ ml: 1 }} />
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <TableContainer>
             <Table size="small">
               <TableHead><TableRow>
-                {['Period', 'Employees', 'Total Gross', 'Deductions', 'Tax', 'Total Net', 'Status', 'Run Date', ''].map(h => <Th key={h}>{h}</Th>)}
+                {['Employee', 'Hours', 'Gross Pay', 'Deductions', 'Tax', 'Net Pay', ''].map(h => <Th key={h}>{h}</Th>)}
               </TableRow></TableHead>
               <TableBody>
-                {runs.length === 0
-                  ? <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>No payroll runs yet. Create one and process it to generate payslips.</TableCell></TableRow>
-                  : runs.map((r: any) => {
-                    const totalDeductions = (r.payslips ?? []).reduce((s: number, p: any) => s + Number(p.deductions ?? 0), 0)
-                    return (
-                      <TableRow key={r.id} hover>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight={600}>{fmt(r.period_start)} – {fmt(r.period_end)}</Typography>
-                        </TableCell>
-                        <TableCell>{r.payslips?.length ?? 0}</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }}>{Number(r.total_gross ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                        <TableCell sx={{ color: 'error.main' }}>{totalDeductions > 0 ? `−${totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</TableCell>
-                        <TableCell sx={{ color: 'warning.main' }}>{Number(r.total_tax ?? 0) > 0 ? `−${Number(r.total_tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</TableCell>
-                        <TableCell sx={{ fontWeight: 700, color: 'success.main' }}>{Number(r.total_net ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                        <TableCell><Chip size="small" label={r.status} color={sColor(r.status) as any} /></TableCell>
-                        <TableCell><Typography variant="caption">{r.run_date ? new Date(r.run_date).toLocaleDateString() : '—'}</Typography></TableCell>
-                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                          {r.status === 'draft' && (
-                            <Tooltip title="Process payroll — sums attendance timesheets for this period">
-                              <Button size="small" variant="contained" sx={{ mr: 0.5, fontSize: 11 }}
-                                disabled={processMut.isPending}
-                                onClick={() => processMut.mutate(r.id)}>
-                                Process
-                              </Button>
-                            </Tooltip>
-                          )}
-                          {(r.payslips?.length ?? 0) > 0 && (
-                            <Tooltip title="View payslips">
-                              <Button size="small" variant="outlined" sx={{ fontSize: 11 }} onClick={() => setSlipRun(r)}>
-                                Payslips
-                              </Button>
-                            </Tooltip>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
+                {(slipRun?.payslips ?? []).map((p: any) => (
+                  <TableRow key={p.id} hover>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                          {(p.user?.full_name ?? p.user?.email ?? '?')[0]?.toUpperCase()}
+                        </Avatar>
+                        <Typography variant="body2">{p.user?.full_name ?? p.user?.email}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>{Number(p.work_hours ?? 0).toFixed(1)}h</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{Number(p.gross_pay ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                    <TableCell sx={{ color: Number(p.deductions) > 0 ? 'error.main' : 'text.secondary' }}>
+                      {Number(p.deductions ?? 0) > 0 ? `−${Number(p.deductions).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {Number(p.tax_amount ?? 0) > 0
+                        ? <Tooltip title={p.notes ?? ''}>
+                            <Typography variant="body2" color="warning.main" sx={{ fontWeight: 600, cursor: p.notes ? 'help' : 'default' }}>
+                              −{Number(p.tax_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </Typography>
+                          </Tooltip>
+                        : <Typography variant="caption" color="text.disabled">—</Typography>}
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 800, color: 'success.main' }}>
+                      {Number(p.net_pay ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                ))}
+                {(slipRun?.payslips?.length ?? 0) > 0 && (() => {
+                  const totalDed = (slipRun.payslips ?? []).reduce((s: number, p: any) => s + Number(p.deductions ?? 0), 0)
+                  const totalHrs = (slipRun.payslips ?? []).reduce((s: number, p: any) => s + Number(p.work_hours ?? 0), 0)
+                  return (
+                    <TableRow sx={{ bgcolor: 'rgba(113,97,216,0.07)' }}>
+                      <TableCell><Typography fontWeight={800}>Total</Typography></TableCell>
+                      <TableCell><Typography fontWeight={700}>{totalHrs.toFixed(1)}h</Typography></TableCell>
+                      <TableCell><Typography fontWeight={700}>{Number(slipRun.total_gross ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
+                      <TableCell><Typography fontWeight={700} color="error.main">{totalDed > 0 ? `−${totalDed.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</Typography></TableCell>
+                      <TableCell><Typography fontWeight={700} color="warning.main">{Number(slipRun.total_tax ?? 0) > 0 ? `−${Number(slipRun.total_tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</Typography></TableCell>
+                      <TableCell><Typography fontWeight={800} color="success.main">{Number(slipRun.total_net ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
+                      <TableCell />
+                    </TableRow>
+                  )
+                })()}
               </TableBody>
             </Table>
           </TableContainer>
-
-          {/* New Run Dialog */}
-          <Dialog open={runDlg.open} onClose={() => setRunDlg({ open: false })} maxWidth="xs" fullWidth>
-            <DialogTitle>{runDlg.item ? 'Edit Payroll Run' : 'New Payroll Run'}</DialogTitle>
-            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-              <TextField label="Period Start" type="date" size="small" InputLabelProps={{ shrink: true }}
-                defaultValue={runDlg.item?.period_start ?? ''}
-                onChange={e => setRunDlg(p => ({ ...p, item: { ...p.item, period_start: e.target.value } }))} />
-              <TextField label="Period End" type="date" size="small" InputLabelProps={{ shrink: true }}
-                defaultValue={runDlg.item?.period_end ?? ''}
-                onChange={e => setRunDlg(p => ({ ...p, item: { ...p.item, period_end: e.target.value } }))} />
-              <TextField label="Notes" size="small" multiline rows={2}
-                defaultValue={runDlg.item?.notes ?? ''}
-                onChange={e => setRunDlg(p => ({ ...p, item: { ...p.item, notes: e.target.value } }))} />
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setRunDlg({ open: false })}>Cancel</Button>
-              <Button variant="contained" onClick={() => runMut.mutate({ period_start: runDlg.item?.period_start, period_end: runDlg.item?.period_end, notes: runDlg.item?.notes })} disabled={runMut.isPending}>Save</Button>
-            </DialogActions>
-          </Dialog>
-
-          {/* Payslips Dialog */}
-          <Dialog open={!!slipRun} onClose={() => setSlipRun(null)} maxWidth="md" fullWidth>
-            <DialogTitle>
-              Payslips — {slipRun ? `${fmt(slipRun.period_start)} to ${fmt(slipRun.period_end)}` : ''}
-              <Chip size="small" label={slipRun?.status} color={sColor(slipRun?.status ?? '')} sx={{ ml: 1 }} />
-            </DialogTitle>
-            <DialogContent sx={{ p: 0 }}>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead><TableRow>
-                    {['Employee', 'Hours', 'Gross Pay', 'Deductions', 'Tax', 'Net Pay', ''].map(h => <Th key={h}>{h}</Th>)}
-                  </TableRow></TableHead>
-                  <TableBody>
-                    {(slipRun?.payslips ?? []).map((p: any) => (
-                      <TableRow key={p.id} hover>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
-                              {(p.user?.full_name ?? p.user?.email ?? '?')[0]?.toUpperCase()}
-                            </Avatar>
-                            <Typography variant="body2">{p.user?.full_name ?? p.user?.email}</Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell>{Number(p.work_hours ?? 0).toFixed(1)}h</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }}>{Number(p.gross_pay ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                        <TableCell sx={{ color: Number(p.deductions) > 0 ? 'error.main' : 'text.secondary' }}>
-                          {Number(p.deductions ?? 0) > 0 ? `−${Number(p.deductions).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
-                        </TableCell>
-                        <TableCell>
-                          {Number(p.tax_amount ?? 0) > 0
-                            ? <Tooltip title={p.notes ?? ''}>
-                                <Typography variant="body2" color="warning.main" sx={{ fontWeight: 600, cursor: p.notes ? 'help' : 'default' }}>
-                                  −{Number(p.tax_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </Typography>
-                              </Tooltip>
-                            : <Typography variant="caption" color="text.disabled">—</Typography>}
-                        </TableCell>
-                        <TableCell sx={{ fontWeight: 800, color: 'success.main' }}>
-                          {Number(p.net_pay ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell />
-                      </TableRow>
-                    ))}
-                    {/* Totals row */}
-                    {(slipRun?.payslips?.length ?? 0) > 0 && (() => {
-                      const totalDed = (slipRun.payslips ?? []).reduce((s: number, p: any) => s + Number(p.deductions ?? 0), 0)
-                      const totalHrs = (slipRun.payslips ?? []).reduce((s: number, p: any) => s + Number(p.work_hours ?? 0), 0)
-                      return (
-                        <TableRow sx={{ bgcolor: 'rgba(113,97,216,0.07)' }}>
-                          <TableCell><Typography fontWeight={800}>Total</Typography></TableCell>
-                          <TableCell><Typography fontWeight={700}>{totalHrs.toFixed(1)}h</Typography></TableCell>
-                          <TableCell><Typography fontWeight={700}>{Number(slipRun.total_gross ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
-                          <TableCell><Typography fontWeight={700} color="error.main">{totalDed > 0 ? `−${totalDed.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</Typography></TableCell>
-                          <TableCell><Typography fontWeight={700} color="warning.main">{Number(slipRun.total_tax ?? 0) > 0 ? `−${Number(slipRun.total_tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</Typography></TableCell>
-                          <TableCell><Typography fontWeight={800} color="success.main">{Number(slipRun.total_net ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
-                          <TableCell />
-                        </TableRow>
-                      )
-                    })()}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setSlipRun(null)}>Close</Button>
-            </DialogActions>
-          </Dialog>
-        </Box>
-      )}
-
-      {tab === 1 && (
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setCfgDlg({ open: true })}>Add Config</Button></Box>
-          <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow>{['Employee','Base Salary','Hourly Rate','Pay Frequency','Effective',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
-            <TableBody>{configs.map((c: any) => (
-              <TableRow key={c.id} hover>
-                <TableCell>{c.user?.full_name ?? c.user?.email ?? c.user_id}</TableCell>
-                <TableCell>${Number(c.base_salary ?? 0).toLocaleString()}</TableCell>
-                <TableCell>{c.hourly_rate ? `$${Number(c.hourly_rate).toFixed(2)}/hr` : '—'}</TableCell>
-                <TableCell>{c.pay_frequency}</TableCell>
-                <TableCell>{fmt(c.effective_from)}</TableCell>
-                <TableCell><CrudEditBtn onEdit={() => setCfgDlg({ open: true, item: c })} /></TableCell>
-              </TableRow>
-            ))}</TableBody>
-          </Table></TableContainer>
-          <SimpleDialog open={cfgDlg.open} title={cfgDlg.item ? 'Edit Config' : 'Add Payroll Config'}
-            fields={[{ key: 'base_salary', label: 'Base Salary', type: 'number' }, { key: 'hourly_rate', label: 'Hourly Rate', type: 'number' }, { key: 'pay_frequency', label: 'Pay Frequency', type: 'select', options: ['weekly','biweekly','semimonthly','monthly'] }, { key: 'effective_from', label: 'Effective From', type: 'date' }]}
-            initial={cfgDlg.item ?? {}} onClose={() => setCfgDlg({ open: false })} onSave={d => cfgMut.mutate(d)} />
-        </Box>
-      )}
-
-      {tab === 2 && (
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}><Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => setTaxDlg({ open: true })}>Add Bracket</Button></Box>
-          <TableContainer component={Paper}><Table size="small">
-            <TableHead><TableRow>{['Name','Min Income','Max Income','Rate (%)','Effective From',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
-            <TableBody>{brackets.map((b: any) => (
-              <TableRow key={b.id} hover>
-                <TableCell>{b.name}</TableCell><TableCell>${Number(b.min_income ?? 0).toLocaleString()}</TableCell>
-                <TableCell>{b.max_income ? `$${Number(b.max_income).toLocaleString()}` : '∞'}</TableCell>
-                <TableCell>{b.rate}%</TableCell><TableCell>{fmt(b.effective_from)}</TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setTaxDlg({ open: true, item: b })} /><CrudDeleteBtn onDelete={() => taxDel.mutate(b.id)} /></TableCell>
-              </TableRow>
-            ))}</TableBody>
-          </Table></TableContainer>
-          <SimpleDialog open={taxDlg.open} title={taxDlg.item ? 'Edit Tax Bracket' : 'Add Tax Bracket'}
-            fields={[{ key: 'name', label: 'Name' }, { key: 'min_income', label: 'Min Income', type: 'number' }, { key: 'max_income', label: 'Max Income', type: 'number' }, { key: 'rate', label: 'Rate (%)', type: 'number' }, { key: 'effective_from', label: 'Effective From', type: 'date' }]}
-            initial={taxDlg.item ?? {}} onClose={() => setTaxDlg({ open: false })} onSave={d => taxMut.mutate(d)} />
-        </Box>
-      )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSlipRun(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
