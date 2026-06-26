@@ -29,11 +29,31 @@ FK_FIXES = [
 ]
 
 
+def _col_exists(bind, table: str, col: str) -> bool:
+    result = bind.execute(text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = :t AND column_name = :c
+    """), {"t": table, "c": col})
+    return result.fetchone() is not None
+
+
+def _table_exists(bind, table: str) -> bool:
+    result = bind.execute(text("""
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = :t
+    """), {"t": table})
+    return result.fetchone() is not None
+
+
 def upgrade():
     bind = op.get_bind()
 
     for table, col, ref_table, ref_col, on_delete, make_nullable in FK_FIXES:
-        # 1. Find all existing FK constraints for this column (raw SQL, never fails)
+        # Skip entirely if the table or column doesn't exist in this DB
+        if not _table_exists(bind, table) or not _col_exists(bind, col=col, table=table):
+            continue
+
+        # 1. Find all existing FK constraints for this column (never fails)
         result = bind.execute(text("""
             SELECT tc.constraint_name
             FROM information_schema.table_constraints  tc
@@ -53,7 +73,7 @@ def upgrade():
                 f'ALTER TABLE "{table}" DROP CONSTRAINT IF EXISTS "{name}"'
             ))
 
-        # 3. Make the column nullable if required (safe to run even if already nullable)
+        # 3. Make the column nullable if required
         if make_nullable:
             bind.execute(text(
                 f'ALTER TABLE "{table}" ALTER COLUMN "{col}" DROP NOT NULL'
