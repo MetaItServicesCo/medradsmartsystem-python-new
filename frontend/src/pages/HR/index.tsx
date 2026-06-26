@@ -832,13 +832,12 @@ function AttendanceRecordsTab() {
   const getStatus = (userId: number, dateStr: string): string => {
     const dt = new Date(dateStr)
     const dow = dt.getDay()
-    // Approved leave wins over weekends, holidays, and future — check first
+    if (dow === 0 || dow === 6) return 'day_off'
+    if (holidayDates.has(dateStr)) return 'holiday'
     const onLeave = leaves.some((l: any) =>
       l.user_id === userId && dateStr >= l.start_date && dateStr <= l.end_date
     )
     if (onLeave) return 'on_leave'
-    if (dow === 0 || dow === 6) return 'day_off'
-    if (holidayDates.has(dateStr)) return 'holiday'
     if (dateStr > today) return 'future'
     const dayEvents = events.filter((e: any) => e.user_id === userId && e.event_time?.slice(0, 10) === dateStr)
     if (dayEvents.length === 0) return 'not_added'
