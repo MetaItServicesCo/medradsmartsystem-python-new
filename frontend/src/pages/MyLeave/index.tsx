@@ -123,6 +123,7 @@ export default function MyLeave() {
     queryKey: ['my-leave-requests', 'all'],
     queryFn: () => fetchLeaveRequests(),
     staleTime: 0,
+    refetchOnWindowFocus: true,
   })
   const allItems: any[] = Array.isArray(allRaw) ? allRaw : (allRaw as any)?.items ?? []
 
@@ -131,6 +132,7 @@ export default function MyLeave() {
     queryKey: ['my-leave-requests', statusFilter ?? ''],
     queryFn: () => fetchLeaveRequests(statusFilter ? { status: statusFilter } : undefined),
     staleTime: 0,
+    refetchOnWindowFocus: true,
   })
   const items: any[] = Array.isArray(raw) ? raw : (raw as any)?.items ?? []
 
@@ -142,6 +144,7 @@ export default function MyLeave() {
     queryKey: ['my-leave-requests', 'approved'],
     queryFn: () => fetchLeaveRequests({ status: 'approved' }),
     staleTime: 0,
+    refetchOnWindowFocus: true,
   })
   const approved: any[] = Array.isArray(approvedRaw) ? approvedRaw : (approvedRaw as any)?.items ?? []
 

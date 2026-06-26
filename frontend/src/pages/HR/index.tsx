@@ -232,7 +232,7 @@ function CalendarSection() {
 
   const { data: holidays = [] } = useQuery({ queryKey: ['hr-holidays', year], queryFn: () => fetchHolidays(year) })
   const { data: meetingsData } = useQuery({ queryKey: ['hr-meetings'], queryFn: () => fetchMeetings() })
-  const { data: leavesData } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved' }) })
+  const { data: leavesData } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved' }), staleTime: 0 })
 
   const events: CalEvent[] = useMemo(() => {
     const evts: CalEvent[] = []
@@ -768,7 +768,7 @@ function AttendanceRecordsTab() {
     queryFn: () => fetchAttendanceEvents({ date_from: firstDate, date_to: lastDate, limit: 5000 }),
   })
   const { data: holidaysData = [] } = useQuery({ queryKey: ['hr-holidays', selYear], queryFn: () => fetchHolidays(selYear) })
-  const { data: leavesData } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved' }) })
+  const { data: leavesData } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved' }), staleTime: 0 })
 
   const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
   const events: any[] = (eventsData as any)?.items ?? []
@@ -786,13 +786,13 @@ function AttendanceRecordsTab() {
   const getStatus = (userId: number, dateStr: string): string => {
     const dt = new Date(dateStr)
     const dow = dt.getDay()
-    if (dateStr > today) return 'future'
     if (dow === 0 || dow === 6) return 'day_off'
     if (holidayDates.has(dateStr)) return 'holiday'
     const onLeave = leaves.some((l: any) =>
       l.user_id === userId && dateStr >= l.start_date && dateStr <= l.end_date
     )
     if (onLeave) return 'on_leave'
+    if (dateStr > today) return 'future'
     const dayEvents = events.filter((e: any) => e.user_id === userId && e.event_time?.slice(0, 10) === dateStr)
     if (dayEvents.length === 0) return 'not_added'
     const hasCheckin = dayEvents.some((e: any) => e.event_type === 'check_in')
@@ -1252,6 +1252,7 @@ function LeaveRequestsTab() {
       updateLeaveRequest(id, { status, comments }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['hr-leave-requests'] })
+      qc.invalidateQueries({ queryKey: ['hr-leave-requests', 'approved'] })
       toast.success(reviewDlg.action === 'approved' ? 'Leave approved' : 'Leave rejected')
       setReviewDlg({ open: false })
       setComments('')
