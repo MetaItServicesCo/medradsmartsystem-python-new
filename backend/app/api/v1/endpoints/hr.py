@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_current_user, require_roles
 from app.db.base import get_db
+from app.utils.notifications import create_notification
 from app.models.hr import (
     Announcement, AnnouncementPriority,
     AttendancePolicy,
@@ -372,12 +373,33 @@ def update_leave_request(
     if not obj:
         raise HTTPException(404, "Leave request not found")
     data = payload.model_dump(exclude_none=True)
-    if "status" in data and data["status"] in (LeaveRequestStatus.APPROVED, LeaveRequestStatus.REJECTED):
+    new_status = data.get("status")
+    if new_status in (LeaveRequestStatus.APPROVED, LeaveRequestStatus.REJECTED):
         data["approved_by_id"] = current_user.id
         data["approved_at"] = datetime.utcnow()
     for k, v in data.items():
         setattr(obj, k, v)
     db.commit()
+
+    # Notify employee when HR makes a decision
+    if new_status in (LeaveRequestStatus.APPROVED, LeaveRequestStatus.REJECTED):
+        is_approved = new_status == LeaveRequestStatus.APPROVED
+        note = f" — {payload.comments}" if payload.comments else ""
+        leave_name = obj.leave_type.name if obj.leave_type else "Leave"
+        create_notification(
+            db,
+            user_id=obj.user_id,
+            title=f"{leave_name} Approved" if is_approved else f"{leave_name} Rejected",
+            message=(
+                f"Your {leave_name} request ({obj.start_date} to {obj.end_date}) "
+                f"has been {'approved' if is_approved else 'rejected'}{note}."
+            ),
+            notification_type="leave",
+            link_url="/my-leave",
+            actor_id=current_user.id,
+        )
+        db.commit()
+
     return _lr_query(db).filter(LeaveRequest.id == lr_id).first()
 
 
@@ -2388,4 +2410,21 @@ def review_employee_submission(
     obj.reviewed_by_id = current_user.id
     obj.reviewed_at = datetime.utcnow()
     db.commit()
+
+    # Notify the employee of the decision
+    is_approved = payload.status == TimesheetStatus.APPROVED
+    note = f" — {payload.review_notes}" if payload.review_notes else ""
+    create_notification(
+        db,
+        user_id=obj.user_id,
+        title="Timesheet Approved" if is_approved else "Timesheet Rejected",
+        message=(
+            f"Your timesheet for {obj.work_date} ({obj.hours}h) has been {'approved' if is_approved else 'rejected'}{note}."
+        ),
+        notification_type="timesheet",
+        link_url="/my-timesheets",
+        actor_id=current_user.id,
+    )
+    db.commit()
+
     return _timesheet_query(db).filter(Timesheet.id == ts_id).first()
