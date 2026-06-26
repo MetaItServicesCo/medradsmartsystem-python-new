@@ -1989,7 +1989,7 @@ function PayrollSection() {
           <TableContainer component={Paper}>
             <Table size="small">
               <TableHead><TableRow>
-                {['Period', 'Employees Paid', 'Total Gross', 'Total Deductions', 'Total Net', 'Status', 'Run Date', ''].map(h => <Th key={h}>{h}</Th>)}
+                {['Period', 'Employees', 'Total Gross', 'Deductions', 'Tax', 'Total Net', 'Status', 'Run Date', ''].map(h => <Th key={h}>{h}</Th>)}
               </TableRow></TableHead>
               <TableBody>
                 {runs.length === 0
@@ -2004,6 +2004,7 @@ function PayrollSection() {
                         <TableCell>{r.payslips?.length ?? 0}</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>{Number(r.total_gross ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell sx={{ color: 'error.main' }}>{totalDeductions > 0 ? `−${totalDeductions.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</TableCell>
+                        <TableCell sx={{ color: 'warning.main' }}>{Number(r.total_tax ?? 0) > 0 ? `−${Number(r.total_tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: 'success.main' }}>{Number(r.total_net ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell><Chip size="small" label={r.status} color={sColor(r.status) as any} /></TableCell>
                         <TableCell><Typography variant="caption">{r.run_date ? new Date(r.run_date).toLocaleDateString() : '—'}</Typography></TableCell>
@@ -2062,7 +2063,7 @@ function PayrollSection() {
               <TableContainer>
                 <Table size="small">
                   <TableHead><TableRow>
-                    {['Employee', 'Hours Worked', 'Gross Pay', 'Deductions', 'Net Pay'].map(h => <Th key={h}>{h}</Th>)}
+                    {['Employee', 'Hours', 'Gross Pay', 'Deductions', 'Tax', 'Net Pay', ''].map(h => <Th key={h}>{h}</Th>)}
                   </TableRow></TableHead>
                   <TableBody>
                     {(slipRun?.payslips ?? []).map((p: any) => (
@@ -2080,25 +2081,37 @@ function PayrollSection() {
                         <TableCell sx={{ color: Number(p.deductions) > 0 ? 'error.main' : 'text.secondary' }}>
                           {Number(p.deductions ?? 0) > 0 ? `−${Number(p.deductions).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
                         </TableCell>
+                        <TableCell>
+                          {Number(p.tax_amount ?? 0) > 0
+                            ? <Tooltip title={p.notes ?? ''}>
+                                <Typography variant="body2" color="warning.main" sx={{ fontWeight: 600, cursor: p.notes ? 'help' : 'default' }}>
+                                  −{Number(p.tax_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </Typography>
+                              </Tooltip>
+                            : <Typography variant="caption" color="text.disabled">—</Typography>}
+                        </TableCell>
                         <TableCell sx={{ fontWeight: 800, color: 'success.main' }}>
                           {Number(p.net_pay ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </TableCell>
+                        <TableCell />
                       </TableRow>
                     ))}
                     {/* Totals row */}
-                    {(slipRun?.payslips?.length ?? 0) > 0 && (
-                      <TableRow sx={{ bgcolor: 'rgba(113,97,216,0.06)' }}>
-                        <TableCell><Typography fontWeight={800}>Total</Typography></TableCell>
-                        <TableCell><Typography fontWeight={700}>{(slipRun?.payslips ?? []).reduce((s: number, p: any) => s + Number(p.work_hours ?? 0), 0).toFixed(1)}h</Typography></TableCell>
-                        <TableCell><Typography fontWeight={700}>{Number(slipRun?.total_gross ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
-                        <TableCell><Typography fontWeight={700} color="error.main">
-                          {(slipRun?.payslips ?? []).reduce((s: number, p: any) => s + Number(p.deductions ?? 0), 0) > 0
-                            ? `−${(slipRun?.payslips ?? []).reduce((s: number, p: any) => s + Number(p.deductions ?? 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                            : '—'}
-                        </Typography></TableCell>
-                        <TableCell><Typography fontWeight={800} color="success.main">{Number(slipRun?.total_net ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
-                      </TableRow>
-                    )}
+                    {(slipRun?.payslips?.length ?? 0) > 0 && (() => {
+                      const totalDed = (slipRun.payslips ?? []).reduce((s: number, p: any) => s + Number(p.deductions ?? 0), 0)
+                      const totalHrs = (slipRun.payslips ?? []).reduce((s: number, p: any) => s + Number(p.work_hours ?? 0), 0)
+                      return (
+                        <TableRow sx={{ bgcolor: 'rgba(113,97,216,0.07)' }}>
+                          <TableCell><Typography fontWeight={800}>Total</Typography></TableCell>
+                          <TableCell><Typography fontWeight={700}>{totalHrs.toFixed(1)}h</Typography></TableCell>
+                          <TableCell><Typography fontWeight={700}>{Number(slipRun.total_gross ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
+                          <TableCell><Typography fontWeight={700} color="error.main">{totalDed > 0 ? `−${totalDed.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</Typography></TableCell>
+                          <TableCell><Typography fontWeight={700} color="warning.main">{Number(slipRun.total_tax ?? 0) > 0 ? `−${Number(slipRun.total_tax).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}</Typography></TableCell>
+                          <TableCell><Typography fontWeight={800} color="success.main">{Number(slipRun.total_net ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
+                          <TableCell />
+                        </TableRow>
+                      )
+                    })()}
                   </TableBody>
                 </Table>
               </TableContainer>

@@ -1307,11 +1307,36 @@ def process_payroll_run(
     # Remove previous payslips so re-processing is safe
     db.query(Payslip).filter(Payslip.payroll_run_id == run.id).delete()
 
+    # Load active tax brackets effective during this period, ordered by min_income
+    tax_brackets = db.query(TaxBracket).filter(
+        TaxBracket.effective_from <= run.period_end,
+        (TaxBracket.effective_to == None) | (TaxBracket.effective_to >= run.period_start),
+    ).order_by(TaxBracket.min_income).all()
+
+    def _calc_tax(gross: float) -> tuple[float, str]:
+        """Progressive marginal tax: each bracket's rate applies to the slice within its range."""
+        if not tax_brackets or gross <= 0:
+            return 0.0, ""
+        tax = 0.0
+        notes_parts = []
+        for b in tax_brackets:
+            b_min = float(b.min_income or 0)
+            b_max = float(b.max_income) if b.max_income is not None else float("inf")
+            if gross <= b_min:
+                break
+            taxable_slice = min(gross, b_max) - b_min
+            if taxable_slice <= 0:
+                continue
+            slice_tax = taxable_slice * (float(b.rate) / 100)
+            tax += slice_tax
+            notes_parts.append(f"{b.rate}% on {taxable_slice:.2f} ({b.name})")
+        return round(tax, 2), "; ".join(notes_parts)
+
     employees = db.query(User).filter(User.is_active == True).all()
 
     total_gross = 0.0
-    total_deductions = 0.0
-    total_net = 0.0
+    total_tax   = 0.0
+    total_net   = 0.0
 
     for emp in employees:
         timesheets = db.query(Timesheet).filter(
@@ -1324,29 +1349,33 @@ def process_payroll_run(
         if not timesheets:
             continue
 
-        gross_pay      = sum(float(t.daily_wage_earned or 0) for t in timesheets)
-        deductions     = sum(float(t.policy_deduction or 0) for t in timesheets)
-        work_hours     = sum(float(t.hours_worked or 0) for t in timesheets)
-        net_pay        = max(0.0, gross_pay - deductions)
+        gross_pay  = sum(float(t.daily_wage_earned or 0) for t in timesheets)
+        deductions = sum(float(t.policy_deduction or 0) for t in timesheets)
+        work_hours = sum(float(t.hours_worked or 0) for t in timesheets)
+
+        taxable         = max(0.0, gross_pay - deductions)
+        tax_amount, tax_notes = _calc_tax(taxable)
+        net_pay         = max(0.0, taxable - tax_amount)
 
         slip = Payslip(
             payroll_run_id=run.id,
             user_id=emp.id,
             gross_pay=round(gross_pay, 2),
-            tax_amount=0,
+            tax_amount=tax_amount,
             deductions=round(deductions, 2),
             net_pay=round(net_pay, 2),
             work_hours=round(work_hours, 2),
+            notes=tax_notes or None,
         )
         db.add(slip)
 
-        total_gross      += gross_pay
-        total_deductions += deductions
-        total_net        += net_pay
+        total_gross += gross_pay
+        total_tax   += tax_amount
+        total_net   += net_pay
 
     run.status      = PayrollRunStatus.PROCESSED
     run.total_gross = round(total_gross, 2)
-    run.total_tax   = 0
+    run.total_tax   = round(total_tax, 2)
     run.total_net   = round(total_net, 2)
     run.run_date    = datetime.utcnow()
     db.commit()
