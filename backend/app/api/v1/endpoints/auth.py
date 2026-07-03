@@ -10,7 +10,7 @@ from app.utils.logging import log_activity
 router = APIRouter()
 
 @router.post("/login")
-async def login(
+def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -54,7 +54,7 @@ async def login(
 from app.schemas.user import UserCreate
 
 @router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def register(
+def register(
     user_in: UserCreate,
     db: Session = Depends(get_db)
 ):
