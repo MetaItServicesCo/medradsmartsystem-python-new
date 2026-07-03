@@ -411,6 +411,8 @@ def list_service_invoices(
     db: Session = Depends(get_db),
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
     service_request_id: Optional[int] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """List generated service invoices for billing."""
@@ -428,8 +430,14 @@ def list_service_invoices(
         query = query.filter(Invoice.status == status_filter)
     if service_request_id:
         query = query.filter(Invoice.service_request_id == service_request_id)
-    invoices = query.order_by(Invoice.created_at.desc()).all()
-    return {"items": [_service_invoice_response(invoice) for invoice in invoices], "total": len(invoices)}
+    total = query.count()
+    invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [_service_invoice_response(invoice) for invoice in invoices],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.put("/invoices/{invoice_id}")

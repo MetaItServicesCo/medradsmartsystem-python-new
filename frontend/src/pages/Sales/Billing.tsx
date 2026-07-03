@@ -1,11 +1,11 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
   FormControlLabel, FormLabel, IconButton, Radio, RadioGroup, Skeleton,
-  Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow,
   Tabs, TextField, Typography,
 } from '@mui/material'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
@@ -26,7 +26,7 @@ import { fetchSalesInvoices, updateSalesInvoice, type SalesInvoice } from '@/api
 import {
   createQuotationPayment,
   fetchAllQuotations,
-  fetchServiceInvoices,
+  fetchAllServiceInvoices,
   fetchServiceRequest,
   updateServiceInvoice,
   type QuotationPaymentCreate,
@@ -180,6 +180,8 @@ const Billing = () => {
   const [payOpen, setPayOpen] = useState<BillingItem | null>(null)
   const [printItem, setPrintItem] = useState<BillingItem | null>(null)
   const [tab, setTab] = useState(0)
+  const [page, setPage] = useState(0)
+  const rowsPerPage = 25
 
   const [payMethod, setPayMethod] = useState<PayMethod>('credit_card')
   const [achChoice, setAchChoice] = useState<AchChoice>('ach')
@@ -194,7 +196,7 @@ const Billing = () => {
   const [payRoutingLast4, setPayRoutingLast4] = useState('')
 
   const serviceQ = useQuery({ queryKey: ['billing-service-quotations'], queryFn: fetchAllQuotations })
-  const serviceInvoicesQ = useQuery({ queryKey: ['billing-service-invoices'], queryFn: () => fetchServiceInvoices() })
+  const serviceInvoicesQ = useQuery({ queryKey: ['billing-service-invoices'], queryFn: fetchAllServiceInvoices })
 
   // Fetch full SR data (with history) when printing a service invoice — needed to append the service report
   const printSrId = printItem?.source === 'service' && printItem?.billingKind === 'service_invoice'
@@ -339,6 +341,11 @@ const Billing = () => {
     if (tab === 2) return item.status === 'paid' || item.balance <= 0
     return true
   })
+  const pagedItems = filteredItems.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
+
+  useEffect(() => {
+    setPage(0)
+  }, [sourceFilter, statusFilter, tab])
 
   const totals = useMemo(() => {
     const outstanding = items.filter(item => item.balance > 0).reduce((sum, item) => sum + item.balance, 0)
@@ -692,7 +699,7 @@ const Billing = () => {
                 <TableRow key={index}>{Array.from({ length: 10 }).map((__, cell) => <TableCell key={cell}><Skeleton /></TableCell>)}</TableRow>
               )) : filteredItems.length === 0 ? (
                 <TableRow><TableCell colSpan={10} align="center" sx={{ py: 6, color: '#6B7280', fontWeight: 800 }}>No billing records found.</TableCell></TableRow>
-              ) : filteredItems.map(item => {
+              ) : pagedItems.map(item => {
                 const expanded = expandedKey === item.key
                 const chip = STATUS_CHIP[item.status] || STATUS_CHIP.pending
                 const accountItems = items
@@ -770,6 +777,15 @@ const Billing = () => {
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={filteredItems.length}
+          page={page}
+          onPageChange={(_, nextPage) => setPage(nextPage)}
+          rowsPerPage={rowsPerPage}
+          rowsPerPageOptions={[rowsPerPage]}
+          labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
+        />
       </Card>
 
       <InvoicePrintDialog

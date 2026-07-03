@@ -339,10 +339,25 @@ export const addServiceRequestNote = async (id: number, note: string): Promise<S
 }
 
 export const fetchServiceInvoices = async (
-  params: { status?: string; service_request_id?: number } = {}
-): Promise<{ items: ServiceInvoice[]; total: number }> => {
+  params: { status?: string; service_request_id?: number; skip?: number; limit?: number } = {}
+): Promise<{ items: ServiceInvoice[]; total: number; skip: number; limit: number }> => {
   const res = await apiClient.get('/service-requests/invoices', { params })
   return res.data
+}
+
+export const fetchAllServiceInvoices = async (): Promise<{ items: ServiceInvoice[]; total: number }> => {
+  const limit = 100
+  let skip = 0
+  let total = 0
+  const items: ServiceInvoice[] = []
+  do {
+    const page = await fetchServiceInvoices({ skip, limit })
+    if (page.items.length === 0) break
+    items.push(...page.items)
+    total = page.total
+    skip += page.items.length
+  } while (skip < total)
+  return { items, total }
 }
 
 export const generateServiceInvoice = async (
