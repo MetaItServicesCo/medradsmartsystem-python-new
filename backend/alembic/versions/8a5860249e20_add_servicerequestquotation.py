@@ -35,10 +35,25 @@ def upgrade() -> None:
     sa.UniqueConstraint('service_request_id')
     )
     op.create_index(op.f('ix_service_request_quotations_id'), 'service_request_quotations', ['id'], unique=False)
-    op.alter_column('facilities', 'status',
-               existing_type=sa.VARCHAR(),
-               nullable=False,
-               existing_server_default=sa.text("'active'::character varying"))
+    facility_columns = {
+        column["name"]
+        for column in sa.inspect(op.get_bind()).get_columns("facilities")
+    }
+    if "status" not in facility_columns:
+        op.add_column(
+            "facilities",
+            sa.Column(
+                "status",
+                sa.String(),
+                nullable=False,
+                server_default=sa.text("'active'"),
+            ),
+        )
+    else:
+        op.alter_column('facilities', 'status',
+                   existing_type=sa.VARCHAR(),
+                   nullable=False,
+                   existing_server_default=sa.text("'active'::character varying"))
     # ### end Alembic commands ###
 
 

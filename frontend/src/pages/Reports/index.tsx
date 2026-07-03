@@ -205,7 +205,7 @@ const Reports = () => {
 
   const { data, isLoading } = useQuery({
     queryKey: ['reports', 'completed-service-requests'],
-    queryFn: () => fetchServiceRequests({ status: 'completed', limit: 500 }),
+    queryFn: () => fetchServiceRequests({ status: 'completed', limit: 2000 }),
   })
 
   const reports = data?.items ?? []

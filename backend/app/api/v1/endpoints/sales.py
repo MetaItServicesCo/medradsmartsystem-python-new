@@ -300,7 +300,7 @@ def list_sales_parts(
                 InventoryPart.serial_number.ilike(f"%{search}%"),
             )
         )
-    parts = query.order_by(InventoryPart.updated_at.desc()).limit(500).all()
+    parts = query.order_by(InventoryPart.updated_at.desc()).limit(2000).all()
     return {"items": [_part_response(part) for part in parts], "total": len(parts)}
 
 

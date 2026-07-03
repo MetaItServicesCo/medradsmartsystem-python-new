@@ -111,7 +111,7 @@ export interface EquipmentListResponse {
 }
 
 export const fetchEquipment = async (facilityId?: number): Promise<EquipmentListResponse> => {
-  const params = facilityId ? { facility_id: facilityId } : {}
+  const params = facilityId ? { facility_id: facilityId, limit: 500 } : { limit: 500 }
   const res = await apiClient.get('/equipment/', { params })
   return res.data
 }

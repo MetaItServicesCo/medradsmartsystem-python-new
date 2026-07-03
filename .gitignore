@@ -5,6 +5,8 @@ __pycache__/
 *.so
 .Python
 venv/
+venv*/
+.migration-output/
 env/
 ENV/
 .venv

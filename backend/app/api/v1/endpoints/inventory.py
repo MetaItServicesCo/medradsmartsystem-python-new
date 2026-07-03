@@ -80,7 +80,7 @@ def list_inventory_parts(
     low_stock: bool = Query(False),
     expiring_days: Optional[int] = Query(None, ge=1, le=3650),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=2000),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = scope_query_to_user_facilities(db.query(InventoryPart), InventoryPart.facility_id, db, current_user).options(

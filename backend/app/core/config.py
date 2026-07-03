@@ -16,7 +16,14 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173", "http://134.199.192.91:3000", "http://134.199.192.91"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://134.199.192.91:3000",
+        "http://134.199.192.91",
+    ]
     
     # File Upload
     UPLOAD_DIR: str = "uploads"

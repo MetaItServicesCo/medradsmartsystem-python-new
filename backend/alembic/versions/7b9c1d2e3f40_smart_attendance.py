@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision: str = "7b9c1d2e3f40"
@@ -17,10 +18,35 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-attendance_face_status = sa.Enum("NOT_ENROLLED", "ENROLLED", "NEEDS_RETRAIN", name="attendancefacestatus")
-attendance_event_type = sa.Enum("CHECK_IN", "CHECK_OUT", "BREAK_START", "BREAK_END", name="attendanceeventtype")
-attendance_source = sa.Enum("MANUAL", "FACE", "ADMIN", name="attendancesource")
-attendance_verification_status = sa.Enum("VERIFIED", "NEEDS_REVIEW", "REJECTED", name="attendanceverificationstatus")
+attendance_face_status = postgresql.ENUM(
+    "NOT_ENROLLED",
+    "ENROLLED",
+    "NEEDS_RETRAIN",
+    name="attendancefacestatus",
+    create_type=False,
+)
+attendance_event_type = postgresql.ENUM(
+    "CHECK_IN",
+    "CHECK_OUT",
+    "BREAK_START",
+    "BREAK_END",
+    name="attendanceeventtype",
+    create_type=False,
+)
+attendance_source = postgresql.ENUM(
+    "MANUAL",
+    "FACE",
+    "ADMIN",
+    name="attendancesource",
+    create_type=False,
+)
+attendance_verification_status = postgresql.ENUM(
+    "VERIFIED",
+    "NEEDS_REVIEW",
+    "REJECTED",
+    name="attendanceverificationstatus",
+    create_type=False,
+)
 
 
 def _table_exists(table_name: str) -> bool:

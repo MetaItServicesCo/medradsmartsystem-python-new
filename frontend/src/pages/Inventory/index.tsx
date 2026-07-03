@@ -95,13 +95,14 @@ const Inventory = () => {
   })
   const { data: tiersData } = useQuery({ queryKey: ['tiers'], queryFn: fetchTiers })
   const { data, isLoading } = useQuery({
-    queryKey: ['inventory-parts', search, facilityId, tierId, lowStock],
+    queryKey: ['inventory-parts', 'sales', search, facilityId, tierId, lowStock],
     queryFn: () => fetchInventoryParts({
+      part_type: 'sales',
       search: search || undefined,
       facility_id: facilityId || undefined,
       tier_id: tierId || undefined,
       low_stock: lowStock || undefined,
-      limit: 500,
+      limit: 2000,
     }),
   })
   const facilities = facilitiesData?.items ?? []

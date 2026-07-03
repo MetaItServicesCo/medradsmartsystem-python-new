@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.core.security import verify_password, create_access_token
@@ -13,7 +14,8 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.username == form_data.username).first()
+    normalized_username = form_data.username.strip().lower()
+    user = db.query(User).filter(func.lower(User.username) == normalized_username).first()
     
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
