@@ -85,8 +85,8 @@ class UserResponse(BaseModel):
     is_active: bool
     facility_id: Optional[int] = None
     permissions: Optional[Dict[str, UserPermissionRule]] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     facilities: Optional[List[FacilityBrief]] = None
 
     class Config:

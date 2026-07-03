@@ -246,7 +246,7 @@ def list_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=500),
     role: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
