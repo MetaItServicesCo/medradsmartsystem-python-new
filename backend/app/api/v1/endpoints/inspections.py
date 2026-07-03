@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_admin_user, get_current_user
@@ -353,7 +353,7 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
 
 def _inspection_response(inspection: Inspection) -> dict[str, Any]:
     invoice = getattr(inspection, "_inspection_invoice", None)
-    if invoice is None:
+    if invoice is None and not hasattr(inspection, "_inspection_invoice"):
         invoice = next((item for item in getattr(inspection, "invoices", []) or []), None)
     data = {c.name: getattr(inspection, c.name) for c in inspection.__table__.columns}
     data["status"] = _value(data.get("status"))
@@ -401,21 +401,59 @@ def _inspection_response(inspection: Inspection) -> dict[str, Any]:
     return data
 
 
-def _batch_response(batch: InspectionBatch, include_assets: bool = False) -> dict[str, Any]:
-    inspections = sorted(list(batch.inspections or []), key=lambda item: item.inspection_number or "")
-    completed_count = sum(1 for item in inspections if item.status == InspectionStatus.COMPLETED)
-    in_progress_count = sum(1 for item in inspections if item.status == InspectionStatus.IN_PROGRESS)
+def _batch_response(
+    batch: InspectionBatch,
+    include_assets: bool = False,
+    counts: Optional[dict[str, int]] = None,
+) -> dict[str, Any]:
+    inspections = (
+        sorted(list(batch.inspections or []), key=lambda item: item.inspection_number or "")
+        if include_assets or counts is None
+        else []
+    )
+    completed_count = counts["completed"] if counts is not None else sum(
+        1 for item in inspections if item.status == InspectionStatus.COMPLETED
+    )
+    in_progress_count = counts["in_progress"] if counts is not None else sum(
+        1 for item in inspections if item.status == InspectionStatus.IN_PROGRESS
+    )
+    asset_count = counts["total"] if counts is not None else len(inspections)
     data = {c.name: getattr(batch, c.name) for c in batch.__table__.columns}
     data["status"] = _value(data.get("status"))
     data["facility_name"] = batch.facility.name if batch.facility else None
     data["inspector_name"] = batch.inspector.full_name if batch.inspector else None
-    data["asset_count"] = len(inspections)
+    data["asset_count"] = asset_count
     data["completed_count"] = completed_count
     data["in_progress_count"] = in_progress_count
-    data["pending_count"] = max(len(inspections) - completed_count, 0)
+    data["pending_count"] = max(asset_count - completed_count, 0)
     if include_assets:
         data["assets"] = [_inspection_response(item) for item in inspections]
     return data
+
+
+def _batch_counts(db: Session, batch_ids: list[int]) -> dict[int, dict[str, int]]:
+    if not batch_ids:
+        return {}
+    rows = (
+        db.query(
+            Inspection.batch_id,
+            func.count(Inspection.id),
+            func.sum(case((Inspection.status == InspectionStatus.COMPLETED, 1), else_=0)),
+            func.sum(case((Inspection.status == InspectionStatus.IN_PROGRESS, 1), else_=0)),
+        )
+        .filter(Inspection.batch_id.in_(batch_ids))
+        .group_by(Inspection.batch_id)
+        .all()
+    )
+    return {
+        int(batch_id): {
+            "total": int(total or 0),
+            "completed": int(completed or 0),
+            "in_progress": int(in_progress or 0),
+        }
+        for batch_id, total, completed, in_progress in rows
+        if batch_id is not None
+    }
 
 
 def _sync_batch_status(batch: Optional[InspectionBatch]) -> None:
@@ -608,12 +646,23 @@ def inspection_facilities(
         scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
         .options(
             joinedload(Facility.tier),
-            joinedload(Facility.equipment),
             joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
         )
         .order_by(Facility.name.asc())
         .all()
     )
+    facility_ids = [facility.id for facility in facilities]
+    equipment_counts = {
+        int(facility_id): int(count)
+        for facility_id, count in (
+            db.query(Equipment.facility_id, func.count(Equipment.id))
+            .filter(Equipment.facility_id.in_(facility_ids))
+            .group_by(Equipment.facility_id)
+            .all()
+            if facility_ids
+            else []
+        )
+    }
     return [
         {
             "id": facility.id,
@@ -621,7 +670,7 @@ def inspection_facilities(
             "city": facility.city,
             "state": facility.state,
             "tier_name": facility.tier.name if facility.tier else None,
-            "inventory_count": len(facility.equipment or []),
+            "inventory_count": equipment_counts.get(facility.id, 0),
         }
         for facility in facilities
     ]
@@ -705,11 +754,52 @@ def facility_equipment_for_inspection(
     ]
 
 
+@router.get("/summary")
+def inspection_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    inspections = scope_query_to_user_facilities(
+        db.query(Inspection), Inspection.facility_id, db, current_user
+    )
+    batches = scope_query_to_user_facilities(
+        db.query(InspectionBatch), InspectionBatch.facility_id, db, current_user
+    )
+    equipment = scope_query_to_user_facilities(
+        db.query(Equipment), Equipment.facility_id, db, current_user
+    )
+    invoices = scope_query_to_user_facilities(
+        db.query(Invoice), Invoice.facility_id, db, current_user
+    )
+    return {
+        "upcoming": inspections.filter(Inspection.status == InspectionStatus.UPCOMING).count(),
+        "in_progress": (
+            batches.filter(InspectionBatch.status == InspectionStatus.IN_PROGRESS).count()
+            + inspections.filter(
+                Inspection.status == InspectionStatus.IN_PROGRESS,
+                Inspection.batch_id.is_(None),
+            ).count()
+        ),
+        "completed": (
+            batches.filter(InspectionBatch.status == InspectionStatus.COMPLETED).count()
+            + inspections.filter(
+                Inspection.status == InspectionStatus.COMPLETED,
+                Inspection.batch_id.is_(None),
+            ).count()
+        ),
+        "assets": equipment.count(),
+        "quotations": invoices.filter(Invoice.invoice_type == InvoiceType.INSPECTION).count(),
+    }
+
+
 @router.get("/")
 def list_inspections(
     db: Session = Depends(get_db),
     status_filter: Optional[InspectionStatus] = Query(None, alias="status"),
     facility_id: Optional[int] = Query(None),
+    unbatched_only: bool = Query(False),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
@@ -727,16 +817,32 @@ def list_inspections(
         query = query.filter(Inspection.status == status_filter)
     if facility_id:
         query = query.filter(Inspection.facility_id == facility_id)
+    if unbatched_only:
+        query = query.filter(Inspection.batch_id.is_(None))
 
-    inspections = query.order_by(Inspection.created_at.desc()).all()
+    total = query.count()
+    inspections = query.order_by(Inspection.created_at.desc()).offset(skip).limit(limit).all()
+    inspection_ids = [item.id for item in inspections]
     invoice_map = {
         invoice.inspection_id: invoice
-        for invoice in db.query(Invoice).filter(Invoice.inspection_id.in_([item.id for item in inspections])).all()
+        for invoice in (
+            db.query(Invoice)
+            .options(joinedload(Invoice.facility), joinedload(Invoice.transactions))
+            .filter(Invoice.inspection_id.in_(inspection_ids))
+            .all()
+            if inspection_ids
+            else []
+        )
         if invoice.inspection_id
     }
     for inspection in inspections:
         inspection._inspection_invoice = invoice_map.get(inspection.id)
-    return {"items": [_inspection_response(item) for item in inspections], "total": len(inspections)}
+    return {
+        "items": [_inspection_response(item) for item in inspections],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.get("/batches")
@@ -744,6 +850,8 @@ def list_inspection_batches(
     db: Session = Depends(get_db),
     status_filter: Optional[InspectionStatus] = Query(None, alias="status"),
     facility_id: Optional[int] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
@@ -751,8 +859,6 @@ def list_inspection_batches(
         .options(
             joinedload(InspectionBatch.facility),
             joinedload(InspectionBatch.inspector),
-            joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.tier),
-            joinedload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
         )
     )
     if status_filter:
@@ -761,8 +867,21 @@ def list_inspection_batches(
         require_facility_access(db, current_user, facility_id)
         query = query.filter(InspectionBatch.facility_id == facility_id)
 
-    batches = query.order_by(InspectionBatch.created_at.desc()).all()
-    return {"items": [_batch_response(batch) for batch in batches], "total": len(batches)}
+    total = query.count()
+    batches = query.order_by(InspectionBatch.created_at.desc()).offset(skip).limit(limit).all()
+    count_map = _batch_counts(db, [batch.id for batch in batches])
+    return {
+        "items": [
+            _batch_response(
+                batch,
+                counts=count_map.get(batch.id, {"total": 0, "completed": 0, "in_progress": 0}),
+            )
+            for batch in batches
+        ],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.get("/batches/{batch_id}")
@@ -1355,9 +1474,12 @@ def save_inspection_report(
 @router.get("/quotations")
 def list_inspection_quotations(
     db: Session = Depends(get_db),
+    invoice_id: Optional[int] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    invoices = (
+    query = (
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
         .options(
             joinedload(Invoice.facility),
@@ -1367,9 +1489,11 @@ def list_inspection_quotations(
             joinedload(Invoice.inspection).joinedload(Inspection.inspector),
         )
         .filter(Invoice.invoice_type == InvoiceType.INSPECTION)
-        .order_by(Invoice.created_at.desc())
-        .all()
     )
+    if invoice_id is not None:
+        query = query.filter(Invoice.id == invoice_id)
+    total = query.count()
+    invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
     return {
         "items": [
             {
@@ -1386,7 +1510,9 @@ def list_inspection_quotations(
             }
             for invoice in invoices
         ],
-        "total": len(invoices),
+        "total": total,
+        "skip": skip,
+        "limit": limit,
     }
 
 

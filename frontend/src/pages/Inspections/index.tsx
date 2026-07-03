@@ -5,7 +5,7 @@ import { useLocation } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, Menu, MenuItem, Select, Skeleton, Tab, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Tooltip, Typography,
+  TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
@@ -34,6 +34,7 @@ import {
   fetchInspectionFacilities,
   fetchInspectionForms,
   fetchInspectionQuotations,
+  fetchInspectionSummary,
   fetchInspections,
   generateUpcomingInspections,
   removeInspectionBatchAsset,
@@ -493,6 +494,7 @@ const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
 })
 
 const Inspections = () => {
+  const pageSize = 10
   const location = useLocation()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState(0)
@@ -514,36 +516,52 @@ const Inspections = () => {
   const [batchAssetForm, setBatchAssetForm] = useState<BatchAssetCreatePayload>(emptyBatchAssetForm())
   const [assetActionAnchor, setAssetActionAnchor] = useState<HTMLElement | null>(null)
   const [assetActionItem, setAssetActionItem] = useState<Inspection | null>(null)
+  const [upcomingPage, setUpcomingPage] = useState(0)
+  const [inProgressBatchPage, setInProgressBatchPage] = useState(0)
+  const [completedBatchPage, setCompletedBatchPage] = useState(0)
+  const [legacyInProgressPage, setLegacyInProgressPage] = useState(0)
+  const [legacyCompletedPage, setLegacyCompletedPage] = useState(0)
+  const [quotationPage, setQuotationPage] = useState(0)
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     if (params.get('tab') === 'quotations' || params.get('highlightInvoice')) {
       setTab(4)
+      setQuotationPage(0)
     }
   }, [location.search])
 
-  const facilitiesQ = useQuery({ queryKey: ['inspection-facilities'], queryFn: fetchInspectionFacilities })
+  const summaryQ = useQuery({ queryKey: ['inspection-summary'], queryFn: fetchInspectionSummary })
+  const facilitiesQ = useQuery({
+    queryKey: ['inspection-facilities'],
+    queryFn: fetchInspectionFacilities,
+    enabled: tab === 0 || tab === 1,
+  })
   const equipmentQ = useQuery({
     queryKey: ['inspection-equipment', facilityId],
     queryFn: () => fetchInspectionFacilityEquipment(Number(facilityId)),
     enabled: Boolean(facilityId),
   })
   const upcomingQ = useQuery({
-    queryKey: ['inspections', 'upcoming'],
-    queryFn: () => fetchInspections({ status: 'upcoming' }),
+    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize],
+    queryFn: () => fetchInspections({ status: 'upcoming', skip: upcomingPage * pageSize, limit: pageSize }),
+    enabled: tab === 0,
   })
   const inProgressQ = useQuery({
-    queryKey: ['inspections', 'in_progress'],
-    queryFn: () => fetchInspections({ status: 'in_progress' }),
+    queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize],
+    queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, skip: legacyInProgressPage * pageSize, limit: pageSize }),
+    enabled: tab === 2,
   })
   const inProgressBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'in_progress'],
-    queryFn: () => fetchInspectionBatches({ status: 'in_progress' }),
+    queryKey: ['inspection-batches', 'in_progress', inProgressBatchPage, pageSize],
+    queryFn: () => fetchInspectionBatches({ status: 'in_progress', skip: inProgressBatchPage * pageSize, limit: pageSize }),
+    enabled: tab === 2,
   })
   const completedBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'completed'],
-    queryFn: () => fetchInspectionBatches({ status: 'completed' }),
+    queryKey: ['inspection-batches', 'completed', completedBatchPage, pageSize],
+    queryFn: () => fetchInspectionBatches({ status: 'completed', skip: completedBatchPage * pageSize, limit: pageSize }),
+    enabled: tab === 3,
   })
   const batchDetailQ = useQuery({
     queryKey: ['inspection-batches', selectedBatchId],
@@ -551,13 +569,22 @@ const Inspections = () => {
     enabled: Boolean(selectedBatchId),
   })
   const completedQ = useQuery({
-    queryKey: ['inspections', 'completed'],
-    queryFn: () => fetchInspections({ status: 'completed' }),
+    queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize],
+    queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, skip: legacyCompletedPage * pageSize, limit: pageSize }),
+    enabled: tab === 3,
   })
-  const quotationsQ = useQuery({ queryKey: ['inspection-quotations'], queryFn: fetchInspectionQuotations })
-  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms() })
-  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities() })
-  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }) })
+  const quotationsQ = useQuery({
+    queryKey: ['inspection-quotations', quotationPage, pageSize, highlightInvoiceId],
+    queryFn: () => fetchInspectionQuotations({
+      invoice_id: highlightInvoiceId || undefined,
+      skip: highlightInvoiceId ? 0 : quotationPage * pageSize,
+      limit: pageSize,
+    }),
+    enabled: tab === 4,
+  })
+  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 5 })
+  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || tab === 5 })
+  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) })
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
   const equipment = equipmentQ.data || []
@@ -574,6 +601,7 @@ const Inspections = () => {
       setSelectedInstantEquipmentIds([])
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
       setTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
@@ -587,6 +615,7 @@ const Inspections = () => {
       setSelectedEquipmentIds([])
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
       setTab(0)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not schedule inspections'),
@@ -598,6 +627,7 @@ const Inspections = () => {
       toast.success(`${res.total} upcoming inspection(s) generated`)
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not generate schedule'),
   })
@@ -608,6 +638,7 @@ const Inspections = () => {
       toast.success('Inspection moved to in progress')
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
       setTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
@@ -623,6 +654,7 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save inspection report'),
   })
@@ -645,6 +677,7 @@ const Inspections = () => {
       toast.success('Asset removed from batch')
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not remove asset from batch'),
   })
@@ -657,6 +690,7 @@ const Inspections = () => {
       setSelectedTechId('')
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not change technician'),
   })
@@ -668,6 +702,7 @@ const Inspections = () => {
       setInvoiceEdit(null)
       queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] })
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update invoice'),
   })
@@ -705,22 +740,16 @@ const Inspections = () => {
     })
   }, [invoiceEdit])
 
-  const legacyInProgress = useMemo(
-    () => (inProgressQ.data?.items || []).filter(item => !item.batch_id),
-    [inProgressQ.data?.items],
-  )
-  const legacyCompleted = useMemo(
-    () => (completedQ.data?.items || []).filter(item => !item.batch_id),
-    [completedQ.data?.items],
-  )
+  const legacyInProgress = inProgressQ.data?.items || []
+  const legacyCompleted = completedQ.data?.items || []
 
-  const stats = useMemo(() => ({
-    upcoming: upcomingQ.data?.total || 0,
+  const stats = {
+    upcoming: summaryQ.data?.upcoming || 0,
     instantItems: equipment.length,
-    inProgress: (inProgressBatchesQ.data?.total || 0) + legacyInProgress.length,
-    completed: (completedBatchesQ.data?.total || 0) + legacyCompleted.length,
-    quotations: quotationsQ.data?.total || 0,
-  }), [upcomingQ.data?.total, equipment.length, inProgressBatchesQ.data?.total, legacyInProgress.length, completedBatchesQ.data?.total, legacyCompleted.length, quotationsQ.data?.total])
+    inProgress: summaryQ.data?.in_progress || 0,
+    completed: summaryQ.data?.completed || 0,
+    quotations: summaryQ.data?.quotations || 0,
+  }
 
   useEffect(() => {
     if (!highlightInvoiceId || !quotationsQ.data?.items?.length) return
@@ -850,6 +879,22 @@ const Inspections = () => {
         </Box>
       </Box>
     </Card>
+  )
+
+  const renderPagination = (
+    total: number,
+    page: number,
+    setPage: (page: number) => void,
+  ) => (
+    <TablePagination
+      component="div"
+      count={total}
+      page={page}
+      onPageChange={(_, nextPage) => setPage(nextPage)}
+      rowsPerPage={pageSize}
+      rowsPerPageOptions={[pageSize]}
+      labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
+    />
   )
 
   const renderInspectionRows = (items: Inspection[], loading: boolean, mode: 'progress' | 'completed') => (
@@ -1136,6 +1181,7 @@ const Inspections = () => {
               </Table>
             </TableContainer>
             {renderUpcomingRows()}
+            {renderPagination(upcomingQ.data?.total || 0, upcomingPage, setUpcomingPage)}
           </Box>
         )}
 
@@ -1207,12 +1253,14 @@ const Inspections = () => {
         {tab === 2 && (
           <Box>
             {renderBatchRows(inProgressBatchesQ.data?.items || [], inProgressBatchesQ.isLoading)}
-            {legacyInProgress.length > 0 && (
+            {renderPagination(inProgressBatchesQ.data?.total || 0, inProgressBatchPage, setInProgressBatchPage)}
+            {(inProgressQ.data?.total || 0) > 0 && (
               <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
                 <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
                   Legacy Individual Inspections
                 </Typography>
                 {renderInspectionRows(legacyInProgress, inProgressQ.isLoading, 'progress')}
+                {renderPagination(inProgressQ.data?.total || 0, legacyInProgressPage, setLegacyInProgressPage)}
               </Box>
             )}
           </Box>
@@ -1220,20 +1268,23 @@ const Inspections = () => {
         {tab === 3 && (
           <Box>
             {renderBatchRows(completedBatchesQ.data?.items || [], completedBatchesQ.isLoading, 'completed')}
-            {legacyCompleted.length > 0 && (
+            {renderPagination(completedBatchesQ.data?.total || 0, completedBatchPage, setCompletedBatchPage)}
+            {(completedQ.data?.total || 0) > 0 && (
               <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
                 <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
                   Legacy Individual Inspections
                 </Typography>
                 {renderInspectionRows(legacyCompleted, completedQ.isLoading, 'completed')}
+                {renderPagination(completedQ.data?.total || 0, legacyCompletedPage, setLegacyCompletedPage)}
               </Box>
             )}
           </Box>
         )}
 
         {tab === 4 && (
-          <TableContainer className="list-scroll-panel">
-            <Table stickyHeader>
+          <Box>
+            <TableContainer className="list-scroll-panel">
+              <Table stickyHeader>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Invoice #</TableCell>
@@ -1288,8 +1339,10 @@ const Inspections = () => {
                   )
                 })}
               </TableBody>
-            </Table>
-          </TableContainer>
+              </Table>
+            </TableContainer>
+            {renderPagination(quotationsQ.data?.total || 0, quotationPage, setQuotationPage)}
+          </Box>
         )}
 
         {tab === 5 && (

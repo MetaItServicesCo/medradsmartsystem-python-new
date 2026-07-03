@@ -134,6 +134,8 @@ export interface Inspection {
 export interface InspectionListResponse {
   items: Inspection[]
   total: number
+  skip: number
+  limit: number
 }
 
 export interface InspectionBatch {
@@ -164,11 +166,23 @@ export interface InspectionBatch {
 export interface InspectionBatchListResponse {
   items: InspectionBatch[]
   total: number
+  skip: number
+  limit: number
 }
 
 export interface InspectionInvoiceListResponse {
   items: InspectionInvoice[]
   total: number
+  skip: number
+  limit: number
+}
+
+export interface InspectionSummary {
+  upcoming: number
+  assets: number
+  in_progress: number
+  completed: number
+  quotations: number
 }
 
 export interface InspectionFormOption {
@@ -286,14 +300,20 @@ export const fetchInspectionFacilityEquipment = async (
 }
 
 export const fetchInspections = async (
-  params: { status?: InspectionStatus; facility_id?: number } = {}
+  params: {
+    status?: InspectionStatus
+    facility_id?: number
+    unbatched_only?: boolean
+    skip?: number
+    limit?: number
+  } = {}
 ): Promise<InspectionListResponse> => {
   const res = await apiClient.get('/inspections/', { params })
   return res.data
 }
 
 export const fetchInspectionBatches = async (
-  params: { status?: InspectionStatus; facility_id?: number } = {}
+  params: { status?: InspectionStatus; facility_id?: number; skip?: number; limit?: number } = {}
 ): Promise<InspectionBatchListResponse> => {
   const res = await apiClient.get('/inspections/batches', { params })
   return res.data
@@ -370,9 +390,31 @@ export const updateInspectionTechnician = async (
   return res.data
 }
 
-export const fetchInspectionQuotations = async (): Promise<InspectionInvoiceListResponse> => {
-  const res = await apiClient.get('/inspections/quotations')
+export const fetchInspectionSummary = async (): Promise<InspectionSummary> => {
+  const res = await apiClient.get('/inspections/summary')
   return res.data
+}
+
+export const fetchInspectionQuotations = async (
+  params: { invoice_id?: number; skip?: number; limit?: number } = {}
+): Promise<InspectionInvoiceListResponse> => {
+  const res = await apiClient.get('/inspections/quotations', { params })
+  return res.data
+}
+
+export const fetchAllInspectionQuotations = async (): Promise<InspectionInvoiceListResponse> => {
+  const limit = 100
+  let skip = 0
+  let total = 0
+  const items: InspectionInvoice[] = []
+  do {
+    const page = await fetchInspectionQuotations({ skip, limit })
+    if (page.items.length === 0) break
+    items.push(...page.items)
+    total = page.total
+    skip += page.items.length
+  } while (skip < total)
+  return { items, total, skip: 0, limit: items.length }
 }
 
 export const updateInspectionInvoice = async (

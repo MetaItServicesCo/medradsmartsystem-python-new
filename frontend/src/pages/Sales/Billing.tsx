@@ -20,7 +20,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
 
-import { fetchInspectionQuotations, updateInspectionInvoice, type InspectionInvoice } from '@/api/inspections'
+import { fetchAllInspectionQuotations, updateInspectionInvoice, type InspectionInvoice } from '@/api/inspections'
 import { fetchRentalInvoices, updateRentalInvoice, type RentalInvoice } from '@/api/rentals'
 import { fetchSalesInvoices, updateSalesInvoice, type SalesInvoice } from '@/api/sales'
 import {
@@ -206,7 +206,7 @@ const Billing = () => {
     enabled: !!printSrId,
     staleTime: 60_000,
   })
-  const inspectionQ = useQuery({ queryKey: ['billing-inspection-invoices'], queryFn: fetchInspectionQuotations })
+  const inspectionQ = useQuery({ queryKey: ['billing-inspection-invoices'], queryFn: fetchAllInspectionQuotations })
   const salesQ = useQuery({ queryKey: ['billing-sales-invoices'], queryFn: () => fetchSalesInvoices() })
   const rentalsQ = useQuery({ queryKey: ['billing-rental-invoices'], queryFn: () => fetchRentalInvoices() })
 
