@@ -45,7 +45,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: medrad_backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-2}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-1}
     volumes:
       - ./backend:/app
     ports:
@@ -64,18 +64,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://medcodesolution.com/api/v1}
+        VITE_STUN_URLS: ${VITE_STUN_URLS:-stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302}
+        VITE_TURN_URLS: ${VITE_TURN_URLS:-turn:134.199.192.91:3478?transport=udp,turn:134.199.192.91:3478?transport=tcp}
+        VITE_TURN_USERNAME: ${TURN_USERNAME:-medrad}
+        VITE_TURN_CREDENTIAL: ${TURN_PASSWORD:-change-this-turn-password}
     container_name: medrad_frontend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     ports:
       - "127.0.0.1:3000:3000"
-    environment:
-      - VITE_API_URL=${VITE_API_URL:-https://medcodesolution.com/api/v1}
-      - VITE_STUN_URLS=${VITE_STUN_URLS:-stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302}
-      - VITE_TURN_URLS=${VITE_TURN_URLS:-turn:134.199.192.91:3478?transport=udp,turn:134.199.192.91:3478?transport=tcp}
-      - VITE_TURN_USERNAME=${TURN_USERNAME:-medrad}
-      - VITE_TURN_CREDENTIAL=${TURN_PASSWORD:-change-this-turn-password}
     depends_on:
       - backend
     networks:
