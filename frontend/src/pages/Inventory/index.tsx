@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, FormControlLabel, IconButton, InputAdornment,
   MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TextField, Tooltip, Typography,
+  TableHead, TablePagination, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -23,10 +23,12 @@ import { fetchTiers } from '@/api/tiers'
 
 import {
   createInventoryPart, createInventoryTransaction, deleteInventoryPart,
-  exportInventoryPartsCsv, fetchInventoryParts, fetchInventoryTransactions, updateInventoryPart,
+  exportInventoryPartsCsv, fetchInventoryParts, fetchInventorySummary, fetchInventoryTransactions, updateInventoryPart,
   type InventoryPart, type InventoryPartPayload, type InventoryTransactionType,
 } from '@/api/inventory'
 import { useAuthStore } from '@/stores/authStore'
+
+const PAGE_SIZE = 25
 
 const emptyPart: InventoryPartPayload = {
   facility_id: null,
@@ -74,6 +76,7 @@ const Inventory = () => {
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [tierId, setTierId] = useState<number | ''>('')
   const [lowStock, setLowStock] = useState(false)
+  const [page, setPage] = useState(0)
   const [partDialogOpen, setPartDialogOpen] = useState(false)
   const [editingPart, setEditingPart] = useState<InventoryPart | null>(null)
   const [partForm, setPartForm] = useState<InventoryPartPayload>(emptyPart)
@@ -94,28 +97,39 @@ const Inventory = () => {
     queryFn: () => fetchFacilities({ limit: 500 }),
   })
   const { data: tiersData } = useQuery({ queryKey: ['tiers'], queryFn: fetchTiers })
+  const inventoryFilters = {
+    search: search || undefined,
+    facility_id: facilityId || undefined,
+    tier_id: tierId || undefined,
+    low_stock: lowStock || undefined,
+  }
   const { data, isLoading } = useQuery({
-    queryKey: ['inventory-parts', 'sales', search, facilityId, tierId, lowStock],
+    queryKey: ['inventory-parts', search, facilityId, tierId, lowStock, page],
     queryFn: () => fetchInventoryParts({
-      part_type: 'sales',
-      search: search || undefined,
-      facility_id: facilityId || undefined,
-      tier_id: tierId || undefined,
-      low_stock: lowStock || undefined,
-      limit: 2000,
+      ...inventoryFilters,
+      skip: page * PAGE_SIZE,
+      limit: PAGE_SIZE,
     }),
+  })
+  const { data: summaryData } = useQuery({
+    queryKey: ['inventory-summary', search, facilityId, tierId, lowStock],
+    queryFn: () => fetchInventorySummary(inventoryFilters),
   })
   const facilities = facilitiesData?.items ?? []
   const tiers = tiersData?.items ?? []
   const parts = data?.items ?? []
+  const totalParts = summaryData ? Number(summaryData.total_parts) : data?.total ?? 0
 
-  const stats = useMemo(() => {
-    const totalUnits = parts.reduce((sum, p) => sum + p.quantity_on_hand, 0)
-    const low = parts.filter((p) => p.quantity_on_hand <= p.reorder_level).length
-    const critical = parts.filter((p) => p.is_critical).length
-    const value = parts.reduce((sum, p) => sum + Number(p.unit_price) * p.quantity_on_hand, 0)
-    return { totalUnits, low, critical, value }
-  }, [parts])
+  useEffect(() => {
+    setPage(0)
+  }, [search, facilityId, tierId, lowStock])
+
+  const stats = {
+    totalUnits: summaryData ? Number(summaryData.total_units) : parts.reduce((sum, p) => sum + p.quantity_on_hand, 0),
+    low: summaryData ? Number(summaryData.low_stock) : parts.filter((p) => p.quantity_on_hand <= p.reorder_level).length,
+    critical: summaryData ? Number(summaryData.critical) : parts.filter((p) => p.is_critical).length,
+    value: summaryData ? Number(summaryData.stock_value) : parts.reduce((sum, p) => sum + Number(p.unit_price) * p.quantity_on_hand, 0),
+  }
 
   const resetPartForm = () => {
     setEditingPart(null)
@@ -127,6 +141,7 @@ const Inventory = () => {
     onSuccess: () => {
       toast.success('Part registered')
       queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
       setPartDialogOpen(false)
       resetPartForm()
     },
@@ -138,6 +153,7 @@ const Inventory = () => {
     onSuccess: () => {
       toast.success('Part updated')
       queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
       setPartDialogOpen(false)
       resetPartForm()
     },
@@ -149,6 +165,7 @@ const Inventory = () => {
     onSuccess: () => {
       toast.success('Part deleted')
       queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to delete part'),
   })
@@ -158,6 +175,7 @@ const Inventory = () => {
     onSuccess: () => {
       toast.success('Stock transaction recorded')
       queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
       queryClient.invalidateQueries({ queryKey: ['inventory-transactions'] })
       setTransactionPart(null)
     },
@@ -288,7 +306,7 @@ const Inventory = () => {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2, mb: 3 }}>
         {[
-          ['Parts', parts.length, <InventoryIcon />],
+          ['Parts', totalParts, <InventoryIcon />],
           ['Units On Hand', stats.totalUnits, <ReceiptLongIcon />],
           ['Low Stock', stats.low, <LowPriorityIcon />],
           ['Stock Value', `$${stats.value.toFixed(2)}`, <MoveUpIcon />],
@@ -391,6 +409,15 @@ const Inventory = () => {
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={totalParts}
+          page={page}
+          onPageChange={(_, nextPage) => setPage(nextPage)}
+          rowsPerPage={PAGE_SIZE}
+          rowsPerPageOptions={[PAGE_SIZE]}
+          labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
+        />
       </Card>
 
       <Dialog open={partDialogOpen} onClose={() => setPartDialogOpen(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '14px', overflow: 'hidden' } }}>

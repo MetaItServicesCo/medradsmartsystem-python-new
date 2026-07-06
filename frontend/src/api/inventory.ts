@@ -148,6 +148,14 @@ export interface InventoryPartListResponse {
   total: number
 }
 
+export interface InventorySummary {
+  total_parts: number
+  total_units: number
+  low_stock: number
+  critical: number
+  stock_value: number
+}
+
 export interface InventoryListParams {
   facility_id?: number
   tier_id?: number
@@ -192,6 +200,13 @@ export const fetchInventoryParts = async (
   params: InventoryListParams = {}
 ): Promise<InventoryPartListResponse> => {
   const res = await apiClient.get('/inventory/', { params })
+  return res.data
+}
+
+export const fetchInventorySummary = async (
+  params: InventoryListParams = {}
+): Promise<InventorySummary> => {
+  const res = await apiClient.get('/inventory/summary', { params })
   return res.data
 }
 

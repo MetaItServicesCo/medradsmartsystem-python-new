@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
@@ -53,6 +53,40 @@ def _transaction_response(txn: InventoryTransaction) -> dict:
     return data
 
 
+def _apply_inventory_filters(
+    query,
+    facility_id: Optional[int] = None,
+    tier_id: Optional[int] = None,
+    part_type: Optional[str] = None,
+    search: Optional[str] = None,
+    low_stock: bool = False,
+    expiring_days: Optional[int] = None,
+):
+    if facility_id is not None:
+        query = query.filter(InventoryPart.facility_id == facility_id)
+    if tier_id is not None:
+        query = query.filter(InventoryPart.tier_id == tier_id)
+    if part_type:
+        query = query.filter(InventoryPart.part_type == part_type)
+    if low_stock:
+        query = query.filter(InventoryPart.quantity_on_hand <= InventoryPart.reorder_level)
+    if expiring_days:
+        query = query.filter(InventoryPart.expiry_date <= date.today() + timedelta(days=expiring_days))
+    if search:
+        query = query.filter(
+            or_(
+                InventoryPart.part_number.ilike(f"%{search}%"),
+                InventoryPart.asset_tag.ilike(f"%{search}%"),
+                InventoryPart.description.ilike(f"%{search}%"),
+                InventoryPart.make.ilike(f"%{search}%"),
+                InventoryPart.model.ilike(f"%{search}%"),
+                InventoryPart.serial_number.ilike(f"%{search}%"),
+                InventoryPart.batch_number.ilike(f"%{search}%"),
+            )
+        )
+    return query
+
+
 def _validate_references(
     db: Session,
     facility_id: Optional[int],
@@ -83,37 +117,68 @@ def list_inventory_parts(
     limit: int = Query(100, ge=1, le=2000),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    query = scope_query_to_user_facilities(db.query(InventoryPart), InventoryPart.facility_id, db, current_user).options(
-        joinedload(InventoryPart.facility),
-        joinedload(InventoryPart.tier),
-        joinedload(InventoryPart.modality),
-        joinedload(InventoryPart.inspection_form),
+    query = _apply_inventory_filters(
+        scope_query_to_user_facilities(db.query(InventoryPart), InventoryPart.facility_id, db, current_user),
+        facility_id=facility_id,
+        tier_id=tier_id,
+        part_type=part_type,
+        search=search,
+        low_stock=low_stock,
+        expiring_days=expiring_days,
     )
-    if facility_id is not None:
-        query = query.filter(InventoryPart.facility_id == facility_id)
-    if tier_id is not None:
-        query = query.filter(InventoryPart.tier_id == tier_id)
-    if part_type:
-        query = query.filter(InventoryPart.part_type == part_type)
-    if low_stock:
-        query = query.filter(InventoryPart.quantity_on_hand <= InventoryPart.reorder_level)
-    if expiring_days:
-        query = query.filter(InventoryPart.expiry_date <= date.today() + timedelta(days=expiring_days))
-    if search:
-        query = query.filter(
-            or_(
-                InventoryPart.part_number.ilike(f"%{search}%"),
-                InventoryPart.asset_tag.ilike(f"%{search}%"),
-                InventoryPart.description.ilike(f"%{search}%"),
-                InventoryPart.make.ilike(f"%{search}%"),
-                InventoryPart.model.ilike(f"%{search}%"),
-                InventoryPart.serial_number.ilike(f"%{search}%"),
-                InventoryPart.batch_number.ilike(f"%{search}%"),
-            )
-        )
     total = query.count()
-    items = query.order_by(InventoryPart.updated_at.desc()).offset(skip).limit(limit).all()
+    items = (
+        query.options(
+            joinedload(InventoryPart.facility),
+            joinedload(InventoryPart.tier),
+            joinedload(InventoryPart.modality),
+            joinedload(InventoryPart.inspection_form),
+        )
+        .order_by(InventoryPart.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return {"items": [_part_response(item) for item in items], "total": total}
+
+
+@router.get("/summary")
+def get_inventory_summary(
+    db: Session = Depends(get_db),
+    facility_id: Optional[int] = Query(None),
+    tier_id: Optional[int] = Query(None),
+    part_type: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    low_stock: bool = Query(False),
+    expiring_days: Optional[int] = Query(None, ge=1, le=3650),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    query = _apply_inventory_filters(
+        scope_query_to_user_facilities(db.query(InventoryPart), InventoryPart.facility_id, db, current_user),
+        facility_id=facility_id,
+        tier_id=tier_id,
+        part_type=part_type,
+        search=search,
+        low_stock=low_stock,
+        expiring_days=expiring_days,
+    )
+    total_parts, total_units, low_stock_parts, critical_parts, stock_value = query.with_entities(
+        func.count(InventoryPart.id),
+        func.coalesce(func.sum(InventoryPart.quantity_on_hand), 0),
+        func.coalesce(
+            func.sum(case((InventoryPart.quantity_on_hand <= InventoryPart.reorder_level, 1), else_=0)),
+            0,
+        ),
+        func.coalesce(func.sum(case((InventoryPart.is_critical.is_(True), 1), else_=0)), 0),
+        func.coalesce(func.sum(InventoryPart.unit_price * InventoryPart.quantity_on_hand), 0),
+    ).one()
+    return {
+        "total_parts": total_parts,
+        "total_units": total_units,
+        "low_stock": low_stock_parts,
+        "critical": critical_parts,
+        "stock_value": stock_value,
+    }
 
 
 @router.get("/export-csv")
