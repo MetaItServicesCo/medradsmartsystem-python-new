@@ -20,6 +20,7 @@ from app.models.equipment import Equipment
 from app.models.audit_log import AuditLog
 from app.utils.logging import log_activity
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.permissions import require_module_permission
 
 router = APIRouter()
 
@@ -233,12 +234,13 @@ def delete_facility(
     *,
     db: Session = Depends(get_db),
     id: int,
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """Delete a facility — admin/superadmin only. Blocked if equipment is linked."""
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_module_permission(current_user, "facilities", "delete")
     require_facility_access(db, current_user, facility.id)
 
     # AC-5: prevent deletion if linked equipment exists

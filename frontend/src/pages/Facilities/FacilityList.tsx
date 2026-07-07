@@ -33,6 +33,7 @@ import { toast } from 'react-toastify'
 import { fetchFacilities, deleteFacility, exportFacilitiesCsv, type Facility } from '@/api/facilities'
 import { exportEquipmentCsv } from '@/api/equipment'
 import { useAuthStore } from '@/stores/authStore'
+import { hasPermission } from '@/config/permissions'
 import FacilityFormModal from './FacilityFormModal'
 import FacilityTierModal from './FacilityTierModal'
 import FacilityViewModal from './FacilityViewModal'
@@ -72,6 +73,7 @@ const FacilityList = () => {
   const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.user)
   const isSuperAdmin = user?.role === 'superadmin'
+  const canDeleteFacilities = hasPermission(user, 'facilities', 'delete')
   const [searchParams, setSearchParams] = useSearchParams()
   const querySearch = searchParams.get('search') || ''
   
@@ -651,35 +653,39 @@ const FacilityList = () => {
           <ListItemText primary="View Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
         </MenuItem>
 
-        <Box sx={{ mx: 2, my: 0.5 }}>
-          <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
-        </Box>
+        {canDeleteFacilities && (
+          <>
+            <Box sx={{ mx: 2, my: 0.5 }}>
+              <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
+            </Box>
 
-        <MenuItem
-          onClick={handleActionDelete}
-          sx={{
-            py: 1.5,
-            px: 2.5,
-            mx: 0.75,
-            borderRadius: '10px',
-            transition: 'all 0.15s ease',
-            '&:hover': {
-              backgroundColor: '#FEF2F2',
-            },
-          }}
-        >
-          <ListItemIcon>
-            <DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.2rem' }} />
-          </ListItemIcon>
-          <ListItemText
-            primary="Delete Facility"
-            primaryTypographyProps={{
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              color: '#EF4444',
-            }}
-          />
-        </MenuItem>
+            <MenuItem
+              onClick={handleActionDelete}
+              sx={{
+                py: 1.5,
+                px: 2.5,
+                mx: 0.75,
+                borderRadius: '10px',
+                transition: 'all 0.15s ease',
+                '&:hover': {
+                  backgroundColor: '#FEF2F2',
+                },
+              }}
+            >
+              <ListItemIcon>
+                <DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.2rem' }} />
+              </ListItemIcon>
+              <ListItemText
+                primary="Delete Facility"
+                primaryTypographyProps={{
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  color: '#EF4444',
+                }}
+              />
+            </MenuItem>
+          </>
+        )}
       </Menu>
 
       {/* Form Modal */}
