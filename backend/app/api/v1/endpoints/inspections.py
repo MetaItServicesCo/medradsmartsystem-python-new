@@ -8,6 +8,7 @@ from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_admin_user, get_current_user
+from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.models.facility import Facility
 from app.models.facility_tier import FacilityTier
@@ -24,8 +25,9 @@ from app.utils.invoice_ledger import record_invoice_created, record_payment_delt
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.permissions import has_module_permission, require_module_permission
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("inspections"))])
 
 
 ADVANCED_REPORT_SCHEMA = {
@@ -939,6 +941,8 @@ def add_asset_to_inspection_batch(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "add")
+
     batch = (
         db.query(InspectionBatch)
         .options(joinedload(InspectionBatch.facility), joinedload(InspectionBatch.inspections))
@@ -1029,6 +1033,8 @@ def remove_asset_from_inspection_batch(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "delete")
+
     batch = db.query(InspectionBatch).options(joinedload(InspectionBatch.inspections)).filter(InspectionBatch.id == batch_id).first()
     if not batch:
         raise HTTPException(status_code=404, detail="Inspection batch not found")
@@ -1062,6 +1068,8 @@ def update_inspection_technician(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "edit")
+
     inspection = (
         db.query(Inspection)
         .options(joinedload(Inspection.facility), joinedload(Inspection.inspector), joinedload(Inspection.batch))
@@ -1089,6 +1097,8 @@ def schedule_inspections(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "add")
+
     facility = db.query(Facility).filter(Facility.id == payload.facility_id).first()
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
@@ -1166,6 +1176,8 @@ def generate_upcoming_inspections(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "add")
+
     horizon = datetime.utcnow() + timedelta(days=max(payload.days_ahead, 1))
     query = (
         db.query(Equipment)
@@ -1243,6 +1255,8 @@ def start_scheduled_inspection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "edit")
+
     inspection = (
         db.query(Inspection)
         .options(
@@ -1278,6 +1292,8 @@ def create_instant_inspection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "add")
+
     facility = (
         db.query(Facility)
         .options(joinedload(Facility.tier), joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier))
@@ -1363,6 +1379,8 @@ def complete_inspection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "edit")
+
     inspection = (
         db.query(Inspection)
         .options(
@@ -1426,6 +1444,8 @@ def save_inspection_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    require_module_permission(current_user, "inspections", "edit")
+
     inspection = (
         db.query(Inspection)
         .options(
@@ -1555,6 +1575,14 @@ def update_inspection_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    can_edit_inspection_invoice = has_module_permission(current_user, "inspections", "edit")
+    can_update_billing_payment = has_module_permission(current_user, "billing", "edit")
+    if not (can_edit_inspection_invoice or can_update_billing_payment):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permission: inspections.edit or billing.edit",
+        )
+
     invoice = (
         db.query(Invoice)
         .options(joinedload(Invoice.facility), joinedload(Invoice.inspection), joinedload(Invoice.transactions))
@@ -1571,6 +1599,14 @@ def update_inspection_invoice(
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
+    if not can_edit_inspection_invoice:
+        billing_only_fields = {"amount_paid", "status", "notes"}
+        disallowed_fields = set(update_data) - billing_only_fields
+        if disallowed_fields:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Billing permission can only update payment amount, status, and notes",
+            )
 
     # Extract fee fields before standard field assignment
     travel_charges = _money(update_data.pop("travel_charges", None))

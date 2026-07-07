@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import crud, schemas
 from app.core.deps import get_current_user, get_admin_user, get_facility_admin_user, get_superadmin_user
+from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.models.user import User
 from app.models.facility import Facility
@@ -22,7 +23,7 @@ from app.utils.logging import log_activity
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.permissions import require_module_permission
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("facilities"))])
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "facility_documents")
 
@@ -168,7 +169,7 @@ def create_facility(
     *,
     db: Session = Depends(get_db),
     facility_in: schemas.FacilityCreate,
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """Create a new facility — admin/superadmin only."""
     tier_ids = facility_in.tier_ids
@@ -208,9 +209,9 @@ def update_facility(
     db: Session = Depends(get_db),
     id: int,
     facility_in: schemas.FacilityUpdate,
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Update a facility — admin/superadmin only."""
+    """Update a facility."""
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
@@ -240,7 +241,6 @@ def delete_facility(
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
-    require_module_permission(current_user, "facilities", "delete")
     require_facility_access(db, current_user, facility.id)
 
     # AC-5: prevent deletion if linked equipment exists
@@ -284,7 +284,7 @@ async def upload_facility_document(
     id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """Upload a document to a facility."""
     facility = crud.facility.get(db=db, id=id)
@@ -318,7 +318,7 @@ def delete_facility_document(
     facility_id: int,
     doc_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """Delete a specific document from a facility."""
     doc = db.query(FacilityDocument).filter(

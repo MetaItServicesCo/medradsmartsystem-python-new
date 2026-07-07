@@ -10,6 +10,7 @@ from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_current_user, require_roles
+from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.models.attendance import (
     AttendanceEvent,
@@ -53,7 +54,7 @@ MAX_IMAGE_SIZE = 5 * 1024 * 1024
 FACE_MATCH_THRESHOLD = 0.82
 FACE_REVIEW_THRESHOLD = 0.72
 
-get_attendance_manager = require_roles("superadmin", "admin", "hr_manager", "facility_admin", "facility_manager")
+get_attendance_manager = require_module_access("attendance")
 
 
 class FaceRecognitionRequest(BaseModel):

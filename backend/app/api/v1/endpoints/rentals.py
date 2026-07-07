@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db.base import get_db
 from app.core.deps import get_current_user
+from app.utils.permission_deps import require_module_access
 from app.models.facility import Facility
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
@@ -19,7 +20,7 @@ from app.utils.facility_access import require_facility_access, scope_query_to_us
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("rentals"))])
 
 
 class RentalCreate(BaseModel):

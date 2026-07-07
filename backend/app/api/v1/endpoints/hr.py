@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 HR_DOC_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "hr_documents")
 
 from app.core.deps import get_current_user, require_roles
+from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.utils.notifications import create_notification
 from app.models.hr import (
@@ -76,7 +77,7 @@ from app.schemas.hr import (
 router = APIRouter()
 
 HR_ROLES = ("superadmin", "admin", "hr_manager")
-require_hr = require_roles(*HR_ROLES)
+require_hr = require_module_access("hr")
 
 
 def _user_mini(user: Optional[User]) -> Optional[dict]:

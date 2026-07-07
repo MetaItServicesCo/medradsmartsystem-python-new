@@ -12,6 +12,8 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app import crud
 from app.core.deps import get_current_user, get_admin_user
+from app.utils.permission_deps import require_module_access
+from app.utils.permissions import has_module_permission
 from app.db.base import get_db
 from app.models.user import User, UserRole
 from app.models.service_request import (
@@ -33,7 +35,7 @@ from app.utils.notifications import create_notification, create_notifications, n
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
 
 SERVICE_REQUEST_UPLOAD_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -364,8 +366,6 @@ def list_service_requests(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """List service requests with filters."""
-    if current_user.role == UserRole.HR_MANAGER:
-        raise HTTPException(status_code=403, detail="HR managers do not have access to service requests")
     query = (
         scope_query_to_user_facilities(db.query(ServiceRequest), ServiceRequest.facility_id, db, current_user)
         .options(
@@ -484,7 +484,7 @@ def update_service_invoice(
         raise HTTPException(status_code=404, detail="Service invoice not found")
     if invoice.facility_id is not None:
         require_facility_access(db, current_user, invoice.facility_id)
-    if current_user.role not in {UserRole.SUPERADMIN, UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
+    if not has_module_permission(current_user, "billing", "edit"):
         raise HTTPException(status_code=403, detail="Not enough permissions to update payment")
 
     previous_paid = invoice.amount_paid
@@ -527,8 +527,6 @@ def get_service_request(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Get a single service request by ID."""
-    if current_user.role == UserRole.HR_MANAGER:
-        raise HTTPException(status_code=403, detail="HR managers do not have access to service requests")
     sr = (
         db.query(ServiceRequest)
         .options(
@@ -1118,7 +1116,7 @@ def add_service_request_note(
 def delete_service_request(
     request_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_admin_user),  # admin only
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """Delete a service request (admin only)."""
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()

@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_admin_user, require_roles
+from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.models.user import User, UserRole, UserType
 from app.models.user_facility import UserFacility
@@ -210,9 +211,9 @@ async def upload_own_profile_picture(
 def create_user(
     user_in: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_superadmin_user),
+    current_user: User = Depends(require_module_access("users")),
 ) -> Any:
-    """Super admin creates a new user with credentials."""
+    """Create a new user (requires users.add permission)."""
     # Check for duplicate username or email
     existing = crud_user.get_by_username(db, username=user_in.username)
     if existing:
@@ -407,7 +408,7 @@ def update_user(
     user_id: int,
     user_in: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_superadmin_user),
+    current_user: User = Depends(require_module_access("users")),
 ) -> Any:
     """Update a user (super admin only)."""
     db_user = crud_user.get(db, id=user_id)
@@ -492,7 +493,7 @@ def update_user_role(
 def deactivate_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_superadmin_user),
+    current_user: User = Depends(require_module_access("users")),
 ) -> Any:
     """Deactivate a user (set is_active=False). Super admin only."""
     db_user = crud_user.get(db, id=user_id)
@@ -521,9 +522,9 @@ def deactivate_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_superadmin_or_hr),
+    current_user: User = Depends(require_module_access("users")),
 ) -> Any:
-    """Hard-delete a user from the system. Super admin or HR manager only."""
+    """Hard-delete a user (requires users.delete permission)."""
     db_user = crud_user.get(db, id=user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -586,7 +587,7 @@ def delete_user(
 def activate_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_superadmin_user),
+    current_user: User = Depends(require_module_access("users")),
 ) -> Any:
     """Re-activate a deactivated user. Super admin only."""
     db_user = crud_user.get(db, id=user_id)

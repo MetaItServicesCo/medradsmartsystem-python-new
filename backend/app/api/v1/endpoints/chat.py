@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
 from app.core.deps import get_current_user
+from app.utils.permission_deps import require_module_access
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notification, create_notifications
 from app.db.base import get_db
@@ -24,7 +25,7 @@ from app.schemas.chat import (
     WorkspaceMessageCreate, WorkspaceMessageResponse, WorkspaceMessageListResponse,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("chat"))])
 
 CHAT_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "chat_files")
 

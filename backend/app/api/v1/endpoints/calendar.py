@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.core.deps import get_current_user
+from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.models.user import User
 from app.models.calendar import CalendarEvent
@@ -11,7 +12,7 @@ from app.models.chat import WorkspaceMember
 from app.schemas.calendar import CalendarEventCreate, CalendarEventUpdate, CalendarEventResponse
 from app.utils.logging import log_activity
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("calendar"))])
 
 @router.get("/events", response_model=List[CalendarEventResponse])
 def get_events(

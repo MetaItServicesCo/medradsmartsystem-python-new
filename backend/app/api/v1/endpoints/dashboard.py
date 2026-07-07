@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
+from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.models.equipment import Equipment, EquipmentStatus
 from app.models.facility import Facility
@@ -17,7 +18,7 @@ from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("dashboard"))])
 
 
 @router.get("/summary")

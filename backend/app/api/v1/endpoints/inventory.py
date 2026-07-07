@@ -9,6 +9,7 @@ from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
+from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.models.facility import Facility
 from app.models.inspection_form import InspectionForm
@@ -29,7 +30,7 @@ from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("inventory"))])
 
 STOCK_IN = {"receiving"}
 STOCK_OUT = {"issuance"}
@@ -334,7 +335,7 @@ def update_inventory_part(
 def delete_inventory_part(
     part_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     part = db.query(InventoryPart).filter(InventoryPart.id == part_id).first()
     if not part:
