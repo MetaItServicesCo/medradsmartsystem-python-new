@@ -18,7 +18,7 @@ from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.modality import Modality
 from app.models.tier import Tier
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
@@ -765,6 +765,12 @@ def inspection_summary(
     batches = scope_query_to_user_facilities(
         db.query(InspectionBatch), InspectionBatch.facility_id, db, current_user
     )
+    if current_user.role == UserRole.TECHNICIAN:
+        inspections = inspections.filter(Inspection.inspector_id == current_user.id)
+        batches = batches.filter(InspectionBatch.inspector_id == current_user.id)
+    elif current_user.role == UserRole.EMPLOYEE:
+        inspections = inspections.filter(False)
+        batches = batches.filter(False)
     equipment = scope_query_to_user_facilities(
         db.query(Equipment), Equipment.facility_id, db, current_user
     )
@@ -819,6 +825,10 @@ def list_inspections(
         query = query.filter(Inspection.facility_id == facility_id)
     if unbatched_only:
         query = query.filter(Inspection.batch_id.is_(None))
+    if current_user.role == UserRole.TECHNICIAN:
+        query = query.filter(Inspection.inspector_id == current_user.id)
+    elif current_user.role == UserRole.EMPLOYEE:
+        query = query.filter(False)
 
     total = query.count()
     inspections = query.order_by(Inspection.created_at.desc()).offset(skip).limit(limit).all()
@@ -866,6 +876,10 @@ def list_inspection_batches(
     if facility_id:
         require_facility_access(db, current_user, facility_id)
         query = query.filter(InspectionBatch.facility_id == facility_id)
+    if current_user.role == UserRole.TECHNICIAN:
+        query = query.filter(InspectionBatch.inspector_id == current_user.id)
+    elif current_user.role == UserRole.EMPLOYEE:
+        query = query.filter(False)
 
     total = query.count()
     batches = query.order_by(InspectionBatch.created_at.desc()).offset(skip).limit(limit).all()
@@ -1532,6 +1546,8 @@ def update_inspection_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail="Inspection invoice not found")
     require_facility_access(db, current_user, invoice.facility_id)
+    if current_user.role not in {UserRole.SUPERADMIN, UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
+        raise HTTPException(status_code=403, detail="Not enough permissions to update payment")
 
     before = {c.name: getattr(invoice, c.name) for c in invoice.__table__.columns}
     previous_paid = invoice.amount_paid

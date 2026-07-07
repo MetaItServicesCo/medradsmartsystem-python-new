@@ -34,23 +34,31 @@ PERMISSION_SCOPES = ["all", "facility", "assigned", "own", "none"]
 PERMISSION_MODULES = [
     {"key": "dashboard", "label": "Dashboard"},
     {"key": "facilities", "label": "Facilities"},
-    {"key": "facility_inventory", "label": "Facility Inventory"},
-    {"key": "inventory_parts", "label": "Parts Inventory"},
-    {"key": "inventory_tiers", "label": "Inventory Tiers"},
-    {"key": "modalities", "label": "Modalities"},
     {"key": "users", "label": "Users"},
-    {"key": "service_requests", "label": "Service Requests"},
+    {"key": "service-requests", "label": "Service Requests"},
     {"key": "inspections", "label": "Inspections"},
-    {"key": "inspection_quotations", "label": "Inspection Quotations"},
-    {"key": "billing", "label": "Billing"},
-    {"key": "reports", "label": "Reports"},
+    {"key": "sales", "label": "Sales"},
     {"key": "rentals", "label": "Rentals"},
+    {"key": "inventory", "label": "Inventory"},
+    {"key": "reports", "label": "Reports"},
+    {"key": "billing", "label": "Billing"},
+    {"key": "hr", "label": "HR"},
     {"key": "attendance", "label": "Smart Attendance"},
+    {"key": "my-timesheets", "label": "My Timesheets"},
+    {"key": "my-leave", "label": "My Leave"},
     {"key": "calendar", "label": "Calendar"},
     {"key": "chat", "label": "Chat"},
-    {"key": "notifications", "label": "Notifications"},
-    {"key": "audit_logs", "label": "Audit Logs"},
 ]
+PERMISSION_MODULE_ALIASES = {
+    "service_requests": "service-requests",
+    "facility_inventory": "inventory",
+    "inventory_parts": "inventory",
+    "inventory_tiers": "inventory",
+    "modalities": "inventory",
+    "inspection_quotations": "inspections",
+    "notifications": "dashboard",
+    "audit_logs": "dashboard",
+}
 
 
 def _build_user_response(db_user: User, db: Session) -> dict:
@@ -348,6 +356,7 @@ def update_user_permissions(
     allowed_modules = {module["key"] for module in PERMISSION_MODULES}
     sanitized = {}
     for module_key, rule in permissions_in.permissions.items():
+        module_key = PERMISSION_MODULE_ALIASES.get(module_key, module_key)
         if module_key not in allowed_modules:
             continue
         rule_data = rule.model_dump()

@@ -29,13 +29,15 @@ import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
+import TimerIcon from '@mui/icons-material/Timer'
+import BeachAccessIcon from '@mui/icons-material/BeachAccess'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
 import { fetchAuditLogs, type AuditLogItem } from '@/api/audit'
 import { fetchDashboardSummary } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/authStore'
-import { hasPermission, type Module } from '@/config/permissions'
+import { enabledPermissionCount, hasPermission, type Module } from '@/config/permissions'
 import { format, isValid } from 'date-fns'
 
 const safeFormatDate = (dateStr: string | null | undefined) => {
@@ -147,7 +149,7 @@ const Dashboard = () => {
   const currentUser = useAuthStore((s) => s.user)
   const isSuperAdmin = currentUser?.role === 'superadmin'
   const [hiddenAnalytics, setHiddenAnalytics] = useState<Record<string, boolean>>({})
-  const canAccess = (module: Module) => hasPermission(currentUser?.role, module)
+  const canAccess = (module: Module) => hasPermission(currentUser, module)
   const isAnalyticsHidden = (key: AnalyticsKey) => Boolean(hiddenAnalytics[key])
   const toggleAnalytics = (key: AnalyticsKey) => (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -238,6 +240,16 @@ const Dashboard = () => {
   ]
 
   const compactStats = [
+    {
+      key: 'permissions',
+      module: 'dashboard' as Module,
+      label: 'Permissions',
+      value: enabledPermissionCount(currentUser),
+      detail: 'enabled actions',
+      icon: <PeopleAltIcon />,
+      color: '#7C3AED',
+      path: '/',
+    },
     {
       key: 'inspections',
       module: 'inspections' as Module,
@@ -338,6 +350,8 @@ const Dashboard = () => {
     { label: 'Inventory', detail: 'Review stock health', icon: <Inventory2Icon />, path: '/inventory', module: 'inventory' as Module },
     { label: 'Sales Invoices', detail: 'Check invoices', icon: <ReceiptIcon />, path: '/sales/invoices', module: 'sales' as Module },
     { label: 'Reports', detail: 'Open analytics', icon: <AssessmentIcon />, path: '/reports', module: 'reports' as Module },
+    { label: 'My Timesheets', detail: 'Log working hours', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets' as Module },
+    { label: 'My Leave', detail: 'Review leave requests', icon: <BeachAccessIcon />, path: '/my-leave', module: 'my-leave' as Module },
     { label: 'Chat', detail: 'Team conversations', icon: <ChatBubbleOutlineIcon />, path: '/chat', module: 'chat' as Module },
     { label: 'Calendar', detail: 'Schedule work', icon: <CalendarMonthIcon />, path: '/calendar', module: 'calendar' as Module },
   ]

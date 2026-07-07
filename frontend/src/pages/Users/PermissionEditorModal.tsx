@@ -14,8 +14,10 @@ import {
   type PermissionCatalogModule, type UserData, type UserPermissionMatrix,
   type UserPermissionRule,
 } from '@/api/users'
+import { buildDefaultPermissionMatrix, emptyRule, normalizePermissionMatrix } from '@/config/permissions'
 
 const ACTION_LABELS: Array<keyof Omit<UserPermissionRule, 'scope'>> = ['index', 'view', 'add', 'edit', 'delete']
+const CHILD_ACTIONS: Array<keyof Omit<UserPermissionRule, 'scope'>> = ['view', 'add', 'edit', 'delete']
 
 const SCOPE_OPTIONS = [
   { value: 'all', label: 'All Records' },
@@ -31,45 +33,12 @@ interface Props {
   onClose: () => void
 }
 
-const emptyRule = (scope = 'own'): UserPermissionRule => ({
-  index: false,
-  view: false,
-  add: false,
-  edit: false,
-  delete: false,
-  scope,
-})
-
-const buildDefaultMatrix = (role: string, modules: PermissionCatalogModule[]): UserPermissionMatrix => {
-  const fullAccess = role === 'superadmin' || role === 'admin'
-  const managerAccess = role === 'facility_admin' || role === 'facility_manager'
-  const technicianAccess = role === 'technician'
-
-  return modules.reduce<UserPermissionMatrix>((acc, module) => {
-    const scope = fullAccess ? 'all' : managerAccess ? 'facility' : technicianAccess ? 'assigned' : 'own'
-    const canWork =
-      fullAccess ||
-      (managerAccess && !['users', 'audit_logs'].includes(module.key)) ||
-      (technicianAccess && ['dashboard', 'facility_inventory', 'service_requests', 'inspections', 'calendar', 'chat', 'notifications'].includes(module.key))
-
-    acc[module.key] = {
-      index: canWork,
-      view: canWork,
-      add: fullAccess || managerAccess || (technicianAccess && ['inspections', 'service_requests', 'chat'].includes(module.key)),
-      edit: fullAccess || managerAccess || (technicianAccess && ['inspections', 'service_requests', 'chat'].includes(module.key)),
-      delete: fullAccess,
-      scope: canWork ? scope : 'none',
-    }
-    return acc
-  }, {})
-}
-
 const mergePermissions = (
   defaults: UserPermissionMatrix,
   saved?: UserPermissionMatrix,
 ): UserPermissionMatrix => {
   const merged: UserPermissionMatrix = { ...defaults }
-  Object.entries(saved || {}).forEach(([moduleKey, rule]) => {
+  Object.entries(normalizePermissionMatrix(saved) || {}).forEach(([moduleKey, rule]) => {
     if (!merged[moduleKey]) return
     merged[moduleKey] = { ...merged[moduleKey], ...rule }
   })
@@ -104,7 +73,11 @@ const PermissionEditorModal = ({ open, user, onClose }: Props) => {
 
   useEffect(() => {
     if (!open || !activeUser || modules.length === 0) return
-    const defaults = buildDefaultMatrix(activeUser.role, modules)
+    const defaultMatrix = buildDefaultPermissionMatrix(activeUser.role)
+    const defaults = modules.reduce<UserPermissionMatrix>((acc, module) => {
+      acc[module.key] = defaultMatrix[module.key] || emptyRule()
+      return acc
+    }, {})
     setMatrix(mergePermissions(defaults, activeUser.permissions))
   }, [open, activeUser?.id, activeUser?.role, activeUser?.permissions, modules.length])
 
@@ -128,9 +101,35 @@ const PermissionEditorModal = ({ open, user, onClose }: Props) => {
 
   const toggleAction = (moduleKey: string, action: keyof Omit<UserPermissionRule, 'scope'>) => {
     const current = matrix[moduleKey] || emptyRule()
+    if (action === 'index') {
+      const enabled = !current.index
+      setRule(moduleKey, {
+        index: enabled,
+        view: enabled ? true : false,
+        add: enabled ? current.add : false,
+        edit: enabled ? current.edit : false,
+        delete: enabled ? current.delete : false,
+        scope: enabled ? (current.scope === 'none' ? 'own' : current.scope) : 'none',
+      })
+      return
+    }
+    const nextValue = !current[action]
+    const nextRule = {
+      ...current,
+      [action]: nextValue,
+      index: nextValue ? true : current.index,
+      scope: nextValue && current.scope === 'none' ? 'own' : current.scope,
+    }
+    if (!nextValue && CHILD_ACTIONS.every((childAction) => childAction === action ? false : Boolean(nextRule[childAction]))) {
+      nextRule.index = true
+    } else if (!nextValue && CHILD_ACTIONS.every((childAction) => childAction === action ? false : !nextRule[childAction])) {
+      nextRule.index = false
+      nextRule.scope = 'none'
+    }
     setRule(moduleKey, {
-      [action]: !current[action],
-      scope: !current[action] && current.scope === 'none' ? 'own' : current.scope,
+      [action]: nextValue,
+      index: nextRule.index,
+      scope: nextRule.scope,
     } as Partial<UserPermissionRule>)
   }
 

@@ -393,8 +393,9 @@ def list_service_requests(
     if current_user.role == UserRole.TECHNICIAN:
         query = query.filter(ServiceRequest.assigned_technician_id == current_user.id)
 
-    # Employees and clients only see requests they submitted
-    if current_user.role in (UserRole.EMPLOYEE, UserRole.CLIENT):
+    # Employees only see requests they submitted. Clients are facility-scoped
+    # through scope_query_to_user_facilities when assigned to facilities.
+    if current_user.role == UserRole.EMPLOYEE:
         query = query.filter(ServiceRequest.requester_id == current_user.id)
 
     total = query.count()
@@ -463,6 +464,8 @@ def update_service_invoice(
         raise HTTPException(status_code=404, detail="Service invoice not found")
     if invoice.facility_id is not None:
         require_facility_access(db, current_user, invoice.facility_id)
+    if current_user.role not in {UserRole.SUPERADMIN, UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
+        raise HTTPException(status_code=403, detail="Not enough permissions to update payment")
 
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
@@ -525,8 +528,8 @@ def get_service_request(
     # Technicians can only view service requests assigned to them
     if current_user.role == UserRole.TECHNICIAN and sr.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only view service requests assigned to you")
-    # Employees and clients can only view requests they submitted
-    if current_user.role in (UserRole.EMPLOYEE, UserRole.CLIENT) and sr.requester_id != current_user.id:
+    # Employees can only view requests they submitted. Clients are facility-scoped.
+    if current_user.role == UserRole.EMPLOYEE and sr.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only view service requests you submitted")
     data = _enrich(sr)
     active_invoice = (
@@ -1355,7 +1358,12 @@ def create_quotation_payment(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Record a payment for a quotation via Credit Card, ACH, or MBMTS ACH."""
-    if current_user.role not in [UserRole.SUPERADMIN, UserRole.ADMIN]:
+    if current_user.role not in [
+        UserRole.SUPERADMIN,
+        UserRole.FACILITY_ADMIN,
+        UserRole.FACILITY_MANAGER,
+        UserRole.CLIENT,
+    ]:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db_quotation = (

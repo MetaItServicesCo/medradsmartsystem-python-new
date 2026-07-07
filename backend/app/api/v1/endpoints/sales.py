@@ -14,10 +14,12 @@ from app.models.facility import Facility
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.sales import SalesQuotation, SalesQuotationLineItem
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.models.user_facility import UserFacility
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
+from app.utils.notifications import create_notifications
 
 router = APIRouter()
 
@@ -561,6 +563,35 @@ def request_card_authorization(
         raise HTTPException(status_code=404, detail="Sales quotation not found")
     if quotation.facility_id is not None:
         require_facility_access(db, current_user, quotation.facility_id)
+        recipient_roles = [UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT]
+        primary_users = (
+            db.query(User.id)
+            .filter(
+                User.facility_id == quotation.facility_id,
+                User.role.in_(recipient_roles),
+                User.is_active.is_(True),
+            )
+            .all()
+        )
+        linked_users = (
+            db.query(UserFacility.user_id)
+            .join(User, User.id == UserFacility.user_id)
+            .filter(
+                UserFacility.facility_id == quotation.facility_id,
+                User.role.in_(recipient_roles),
+                User.is_active.is_(True),
+            )
+            .all()
+        )
+        create_notifications(
+            db,
+            user_ids=[user.id for user in primary_users] + [user.user_id for user in linked_users],
+            title="Credit card authorization requested",
+            message=f"Authorization requested for {quotation.quotation_number or f'quotation #{quotation.id}'}.",
+            notification_type="billing",
+            link_url="/billing",
+            actor_id=current_user.id,
+        )
     _append_history(quotation, "credit_card_authorization_requested", current_user)
     quotation.updated_at = datetime.utcnow()
     log_activity(db, "sales_quotations", quotation.id, "REQUEST_CARD_AUTHORIZATION", current_user, {})
@@ -637,6 +668,8 @@ def update_sales_invoice(
         raise HTTPException(status_code=404, detail="Sales invoice not found")
     if invoice.facility_id is not None:
         require_facility_access(db, current_user, invoice.facility_id)
+    if current_user.role not in {UserRole.SUPERADMIN, UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
+        raise HTTPException(status_code=403, detail="Not enough permissions to update payment")
 
     previous_paid = invoice.amount_paid
     previous_status = invoice.status

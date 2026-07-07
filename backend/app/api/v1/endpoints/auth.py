@@ -48,6 +48,7 @@ def login(
             "role": user.role.value if hasattr(user.role, "value") else str(user.role),
             "is_active": user.is_active,
             "facility_id": user.facility_id,
+            "permissions": user.permissions or {},
         }
     }
 

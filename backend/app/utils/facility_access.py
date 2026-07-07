@@ -7,7 +7,7 @@ from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 
 
-FACILITY_SCOPED_ROLES = {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER}
+FACILITY_SCOPED_ROLES = {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}
 
 
 def is_facility_scoped_user(user: User) -> bool:

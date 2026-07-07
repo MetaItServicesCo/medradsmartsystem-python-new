@@ -78,7 +78,7 @@ const Sidebar = () => {
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
 
-  const visibleModules = getVisibleModules(user?.role)
+  const visibleModules = getVisibleModules(user)
   const menuItems = allMenuItems.filter((item) => visibleModules.includes(item.module))
 
   const isActive = (path: string, subItems?: any[]) => {

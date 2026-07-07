@@ -35,6 +35,7 @@ import {
 } from '@/api/serviceRequests'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import { useAuthStore } from '@/stores/authStore'
+import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
 
 type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
@@ -171,8 +172,8 @@ const Billing = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
-  // Only the invoice's owning side (facility admin/manager) may record payment — not the service company's own staff
-  const canPay = ['facility_admin', 'facility_manager'].includes(user?.role || '')
+  // Billing payment is available to allowed payer roles when their Billing edit permission is enabled.
+  const canPay = ['superadmin', 'facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
 
   const [sourceFilter, setSourceFilter] = useState<'all' | BillingSource>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')

@@ -14,7 +14,7 @@ from app.models.facility import Facility
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.rental import Rental, RentalStatus, BillingFrequency
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
@@ -626,6 +626,8 @@ def update_rental_invoice(
         
     if invoice.facility_id is not None:
         require_facility_access(db, current_user, invoice.facility_id)
+    if current_user.role not in {UserRole.SUPERADMIN, UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
+        raise HTTPException(status_code=403, detail="Not enough permissions to update payment")
 
     previous_paid = invoice.amount_paid
     previous_status = invoice.status

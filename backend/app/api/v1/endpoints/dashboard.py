@@ -13,7 +13,7 @@ from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.rental import Rental, RentalStatus
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user
 
@@ -33,6 +33,22 @@ def read_dashboard_summary(
             return query
         return query.filter(model.facility_id.in_(allowed_facility_ids))
 
+    def service_scope(query):
+        query = facility_scope(query, ServiceRequest)
+        if current_user.role == UserRole.TECHNICIAN:
+            return query.filter(ServiceRequest.assigned_technician_id == current_user.id)
+        if current_user.role == UserRole.EMPLOYEE:
+            return query.filter(ServiceRequest.requester_id == current_user.id)
+        return query
+
+    def inspection_scope(query):
+        query = facility_scope(query, Inspection)
+        if current_user.role == UserRole.TECHNICIAN:
+            return query.filter(Inspection.inspector_id == current_user.id)
+        if current_user.role == UserRole.EMPLOYEE:
+            return query.filter(False)
+        return query
+
     open_service_statuses = [
         ServiceRequestStatus.NEW,
         ServiceRequestStatus.ASSIGNED,
@@ -43,15 +59,15 @@ def read_dashboard_summary(
         facility_query = facility_query.filter(Facility.id.in_(allowed_facility_ids))
     active_facilities = facility_query.filter(Facility.status == "active").count()
     total_facilities = facility_query.count()
-    total_service_requests = facility_scope(db.query(ServiceRequest), ServiceRequest).count()
-    open_service_requests = facility_scope(db.query(ServiceRequest), ServiceRequest).filter(ServiceRequest.status.in_(open_service_statuses)).count()
-    critical_service_requests = facility_scope(db.query(ServiceRequest), ServiceRequest).filter(
+    total_service_requests = service_scope(db.query(ServiceRequest)).count()
+    open_service_requests = service_scope(db.query(ServiceRequest)).filter(ServiceRequest.status.in_(open_service_statuses)).count()
+    critical_service_requests = service_scope(db.query(ServiceRequest)).filter(
         ServiceRequest.priority == Priority.CRITICAL,
         ServiceRequest.status.in_(open_service_statuses),
     ).count()
-    total_inspections = facility_scope(db.query(Inspection), Inspection).count()
-    overdue_inspections = facility_scope(db.query(Inspection), Inspection).filter(Inspection.status == InspectionStatus.OVERDUE).count()
-    upcoming_inspections = facility_scope(db.query(Inspection), Inspection).filter(Inspection.status == InspectionStatus.UPCOMING).count()
+    total_inspections = inspection_scope(db.query(Inspection)).count()
+    overdue_inspections = inspection_scope(db.query(Inspection)).filter(Inspection.status == InspectionStatus.OVERDUE).count()
+    upcoming_inspections = inspection_scope(db.query(Inspection)).filter(Inspection.status == InspectionStatus.UPCOMING).count()
     rental_query = db.query(Rental)
     if allowed_facility_ids is not None:
         rental_query = rental_query.join(Equipment, Equipment.id == Rental.equipment_id).filter(
