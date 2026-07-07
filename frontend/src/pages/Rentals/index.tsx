@@ -140,7 +140,8 @@ const Rentals = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const [search, setSearch] = useState('')
+  const routeSearch = new URLSearchParams(location.search).get('search') || ''
+  const [search, setSearch] = useState(routeSearch)
   const [agreementDialog, setAgreementDialog] = useState(false)
   const [editingAgreement, setEditingAgreement] = useState<Rental | null>(null)
   const [viewAgreement, setViewAgreement] = useState<Rental | null>(null)
@@ -175,10 +176,14 @@ const Rentals = () => {
     if (location.pathname === '/rentals') navigate('/rentals/agreements', { replace: true })
   }, [location.pathname, navigate])
 
+  useEffect(() => {
+    setSearch(routeSearch)
+  }, [routeSearch])
+
   const facilitiesQ = useQuery({ queryKey: ['rental-facilities'], queryFn: () => fetchFacilities({ limit: 500 }) })
   const partsQ = useQuery({ queryKey: ['rental-parts', search], queryFn: () => fetchRentalParts(search || undefined) })
   const rentalsQ = useQuery({ queryKey: ['rental-agreements', search], queryFn: () => fetchRentals({ search: search || undefined }) })
-  const invoicesQ = useQuery({ queryKey: ['rental-invoices'], queryFn: () => fetchRentalInvoices() })
+  const invoicesQ = useQuery({ queryKey: ['rental-invoices', search], queryFn: () => fetchRentalInvoices({ search: search || undefined }) })
   const historyQ = useQuery({ queryKey: ['rental-history'], queryFn: fetchRentalHistory })
 
   const facilities = facilitiesQ.data?.items || []

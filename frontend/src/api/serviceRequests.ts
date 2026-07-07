@@ -339,19 +339,19 @@ export const addServiceRequestNote = async (id: number, note: string): Promise<S
 }
 
 export const fetchServiceInvoices = async (
-  params: { status?: string; service_request_id?: number; skip?: number; limit?: number } = {}
+  params: { status?: string; service_request_id?: number; search?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: ServiceInvoice[]; total: number; skip: number; limit: number }> => {
   const res = await apiClient.get('/service-requests/invoices', { params })
   return res.data
 }
 
-export const fetchAllServiceInvoices = async (): Promise<{ items: ServiceInvoice[]; total: number }> => {
+export const fetchAllServiceInvoices = async (search?: string): Promise<{ items: ServiceInvoice[]; total: number }> => {
   const limit = 100
   let skip = 0
   let total = 0
   const items: ServiceInvoice[] = []
   do {
-    const page = await fetchServiceInvoices({ skip, limit })
+    const page = await fetchServiceInvoices({ search, skip, limit })
     if (page.items.length === 0) break
     items.push(...page.items)
     total = page.total
@@ -404,8 +404,9 @@ export const deleteServiceRequestQuotation = async (
   await apiClient.delete(`/service-requests/quotations/${quotationId}`)
 }
 
-export const fetchAllQuotations = async (): Promise<ServiceRequestQuotationList[]> => {
-  const res = await apiClient.get('/service-requests/quotations/all')
+export const fetchAllQuotations = async (search?: unknown): Promise<ServiceRequestQuotationList[]> => {
+  const normalizedSearch = typeof search === 'string' ? search : undefined
+  const res = await apiClient.get('/service-requests/quotations/all', { params: { search: normalizedSearch } })
   return res.data
 }
 

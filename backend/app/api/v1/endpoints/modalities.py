@@ -1,5 +1,6 @@
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 
 from app import crud
@@ -14,8 +15,22 @@ from app.schemas.modality import (
 router = APIRouter()
 
 
-def _build_tree(modality: Modality) -> dict:
+def _modality_matches(modality: Modality, search: str) -> bool:
+    """Return true when a modality matches the normalized search term."""
+    category = modality.category.value if modality.category else ""
+    values = (modality.name or "", modality.description or "", category)
+    return any(search in value.lower() for value in values)
+
+
+def _build_tree(modality: Modality, search: Optional[str] = None) -> Optional[dict]:
     """Recursively build modality tree."""
+    children = [
+        child_tree
+        for child in sorted(modality.children or [], key=lambda item: item.id or 0, reverse=True)
+        if (child_tree := _build_tree(child, search)) is not None
+    ]
+    if search and not _modality_matches(modality, search) and not children:
+        return None
     return {
         "id": modality.id,
         "name": modality.name,
@@ -23,7 +38,7 @@ def _build_tree(modality: Modality) -> dict:
         "description": modality.description,
         "inspection_frequency_days": modality.inspection_frequency_days,
         "parent_id": modality.parent_id,
-        "children": [_build_tree(child) for child in modality.children],
+        "children": children,
     }
 
 
@@ -32,13 +47,35 @@ def list_modalities(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     parent_only: bool = Query(True, description="If true, return only root modalities with children nested"),
+    search: Optional[str] = Query(None, description="Search modalities by name, description, or category"),
 ) -> Any:
     """List modalities. By default returns tree structure (root nodes only with nested children)."""
+    search_term = search.strip().lower() if search and search.strip() else None
     if parent_only:
-        items = db.query(Modality).filter(Modality.parent_id == None).all()
+        items = (
+            db.query(Modality)
+            .filter(Modality.parent_id == None)
+            .order_by(Modality.id.desc())
+            .all()
+        )
+        tree = [
+            item
+            for modality in items
+            if (item := _build_tree(modality, search_term)) is not None
+        ]
     else:
-        items = db.query(Modality).all()
-    tree = [_build_tree(m) for m in items]
+        query = db.query(Modality)
+        if search_term:
+            like = f"%{search_term}%"
+            query = query.filter(
+                or_(
+                    Modality.name.ilike(like),
+                    Modality.description.ilike(like),
+                    cast(Modality.category, String).ilike(like),
+                )
+            )
+        items = query.order_by(Modality.id.desc()).all()
+        tree = [_build_tree(m) for m in items]
     return {"items": tree, "total": len(tree)}
 
 

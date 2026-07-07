@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useDeferredValue, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Dialog, DialogContent, DialogActions, Box, Typography, IconButton,
   Button, Collapse, Chip, Skeleton, Tooltip, TextField, MenuItem,
-  CircularProgress, Divider, Menu, ListItemIcon, ListItemText
+  CircularProgress, Divider, Menu, ListItemIcon, ListItemText, InputAdornment
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
+import SearchIcon from '@mui/icons-material/Search'
 import CategoryIcon from '@mui/icons-material/Category'
 import AddIcon from '@mui/icons-material/Add'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
@@ -50,10 +51,12 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [menuMod, setMenuMod] = useState<Modality | null>(null)
   const [viewMod, setViewMod] = useState<Modality | null>(null)
+  const [search, setSearch] = useState('')
+  const deferredSearch = useDeferredValue(search.trim())
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['modalities'],
-    queryFn: () => fetchModalities(true),
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['modalities', deferredSearch],
+    queryFn: () => fetchModalities(true, deferredSearch || undefined),
     enabled: open,
   })
 
@@ -231,13 +234,43 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
           </Box>
         )}
 
+        <Box sx={{ mb: 2 }}>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Search modalities..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
+                </InputAdornment>
+              ),
+              endAdornment: isFetching && !isLoading ? (
+                <InputAdornment position="end">
+                  <CircularProgress size={16} sx={{ color: '#7C3AED' }} />
+                </InputAdornment>
+              ) : undefined,
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '14px',
+                backgroundColor: '#FAFAFA',
+              },
+            }}
+          />
+        </Box>
+
         {/* List */}
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} variant="rounded" height={50} sx={{ borderRadius: '12px', mb: 0.75 }} />)
         ) : modalities.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 5 }}>
             <CategoryIcon sx={{ fontSize: '3rem', color: '#E5E7EB', mb: 1 }} />
-            <Typography variant="body2" color="text.secondary">No modalities configured</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {deferredSearch ? 'No modalities found' : 'No modalities configured'}
+            </Typography>
           </Box>
         ) : (
           modalities.map(m => renderModality(m))

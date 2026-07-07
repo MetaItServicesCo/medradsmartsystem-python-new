@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
@@ -170,6 +170,7 @@ const sameAccount = (left: BillingItem, right: BillingItem) => {
 
 const Billing = () => {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
   // Billing payment is available to allowed payer roles when their Billing edit permission is enabled.
@@ -183,6 +184,7 @@ const Billing = () => {
   const [tab, setTab] = useState(0)
   const [page, setPage] = useState(0)
   const rowsPerPage = 25
+  const search = searchParams.get('search') || ''
 
   const [payMethod, setPayMethod] = useState<PayMethod>('credit_card')
   const [achChoice, setAchChoice] = useState<AchChoice>('ach')
@@ -196,8 +198,8 @@ const Billing = () => {
   const [payAcctLast4, setPayAcctLast4] = useState('')
   const [payRoutingLast4, setPayRoutingLast4] = useState('')
 
-  const serviceQ = useQuery({ queryKey: ['billing-service-quotations'], queryFn: fetchAllQuotations })
-  const serviceInvoicesQ = useQuery({ queryKey: ['billing-service-invoices'], queryFn: fetchAllServiceInvoices })
+  const serviceQ = useQuery({ queryKey: ['billing-service-quotations', search], queryFn: () => fetchAllQuotations(search || undefined) })
+  const serviceInvoicesQ = useQuery({ queryKey: ['billing-service-invoices', search], queryFn: () => fetchAllServiceInvoices(search || undefined) })
 
   // Fetch full SR data (with history) when printing a service invoice — needed to append the service report
   const printSrId = printItem?.source === 'service' && printItem?.billingKind === 'service_invoice'
@@ -209,9 +211,9 @@ const Billing = () => {
     enabled: !!printSrId,
     staleTime: 60_000,
   })
-  const inspectionQ = useQuery({ queryKey: ['billing-inspection-invoices'], queryFn: fetchAllInspectionQuotations })
-  const salesQ = useQuery({ queryKey: ['billing-sales-invoices'], queryFn: () => fetchSalesInvoices() })
-  const rentalsQ = useQuery({ queryKey: ['billing-rental-invoices'], queryFn: () => fetchRentalInvoices() })
+  const inspectionQ = useQuery({ queryKey: ['billing-inspection-invoices', search], queryFn: () => fetchAllInspectionQuotations(search || undefined) })
+  const salesQ = useQuery({ queryKey: ['billing-sales-invoices', search], queryFn: () => fetchSalesInvoices({ search: search || undefined }) })
+  const rentalsQ = useQuery({ queryKey: ['billing-rental-invoices', search], queryFn: () => fetchRentalInvoices({ search: search || undefined }) })
 
   const isLoading = serviceQ.isLoading || serviceInvoicesQ.isLoading || inspectionQ.isLoading || salesQ.isLoading || rentalsQ.isLoading
 
@@ -336,6 +338,20 @@ const Billing = () => {
   }, [inspectionQ.data, rentalsQ.data, salesQ.data, serviceInvoicesQ.data, serviceQ.data])
 
   const filteredItems = items.filter(item => {
+    const normalizedSearch = search.trim().toLowerCase()
+    if (normalizedSearch) {
+      const haystack = [
+        item.number,
+        item.relatedNumber,
+        item.facility,
+        item.customer,
+        item.customerEmail,
+        item.description,
+        item.status,
+        billingTypeLabel(item),
+      ].filter(Boolean).join(' ').toLowerCase()
+      if (!haystack.includes(normalizedSearch)) return false
+    }
     if (sourceFilter !== 'all' && item.source !== sourceFilter) return false
     if (statusFilter !== 'all' && item.status !== statusFilter) return false
     if (tab === 1) return item.balance > 0 && item.status !== 'cancelled' && item.status !== 'rejected'
@@ -346,7 +362,15 @@ const Billing = () => {
 
   useEffect(() => {
     setPage(0)
-  }, [sourceFilter, statusFilter, tab])
+  }, [sourceFilter, statusFilter, tab, search])
+
+  const updateSearch = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    const trimmed = value.trim()
+    if (trimmed) next.set('search', trimmed)
+    else next.delete('search')
+    setSearchParams(next, { replace: true })
+  }
 
   const totals = useMemo(() => {
     const outstanding = items.filter(item => item.balance > 0).reduce((sum, item) => sum + item.balance, 0)
@@ -652,6 +676,13 @@ const Billing = () => {
 
       <Card sx={{ mb: 3, p: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(49,46,129,0.07)' }}>
         <FilterListIcon sx={{ color: '#6B7280' }} />
+        <TextField
+          size="small"
+          placeholder="Search billing..."
+          value={search}
+          onChange={event => updateSearch(event.target.value)}
+          sx={{ minWidth: 260 }}
+        />
         <Typography sx={{ fontWeight: 900, color: '#374151', fontSize: '0.9rem' }}>Source:</Typography>
         {(['all', 'service', 'inspection', 'sales', 'rental'] as const).map(source => (
           <Chip

@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { fetchCurrentUser, resolveUploadUrl } from '@/api/users'
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead, type NotificationItem } from '@/api/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
 interface HeaderProps {
   title: string
@@ -24,6 +24,7 @@ const Header = ({ title }: HeaderProps) => {
   const setUser = useAuthStore((s) => s.setUser)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
@@ -64,6 +65,14 @@ const Header = ({ title }: HeaderProps) => {
     setSearchInput(searchParams.get('search') || '')
   }, [searchParams.get('search')])
 
+  const searchPath = (value: string) => {
+    const next = new URLSearchParams(location.search)
+    if (value) next.set('search', value)
+    else next.delete('search')
+    const qs = next.toString()
+    return `${location.pathname}${qs ? `?${qs}` : ''}`
+  }
+
   // Live search debounce
   useEffect(() => {
     const trimmed = searchInput.trim()
@@ -73,19 +82,15 @@ const Header = ({ title }: HeaderProps) => {
     if (trimmed === currentParam) return
 
     const handler = setTimeout(() => {
-      if (trimmed) {
-        navigate(`/facilities?search=${encodeURIComponent(trimmed)}`, { replace: true })
-      } else {
-        navigate(`/facilities`, { replace: true })
-      }
+      navigate(searchPath(trimmed), { replace: true })
     }, 400)
 
     return () => clearTimeout(handler)
-  }, [searchInput, navigate, searchParams])
+  }, [searchInput, navigate, searchParams, location.pathname, location.search])
 
   const handleClearSearch = () => {
     setSearchInput('')
-    navigate('/facilities', { replace: true })
+    navigate(searchPath(''), { replace: true })
   }
 
   const handleOpenMenu = (event: React.MouseEvent<HTMLElement>) => {
@@ -162,11 +167,7 @@ const Header = ({ title }: HeaderProps) => {
         component="form"
         onSubmit={(e) => {
           e.preventDefault()
-          if (searchInput.trim()) {
-            navigate(`/facilities?search=${encodeURIComponent(searchInput.trim())}`)
-          } else {
-            navigate(`/facilities`)
-          }
+          navigate(searchPath(searchInput.trim()))
         }}
         sx={{
           display: { xs: 'none', sm: 'flex' },

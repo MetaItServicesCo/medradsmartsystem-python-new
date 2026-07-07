@@ -268,7 +268,12 @@ def list_facility_documents(
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)
-    docs = db.query(FacilityDocument).filter(FacilityDocument.facility_id == id).all()
+    docs = (
+        db.query(FacilityDocument)
+        .filter(FacilityDocument.facility_id == id)
+        .order_by(FacilityDocument.uploaded_at.desc(), FacilityDocument.id.desc())
+        .all()
+    )
     return {"items": docs, "total": len(docs)}
 
 

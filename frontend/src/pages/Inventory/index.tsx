@@ -18,6 +18,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import { toast } from 'react-toastify'
+import { useSearchParams } from 'react-router-dom'
 import { fetchFacilities } from '@/api/facilities'
 import { fetchTiers } from '@/api/tiers'
 
@@ -70,9 +71,10 @@ const transactionLabels: Record<InventoryTransactionType, string> = {
 
 const Inventory = () => {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const user = useAuthStore((state) => state.user)
   const isSuperAdmin = user?.role === 'superadmin'
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchParams.get('search') || '')
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [tierId, setTierId] = useState<number | ''>('')
   const [lowStock, setLowStock] = useState(false)
@@ -91,6 +93,10 @@ const Inventory = () => {
     authorization_details: '',
     notes: '',
   })
+
+  useEffect(() => {
+    setSearch(searchParams.get('search') || '')
+  }, [searchParams.get('search')])
 
   const { data: facilitiesData } = useQuery({
     queryKey: ['facilities', 'inventory-filter'],

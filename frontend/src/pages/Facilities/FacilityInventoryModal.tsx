@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type MouseEvent } from 'react'
+import { useDeferredValue, useState, useEffect, useMemo, type MouseEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Dialog, DialogContent, DialogActions, Box, Typography, IconButton,
@@ -85,14 +85,16 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const [serviceRequestItem, setServiceRequestItem] = useState<EquipmentItem | null>(null)
   const [actionAnchor, setActionAnchor] = useState<null | HTMLElement>(null)
   const [actionItem, setActionItem] = useState<EquipmentItem | null>(null)
+  const [search, setSearch] = useState('')
+  const deferredSearch = useDeferredValue(search.trim())
 
   useEffect(() => {
     if (open) setShowForm(mode === 'add')
   }, [open, mode])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['equipment', facility?.id],
-    queryFn: () => fetchEquipment(facility?.id),
+    queryKey: ['equipment', facility?.id, deferredSearch],
+    queryFn: () => fetchEquipment(facility?.id, deferredSearch || undefined),
     enabled: open && !!facility,
   })
 
@@ -480,6 +482,16 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
         )}
 
         {/* Table */}
+        {!showForm && (
+          <TextField
+            size="small"
+            placeholder="Search assets..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+        )}
         <TableContainer className="list-scroll-panel">
           <Table size="small" stickyHeader>
             <TableHead>

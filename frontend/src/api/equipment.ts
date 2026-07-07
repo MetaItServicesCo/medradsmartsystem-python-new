@@ -110,8 +110,10 @@ export interface EquipmentListResponse {
   total: number
 }
 
-export const fetchEquipment = async (facilityId?: number): Promise<EquipmentListResponse> => {
-  const params = facilityId ? { facility_id: facilityId, limit: 500 } : { limit: 500 }
+export const fetchEquipment = async (facilityId?: number, search?: string): Promise<EquipmentListResponse> => {
+  const params = facilityId
+    ? { facility_id: facilityId, search: search || undefined, limit: 500 }
+    : { search: search || undefined, limit: 500 }
   const res = await apiClient.get('/equipment/', { params })
   return res.data
 }

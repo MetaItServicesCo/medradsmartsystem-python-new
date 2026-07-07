@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Box, Typography, Button, TextField, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Chip, IconButton,
@@ -15,7 +15,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import LoginIcon from '@mui/icons-material/Login'
 import DeleteIcon from '@mui/icons-material/Delete'
 import SecurityIcon from '@mui/icons-material/Security'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 import { 
@@ -55,9 +55,10 @@ const Users = () => {
   const isSuperAdmin = currentUser?.role === 'superadmin'
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const login = useAuthStore((s) => s.login)
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchParams.get('search') || '')
   const [roleFilter, setRoleFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [editUser, setEditUser] = useState<UserData | null>(null)
@@ -66,6 +67,10 @@ const Users = () => {
   const [selectedRole, setSelectedRole] = useState('')
   const [confirmDeactivate, setConfirmDeactivate] = useState<UserData | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<UserData | null>(null)
+
+  useEffect(() => {
+    setSearch(searchParams.get('search') || '')
+  }, [searchParams.get('search')])
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', search, roleFilter],

@@ -214,7 +214,7 @@ export const completeSalesQuotation = async (id: number): Promise<SalesQuotation
 }
 
 export const fetchSalesInvoices = async (
-  params: { status?: SalesInvoiceStatus } = {}
+  params: { status?: SalesInvoiceStatus; search?: string } = {}
 ): Promise<{ items: SalesInvoice[]; total: number }> => {
   const res = await apiClient.get('/sales/invoices', { params })
   return res.data

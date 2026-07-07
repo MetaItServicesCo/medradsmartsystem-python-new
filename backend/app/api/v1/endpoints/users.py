@@ -278,7 +278,7 @@ def list_users(
                 | (User.email.ilike(like))
             )
         total = query.count()
-        items = query.offset(skip).limit(limit).all()
+        items = query.order_by(User.created_at.desc(), User.id.desc()).offset(skip).limit(limit).all()
     else:
         items, total = crud_user.get_multi_filtered(
             db, skip=skip, limit=limit, role=role, is_active=is_active, search=search

@@ -638,6 +638,7 @@ def complete_quotation(
 def list_sales_invoices(
     db: Session = Depends(get_db),
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
+    search: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
@@ -647,6 +648,24 @@ def list_sales_invoices(
     )
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        query = (
+            query
+            .outerjoin(Facility, Invoice.facility_id == Facility.id)
+            .outerjoin(SalesQuotation, Invoice.sales_quotation_id == SalesQuotation.id)
+            .filter(
+                or_(
+                    Invoice.invoice_number.ilike(like),
+                    Invoice.customer_name.ilike(like),
+                    Invoice.customer_email.ilike(like),
+                    Invoice.notes.ilike(like),
+                    Facility.name.ilike(like),
+                    SalesQuotation.quotation_number.ilike(like),
+                    SalesQuotation.work_order.ilike(like),
+                )
+            )
+        )
     invoices = query.order_by(Invoice.created_at.desc()).all()
     return {"items": [_invoice_response(invoice) for invoice in invoices], "total": len(invoices)}
 

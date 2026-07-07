@@ -31,8 +31,13 @@ export interface ModalityListResponse {
   total: number
 }
 
-export const fetchModalities = async (parentOnly = true): Promise<ModalityListResponse> => {
-  const res = await apiClient.get('/modalities/', { params: { parent_only: parentOnly } })
+export const fetchModalities = async (parentOnly = true, search?: string): Promise<ModalityListResponse> => {
+  const res = await apiClient.get('/modalities/', {
+    params: {
+      parent_only: parentOnly,
+      search: search || undefined,
+    },
+  })
   return res.data
 }
 

@@ -202,7 +202,7 @@ export const convertRentalToInvoice = async (
 }
 
 export const fetchRentalInvoices = async (
-  params: { status?: RentalInvoiceStatus } = {}
+  params: { status?: RentalInvoiceStatus; search?: string } = {}
 ): Promise<{ items: RentalInvoice[]; total: number }> => {
   const res = await apiClient.get('/rentals/invoices', { params })
   return res.data

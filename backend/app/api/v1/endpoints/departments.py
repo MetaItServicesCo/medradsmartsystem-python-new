@@ -26,7 +26,7 @@ def list_departments(
     query = scope_query_to_user_facilities(db.query(Department), Department.facility_id, db, current_user)
     if facility_id is not None:
         query = query.filter(Department.facility_id == facility_id)
-    items = query.all()
+    items = query.order_by(Department.created_at.desc(), Department.id.desc()).all()
     return {"items": items, "total": len(items)}
 
 

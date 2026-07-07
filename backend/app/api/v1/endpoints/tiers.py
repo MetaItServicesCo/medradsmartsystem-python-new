@@ -23,7 +23,7 @@ def read_tiers(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Retrieve all tiers."""
-    items = db.query(Tier).all()
+    items = db.query(Tier).order_by(Tier.created_at.desc(), Tier.id.desc()).all()
     return {"items": items, "total": len(items)}
 
 

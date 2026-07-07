@@ -396,19 +396,19 @@ export const fetchInspectionSummary = async (): Promise<InspectionSummary> => {
 }
 
 export const fetchInspectionQuotations = async (
-  params: { invoice_id?: number; skip?: number; limit?: number } = {}
+  params: { invoice_id?: number; search?: string; skip?: number; limit?: number } = {}
 ): Promise<InspectionInvoiceListResponse> => {
   const res = await apiClient.get('/inspections/quotations', { params })
   return res.data
 }
 
-export const fetchAllInspectionQuotations = async (): Promise<InspectionInvoiceListResponse> => {
+export const fetchAllInspectionQuotations = async (search?: string): Promise<InspectionInvoiceListResponse> => {
   const limit = 100
   let skip = 0
   let total = 0
   const items: InspectionInvoice[] = []
   do {
-    const page = await fetchInspectionQuotations({ skip, limit })
+    const page = await fetchInspectionQuotations({ search, skip, limit })
     if (page.items.length === 0) break
     items.push(...page.items)
     total = page.total

@@ -3,6 +3,7 @@ import io
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app import crud
@@ -25,6 +26,7 @@ router = APIRouter()
 def list_equipment(
     db: Session = Depends(get_db),
     facility_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     current_user: User = Depends(get_current_user),
@@ -33,8 +35,21 @@ def list_equipment(
     query = scope_query_to_user_facilities(db.query(Equipment), Equipment.facility_id, db, current_user)
     if facility_id is not None:
         query = query.filter(Equipment.facility_id == facility_id)
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Equipment.asset_tag.ilike(like),
+                Equipment.make.ilike(like),
+                Equipment.model.ilike(like),
+                Equipment.serial_number.ilike(like),
+                Equipment.description.ilike(like),
+                Equipment.location.ilike(like),
+                Equipment.department.ilike(like),
+            )
+        )
     total = query.count()
-    items = query.offset(skip).limit(limit).all()
+    items = query.order_by(Equipment.created_at.desc(), Equipment.id.desc()).offset(skip).limit(limit).all()
     return {"items": items, "total": total}
 
 

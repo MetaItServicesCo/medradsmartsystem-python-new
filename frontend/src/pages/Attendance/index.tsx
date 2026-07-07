@@ -35,6 +35,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { toast } from 'react-toastify'
+import { useSearchParams } from 'react-router-dom'
 
 import {
   createAttendanceEvent,
@@ -164,9 +165,10 @@ const hasVideoFrame = (video: HTMLVideoElement | null) => (
 
 const Attendance = () => {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const currentUser = useAuthStore((s) => s.user)
   const [tab, setTab] = useState(0)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchParams.get('search') || '')
   const [selectedDate, setSelectedDate] = useState(todayIso())
   const [eventDialog, setEventDialog] = useState<AttendanceProfile | null>(null)
   const [enrollDialog, setEnrollDialog] = useState<AttendanceProfile | null>(null)
@@ -189,6 +191,10 @@ const Attendance = () => {
   const attendanceVideoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const attendanceCanvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    setSearch(searchParams.get('search') || '')
+  }, [searchParams.get('search')])
 
   const summaryQ = useQuery({
     queryKey: ['attendance-summary', selectedDate],

@@ -46,7 +46,7 @@ def list_facility_users(
                 continue
         if requested_roles:
             query = query.filter(User.role.in_(requested_roles))
-    items = query.all()
+    items = query.order_by(User.created_at.desc(), User.id.desc()).all()
     return {"items": items, "total": len(items)}
 
 

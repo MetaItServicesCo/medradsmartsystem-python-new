@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -412,6 +413,7 @@ def list_service_invoices(
     db: Session = Depends(get_db),
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
     service_request_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -431,6 +433,24 @@ def list_service_invoices(
         query = query.filter(Invoice.status == status_filter)
     if service_request_id:
         query = query.filter(Invoice.service_request_id == service_request_id)
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        query = (
+            query
+            .outerjoin(ServiceRequest, Invoice.service_request_id == ServiceRequest.id)
+            .outerjoin(Facility, Invoice.facility_id == Facility.id)
+            .filter(
+                or_(
+                    Invoice.invoice_number.ilike(like),
+                    Invoice.customer_name.ilike(like),
+                    Invoice.customer_email.ilike(like),
+                    Invoice.notes.ilike(like),
+                    ServiceRequest.request_number.ilike(like),
+                    ServiceRequest.problem_description.ilike(like),
+                    Facility.name.ilike(like),
+                )
+            )
+        )
     total = query.count()
     invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
     return {
@@ -1315,6 +1335,7 @@ def delete_quotation(
 @router.get("/quotations/all", response_model=list[ServiceRequestQuotationListResponse])
 def get_all_quotations(
     db: Session = Depends(get_db),
+    search: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Get all service request quotations."""
@@ -1328,6 +1349,17 @@ def get_all_quotations(
         )
         .order_by(ServiceRequestQuotation.created_at.desc())
     )
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        quotations = quotations.outerjoin(Facility, ServiceRequest.facility_id == Facility.id).filter(
+            or_(
+                ServiceRequestQuotation.quotation_number.ilike(like),
+                ServiceRequestQuotation.description.ilike(like),
+                ServiceRequest.request_number.ilike(like),
+                ServiceRequest.problem_description.ilike(like),
+                Facility.name.ilike(like),
+            )
+        )
     quotations = scope_query_to_user_facilities(quotations, ServiceRequest.facility_id, db, current_user).all()
 
     result = []

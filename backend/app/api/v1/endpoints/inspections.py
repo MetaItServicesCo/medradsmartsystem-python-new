@@ -699,7 +699,7 @@ def facility_inventory_for_inspection(
                 InventoryPart.serial_number.ilike(f"%{search}%"),
             )
         )
-    parts = query.order_by(InventoryPart.part_number.asc()).all()
+    parts = query.order_by(InventoryPart.updated_at.desc(), InventoryPart.id.desc()).all()
     return [
         {
             "id": part.id,
@@ -733,7 +733,7 @@ def facility_equipment_for_inspection(
         db.query(Equipment)
         .options(joinedload(Equipment.facility), joinedload(Equipment.tier), joinedload(Equipment.modality))
         .filter(Equipment.facility_id == facility_id)
-        .order_by(Equipment.asset_tag.asc())
+        .order_by(Equipment.created_at.desc(), Equipment.id.desc())
         .all()
     )
     return [
@@ -1489,6 +1489,7 @@ def save_inspection_report(
 def list_inspection_quotations(
     db: Session = Depends(get_db),
     invoice_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -1506,6 +1507,23 @@ def list_inspection_quotations(
     )
     if invoice_id is not None:
         query = query.filter(Invoice.id == invoice_id)
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        query = (
+            query
+            .outerjoin(Facility, Invoice.facility_id == Facility.id)
+            .outerjoin(Inspection, Invoice.inspection_id == Inspection.id)
+            .filter(
+                or_(
+                    Invoice.invoice_number.ilike(like),
+                    Invoice.customer_name.ilike(like),
+                    Invoice.customer_email.ilike(like),
+                    Invoice.notes.ilike(like),
+                    Facility.name.ilike(like),
+                    Inspection.inspection_number.ilike(like),
+                )
+            )
+        )
     total = query.count()
     invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
     return {

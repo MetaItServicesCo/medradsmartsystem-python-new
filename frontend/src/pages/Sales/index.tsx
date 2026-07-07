@@ -132,7 +132,8 @@ const Sales = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const [search, setSearch] = useState('')
+  const routeSearch = new URLSearchParams(location.search).get('search') || ''
+  const [search, setSearch] = useState(routeSearch)
   const [quotationDialog, setQuotationDialog] = useState(false)
   const [editingQuotation, setEditingQuotation] = useState<SalesQuotation | null>(null)
   const [viewQuotation, setViewQuotation] = useState<SalesQuotation | null>(null)
@@ -163,10 +164,14 @@ const Sales = () => {
     if (location.pathname === '/sales/billing') navigate('/sales/invoices', { replace: true })
   }, [location.pathname, navigate])
 
+  useEffect(() => {
+    setSearch(routeSearch)
+  }, [routeSearch])
+
   const facilitiesQ = useQuery({ queryKey: ['sales-facilities'], queryFn: () => fetchFacilities({ limit: 500 }) })
-  const partsQ = useQuery({ queryKey: ['sales-parts'], queryFn: () => fetchSalesParts() })
+  const partsQ = useQuery({ queryKey: ['sales-parts', search], queryFn: () => fetchSalesParts(search || undefined) })
   const quotationsQ = useQuery({ queryKey: ['sales-quotations', search], queryFn: () => fetchSalesQuotations({ search: search || undefined }) })
-  const invoicesQ = useQuery({ queryKey: ['sales-invoices'], queryFn: () => fetchSalesInvoices() })
+  const invoicesQ = useQuery({ queryKey: ['sales-invoices', search], queryFn: () => fetchSalesInvoices({ search: search || undefined }) })
   const historyQ = useQuery({ queryKey: ['sales-history'], queryFn: fetchSalesHistory })
 
   const facilities = facilitiesQ.data?.items || []
