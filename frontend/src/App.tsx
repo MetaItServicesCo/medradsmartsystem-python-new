@@ -9,6 +9,7 @@ import Inspections from './pages/Inspections'
 import Sales from './pages/Sales'
 import Rentals from './pages/Rentals'
 import Inventory from './pages/Inventory'
+import TestEquipment from './pages/TestEquipment'
 import HR from './pages/HR'
 import Reports from './pages/Reports'
 import Users from './pages/Users'
@@ -30,6 +31,7 @@ const modulePath: Record<Module, string> = {
   sales: '/sales',
   rentals: '/rentals',
   inventory: '/inventory',
+  'test-equipment': '/test-equipment',
   reports: '/reports',
   attendance: '/attendance',
   billing: '/billing',
@@ -77,6 +79,7 @@ function App() {
         <Route path="sales/*" element={<ProtectedPage module="sales"><Sales /></ProtectedPage>} />
         <Route path="rentals/*" element={<ProtectedPage module="rentals"><Rentals /></ProtectedPage>} />
         <Route path="inventory/*" element={<ProtectedPage module="inventory"><Inventory /></ProtectedPage>} />
+        <Route path="test-equipment/*" element={<ProtectedPage module="test-equipment"><TestEquipment /></ProtectedPage>} />
         <Route path="hr/*" element={<ProtectedPage module="hr"><HR /></ProtectedPage>} />
         <Route path="reports/*" element={<ProtectedPage module="reports"><Reports /></ProtectedPage>} />
         <Route path="attendance/*" element={<ProtectedPage module="attendance"><Attendance /></ProtectedPage>} />

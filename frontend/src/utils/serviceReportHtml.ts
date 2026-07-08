@@ -27,9 +27,27 @@ export const SERVICE_REPORT_EXTRA_CSS = `
   .report-session-head span { color: #047857; font-weight: 900; }
   .report-times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; color: #475569; }
   .report-h4 { margin: 12px 0 5px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .report-equipment-list { display: grid; gap: 8px; margin-top: 8px; }
+  .report-equipment-item { border: 1px solid #EDE9FE; border-radius: 10px; padding: 8px 10px; background: #FAF5FF; color: #312E81; }
+  .report-equipment-item b { color: #1E1B4B; }
   .report-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
   .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
 `
+
+const buildSessionEquipmentHtml = (session: any) => {
+  const equipment = Array.isArray(session?.test_equipment) ? session.test_equipment : []
+  if (!equipment.length) return ''
+  return `
+    <div class="report-h4">Test Equipment Used</div>
+    <div class="report-equipment-list">
+      ${equipment.map((item: any) => `
+        <div class="report-equipment-item">
+          <b>${esc(item.tem || item.description || 'Test Equipment')}</b>
+          <br>${esc([item.mrf, item.model, item.serial_number].filter(Boolean).join(' / ') || item.asset || '-')}
+        </div>
+      `).join('')}
+    </div>`
+}
 
 /**
  * Returns a self-contained <main class="sheet"> block for the service report.
@@ -52,6 +70,7 @@ export const buildServiceReportSheet = (sr: any): string => {
           <div class="report-h4">Diagnosis</div><p>${esc(s.diagnosis || '-')}</p>
           <div class="report-h4">Work Done</div><p>${esc(s.work_done || '-')}</p>
           ${s.notes ? `<div class="report-h4">Notes</div><p>${esc(s.notes)}</p>` : ''}
+          ${buildSessionEquipmentHtml(s)}
         </div>`).join('')
     : '<p class="muted">No technician sessions recorded.</p>'
 

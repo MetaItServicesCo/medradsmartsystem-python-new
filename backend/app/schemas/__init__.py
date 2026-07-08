@@ -17,6 +17,7 @@ from .inventory import (
     InventoryPartCreate, InventoryPartUpdate, InventoryPartResponse, InventoryPartListResponse,
     InventoryTransactionCreate, InventoryTransactionResponse, InventoryTransactionListResponse,
 )
+from .test_equipment import TestEquipmentCreate, TestEquipmentUpdate, TestEquipmentResponse, TestEquipmentListResponse
 from .notification import NotificationResponse, NotificationListResponse
 from .chat import (
     FriendRequestCreate, FriendRequestResponse, FriendRequestListResponse,

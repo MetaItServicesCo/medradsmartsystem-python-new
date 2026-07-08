@@ -3,6 +3,7 @@ import { NumericField } from '../../components/NumericField'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
 import {
+  Autocomplete,
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, Menu, MenuItem, Select, Skeleton, Tab, Table, TableBody,
   TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Tooltip, Typography,
@@ -53,7 +54,8 @@ import {
   type InspectionFormOption,
 } from '@/api/inspections'
 import { fetchModalities, type Modality } from '@/api/modalities'
-import { fetchUsers, type UserData } from '@/api/users'
+import { fetchUsers, resolveUploadUrl, type UserData } from '@/api/users'
+import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -592,6 +594,11 @@ const Inspections = () => {
   const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 5 })
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || tab === 5 })
   const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) })
+  const testEquipmentQ = useQuery({
+    queryKey: ['test-equipment', 'inspection-active-options'],
+    queryFn: () => fetchActiveTestEquipment({ limit: 500 }),
+    enabled: Boolean(reportInspection),
+  })
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
   const equipment = equipmentQ.data || []
@@ -816,6 +823,16 @@ const Inspections = () => {
       return { ...prev, [section]: next }
     })
   }
+
+  const testEquipmentSnapshot = (item: TestEquipment) => ({
+    id: item.id,
+    description: item.tem,
+    make: item.mrf || '',
+    model: item.model || '',
+    serial_number: item.serial_number || '',
+    asset: item.asset || '',
+    image_url: item.image_url || '',
+  })
 
   const submitReport = () => {
     if (!canEditInspections) return toast.error('You do not have permission to update inspection reports')
@@ -1732,6 +1749,31 @@ const Inspections = () => {
                   ))}
                 </Card>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Autocomplete
+                    multiple
+                    options={testEquipmentQ.data?.items || []}
+                    value={(testEquipmentQ.data?.items || []).filter((item) => (report.test_equipment || []).some((selected: any) => selected.id === item.id))}
+                    onChange={(_, value) => setReport((prev: any) => ({ ...prev, test_equipment: value.map(testEquipmentSnapshot) }))}
+                    getOptionLabel={(option) => `${option.tem}${option.serial_number ? ` - ${option.serial_number}` : ''}`}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    renderOption={(props, option) => (
+                      <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
+                          <AssessmentIcon fontSize="small" />
+                        </Avatar>
+                        <Box>
+                          <Typography sx={{ fontWeight: 800 }}>{option.tem}</Typography>
+                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                            {[option.mrf, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    )}
+                    renderInput={(params) => (
+                      <TextField {...params} size="small" label="Select Test Equipment" placeholder="Attach used equipment" />
+                    )}
+                    sx={{ mb: 1.5 }}
+                  />
                   {(report.test_equipment || []).map((item: any, index: number) => (
                     <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 1, mb: 1 }}>
                       <TextField size="small" label="Description" value={item.description} onChange={e => updateArrayReport('test_equipment', index, 'description', e.target.value)} />

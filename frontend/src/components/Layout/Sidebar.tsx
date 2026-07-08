@@ -8,6 +8,7 @@ import AssignmentIcon from '@mui/icons-material/Assignment'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import InventoryIcon from '@mui/icons-material/Inventory'
+import ScienceIcon from '@mui/icons-material/Science'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import PeopleIcon from '@mui/icons-material/People'
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble'
@@ -62,6 +63,7 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
     ]
   },
   { text: 'Inventory', icon: <InventoryIcon />, path: '/inventory', module: 'inventory' },
+  { text: 'Test Equipment', icon: <ScienceIcon />, path: '/test-equipment', module: 'test-equipment' },
   { text: 'HR', icon: <GroupsIcon />, path: '/hr', module: 'hr' },
   { text: 'My Timesheets', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets' },
   { text: 'My Leave', icon: <BeachAccessIcon />, path: '/my-leave', module: 'my-leave' },

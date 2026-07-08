@@ -25,6 +25,7 @@ import InfoIcon from '@mui/icons-material/Info'
 import { toast } from 'react-toastify'
 
 import { fetchFacilities } from '@/api/facilities'
+import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import {
@@ -716,6 +717,7 @@ const Rentals = () => {
       <Table stickyHeader>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+            <TableCell sx={{ fontWeight: 900 }}>Image</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Part Number</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
@@ -728,11 +730,16 @@ const Rentals = () => {
         </TableHead>
         <TableBody>
           {partsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={index}><TableCell colSpan={8}><Skeleton /></TableCell></TableRow>
+            <TableRow key={index}><TableCell colSpan={9}><Skeleton /></TableCell></TableRow>
           )) : parts.length === 0 ? (
-            <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
           ) : parts.map(part => (
             <TableRow key={part.id} hover>
+              <TableCell>
+                <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" sx={{ width: 46, height: 46, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '12px' }}>
+                  <LocalShippingIcon fontSize="small" />
+                </Avatar>
+              </TableCell>
               <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900 }}>{part.part_number}</TableCell>
               <TableCell sx={{ fontWeight: 800 }}>{part.description}</TableCell>
               <TableCell>{part.facility_name || 'Global / Independent'}</TableCell>
@@ -1028,7 +1035,12 @@ const Rentals = () => {
                 >
                   {parts.map((p: RentalPart) => (
                     <MenuItem key={p.id} value={p.id} disabled={p.quantity_on_hand <= 0}>
-                      {p.part_number} - {p.description} (Stock: {p.quantity_on_hand}, Rate: {money(p.unit_price)})
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                        <Avatar src={resolveUploadUrl(p.default_picture_url)} variant="rounded" sx={{ width: 32, height: 32, bgcolor: '#EFF6FF', color: '#2563EB' }}>
+                          <LocalShippingIcon fontSize="small" />
+                        </Avatar>
+                        <span>{p.part_number} - {p.description} (Stock: {p.quantity_on_hand}, Rate: {money(p.unit_price)})</span>
+                      </Box>
                     </MenuItem>
                   ))}
                 </Select>

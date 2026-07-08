@@ -41,6 +41,7 @@ PERMISSION_MODULES = [
     {"key": "sales", "label": "Sales"},
     {"key": "rentals", "label": "Rentals"},
     {"key": "inventory", "label": "Inventory"},
+    {"key": "test-equipment", "label": "Test Equipment"},
     {"key": "reports", "label": "Reports"},
     {"key": "billing", "label": "Billing"},
     {"key": "hr", "label": "HR"},
@@ -52,6 +53,7 @@ PERMISSION_MODULES = [
 ]
 PERMISSION_MODULE_ALIASES = {
     "service_requests": "service-requests",
+    "test_equipment": "test-equipment",
     "facility_inventory": "inventory",
     "inventory_parts": "inventory",
     "inventory_tiers": "inventory",

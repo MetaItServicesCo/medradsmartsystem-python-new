@@ -321,6 +321,7 @@ export interface ServiceRequestClockOutPayload {
   diagnosis?: string
   work_done?: string
   notes?: string
+  test_equipment_ids?: number[]
 }
 
 export const clockOutServiceRequest = async (id: number, data: ServiceRequestClockOutPayload): Promise<ServiceRequest> => {

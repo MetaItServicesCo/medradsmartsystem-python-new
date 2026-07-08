@@ -20,6 +20,7 @@ export type Module =
   | 'sales'
   | 'rentals'
   | 'inventory'
+  | 'test-equipment'
   | 'reports'
   | 'attendance'
   | 'billing'
@@ -56,6 +57,7 @@ export const MODULES: Array<{ key: Module; label: string }> = [
   { key: 'sales', label: 'Sales' },
   { key: 'rentals', label: 'Rentals' },
   { key: 'inventory', label: 'Inventory' },
+  { key: 'test-equipment', label: 'Test Equipment' },
   { key: 'reports', label: 'Reports' },
   { key: 'billing', label: 'Billing' },
   { key: 'hr', label: 'HR' },
@@ -90,6 +92,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     sales:              _F,
     rentals:            _F,
     inventory:          _F,
+    'test-equipment':   _F,
     reports:            _F,
     billing:            _F,
     hr:                 _F,
@@ -119,6 +122,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     sales:              _W,
     rentals:            _W,
     inventory:          _W,
+    'test-equipment':   _W,
     billing:            _W,
     attendance:         _W,
     'my-timesheets':    _W,
@@ -134,6 +138,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     sales:              _W,
     rentals:            _W,
     inventory:          _W,
+    'test-equipment':   _W,
     billing:            _W,
     attendance:         _W,
     'my-timesheets':    _W,
@@ -148,6 +153,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'service-requests': _W,
     inspections:        _W,
     inventory:          _W,
+    'test-equipment':   _V,
     'my-timesheets':    _W,
     'my-leave':         _W,
     chat:               _W,
@@ -197,6 +203,7 @@ export const ROLE_SCOPE: Record<string, string> = {
 
 const MODULE_ALIASES: Record<string, Module> = {
   service_requests:      'service-requests',
+  test_equipment:        'test-equipment',
   facility_inventory:    'inventory',
   inventory_parts:       'inventory',
   inventory_tiers:       'inventory',

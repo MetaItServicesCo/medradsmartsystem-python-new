@@ -11,6 +11,7 @@ export interface RentalPart {
   description: string
   make: string | null
   model: string | null
+  default_picture_url: string | null
   serial_number: string | null
   condition: string
   quantity_on_hand: number

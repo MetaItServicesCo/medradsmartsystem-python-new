@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  Autocomplete,
   Box, Card, Typography, Button, Chip, Avatar, TextField,
   FormControl, InputLabel, Select, MenuItem, IconButton,
   Skeleton, Divider, CircularProgress, Dialog, DialogTitle,
@@ -48,6 +49,7 @@ import {
 import QuotationPanel from './QuotationPanel'
 import { fetchUsers, type UserData } from '@/api/users'
 import { resolveUploadUrl } from '@/api/users'
+import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
 import { useAuthStore } from '@/stores/authStore'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
@@ -91,6 +93,7 @@ const ServiceRequestDetail = () => {
   const [sessionDiagnosis, setSessionDiagnosis] = useState('')
   const [sessionWorkDone, setSessionWorkDone] = useState('')
   const [sessionNotes, setSessionNotes] = useState('')
+  const [selectedTestEquipmentIds, setSelectedTestEquipmentIds] = useState<number[]>([])
   const [nowTick, setNowTick] = useState(Date.now())
   const [cancelOpen, setCancelOpen] = useState(false)
   const [changeTechOpen, setChangeTechOpen] = useState(false)
@@ -141,6 +144,12 @@ const ServiceRequestDetail = () => {
   })
   const technicians: UserData[] = usersData?.items ?? []
 
+  const { data: testEquipmentData } = useQuery({
+    queryKey: ['test-equipment', 'active-options'],
+    queryFn: () => fetchActiveTestEquipment({ limit: 500 }),
+  })
+  const testEquipmentOptions = testEquipmentData?.items || []
+
   const updateMutation = useMutation({
     mutationFn: (data: ServiceRequestUpdate) =>
       updateServiceRequest(Number(id), data),
@@ -173,12 +182,14 @@ const ServiceRequestDetail = () => {
       diagnosis: sessionDiagnosis.trim(),
       work_done: sessionWorkDone.trim(),
       notes: sessionNotes.trim(),
+      test_equipment_ids: selectedTestEquipmentIds,
     }),
     onSuccess: () => {
       toast.success('Clocked out. Hours were calculated automatically.')
       setSessionDiagnosis('')
       setSessionWorkDone('')
       setSessionNotes('')
+      setSelectedTestEquipmentIds([])
       queryClient.invalidateQueries({ queryKey: ['service-request', id] })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
     },
@@ -959,8 +970,8 @@ const ServiceRequestDetail = () => {
                     variant="contained"
                     startIcon={<StopIcon />}
                     onClick={() => {
-                      if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim()) {
-                        toast.info('Add diagnosis, work done, or notes before clocking out')
+                      if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0) {
+                        toast.info('Add diagnosis, work done, notes, or test equipment before clocking out')
                         return
                       }
                       clockOutMutation.mutate()
@@ -1001,6 +1012,30 @@ const ServiceRequestDetail = () => {
                     value={sessionNotes}
                     onChange={(e) => setSessionNotes(e.target.value)}
                     placeholder="Parts used, follow-up needed, customer notes, etc."
+                  />
+                  <Autocomplete
+                    multiple
+                    options={testEquipmentOptions}
+                    value={testEquipmentOptions.filter((item: TestEquipment) => selectedTestEquipmentIds.includes(item.id))}
+                    onChange={(_, value) => setSelectedTestEquipmentIds(value.map((item) => item.id))}
+                    getOptionLabel={(option) => `${option.tem}${option.serial_number ? ` - ${option.serial_number}` : ''}`}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    renderOption={(props, option) => (
+                      <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
+                          <AssessmentIcon fontSize="small" />
+                        </Avatar>
+                        <Box>
+                          <Typography sx={{ fontWeight: 800 }}>{option.tem}</Typography>
+                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                            {[option.mrf, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    )}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Test Equipment Used" placeholder="Select equipment used in this session" />
+                    )}
                   />
                 </Box>
               ) : (

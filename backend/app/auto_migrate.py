@@ -3,7 +3,7 @@ from app.db.base import engine, Base
 # Import all models to ensure they are registered with Base
 from app.models import (
     facility, facility_document, equipment, service_request,
-    inspection, inspection_form, invoice, rental, tier, user, department, modality,
+    inspection, inspection_form, invoice, rental, tier, user, department, modality, test_equipment,
 )
 from app.models import user_facility, equipment_facility, facility_tier, inventory, chat, calendar, notification
 
@@ -344,4 +344,3 @@ def run_migration():
             except Exception as e:
                 conn.rollback()
                 pass
-

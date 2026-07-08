@@ -24,6 +24,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 import { toast } from 'react-toastify'
 
 import { fetchFacilities, type Facility } from '@/api/facilities'
+import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import {
@@ -1025,7 +1026,12 @@ const Sales = () => {
             <TextField select label="Part assigned for sale" value={selectedPartId} onChange={e => setSelectedPartId(Number(e.target.value))}>
               {parts.map((part: SalesPart) => (
                 <MenuItem key={part.id} value={part.id}>
-                  {part.part_number} - {part.description} ({part.quantity_on_hand} available, {money(part.unit_price)})
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                    <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" sx={{ width: 32, height: 32, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
+                      <Inventory2Icon fontSize="small" />
+                    </Avatar>
+                    <span>{part.part_number} - {part.description} ({part.quantity_on_hand} available, {money(part.unit_price)})</span>
+                  </Box>
                 </MenuItem>
               ))}
             </TextField>
@@ -1042,6 +1048,7 @@ const Sales = () => {
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                  <TableCell sx={{ fontWeight: 900 }}>Image</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Item Number</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Item Description</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
@@ -1055,11 +1062,16 @@ const Sales = () => {
               </TableHead>
               <TableBody>
                 {quotationForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts selected.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts selected.</TableCell></TableRow>
                 ) : quotationForm.items.map((item, index) => {
                   const part = parts.find(candidate => candidate.id === item.part_id)
                   return (
                     <TableRow key={`${item.part_id}-${index}`}>
+                      <TableCell>
+                        <Avatar src={resolveUploadUrl(part?.default_picture_url)} variant="rounded" sx={{ width: 42, height: 42, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '10px' }}>
+                          <Inventory2Icon fontSize="small" />
+                        </Avatar>
+                      </TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900 }}>{part?.part_number || item.part_id}</TableCell>
                       <TableCell>{item.description}</TableCell>
                       <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>

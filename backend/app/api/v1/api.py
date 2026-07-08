@@ -17,6 +17,7 @@ from app.api.v1.endpoints import (
     dashboard,
     notifications,
     inspections,
+    test_equipment,
     sales,
     rentals,
     attendance,
@@ -42,6 +43,7 @@ api_router.include_router(inventory.router, prefix="/inventory", tags=["inventor
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(inspections.router, prefix="/inspections", tags=["inspections"])
+api_router.include_router(test_equipment.router, prefix="/test-equipment", tags=["test-equipment"])
 api_router.include_router(sales.router, prefix="/sales", tags=["sales"])
 api_router.include_router(rentals.router, prefix="/rentals", tags=["rentals"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["attendance"])

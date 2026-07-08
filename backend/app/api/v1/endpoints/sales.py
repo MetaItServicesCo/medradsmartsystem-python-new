@@ -136,6 +136,7 @@ def _part_response(part: InventoryPart) -> dict[str, Any]:
         "description": part.description,
         "make": part.make,
         "model": part.model,
+        "default_picture_url": part.default_picture_url,
         "serial_number": part.serial_number,
         "condition": part.condition,
         "quantity_on_hand": part.quantity_on_hand,

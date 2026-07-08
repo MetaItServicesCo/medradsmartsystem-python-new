@@ -22,6 +22,7 @@ from app.models.service_request import (
 )
 from app.models.facility import Facility
 from app.models.equipment import Equipment
+from app.models.test_equipment import TestEquipment
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.schemas.service_request import (
     ServiceRequestCreate, ServiceRequestUpdate,
@@ -1036,8 +1037,35 @@ def clock_out_service_request(
     diagnosis = (clock_out.diagnosis or "").strip()
     work_done = (clock_out.work_done or "").strip()
     notes = (clock_out.notes or "").strip()
-    if not diagnosis and not work_done and not notes:
-        raise HTTPException(status_code=400, detail="Add diagnosis, work done, or notes before clocking out")
+    test_equipment_ids = list(dict.fromkeys(clock_out.test_equipment_ids or []))
+    if not diagnosis and not work_done and not notes and not test_equipment_ids:
+        raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, or test equipment before clocking out")
+
+    test_equipment_used = []
+    if test_equipment_ids:
+        equipment_rows = (
+            db.query(TestEquipment)
+            .filter(TestEquipment.id.in_(test_equipment_ids))
+            .all()
+        )
+        found_ids = {item.id for item in equipment_rows}
+        missing_ids = [item_id for item_id in test_equipment_ids if item_id not in found_ids]
+        if missing_ids:
+            raise HTTPException(status_code=404, detail=f"Test equipment not found: {', '.join(map(str, missing_ids))}")
+        equipment_by_id = {item.id: item for item in equipment_rows}
+        test_equipment_used = [
+            {
+                "id": item.id,
+                "tem": item.tem,
+                "mrf": item.mrf,
+                "model": item.model,
+                "serial_number": item.serial_number,
+                "description": item.description,
+                "asset": item.asset,
+                "image_url": item.image_url,
+            }
+            for item in (equipment_by_id[item_id] for item_id in test_equipment_ids)
+        ]
 
     now = datetime.now(timezone.utc)
     changes = active.get("changes") or {}
@@ -1061,6 +1089,7 @@ def clock_out_service_request(
         "diagnosis": diagnosis,
         "work_done": work_done,
         "notes": notes,
+        "test_equipment": test_equipment_used,
     }))
     db_sr.history = history
     db.commit()

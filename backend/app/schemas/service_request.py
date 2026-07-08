@@ -136,6 +136,7 @@ class ServiceRequestClockOutCreate(BaseModel):
     diagnosis: Optional[str] = None
     work_done: Optional[str] = None
     notes: Optional[str] = None
+    test_equipment_ids: Optional[List[int]] = None
 
 
 class ServiceRequestResponse(BaseModel):

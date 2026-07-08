@@ -22,6 +22,7 @@ PermissionAction = str
 # Alternate module keys that some callers use → canonical key
 MODULE_ALIASES: dict[str, str] = {
     "service_requests":      "service-requests",
+    "test_equipment":        "test-equipment",
     "facility_inventory":    "inventory",
     "inventory_parts":       "inventory",
     "inventory_tiers":       "inventory",
@@ -31,7 +32,7 @@ MODULE_ALIASES: dict[str, str] = {
 
 ALL_MODULES: list[str] = [
     "dashboard", "facilities", "users", "service-requests", "inspections",
-    "sales", "rentals", "inventory", "reports", "billing", "hr",
+    "sales", "rentals", "inventory", "test-equipment", "reports", "billing", "hr",
     "my-timesheets", "my-leave", "chat", "attendance", "calendar",
 ]
 
@@ -61,6 +62,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "sales":            _F,
         "rentals":          _F,
         "inventory":        _F,
+        "test-equipment":   _F,
         "reports":          _F,
         "billing":          _F,
         "hr":               _F,   # admin co-manages HR alongside hr_manager
@@ -92,6 +94,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "sales":            _W,
         "rentals":          _W,
         "inventory":        _W,
+        "test-equipment":   _W,
         "billing":          _W,
         "attendance":       _W,
         "my-timesheets":    _W,
@@ -107,6 +110,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "sales":            _W,
         "rentals":          _W,
         "inventory":        _W,
+        "test-equipment":   _W,
         "billing":          _W,
         "attendance":       _W,
         "my-timesheets":    _W,
@@ -122,6 +126,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "service-requests": _W,
         "inspections":      _W,
         "inventory":        _W,
+        "test-equipment":   _V,
         "my-timesheets":    _W,
         "my-leave":         _W,
         "chat":             _W,
