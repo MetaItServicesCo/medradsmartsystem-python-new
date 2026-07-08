@@ -30,6 +30,19 @@ export const fetchFacilityUsers = async (
   return res.data
 }
 
+export const fetchFacilityManagerCandidates = async (
+  facilityId: number,
+  search?: string,
+): Promise<FacilityUserListResponse> => {
+  const res = await apiClient.get('/facility-users/manager-candidates', {
+    params: {
+      facility_id: facilityId,
+      ...(search?.trim() ? { search: search.trim() } : {}),
+    },
+  })
+  return res.data
+}
+
 export const assignFacilityManagerRole = async (
   facilityId: number,
   userId: number,

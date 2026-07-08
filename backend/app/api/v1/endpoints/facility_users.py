@@ -50,6 +50,41 @@ def list_facility_users(
     return {"items": items, "total": len(items)}
 
 
+@router.get("/manager-candidates", response_model=FacilityUserListResponse)
+def list_facility_manager_candidates(
+    db: Session = Depends(get_db),
+    facility_id: int = Query(...),
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_superadmin_user),
+) -> Any:
+    """Search active users who can be assigned as facility admin/manager.
+
+    The assignment action itself attaches the user to the facility if needed,
+    so this endpoint intentionally is not limited to already-attached users.
+    """
+    facility = db.query(Facility.id).filter(Facility.id == facility_id).first()
+    if not facility:
+        raise HTTPException(status_code=404, detail="Facility not found")
+
+    query = db.query(User).filter(
+        User.is_active.is_(True),
+        User.role.notin_([UserRole.SUPERADMIN, UserRole.ADMIN]),
+    )
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                User.full_name.ilike(like),
+                User.username.ilike(like),
+                User.email.ilike(like),
+            )
+        )
+
+    items = query.order_by(User.full_name.asc(), User.id.asc()).limit(limit).all()
+    return {"items": items, "total": len(items)}
+
+
 @router.put("/{facility_id}/managers/{user_id}", response_model=FacilityUserResponse)
 def assign_facility_manager_role(
     facility_id: int,
@@ -58,7 +93,7 @@ def assign_facility_manager_role(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_superadmin_user),
 ) -> Any:
-    """Promote an already-attached facility user to facility admin or facility manager."""
+    """Attach/promote a user to facility admin or facility manager."""
     facility = db.query(Facility).filter(Facility.id == facility_id).first()
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
@@ -66,17 +101,10 @@ def assign_facility_manager_role(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-
-    attached = (
-        user.facility_id == facility_id
-        or db.query(UserFacility).filter(
-            UserFacility.user_id == user_id,
-            UserFacility.facility_id == facility_id,
-        ).first()
-        is not None
-    )
-    if not attached:
-        raise HTTPException(status_code=400, detail="Only users attached to this facility can be assigned")
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive users cannot be assigned as facility managers")
+    if user.role in {UserRole.SUPERADMIN, UserRole.ADMIN}:
+        raise HTTPException(status_code=400, detail="System admins cannot be reassigned as facility managers")
 
     try:
         target_role = UserRole(role_in.role)
@@ -85,6 +113,22 @@ def assign_facility_manager_role(
     if target_role not in FACILITY_MANAGER_ROLES:
         raise HTTPException(status_code=400, detail="Role must be facility_admin or facility_manager")
 
+    assignment = db.query(UserFacility).filter(
+        UserFacility.user_id == user_id,
+        UserFacility.facility_id == facility_id,
+    ).first()
+    if not assignment:
+        assignment = UserFacility(
+            user_id=user_id,
+            facility_id=facility_id,
+            role_at_facility=target_role.value,
+        )
+        db.add(assignment)
+    else:
+        assignment.role_at_facility = target_role.value
+
+    if user.facility_id is None:
+        user.facility_id = facility_id
     user.role = target_role
     user.permissions = None
     create_notification(

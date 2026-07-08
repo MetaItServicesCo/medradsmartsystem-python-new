@@ -28,7 +28,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import PeopleIcon from '@mui/icons-material/People'
 import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1'
 import { toast } from 'react-toastify'
-import { assignFacilityManagerRole, fetchFacilityUsers, type FacilityUser } from '@/api/facilityUsers'
+import { assignFacilityManagerRole, fetchFacilityManagerCandidates, fetchFacilityUsers, type FacilityUser } from '@/api/facilityUsers'
 import { type Facility } from '@/api/facilities'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -59,11 +59,13 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
   const isSuperAdmin = currentUser?.role === 'superadmin'
   const [selectedUser, setSelectedUser] = useState<FacilityUser | null>(null)
   const [selectedRole, setSelectedRole] = useState<'facility_admin' | 'facility_manager'>('facility_manager')
+  const [candidateSearch, setCandidateSearch] = useState('')
 
   useEffect(() => {
     if (!open) return
     setSelectedUser(null)
     setSelectedRole('facility_manager')
+    setCandidateSearch('')
   }, [facility?.id, open])
 
   const { data, isLoading } = useQuery({
@@ -72,9 +74,9 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
     enabled: open && !!facility,
   })
 
-  const { data: attachedUsersData, isLoading: attachedUsersLoading } = useQuery({
-    queryKey: ['facility-attached-users', facility?.id],
-    queryFn: () => fetchFacilityUsers(facility?.id),
+  const { data: candidateUsersData, isLoading: candidateUsersLoading } = useQuery({
+    queryKey: ['facility-manager-candidates', facility?.id, candidateSearch],
+    queryFn: () => fetchFacilityManagerCandidates(facility!.id, candidateSearch),
     enabled: open && !!facility && isSuperAdmin,
   })
 
@@ -84,7 +86,7 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
       toast.success('Facility role updated')
       setSelectedUser(null)
       queryClient.invalidateQueries({ queryKey: ['facility-managers', facility?.id] })
-      queryClient.invalidateQueries({ queryKey: ['facility-attached-users', facility?.id] })
+      queryClient.invalidateQueries({ queryKey: ['facility-manager-candidates', facility?.id] })
       queryClient.invalidateQueries({ queryKey: ['facilities'] })
       queryClient.invalidateQueries({ queryKey: ['users'] })
     },
@@ -92,7 +94,7 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
   })
 
   const users = data?.items ?? []
-  const attachedUsers = attachedUsersData?.items ?? []
+  const candidateUsers = candidateUsersData?.items ?? []
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden' } }}>
@@ -129,16 +131,21 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px auto' }, gap: 1.5 }}>
               <Autocomplete
-                options={attachedUsers}
-                loading={attachedUsersLoading}
+                options={candidateUsers}
+                loading={candidateUsersLoading}
                 value={selectedUser}
                 onChange={(_, value) => setSelectedUser(value)}
+                inputValue={candidateSearch}
+                onInputChange={(_, value, reason) => {
+                  if (reason !== 'reset') setCandidateSearch(value)
+                }}
                 getOptionLabel={(option) => `${option.full_name} (${option.role.replace('_', ' ')})`}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Attached User"
-                    placeholder="Choose an attached user"
+                    label="User"
+                    placeholder="Search active users"
                   />
                 )}
               />
@@ -163,7 +170,7 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
               </Button>
             </Box>
             <Typography variant="caption" sx={{ display: 'block', mt: 1.25, color: '#64748B' }}>
-              Only users already attached to this facility can be promoted here.
+              Search an active user, then assign them as facility admin or facility manager for this facility.
             </Typography>
           </Box>
         )}
