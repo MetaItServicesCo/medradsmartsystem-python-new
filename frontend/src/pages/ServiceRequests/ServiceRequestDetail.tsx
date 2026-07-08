@@ -400,6 +400,50 @@ const ServiceRequestDetail = () => {
     return formatHistoryValue(change)
   }
 
+  const renderTestEquipmentHistory = (value: unknown) => {
+    const items = Array.isArray(value) ? value : []
+    if (!items.length) return null
+    return (
+      <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+        <Typography sx={{ color: '#475569', fontSize: '0.75rem', fontWeight: 900 }}>
+          Test Equipment Used
+        </Typography>
+        <Box sx={{ display: 'grid', gap: 0.75 }}>
+          {items.map((raw: any, itemIndex: number) => (
+            <Box
+              key={`${raw?.id || raw?.serial_number || 'test-equipment'}-${itemIndex}`}
+              sx={{
+                display: 'flex',
+                gap: 1,
+                alignItems: 'center',
+                p: 1,
+                borderRadius: '10px',
+                bgcolor: '#FAF5FF',
+                border: '1px solid #EDE9FE',
+              }}
+            >
+              <Avatar
+                src={resolveUploadUrl(raw?.image_url)}
+                variant="rounded"
+                sx={{ width: 38, height: 38, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '9px' }}
+              >
+                <AssessmentIcon fontSize="small" />
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ color: '#1E1B4B', fontSize: '0.78rem', fontWeight: 900 }}>
+                  {raw?.tem || raw?.description || 'Test Equipment'}
+                </Typography>
+                <Typography sx={{ color: '#64748B', fontSize: '0.72rem' }}>
+                  {[raw?.mrf, raw?.model, raw?.serial_number].filter(Boolean).join(' / ') || raw?.asset || 'No details'}
+                </Typography>
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    )
+  }
+
   if (isLoading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -707,6 +751,9 @@ const ServiceRequestDetail = () => {
               ) : (
                 [...(sr.history || [])].reverse().map((entry, index) => {
                   const changes = getHistoryChanges(entry.changes)
+                  const visibleChanges = Object.entries(changes)
+                    .filter(([field]) => !['session_id', 'test_equipment'].includes(field))
+                    .slice(0, 8)
                   return (
                     <Box key={`${entry.timestamp}-${index}`} sx={{ display: 'flex', gap: 1.5, p: 1.5, borderRadius: '12px', backgroundColor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
                       <Avatar sx={{ width: 32, height: 32, backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
@@ -719,16 +766,14 @@ const ServiceRequestDetail = () => {
                         <Typography sx={{ color: '#64748B', fontSize: '0.78rem' }}>
                           {entry.user || 'System'} - {formatDateTime(entry.timestamp)}
                         </Typography>
-                        {Object.keys(changes).length > 0 && (
+                        {(visibleChanges.length > 0 || Array.isArray(changes.test_equipment)) && (
                           <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
-                            {Object.entries(changes)
-                              .filter(([field]) => field !== 'session_id')
-                              .slice(0, 8)
-                              .map(([field, change]) => (
+                            {visibleChanges.map(([field, change]) => (
                               <Typography key={field} sx={{ color: '#475569', fontSize: '0.75rem' }}>
                                 <strong>{field.replace(/_/g, ' ')}:</strong> {renderHistoryChange(change)}
                               </Typography>
                             ))}
+                            {renderTestEquipmentHistory(changes.test_equipment)}
                           </Box>
                         )}
                       </Box>
