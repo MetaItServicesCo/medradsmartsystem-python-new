@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions,
+  Alert, Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, FormControlLabel, IconButton, InputAdornment,
   MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer,
   TableHead, TablePagination, TableRow, TextField, Tooltip, Typography,
@@ -27,6 +27,7 @@ import {
   exportInventoryPartsCsv, fetchInventoryParts, fetchInventorySummary, fetchInventoryTransactions, updateInventoryPart,
   type InventoryPart, type InventoryPartPayload, type InventoryTransactionType,
 } from '@/api/inventory'
+import { resolveUploadUrl } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
 
 const PAGE_SIZE = 25
@@ -358,6 +359,7 @@ const Inventory = () => {
           <Table stickyHeader>
             <TableHead>
               <TableRow>
+                <TableCell>Image</TableCell>
                 <TableCell>Part</TableCell>
                 <TableCell>Assignment</TableCell>
                 <TableCell>Batch / Serial</TableCell>
@@ -369,10 +371,10 @@ const Inventory = () => {
             </TableHead>
             <TableBody>
               {isLoading ? Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>{Array.from({ length: 7 }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
+                <TableRow key={i}>{Array.from({ length: 8 }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
               )) : parts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
                     <InventoryIcon sx={{ fontSize: 48, color: '#D1D5DB', mb: 1 }} />
                     <Typography color="text.secondary">No registered parts found</Typography>
                   </TableCell>
@@ -381,6 +383,15 @@ const Inventory = () => {
                 const low = part.quantity_on_hand <= part.reorder_level
                 return (
                   <TableRow key={part.id} hover>
+                    <TableCell>
+                      <Avatar
+                        src={resolveUploadUrl(part.default_picture_url)}
+                        variant="rounded"
+                        sx={{ width: 48, height: 48, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '12px' }}
+                      >
+                        <InventoryIcon fontSize="small" />
+                      </Avatar>
+                    </TableCell>
                     <TableCell>
                       <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{part.part_number}</Typography>
                       <Typography variant="caption" sx={{ color: '#6B7280' }}>{part.part_type} - {part.description}</Typography>
