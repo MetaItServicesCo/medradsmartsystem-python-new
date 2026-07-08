@@ -47,6 +47,38 @@ def _sync_facility_tiers(db: Session, facility: Facility, tier_ids: Optional[Lis
     facility.tier_id = unique_ids[0] if unique_ids else None
 
 
+def _validate_parent_facility(
+    db: Session,
+    *,
+    facility_id: Optional[int] = None,
+    parent_facility_id: Optional[int],
+) -> None:
+    """Enforce a single-level parent/child facility hierarchy."""
+    if parent_facility_id is None:
+        return
+
+    if facility_id is not None and parent_facility_id == facility_id:
+        raise HTTPException(status_code=400, detail="A facility cannot be its own parent")
+
+    parent = db.query(Facility).filter(Facility.id == parent_facility_id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent facility not found")
+
+    if parent.parent_facility_id is not None:
+        raise HTTPException(status_code=400, detail="A child facility cannot be used as a parent facility")
+
+
+def _ensure_parent_can_become_child(db: Session, facility: Facility, parent_facility_id: Optional[int]) -> None:
+    if parent_facility_id is None:
+        return
+    child_count = db.query(Facility.id).filter(Facility.parent_facility_id == facility.id).count()
+    if child_count:
+        raise HTTPException(
+            status_code=400,
+            detail="A parent facility with child facilities cannot be assigned under another parent",
+        )
+
+
 def _facility_response(db: Session, facility: Facility) -> dict:
     primary_users = db.query(User).filter(User.facility_id == facility.id).all()
     from app.models.user_facility import UserFacility
@@ -110,6 +142,7 @@ def search_facilities(
 ) -> Any:
     """Lightweight facility search for parent/child dropdowns."""
     query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
+    query = query.filter(Facility.parent_facility_id.is_(None))
     if q:
         query = query.filter(Facility.name.ilike(f"%{q}%"))
     if exclude_id:
@@ -176,6 +209,7 @@ def create_facility(
     data = facility_in.model_dump(exclude={"tier_ids"})
     if tier_ids is None and data.get("tier_id"):
         tier_ids = [data["tier_id"]]
+    _validate_parent_facility(db, parent_facility_id=data.get("parent_facility_id"))
     facility = Facility(**data)
     db.add(facility)
     db.flush()
@@ -220,12 +254,16 @@ def update_facility(
     tier_ids = facility_in.tier_ids
     if tier_ids is None and facility_in.tier_id is not None:
         tier_ids = [facility_in.tier_id] if facility_in.tier_id else []
+    update_data = facility_in.model_dump(exclude_unset=True)
+    if "parent_facility_id" in update_data:
+        _validate_parent_facility(db, facility_id=facility.id, parent_facility_id=update_data.get("parent_facility_id"))
+        _ensure_parent_can_become_child(db, facility, update_data.get("parent_facility_id"))
     updated = crud.facility.update(db=db, db_obj=facility, obj_in=facility_in)
     _sync_facility_tiers(db, updated, tier_ids)
     if tier_ids is not None:
         db.commit()
         db.refresh(updated)
-    new_data = facility_in.model_dump(exclude_unset=True)
+    new_data = update_data
     log_activity(db, "facilities", id, "UPDATE", current_user, {"before": old_data, "after": new_data})
     return _facility_response(db, updated)
 
@@ -242,6 +280,13 @@ def delete_facility(
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)
+
+    child_count = db.query(Facility.id).filter(Facility.parent_facility_id == id).count()
+    if child_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete facility: {child_count} child facility/facilities are linked to it.",
+        )
 
     # AC-5: prevent deletion if linked equipment exists
     equipment_count = db.query(Equipment).filter(Equipment.facility_id == id).count()
@@ -290,6 +335,7 @@ async def upload_facility_document(
     facility = crud.facility.get(db=db, id=id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility.id)
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     file_ext = os.path.splitext(file.filename or "file")[1]
@@ -327,6 +373,7 @@ def delete_facility_document(
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    require_facility_access(db, current_user, doc.facility_id)
 
     # Remove file from disk
     if os.path.exists(doc.file_path):

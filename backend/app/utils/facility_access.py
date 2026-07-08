@@ -5,6 +5,7 @@ from sqlalchemy.orm import Query, Session
 
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
+from app.models.facility import Facility
 
 
 FACILITY_SCOPED_ROLES = {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}
@@ -15,6 +16,12 @@ def is_facility_scoped_user(user: User) -> bool:
 
 
 def get_user_facility_ids(db: Session, user: User) -> set[int]:
+    """Return facility ids a scoped user can access.
+
+    Facility admins/managers assigned to a parent facility inherit access to
+    its direct child facilities. Users assigned to a child facility do not
+    inherit access upward to the parent or sideways to sibling facilities.
+    """
     facility_ids = {
         facility_id
         for (facility_id,) in db.query(UserFacility.facility_id)
@@ -24,6 +31,17 @@ def get_user_facility_ids(db: Session, user: User) -> set[int]:
     }
     if user.facility_id is not None:
         facility_ids.add(user.facility_id)
+
+    if user.role in {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER} and facility_ids:
+        child_ids = {
+            child_id
+            for (child_id,) in db.query(Facility.id)
+            .filter(Facility.parent_facility_id.in_(facility_ids))
+            .all()
+            if child_id is not None
+        }
+        facility_ids.update(child_ids)
+
     return facility_ids
 
 
