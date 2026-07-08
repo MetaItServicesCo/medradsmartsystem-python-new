@@ -102,6 +102,11 @@ export interface Inspection {
   facility_id: number
   inspector_id: number | null
   form_template_id: number
+  form_template_name: string | null
+  form_template_schema: Record<string, any> | null
+  attached_form_id: number | null
+  attached_form_name: string | null
+  attached_form_schema: Record<string, any> | null
   status: InspectionStatus
   result: InspectionResult
   scheduled_date: string
@@ -191,8 +196,16 @@ export interface InspectionFormOption {
   description: string | null
   modality_id: number | null
   modality_name: string | null
+  schema: Record<string, any>
   created_at: string
   updated_at: string
+}
+
+export interface InspectionFormPayload {
+  name: string
+  description?: string | null
+  modality_id?: number | null
+  schema: Record<string, any>
 }
 
 export interface InstantInspectionPayload {
@@ -216,6 +229,7 @@ export interface InspectionSchedulePayload {
 export interface InspectionCompletePayload {
   result: InspectionResult
   form_data: Record<string, any>
+  form_template_id?: number | null
   corrective_actions?: string
   labor_hours?: number
   parts_amount?: number
@@ -278,9 +292,14 @@ export const fetchInspectionForms = async (
 
 export const updateInspectionForm = async (
   id: number,
-  data: { modality_id: number | null }
+  data: { name?: string; description?: string | null; modality_id?: number | null; schema?: Record<string, any> }
 ): Promise<InspectionFormOption> => {
   const res = await apiClient.patch(`/inspections/forms/${id}`, data)
+  return res.data
+}
+
+export const createInspectionForm = async (data: InspectionFormPayload): Promise<InspectionFormOption> => {
+  const res = await apiClient.post('/inspections/forms', data)
   return res.data
 }
 

@@ -113,6 +113,7 @@ class UpcomingGenerationRequest(BaseModel):
 class InspectionComplete(BaseModel):
     result: InspectionResult = InspectionResult.PASS
     form_data: dict[str, Any]
+    form_template_id: Optional[int] = None
     corrective_actions: Optional[str] = None
     labor_hours: Decimal = Decimal("0")
     parts_amount: Optional[Decimal] = None
@@ -164,7 +165,17 @@ class InspectionInvoiceUpdate(BaseModel):
 
 
 class InspectionFormUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
     modality_id: Optional[int] = None
+    schema: Optional[dict[str, Any]] = None
+
+
+class InspectionFormCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    modality_id: Optional[int] = None
+    schema: dict[str, Any]
 
 
 def _value(value: Any) -> Any:
@@ -278,6 +289,19 @@ def _get_default_form(db: Session) -> InspectionForm:
     db.add(form)
     db.flush()
     return form
+
+
+def _form_response(form: InspectionForm) -> dict[str, Any]:
+    return {
+        "id": form.id,
+        "name": form.name,
+        "description": form.description,
+        "modality_id": form.modality_id,
+        "modality_name": form.modality.name if form.modality else None,
+        "schema": form.schema,
+        "created_at": form.created_at,
+        "updated_at": form.updated_at,
+    }
 
 
 def _get_billable_tier(
@@ -399,6 +423,18 @@ def _inspection_response(inspection: Inspection) -> dict[str, Any]:
         else None
     )
     data["inspector_name"] = inspection.inspector.full_name if inspection.inspector else None
+    data["form_template_name"] = inspection.form_template.name if inspection.form_template else None
+    data["form_template_schema"] = inspection.form_template.schema if inspection.form_template else None
+    attached_form = (
+        inspection.inventory_part.inspection_form
+        if inspection.inventory_part and inspection.inventory_part.inspection_form
+        else inspection.equipment.inspection_form
+        if inspection.equipment and inspection.equipment.inspection_form
+        else None
+    )
+    data["attached_form_id"] = attached_form.id if attached_form else None
+    data["attached_form_name"] = attached_form.name if attached_form else None
+    data["attached_form_schema"] = attached_form.schema if attached_form else None
     data["invoice"] = _invoice_response(invoice)
     return data
 
@@ -593,20 +629,43 @@ def list_inspection_forms(
     if form not in forms:
         forms.append(form)
     return {
-        "items": [
-            {
-                "id": item.id,
-                "name": item.name,
-                "description": item.description,
-                "modality_id": item.modality_id,
-                "modality_name": item.modality.name if item.modality else None,
-                "created_at": item.created_at,
-                "updated_at": item.updated_at,
-            }
-            for item in forms
-        ],
+        "items": [_form_response(item) for item in forms],
         "total": len(forms),
     }
+
+
+@router.post("/forms", status_code=status.HTTP_201_CREATED)
+def create_inspection_form(
+    form_in: InspectionFormCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    require_module_permission(current_user, "inspections", "add")
+
+    name = form_in.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Form name is required")
+    if form_in.modality_id is not None:
+        modality = db.query(Modality).filter(Modality.id == form_in.modality_id).first()
+        if not modality:
+            raise HTTPException(status_code=404, detail="Modality not found")
+
+    existing = db.query(InspectionForm.id).filter(InspectionForm.name == name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="An inspection form with this name already exists")
+
+    form = InspectionForm(
+        name=name,
+        description=form_in.description,
+        modality_id=form_in.modality_id,
+        schema=form_in.schema,
+    )
+    db.add(form)
+    db.flush()
+    log_activity(db, "inspection_forms", form.id, "CREATE", current_user, {"name": form.name})
+    db.commit()
+    db.refresh(form)
+    return _form_response(form)
 
 
 @router.patch("/forms/{form_id}")
@@ -625,18 +684,23 @@ def update_inspection_form(
         if not modality:
             raise HTTPException(status_code=404, detail="Modality not found")
 
-    form.modality_id = form_in.modality_id
+    if form_in.name is not None:
+        name = form_in.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Form name is required")
+        duplicate = db.query(InspectionForm.id).filter(InspectionForm.name == name, InspectionForm.id != form.id).first()
+        if duplicate:
+            raise HTTPException(status_code=400, detail="An inspection form with this name already exists")
+        form.name = name
+    if form_in.description is not None:
+        form.description = form_in.description
+    if "modality_id" in form_in.model_fields_set:
+        form.modality_id = form_in.modality_id
+    if form_in.schema is not None:
+        form.schema = form_in.schema
     db.commit()
     db.refresh(form)
-    return {
-        "id": form.id,
-        "name": form.name,
-        "description": form.description,
-        "modality_id": form.modality_id,
-        "modality_name": form.modality.name if form.modality else None,
-        "created_at": form.created_at,
-        "updated_at": form.updated_at,
-    }
+    return _form_response(form)
 
 
 @router.get("/facilities")
@@ -1140,7 +1204,7 @@ def schedule_inspections(
             inventory_part_id=None,
             facility_id=facility.id,
             inspector_id=current_user.id,
-            form_template_id=form.id,
+            form_template_id=equipment.inspection_form_id or form.id,
             status=InspectionStatus.UPCOMING,
             result=InspectionResult.PENDING,
             scheduled_date=payload.scheduled_date,
@@ -1230,7 +1294,7 @@ def generate_upcoming_inspections(
             equipment_id=equipment.id,
             facility_id=equipment.facility_id,
             inspector_id=current_user.id,
-            form_template_id=form.id,
+            form_template_id=equipment.inspection_form_id or form.id,
             status=InspectionStatus.UPCOMING,
             result=InspectionResult.PENDING,
             scheduled_date=due_date,
@@ -1340,7 +1404,7 @@ def create_instant_inspection(
             inventory_part_id=None,
             facility_id=facility.id,
             inspector_id=current_user.id,
-            form_template_id=form.id,
+            form_template_id=equipment.inspection_form_id or form.id,
             status=InspectionStatus.IN_PROGRESS,
             result=InspectionResult.PENDING,
             scheduled_date=payload.scheduled_date or datetime.utcnow(),
@@ -1397,6 +1461,10 @@ def complete_inspection(
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
     require_facility_access(db, current_user, inspection.facility_id)
+    if payload.form_template_id is not None:
+        if not db.query(InspectionForm.id).filter(InspectionForm.id == payload.form_template_id).first():
+            raise HTTPException(status_code=404, detail="Inspection form not found")
+        inspection.form_template_id = payload.form_template_id
 
     inspection.status = InspectionStatus.COMPLETED
     inspection.result = payload.result
@@ -1462,6 +1530,10 @@ def save_inspection_report(
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
     require_facility_access(db, current_user, inspection.facility_id)
+    if payload.form_template_id is not None:
+        if not db.query(InspectionForm.id).filter(InspectionForm.id == payload.form_template_id).first():
+            raise HTTPException(status_code=404, detail="Inspection form not found")
+        inspection.form_template_id = payload.form_template_id
 
     inspection.form_data = payload.form_data
     inspection.corrective_actions = payload.corrective_actions

@@ -5,8 +5,9 @@ import { useLocation } from 'react-router-dom'
 import {
   Autocomplete,
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, IconButton, InputLabel, Menu, MenuItem, Select, Skeleton, Tab, Table, TableBody,
-  TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Tooltip, Typography,
+  DialogTitle, Divider, FormControl, FormControlLabel, IconButton, InputLabel, Menu, MenuItem, Radio, RadioGroup,
+  Select, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
+  TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
@@ -28,6 +29,7 @@ import { toast } from 'react-toastify'
 
 import {
   addInspectionBatchAsset,
+  createInspectionForm,
   createInstantInspection,
   fetchInspectionBatch,
   fetchInspectionBatches,
@@ -70,6 +72,8 @@ const CHECK_FIELDS = [
   ['battery', 'Battery'],
   ['pm_kit', 'PM Kit'],
 ]
+
+type ReportFormSource = 'default' | 'attached' | 'custom'
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
@@ -517,6 +521,11 @@ const Inspections = () => {
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [report, setReport] = useState<any>(null)
   const [reportStatus, setReportStatus] = useState<'completed' | 'in_progress'>('completed')
+  const [reportFormSource, setReportFormSource] = useState<ReportFormSource>('default')
+  const [selectedReportFormId, setSelectedReportFormId] = useState<number | null>(null)
+  const [saveCustomForm, setSaveCustomForm] = useState(true)
+  const [customFormName, setCustomFormName] = useState('')
+  const [customFormDescription, setCustomFormDescription] = useState('')
   const [invoiceEdit, setInvoiceEdit] = useState<InspectionInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState<any>({})
   const [techEdit, setTechEdit] = useState<Inspection | null>(null)
@@ -591,7 +600,7 @@ const Inspections = () => {
     }),
     enabled: tab === 4,
   })
-  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 5 })
+  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 5 || Boolean(reportInspection) })
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || tab === 5 })
   const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) })
   const testEquipmentQ = useQuery({
@@ -602,6 +611,11 @@ const Inspections = () => {
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
   const equipment = equipmentQ.data || []
+  const inspectionForms = formsQ.data?.items || []
+  const defaultReportForm = useMemo(
+    () => inspectionForms.find((form) => form.name === 'Advanced Facility Inventory Inspection Report') || inspectionForms[0] || null,
+    [inspectionForms],
+  )
   const assignableModalities = useMemo(
     () => flattenModalities(modalitiesQ.data?.items || []),
     [modalitiesQ.data?.items],
@@ -734,8 +748,20 @@ const Inspections = () => {
     if (reportInspection) {
       setReport(reportInspection.form_data || makeReport(reportInspection))
       setReportStatus(reportInspection.status === 'completed' ? 'completed' : 'completed')
+      const usesAttached = Boolean(reportInspection.attached_form_id && reportInspection.form_template_id === reportInspection.attached_form_id)
+      const initialSource: ReportFormSource = usesAttached ? 'attached' : 'default'
+      setReportFormSource(initialSource)
+      setSelectedReportFormId(
+        usesAttached
+          ? reportInspection.attached_form_id
+          : defaultReportForm?.id || reportInspection.form_template_id || null,
+      )
+      const assetName = reportInspection.asset_name || reportInspection.equipment_name || reportInspection.inspection_number
+      setCustomFormName(`${assetName} Custom Inspection Form`)
+      setCustomFormDescription(`Reusable custom inspection form created from ${reportInspection.inspection_number}.`)
+      setSaveCustomForm(true)
     }
-  }, [reportInspection])
+  }, [reportInspection, defaultReportForm?.id])
 
   useEffect(() => {
     if (!invoiceEdit) return
@@ -834,17 +860,89 @@ const Inspections = () => {
     image_url: item.image_url || '',
   })
 
-  const submitReport = () => {
+  const applyReportFormSource = (source: ReportFormSource) => {
+    setReportFormSource(source)
+    if (source === 'default') {
+      setSelectedReportFormId(defaultReportForm?.id || reportInspection?.form_template_id || null)
+      return
+    }
+    if (source === 'attached') {
+      setSelectedReportFormId(reportInspection?.attached_form_id || null)
+      return
+    }
+    setSelectedReportFormId(null)
+  }
+
+  const selectedReportFormName = () => {
+    if (reportFormSource === 'attached') return reportInspection?.attached_form_name || 'Asset attached form'
+    if (reportFormSource === 'custom') return customFormName || 'Customized form'
+    return defaultReportForm?.name || 'Default form'
+  }
+
+  const buildReusableFormSchema = (formName: string, currentReport: any) => ({
+    title: formName,
+    version: 1,
+    source: 'medrad_custom_report_activity',
+    based_on: reportInspection?.form_template_name || defaultReportForm?.name || 'Default inspection report',
+    sections: [
+      { key: 'identity', label: 'Asset Identity', fields: Object.keys(currentReport?.identity || {}) },
+      { key: 'checks', label: 'Inspection Checks', fields: CHECK_FIELDS.map(([key, label]) => ({ key, label, type: 'radio', options: ['pass', 'fail', 'na'] })) },
+      { key: 'diagnostics', label: 'Diagnostics', fields: Object.keys(currentReport?.diagnostics || {}) },
+      { key: 'measurements', label: 'Measurements', fields: currentReport?.measurements || [] },
+      { key: 'photo_documentation', label: 'Photo Documentation', fields: currentReport?.photo_documentation || [] },
+      { key: 'compliance', label: 'Compliance', fields: Object.keys(currentReport?.compliance || {}) },
+      { key: 'parts', label: 'Parts', fields: currentReport?.parts || [] },
+      { key: 'test_equipment', label: 'Test Equipment', fields: currentReport?.test_equipment || [] },
+      { key: 'billing', label: 'Billing', fields: Object.keys(currentReport?.billing || {}) },
+      { key: 'dates', label: 'Inspector & Due Dates', fields: Object.keys(currentReport?.dates || {}) },
+    ],
+  })
+
+  const submitReport = async () => {
     if (!canEditInspections) return toast.error('You do not have permission to update inspection reports')
     if (!reportInspection || !report) return
+    let formTemplateId = selectedReportFormId || reportInspection.form_template_id
+    let formTemplateName = selectedReportFormName()
+    if (reportFormSource === 'custom' && saveCustomForm) {
+      const name = customFormName.trim()
+      if (!name) {
+        toast.error('Enter a custom form name before saving it for future use')
+        return
+      }
+      try {
+        const created = await createInspectionForm({
+          name,
+          description: customFormDescription.trim() || `Custom inspection form created from ${reportInspection.inspection_number}`,
+          modality_id: null,
+          schema: buildReusableFormSchema(name, report),
+        })
+        formTemplateId = created.id
+        formTemplateName = created.name
+        queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+        toast.success('Custom inspection form saved for future use')
+      } catch (e: any) {
+        toast.error(e.response?.data?.detail || 'Could not save custom inspection form')
+        return
+      }
+    }
     const hasFail = Object.values(report.checks || {}).includes('fail')
     const partTotal = (report.parts || []).reduce((sum: number, part: any) => sum + Number(part.price || 0), 0)
+    const formData = {
+      ...report,
+      form_template: {
+        id: formTemplateId,
+        name: formTemplateName,
+        source: reportFormSource,
+        saved_as_template: reportFormSource === 'custom' ? saveCustomForm : true,
+      },
+    }
     reportMut.mutate({
       id: reportInspection.id,
       data: {
         status: reportStatus,
         result: hasFail ? 'fail' : 'pass',
-        form_data: report,
+        form_data: formData,
+        form_template_id: formTemplateId,
         corrective_actions: report.diagnostics?.corrective_action_taken || '',
         parts_amount: Number(report.billing?.parts || partTotal || 0),
         inspection_charge: Number(report.billing?.inspection_charges || 0),
@@ -1679,6 +1777,36 @@ const Inspections = () => {
         <DialogContent dividers>
           {report && (
             <Box sx={{ display: 'grid', gap: 3 }}>
+              <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', bgcolor: '#FAF5FF' }}>
+                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.5 }}>Report Activity Form</Typography>
+                <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
+                  Choose the form source for this inspection report. Custom forms can be saved for future assets.
+                </Typography>
+                <RadioGroup row value={reportFormSource} onChange={(event) => applyReportFormSource(event.target.value as ReportFormSource)}>
+                  <FormControlLabel
+                    value="default"
+                    control={<Radio />}
+                    label={`Default Form${defaultReportForm?.name ? ` - ${defaultReportForm.name}` : ''}`}
+                  />
+                  <FormControlLabel
+                    value="attached"
+                    disabled={!reportInspection?.attached_form_id}
+                    control={<Radio />}
+                    label={reportInspection?.attached_form_id ? `Asset Attached Form - ${reportInspection.attached_form_name}` : 'Asset Attached Form - none attached'}
+                  />
+                  <FormControlLabel value="custom" control={<Radio />} label="Customize Form" />
+                </RadioGroup>
+                {reportFormSource === 'custom' && (
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.4fr auto' }, gap: 1.5, mt: 1.5, alignItems: 'center' }}>
+                    <TextField size="small" label="Reusable Form Name" value={customFormName} onChange={e => setCustomFormName(e.target.value)} />
+                    <TextField size="small" label="Description" value={customFormDescription} onChange={e => setCustomFormDescription(e.target.value)} />
+                    <FormControlLabel
+                      control={<Checkbox checked={saveCustomForm} onChange={e => setSaveCustomForm(e.target.checked)} />}
+                      label="Save to Inspection Forms"
+                    />
+                  </Box>
+                )}
+              </Card>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
                 {Object.entries(report.identity).map(([key, value]) => (
                   <TextField key={key} label={key.replace(/_/g, ' ')} value={value as string} onChange={e => updateReport('identity', key, e.target.value)} size="small" />
@@ -1688,11 +1816,14 @@ const Inspections = () => {
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Checks</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
                 {CHECK_FIELDS.map(([key, label]) => (
-                  <TextField key={key} select label={label} value={report.checks[key]} onChange={e => updateReport('checks', key, e.target.value)} size="small">
-                    <MenuItem value="pass">Pass</MenuItem>
-                    <MenuItem value="fail">Fail</MenuItem>
-                    <MenuItem value="na">N/A</MenuItem>
-                  </TextField>
+                  <Card key={key} sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 13, mb: 0.5 }}>{label}</Typography>
+                    <RadioGroup row value={report.checks[key]} onChange={e => updateReport('checks', key, e.target.value)}>
+                      <FormControlLabel value="pass" control={<Radio size="small" />} label="Pass" />
+                      <FormControlLabel value="fail" control={<Radio size="small" />} label="Fail" />
+                      <FormControlLabel value="na" control={<Radio size="small" />} label="N/A" />
+                    </RadioGroup>
+                  </Card>
                 ))}
               </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
