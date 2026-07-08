@@ -54,6 +54,8 @@ import {
 } from '@/api/inspections'
 import { fetchModalities, type Modality } from '@/api/modalities'
 import { fetchUsers, type UserData } from '@/api/users'
+import { hasPermission } from '@/config/permissions'
+import { useAuthStore } from '@/stores/authStore'
 
 const CHECK_FIELDS = [
   ['physical_inspection', 'Physical Inspection'],
@@ -497,6 +499,11 @@ const Inspections = () => {
   const pageSize = 10
   const location = useLocation()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.user)
+  const canAddInspections = hasPermission(currentUser, 'inspections', 'add')
+  const canEditInspections = hasPermission(currentUser, 'inspections', 'edit')
+  const canDeleteInspections = hasPermission(currentUser, 'inspections', 'delete')
+  const canInitiateInspections = canAddInspections && canEditInspections
   const [tab, setTab] = useState(0)
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [selectedInstantEquipmentIds, setSelectedInstantEquipmentIds] = useState<number[]>([])
@@ -778,6 +785,7 @@ const Inspections = () => {
   }
 
   const startInspection = () => {
+    if (!canInitiateInspections) return toast.error('You do not have permission to initiate inspections')
     if (!facilityId) return toast.error('Select a facility first')
     createMut.mutate({
       facility_id: Number(facilityId),
@@ -787,6 +795,7 @@ const Inspections = () => {
   }
 
   const scheduleSelected = () => {
+    if (!canAddInspections) return toast.error('You do not have permission to schedule inspections')
     if (!facilityId) return toast.error('Select a facility first')
     scheduleMut.mutate({
       facility_id: Number(facilityId),
@@ -809,6 +818,7 @@ const Inspections = () => {
   }
 
   const submitReport = () => {
+    if (!canEditInspections) return toast.error('You do not have permission to update inspection reports')
     if (!reportInspection || !report) return
     const hasFail = Object.values(report.checks || {}).includes('fail')
     const partTotal = (report.parts || []).reduce((sum: number, part: any) => sum + Number(part.price || 0), 0)
@@ -828,6 +838,7 @@ const Inspections = () => {
   }
 
   const saveInvoice = () => {
+    if (!canEditInspections) return toast.error('You do not have permission to update inspection invoices')
     if (!invoiceEdit) return
     // Omit total_amount so the backend always recalculates it from subtotal + charges + tax - discount
     const { total_amount: _omit, ...invoicePayload } = invoiceForm
@@ -845,17 +856,20 @@ const Inspections = () => {
   }
 
   const openTechnicianDialog = (asset: Inspection) => {
+    if (!canEditInspections) return toast.error('You do not have permission to change inspection technicians')
     closeAssetActions()
     setTechEdit(asset)
     setSelectedTechId(asset.inspector_id || '')
   }
 
   const saveTechnician = () => {
+    if (!canEditInspections) return toast.error('You do not have permission to change inspection technicians')
     if (!techEdit) return
     techMut.mutate({ inspectionId: techEdit.id, inspectorId: selectedTechId ? Number(selectedTechId) : null })
   }
 
   const submitBatchAsset = () => {
+    if (!canInitiateInspections) return toast.error('You do not have permission to add assets to inspection batches')
     if (!selectedBatch) return
     if (!batchAssetForm.asset_tag || !batchAssetForm.make || !batchAssetForm.model || !batchAssetForm.serial_number || !batchAssetForm.modality_id) {
       toast.error('Asset #, make, model, serial, and modality are required')
@@ -930,10 +944,12 @@ const Inspections = () => {
                 <TableCell><Chip size="small" label={item.result} sx={{ bgcolor: resultStyle.bg, color: resultStyle.color, fontWeight: 900 }} /></TableCell>
                 <TableCell>{formatDate(mode === 'progress' ? item.started_at : item.completed_at)}</TableCell>
                 <TableCell align="right">
-                  {mode === 'progress' ? (
+                  {mode === 'progress' && canEditInspections ? (
                     <Button startIcon={<AssignmentTurnedInIcon />} variant="contained" onClick={() => setReportInspection(item)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                       Fill Report
                     </Button>
+                  ) : mode === 'progress' ? (
+                    <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
                   ) : (
                     <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                       <Button size="small" startIcon={<AssessmentIcon />} variant="outlined" onClick={() => setViewReport(item)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
@@ -1087,9 +1103,13 @@ const Inspections = () => {
               <TableCell sx={{ maxWidth: 260 }}>{item.compliance_requirement || '-'}</TableCell>
               <TableCell>{formatDate(item.scheduled_date)}</TableCell>
               <TableCell align="right">
-                <Button startIcon={<PlayArrowIcon />} variant="contained" onClick={() => startMut.mutate(item.id)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                  Start
-                </Button>
+                {canEditInspections ? (
+                  <Button startIcon={<PlayArrowIcon />} variant="contained" onClick={() => startMut.mutate(item.id)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
+                    Start
+                  </Button>
+                ) : (
+                  <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
+                )}
               </TableCell>
             </TableRow>
           ))}
@@ -1145,10 +1165,13 @@ const Inspections = () => {
                 <MenuItem value="annual">Annual</MenuItem>
               </TextField>
               <TextField label="Schedule Date" type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-              <Button startIcon={<EventAvailableIcon />} variant="outlined" onClick={scheduleSelected} disabled={!facilityId || scheduleMut.isPending} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
+              <Button startIcon={<EventAvailableIcon />} variant="outlined" onClick={scheduleSelected} disabled={!canAddInspections || !facilityId || scheduleMut.isPending} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
                 Schedule {selectedEquipmentIds.length || 'All'}
               </Button>
-              <Button startIcon={<AutoFixHighIcon />} variant="contained" onClick={() => generateMut.mutate({ facility_id: facilityId ? Number(facilityId) : undefined, days_ahead: 90 })} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
+              <Button startIcon={<AutoFixHighIcon />} variant="contained" disabled={!canAddInspections || generateMut.isPending} onClick={() => {
+                if (!canAddInspections) return toast.error('You do not have permission to auto-generate inspections')
+                generateMut.mutate({ facility_id: facilityId ? Number(facilityId) : undefined, days_ahead: 90 })
+              }} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
                 Auto Generate
               </Button>
             </Box>
@@ -1206,7 +1229,7 @@ const Inspections = () => {
                 startIcon={createMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <PlayArrowIcon />}
                 variant="contained"
                 onClick={startInspection}
-                disabled={!facilityId || createMut.isPending}
+                disabled={!canInitiateInspections || !facilityId || createMut.isPending}
                 sx={{ height: 54, borderRadius: '14px', px: 3, fontWeight: 900, textTransform: 'none', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
               >
                 Start {selectedInstantEquipmentIds.length || 'All'} Inspection{selectedInstantEquipmentIds.length === 1 ? '' : 's'}
@@ -1331,9 +1354,11 @@ const Inspections = () => {
                         <Button startIcon={<PrintIcon />} variant="outlined" onClick={() => printInspectionInvoice(invoice)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, mr: 1 }}>
                           Print
                         </Button>
-                        <Button startIcon={<EditIcon />} variant="outlined" onClick={() => setInvoiceEdit(invoice)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                          Edit
-                        </Button>
+                        {canEditInspections && (
+                          <Button startIcon={<EditIcon />} variant="outlined" onClick={() => setInvoiceEdit(invoice)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
+                            Edit
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -1374,7 +1399,7 @@ const Inspections = () => {
                           id: form.id,
                           modality_id: event.target.value ? Number(event.target.value) : null,
                         })}
-                        disabled={formMut.isPending}
+                        disabled={!canEditInspections || formMut.isPending}
                       >
                         <MenuItem value="">General - available to all assets</MenuItem>
                         {assignableModalities.map((modality) => (
@@ -1398,7 +1423,7 @@ const Inspections = () => {
               {selectedBatch?.batch_number || 'Loading'} - {selectedBatch?.facility_name || ''}
             </Typography>
           </Box>
-          {selectedBatch?.status !== 'completed' && (
+          {selectedBatch?.status !== 'completed' && canInitiateInspections && (
             <Button
               size="small"
               variant="contained"
@@ -1467,20 +1492,26 @@ const Inspections = () => {
                               </IconButton>
                             ) : (
                               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
-                                <Button size="small" variant="contained" startIcon={<AssignmentTurnedInIcon />} onClick={() => setReportInspection(asset)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                                  Report Activity
-                                </Button>
-                                <Button size="small" variant="outlined" startIcon={<PersonIcon />} onClick={() => openTechnicianDialog(asset)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                                  Change Tech
-                                </Button>
-                                <IconButton
-                                  size="small"
-                                  disabled={asset.status === 'completed' || removeBatchAssetMut.isPending}
-                                  onClick={() => selectedBatch && removeBatchAssetMut.mutate({ batchId: selectedBatch.id, inspectionId: asset.id })}
-                                  sx={{ bgcolor: '#FEE2E2', color: '#DC2626', '&:disabled': { bgcolor: '#F3F4F6' } }}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
+                                {canEditInspections && (
+                                  <>
+                                    <Button size="small" variant="contained" startIcon={<AssignmentTurnedInIcon />} onClick={() => setReportInspection(asset)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
+                                      Report Activity
+                                    </Button>
+                                    <Button size="small" variant="outlined" startIcon={<PersonIcon />} onClick={() => openTechnicianDialog(asset)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
+                                      Change Tech
+                                    </Button>
+                                  </>
+                                )}
+                                {canDeleteInspections && (
+                                  <IconButton
+                                    size="small"
+                                    disabled={asset.status === 'completed' || removeBatchAssetMut.isPending}
+                                    onClick={() => selectedBatch && removeBatchAssetMut.mutate({ batchId: selectedBatch.id, inspectionId: asset.id })}
+                                    sx={{ bgcolor: '#FEE2E2', color: '#DC2626', '&:disabled': { bgcolor: '#F3F4F6' } }}
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                )}
                               </Box>
                             )}
                           </TableCell>
@@ -1532,15 +1563,17 @@ const Inspections = () => {
       </Dialog>
 
       <Menu anchorEl={assetActionAnchor} open={Boolean(assetActionAnchor)} onClose={closeAssetActions}>
-        <MenuItem
-          onClick={() => {
-            if (!assetActionItem) return
-            setReportInspection(assetActionItem)
-            closeAssetActions()
-          }}
-        >
-          <AssignmentTurnedInIcon fontSize="small" sx={{ mr: 1 }} /> Report Activity
-        </MenuItem>
+        {canEditInspections && (
+          <MenuItem
+            onClick={() => {
+              if (!assetActionItem) return
+              setReportInspection(assetActionItem)
+              closeAssetActions()
+            }}
+          >
+            <AssignmentTurnedInIcon fontSize="small" sx={{ mr: 1 }} /> Report Activity
+          </MenuItem>
+        )}
         <MenuItem onClick={() => assetActionItem && handlePrintReport(assetActionItem)}>
           <AssessmentIcon fontSize="small" sx={{ mr: 1 }} /> Print Report
         </MenuItem>
@@ -1573,7 +1606,7 @@ const Inspections = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setTechEdit(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button onClick={saveTechnician} disabled={techMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+          <Button onClick={saveTechnician} disabled={!canEditInspections || techMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
             Save
           </Button>
         </DialogActions>
@@ -1613,7 +1646,7 @@ const Inspections = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setAddAssetOpen(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={addBatchAssetMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitBatchAsset} disabled={addBatchAssetMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: '#10B981' }}>
+          <Button startIcon={addBatchAssetMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitBatchAsset} disabled={!canInitiateInspections || addBatchAssetMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: '#10B981' }}>
             Add Asset
           </Button>
         </DialogActions>
@@ -1733,7 +1766,7 @@ const Inspections = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setReportInspection(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={reportMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={submitReport} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+          <Button startIcon={reportMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={submitReport} disabled={!canEditInspections || reportMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
             {reportStatus === 'completed' ? 'Complete & Generate Invoice' : 'Save as In Progress'}
           </Button>
         </DialogActions>
@@ -1813,7 +1846,7 @@ const Inspections = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setInvoiceEdit(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={invoiceMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={saveInvoice} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+          <Button startIcon={invoiceMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={saveInvoice} disabled={!canEditInspections || invoiceMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
             Save Invoice
           </Button>
         </DialogActions>
