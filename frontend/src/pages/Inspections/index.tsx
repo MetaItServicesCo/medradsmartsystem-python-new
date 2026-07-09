@@ -1168,6 +1168,8 @@ const Inspections = () => {
     setSelectedEquipmentIds(prev => ids.length && ids.every(id => prev.includes(id)) ? [] : ids)
   }
 
+  const allScheduleEquipmentSelected = equipment.length > 0 && equipment.every(item => selectedEquipmentIds.includes(item.id))
+
   const toggleExistingBatchEquipment = (id: number) => {
     setSelectedExistingEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
   }
@@ -1177,17 +1179,22 @@ const Inspections = () => {
     setSelectedExistingEquipmentIds(prev => ids.length && ids.every(id => prev.includes(id)) ? [] : ids)
   }
 
+  const allExistingBatchEquipmentSelected = availableExistingBatchAssets.length > 0 && availableExistingBatchAssets.every(item => selectedExistingEquipmentIds.includes(item.id))
+
   const toggleAllInstantEquipment = () => {
     const ids = equipment.map(item => item.id)
     setSelectedInstantEquipmentIds(prev => ids.length && ids.every(id => prev.includes(id)) ? [] : ids)
   }
 
+  const allInstantEquipmentSelected = equipment.length > 0 && equipment.every(item => selectedInstantEquipmentIds.includes(item.id))
+
   const startInspection = () => {
     if (!canInitiateInspections) return toast.error('You do not have permission to initiate inspections')
     if (!facilityId) return toast.error('Select a facility first')
+    if (!selectedInstantEquipmentIds.length) return toast.error('Select at least one asset or use Select All')
     createMut.mutate({
       facility_id: Number(facilityId),
-      equipment_ids: selectedInstantEquipmentIds.length ? selectedInstantEquipmentIds : undefined,
+      equipment_ids: selectedInstantEquipmentIds,
       frequency,
     })
   }
@@ -1195,9 +1202,10 @@ const Inspections = () => {
   const scheduleSelected = () => {
     if (!canAddInspections) return toast.error('You do not have permission to schedule inspections')
     if (!facilityId) return toast.error('Select a facility first')
+    if (!selectedEquipmentIds.length) return toast.error('Select at least one asset or use Select All')
     scheduleMut.mutate({
       facility_id: Number(facilityId),
-      equipment_ids: selectedEquipmentIds.length ? selectedEquipmentIds : undefined,
+      equipment_ids: selectedEquipmentIds,
       frequency: frequency === 'instant' ? 'annual' : frequency,
       scheduled_date: new Date(scheduleDate).toISOString(),
     })
@@ -1746,17 +1754,27 @@ const Inspections = () => {
 
   const renderUpcomingRows = () => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader sx={{ minWidth: 1360, tableLayout: 'fixed' }}>
+      <Table stickyHeader sx={{ width: 1360, minWidth: 1360, tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: 150 }} />
+          <col style={{ width: 220 }} />
+          <col style={{ width: 280 }} />
+          <col style={{ width: 120 }} />
+          <col style={{ width: 130 }} />
+          <col style={{ width: 360 }} />
+          <col style={{ width: 160 }} />
+          <col style={{ width: 140 }} />
+        </colgroup>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900, width: 150 }}>Inspection #</TableCell>
-            <TableCell sx={{ fontWeight: 900, width: 220 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900, width: 280 }}>Equipment</TableCell>
-            <TableCell sx={{ fontWeight: 900, width: 120 }}>Frequency</TableCell>
-            <TableCell sx={{ fontWeight: 900, width: 130 }}>Criticality</TableCell>
-            <TableCell sx={{ fontWeight: 900, width: 360 }}>Requirement</TableCell>
-            <TableCell sx={{ fontWeight: 900, width: 160 }}>Scheduled</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900, width: 150 }}>Actions</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Frequency</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Requirement</TableCell>
+            <TableCell sx={{ fontWeight: 900 }}>Scheduled</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -1774,13 +1792,22 @@ const Inspections = () => {
               </TableCell>
               <TableCell>{(item.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
               <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
-              <TableCell sx={{ overflow: 'hidden', pr: 2 }}>
+              <TableCell sx={{ overflow: 'hidden', maxWidth: 360, pr: 2 }}>
                 <Tooltip title={item.compliance_requirement || '-'} arrow placement="top">
                   <TextField
                     size="small"
                     value={item.compliance_requirement || '-'}
-                    fullWidth
                     variant="outlined"
+                    sx={{
+                      display: 'block',
+                      width: '100%',
+                      maxWidth: '100%',
+                      '& .MuiInputBase-root': {
+                        width: '100%',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                      },
+                    }}
                     InputProps={{
                       readOnly: true,
                       sx: {
@@ -2026,8 +2053,8 @@ const Inspections = () => {
                 <MenuItem value="annual">Annual</MenuItem>
               </TextField>
               <TextField label="Schedule Date" type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-              <Button startIcon={<EventAvailableIcon />} variant="outlined" onClick={scheduleSelected} disabled={!canAddInspections || !facilityId || scheduleMut.isPending} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
-                Schedule {selectedEquipmentIds.length || 'All'}
+              <Button startIcon={<EventAvailableIcon />} variant="outlined" onClick={scheduleSelected} disabled={!canAddInspections || !facilityId || !selectedEquipmentIds.length || scheduleMut.isPending} sx={{ height: 54, borderRadius: '14px', fontWeight: 900, textTransform: 'none' }}>
+                Schedule Selected
               </Button>
               <Button startIcon={<AutoFixHighIcon />} variant="contained" disabled={!canAddInspections || generateMut.isPending} onClick={() => {
                 if (!canAddInspections) return toast.error('You do not have permission to auto-generate inspections')
@@ -2037,41 +2064,50 @@ const Inspections = () => {
               </Button>
             </Box>
             {facilityId && (
-              <TableContainer className="list-scroll-panel" sx={{ mb: 3, border: '1px solid #EEF0F6', borderRadius: '18px' }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={equipment.length > 0 && equipment.every(item => selectedEquipmentIds.includes(item.id))}
-                          indeterminate={selectedEquipmentIds.length > 0 && !equipment.every(item => selectedEquipmentIds.includes(item.id))}
-                          onChange={toggleAllEquipment}
-                          disabled={equipmentQ.isLoading || equipment.length === 0}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
-                      <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
-                      <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
-                      <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
-                      <TableCell sx={{ fontWeight: 900 }}>Serial #</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {equipmentQ.isLoading ? <TableRow><TableCell colSpan={6}><Skeleton /></TableCell></TableRow> : equipment.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: '#6B7280', fontWeight: 700 }}>No facility inventory found for scheduling.</TableCell></TableRow>
-                    ) : equipment.map((item: InspectionEquipmentItem) => (
-                      <TableRow key={item.id} hover onClick={() => toggleEquipment(item.id)} sx={{ cursor: 'pointer' }}>
-                        <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} /></TableCell>
-                        <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
-                        <TableCell>{item.make} {item.model}</TableCell>
-                        <TableCell>{item.modality_name || '-'}</TableCell>
-                        <TableCell>{item.criticality}</TableCell>
-                        <TableCell>{item.serial_number}</TableCell>
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
+                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+                    {selectedEquipmentIds.length} of {equipment.length} asset{equipment.length === 1 ? '' : 's'} selected for scheduling.
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant={allScheduleEquipmentSelected ? 'outlined' : 'contained'}
+                    onClick={toggleAllEquipment}
+                    disabled={equipmentQ.isLoading || equipment.length === 0}
+                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+                  >
+                    {allScheduleEquipmentSelected ? 'Clear Selection' : 'Select All Assets'}
+                  </Button>
+                </Box>
+                <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '18px' }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                        <TableCell padding="checkbox" />
+                        <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Serial #</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {equipmentQ.isLoading ? <TableRow><TableCell colSpan={6}><Skeleton /></TableCell></TableRow> : equipment.length === 0 ? (
+                        <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: '#6B7280', fontWeight: 700 }}>No facility inventory found for scheduling.</TableCell></TableRow>
+                      ) : equipment.map((item: InspectionEquipmentItem) => (
+                        <TableRow key={item.id} hover onClick={() => toggleEquipment(item.id)} sx={{ cursor: 'pointer' }}>
+                          <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} /></TableCell>
+                          <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
+                          <TableCell>{item.make} {item.model}</TableCell>
+                          <TableCell>{item.modality_name || '-'}</TableCell>
+                          <TableCell>{item.criticality}</TableCell>
+                          <TableCell>{item.serial_number}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
             )}
             <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px' }, gap: 2, alignItems: 'center' }}>
@@ -2123,29 +2159,33 @@ const Inspections = () => {
                 startIcon={createMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <PlayArrowIcon />}
                 variant="contained"
                 onClick={startInspection}
-                disabled={!canInitiateInspections || !facilityId || createMut.isPending}
+                disabled={!canInitiateInspections || !facilityId || !selectedInstantEquipmentIds.length || createMut.isPending}
                 sx={{ height: 54, borderRadius: '14px', px: 3, fontWeight: 900, textTransform: 'none', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
               >
-                Start {selectedInstantEquipmentIds.length || 'All'} Inspection{selectedInstantEquipmentIds.length === 1 ? '' : 's'}
+                Start Selected Inspection{selectedInstantEquipmentIds.length === 1 ? '' : 's'}
               </Button>
             </Box>
             {selectedFacility && (
-              <Typography sx={{ mb: 2, color: '#6B7280', fontWeight: 800 }}>
-                {selectedFacility.name}: select assets or leave all unchecked to inspect all facility assets.
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+                <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+                  {selectedFacility.name}: {selectedInstantEquipmentIds.length} of {equipment.length} asset{equipment.length === 1 ? '' : 's'} selected.
+                </Typography>
+                <Button
+                  size="small"
+                  variant={allInstantEquipmentSelected ? 'outlined' : 'contained'}
+                  onClick={toggleAllInstantEquipment}
+                  disabled={equipmentQ.isLoading || equipment.length === 0}
+                  sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+                >
+                  {allInstantEquipmentSelected ? 'Clear Selection' : 'Select All Assets'}
+                </Button>
+              </Box>
             )}
             <TableContainer className="list-scroll-panel">
               <Table stickyHeader>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        checked={equipment.length > 0 && equipment.every(item => selectedInstantEquipmentIds.includes(item.id))}
-                        indeterminate={selectedInstantEquipmentIds.length > 0 && !equipment.every(item => selectedInstantEquipmentIds.includes(item.id))}
-                        onChange={toggleAllInstantEquipment}
-                        disabled={equipmentQ.isLoading || equipment.length === 0}
-                      />
-                    </TableCell>
+                    <TableCell padding="checkbox" />
                     <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
@@ -2565,18 +2605,25 @@ const Inspections = () => {
             fullWidth
             sx={{ mb: 2 }}
           />
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
+            <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+              {selectedExistingEquipmentIds.length} of {availableExistingBatchAssets.length} available asset{availableExistingBatchAssets.length === 1 ? '' : 's'} selected.
+            </Typography>
+            <Button
+              size="small"
+              variant={allExistingBatchEquipmentSelected ? 'outlined' : 'contained'}
+              onClick={toggleAllExistingBatchEquipment}
+              disabled={batchEquipmentQ.isLoading || availableExistingBatchAssets.length === 0}
+              sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+            >
+              {allExistingBatchEquipmentSelected ? 'Clear Selection' : 'Select All Assets'}
+            </Button>
+          </Box>
           <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      checked={availableExistingBatchAssets.length > 0 && availableExistingBatchAssets.every(item => selectedExistingEquipmentIds.includes(item.id))}
-                      indeterminate={selectedExistingEquipmentIds.length > 0 && !availableExistingBatchAssets.every(item => selectedExistingEquipmentIds.includes(item.id))}
-                      onChange={toggleAllExistingBatchEquipment}
-                      disabled={batchEquipmentQ.isLoading || availableExistingBatchAssets.length === 0}
-                    />
-                  </TableCell>
+                  <TableCell padding="checkbox" />
                   <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
