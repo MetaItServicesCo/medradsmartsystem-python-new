@@ -41,7 +41,17 @@ ADVANCED_REPORT_SCHEMA = {
         {
             "key": "checks",
             "label": "Inspection Checks",
-            "fields": ["physical_inspection", "cleaning", "display", "lubrication", "functional", "calibration", "electrical_safety", "battery", "pm_kit"],
+            "fields": [
+                {"key": "physical_inspection", "label": "Physical Inspection", "type": "radio", "options": ["pass", "fail", "na"]},
+                {"key": "cleaning", "label": "Cleaning", "type": "radio", "options": ["pass", "fail", "na"]},
+                {"key": "display", "label": "Display", "type": "radio", "options": ["pass", "fail", "na"]},
+                {"key": "lubrication", "label": "Lubrication", "type": "radio", "options": ["pass", "fail", "na"]},
+                {"key": "functional", "label": "Functional", "type": "radio", "options": ["pass", "fail", "na"]},
+                {"key": "calibration", "label": "Calibration", "type": "radio", "options": ["pass", "fail", "na"]},
+                {"key": "electrical_safety", "label": "Electrical Safety", "type": "radio", "options": ["pass", "fail", "na"]},
+                {"key": "battery", "label": "Battery", "type": "radio", "options": ["pass", "fail", "na"]},
+                {"key": "pm_kit", "label": "PM Kit", "type": "radio", "options": ["pass", "fail", "na"]},
+            ],
         },
         {
             "key": "diagnostics",
@@ -280,6 +290,10 @@ def _customer_address(facility: Facility) -> str:
 def _get_default_form(db: Session) -> InspectionForm:
     form = db.query(InspectionForm).filter(InspectionForm.name == ADVANCED_REPORT_SCHEMA["title"]).first()
     if form:
+        check_section = next((section for section in (form.schema or {}).get("sections", []) if section.get("key") == "checks"), None)
+        if check_section and any(isinstance(field, str) for field in check_section.get("fields", [])):
+            form.schema = ADVANCED_REPORT_SCHEMA
+            db.flush()
         return form
     form = InspectionForm(
         name=ADVANCED_REPORT_SCHEMA["title"],
