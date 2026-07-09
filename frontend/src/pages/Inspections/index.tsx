@@ -1163,8 +1163,23 @@ const Inspections = () => {
     setSelectedEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
   }
 
+  const toggleAllEquipment = () => {
+    const ids = equipment.map(item => item.id)
+    setSelectedEquipmentIds(prev => ids.length && ids.every(id => prev.includes(id)) ? [] : ids)
+  }
+
   const toggleExistingBatchEquipment = (id: number) => {
     setSelectedExistingEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
+  }
+
+  const toggleAllExistingBatchEquipment = () => {
+    const ids = availableExistingBatchAssets.map(item => item.id)
+    setSelectedExistingEquipmentIds(prev => ids.length && ids.every(id => prev.includes(id)) ? [] : ids)
+  }
+
+  const toggleAllInstantEquipment = () => {
+    const ids = equipment.map(item => item.id)
+    setSelectedInstantEquipmentIds(prev => ids.length && ids.every(id => prev.includes(id)) ? [] : ids)
   }
 
   const startInspection = () => {
@@ -1731,7 +1746,7 @@ const Inspections = () => {
 
   const renderUpcomingRows = () => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader sx={{ minWidth: 1280, tableLayout: 'fixed' }}>
+      <Table stickyHeader sx={{ minWidth: 1360, tableLayout: 'fixed' }}>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
             <TableCell sx={{ fontWeight: 900, width: 150 }}>Inspection #</TableCell>
@@ -1739,8 +1754,8 @@ const Inspections = () => {
             <TableCell sx={{ fontWeight: 900, width: 280 }}>Equipment</TableCell>
             <TableCell sx={{ fontWeight: 900, width: 120 }}>Frequency</TableCell>
             <TableCell sx={{ fontWeight: 900, width: 130 }}>Criticality</TableCell>
-            <TableCell sx={{ fontWeight: 900, width: 320 }}>Requirement</TableCell>
-            <TableCell sx={{ fontWeight: 900, width: 150 }}>Scheduled</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 360 }}>Requirement</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 160 }}>Scheduled</TableCell>
             <TableCell align="right" sx={{ fontWeight: 900, width: 150 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
@@ -1759,7 +1774,34 @@ const Inspections = () => {
               </TableCell>
               <TableCell>{(item.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
               <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
-              <TableCell sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.45 }}>{item.compliance_requirement || '-'}</TableCell>
+              <TableCell sx={{ overflow: 'hidden', pr: 2 }}>
+                <Tooltip title={item.compliance_requirement || '-'} arrow placement="top">
+                  <TextField
+                    size="small"
+                    value={item.compliance_requirement || '-'}
+                    fullWidth
+                    variant="outlined"
+                    InputProps={{
+                      readOnly: true,
+                      sx: {
+                        height: 40,
+                        borderRadius: '12px',
+                        bgcolor: '#F8FAFC',
+                        color: '#1E1B4B',
+                        cursor: 'default',
+                        '& input': {
+                          cursor: 'default',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          fontWeight: 700,
+                          py: 1,
+                        },
+                      },
+                    }}
+                  />
+                </Tooltip>
+              </TableCell>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(item.scheduled_date)}</TableCell>
               <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                 {canEditInspections ? (
@@ -1999,7 +2041,14 @@ const Inspections = () => {
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                      <TableCell padding="checkbox" />
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={equipment.length > 0 && equipment.every(item => selectedEquipmentIds.includes(item.id))}
+                          indeterminate={selectedEquipmentIds.length > 0 && !equipment.every(item => selectedEquipmentIds.includes(item.id))}
+                          onChange={toggleAllEquipment}
+                          disabled={equipmentQ.isLoading || equipment.length === 0}
+                        />
+                      </TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
@@ -2089,7 +2138,14 @@ const Inspections = () => {
               <Table stickyHeader>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                    <TableCell padding="checkbox" />
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={equipment.length > 0 && equipment.every(item => selectedInstantEquipmentIds.includes(item.id))}
+                        indeterminate={selectedInstantEquipmentIds.length > 0 && !equipment.every(item => selectedInstantEquipmentIds.includes(item.id))}
+                        onChange={toggleAllInstantEquipment}
+                        disabled={equipmentQ.isLoading || equipment.length === 0}
+                      />
+                    </TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
@@ -2513,7 +2569,14 @@ const Inspections = () => {
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                  <TableCell padding="checkbox" />
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={availableExistingBatchAssets.length > 0 && availableExistingBatchAssets.every(item => selectedExistingEquipmentIds.includes(item.id))}
+                      indeterminate={selectedExistingEquipmentIds.length > 0 && !availableExistingBatchAssets.every(item => selectedExistingEquipmentIds.includes(item.id))}
+                      onChange={toggleAllExistingBatchEquipment}
+                      disabled={batchEquipmentQ.isLoading || availableExistingBatchAssets.length === 0}
+                    />
+                  </TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
