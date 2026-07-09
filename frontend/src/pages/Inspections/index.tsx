@@ -75,21 +75,20 @@ const CHECK_FIELDS = [
 
 type ReportFormSource = 'default' | 'attached' | 'custom'
 type FormBuilderMode = 'create' | 'edit' | 'report-custom'
-type FormFieldType = 'text' | 'textarea' | 'number' | 'date' | 'radio' | 'select' | 'checkbox'
+type GridCellType = 'text' | 'input' | 'radio' | 'blank'
 
-type InspectionFormFieldSchema = {
-  key: string
+type GridCellSchema = {
+  id: string
   label: string
-  type: FormFieldType
-  required?: boolean
+  type: GridCellType
   options?: string[]
-  defaultValue?: any
 }
 
-type InspectionFormSectionSchema = {
-  key: string
-  label: string
-  fields: InspectionFormFieldSchema[]
+type CustomGridSchema = {
+  title: string
+  rows: number
+  columns: number
+  cells: GridCellSchema[][]
 }
 
 type InspectionFormSchema = {
@@ -97,21 +96,17 @@ type InspectionFormSchema = {
   version: number
   source?: string
   based_on?: string
-  sections: InspectionFormSectionSchema[]
+  custom_grid: CustomGridSchema | null
 }
 
-const FORM_FIELD_TYPES: { value: FormFieldType; label: string }[] = [
-  { value: 'text', label: 'Text' },
-  { value: 'textarea', label: 'Long Text' },
-  { value: 'number', label: 'Number' },
-  { value: 'date', label: 'Date' },
-  { value: 'radio', label: 'Radio Buttons' },
-  { value: 'select', label: 'Dropdown' },
-  { value: 'checkbox', label: 'Checkbox' },
+const GRID_CELL_TYPES: { value: GridCellType; label: string }[] = [
+  { value: 'text', label: 'Text / Label' },
+  { value: 'input', label: 'Input Field' },
+  { value: 'radio', label: 'Radio Button' },
+  { value: 'blank', label: 'Blank' },
 ]
 
 const CHECK_FIELD_LABELS = CHECK_FIELDS.reduce((acc, [key, label]) => ({ ...acc, [key]: label }), {} as Record<string, string>)
-const REPORT_SCHEMA_SCALAR_SECTIONS = ['identity', 'checks', 'diagnostics', 'compliance', 'dates']
 
 const labelFromKey = (key: string) => key
   .replace(/_/g, ' ')
@@ -122,102 +117,95 @@ const slugifyKey = (value: string, fallback = 'field') => {
   return key || `${fallback}_${Date.now()}`
 }
 
-const defaultValueForField = (field: InspectionFormFieldSchema) => {
-  if (field.defaultValue !== undefined) return field.defaultValue
-  if (field.type === 'checkbox') return false
-  if (field.type === 'radio' || field.type === 'select') return field.options?.[0] || ''
-  if (field.type === 'number') return 0
-  return ''
-}
+const createGridCell = (row: number, column: number): GridCellSchema => ({
+  id: `cell_${row + 1}_${column + 1}`,
+  label: 'view',
+  type: 'text',
+})
 
-const defaultFieldType = (sectionKey: string, fieldKey: string): FormFieldType => {
-  if (sectionKey === 'checks') return 'radio'
-  if (sectionKey === 'billing' || ['price', 'parts', 'inspection_charges', 'others'].includes(fieldKey)) return 'number'
-  if (sectionKey === 'dates' || fieldKey.includes('date')) return 'date'
-  if (['summary', 'reported_problem', 'problem_found', 'corrective_action_taken', 'recommendations', 'certificate_notes', 'notes'].includes(fieldKey)) return 'textarea'
-  return 'text'
-}
+const createEmptyGrid = (rows = 3, columns = 3, title = 'Set Title'): CustomGridSchema => ({
+  title,
+  rows,
+  columns,
+  cells: Array.from({ length: rows }, (_, row) =>
+    Array.from({ length: columns }, (_, column) => createGridCell(row, column)),
+  ),
+})
 
-const normalizeFieldSchema = (field: any, sectionKey: string, index: number): InspectionFormFieldSchema => {
-  if (typeof field === 'string') {
-    return {
-      key: field,
-      label: CHECK_FIELD_LABELS[field] || labelFromKey(field),
-      type: defaultFieldType(sectionKey, field),
-      options: sectionKey === 'checks' ? ['pass', 'fail', 'na'] : undefined,
-    }
-  }
-  const key = String(field?.key || field?.id || field?.name || slugifyKey(field?.label || `field_${index}`))
-  const type = (FORM_FIELD_TYPES.some(item => item.value === field?.type) ? field.type : defaultFieldType(sectionKey, key)) as FormFieldType
+const normalizeGridCell = (cell: any, row: number, column: number): GridCellSchema => {
+  const type = GRID_CELL_TYPES.some(item => item.value === cell?.type) ? cell.type as GridCellType : 'text'
   return {
-    key,
-    label: String(field?.label || CHECK_FIELD_LABELS[key] || labelFromKey(key)),
+    id: String(cell?.id || `cell_${row + 1}_${column + 1}`),
+    label: String(cell?.label ?? cell?.value ?? 'view'),
     type,
-    required: Boolean(field?.required),
-    options: Array.isArray(field?.options) ? field.options.map((option: any) => String(option)).filter(Boolean) : (type === 'radio' && sectionKey === 'checks' ? ['pass', 'fail', 'na'] : undefined),
-    defaultValue: field?.defaultValue ?? field?.default_value,
+    options: type === 'radio'
+      ? (Array.isArray(cell?.options) && cell.options.length ? cell.options.map((option: any) => String(option)) : ['Yes'])
+      : undefined,
   }
 }
 
-const normalizeInspectionFormSchema = (schema: any, fallbackTitle = 'Inspection Form'): InspectionFormSchema => {
-  const sections = Array.isArray(schema?.sections) ? schema.sections : []
+const normalizeGrid = (grid: any, fallbackTitle = 'Set Title'): CustomGridSchema | null => {
+  if (!grid) return null
+  const rows = Math.max(1, Math.min(30, Number(grid.rows || grid.cells?.length || 3)))
+  const columns = Math.max(1, Math.min(12, Number(grid.columns || grid.cells?.[0]?.length || 3)))
   return {
-    title: String(schema?.title || fallbackTitle),
-    version: Number(schema?.version || 2),
-    source: schema?.source,
-    based_on: schema?.based_on,
-    sections: sections.map((section: any, sectionIndex: number) => {
-      const key = String(section?.key || section?.id || slugifyKey(section?.label || `section_${sectionIndex}`, 'section'))
-      const fields = Array.isArray(section?.fields) ? section.fields : []
-      return {
-        key,
-        label: String(section?.label || labelFromKey(key)),
-        fields: fields.map((field: any, fieldIndex: number) => normalizeFieldSchema(field, key, fieldIndex)),
-      }
-    }),
+    title: String(grid.title || fallbackTitle),
+    rows,
+    columns,
+    cells: Array.from({ length: rows }, (_, row) =>
+      Array.from({ length: columns }, (_, column) => normalizeGridCell(grid.cells?.[row]?.[column], row, column)),
+    ),
   }
 }
+
+const gridFromLegacySections = (schema: any): CustomGridSchema | null => {
+  const customSections = (schema?.sections || []).filter((section: any) =>
+    !['identity', 'checks', 'diagnostics', 'measurements', 'photo_documentation', 'compliance', 'parts', 'test_equipment', 'billing', 'dates'].includes(section?.key),
+  )
+  if (!customSections.length) return null
+  const fields = customSections.flatMap((section: any) => (section.fields || []).map((field: any) => ({
+    label: typeof field === 'string' ? labelFromKey(field) : String(field?.label || field?.key || 'view'),
+    type: typeof field === 'object' && field?.type === 'radio' ? 'radio' : 'text',
+    options: typeof field === 'object' && Array.isArray(field?.options) ? field.options : undefined,
+  })))
+  const rows = Math.max(1, Math.ceil(fields.length / 3))
+  const grid = createEmptyGrid(rows, 3, customSections[0]?.label || 'Set Title')
+  fields.forEach((field: any, index: number) => {
+    const row = Math.floor(index / 3)
+    const column = index % 3
+    grid.cells[row][column] = { ...grid.cells[row][column], ...field }
+  })
+  return grid
+}
+
+const normalizeInspectionFormSchema = (schema: any, fallbackTitle = 'Inspection Form'): InspectionFormSchema => ({
+  title: String(schema?.title || fallbackTitle),
+  version: Number(schema?.version || 3),
+  source: schema?.source,
+  based_on: schema?.based_on,
+  custom_grid: normalizeGrid(schema?.custom_grid, schema?.custom_grid?.title) || gridFromLegacySections(schema),
+})
 
 const schemaToPayload = (schema: InspectionFormSchema, title: string): InspectionFormSchema => ({
   title,
-  version: 2,
-  source: schema.source || 'medrad_form_builder',
+  version: 3,
+  source: 'medrad_grid_form_builder',
   based_on: schema.based_on,
-  sections: schema.sections.map(section => ({
-    ...section,
-    key: slugifyKey(section.key || section.label, 'section'),
-    label: section.label || labelFromKey(section.key),
-    fields: section.fields.map(field => ({
-      ...field,
-      key: slugifyKey(field.key || field.label, 'field'),
-      label: field.label || labelFromKey(field.key),
-      options: ['radio', 'select'].includes(field.type) ? (field.options || []).filter(Boolean) : undefined,
-    })),
-  })),
+  custom_grid: schema.custom_grid ? normalizeGrid(schema.custom_grid, schema.custom_grid.title) : null,
 })
 
 const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFormSchema | null) => {
-  if (!schema) return currentReport
-  const next = {
+  if (!schema?.custom_grid) return currentReport
+  const existing = currentReport?.custom_grid_values || {}
+  const defaults = schema.custom_grid.cells.flat().reduce((acc, cell) => {
+    if (cell.type === 'input' || cell.type === 'radio') acc[cell.id] = existing[cell.id] ?? ''
+    return acc
+  }, {} as Record<string, any>)
+  return {
     ...currentReport,
-    custom_fields: { ...(currentReport?.custom_fields || {}) },
+    custom_grid: schema.custom_grid,
+    custom_grid_values: defaults,
   }
-  schema.sections.forEach(section => {
-    section.fields.forEach(field => {
-      const sectionData = next[section.key]
-      if (sectionData && typeof sectionData === 'object' && !Array.isArray(sectionData)) {
-        if (sectionData[field.key] === undefined) {
-          next[section.key] = { ...sectionData, [field.key]: defaultValueForField(field) }
-        }
-      } else {
-        const customSection = next.custom_fields[section.key] || {}
-        if (customSection[field.key] === undefined) {
-          next.custom_fields[section.key] = { ...customSection, [field.key]: defaultValueForField(field) }
-        }
-      }
-    })
-  })
-  return next
 }
 
 const statusChip = (value: string) => {
@@ -321,9 +309,8 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
   const measurements = data.measurements || []
   const parts = data.parts || []
   const testEquipment = data.test_equipment || []
-  const customFieldSections = Object.entries(data.custom_fields || {}).filter(([, fields]) =>
-    fields && typeof fields === 'object' && Object.keys(fields as Record<string, any>).length,
-  )
+  const customGrid = data.custom_grid
+  const customGridValues = data.custom_grid_values || {}
   const billingTotal = Number(data.billing?.parts || rawInspection.parts_amount || 0)
     + Number(data.billing?.inspection_charges || rawInspection.inspection_charge || 0)
     + Number(data.billing?.others || rawInspection.other_charges || 0)
@@ -365,20 +352,22 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
     </tr>
   `).join('') : '<tr><td colspan="3">No test equipment recorded.</td></tr>'
 
-  const customFieldsHtml = customFieldSections.map(([sectionKey, fields]) => {
-    const rows = Object.entries(fields as Record<string, any>).map(([key, value]) => `
-      <tr>
-        <td>${escapeHtml(labelFromKey(key))}</td>
-        <td>${escapeHtml(typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value || '-')}</td>
-      </tr>
-    `).join('')
-    return `
-      <section class="section">
-        <h2>${escapeHtml(labelFromKey(sectionKey))}</h2>
-        <table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>
-      </section>
-    `
-  }).join('')
+  const customGridHtml = customGrid?.cells?.length ? `
+    <section class="section">
+      <h2>${escapeHtml(customGrid.title || 'Custom Inspection Section')}</h2>
+      <table><tbody>
+        ${customGrid.cells.map((row: GridCellSchema[]) => `
+          <tr>
+            ${row.map(cell => {
+              const value = customGridValues[cell.id]
+              const display = cell.type === 'blank' ? '' : cell.type === 'text' ? cell.label : (value || cell.label || '-')
+              return `<td>${escapeHtml(display)}</td>`
+            }).join('')}
+          </tr>
+        `).join('')}
+      </tbody></table>
+    </section>
+  ` : ''
 
   return `
     <main class="sheet">
@@ -418,7 +407,7 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
           <h3>Summary</h3><p>${escapeHtml(data.diagnostics?.summary || '-')}</p>
           <h3>Corrective Action</h3><p>${escapeHtml(inspection.corrective_actions || data.diagnostics?.corrective_action_taken || '-')}</p>
         </section>
-        ${customFieldsHtml}
+        ${customGridHtml}
         <section class="section">
           <h2>Measurements</h2>
           <table><thead><tr><th>Name</th><th>Set</th><th>Read</th><th>Unit</th><th>Status</th><th>Notes</th></tr></thead><tbody>${measurementRows}</tbody></table>
@@ -698,6 +687,8 @@ const Inspections = () => {
   const [formBuilderDescription, setFormBuilderDescription] = useState('')
   const [formBuilderModalityId, setFormBuilderModalityId] = useState<number | null>(null)
   const [formBuilderSchema, setFormBuilderSchema] = useState<InspectionFormSchema>(() => normalizeInspectionFormSchema({ sections: [] }))
+  const [formBuilderRows, setFormBuilderRows] = useState(3)
+  const [formBuilderColumns, setFormBuilderColumns] = useState(3)
   const [invoiceEdit, setInvoiceEdit] = useState<InspectionInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState<any>({})
   const [techEdit, setTechEdit] = useState<Inspection | null>(null)
@@ -1075,16 +1066,23 @@ const Inspections = () => {
   })
 
   const schemaForForm = (form: InspectionFormOption | null | undefined) =>
-    form ? normalizeInspectionFormSchema(form.schema, form.name) : normalizeInspectionFormSchema({ title: 'Inspection Form', sections: [] })
+    form ? normalizeInspectionFormSchema(form.schema, form.name) : normalizeInspectionFormSchema({ title: 'Inspection Form' })
 
   const openCreateFormBuilder = () => {
-    const base = defaultReportForm ? schemaForForm(defaultReportForm) : normalizeInspectionFormSchema({ title: 'New Inspection Form', sections: [] })
     setFormBuilderMode('create')
     setFormBuilderId(null)
     setFormBuilderName('New Inspection Form')
     setFormBuilderDescription('')
     setFormBuilderModalityId(null)
-    setFormBuilderSchema({ ...base, title: 'New Inspection Form', source: 'medrad_form_builder', based_on: defaultReportForm?.name })
+    setFormBuilderSchema({
+      title: 'New Inspection Form',
+      version: 3,
+      source: 'medrad_grid_form_builder',
+      based_on: defaultReportForm?.name,
+      custom_grid: null,
+    })
+    setFormBuilderRows(3)
+    setFormBuilderColumns(3)
     setFormBuilderOpen(true)
   }
 
@@ -1094,123 +1092,81 @@ const Inspections = () => {
     setFormBuilderName(form.name)
     setFormBuilderDescription(form.description || '')
     setFormBuilderModalityId(form.modality_id)
-    setFormBuilderSchema(schemaForForm(form))
+    const schema = schemaForForm(form)
+    setFormBuilderSchema(schema)
+    setFormBuilderRows(schema.custom_grid?.rows || 3)
+    setFormBuilderColumns(schema.custom_grid?.columns || 3)
     setFormBuilderOpen(true)
   }
 
   const openReportCustomBuilder = () => {
-    const base = reportCustomSchema || activeReportSchema || (defaultReportForm ? schemaForForm(defaultReportForm) : normalizeInspectionFormSchema({ title: customFormName || 'Custom Inspection Form', sections: [] }))
+    const base = reportCustomSchema || activeReportSchema || normalizeInspectionFormSchema({ title: customFormName || 'Custom Inspection Form' })
     setFormBuilderMode('report-custom')
     setFormBuilderId(null)
     setFormBuilderName(customFormName || `${reportInspection?.asset_name || reportInspection?.equipment_name || 'Asset'} Custom Inspection Form`)
     setFormBuilderDescription(customFormDescription)
     setFormBuilderModalityId(null)
     setFormBuilderSchema({ ...base, title: customFormName || base.title })
+    setFormBuilderRows(base.custom_grid?.rows || 3)
+    setFormBuilderColumns(base.custom_grid?.columns || 3)
     setFormBuilderOpen(true)
   }
 
-  const updateBuilderSection = (sectionIndex: number, patch: Partial<InspectionFormSectionSchema>) => {
+  const setBuilderGrid = (rows: number, columns: number) => {
+    const safeRows = Math.max(1, Math.min(30, Number(rows || 1)))
+    const safeColumns = Math.max(1, Math.min(12, Number(columns || 1)))
     setFormBuilderSchema(prev => ({
       ...prev,
-      sections: prev.sections.map((section, index) => index === sectionIndex ? { ...section, ...patch } : section),
+      custom_grid: createEmptyGrid(safeRows, safeColumns, prev.custom_grid?.title || 'Set Title'),
     }))
   }
 
-  const updateBuilderField = (sectionIndex: number, fieldIndex: number, patch: Partial<InspectionFormFieldSchema>) => {
+  const updateBuilderGrid = (patch: Partial<CustomGridSchema>) => {
     setFormBuilderSchema(prev => ({
       ...prev,
-      sections: prev.sections.map((section, index) => {
-        if (index !== sectionIndex) return section
-        return {
-          ...section,
-          fields: section.fields.map((field, itemIndex) => itemIndex === fieldIndex ? { ...field, ...patch } : field),
-        }
-      }),
+      custom_grid: prev.custom_grid ? { ...prev.custom_grid, ...patch } : { ...createEmptyGrid(), ...patch },
     }))
   }
 
-  const addBuilderSection = () => {
-    setFormBuilderSchema(prev => ({
-      ...prev,
-      sections: [
-        ...prev.sections,
-        { key: `custom_section_${prev.sections.length + 1}`, label: 'New Section', fields: [] },
-      ],
-    }))
+  const updateGridCell = (rowIndex: number, columnIndex: number, patch: Partial<GridCellSchema>) => {
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid || createEmptyGrid()
+      return {
+        ...prev,
+        custom_grid: {
+          ...grid,
+          cells: grid.cells.map((row, r) => r === rowIndex
+            ? row.map((cell, c) => {
+              if (c !== columnIndex) return cell
+              const nextType = patch.type || cell.type
+              return {
+                ...cell,
+                ...patch,
+                options: nextType === 'radio' ? (patch.options || cell.options || ['Yes']) : undefined,
+              }
+            })
+            : row),
+        },
+      }
+    })
   }
 
-  const removeBuilderSection = (sectionIndex: number) => {
-    setFormBuilderSchema(prev => ({ ...prev, sections: prev.sections.filter((_, index) => index !== sectionIndex) }))
+  const updateGridCellOption = (rowIndex: number, columnIndex: number, optionIndex: number, value: string) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    const options = [...(cell?.options || ['Yes'])]
+    options[optionIndex] = value
+    updateGridCell(rowIndex, columnIndex, { options })
   }
 
-  const addBuilderField = (sectionIndex: number) => {
-    setFormBuilderSchema(prev => ({
-      ...prev,
-      sections: prev.sections.map((section, index) => {
-        if (index !== sectionIndex) return section
-        const fieldNumber = section.fields.length + 1
-        return {
-          ...section,
-          fields: [
-            ...section.fields,
-            { key: `field_${fieldNumber}`, label: 'New Field', type: 'text', required: false },
-          ],
-        }
-      }),
-    }))
+  const addGridCellOption = (rowIndex: number, columnIndex: number) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    updateGridCell(rowIndex, columnIndex, { options: [...(cell?.options || ['Yes']), 'Option'] })
   }
 
-  const removeBuilderField = (sectionIndex: number, fieldIndex: number) => {
-    setFormBuilderSchema(prev => ({
-      ...prev,
-      sections: prev.sections.map((section, index) => (
-        index === sectionIndex ? { ...section, fields: section.fields.filter((_, itemIndex) => itemIndex !== fieldIndex) } : section
-      )),
-    }))
-  }
-
-  const updateBuilderOption = (sectionIndex: number, fieldIndex: number, optionIndex: number, value: string) => {
-    setFormBuilderSchema(prev => ({
-      ...prev,
-      sections: prev.sections.map((section, index) => {
-        if (index !== sectionIndex) return section
-        return {
-          ...section,
-          fields: section.fields.map((field, itemIndex) => {
-            if (itemIndex !== fieldIndex) return field
-            const options = [...(field.options || [])]
-            options[optionIndex] = value
-            return { ...field, options }
-          }),
-        }
-      }),
-    }))
-  }
-
-  const addBuilderOption = (sectionIndex: number, fieldIndex: number) => {
-    setFormBuilderSchema(prev => ({
-      ...prev,
-      sections: prev.sections.map((section, index) => {
-        if (index !== sectionIndex) return section
-        return {
-          ...section,
-          fields: section.fields.map((field, itemIndex) => itemIndex === fieldIndex ? { ...field, options: [...(field.options || []), 'New Option'] } : field),
-        }
-      }),
-    }))
-  }
-
-  const removeBuilderOption = (sectionIndex: number, fieldIndex: number, optionIndex: number) => {
-    setFormBuilderSchema(prev => ({
-      ...prev,
-      sections: prev.sections.map((section, index) => {
-        if (index !== sectionIndex) return section
-        return {
-          ...section,
-          fields: section.fields.map((field, itemIndex) => itemIndex === fieldIndex ? { ...field, options: (field.options || []).filter((_, idx) => idx !== optionIndex) } : field),
-        }
-      }),
-    }))
+  const removeGridCellOption = (rowIndex: number, columnIndex: number, optionIndex: number) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    const options = (cell?.options || ['Yes']).filter((_, index) => index !== optionIndex)
+    updateGridCell(rowIndex, columnIndex, { options: options.length ? options : ['Yes'] })
   }
 
   const saveFormBuilder = () => {
@@ -1230,41 +1186,32 @@ const Inspections = () => {
     formBuilderMut.mutate()
   }
 
-  const reportFieldValue = (sectionKey: string, field: InspectionFormFieldSchema) => {
-    const sectionData = report?.[sectionKey]
-    if (sectionData && typeof sectionData === 'object' && !Array.isArray(sectionData) && sectionData[field.key] !== undefined) {
-      return sectionData[field.key]
-    }
-    return report?.custom_fields?.[sectionKey]?.[field.key] ?? defaultValueForField(field)
-  }
-
-  const updateReportSchemaField = (sectionKey: string, field: InspectionFormFieldSchema, value: any) => {
-    setReport((prev: any) => {
-      const sectionData = prev?.[sectionKey]
-      if (sectionData && typeof sectionData === 'object' && !Array.isArray(sectionData)) {
-        return { ...prev, [sectionKey]: { ...sectionData, [field.key]: value } }
-      }
-      return {
-        ...prev,
-        custom_fields: {
-          ...(prev?.custom_fields || {}),
-          [sectionKey]: {
-            ...(prev?.custom_fields?.[sectionKey] || {}),
-            [field.key]: value,
-          },
-        },
-      }
-    })
+  const updateReportGridValue = (cellId: string, value: any) => {
+    setReport((prev: any) => ({
+      ...prev,
+      custom_grid_values: {
+        ...(prev?.custom_grid_values || {}),
+        [cellId]: value,
+      },
+    }))
   }
 
   const applyReportFormSource = (source: ReportFormSource) => {
     setReportFormSource(source)
     if (source === 'default') {
       setSelectedReportFormId(defaultReportForm?.id || reportInspection?.form_template_id || null)
+      const base = defaultReportForm ? schemaForForm(defaultReportForm) : null
+      setReportCustomSchema(base)
+      setReport((prev: any) => mergeSchemaDefaultsIntoReport(prev, base))
       return
     }
     if (source === 'attached') {
       setSelectedReportFormId(reportInspection?.attached_form_id || null)
+      const base = reportInspection?.attached_form_schema
+        ? normalizeInspectionFormSchema(reportInspection.attached_form_schema, reportInspection.attached_form_name || 'Asset attached form')
+        : null
+      setReportCustomSchema(base)
+      setReport((prev: any) => mergeSchemaDefaultsIntoReport(prev, base))
       return
     }
     setSelectedReportFormId(null)
@@ -1283,21 +1230,10 @@ const Inspections = () => {
 
   const buildReusableFormSchema = (formName: string, currentReport: any) => ({
     title: formName,
-    version: 1,
-    source: 'medrad_custom_report_activity',
+    version: 3,
+    source: 'medrad_grid_form_builder',
     based_on: reportInspection?.form_template_name || defaultReportForm?.name || 'Default inspection report',
-    sections: [
-      { key: 'identity', label: 'Asset Identity', fields: Object.keys(currentReport?.identity || {}) },
-      { key: 'checks', label: 'Inspection Checks', fields: CHECK_FIELDS.map(([key, label]) => ({ key, label, type: 'radio', options: ['pass', 'fail', 'na'] })) },
-      { key: 'diagnostics', label: 'Diagnostics', fields: Object.keys(currentReport?.diagnostics || {}) },
-      { key: 'measurements', label: 'Measurements', fields: currentReport?.measurements || [] },
-      { key: 'photo_documentation', label: 'Photo Documentation', fields: currentReport?.photo_documentation || [] },
-      { key: 'compliance', label: 'Compliance', fields: Object.keys(currentReport?.compliance || {}) },
-      { key: 'parts', label: 'Parts', fields: currentReport?.parts || [] },
-      { key: 'test_equipment', label: 'Test Equipment', fields: currentReport?.test_equipment || [] },
-      { key: 'billing', label: 'Billing', fields: Object.keys(currentReport?.billing || {}) },
-      { key: 'dates', label: 'Inspector & Due Dates', fields: Object.keys(currentReport?.dates || {}) },
-    ],
+    custom_grid: currentReport?.custom_grid || reportCustomSchema?.custom_grid || null,
   })
 
   const submitReport = async () => {
@@ -1639,89 +1575,129 @@ const Inspections = () => {
     </TableContainer>
   )
 
-  const renderReportSchemaField = (sectionKey: string, field: InspectionFormFieldSchema) => {
-    const value = reportFieldValue(sectionKey, field)
-    if (field.type === 'radio') {
-      return (
-        <Card key={field.key} sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 13, mb: 0.5 }}>
-            {field.label}{field.required ? ' *' : ''}
-          </Typography>
-          <RadioGroup row value={String(value ?? '')} onChange={e => updateReportSchemaField(sectionKey, field, e.target.value)}>
-            {(field.options?.length ? field.options : ['pass', 'fail', 'na']).map(option => (
-              <FormControlLabel key={option} value={option} control={<Radio size="small" />} label={labelFromKey(option)} />
+  const renderFixedInspectionTable = () => {
+    const leftChecks = ['physical_inspection', 'display', 'functional', 'electrical_safety', 'battery', 'pm_kit'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
+    const rightChecks = ['cleaning', 'lubrication', 'calibration'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
+    const maxRows = 6
+    return (
+      <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Inspection Report</Typography>
+        <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                {['Test', 'Pass', 'Fail', 'N/A', 'Test', 'Pass', 'Fail', 'N/A'].map(header => (
+                  <TableCell key={header} align="center" sx={{ fontWeight: 900 }}>{header}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {Array.from({ length: maxRows }).map((_, index) => {
+                const left = leftChecks[index]
+                const right = rightChecks[index]
+                return (
+                  <TableRow key={index} sx={{ bgcolor: index % 2 ? '#fff' : '#F3F4F6' }}>
+                    <TableCell align="center">{left?.[1] || ''}</TableCell>
+                    {['pass', 'fail', 'na'].map(value => (
+                      <TableCell key={`left-${value}`} align="center">
+                        {left && <Radio checked={report.checks?.[left[0]] === value} onChange={() => updateReport('checks', left[0], value)} size="small" />}
+                      </TableCell>
+                    ))}
+                    <TableCell align="center">
+                      {right?.[1] || (index === 3 ? 'Set:' : index === 4 || index === 5 ? 'Replaced on' : '')}
+                    </TableCell>
+                    {right ? ['pass', 'fail', 'na'].map(value => (
+                      <TableCell key={`right-${value}`} align="center">
+                        <Radio checked={report.checks?.[right[0]] === value} onChange={() => updateReport('checks', right[0], value)} size="small" />
+                      </TableCell>
+                    )) : (
+                      <>
+                        <TableCell align="center">
+                          {index >= 3 && (
+                            <TextField size="small" value={report.measurements?.[index - 3]?.set_value || ''} onChange={e => updateArrayReport('measurements', index - 3, 'set_value', e.target.value)} />
+                          )}
+                        </TableCell>
+                        <TableCell align="center">{index === 3 ? 'Read:' : index === 4 || index === 5 ? 'Due' : ''}</TableCell>
+                        <TableCell align="center">
+                          {index >= 3 && (
+                            <TextField size="small" value={report.measurements?.[index - 3]?.read_value || ''} onChange={e => updateArrayReport('measurements', index - 3, 'read_value', e.target.value)} />
+                          )}
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
+    )
+  }
+
+  const renderCustomGridReport = () => {
+    const grid = activeReportSchema?.custom_grid || report?.custom_grid
+    if (!grid) return null
+    const values = report?.custom_grid_values || {}
+    return (
+      <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
+        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>{grid.title || 'Set Title'}</Typography>
+        <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
+          <Table size="small">
+            <TableBody>
+              {grid.cells.map((row: GridCellSchema[], rowIndex: number) => (
+                <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : '#F3F4F6' }}>
+                  {row.map((cell: GridCellSchema) => (
+                    <TableCell key={cell.id} align="center" sx={{ minWidth: 180 }}>
+                      {cell.type === 'blank' ? '-' : cell.type === 'input' ? (
+                        <TextField size="small" fullWidth value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} placeholder={cell.label} />
+                      ) : cell.type === 'radio' ? (
+                        <RadioGroup row value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} sx={{ justifyContent: 'center' }}>
+                          {(cell.options || ['Yes']).map((option: string) => (
+                            <FormControlLabel key={option} value={option} control={<Radio size="small" />} label={option} />
+                          ))}
+                        </RadioGroup>
+                      ) : cell.label}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
+    )
+  }
+
+  const renderBiomedNotes = () => (
+    <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Biomed Notes</Typography>
+      <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
+        <Table size="small">
+          <TableBody>
+            {[
+              ['reported_problem', 'Reported Problem'],
+              ['problem_found', 'Problem Found'],
+              ['corrective_action_taken', 'Corrective action taken'],
+              ['summary', 'Summary'],
+            ].map(([key, label]) => (
+              <TableRow key={key}>
+                <TableCell sx={{ width: 280, fontWeight: 900 }}>{label}</TableCell>
+                <TableCell>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    value={report.diagnostics?.[key] || ''}
+                    onChange={e => updateReport('diagnostics', key, e.target.value)}
+                  />
+                </TableCell>
+              </TableRow>
             ))}
-          </RadioGroup>
-        </Card>
-      )
-    }
-    if (field.type === 'checkbox') {
-      return (
-        <FormControlLabel
-          key={field.key}
-          control={<Checkbox checked={Boolean(value)} onChange={e => updateReportSchemaField(sectionKey, field, e.target.checked)} />}
-          label={`${field.label}${field.required ? ' *' : ''}`}
-        />
-      )
-    }
-    if (field.type === 'select') {
-      return (
-        <TextField
-          key={field.key}
-          select
-          label={`${field.label}${field.required ? ' *' : ''}`}
-          value={value ?? ''}
-          onChange={e => updateReportSchemaField(sectionKey, field, e.target.value)}
-          size="small"
-        >
-          {(field.options || []).map(option => <MenuItem key={option} value={option}>{labelFromKey(option)}</MenuItem>)}
-        </TextField>
-      )
-    }
-    if (field.type === 'number') {
-      return (
-        <NumericField
-          key={field.key}
-          label={`${field.label}${field.required ? ' *' : ''}`}
-          value={Number(value || 0)}
-          onChange={val => updateReportSchemaField(sectionKey, field, val)}
-          size="small"
-        />
-      )
-    }
-    return (
-      <TextField
-        key={field.key}
-        label={`${field.label}${field.required ? ' *' : ''}`}
-        type={field.type === 'date' ? 'date' : 'text'}
-        value={value ?? ''}
-        onChange={e => updateReportSchemaField(sectionKey, field, e.target.value)}
-        multiline={field.type === 'textarea'}
-        rows={field.type === 'textarea' ? 3 : undefined}
-        size="small"
-        InputLabelProps={field.type === 'date' ? { shrink: true } : undefined}
-      />
-    )
-  }
-
-  const renderReportSchemaSection = (sectionKey: string, fallbackLabel: string, fallbackFields: InspectionFormFieldSchema[], columns: any = { xs: '1fr', md: 'repeat(3, 1fr)' }) => {
-    const section = activeReportSchema?.sections.find(item => item.key === sectionKey)
-    const fields = section?.fields?.length ? section.fields : fallbackFields
-    if (!fields.length) return null
-    return (
-      <>
-        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{section?.label || fallbackLabel}</Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: columns, gap: 2 }}>
-          {fields.map(field => renderReportSchemaField(sectionKey, field))}
-        </Box>
-      </>
-    )
-  }
-
-  const customReportSections = (activeReportSchema?.sections || []).filter(section => (
-    !REPORT_SCHEMA_SCALAR_SECTIONS.includes(section.key) &&
-    !['measurements', 'photo_documentation', 'parts', 'test_equipment', 'billing'].includes(section.key)
-  ))
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Card>
+  )
 
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
@@ -2000,15 +1976,18 @@ const Inspections = () => {
                     <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspection forms found.</TableCell></TableRow>
                   ) : formsQ.data!.items.map((form: InspectionFormOption) => {
                     const schema = schemaForForm(form)
-                    const fieldCount = schema.sections.reduce((sum, section) => sum + section.fields.length, 0)
+                    const grid = schema.custom_grid
+                    const cellCount = grid ? grid.rows * grid.columns : 0
                     return (
                       <TableRow key={form.id} hover>
                         <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
                           {form.name}
-                          <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{schema.sections.length} section{schema.sections.length === 1 ? '' : 's'}</Typography>
+                          <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>
+                            Fixed checklist + {grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom grid'} + Biomed Notes
+                          </Typography>
                         </TableCell>
                         <TableCell>{form.description || '-'}</TableCell>
-                        <TableCell><Chip size="small" label={`${fieldCount} field${fieldCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
+                        <TableCell><Chip size="small" label={`${cellCount} custom cell${cellCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
                         <TableCell sx={{ minWidth: 280 }}>
                           <TextField
                             select
@@ -2283,7 +2262,7 @@ const Inspections = () => {
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           {formBuilderMode === 'create' ? 'Create Inspection Form' : formBuilderMode === 'report-custom' ? 'Customize Report Form' : 'Edit Inspection Form'}
           <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
-            Every section, field label, field type, and radio/dropdown option can be edited here.
+            The default Inspection Report and Biomed Notes stay fixed. Only the middle custom grid is generated and edited here.
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
@@ -2306,119 +2285,99 @@ const Inspections = () => {
               )}
             </Box>
 
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-              <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Form Builder</Typography>
-                <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
-                  Add fields with custom labels. Radio and dropdown fields support unlimited options.
-                </Typography>
+            <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: 'none' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Inspection Report</Typography>
+              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+                Fixed default checklist: test rows, Pass / Fail / N/A radio buttons, Set / Read, Replaced On / Due.
+              </Typography>
+            </Card>
+
+            <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Middle Custom Grid</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.4fr 160px 160px auto' }, gap: 1.5, alignItems: 'center', mb: 2 }}>
+                <TextField
+                  label="Custom Section Title"
+                  value={formBuilderSchema.custom_grid?.title || 'Set Title'}
+                  onChange={e => updateBuilderGrid({ title: e.target.value })}
+                />
+                <NumericField label="Rows" value={formBuilderRows} onChange={val => setFormBuilderRows(Number(val || 1))} />
+                <NumericField label="Columns" value={formBuilderColumns} onChange={val => setFormBuilderColumns(Number(val || 1))} />
+                <Button startIcon={<AddIcon />} variant="contained" onClick={() => setBuilderGrid(formBuilderRows, formBuilderColumns)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
+                  Add
+                </Button>
               </Box>
-              <Button startIcon={<AddIcon />} variant="outlined" onClick={addBuilderSection} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                Add Section
-              </Button>
-            </Box>
 
-            {formBuilderSchema.sections.length === 0 ? (
-              <Card sx={{ p: 4, borderRadius: '16px', border: '1px dashed #C4B5FD', textAlign: 'center', boxShadow: 'none' }}>
-                <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No sections yet. Add a section to start building this form.</Typography>
-              </Card>
-            ) : formBuilderSchema.sections.map((section, sectionIndex) => (
-              <Card key={`${section.key}-${sectionIndex}`} sx={{ p: 2, borderRadius: '18px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr auto' }, gap: 1.5, alignItems: 'center', mb: 2 }}>
-                  <TextField
-                    size="small"
-                    label="Section Label"
-                    value={section.label}
-                    onChange={e => updateBuilderSection(sectionIndex, { label: e.target.value, key: slugifyKey(e.target.value, 'section') })}
-                  />
-                  <TextField
-                    size="small"
-                    label="Section Key"
-                    value={section.key}
-                    onChange={e => updateBuilderSection(sectionIndex, { key: slugifyKey(e.target.value, 'section') })}
-                    helperText="Used internally for saved report data"
-                  />
-                  <Box sx={{ display: 'flex', gap: 1, justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
-                    <Button size="small" startIcon={<AddIcon />} variant="outlined" onClick={() => addBuilderField(sectionIndex)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                      Add Field
-                    </Button>
-                    <IconButton size="small" onClick={() => removeBuilderSection(sectionIndex)} sx={{ bgcolor: '#FEE2E2', color: '#DC2626' }}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                </Box>
-
-                {section.fields.length === 0 ? (
-                  <Typography sx={{ color: '#8B95A7', fontSize: 13, fontWeight: 700, py: 1 }}>No fields in this section yet.</Typography>
-                ) : section.fields.map((field, fieldIndex) => (
-                  <Box key={`${field.key}-${fieldIndex}`} sx={{ borderTop: '1px solid #F1F5F9', pt: 1.5, mt: 1.5 }}>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.1fr 1fr 190px 150px auto' }, gap: 1.25, alignItems: 'center' }}>
-                      <TextField
-                        size="small"
-                        label="Field Label"
-                        value={field.label}
-                        onChange={e => updateBuilderField(sectionIndex, fieldIndex, { label: e.target.value, key: slugifyKey(e.target.value, 'field') })}
-                      />
-                      <TextField
-                        size="small"
-                        label="Field Key"
-                        value={field.key}
-                        onChange={e => updateBuilderField(sectionIndex, fieldIndex, { key: slugifyKey(e.target.value, 'field') })}
-                      />
-                      <TextField
-                        select
-                        size="small"
-                        label="Field Type"
-                        value={field.type}
-                        onChange={e => {
-                          const nextType = e.target.value as FormFieldType
-                          updateBuilderField(sectionIndex, fieldIndex, {
-                            type: nextType,
-                            options: ['radio', 'select'].includes(nextType) ? (field.options?.length ? field.options : ['Yes', 'No']) : undefined,
-                          })
-                        }}
-                      >
-                        {FORM_FIELD_TYPES.map(type => <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>)}
-                      </TextField>
-                      <FormControlLabel
-                        control={<Checkbox checked={Boolean(field.required)} onChange={e => updateBuilderField(sectionIndex, fieldIndex, { required: e.target.checked })} />}
-                        label="Required"
-                      />
-                      <IconButton size="small" onClick={() => removeBuilderField(sectionIndex, fieldIndex)} sx={{ bgcolor: '#FEE2E2', color: '#DC2626' }}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                    {['radio', 'select'].includes(field.type) && (
-                      <Box sx={{ pl: { xs: 0, md: 2 }, mt: 1.5 }}>
-                        <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', mb: 1 }}>
-                          {field.type === 'radio' ? 'Radio Options' : 'Dropdown Options'}
-                        </Typography>
-                        <Box sx={{ display: 'grid', gap: 1 }}>
-                          {(field.options || []).map((option, optionIndex) => (
-                            <Box key={`${option}-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr auto', md: '360px auto' }, gap: 1, alignItems: 'center' }}>
-                              <TextField
-                                size="small"
-                                label={`Option ${optionIndex + 1}`}
-                                value={option}
-                                onChange={e => updateBuilderOption(sectionIndex, fieldIndex, optionIndex, e.target.value)}
-                              />
-                              <IconButton size="small" onClick={() => removeBuilderOption(sectionIndex, fieldIndex, optionIndex)} disabled={(field.options || []).length <= 1} sx={{ color: '#DC2626' }}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Box>
+              {!formBuilderSchema.custom_grid ? (
+                <Card sx={{ p: 4, borderRadius: '14px', border: '1px dashed #C4B5FD', textAlign: 'center', boxShadow: 'none' }}>
+                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>Enter row and column count, then click Add to generate the editable grid.</Typography>
+                </Card>
+              ) : (
+                <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 520 }}>
+                  <Table size="small" stickyHeader>
+                    <TableBody>
+                      {formBuilderSchema.custom_grid.cells.map((row, rowIndex) => (
+                        <TableRow key={rowIndex}>
+                          {row.map((cell, columnIndex) => (
+                            <TableCell key={cell.id} sx={{ minWidth: 230, verticalAlign: 'top', bgcolor: rowIndex % 2 ? '#F8FAFC' : '#fff' }}>
+                              <Box sx={{ display: 'grid', gap: 1 }}>
+                                <TextField
+                                  size="small"
+                                  label={`Cell ${rowIndex + 1}.${columnIndex + 1}`}
+                                  value={cell.label}
+                                  onChange={e => updateGridCell(rowIndex, columnIndex, { label: e.target.value })}
+                                />
+                                <TextField
+                                  select
+                                  size="small"
+                                  label="Cell Type"
+                                  value={cell.type}
+                                  onChange={e => updateGridCell(rowIndex, columnIndex, { type: e.target.value as GridCellType })}
+                                >
+                                  {GRID_CELL_TYPES.map(type => <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>)}
+                                </TextField>
+                                {cell.type === 'input' && <TextField size="small" disabled placeholder="Input preview" />}
+                                {cell.type === 'radio' && (
+                                  <Box sx={{ display: 'grid', gap: 1 }}>
+                                    <RadioGroup row>
+                                      {(cell.options || ['Yes']).map(option => (
+                                        <FormControlLabel key={option} value={option} control={<Radio size="small" />} label={option} />
+                                      ))}
+                                    </RadioGroup>
+                                    {(cell.options || ['Yes']).map((option, optionIndex) => (
+                                      <Box key={`${cell.id}-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 1 }}>
+                                        <TextField
+                                          size="small"
+                                          label={`Option ${optionIndex + 1}`}
+                                          value={option}
+                                          onChange={e => updateGridCellOption(rowIndex, columnIndex, optionIndex, e.target.value)}
+                                        />
+                                        <IconButton size="small" onClick={() => removeGridCellOption(rowIndex, columnIndex, optionIndex)} disabled={(cell.options || []).length <= 1} sx={{ color: '#DC2626' }}>
+                                          <DeleteIcon fontSize="small" />
+                                        </IconButton>
+                                      </Box>
+                                    ))}
+                                    <Button size="small" startIcon={<AddIcon />} onClick={() => addGridCellOption(rowIndex, columnIndex)} sx={{ justifySelf: 'start', borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
+                                      Add Radio Option
+                                    </Button>
+                                  </Box>
+                                )}
+                              </Box>
+                            </TableCell>
                           ))}
-                          <Box>
-                            <Button size="small" startIcon={<AddIcon />} onClick={() => addBuilderOption(sectionIndex, fieldIndex)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                              Add Option
-                            </Button>
-                          </Box>
-                        </Box>
-                      </Box>
-                    )}
-                  </Box>
-                ))}
-              </Card>
-            ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Card>
+
+            <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: 'none' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Biomed Notes</Typography>
+              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+                Fixed default notes: Reported Problem, Problem Found, Corrective action taken, and Summary.
+              </Typography>
+            </Card>
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
@@ -2480,36 +2439,14 @@ const Inspections = () => {
                   </Box>
                 )}
               </Card>
-              {renderReportSchemaSection(
-                'identity',
-                'Asset Identity',
-                Object.keys(report.identity || {}).map(key => ({ key, label: labelFromKey(key), type: defaultFieldType('identity', key) })),
-                { xs: '1fr', md: 'repeat(4, 1fr)' },
-              )}
+              {renderFixedInspectionTable()}
+              {renderCustomGridReport()}
+              {renderBiomedNotes()}
               <Divider />
-              {renderReportSchemaSection(
-                'checks',
-                'Checks',
-                CHECK_FIELDS.map(([key, label]) => ({ key, label, type: 'radio', options: ['pass', 'fail', 'na'] })),
-              )}
-              {renderReportSchemaSection(
-                'diagnostics',
-                'Diagnostics',
-                Object.keys(report.diagnostics || {}).map(key => ({ key, label: labelFromKey(key), type: defaultFieldType('diagnostics', key) })),
-                { xs: '1fr', md: 'repeat(2, 1fr)' },
-              )}
-              {customReportSections.map(section => (
-                <Box key={section.key} sx={{ display: 'grid', gap: 1 }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{section.label}</Typography>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-                    {section.fields.map(field => renderReportSchemaField(section.key, field))}
-                  </Box>
-                </Box>
-              ))}
-              <Divider />
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Measurements & Photo Documentation</Typography>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Operational Report Details</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.2fr 1fr' }, gap: 2 }}>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Measurements</Typography>
                   {(report.measurements || []).map((item: any, index: number) => (
                     <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 0.8fr 0.6fr 0.8fr', gap: 1, mb: 1 }}>
                       <TextField size="small" label="Measurement" value={item.name} onChange={e => updateArrayReport('measurements', index, 'name', e.target.value)} />
@@ -2524,6 +2461,7 @@ const Inspections = () => {
                   ))}
                 </Card>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Photo Documentation</Typography>
                   {(report.photo_documentation || []).map((item: any, index: number) => (
                     <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 1, mb: 1 }}>
                       <TextField size="small" label="Label" value={item.label} onChange={e => updateArrayReport('photo_documentation', index, 'label', e.target.value)} />
@@ -2532,16 +2470,15 @@ const Inspections = () => {
                   ))}
                 </Card>
               </Box>
-              {renderReportSchemaSection(
-                'compliance',
-                'Compliance',
-                [
-                  { key: 'certified', label: 'Certified', type: 'select', options: ['yes', 'conditional', 'no'] },
-                  { key: 'standard', label: 'Compliance Standard', type: 'text' },
-                  { key: 'recommendations', label: 'Recommendations', type: 'textarea' },
-                ],
-                { xs: '1fr', md: '180px 1fr 1fr' },
-              )}
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px 1fr 1fr' }, gap: 2 }}>
+                <TextField select label="Certified" value={report.compliance?.certified || 'yes'} onChange={e => updateReport('compliance', 'certified', e.target.value)}>
+                  <MenuItem value="yes">Yes</MenuItem>
+                  <MenuItem value="conditional">Conditional</MenuItem>
+                  <MenuItem value="no">No</MenuItem>
+                </TextField>
+                <TextField label="Compliance Standard" value={report.compliance?.standard || ''} onChange={e => updateReport('compliance', 'standard', e.target.value)} />
+                <TextField label="Recommendations" value={report.compliance?.recommendations || ''} onChange={e => updateReport('compliance', 'recommendations', e.target.value)} />
+              </Box>
               <Divider />
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Parts & Test Equipment</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
@@ -2595,12 +2532,11 @@ const Inspections = () => {
                 <NumericField label="Inspection Charges" value={report.billing.inspection_charges} onChange={val => updateReport('billing', 'inspection_charges', val)} />
                 <NumericField label="Others" value={report.billing.others} onChange={val => updateReport('billing', 'others', val)} />
               </Box>
-              {renderReportSchemaSection(
-                'dates',
-                'Inspector & Due Dates',
-                Object.keys(report.dates || {}).map(key => ({ key, label: labelFromKey(key), type: defaultFieldType('dates', key) })),
-                { xs: '1fr', md: 'repeat(4, 1fr)' },
-              )}
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                {Object.entries(report.dates || {}).map(([key, value]) => (
+                  <TextField key={key} label={labelFromKey(key)} type={key.includes('date') ? 'date' : 'text'} value={value as string} onChange={e => updateReport('dates', key, e.target.value)} InputLabelProps={{ shrink: true }} />
+                ))}
+              </Box>
               <TextField
                 select
                 label="Report Status"
