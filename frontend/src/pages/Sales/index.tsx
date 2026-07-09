@@ -27,6 +27,7 @@ import { fetchFacilities, type Facility } from '@/api/facilities'
 import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 import {
   completeSalesQuotation,
   convertSalesQuotationToInvoice,
@@ -621,8 +622,8 @@ const Sales = () => {
             return (
               <TableRow key={item.id} hover>
                 <TableCell>{item.id}</TableCell>
-                <TableCell sx={{ fontFamily: 'monospace', color: '#1E40AF', fontWeight: 900 }}>{item.work_order}</TableCell>
-                <TableCell sx={{ fontWeight: 800 }}>{item.facility_name || item.customer_name}</TableCell>
+                <TableCell><ClippedTooltipText value={item.work_order} monospace color="#1E40AF" fontWeight={900} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.facility_name || item.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ textTransform: 'capitalize' }}>{item.quotation_type}</TableCell>
                 <TableCell>{item.created_by_name || '-'}</TableCell>
                 <TableCell>{formatDate(item.requested_date)}</TableCell>
@@ -704,10 +705,10 @@ const Sales = () => {
                   '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
                 } : undefined}
               >
-                <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{invoice.invoice_number}</TableCell>
-                <TableCell sx={{ fontFamily: 'monospace', fontWeight: 800 }}>{invoice.work_order || '-'}</TableCell>
-                <TableCell sx={{ fontWeight: 800 }}>{invoice.customer_name}</TableCell>
-                <TableCell>{invoice.facility_name || '-'}</TableCell>
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#7161D8" fontWeight={900} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.work_order || '-'} monospace fontWeight={800} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} /></TableCell>
                 <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
                 <TableCell>{money(invoice.amount_paid)}</TableCell>
                 <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
@@ -842,10 +843,10 @@ const Sales = () => {
                 ) : historyQ.data!.items.map((item, index) => (
                   <TableRow key={`${item.quotation_id}-${item.action}-${index}`} hover>
                     <TableCell>{formatDate(item.at)}</TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900 }}>{item.work_order}</TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.quotation_number}</TableCell>
-                    <TableCell>{item.customer_name}</TableCell>
-                    <TableCell>{item.facility_name || '-'}</TableCell>
+                    <TableCell><ClippedTooltipText value={item.work_order} monospace fontWeight={900} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.quotation_number} monospace color="#7161D8" fontWeight={900} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.customer_name} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.facility_name || '-'} /></TableCell>
                     <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
                     <TableCell>{item.by}</TableCell>
                   </TableRow>
@@ -1072,8 +1073,8 @@ const Sales = () => {
                           <Inventory2Icon fontSize="small" />
                         </Avatar>
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900 }}>{part?.part_number || item.part_id}</TableCell>
-                      <TableCell>{item.description}</TableCell>
+                      <TableCell><ClippedTooltipText value={part?.part_number || item.part_id} monospace fontWeight={900} /></TableCell>
+                      <TableCell><ClippedTooltipText value={item.description} field /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.quantity} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(e.target.value) } : line) }))} sx={{ width: 90 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.shipping_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
@@ -1132,10 +1133,10 @@ const Sales = () => {
                     </TableHead>
                     <TableBody>
                       <TableRow>
-                        <TableCell>{convertQuotation.facility_name || convertQuotation.customer_name}</TableCell>
-                        <TableCell>{convertQuotation.customer_email || '-'}</TableCell>
+                        <TableCell><ClippedTooltipText value={convertQuotation.facility_name || convertQuotation.customer_name} /></TableCell>
+                        <TableCell><ClippedTooltipText value={convertQuotation.customer_email || '-'} /></TableCell>
                         <TableCell>{convertQuotation.customer_phone || '-'}</TableCell>
-                        <TableCell>{convertQuotation.customer_address || '-'}</TableCell>
+                        <TableCell><ClippedTooltipText value={convertQuotation.customer_address || '-'} field /></TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -1161,8 +1162,8 @@ const Sales = () => {
                         const part = parts.find(item => item.id === line.part_id)
                         return (
                           <TableRow key={line.id}>
-                            <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900 }}>{line.part_number}</TableCell>
-                            <TableCell>{line.description}</TableCell>
+                            <TableCell><ClippedTooltipText value={line.part_number} monospace fontWeight={900} /></TableCell>
+                            <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                             <TableCell>{money(line.unit_price)}</TableCell>
                             <TableCell>{line.quantity}</TableCell>
                             <TableCell>{money(line.shipping_fee)}</TableCell>
@@ -1271,8 +1272,8 @@ const Sales = () => {
                   <TableBody>
                     {viewQuotation.line_items.map(line => (
                       <TableRow key={line.id}>
-                        <TableCell>{line.part_number}</TableCell>
-                        <TableCell>{line.description}</TableCell>
+                        <TableCell><ClippedTooltipText value={line.part_number} /></TableCell>
+                        <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                         <TableCell>{line.quantity}</TableCell>
                         <TableCell>{money(line.shipping_fee)}</TableCell>
                         <TableCell>{money(line.setup_fee)}</TableCell>

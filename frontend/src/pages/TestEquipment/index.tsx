@@ -25,6 +25,7 @@ import {
 import { fetchUsers, resolveUploadUrl } from '@/api/users'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const PAGE_SIZE = 25
 
@@ -263,18 +264,18 @@ const TestEquipmentPage = () => {
                       </Avatar>
                     </TableCell>
                     <TableCell>
-                      <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{item.tem}</Typography>
-                      <Typography variant="caption" sx={{ color: '#6B7280' }}>{item.description || 'No description'}</Typography>
+                      <ClippedTooltipText value={item.tem} fontWeight={900} />
+                      <ClippedTooltipText value={item.description || 'No description'} variant="caption" color="#6B7280" fontWeight={500} />
                     </TableCell>
                     <TableCell>
-                      <Typography sx={{ fontWeight: 800 }}>{item.mrf || '-'}</Typography>
-                      <Typography variant="caption" sx={{ color: '#6B7280' }}>{item.model || 'No model'}</Typography>
+                      <ClippedTooltipText value={item.mrf || '-'} fontWeight={800} />
+                      <ClippedTooltipText value={item.model || 'No model'} variant="caption" color="#6B7280" fontWeight={500} />
                     </TableCell>
                     <TableCell>
-                      <Typography>{item.serial_number || '-'}</Typography>
-                      <Typography variant="caption" sx={{ color: '#6B7280' }}>{item.asset || 'No asset'}</Typography>
+                      <ClippedTooltipText value={item.serial_number || '-'} />
+                      <ClippedTooltipText value={item.asset || 'No asset'} variant="caption" color="#6B7280" fontWeight={500} />
                     </TableCell>
-                    <TableCell>{item.technician_name || '-'}</TableCell>
+                    <TableCell><ClippedTooltipText value={item.technician_name || '-'} /></TableCell>
                     <TableCell>
                       <Chip label={item.status} size="small" sx={{ backgroundColor: colors.bg, color: colors.color, fontWeight: 900, textTransform: 'capitalize' }} />
                     </TableCell>

@@ -62,6 +62,7 @@ import { fetchUsers, resolveUploadUrl, type UserData } from '@/api/users'
 import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const CHECK_FIELDS = [
   ['physical_inspection', 'Physical Inspection'],
@@ -1617,11 +1618,11 @@ const Inspections = () => {
             return (
               <TableRow key={item.id} hover>
                 <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{item.inspection_number}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{item.facility_name || '-'}</TableCell>
-                <TableCell>
-                  <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.asset_name || item.equipment_name || '-'}</Typography>
-                  <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{item.serial_number || item.part_number || '-'}</Typography>
-                </TableCell>
+              <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} /></TableCell>
+              <TableCell>
+                <ClippedTooltipText value={item.asset_name || item.equipment_name || '-'} fontWeight={800} />
+                <ClippedTooltipText value={item.serial_number || item.part_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} />
+              </TableCell>
                 <TableCell>{item.tier_name || '-'}</TableCell>
                 <TableCell><Chip size="small" label={item.result} sx={{ bgcolor: resultStyle.bg, color: resultStyle.color, fontWeight: 900 }} /></TableCell>
                 <TableCell>{formatDate(mode === 'progress' ? item.started_at : item.completed_at)}</TableCell>
@@ -1673,7 +1674,7 @@ const Inspections = () => {
             return (
               <TableRow key={batch.id} hover>
                 <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{batch.batch_number}</TableCell>
-                <TableCell sx={{ fontWeight: 800 }}>{batch.facility_name || '-'}</TableCell>
+                <TableCell><ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} /></TableCell>
                 <TableCell>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{total} asset{total === 1 ? '' : 's'}</Typography>
                   <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{batch.inspection_frequency || 'instant'} inspection batch</Typography>
@@ -1785,49 +1786,15 @@ const Inspections = () => {
           ) : upcomingQ.data!.items.map(item => (
             <TableRow key={item.id} hover>
               <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{item.inspection_number}</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>{item.facility_name || '-'}</TableCell>
+              <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} /></TableCell>
               <TableCell>
-                <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.asset_name || '-'}</Typography>
-                <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{item.serial_number || '-'}</Typography>
+                <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} />
+                <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} />
               </TableCell>
               <TableCell>{(item.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
               <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
               <TableCell sx={{ overflow: 'hidden', maxWidth: 360, pr: 2 }}>
-                <Tooltip title={item.compliance_requirement || '-'} arrow placement="top">
-                  <TextField
-                    size="small"
-                    value={item.compliance_requirement || '-'}
-                    variant="outlined"
-                    sx={{
-                      display: 'block',
-                      width: '100%',
-                      maxWidth: '100%',
-                      '& .MuiInputBase-root': {
-                        width: '100%',
-                        maxWidth: '100%',
-                        overflow: 'hidden',
-                      },
-                    }}
-                    InputProps={{
-                      readOnly: true,
-                      sx: {
-                        height: 40,
-                        borderRadius: '12px',
-                        bgcolor: '#F8FAFC',
-                        color: '#1E1B4B',
-                        cursor: 'default',
-                        '& input': {
-                          cursor: 'default',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          fontWeight: 700,
-                          py: 1,
-                        },
-                      },
-                    }}
-                  />
-                </Tooltip>
+                <ClippedTooltipText value={item.compliance_requirement || '-'} field maxWidth="100%" />
               </TableCell>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(item.scheduled_date)}</TableCell>
               <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
@@ -2098,10 +2065,10 @@ const Inspections = () => {
                         <TableRow key={item.id} hover onClick={() => toggleEquipment(item.id)} sx={{ cursor: 'pointer' }}>
                           <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} /></TableCell>
                           <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
-                          <TableCell>{item.make} {item.model}</TableCell>
+                          <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
                           <TableCell>{item.modality_name || '-'}</TableCell>
                           <TableCell>{item.criticality}</TableCell>
-                          <TableCell>{item.serial_number}</TableCell>
+                          <TableCell><ClippedTooltipText value={item.serial_number} /></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -2202,9 +2169,9 @@ const Inspections = () => {
                     <TableRow key={item.id} hover onClick={() => toggleInstantEquipment(item.id)} sx={{ cursor: 'pointer' }}>
                       <TableCell padding="checkbox"><Checkbox checked={selectedInstantEquipmentIds.includes(item.id)} /></TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
-                      <TableCell>{item.make} {item.model}</TableCell>
+                      <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
                       <TableCell>{item.modality_name || '-'}</TableCell>
-                      <TableCell>{item.serial_number || '-'}</TableCell>
+                      <TableCell><ClippedTooltipText value={item.serial_number || '-'} /></TableCell>
                       <TableCell>{item.tier_name || '-'}</TableCell>
                     </TableRow>
                   ))}
@@ -2283,8 +2250,8 @@ const Inspections = () => {
                     >
                       <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{invoice.invoice_number}</TableCell>
                       <TableCell>{invoice.inspection_number || '-'}</TableCell>
-                      <TableCell>{invoice.facility_name || '-'}</TableCell>
-                      <TableCell>{invoice.inventory_part_name || (invoice as any).asset_name || (invoice as any).equipment_name || '-'}</TableCell>
+                      <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} /></TableCell>
+                      <TableCell><ClippedTooltipText value={invoice.inventory_part_name || (invoice as any).asset_name || (invoice as any).equipment_name || '-'} /></TableCell>
                       <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
                       <TableCell><Chip size="small" label={invoice.status} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
                       <TableCell>{formatDate(invoice.due_date)}</TableCell>
@@ -2346,7 +2313,7 @@ const Inspections = () => {
                             Fixed checklist + {grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom grid'} + Biomed Notes
                           </Typography>
                         </TableCell>
-                        <TableCell>{form.description || '-'}</TableCell>
+                        <TableCell><ClippedTooltipText value={form.description || '-'} field /></TableCell>
                         <TableCell><Chip size="small" label={`${cellCount} custom cell${cellCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
                         <TableCell sx={{ minWidth: 280 }}>
                           <TextField
@@ -2457,8 +2424,8 @@ const Inspections = () => {
                       return (
                         <TableRow key={asset.id} hover>
                           <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{asset.asset_tag || asset.part_number || '-'}</TableCell>
-                          <TableCell>{asset.serial_number || '-'}</TableCell>
-                          <TableCell sx={{ fontWeight: 800 }}>{asset.asset_name || asset.equipment_name || '-'}</TableCell>
+                          <TableCell><ClippedTooltipText value={asset.serial_number || '-'} /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.asset_name || asset.equipment_name || '-'} fontWeight={800} /></TableCell>
                           <TableCell>{asset.tier_name || '-'}</TableCell>
                           <TableCell>{asset.inspector_name || '-'}</TableCell>
                           <TableCell><Chip size="small" label={asset.status} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
@@ -2646,9 +2613,9 @@ const Inspections = () => {
                   <TableRow key={item.id} hover onClick={() => toggleExistingBatchEquipment(item.id)} sx={{ cursor: 'pointer' }}>
                     <TableCell padding="checkbox"><Checkbox checked={selectedExistingEquipmentIds.includes(item.id)} /></TableCell>
                     <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
-                    <TableCell sx={{ fontWeight: 800 }}>{item.make} {item.model}</TableCell>
+                    <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} fontWeight={800} /></TableCell>
                     <TableCell>{item.modality_name || '-'}</TableCell>
-                    <TableCell>{item.serial_number || '-'}</TableCell>
+                    <TableCell><ClippedTooltipText value={item.serial_number || '-'} /></TableCell>
                     <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
                   </TableRow>
                 ))}

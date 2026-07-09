@@ -29,6 +29,7 @@ import {
   type ServiceRequestStatus as SRStatus,
 } from '@/api/serviceRequests'
 import CreateServiceRequestModal from './CreateServiceRequestModal'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
@@ -383,9 +384,7 @@ const ServiceRequestList = () => {
                           onClick={() => navigate(`/service-requests/${sr.id}`)}
                         >
                           <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 800, color: '#6757D8', fontFamily: 'monospace' }}>
-                              {sr.request_number}
-                            </Typography>
+                            <ClippedTooltipText value={sr.request_number} monospace color="#6757D8" fontWeight={800} />
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>

@@ -22,6 +22,7 @@ import { fetchModalities } from '@/api/modalities'
 import { fetchTiers } from '@/api/tiers'
 import { type Facility } from '@/api/facilities'
 import CreateServiceRequestModal from '@/pages/ServiceRequests/CreateServiceRequestModal'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   active: { bg: '#F0FDF4', color: '#10B981' },
@@ -520,9 +521,9 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 const sc = STATUS_COLORS[item.status] || STATUS_COLORS.active
                 return (
                   <TableRow key={item.id}>
-                    <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{item.asset_tag}</Typography></TableCell>
-                    <TableCell><Typography variant="body2">{item.make} {item.model}</Typography></TableCell>
-                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{item.serial_number}</Typography></TableCell>
+                    <TableCell><ClippedTooltipText value={item.asset_tag} fontWeight={600} /></TableCell>
+                    <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.serial_number} monospace textSx={{ fontSize: '0.8rem' }} /></TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ color: item.tier_id ? '#7C3AED' : '#9CA3AF', fontWeight: item.tier_id ? 600 : 400 }}>
                         {tiers.find((tier) => tier.id === item.tier_id)?.name || 'No tier'}

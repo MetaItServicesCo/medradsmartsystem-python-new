@@ -41,6 +41,7 @@ import FacilityInventoryModal from './FacilityInventoryModal'
 import FacilityUsersModal from './FacilityUsersModal'
 import ModalitiesModal from './ModalitiesModal'
 import DepartmentsModal from './DepartmentsModal'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const STAT_CARDS = [
   {
@@ -458,27 +459,21 @@ const FacilityList = () => {
                           >
                             {getInitials(facility.name)}
                           </Avatar>
-                          <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E1B4B' }}>
-                              {facility.name}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
-                              ID: #{facility.id}
-                            </Typography>
+                          <Box sx={{ minWidth: 0, maxWidth: 220 }}>
+                            <ClippedTooltipText value={facility.name} fontWeight={600} />
+                            <ClippedTooltipText value={`ID: #${facility.id}`} variant="caption" color="#9CA3AF" fontWeight={500} />
                           </Box>
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {facility.city}, {facility.state}
-                        </Typography>
+                        <ClippedTooltipText value={`${facility.city}, ${facility.state}`} fontWeight={500} />
                         <Typography variant="caption" color="text.secondary">
                           {facility.country} · {facility.zip_code}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">{facility.phone}</Typography>
-                        <Typography variant="caption" color="text.secondary">{facility.email}</Typography>
+                        <ClippedTooltipText value={facility.phone} />
+                        <ClippedTooltipText value={facility.email} variant="caption" color="#6B7280" fontWeight={500} />
                       </TableCell>
                       <TableCell>
                         <Chip

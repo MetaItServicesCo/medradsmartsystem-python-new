@@ -28,6 +28,7 @@ import { fetchFacilities } from '@/api/facilities'
 import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 import {
   fetchRentalParts,
   fetchRentals,
@@ -620,11 +621,9 @@ const Rentals = () => {
             const status = statusChip(item.status)
             return (
               <TableRow key={item.id} hover>
-                <TableCell sx={{ fontFamily: 'monospace', color: '#1D4ED8', fontWeight: 900 }}>{item.rental_number}</TableCell>
-                <TableCell sx={{ fontWeight: 800 }}>
-                  {item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'}
-                </TableCell>
-                <TableCell sx={{ fontWeight: 800 }}>{item.customer_name}</TableCell>
+                <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field /></TableCell>
+                <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ color: '#047857', fontWeight: 800 }}>{money(item.rental_rate)}</TableCell>
                 <TableCell>{item.quantity || 1}</TableCell>
                 <TableCell>{money(Number(item.shipping_fee || 0) + Number(item.setup_fee || 0))}</TableCell>
@@ -683,9 +682,9 @@ const Rentals = () => {
                   '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
                 } : undefined}
               >
-                <TableCell sx={{ fontFamily: 'monospace', color: '#1D4ED8', fontWeight: 900 }}>{invoice.invoice_number}</TableCell>
-                <TableCell sx={{ fontFamily: 'monospace', fontWeight: 800 }}>{invoice.rental_number || '-'}</TableCell>
-                <TableCell sx={{ fontWeight: 800 }}>{invoice.customer_name}</TableCell>
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.rental_number || '-'} monospace fontWeight={800} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
                 <TableCell>{money(invoice.amount_paid)}</TableCell>
                 <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
@@ -740,10 +739,10 @@ const Rentals = () => {
                   <LocalShippingIcon fontSize="small" />
                 </Avatar>
               </TableCell>
-              <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900 }}>{part.part_number}</TableCell>
-              <TableCell sx={{ fontWeight: 800 }}>{part.description}</TableCell>
-              <TableCell>{part.facility_name || 'Global / Independent'}</TableCell>
-              <TableCell>{[part.make, part.model].filter(Boolean).join(' / ') || '-'}</TableCell>
+              <TableCell><ClippedTooltipText value={part.part_number} monospace fontWeight={900} /></TableCell>
+              <TableCell><ClippedTooltipText value={part.description} fontWeight={800} field /></TableCell>
+              <TableCell><ClippedTooltipText value={part.facility_name || 'Global / Independent'} /></TableCell>
+              <TableCell><ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' / ') || '-'} /></TableCell>
               <TableCell sx={{ color: '#2563EB', fontWeight: 800 }}>{money(part.unit_price)}</TableCell>
               <TableCell sx={{ fontWeight: 900, color: part.quantity_on_hand > 0 ? '#059669' : '#DC2626' }}>
                 {part.quantity_on_hand}
@@ -779,10 +778,10 @@ const Rentals = () => {
           ) : historyQ.data!.items.map((item, index) => (
             <TableRow key={`${item.rental_id}-${item.action}-${index}`} hover>
               <TableCell>{formatDate(item.at)}</TableCell>
-              <TableCell sx={{ fontFamily: 'monospace', color: '#1D4ED8', fontWeight: 900 }}>{item.rental_number}</TableCell>
-              <TableCell sx={{ fontWeight: 800 }}>{item.customer_name}</TableCell>
-              <TableCell>{item.facility_name || '-'}</TableCell>
-              <TableCell>{item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'}</TableCell>
+              <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.facility_name || '-'} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field /></TableCell>
               <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
               <TableCell>{item.by}</TableCell>
             </TableRow>

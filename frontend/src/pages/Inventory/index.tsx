@@ -29,6 +29,7 @@ import {
 } from '@/api/inventory'
 import { resolveUploadUrl } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const PAGE_SIZE = 25
 
@@ -393,21 +394,21 @@ const Inventory = () => {
                       </Avatar>
                     </TableCell>
                     <TableCell>
-                      <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{part.part_number}</Typography>
-                      <Typography variant="caption" sx={{ color: '#6B7280' }}>{part.part_type} - {part.description}</Typography>
+                      <ClippedTooltipText value={part.part_number} fontWeight={800} />
+                      <ClippedTooltipText value={`${part.part_type} - ${part.description}`} variant="caption" color="#6B7280" fontWeight={500} />
                       {part.is_critical && <Chip label="Critical" size="small" sx={{ ml: 1, backgroundColor: '#FEF2F2', color: '#DC2626', fontWeight: 700 }} />}
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">{part.facility_name || 'Independent part'}</Typography>
-                      <Typography variant="caption" sx={{ color: part.tier_name ? '#7C3AED' : '#9CA3AF' }}>{part.tier_name || 'No tier'}</Typography>
+                      <ClippedTooltipText value={part.facility_name || 'Independent part'} />
+                      <ClippedTooltipText value={part.tier_name || 'No tier'} variant="caption" color={part.tier_name ? '#7C3AED' : '#9CA3AF'} fontWeight={500} />
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">{part.batch_number || 'No batch'}</Typography>
-                      <Typography variant="caption" sx={{ color: '#6B7280' }}>{part.serial_number || 'No serial'}</Typography>
+                      <ClippedTooltipText value={part.batch_number || 'No batch'} />
+                      <ClippedTooltipText value={part.serial_number || 'No serial'} variant="caption" color="#6B7280" fontWeight={500} />
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">{part.supplier_name || 'Unspecified'}</Typography>
-                      <Typography variant="caption" sx={{ color: '#6B7280' }}>{part.supplier_phone || part.supplier_email || ''}</Typography>
+                      <ClippedTooltipText value={part.supplier_name || 'Unspecified'} />
+                      <ClippedTooltipText value={part.supplier_phone || part.supplier_email || ''} variant="caption" color="#6B7280" fontWeight={500} />
                     </TableCell>
                     <TableCell>
                       <Chip label={`${part.quantity_on_hand} on hand`} size="small" sx={{ backgroundColor: low ? '#FEF2F2' : '#ECFDF5', color: low ? '#DC2626' : '#059669', fontWeight: 800 }} />

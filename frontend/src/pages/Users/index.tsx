@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/authStore'
 import CreateUserModal from './CreateUserModal'
 import EditUserModal from './EditUserModal'
 import PermissionEditorModal from './PermissionEditorModal'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All Roles' },
@@ -226,18 +227,14 @@ const Users = () => {
                         >
                           {u.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                         </Avatar>
-                        <Box>
-                          <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', color: '#1E1B4B' }}>
-                            {u.full_name}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
-                            @{u.username}
-                          </Typography>
+                        <Box sx={{ minWidth: 0, maxWidth: 190 }}>
+                          <ClippedTooltipText value={u.full_name} fontWeight={600} textSx={{ fontSize: '0.875rem' }} />
+                          <ClippedTooltipText value={`@${u.username}`} variant="caption" color="#9CA3AF" fontWeight={500} />
                         </Box>
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">{u.email}</Typography>
+                      <ClippedTooltipText value={u.email} />
                     </TableCell>
                     <TableCell>
                       {isSuperAdmin ? (
@@ -275,20 +272,7 @@ const Users = () => {
                     </TableCell>
                     <TableCell>
                       {u.facilities && u.facilities.length > 0 ? (
-                        <Tooltip title={u.facilities.map(f => f.name).join(', ')}>
-                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            {u.facilities.slice(0, 2).map((f) => (
-                              <Chip key={f.id} label={f.name} size="small" variant="outlined"
-                                sx={{ fontSize: '0.7rem', height: 22 }}
-                              />
-                            ))}
-                            {u.facilities.length > 2 && (
-                              <Chip label={`+${u.facilities.length - 2}`} size="small"
-                                sx={{ fontSize: '0.7rem', height: 22, backgroundColor: '#F3F4F6' }}
-                              />
-                            )}
-                          </Box>
-                        </Tooltip>
+                        <ClippedTooltipText value={u.facilities.map(f => f.name).join(', ')} field maxWidth={240} />
                       ) : (
                         <Typography variant="caption" sx={{ color: '#D1D5DB' }}>—</Typography>
                       )}

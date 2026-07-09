@@ -28,6 +28,7 @@ import EngineeringIcon from '@mui/icons-material/Engineering'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import PrintIcon from '@mui/icons-material/Print'
 import { fetchServiceRequests, type ServiceRequest } from '@/api/serviceRequests'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 
@@ -297,17 +298,17 @@ const Reports = () => {
                     }}
                   >
                     <TableCell>
-                      <Typography sx={{ fontFamily: 'monospace', fontWeight: 950, color: '#6757D8' }}>{report.request_number}</Typography>
+                      <ClippedTooltipText value={report.request_number} monospace fontWeight={950} color="#6757D8" />
                       {selected && <Chip size="small" label="Selected" sx={{ mt: 0.7, bgcolor: '#EDE9FE', color: '#7C3AED', fontWeight: 900 }} />}
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <BusinessIcon sx={{ color: '#94A3B8', fontSize: 18 }} />
-                        <Typography sx={{ fontWeight: 700 }}>{report.facility_name || '-'}</Typography>
+                        <ClippedTooltipText value={report.facility_name || '-'} fontWeight={700} />
                       </Box>
                     </TableCell>
-                    <TableCell>{report.equipment_name || '-'}</TableCell>
-                    <TableCell>{report.technician_name || 'Unassigned'}</TableCell>
+                    <TableCell><ClippedTooltipText value={report.equipment_name || '-'} /></TableCell>
+                    <TableCell><ClippedTooltipText value={report.technician_name || 'Unassigned'} /></TableCell>
                     <TableCell>
                       <Chip label={`${Number(report.time_spent_hours || 0).toFixed(2)} hrs`} sx={{ bgcolor: '#ECFDF5', color: '#047857', fontWeight: 900 }} />
                     </TableCell>
