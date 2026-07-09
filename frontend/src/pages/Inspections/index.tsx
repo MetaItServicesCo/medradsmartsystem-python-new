@@ -191,7 +191,7 @@ const schemaToPayload = (schema: InspectionFormSchema, title: string): Inspectio
   version: 3,
   source: 'medrad_grid_form_builder',
   based_on: schema.based_on,
-  custom_grid: schema.custom_grid ? normalizeGrid(schema.custom_grid, schema.custom_grid.title) : null,
+  custom_grid: schema.custom_grid ? { ...normalizeGrid(schema.custom_grid, title)!, title } : null,
 })
 
 const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFormSchema | null) => {
@@ -1117,14 +1117,7 @@ const Inspections = () => {
     const safeColumns = Math.max(1, Math.min(12, Number(columns || 1)))
     setFormBuilderSchema(prev => ({
       ...prev,
-      custom_grid: createEmptyGrid(safeRows, safeColumns, prev.custom_grid?.title || 'Set Title'),
-    }))
-  }
-
-  const updateBuilderGrid = (patch: Partial<CustomGridSchema>) => {
-    setFormBuilderSchema(prev => ({
-      ...prev,
-      custom_grid: prev.custom_grid ? { ...prev.custom_grid, ...patch } : { ...createEmptyGrid(), ...patch },
+      custom_grid: createEmptyGrid(safeRows, safeColumns, formBuilderName.trim() || 'Custom Inspection Form'),
     }))
   }
 
@@ -1639,9 +1632,10 @@ const Inspections = () => {
     const grid = activeReportSchema?.custom_grid || report?.custom_grid
     if (!grid) return null
     const values = report?.custom_grid_values || {}
+    const title = activeReportSchema?.title || report?.form_template?.name || selectedReportFormName()
     return (
       <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>{grid.title || 'Set Title'}</Typography>
+        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>{title || 'Custom Inspection Form'}</Typography>
         <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
           <Table size="small">
             <TableBody>
@@ -1698,6 +1692,37 @@ const Inspections = () => {
       </TableContainer>
     </Card>
   )
+
+  const renderDefaultReportCore = () => (
+    <>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+        {Object.entries(report.identity || {}).map(([key, value]) => (
+          <TextField key={key} label={labelFromKey(key)} value={value as string} onChange={e => updateReport('identity', key, e.target.value)} size="small" />
+        ))}
+      </Box>
+      <Divider />
+      <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Checks</Typography>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+        {CHECK_FIELDS.map(([key, label]) => (
+          <Card key={key} sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+            <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 13, mb: 0.5 }}>{label}</Typography>
+            <RadioGroup row value={report.checks?.[key] || 'pass'} onChange={e => updateReport('checks', key, e.target.value)}>
+              <FormControlLabel value="pass" control={<Radio size="small" />} label="Pass" />
+              <FormControlLabel value="fail" control={<Radio size="small" />} label="Fail" />
+              <FormControlLabel value="na" control={<Radio size="small" />} label="N/A" />
+            </RadioGroup>
+          </Card>
+        ))}
+      </Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
+        {Object.entries(report.diagnostics || {}).map(([key, value]) => (
+          <TextField key={key} label={labelFromKey(key)} value={value as string} onChange={e => updateReport('diagnostics', key, e.target.value)} multiline rows={key === 'summary' ? 3 : 2} />
+        ))}
+      </Box>
+    </>
+  )
+
+  const isCustomGridReport = () => reportFormSource === 'custom' || (reportFormSource === 'attached' && Boolean(activeReportSchema?.custom_grid))
 
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
@@ -2268,7 +2293,7 @@ const Inspections = () => {
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gap: 2.5 }}>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: formBuilderMode === 'report-custom' ? '1fr 1.4fr' : '1fr 1.4fr 280px' }, gap: 2 }}>
-              <TextField label="Form Name" value={formBuilderName} onChange={e => setFormBuilderName(e.target.value)} />
+              <TextField label="Form Title / Name" value={formBuilderName} onChange={e => setFormBuilderName(e.target.value)} />
               <TextField label="Description" value={formBuilderDescription} onChange={e => setFormBuilderDescription(e.target.value)} />
               {formBuilderMode !== 'report-custom' && (
                 <TextField
@@ -2294,12 +2319,10 @@ const Inspections = () => {
 
             <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Middle Custom Grid</Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.4fr 160px 160px auto' }, gap: 1.5, alignItems: 'center', mb: 2 }}>
-                <TextField
-                  label="Custom Section Title"
-                  value={formBuilderSchema.custom_grid?.title || 'Set Title'}
-                  onChange={e => updateBuilderGrid({ title: e.target.value })}
-                />
+              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
+                The form title is controlled by Form Title / Name above. Each generated box below has its own editable title.
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '160px 160px auto' }, gap: 1.5, alignItems: 'center', mb: 2 }}>
                 <NumericField label="Rows" value={formBuilderRows} onChange={val => setFormBuilderRows(Number(val || 1))} />
                 <NumericField label="Columns" value={formBuilderColumns} onChange={val => setFormBuilderColumns(Number(val || 1))} />
                 <Button startIcon={<AddIcon />} variant="contained" onClick={() => setBuilderGrid(formBuilderRows, formBuilderColumns)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
@@ -2439,9 +2462,13 @@ const Inspections = () => {
                   </Box>
                 )}
               </Card>
-              {renderFixedInspectionTable()}
-              {renderCustomGridReport()}
-              {renderBiomedNotes()}
+              {isCustomGridReport() ? (
+                <>
+                  {renderFixedInspectionTable()}
+                  {renderCustomGridReport()}
+                  {renderBiomedNotes()}
+                </>
+              ) : renderDefaultReportCore()}
               <Divider />
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Operational Report Details</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.2fr 1fr' }, gap: 2 }}>
