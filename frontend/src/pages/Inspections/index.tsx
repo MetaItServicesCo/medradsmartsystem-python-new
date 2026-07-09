@@ -133,11 +133,14 @@ const createEmptyGrid = (rows = 3, columns = 3, title = 'Set Title'): CustomGrid
 
 const normalizeGridCell = (cell: any, row: number, column: number): GridCellSchema => {
   const type = cell?.type === 'radio' ? 'radio' : 'input'
+  const options = Array.isArray(cell?.options) && cell.options.length
+    ? cell.options.map((option: any) => String(option)).filter(Boolean)
+    : ['Yes', 'No']
   return {
     id: String(cell?.id || `cell_${row + 1}_${column + 1}`),
     label: String(cell?.label ?? cell?.value ?? 'view'),
     type,
-    options: type === 'radio' ? ['Yes', 'No'] : undefined,
+    options: type === 'radio' ? options : undefined,
   }
 }
 
@@ -163,7 +166,9 @@ const gridFromLegacySections = (schema: any): CustomGridSchema | null => {
   const fields = customSections.flatMap((section: any) => (section.fields || []).map((field: any) => ({
     label: typeof field === 'string' ? labelFromKey(field) : String(field?.label || field?.key || 'view'),
     type: typeof field === 'object' && field?.type === 'radio' ? 'radio' : 'input',
-    options: typeof field === 'object' && field?.type === 'radio' ? ['Yes', 'No'] : undefined,
+    options: typeof field === 'object' && field?.type === 'radio'
+      ? (Array.isArray(field?.options) && field.options.length ? field.options.map((option: any) => String(option)) : ['Yes', 'No'])
+      : undefined,
   })))
   const rows = Math.max(1, Math.ceil(fields.length / 3))
   const grid = createEmptyGrid(rows, 3, customSections[0]?.label || 'Set Title')
@@ -1132,7 +1137,7 @@ const Inspections = () => {
               return {
                 ...cell,
                 ...patch,
-                options: nextType === 'radio' ? ['Yes', 'No'] : undefined,
+                options: nextType === 'radio' ? (patch.options || cell.options || ['Yes', 'No']) : undefined,
               }
             })
             : row),
@@ -1184,6 +1189,24 @@ const Inspections = () => {
         },
       }
     })
+  }
+
+  const updateGridCellOption = (rowIndex: number, columnIndex: number, optionIndex: number, value: string) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    const options = [...(cell?.options || ['Yes', 'No'])]
+    options[optionIndex] = value
+    updateGridCell(rowIndex, columnIndex, { options: options.map(option => option.trim()).filter(Boolean) })
+  }
+
+  const addGridCellOption = (rowIndex: number, columnIndex: number) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    updateGridCell(rowIndex, columnIndex, { options: [...(cell?.options || ['Yes', 'No']), 'Option'] })
+  }
+
+  const removeGridCellOption = (rowIndex: number, columnIndex: number, optionIndex: number) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    const options = (cell?.options || ['Yes', 'No']).filter((_, index) => index !== optionIndex)
+    updateGridCell(rowIndex, columnIndex, { options: options.length ? options : ['Option'] })
   }
 
   const saveFormBuilder = () => {
@@ -1667,18 +1690,18 @@ const Inspections = () => {
                 <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : '#F3F4F6' }}>
                   {row.map((cell: GridCellSchema) => (
                     <TableCell key={cell.id} align="center" sx={{ minWidth: 180 }}>
-                      {cell.type === 'input' ? (
-                        <TextField size="small" fullWidth value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} placeholder={cell.label} />
-                      ) : (
-                        <Box>
-                          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.5 }}>{cell.label}</Typography>
+                      <Box sx={{ display: 'grid', gap: 0.75 }}>
+                        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{cell.label || 'Question'}</Typography>
+                        {cell.type === 'input' ? (
+                          <TextField size="small" fullWidth value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} />
+                        ) : (
                           <RadioGroup row value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} sx={{ justifyContent: 'center' }}>
-                          {['Yes', 'No'].map((option: string) => (
-                            <FormControlLabel key={option} value={option} control={<Radio size="small" />} label={option} />
-                          ))}
+                            {(cell.options?.length ? cell.options : ['Yes', 'No']).map((option: string) => (
+                              <FormControlLabel key={option} value={option} control={<Radio size="small" />} label={option} />
+                            ))}
                           </RadioGroup>
-                        </Box>
-                      )}
+                        )}
+                      </Box>
                     </TableCell>
                   ))}
                 </TableRow>
@@ -2385,17 +2408,38 @@ const Inspections = () => {
                                 >
                                   {GRID_CELL_TYPES.map(type => <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>)}
                                 </TextField>
-                                {cell.type === 'input' ? (
-                                  <TextField size="small" disabled label={cell.label || 'Input Field'} />
-                                ) : (
-                                  <Box>
-                                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 13, mb: 0.5 }}>{cell.label || 'Question'}</Typography>
-                                    <RadioGroup row>
-                                      <FormControlLabel value="Yes" control={<Radio size="small" disabled />} label="Yes" />
-                                      <FormControlLabel value="No" control={<Radio size="small" disabled />} label="No" />
-                                    </RadioGroup>
-                                  </Box>
-                                )}
+                                <Box sx={{ p: 1, borderRadius: '10px', bgcolor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
+                                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 13, mb: 0.75 }}>{cell.label || 'Question'}</Typography>
+                                  {cell.type === 'input' ? (
+                                    <TextField size="small" disabled fullWidth />
+                                  ) : (
+                                    <Box sx={{ display: 'grid', gap: 1 }}>
+                                      <RadioGroup row>
+                                        {(cell.options?.length ? cell.options : ['Yes', 'No']).map(option => (
+                                          <FormControlLabel key={option} value={option} control={<Radio size="small" disabled />} label={option} />
+                                        ))}
+                                      </RadioGroup>
+                                      <Box sx={{ display: 'grid', gap: 0.75 }}>
+                                        {(cell.options?.length ? cell.options : ['Yes', 'No']).map((option, optionIndex) => (
+                                          <Box key={`${cell.id}-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.75 }}>
+                                            <TextField
+                                              size="small"
+                                              label={`Option ${optionIndex + 1}`}
+                                              value={option}
+                                              onChange={e => updateGridCellOption(rowIndex, columnIndex, optionIndex, e.target.value)}
+                                            />
+                                            <IconButton size="small" onClick={() => removeGridCellOption(rowIndex, columnIndex, optionIndex)} disabled={(cell.options || ['Yes', 'No']).length <= 1} sx={{ color: '#DC2626' }}>
+                                              <RemoveIcon fontSize="small" />
+                                            </IconButton>
+                                          </Box>
+                                        ))}
+                                        <Button size="small" startIcon={<AddIcon />} onClick={() => addGridCellOption(rowIndex, columnIndex)} sx={{ justifySelf: 'start', borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>
+                                          Add Option
+                                        </Button>
+                                      </Box>
+                                    </Box>
+                                  )}
+                                </Box>
                                 <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                                   <Tooltip title="Add cell after this one">
                                     <IconButton size="small" onClick={() => addGridCell(rowIndex, columnIndex)} sx={{ bgcolor: '#DCFCE7', color: '#16A34A', '&:hover': { bgcolor: '#BBF7D0' } }}>
