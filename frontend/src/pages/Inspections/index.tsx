@@ -30,6 +30,7 @@ import { toast } from 'react-toastify'
 
 import {
   addInspectionBatchAsset,
+  addInspectionBatchExistingAssets,
   createInspectionForm,
   createInstantInspection,
   fetchInspectionBatch,
@@ -77,6 +78,7 @@ const CHECK_FIELDS = [
 type ReportFormSource = 'default' | 'attached' | 'custom'
 type FormBuilderMode = 'create' | 'edit' | 'report-custom'
 type GridCellType = 'input' | 'radio'
+type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
 
 type GridCellSchema = {
   id: string
@@ -103,6 +105,13 @@ type InspectionFormSchema = {
 const GRID_CELL_TYPES: { value: GridCellType; label: string }[] = [
   { value: 'input', label: 'Input Field' },
   { value: 'radio', label: 'Radio Button' },
+]
+
+const UPCOMING_DATE_RANGES: { value: UpcomingDateRange; label: string; months?: number; years?: number }[] = [
+  { value: '1m', label: '1 Month', months: 1 },
+  { value: '3m', label: '3 Months', months: 3 },
+  { value: '6m', label: '6 Months', months: 6 },
+  { value: '1y', label: '1 Year', years: 1 },
 ]
 
 const CHECK_FIELD_LABELS = CHECK_FIELDS.reduce((acc, [key, label]) => ({ ...acc, [key]: label }), {} as Record<string, string>)
@@ -146,8 +155,22 @@ const normalizeGridCell = (cell: any, row: number, column: number): GridCellSche
 
 const normalizeGrid = (grid: any, fallbackTitle = 'Set Title'): CustomGridSchema | null => {
   if (!grid) return null
-  const rows = Math.max(1, Math.min(30, Number(grid.rows || grid.cells?.length || 3)))
-  const columns = Math.max(1, Math.min(12, Number(grid.columns || grid.cells?.[0]?.length || 3)))
+  if (Array.isArray(grid.cells) && grid.cells.length) {
+    const cells = grid.cells
+      .filter((row: any) => Array.isArray(row) && row.length)
+      .slice(0, 30)
+      .map((row: any[], rowIndex: number) => row.slice(0, 12).map((cell: any, columnIndex: number) => normalizeGridCell(cell, rowIndex, columnIndex)))
+    if (cells.length) {
+      return {
+        title: String(grid.title || fallbackTitle),
+        rows: cells.length,
+        columns: Math.max(...cells.map((row: GridCellSchema[]) => row.length)),
+        cells,
+      }
+    }
+  }
+  const rows = Math.max(1, Math.min(30, Number(grid.rows || 3)))
+  const columns = Math.max(1, Math.min(12, Number(grid.columns || 3)))
   return {
     title: String(grid.title || fallbackTitle),
     rows,
@@ -193,7 +216,7 @@ const schemaToPayload = (schema: InspectionFormSchema, title: string): Inspectio
   version: 3,
   source: 'medrad_grid_form_builder',
   based_on: schema.based_on,
-  custom_grid: schema.custom_grid ? { ...normalizeGrid(schema.custom_grid, title)!, title } : null,
+  custom_grid: schema.custom_grid ? normalizeGrid(schema.custom_grid, schema.custom_grid.title || 'Set Title') : null,
 })
 
 const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFormSchema | null) => {
@@ -231,6 +254,29 @@ const flattenModalities = (items: Modality[]): Modality[] =>
 const formatDate = (date: string | null | undefined) => {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+const toLocalDateParam = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const getUpcomingDateWindow = (range: UpcomingDateRange) => {
+  const today = new Date()
+  const from = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const to = new Date(from)
+  const config = UPCOMING_DATE_RANGES.find(item => item.value === range) || UPCOMING_DATE_RANGES[0]
+  if (config.years) {
+    to.setFullYear(to.getFullYear() + config.years)
+  } else {
+    to.setMonth(to.getMonth() + (config.months || 1))
+  }
+  return {
+    date_from: toLocalDateParam(from),
+    date_to: toLocalDateParam(to),
+  }
 }
 
 const escapeHtml = (value: unknown) => String(value ?? '')
@@ -696,9 +742,14 @@ const Inspections = () => {
   const [techEdit, setTechEdit] = useState<Inspection | null>(null)
   const [selectedTechId, setSelectedTechId] = useState<number | ''>('')
   const [addAssetOpen, setAddAssetOpen] = useState(false)
+  const [addExistingAssetOpen, setAddExistingAssetOpen] = useState(false)
   const [batchAssetForm, setBatchAssetForm] = useState<BatchAssetCreatePayload>(emptyBatchAssetForm())
+  const [existingAssetSearch, setExistingAssetSearch] = useState('')
+  const [selectedExistingEquipmentIds, setSelectedExistingEquipmentIds] = useState<number[]>([])
   const [assetActionAnchor, setAssetActionAnchor] = useState<HTMLElement | null>(null)
   const [assetActionItem, setAssetActionItem] = useState<Inspection | null>(null)
+  const [upcomingSearch, setUpcomingSearch] = useState('')
+  const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
   const [inProgressBatchPage, setInProgressBatchPage] = useState(0)
   const [completedBatchPage, setCompletedBatchPage] = useState(0)
@@ -715,6 +766,16 @@ const Inspections = () => {
     }
   }, [location.search])
 
+  useEffect(() => {
+    setUpcomingPage(0)
+  }, [upcomingSearch, upcomingRange])
+
+  useEffect(() => {
+    if (addExistingAssetOpen) return
+    setExistingAssetSearch('')
+    setSelectedExistingEquipmentIds([])
+  }, [addExistingAssetOpen])
+
   const summaryQ = useQuery({ queryKey: ['inspection-summary'], queryFn: fetchInspectionSummary })
   const facilitiesQ = useQuery({
     queryKey: ['inspection-facilities'],
@@ -726,9 +787,17 @@ const Inspections = () => {
     queryFn: () => fetchInspectionFacilityEquipment(Number(facilityId)),
     enabled: Boolean(facilityId),
   })
+  const upcomingWindow = useMemo(() => getUpcomingDateWindow(upcomingRange), [upcomingRange])
   const upcomingQ = useQuery({
-    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize],
-    queryFn: () => fetchInspections({ status: 'upcoming', skip: upcomingPage * pageSize, limit: pageSize }),
+    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize, upcomingSearch, upcomingRange],
+    queryFn: () => fetchInspections({
+      status: 'upcoming',
+      search: upcomingSearch.trim() || undefined,
+      date_from: upcomingWindow.date_from,
+      date_to: upcomingWindow.date_to,
+      skip: upcomingPage * pageSize,
+      limit: pageSize,
+    }),
     enabled: tab === 0,
   })
   const inProgressQ = useQuery({
@@ -751,6 +820,11 @@ const Inspections = () => {
     queryFn: () => fetchInspectionBatch(Number(selectedBatchId)),
     enabled: Boolean(selectedBatchId),
   })
+  const batchEquipmentQ = useQuery({
+    queryKey: ['inspection-equipment', 'batch-existing-options', batchDetailQ.data?.facility_id],
+    queryFn: () => fetchInspectionFacilityEquipment(Number(batchDetailQ.data?.facility_id)),
+    enabled: addExistingAssetOpen && Boolean(batchDetailQ.data?.facility_id),
+  })
   const completedQ = useQuery({
     queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize],
     queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, skip: legacyCompletedPage * pageSize, limit: pageSize }),
@@ -766,7 +840,7 @@ const Inspections = () => {
     enabled: tab === 4,
   })
   const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 5 || Boolean(reportInspection) })
-  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || tab === 5 })
+  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || tab === 5 || addAssetOpen })
   const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) })
   const testEquipmentQ = useQuery({
     queryKey: ['test-equipment', 'inspection-active-options'],
@@ -873,6 +947,20 @@ const Inspections = () => {
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not add asset to batch'),
   })
 
+  const addBatchExistingAssetsMut = useMutation({
+    mutationFn: ({ batchId, equipmentIds }: { batchId: number; equipmentIds: number[] }) => addInspectionBatchExistingAssets(batchId, { equipment_ids: equipmentIds }),
+    onSuccess: (_batch, variables) => {
+      toast.success(`${variables.equipmentIds.length} existing asset${variables.equipmentIds.length === 1 ? '' : 's'} added to inspection batch`)
+      setAddExistingAssetOpen(false)
+      setSelectedExistingEquipmentIds([])
+      setExistingAssetSearch('')
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not add existing assets to batch'),
+  })
+
   const removeBatchAssetMut = useMutation({
     mutationFn: ({ batchId, inspectionId }: { batchId: number; inspectionId: number }) => removeInspectionBatchAsset(batchId, inspectionId),
     onSuccess: () => {
@@ -943,11 +1031,42 @@ const Inspections = () => {
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not save inspection form'),
   })
 
+  const saveCustomTemplateMut = useMutation({
+    mutationFn: async () => {
+      const name = customFormName.trim()
+      if (!name) throw new Error('Form name is required')
+      const schema = schemaToPayload(
+        reportCustomSchema || normalizeInspectionFormSchema(buildReusableFormSchema(name, report || {}), name),
+        name,
+      )
+      if (!schema.custom_grid) throw new Error('Create the custom grid before saving the form')
+      const payload = {
+        name,
+        description: customFormDescription.trim() || `Custom inspection form${reportInspection ? ` created from ${reportInspection.inspection_number}` : ''}`,
+        modality_id: null,
+        schema,
+      }
+      if (selectedReportFormId && reportFormSource === 'custom') {
+        return updateInspectionForm(selectedReportFormId, payload)
+      }
+      return createInspectionForm(payload)
+    },
+    onSuccess: (saved) => {
+      toast.success('Custom inspection form saved without completing the report')
+      setSelectedReportFormId(saved.id)
+      setCustomFormName(saved.name)
+      setCustomFormDescription(saved.description || '')
+      setReportCustomSchema(schemaForForm(saved))
+      queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not save custom inspection form'),
+  })
+
   useEffect(() => {
     if (reportInspection) {
       setReport(reportInspection.form_data || makeReport(reportInspection))
       setReportStatus(reportInspection.status === 'completed' ? 'completed' : 'completed')
-      const usesAttached = Boolean(reportInspection.attached_form_id && reportInspection.form_template_id === reportInspection.attached_form_id)
+      const usesAttached = Boolean(reportInspection.attached_form_id)
       const initialSource: ReportFormSource = usesAttached ? 'attached' : 'default'
       setReportFormSource(initialSource)
       setSelectedReportFormId(
@@ -1006,6 +1125,26 @@ const Inspections = () => {
   }, [highlightInvoiceId, quotationsQ.data?.items?.length])
 
   const selectedBatch = batchDetailQ.data
+  const batchEquipmentIds = useMemo(
+    () => new Set((selectedBatch?.assets || []).map(asset => asset.equipment_id).filter((id): id is number => Boolean(id))),
+    [selectedBatch?.assets],
+  )
+  const availableExistingBatchAssets = useMemo(() => {
+    const search = existingAssetSearch.trim().toLowerCase()
+    return (batchEquipmentQ.data || [])
+      .filter(item => !batchEquipmentIds.has(item.id))
+      .filter(item => {
+        if (!search) return true
+        return [
+          item.asset_tag,
+          item.make,
+          item.model,
+          item.serial_number,
+          item.modality_name,
+          item.criticality,
+        ].some(value => String(value || '').toLowerCase().includes(search))
+      })
+  }, [batchEquipmentIds, batchEquipmentQ.data, existingAssetSearch])
   const batchTechnicians = useMemo(() => {
     const users = usersQ.data?.items || []
     if (!selectedBatch?.facility_id) return users
@@ -1022,6 +1161,10 @@ const Inspections = () => {
 
   const toggleEquipment = (id: number) => {
     setSelectedEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
+  }
+
+  const toggleExistingBatchEquipment = (id: number) => {
+    setSelectedExistingEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
   }
 
   const startInspection = () => {
@@ -1119,7 +1262,16 @@ const Inspections = () => {
     const safeColumns = Math.max(1, Math.min(12, Number(columns || 1)))
     setFormBuilderSchema(prev => ({
       ...prev,
-      custom_grid: createEmptyGrid(safeRows, safeColumns, formBuilderName.trim() || 'Custom Inspection Form'),
+      custom_grid: createEmptyGrid(safeRows, safeColumns, prev.custom_grid?.title || 'Set Title'),
+    }))
+  }
+
+  const updateBuilderGridTitle = (title: string) => {
+    setFormBuilderSchema(prev => ({
+      ...prev,
+      custom_grid: prev.custom_grid
+        ? { ...prev.custom_grid, title }
+        : { ...createEmptyGrid(formBuilderRows, formBuilderColumns), title },
     }))
   }
 
@@ -1373,6 +1525,16 @@ const Inspections = () => {
       return
     }
     addBatchAssetMut.mutate({ batchId: selectedBatch.id, data: batchAssetForm })
+  }
+
+  const submitExistingBatchAssets = () => {
+    if (!canInitiateInspections) return toast.error('You do not have permission to add assets to inspection batches')
+    if (!selectedBatch) return
+    if (!selectedExistingEquipmentIds.length) {
+      toast.error('Select at least one existing asset')
+      return
+    }
+    addBatchExistingAssetsMut.mutate({ batchId: selectedBatch.id, equipmentIds: selectedExistingEquipmentIds })
   }
 
   const handlePrintReport = (asset: Inspection) => {
@@ -1682,7 +1844,8 @@ const Inspections = () => {
     const title = activeReportSchema?.title || report?.form_template?.name || selectedReportFormName()
     return (
       <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>{title || 'Custom Inspection Form'}</Typography>
+        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{title || 'Custom Inspection Form'}</Typography>
+        <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5, mt: 1 }}>{grid.title || 'Set Title'}</Typography>
         <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
           <Table size="small">
             <TableBody>
@@ -1859,6 +2022,30 @@ const Inspections = () => {
                 </TableBody>
               </Table>
             </TableContainer>
+            <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px' }, gap: 2, alignItems: 'center' }}>
+                <TextField
+                  label="Search upcoming inspections"
+                  placeholder="Search inspection #, facility, asset, serial, requirement..."
+                  value={upcomingSearch}
+                  onChange={e => setUpcomingSearch(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  select
+                  label="Due within"
+                  value={upcomingRange}
+                  onChange={e => setUpcomingRange(e.target.value as UpcomingDateRange)}
+                >
+                  {UPCOMING_DATE_RANGES.map(option => (
+                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+              <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, mt: 1 }}>
+                Showing inspections scheduled from {formatDate(upcomingWindow.date_from)} to {formatDate(upcomingWindow.date_to)}.
+              </Typography>
+            </Card>
             {renderUpcomingRows()}
             {renderPagination(upcomingQ.data?.total || 0, upcomingPage, setUpcomingPage)}
           </Box>
@@ -2105,15 +2292,26 @@ const Inspections = () => {
             </Typography>
           </Box>
           {selectedBatch?.status !== 'completed' && canInitiateInspections && (
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setAddAssetOpen(true)}
-              sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: '#10B981' }}
-            >
-              Add New Inventory to Batch
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={() => setAddExistingAssetOpen(true)}
+                sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+              >
+                Add Existing Inventory
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setAddAssetOpen(true)}
+                sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: '#10B981' }}
+              >
+                Add New Inventory
+              </Button>
+            </Box>
           )}
         </DialogTitle>
         <DialogContent dividers>
@@ -2293,6 +2491,73 @@ const Inspections = () => {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={addExistingAssetOpen} onClose={() => setAddExistingAssetOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Add Existing Inventory to Batch
+          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            Select assets from {selectedBatch?.facility_name || 'this facility'} that are not already part of this inspection batch.
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            label="Search facility assets"
+            placeholder="Search asset #, make, model, serial, modality..."
+            value={existingAssetSearch}
+            onChange={e => setExistingAssetSearch(e.target.value)}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                  <TableCell padding="checkbox" />
+                  <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Serial #</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {batchEquipmentQ.isLoading ? (
+                  Array.from({ length: 4 }).map((_, index) => (
+                    <TableRow key={index}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
+                  ))
+                ) : availableExistingBatchAssets.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>
+                      {batchEquipmentIds.size ? 'No remaining facility assets available for this batch.' : 'No facility assets found.'}
+                    </TableCell>
+                  </TableRow>
+                ) : availableExistingBatchAssets.map((item: InspectionEquipmentItem) => (
+                  <TableRow key={item.id} hover onClick={() => toggleExistingBatchEquipment(item.id)} sx={{ cursor: 'pointer' }}>
+                    <TableCell padding="checkbox"><Checkbox checked={selectedExistingEquipmentIds.includes(item.id)} /></TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
+                    <TableCell sx={{ fontWeight: 800 }}>{item.make} {item.model}</TableCell>
+                    <TableCell>{item.modality_name || '-'}</TableCell>
+                    <TableCell>{item.serial_number || '-'}</TableCell>
+                    <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setAddExistingAssetOpen(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button
+            startIcon={addBatchExistingAssetsMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />}
+            onClick={submitExistingBatchAssets}
+            disabled={!canInitiateInspections || addBatchExistingAssetsMut.isPending || selectedExistingEquipmentIds.length === 0}
+            variant="contained"
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Add {selectedExistingEquipmentIds.length || ''} Asset{selectedExistingEquipmentIds.length === 1 ? '' : 's'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={addAssetOpen} onClose={() => setAddAssetOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Add New Inventory to Batch</DialogTitle>
         <DialogContent dividers>
@@ -2370,9 +2635,14 @@ const Inspections = () => {
             <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Middle Custom Grid</Typography>
               <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
-                The form title is controlled by Form Title / Name above. Each generated box below has its own editable title.
+                The form title/name identifies the saved template. The custom section title displays above this grid and can be different.
               </Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '160px 160px auto' }, gap: 1.5, alignItems: 'center', mb: 2 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.3fr 160px 160px auto' }, gap: 1.5, alignItems: 'center', mb: 2 }}>
+                <TextField
+                  label="Custom Section Title"
+                  value={formBuilderSchema.custom_grid?.title || 'Set Title'}
+                  onChange={e => updateBuilderGridTitle(e.target.value)}
+                />
                 <NumericField label="Rows" value={formBuilderRows} onChange={val => setFormBuilderRows(Number(val || 1))} />
                 <NumericField label="Columns" value={formBuilderColumns} onChange={val => setFormBuilderColumns(Number(val || 1))} />
                 <Button startIcon={<AddIcon />} variant="contained" onClick={() => setBuilderGrid(formBuilderRows, formBuilderColumns)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
@@ -2525,6 +2795,16 @@ const Inspections = () => {
                       />
                       <Button size="small" startIcon={<EditIcon />} variant="outlined" onClick={openReportCustomBuilder} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                         Edit Fields
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={saveCustomTemplateMut.isPending ? <CircularProgress size={16} /> : <SaveIcon />}
+                        variant="contained"
+                        onClick={() => saveCustomTemplateMut.mutate()}
+                        disabled={saveCustomTemplateMut.isPending || !reportCustomSchema?.custom_grid}
+                        sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+                      >
+                        Save Form Only
                       </Button>
                     </Box>
                   </Box>

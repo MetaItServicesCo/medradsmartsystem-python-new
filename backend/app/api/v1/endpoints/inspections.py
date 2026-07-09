@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -158,6 +158,10 @@ class BatchAssetCreate(BaseModel):
     last_pm_date: Optional[date] = None
     installation_date: Optional[date] = None
     inventory_date: Optional[date] = None
+
+
+class BatchExistingAssetsCreate(BaseModel):
+    equipment_ids: list[int]
 
 
 class InspectionInvoiceUpdate(BaseModel):
@@ -884,6 +888,9 @@ def list_inspections(
     status_filter: Optional[InspectionStatus] = Query(None, alias="status"),
     facility_id: Optional[int] = Query(None),
     unbatched_only: bool = Query(False),
+    search: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -905,6 +912,38 @@ def list_inspections(
         query = query.filter(Inspection.facility_id == facility_id)
     if unbatched_only:
         query = query.filter(Inspection.batch_id.is_(None))
+    if date_from:
+        query = query.filter(Inspection.scheduled_date >= datetime.combine(date_from, time.min))
+    if date_to:
+        query = query.filter(Inspection.scheduled_date <= datetime.combine(date_to, time.max))
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        query = (
+            query
+            .outerjoin(Facility, Inspection.facility_id == Facility.id)
+            .outerjoin(Equipment, Inspection.equipment_id == Equipment.id)
+            .outerjoin(InventoryPart, Inspection.inventory_part_id == InventoryPart.id)
+            .outerjoin(InspectionBatch, Inspection.batch_id == InspectionBatch.id)
+            .filter(
+                or_(
+                    Inspection.inspection_number.ilike(like),
+                    Inspection.inspection_frequency.ilike(like),
+                    Inspection.compliance_requirement.ilike(like),
+                    Inspection.criticality.ilike(like),
+                    InspectionBatch.batch_number.ilike(like),
+                    Facility.name.ilike(like),
+                    Equipment.asset_tag.ilike(like),
+                    Equipment.make.ilike(like),
+                    Equipment.model.ilike(like),
+                    Equipment.serial_number.ilike(like),
+                    InventoryPart.part_number.ilike(like),
+                    InventoryPart.description.ilike(like),
+                    InventoryPart.make.ilike(like),
+                    InventoryPart.model.ilike(like),
+                    InventoryPart.serial_number.ilike(like),
+                )
+            )
+        )
     if current_user.role == UserRole.TECHNICIAN:
         query = query.filter(Inspection.inspector_id == current_user.id)
     elif current_user.role == UserRole.EMPLOYEE:
@@ -1099,6 +1138,104 @@ def add_asset_to_inspection_batch(
         batch.completed_at = None
     _sync_batch_status(batch)
     log_activity(db, "inspections", inspection.id, "ADD_BATCH_ASSET", current_user, {"batch_id": batch.id, "equipment_id": equipment.id})
+    db.commit()
+    db.refresh(batch)
+    return get_inspection_batch(batch.id, db, current_user)
+
+
+@router.post("/batches/{batch_id}/existing-assets", status_code=status.HTTP_201_CREATED)
+def add_existing_assets_to_inspection_batch(
+    batch_id: int,
+    payload: BatchExistingAssetsCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    require_module_permission(current_user, "inspections", "add")
+
+    equipment_ids = list(dict.fromkeys(payload.equipment_ids or []))
+    if not equipment_ids:
+        raise HTTPException(status_code=400, detail="Select at least one existing asset")
+    if len(equipment_ids) > 250:
+        raise HTTPException(status_code=400, detail="You can add up to 250 existing assets at a time")
+
+    batch = (
+        db.query(InspectionBatch)
+        .options(joinedload(InspectionBatch.facility), joinedload(InspectionBatch.inspections))
+        .filter(InspectionBatch.id == batch_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Inspection batch not found")
+    require_facility_access(db, current_user, batch.facility_id)
+
+    equipment_items = (
+        db.query(Equipment)
+        .filter(
+            Equipment.facility_id == batch.facility_id,
+            Equipment.id.in_(equipment_ids),
+        )
+        .all()
+    )
+    found_ids = {item.id for item in equipment_items}
+    missing_ids = [item_id for item_id in equipment_ids if item_id not in found_ids]
+    if missing_ids:
+        raise HTTPException(status_code=404, detail="One or more selected assets were not found in this facility")
+
+    already_added_ids = {
+        equipment_id
+        for (equipment_id,) in (
+            db.query(Inspection.equipment_id)
+            .filter(
+                Inspection.batch_id == batch.id,
+                Inspection.equipment_id.in_(equipment_ids),
+            )
+            .all()
+        )
+        if equipment_id is not None
+    }
+    if already_added_ids:
+        raise HTTPException(status_code=400, detail="One or more selected assets are already in this inspection batch")
+
+    inspection_status = InspectionStatus.IN_PROGRESS if batch.status == InspectionStatus.COMPLETED else batch.status
+    if inspection_status == InspectionStatus.COMPLETED:
+        inspection_status = InspectionStatus.IN_PROGRESS
+
+    equipment_by_id = {item.id: item for item in equipment_items}
+    for equipment_id in equipment_ids:
+        equipment = equipment_by_id[equipment_id]
+        inspection = Inspection(
+            inspection_number=_next_batch_asset_number(db, batch),
+            batch=batch,
+            equipment_id=equipment.id,
+            facility_id=batch.facility_id,
+            inspector_id=batch.inspector_id or current_user.id,
+            form_template_id=equipment.inspection_form_id or batch.form_template_id,
+            status=inspection_status,
+            result=InspectionResult.PENDING,
+            scheduled_date=batch.scheduled_date,
+            started_at=datetime.utcnow() if inspection_status == InspectionStatus.IN_PROGRESS else None,
+            inspection_scope=batch.inspection_scope or "facility_assets",
+            inspection_frequency=batch.inspection_frequency,
+            compliance_requirement="Existing facility asset added to inspection batch",
+            criticality=_equipment_criticality(equipment) or batch.inspection_frequency or "standard",
+            is_instant=batch.is_instant,
+        )
+        db.add(inspection)
+        db.flush()
+        log_activity(
+            db,
+            "inspections",
+            inspection.id,
+            "ADD_EXISTING_BATCH_ASSET",
+            current_user,
+            {"batch_id": batch.id, "equipment_id": equipment.id},
+        )
+
+    if batch.status == InspectionStatus.COMPLETED:
+        batch.status = InspectionStatus.IN_PROGRESS
+        batch.completed_at = None
+    db.expire(batch, ["inspections"])
+    _sync_batch_status(batch)
     db.commit()
     db.refresh(batch)
     return get_inspection_batch(batch.id, db, current_user)

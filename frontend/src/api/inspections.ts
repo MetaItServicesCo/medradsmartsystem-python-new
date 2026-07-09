@@ -262,6 +262,10 @@ export interface BatchAssetCreatePayload {
   inventory_date?: string | null
 }
 
+export interface BatchExistingAssetsPayload {
+  equipment_ids: number[]
+}
+
 export interface InspectionInvoiceUpdatePayload {
   subtotal?: number
   tax_amount?: number
@@ -323,6 +327,9 @@ export const fetchInspections = async (
     status?: InspectionStatus
     facility_id?: number
     unbatched_only?: boolean
+    search?: string
+    date_from?: string
+    date_to?: string
     skip?: number
     limit?: number
   } = {}
@@ -390,6 +397,14 @@ export const addInspectionBatchAsset = async (
   data: BatchAssetCreatePayload
 ): Promise<InspectionBatch> => {
   const res = await apiClient.post(`/inspections/batches/${batchId}/assets`, data)
+  return res.data
+}
+
+export const addInspectionBatchExistingAssets = async (
+  batchId: number,
+  data: BatchExistingAssetsPayload
+): Promise<InspectionBatch> => {
+  const res = await apiClient.post(`/inspections/batches/${batchId}/existing-assets`, data)
   return res.data
 }
 
