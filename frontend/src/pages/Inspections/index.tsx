@@ -1731,17 +1731,17 @@ const Inspections = () => {
 
   const renderUpcomingRows = () => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ minWidth: 1280, tableLayout: 'fixed' }}>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Frequency</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Requirement</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Scheduled</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 150 }}>Inspection #</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 220 }}>Facility</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 280 }}>Equipment</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 120 }}>Frequency</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 130 }}>Criticality</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 320 }}>Requirement</TableCell>
+            <TableCell sx={{ fontWeight: 900, width: 150 }}>Scheduled</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 900, width: 150 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -1759,9 +1759,9 @@ const Inspections = () => {
               </TableCell>
               <TableCell>{(item.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
               <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
-              <TableCell sx={{ maxWidth: 260 }}>{item.compliance_requirement || '-'}</TableCell>
-              <TableCell>{formatDate(item.scheduled_date)}</TableCell>
-              <TableCell align="right">
+              <TableCell sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.45 }}>{item.compliance_requirement || '-'}</TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(item.scheduled_date)}</TableCell>
+              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                 {canEditInspections ? (
                   <Button startIcon={<PlayArrowIcon />} variant="contained" onClick={() => startMut.mutate(item.id)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                     Start
@@ -1994,34 +1994,36 @@ const Inspections = () => {
                 Auto Generate
               </Button>
             </Box>
-            <TableContainer className="list-scroll-panel" sx={{ mb: 3, border: '1px solid #EEF0F6', borderRadius: '18px' }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                    <TableCell padding="checkbox" />
-                    <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Serial #</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {equipmentQ.isLoading ? <TableRow><TableCell colSpan={6}><Skeleton /></TableCell></TableRow> : equipment.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: '#6B7280', fontWeight: 700 }}>Select a facility to schedule equipment inspections.</TableCell></TableRow>
-                  ) : equipment.map((item: InspectionEquipmentItem) => (
-                    <TableRow key={item.id} hover onClick={() => toggleEquipment(item.id)} sx={{ cursor: 'pointer' }}>
-                      <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} /></TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
-                      <TableCell>{item.make} {item.model}</TableCell>
-                      <TableCell>{item.modality_name || '-'}</TableCell>
-                      <TableCell>{item.criticality}</TableCell>
-                      <TableCell>{item.serial_number}</TableCell>
+            {facilityId && (
+              <TableContainer className="list-scroll-panel" sx={{ mb: 3, border: '1px solid #EEF0F6', borderRadius: '18px' }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                      <TableCell padding="checkbox" />
+                      <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Modality</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Criticality</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Serial #</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {equipmentQ.isLoading ? <TableRow><TableCell colSpan={6}><Skeleton /></TableCell></TableRow> : equipment.length === 0 ? (
+                      <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: '#6B7280', fontWeight: 700 }}>No facility inventory found for scheduling.</TableCell></TableRow>
+                    ) : equipment.map((item: InspectionEquipmentItem) => (
+                      <TableRow key={item.id} hover onClick={() => toggleEquipment(item.id)} sx={{ cursor: 'pointer' }}>
+                        <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} /></TableCell>
+                        <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
+                        <TableCell>{item.make} {item.model}</TableCell>
+                        <TableCell>{item.modality_name || '-'}</TableCell>
+                        <TableCell>{item.criticality}</TableCell>
+                        <TableCell>{item.serial_number}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
             <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px' }, gap: 2, alignItems: 'center' }}>
                 <TextField
