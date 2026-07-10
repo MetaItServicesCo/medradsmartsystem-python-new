@@ -6,7 +6,7 @@ import {
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
   FormControlLabel, FormLabel, IconButton, Radio, RadioGroup, Skeleton,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow,
-  Tabs, TextField, Typography,
+  Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
@@ -124,6 +124,46 @@ const billingTypeLabel = (item: BillingItem) => {
     return (item.raw as InspectionInvoice).inspection_batch_id ? 'Inspection Batch Invoice' : 'Inspection Invoice'
   }
   return SOURCE_LABEL[item.source]
+}
+
+const ClippedText = ({
+  value,
+  maxWidth,
+  color = '#1E1B4B',
+  fontWeight = 800,
+  fontSize,
+  fontFamily,
+}: {
+  value?: string | number | null
+  maxWidth: number | string
+  color?: string
+  fontWeight?: number
+  fontSize?: number
+  fontFamily?: string
+}) => {
+  const text = value === null || value === undefined || value === '' ? '-' : String(value)
+
+  return (
+    <Tooltip title={text} arrow placement="top">
+      <Typography
+        component="span"
+        sx={{
+          display: 'block',
+          maxWidth,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          color,
+          fontWeight,
+          fontSize,
+          fontFamily,
+          lineHeight: 1.45,
+        }}
+      >
+        {text}
+      </Typography>
+    </Tooltip>
+  )
 }
 
 const invoiceStatusForPayment = (total: number, paid: number): 'pending' | 'partially_paid' | 'paid' => {
@@ -730,19 +770,19 @@ const Billing = () => {
           <Tab label="Paid" />
         </Tabs>
         <TableContainer className="list-scroll-panel">
-          <Table stickyHeader>
+          <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: 1480 }}>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                <TableCell sx={{ fontWeight: 900 }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 900 }}>Billing #</TableCell>
-                <TableCell sx={{ fontWeight: 900 }}>Related #</TableCell>
-                <TableCell sx={{ fontWeight: 900 }}>Facility / Customer</TableCell>
-                <TableCell sx={{ fontWeight: 900 }} align="right">Total</TableCell>
-                <TableCell sx={{ fontWeight: 900 }} align="right">Paid</TableCell>
-                <TableCell sx={{ fontWeight: 900 }} align="right">Balance</TableCell>
-                <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 900 }}>Due</TableCell>
-                <TableCell sx={{ fontWeight: 900 }} align="right">Actions</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 160 }}>Type</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 135 }}>Billing #</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 135 }}>Related #</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 260 }}>Facility / Customer</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 110 }} align="right">Total</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 105 }} align="right">Paid</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 120 }} align="right">Balance</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 120 }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 120 }}>Due</TableCell>
+                <TableCell sx={{ fontWeight: 900, width: 315 }} align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -759,29 +799,67 @@ const Billing = () => {
                 return (
                   <Fragment key={item.key}>
                     <TableRow key={item.key} hover>
-                      <TableCell>
-                        <Chip label={billingTypeLabel(item)} sx={{ bgcolor: `${SOURCE_COLOR[item.source]}16`, color: SOURCE_COLOR[item.source], fontWeight: 900 }} />
+                      <TableCell sx={{ width: 160 }}>
+                        <Tooltip title={billingTypeLabel(item)} arrow placement="top">
+                          <Chip
+                            label={billingTypeLabel(item)}
+                            sx={{
+                              maxWidth: 136,
+                              bgcolor: `${SOURCE_COLOR[item.source]}16`,
+                              color: SOURCE_COLOR[item.source],
+                              fontWeight: 900,
+                              '& .MuiChip-label': {
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              },
+                            }}
+                          />
+                        </Tooltip>
                       </TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900, color: '#5B21B6' }}>{item.number}</TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontWeight: 800 }}>{item.relatedNumber}</TableCell>
-                      <TableCell>
-                        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{item.facility}</Typography>
-                        <Typography sx={{ color: '#8B95A7', fontSize: 13 }}>{item.customer}</Typography>
+                      <TableCell sx={{ width: 135 }}>
+                        <ClippedText value={item.number} maxWidth={112} color="#5B21B6" fontWeight={900} fontFamily="monospace" />
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 900 }}>{money(item.amount)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 900, color: '#059669' }}>{money(item.paid)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 900, color: item.balance > 0 ? '#DC2626' : '#059669' }}>{money(item.balance)}</TableCell>
-                      <TableCell><Chip label={methodLabel(item.status)} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
-                      <TableCell>{formatDate(item.dueDate || item.date)}</TableCell>
-                      <TableCell align="right">
-                        <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end' }}>
+                      <TableCell sx={{ width: 135 }}>
+                        <ClippedText value={item.relatedNumber} maxWidth={112} fontWeight={800} fontFamily="monospace" />
+                      </TableCell>
+                      <TableCell sx={{ width: 260 }}>
+                        <ClippedText value={item.facility} maxWidth={220} fontWeight={900} />
+                        <ClippedText value={item.customer} maxWidth={220} color="#8B95A7" fontWeight={700} fontSize={13} />
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}>{money(item.amount)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 900, color: '#059669', whiteSpace: 'nowrap' }}>{money(item.paid)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 900, color: item.balance > 0 ? '#DC2626' : '#059669', whiteSpace: 'nowrap' }}>{money(item.balance)}</TableCell>
+                      <TableCell sx={{ width: 120 }}>
+                        <Tooltip title={methodLabel(item.status)} arrow placement="top">
+                          <Chip
+                            label={methodLabel(item.status)}
+                            sx={{
+                              maxWidth: 104,
+                              bgcolor: chip.bg,
+                              color: chip.color,
+                              fontWeight: 900,
+                              '& .MuiChip-label': {
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              },
+                            }}
+                          />
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell sx={{ width: 120 }}>
+                        <ClippedText value={formatDate(item.dueDate || item.date)} maxWidth={96} fontWeight={700} />
+                      </TableCell>
+                      <TableCell align="right" sx={{ width: 315 }}>
+                        <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
                           {canPay && item.balance > 0 && (
                             <Button
                               size="small"
                               variant="contained"
                               startIcon={<PaymentIcon />}
                               onClick={() => openPayment(item)}
-                              sx={{ borderRadius: '10px', fontWeight: 900, textTransform: 'none', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+                              sx={{ borderRadius: '10px', fontWeight: 900, textTransform: 'none', minWidth: 82, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
                             >
                               Pay
                             </Button>
@@ -796,7 +874,7 @@ const Billing = () => {
                               if (item.source === 'rental') navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
                               if (item.source === 'inspection') setExpandedKey(expanded ? null : item.key)
                             }}
-                            sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none' }}
+                            sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none', minWidth: 82 }}
                           >
                             View
                           </Button>
@@ -805,7 +883,7 @@ const Billing = () => {
                             variant="outlined"
                             startIcon={<PrintIcon />}
                             onClick={() => setPrintItem(item)}
-                            sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none' }}
+                            sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none', minWidth: 82 }}
                           >
                             Print
                           </Button>
