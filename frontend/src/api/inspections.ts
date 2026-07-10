@@ -28,6 +28,7 @@ export interface InspectionInventoryItem {
   serial_number: string | null
   location: string | null
   condition: string
+  unit_price: number
   is_critical: boolean
   status: string
 }
@@ -56,6 +57,7 @@ export interface InspectionInvoice {
   customer_address: string | null
   facility_id: number | null
   inspection_id: number | null
+  inspection_batch_id: number | null
   subtotal: number
   tax_amount: number
   discount_amount: number
@@ -71,11 +73,26 @@ export interface InspectionInvoice {
   updated_at: string
   facility_name: string | null
   inspection_number?: string | null
+  inspection_batch_number?: string | null
+  batch_asset_count?: number | null
+  batch_items?: InspectionInvoiceBatchItem[]
   inventory_part_name?: string | null
   inspector_name?: string | null
   transactions?: InvoiceTransaction[]
   travel_charges?: number | null
   service_charges?: number | null
+}
+
+export interface InspectionInvoiceBatchItem {
+  inspection_id: number
+  inspection_number: string
+  asset_name: string | null
+  asset_tag: string | null
+  serial_number: string | null
+  subtotal: number
+  tax_amount: number
+  discount_amount: number
+  total_amount: number
 }
 
 export interface InvoiceTransaction {
@@ -165,6 +182,7 @@ export interface InspectionBatch {
   completed_count: number
   in_progress_count: number
   pending_count: number
+  batch_invoice?: InspectionInvoice | null
   assets?: Inspection[]
 }
 
@@ -389,6 +407,16 @@ export const saveInspectionReport = async (
   data: InspectionReportPayload
 ): Promise<Inspection> => {
   const res = await apiClient.put(`/inspections/${id}/report`, data)
+  return res.data
+}
+
+export const generateInspectionInvoice = async (id: number): Promise<InspectionInvoice> => {
+  const res = await apiClient.post(`/inspections/${id}/invoice`)
+  return res.data
+}
+
+export const generateInspectionBatchInvoice = async (batchId: number): Promise<InspectionInvoice> => {
+  const res = await apiClient.post(`/inspections/batches/${batchId}/invoice`)
   return res.data
 }
 

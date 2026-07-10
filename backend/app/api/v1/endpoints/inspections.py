@@ -387,12 +387,29 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["invoice_type"] = _value(data.get("invoice_type"))
     data["status"] = _value(data.get("status"))
     data["facility_name"] = invoice.facility.name if invoice.facility else None
+    data["inspection_batch_number"] = invoice.inspection_batch.batch_number if getattr(invoice, "inspection_batch", None) else None
+    data["batch_asset_count"] = len(invoice.inspection_batch.inspections or []) if getattr(invoice, "inspection_batch", None) else None
+    data["batch_items"] = getattr(invoice, "_batch_items", [])
     data["transactions"] = [transaction_response(item) for item in invoice.transactions or []]
     travel, service = _parse_inspection_fees(invoice.notes)
     data["travel_charges"] = travel
     data["service_charges"] = service
     data["notes"] = _strip_inspection_fee_prefix(invoice.notes)
     return data
+
+
+def _inspection_invoice_line_item(inspection: Inspection, invoice: Optional[Invoice]) -> dict[str, Any]:
+    return {
+        "inspection_id": inspection.id,
+        "inspection_number": inspection.inspection_number,
+        "asset_name": _part_name(inspection.inventory_part) if inspection.inventory_part else _equipment_name(inspection.equipment),
+        "asset_tag": inspection.equipment.asset_tag if inspection.equipment else inspection.inventory_part.part_number if inspection.inventory_part else None,
+        "serial_number": inspection.equipment.serial_number if inspection.equipment else inspection.inventory_part.serial_number if inspection.inventory_part else None,
+        "subtotal": float(invoice.subtotal or 0) if invoice else 0,
+        "tax_amount": float(invoice.tax_amount or 0) if invoice else 0,
+        "discount_amount": float(invoice.discount_amount or 0) if invoice else 0,
+        "total_amount": float(invoice.total_amount or 0) if invoice else 0,
+    }
 
 
 def _inspection_response(inspection: Inspection) -> dict[str, Any]:
@@ -482,6 +499,7 @@ def _batch_response(
     data["completed_count"] = completed_count
     data["in_progress_count"] = in_progress_count
     data["pending_count"] = max(asset_count - completed_count, 0)
+    data["batch_invoice"] = _invoice_response(getattr(batch, "_batch_invoice", None))
     if include_assets:
         data["assets"] = [_inspection_response(item) for item in inspections]
     return data
@@ -532,12 +550,10 @@ def _sync_batch_status(batch: Optional[InspectionBatch]) -> None:
     batch.updated_at = datetime.utcnow()
 
 
-def _create_inspection_invoice(
-    db: Session,
+def _inspection_invoice_amounts(
     inspection: Inspection,
     complete_in: InspectionComplete,
-    current_user: Optional[User] = None,
-) -> Invoice:
+) -> tuple[Decimal, Decimal, Decimal, Decimal, str]:
     facility = inspection.facility
     part = inspection.inventory_part
     equipment = inspection.equipment
@@ -563,6 +579,17 @@ def _create_inspection_invoice(
         complete_in.notes
         or f"Inspection invoice for {_part_name(part) if part else _equipment_name(equipment)}. Tier: {tier.name if tier else 'No tier assigned'}."
     )
+    return subtotal, _money(complete_in.tax_amount), _money(complete_in.discount_amount), total, invoice_notes
+
+
+def _create_inspection_invoice(
+    db: Session,
+    inspection: Inspection,
+    complete_in: InspectionComplete,
+    current_user: Optional[User] = None,
+) -> Invoice:
+    facility = inspection.facility
+    subtotal, tax_amount, discount_amount, total, invoice_notes = _inspection_invoice_amounts(inspection, complete_in)
 
     existing = db.query(Invoice).filter(Invoice.inspection_id == inspection.id).first()
     if existing:
@@ -571,8 +598,8 @@ def _create_inspection_invoice(
         existing.customer_phone = facility.phone
         existing.customer_address = _customer_address(facility)
         existing.subtotal = subtotal
-        existing.tax_amount = complete_in.tax_amount
-        existing.discount_amount = complete_in.discount_amount
+        existing.tax_amount = tax_amount
+        existing.discount_amount = discount_amount
         existing.total_amount = total
         existing.balance_due = total - _money(existing.amount_paid)
         if existing.status == InvoiceStatus.CANCELLED:
@@ -593,8 +620,8 @@ def _create_inspection_invoice(
         facility_id=facility.id,
         inspection_id=inspection.id,
         subtotal=subtotal,
-        tax_amount=complete_in.tax_amount,
-        discount_amount=complete_in.discount_amount,
+        tax_amount=tax_amount,
+        discount_amount=discount_amount,
         total_amount=total,
         amount_paid=Decimal("0"),
         balance_due=total,
@@ -609,6 +636,123 @@ def _create_inspection_invoice(
     record_invoice_created(db, invoice, current_user, f"Inspection invoice created from {inspection.inspection_number}")
     inspection.quotation_notes = invoice.notes
     return invoice
+
+
+def _invoice_payload_from_completed_inspection(inspection: Inspection) -> InspectionComplete:
+    if inspection.status != InspectionStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Inspection must be completed before generating an invoice")
+    if not inspection.form_data:
+        raise HTTPException(status_code=400, detail="Inspection report data is required before generating an invoice")
+    billing = inspection.form_data.get("billing") or {}
+    return InspectionComplete(
+        result=inspection.result if inspection.result != InspectionResult.PENDING else InspectionResult.PASS,
+        form_data=inspection.form_data,
+        form_template_id=inspection.form_template_id,
+        corrective_actions=inspection.corrective_actions,
+        parts_amount=_money(billing.get("parts")),
+        inspection_charge=_money(billing.get("inspection_charges")),
+        other_charges=_money(billing.get("others")),
+        notes=f"Inspection invoice for {inspection.inspection_number}.",
+    )
+
+
+def _create_inspection_batch_invoice(
+    db: Session,
+    batch: InspectionBatch,
+    current_user: Optional[User] = None,
+) -> Invoice:
+    inspections = list(batch.inspections or [])
+    if not inspections:
+        raise HTTPException(status_code=400, detail="Batch has no inspections to invoice")
+    if any(item.status != InspectionStatus.COMPLETED for item in inspections):
+        raise HTTPException(status_code=400, detail="All inspections in the batch must be completed before generating a batch invoice")
+    if any(not item.form_data for item in inspections):
+        raise HTTPException(status_code=400, detail="Every inspection in the batch must have report data before generating a batch invoice")
+
+    existing_batch_invoice = (
+        db.query(Invoice)
+        .filter(
+            Invoice.invoice_type == InvoiceType.INSPECTION,
+            Invoice.inspection_batch_id == batch.id,
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .first()
+    )
+    if existing_batch_invoice:
+        return existing_batch_invoice
+
+    existing_individual = (
+        db.query(Invoice)
+        .filter(
+            Invoice.invoice_type == InvoiceType.INSPECTION,
+            Invoice.inspection_id.in_([item.id for item in inspections]),
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .all()
+    )
+    if existing_individual:
+        raise HTTPException(
+            status_code=400,
+            detail="One or more assets in this batch already have an individual invoice. Cancel those in Billing before generating a batch invoice.",
+        )
+
+    line_items = _batch_invoice_line_items(batch)
+    subtotal = sum(_money(item["subtotal"]) for item in line_items)
+    tax = sum(_money(item["tax_amount"]) for item in line_items)
+    discount = sum(_money(item["discount_amount"]) for item in line_items)
+
+    total = subtotal + tax - discount
+    facility = batch.facility
+    notes = (
+        f"Inspection batch invoice for {batch.batch_number}. "
+        f"Includes {len(inspections)} completed asset inspection(s)."
+    )
+    invoice = Invoice(
+        invoice_number=_next_invoice_number(db),
+        invoice_type=InvoiceType.INSPECTION,
+        customer_name=facility.billing_name or facility.name,
+        customer_email=facility.billing_email or facility.email,
+        customer_phone=facility.phone,
+        customer_address=_customer_address(facility),
+        facility_id=facility.id,
+        inspection_batch_id=batch.id,
+        subtotal=subtotal,
+        tax_amount=tax,
+        discount_amount=discount,
+        total_amount=total,
+        amount_paid=Decimal("0"),
+        balance_due=total,
+        status=InvoiceStatus.PENDING,
+        issue_date=date.today(),
+        due_date=date.today() + timedelta(days=30),
+        payment_terms="Net 30",
+        notes=notes,
+    )
+    db.add(invoice)
+    db.flush()
+    invoice._batch_items = line_items
+    record_invoice_created(db, invoice, current_user, f"Inspection batch invoice created from {batch.batch_number}")
+    return invoice
+
+
+def _batch_invoice_line_items(batch: InspectionBatch) -> list[dict[str, Any]]:
+    line_items: list[dict[str, Any]] = []
+    inspections = list(batch.inspections or [])
+    for inspection in inspections:
+        payload = _invoice_payload_from_completed_inspection(inspection)
+        line_subtotal, line_tax, line_discount, line_total, _notes = _inspection_invoice_amounts(inspection, payload)
+        line_items.append({
+            "inspection_id": inspection.id,
+            "inspection_number": inspection.inspection_number,
+            "asset_name": _part_name(inspection.inventory_part) if inspection.inventory_part else _equipment_name(inspection.equipment),
+            "asset_tag": inspection.equipment.asset_tag if inspection.equipment else inspection.inventory_part.part_number if inspection.inventory_part else None,
+            "serial_number": inspection.equipment.serial_number if inspection.equipment else inspection.inventory_part.serial_number if inspection.inventory_part else None,
+            "subtotal": float(line_subtotal),
+            "tax_amount": float(line_tax),
+            "discount_amount": float(line_discount),
+            "total_amount": float(line_total),
+        })
+    return line_items
 
 
 @router.get("/report-template")
@@ -799,6 +943,7 @@ def facility_inventory_for_inspection(
             "serial_number": part.serial_number,
             "location": part.location,
             "condition": part.condition,
+            "unit_price": float(part.unit_price or 0),
             "is_critical": part.is_critical,
             "status": part.status,
         }
@@ -1048,6 +1193,15 @@ def get_inspection_batch(
     }
     for inspection in batch.inspections:
         inspection._inspection_invoice = invoice_map.get(inspection.id)
+    batch._batch_invoice = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.facility), joinedload(Invoice.inspection_batch), joinedload(Invoice.transactions))
+        .filter(
+            Invoice.invoice_type == InvoiceType.INSPECTION,
+            Invoice.inspection_batch_id == batch.id,
+        )
+        .first()
+    )
     return _batch_response(batch, include_assets=True)
 
 
@@ -1633,26 +1787,24 @@ def complete_inspection(
         )
     _sync_batch_status(inspection.batch)
 
-    invoice = _create_inspection_invoice(db, inspection, payload, current_user)
     log_activity(
         db,
         "inspections",
         inspection.id,
         "COMPLETE",
         current_user,
-        {"result": payload.result.value, "invoice_id": invoice.id, "inventory_part_id": inspection.inventory_part_id},
+        {"result": payload.result.value, "inventory_part_id": inspection.inventory_part_id},
     )
     notify_admins(
         db,
         title="Inspection completed",
-        message=f"{inspection.inspection_number} was completed and invoice {invoice.invoice_number} was generated.",
+        message=f"{inspection.inspection_number} was completed.",
         notification_type="inspection",
         link_url="/inspections",
         actor_id=current_user.id,
     )
     db.commit()
     db.refresh(inspection)
-    inspection._inspection_invoice = invoice
     return _inspection_response(inspection)
 
 
@@ -1692,7 +1844,6 @@ def save_inspection_report(
     if not inspection.inspector_id:
         inspection.inspector_id = current_user.id
 
-    invoice: Optional[Invoice] = None
     if payload.status == InspectionStatus.IN_PROGRESS:
         inspection.status = InspectionStatus.IN_PROGRESS
         inspection.result = InspectionResult.PENDING
@@ -1703,6 +1854,11 @@ def save_inspection_report(
         if existing_invoice:
             existing_invoice.status = InvoiceStatus.CANCELLED
             existing_invoice.updated_at = datetime.utcnow()
+        if inspection.batch_id:
+            existing_batch_invoice = db.query(Invoice).filter(Invoice.inspection_batch_id == inspection.batch_id).first()
+            if existing_batch_invoice:
+                existing_batch_invoice.status = InvoiceStatus.CANCELLED
+                existing_batch_invoice.updated_at = datetime.utcnow()
         log_payload = {"status": "in_progress", "previous_result": _value(inspection.result)}
     elif payload.status == InspectionStatus.COMPLETED:
         inspection.status = InspectionStatus.COMPLETED
@@ -1714,8 +1870,7 @@ def save_inspection_report(
                 inspection.equipment.last_pm_date,
                 inspection.equipment.pm_scheduling,
             )
-        invoice = _create_inspection_invoice(db, inspection, payload, current_user)
-        log_payload = {"status": "completed", "result": payload.result.value, "invoice_id": invoice.id}
+        log_payload = {"status": "completed", "result": payload.result.value}
     else:
         raise HTTPException(status_code=400, detail="Report can only be saved as completed or in progress")
 
@@ -1723,9 +1878,99 @@ def save_inspection_report(
     log_activity(db, "inspections", inspection.id, "SAVE_REPORT", current_user, log_payload)
     db.commit()
     db.refresh(inspection)
-    if invoice:
-        inspection._inspection_invoice = invoice
     return _inspection_response(inspection)
+
+
+@router.post("/{inspection_id}/invoice")
+def generate_inspection_invoice(
+    inspection_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    require_module_permission(current_user, "inspections", "edit")
+
+    inspection = (
+        db.query(Inspection)
+        .options(
+            joinedload(Inspection.facility).joinedload(Facility.tier),
+            joinedload(Inspection.facility).joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
+            joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(Inspection.inspector),
+            joinedload(Inspection.batch),
+        )
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    require_facility_access(db, current_user, inspection.facility_id)
+
+    if inspection.batch_id:
+        batch_invoice = (
+            db.query(Invoice.id)
+            .filter(
+                Invoice.invoice_type == InvoiceType.INSPECTION,
+                Invoice.inspection_batch_id == inspection.batch_id,
+                Invoice.status != InvoiceStatus.CANCELLED,
+            )
+            .first()
+        )
+        if batch_invoice:
+            raise HTTPException(status_code=400, detail="A batch invoice already exists for this inspection's batch")
+
+    payload = _invoice_payload_from_completed_inspection(inspection)
+    invoice = _create_inspection_invoice(db, inspection, payload, current_user)
+    log_activity(db, "inspections", inspection.id, "GENERATE_INVOICE", current_user, {"invoice_id": invoice.id})
+    db.commit()
+    db.refresh(invoice)
+    invoice._batch_items = []
+    return {
+        **_invoice_response(invoice),
+        "inspection_number": inspection.inspection_number,
+        "inventory_part_name": _part_name(inspection.inventory_part) if inspection.inventory_part else _equipment_name(inspection.equipment),
+        "inspector_name": inspection.inspector.full_name if inspection.inspector else None,
+    }
+
+
+@router.post("/batches/{batch_id}/invoice")
+def generate_inspection_batch_invoice(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    require_module_permission(current_user, "inspections", "edit")
+
+    batch = (
+        db.query(InspectionBatch)
+        .options(
+            joinedload(InspectionBatch.facility).joinedload(Facility.tier),
+            joinedload(InspectionBatch.facility).joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.facility).joinedload(Facility.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.facility).joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(InspectionBatch.inspections).joinedload(Inspection.inspector),
+        )
+        .filter(InspectionBatch.id == batch_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Inspection batch not found")
+    require_facility_access(db, current_user, batch.facility_id)
+
+    invoice = _create_inspection_batch_invoice(db, batch, current_user)
+    invoice._batch_items = _batch_invoice_line_items(batch)
+    log_activity(db, "inspections", batch.id, "GENERATE_BATCH_INVOICE", current_user, {"invoice_id": invoice.id})
+    db.commit()
+    db.refresh(invoice)
+    invoice._batch_items = _batch_invoice_line_items(batch)
+    return {
+        **_invoice_response(invoice),
+        "inspection_number": batch.batch_number,
+        "inventory_part_name": f"{len(batch.inspections or [])} asset inspection batch",
+        "inspector_name": batch.inspector.full_name if batch.inspector else None,
+    }
 
 
 @router.get("/quotations")
@@ -1745,6 +1990,8 @@ def list_inspection_quotations(
             joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
             joinedload(Invoice.inspection).joinedload(Inspection.equipment),
             joinedload(Invoice.inspection).joinedload(Inspection.inspector),
+            joinedload(Invoice.inspection_batch).joinedload(InspectionBatch.inspections).joinedload(Inspection.inventory_part),
+            joinedload(Invoice.inspection_batch).joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment),
         )
         .filter(Invoice.invoice_type == InvoiceType.INSPECTION)
     )
@@ -1756,6 +2003,7 @@ def list_inspection_quotations(
             query
             .outerjoin(Facility, Invoice.facility_id == Facility.id)
             .outerjoin(Inspection, Invoice.inspection_id == Inspection.id)
+            .outerjoin(InspectionBatch, Invoice.inspection_batch_id == InspectionBatch.id)
             .filter(
                 or_(
                     Invoice.invoice_number.ilike(like),
@@ -1764,6 +2012,7 @@ def list_inspection_quotations(
                     Invoice.notes.ilike(like),
                     Facility.name.ilike(like),
                     Inspection.inspection_number.ilike(like),
+                    InspectionBatch.batch_number.ilike(like),
                 )
             )
         )
@@ -1774,11 +2023,16 @@ def list_inspection_quotations(
             {
                 **_invoice_response(invoice),
                 "inspection_number": invoice.inspection.inspection_number if invoice.inspection else None,
+                "inspection_batch_number": invoice.inspection_batch.batch_number if invoice.inspection_batch else None,
+                "batch_asset_count": len(invoice.inspection_batch.inspections or []) if invoice.inspection_batch else None,
+                "batch_items": _batch_invoice_line_items(invoice.inspection_batch) if invoice.inspection_batch else [],
                 "inventory_part_name": (
                     _part_name(invoice.inspection.inventory_part)
                     if invoice.inspection and invoice.inspection.inventory_part
                     else _equipment_name(invoice.inspection.equipment)
                     if invoice.inspection and invoice.inspection.equipment
+                    else f"{len(invoice.inspection_batch.inspections or [])} asset inspection batch"
+                    if invoice.inspection_batch
                     else None
                 ),
                 "inspector_name": invoice.inspection.inspector.full_name if invoice.inspection and invoice.inspection.inspector else None,

@@ -1,7 +1,6 @@
 import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { NumericField } from '../../components/NumericField'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useLocation } from 'react-router-dom'
 import {
   Autocomplete,
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
@@ -15,7 +14,6 @@ import BoltIcon from '@mui/icons-material/Bolt'
 import BuildIcon from '@mui/icons-material/Build'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PersonIcon from '@mui/icons-material/Person'
@@ -25,7 +23,7 @@ import SaveIcon from '@mui/icons-material/Save'
 import EventAvailableIcon from '@mui/icons-material/EventAvailable'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import AssessmentIcon from '@mui/icons-material/Assessment'
-import PrintIcon from '@mui/icons-material/Print'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import { toast } from 'react-toastify'
 
 import {
@@ -36,24 +34,26 @@ import {
   fetchInspectionBatch,
   fetchInspectionBatches,
   fetchInspectionFacilityEquipment,
+  fetchInspectionFacilityInventory,
   fetchInspectionFacilities,
   fetchInspectionForms,
-  fetchInspectionQuotations,
   fetchInspectionSummary,
   fetchInspections,
+  generateInspectionBatchInvoice,
+  generateInspectionInvoice,
   generateUpcomingInspections,
   removeInspectionBatchAsset,
   scheduleInspections,
   saveInspectionReport,
   startInspection as startScheduledInspection,
   updateInspectionForm,
-  updateInspectionInvoice,
   updateInspectionTechnician,
   type BatchAssetCreatePayload,
   type Inspection,
   type InspectionBatch,
   type InspectionEquipmentItem,
   type InspectionInvoice,
+  type InspectionInventoryItem,
   type InspectionFrequency,
   type InspectionFormOption,
 } from '@/api/inspections'
@@ -434,7 +434,6 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
       <section class="content">
         <div class="grid">
           <div class="box"><small>Facility</small><strong>${escapeHtml(inspection.facility_name || '-')}</strong></div>
-          ${inspection.invoice?.customer_name ? `<div class="box"><small>Customer</small><strong>${escapeHtml(inspection.invoice.customer_name)}</strong>${inspection.invoice.customer_phone ? `<div style="color:#64748B;font-size:11px">${escapeHtml(inspection.invoice.customer_phone)}</div>` : ''}${inspection.invoice.customer_address ? `<div style="color:#64748B;font-size:11px">${escapeHtml(inspection.invoice.customer_address)}</div>` : ''}</div>` : ''}
           <div class="box"><small>Asset</small><strong>${escapeHtml(inspection.asset_name || data.identity?.description || '-')}</strong></div>
           <div class="box"><small>Serial #</small><strong>${escapeHtml(inspection.serial_number || data.identity?.serial_number || '-')}</strong></div>
           <div class="box"><small>Result</small><strong>${escapeHtml(inspection.result || '-')}</strong></div>
@@ -470,7 +469,7 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
           <table><thead><tr><th>Description</th><th>Make</th><th>Serial #</th></tr></thead><tbody>${testEquipmentRows}</tbody></table>
         </section>
         <section class="section">
-          <h2>Compliance &amp; Billing</h2>
+          <h2>Compliance &amp; Charges</h2>
           <h3>Certification</h3><p>${escapeHtml(data.compliance?.certified || '-')}</p>
           <h3>Standard</h3><p>${escapeHtml(data.compliance?.standard || '-')}</p>
           <h3>Recommendations</h3><p>${escapeHtml(data.compliance?.recommendations || '-')}</p>
@@ -479,7 +478,6 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
             <span class="pill">Inspection: ${escapeHtml(money(data.billing?.inspection_charges || rawInspection.inspection_charge || 0))}</span>
             <span class="pill">Other: ${escapeHtml(money(data.billing?.others || rawInspection.other_charges || 0))}</span>
             <span class="pill">Total: ${escapeHtml(money(billingTotal))}</span>
-            <span class="pill">Invoice: ${escapeHtml(inspection.invoice?.invoice_number || 'Pending')}</span>
           </div>
         </section>
         <section class="footer">
@@ -705,7 +703,6 @@ const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
 
 const Inspections = () => {
   const pageSize = 10
-  const location = useLocation()
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.user)
   const canAddInspections = hasPermission(currentUser, 'inspections', 'add')
@@ -738,8 +735,6 @@ const Inspections = () => {
   const [formBuilderSchema, setFormBuilderSchema] = useState<InspectionFormSchema>(() => normalizeInspectionFormSchema({ sections: [] }))
   const [formBuilderRows, setFormBuilderRows] = useState(3)
   const [formBuilderColumns, setFormBuilderColumns] = useState(3)
-  const [invoiceEdit, setInvoiceEdit] = useState<InspectionInvoice | null>(null)
-  const [invoiceForm, setInvoiceForm] = useState<any>({})
   const [techEdit, setTechEdit] = useState<Inspection | null>(null)
   const [selectedTechId, setSelectedTechId] = useState<number | ''>('')
   const [addAssetOpen, setAddAssetOpen] = useState(false)
@@ -756,17 +751,6 @@ const Inspections = () => {
   const [completedBatchPage, setCompletedBatchPage] = useState(0)
   const [legacyInProgressPage, setLegacyInProgressPage] = useState(0)
   const [legacyCompletedPage, setLegacyCompletedPage] = useState(0)
-  const [quotationPage, setQuotationPage] = useState(0)
-  const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    if (params.get('tab') === 'quotations' || params.get('highlightInvoice')) {
-      setTab(4)
-      setQuotationPage(0)
-    }
-  }, [location.search])
-
   useEffect(() => {
     setUpcomingPage(0)
   }, [upcomingSearch, upcomingRange])
@@ -831,22 +815,18 @@ const Inspections = () => {
     queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, skip: legacyCompletedPage * pageSize, limit: pageSize }),
     enabled: tab === 3,
   })
-  const quotationsQ = useQuery({
-    queryKey: ['inspection-quotations', quotationPage, pageSize, highlightInvoiceId],
-    queryFn: () => fetchInspectionQuotations({
-      invoice_id: highlightInvoiceId || undefined,
-      skip: highlightInvoiceId ? 0 : quotationPage * pageSize,
-      limit: pageSize,
-    }),
-    enabled: tab === 4,
-  })
-  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 5 || Boolean(reportInspection) })
-  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || tab === 5 || addAssetOpen })
+  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 4 || Boolean(reportInspection) })
+  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || tab === 4 || addAssetOpen })
   const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) })
   const testEquipmentQ = useQuery({
     queryKey: ['test-equipment', 'inspection-active-options'],
     queryFn: () => fetchActiveTestEquipment({ limit: 500 }),
     enabled: Boolean(reportInspection),
+  })
+  const reportPartsQ = useQuery({
+    queryKey: ['inspection-inventory-parts', reportInspection?.facility_id],
+    queryFn: () => fetchInspectionFacilityInventory(Number(reportInspection?.facility_id)),
+    enabled: Boolean(reportInspection?.facility_id),
   })
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
@@ -924,16 +904,40 @@ const Inspections = () => {
   const reportMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => saveInspectionReport(id, data),
     onSuccess: () => {
-      toast.success(reportStatus === 'completed' ? 'Inspection report saved and invoice prepared' : 'Inspection moved back to in progress')
+      toast.success(reportStatus === 'completed' ? 'Inspection report completed' : 'Inspection moved back to in progress')
       setReportInspection(null)
       setReport(null)
       setReportStatus('completed')
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
-      queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save inspection report'),
+  })
+
+  const generateInvoiceMut = useMutation({
+    mutationFn: (inspectionId: number) => generateInspectionInvoice(inspectionId),
+    onSuccess: (invoice) => {
+      toast.success(`Invoice ${invoice.invoice_number} is ready in Billing`)
+      closeAssetActions()
+      setViewReport(prev => prev && prev.id === invoice.inspection_id ? { ...prev, invoice } : prev)
+      queryClient.invalidateQueries({ queryKey: ['inspections'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not generate invoice'),
+  })
+
+  const generateBatchInvoiceMut = useMutation({
+    mutationFn: (batchId: number) => generateInspectionBatchInvoice(batchId),
+    onSuccess: (invoice) => {
+      toast.success(`Batch invoice ${invoice.invoice_number} is ready in Billing`)
+      queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not generate batch invoice'),
   })
 
   const addBatchAssetMut = useMutation({
@@ -984,18 +988,6 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not change technician'),
-  })
-
-  const invoiceMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => updateInspectionInvoice(id, data),
-    onSuccess: () => {
-      toast.success('Inspection invoice updated')
-      setInvoiceEdit(null)
-      queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] })
-      queryClient.invalidateQueries({ queryKey: ['inspections'] })
-      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
-    },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update invoice'),
   })
 
   const formMut = useMutation({
@@ -1090,23 +1082,6 @@ const Inspections = () => {
     }
   }, [reportInspection, defaultReportForm?.id])
 
-  useEffect(() => {
-    if (!invoiceEdit) return
-    setInvoiceForm({
-      subtotal: Number(invoiceEdit.subtotal || 0),
-      tax_amount: Number(invoiceEdit.tax_amount || 0),
-      discount_amount: Number(invoiceEdit.discount_amount || 0),
-      total_amount: Number(invoiceEdit.total_amount || 0),
-      amount_paid: Number(invoiceEdit.amount_paid || 0),
-      due_date: invoiceEdit.due_date,
-      payment_terms: invoiceEdit.payment_terms || 'Net 30',
-      status: invoiceEdit.status,
-      notes: invoiceEdit.notes || '',
-      travel_charges: Number(invoiceEdit.travel_charges || 0),
-      service_charges: Number(invoiceEdit.service_charges || 0),
-    })
-  }, [invoiceEdit])
-
   const legacyInProgress = inProgressQ.data?.items || []
   const legacyCompleted = completedQ.data?.items || []
 
@@ -1115,15 +1090,7 @@ const Inspections = () => {
     instantItems: equipment.length,
     inProgress: summaryQ.data?.in_progress || 0,
     completed: summaryQ.data?.completed || 0,
-    quotations: summaryQ.data?.quotations || 0,
   }
-
-  useEffect(() => {
-    if (!highlightInvoiceId || !quotationsQ.data?.items?.length) return
-    window.setTimeout(() => {
-      document.getElementById(`inspection-invoice-${highlightInvoiceId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 150)
-  }, [highlightInvoiceId, quotationsQ.data?.items?.length])
 
   const selectedBatch = batchDetailQ.data
   const batchEquipmentIds = useMemo(
@@ -1232,6 +1199,17 @@ const Inspections = () => {
     serial_number: item.serial_number || '',
     asset: item.asset || '',
     image_url: item.image_url || '',
+  })
+
+  const inventoryPartSnapshot = (item: InspectionInventoryItem) => ({
+    id: item.id,
+    description: item.description || item.part_type || '',
+    part_number: item.part_number || '',
+    price: Number(item.unit_price || 0),
+    condition: item.condition || '',
+    make: item.make || '',
+    model: item.model || '',
+    serial_number: item.serial_number || '',
   })
 
   const schemaForForm = (form: InspectionFormOption | null | undefined) =>
@@ -1510,14 +1488,6 @@ const Inspections = () => {
     })
   }
 
-  const saveInvoice = () => {
-    if (!canEditInspections) return toast.error('You do not have permission to update inspection invoices')
-    if (!invoiceEdit) return
-    // Omit total_amount so the backend always recalculates it from subtotal + charges + tax - discount
-    const { total_amount: _omit, ...invoicePayload } = invoiceForm
-    invoiceMut.mutate({ id: invoiceEdit.id, data: invoicePayload })
-  }
-
   const openAssetActions = (event: MouseEvent<HTMLElement>, asset: Inspection) => {
     setAssetActionAnchor(event.currentTarget)
     setAssetActionItem(asset)
@@ -1638,7 +1608,6 @@ const Inspections = () => {
                       <Button size="small" startIcon={<AssessmentIcon />} variant="outlined" onClick={() => setViewReport(item)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                         Report
                       </Button>
-                      <Chip label={item.invoice?.invoice_number || 'Invoice pending'} sx={{ fontWeight: 900 }} />
                     </Box>
                   )}
                 </TableCell>
@@ -1703,34 +1672,6 @@ const Inspections = () => {
                             sx={{ bgcolor: '#EEF2FF', color: '#4F46E5', '&:hover': { bgcolor: '#E0E7FF' } }}
                           >
                             <AssessmentIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Print All Invoices">
-                          <IconButton
-                            size="small"
-                            onClick={async () => {
-                              try {
-                                const detail = await fetchInspectionBatch(batch.id)
-                                printBatchInvoices(detail)
-                              } catch { toast.error('Could not load batch') }
-                            }}
-                            sx={{ bgcolor: '#F0FDF4', color: '#059669', '&:hover': { bgcolor: '#DCFCE7' } }}
-                          >
-                            <PrintIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Print Batch Summary Invoice">
-                          <IconButton
-                            size="small"
-                            onClick={async () => {
-                              try {
-                                const detail = await fetchInspectionBatch(batch.id)
-                                printBatchSummaryInvoice(detail)
-                              } catch { toast.error('Could not load batch') }
-                            }}
-                            sx={{ bgcolor: '#FFF7ED', color: '#D97706', '&:hover': { bgcolor: '#FEF3C7' } }}
-                          >
-                            <ReceiptLongIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       </>
@@ -1990,7 +1931,6 @@ const Inspections = () => {
         {renderKpi('Assets', stats.instantItems, <BoltIcon />, '#7C3AED')}
         {renderKpi('In Progress', stats.inProgress, <BuildIcon />, '#F59E0B')}
         {renderKpi('Completed', stats.completed, <CheckCircleIcon />, '#059669')}
-        {renderKpi('Quotations', stats.quotations, <ReceiptLongIcon />, '#2563EB')}
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
@@ -1999,7 +1939,6 @@ const Inspections = () => {
           <Tab icon={<BoltIcon />} iconPosition="start" label="Instant Inspection" />
           <Tab icon={<BuildIcon />} iconPosition="start" label="In Progress" />
           <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Completed" />
-          <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Inspection Quotations" />
           <Tab icon={<AssignmentTurnedInIcon />} iconPosition="start" label="Inspection Forms" />
         </Tabs>
 
@@ -2214,72 +2153,6 @@ const Inspections = () => {
 
         {tab === 4 && (
           <Box>
-            <TableContainer className="list-scroll-panel">
-              <Table stickyHeader>
-              <TableHead>
-                <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                  <TableCell sx={{ fontWeight: 900 }}>Invoice #</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Asset / Part</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Due</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {quotationsQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
-                  <TableRow key={i}><TableCell colSpan={8}><Skeleton /></TableCell></TableRow>
-                )) : (quotationsQ.data?.items || []).length === 0 ? (
-                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspection quotations yet.</TableCell></TableRow>
-                ) : quotationsQ.data!.items.map(invoice => {
-                  const chip = statusChip(invoice.status)
-                  const highlighted = highlightInvoiceId === invoice.id
-                  return (
-                    <TableRow
-                      key={invoice.id}
-                      id={`inspection-invoice-${invoice.id}`}
-                      hover
-                      sx={highlighted ? {
-                        bgcolor: '#F5F3FF',
-                        outline: '2px solid #7C3AED',
-                        outlineOffset: '-2px',
-                        '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
-                      } : undefined}
-                    >
-                      <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{invoice.invoice_number}</TableCell>
-                      <TableCell>{invoice.inspection_number || '-'}</TableCell>
-                      <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} /></TableCell>
-                      <TableCell><ClippedTooltipText value={invoice.inventory_part_name || (invoice as any).asset_name || (invoice as any).equipment_name || '-'} /></TableCell>
-                      <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
-                      <TableCell><Chip size="small" label={invoice.status} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
-                      <TableCell>{formatDate(invoice.due_date)}</TableCell>
-                      <TableCell align="right">
-                        {highlighted && (
-                          <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
-                        )}
-                        <Button startIcon={<PrintIcon />} variant="outlined" onClick={() => printInspectionInvoice(invoice)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, mr: 1 }}>
-                          Print
-                        </Button>
-                        {canEditInspections && (
-                          <Button startIcon={<EditIcon />} variant="outlined" onClick={() => setInvoiceEdit(invoice)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                            Edit
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-              </Table>
-            </TableContainer>
-            {renderPagination(quotationsQ.data?.total || 0, quotationPage, setQuotationPage)}
-          </Box>
-        )}
-
-        {tab === 5 && (
-          <Box>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
               <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateFormBuilder} disabled={!canAddInspections} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                 New Form
@@ -2483,22 +2356,19 @@ const Inspections = () => {
                 Print All Reports
               </Button>
               <Button
-                startIcon={<PrintIcon />}
+                startIcon={generateBatchInvoiceMut.isPending ? <CircularProgress size={18} /> : <ReceiptLongIcon />}
                 variant="outlined"
-                onClick={() => printBatchInvoices(selectedBatch)}
-                disabled={!selectedBatch.assets?.some(a => a.invoice)}
+                onClick={() => generateBatchInvoiceMut.mutate(selectedBatch.id)}
+                disabled={
+                  !canEditInspections ||
+                  selectedBatch.status !== 'completed' ||
+                  !selectedBatch.assets?.length ||
+                  Boolean(selectedBatch.batch_invoice) ||
+                  generateBatchInvoiceMut.isPending
+                }
                 sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: '#059669', borderColor: '#059669', '&:hover': { borderColor: '#047857', bgcolor: '#F0FDF4' } }}
               >
-                Print All Invoices
-              </Button>
-              <Button
-                startIcon={<ReceiptLongIcon />}
-                variant="outlined"
-                onClick={() => printBatchSummaryInvoice(selectedBatch)}
-                disabled={!selectedBatch.assets?.some(a => a.invoice)}
-                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: '#D97706', borderColor: '#D97706', '&:hover': { borderColor: '#B45309', bgcolor: '#FFF7ED' } }}
-              >
-                Print Batch Summary
+                {selectedBatch.batch_invoice ? 'Batch Invoice Generated' : 'Generate Batch Invoice'}
               </Button>
             </>
           )}
@@ -2522,13 +2392,17 @@ const Inspections = () => {
           <AssessmentIcon fontSize="small" sx={{ mr: 1 }} /> Print Report
         </MenuItem>
         <MenuItem
-          disabled={!assetActionItem?.invoice}
+          disabled={
+            !canEditInspections ||
+            assetActionItem?.status !== 'completed' ||
+            Boolean(assetActionItem?.invoice) ||
+            generateInvoiceMut.isPending
+          }
           onClick={() => {
-            if (assetActionItem?.invoice) printInspectionInvoice(assetActionItem.invoice)
-            closeAssetActions()
+            if (assetActionItem) generateInvoiceMut.mutate(assetActionItem.id)
           }}
         >
-          <ReceiptLongIcon fontSize="small" sx={{ mr: 1 }} /> Print Invoice
+          <ReceiptLongIcon fontSize="small" sx={{ mr: 1 }} /> {assetActionItem?.invoice ? 'Invoice Generated' : 'Generate Invoice'}
         </MenuItem>
       </Menu>
 
@@ -2937,6 +2811,35 @@ const Inspections = () => {
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Parts & Test Equipment</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Autocomplete
+                    multiple
+                    options={reportPartsQ.data || []}
+                    value={(reportPartsQ.data || []).filter((item) => (report.parts || []).some((selected: any) => selected.id === item.id))}
+                    onChange={(_, value) => setReport((prev: any) => ({
+                      ...prev,
+                      parts: value.length ? value.map(inventoryPartSnapshot) : [{ description: '', part_number: '', price: 0, condition: '' }],
+                    }))}
+                    getOptionLabel={(option) => `${option.part_number}${option.description ? ` - ${option.description}` : ''}`}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    loading={reportPartsQ.isLoading}
+                    renderOption={(props, option) => (
+                      <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#EEF2FF', color: '#4F46E5', fontWeight: 900 }}>
+                          {(option.part_number || 'P').slice(0, 1).toUpperCase()}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 800 }}>{option.part_number}</Typography>
+                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                            {[option.description, option.make, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    )}
+                    renderInput={(params) => (
+                      <TextField {...params} size="small" label="Select Parts Used" placeholder="Attach used parts from inventory" />
+                    )}
+                    sx={{ mb: 1.5 }}
+                  />
                   {(report.parts || []).map((part: any, index: number) => (
                     <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 0.8fr 1fr', gap: 1, mb: 1 }}>
                       <TextField size="small" label="Description" value={part.description} onChange={e => updateArrayReport('parts', index, 'description', e.target.value)} />
@@ -3007,7 +2910,7 @@ const Inspections = () => {
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setReportInspection(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
           <Button startIcon={reportMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={submitReport} disabled={!canEditInspections || reportMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
-            {reportStatus === 'completed' ? 'Complete & Generate Invoice' : 'Save as In Progress'}
+            {reportStatus === 'completed' ? 'Complete Report' : 'Save as In Progress'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -3022,7 +2925,7 @@ const Inspections = () => {
         <DialogContent dividers>
           {viewReport?.form_data ? (
             <Box sx={{ display: 'grid', gap: 2 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Result</Typography>
                   <Chip label={viewReport.result} sx={{ mt: 1, fontWeight: 900, ...statusChip(viewReport.result) }} />
@@ -3030,10 +2933,6 @@ const Inspections = () => {
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Certification</Typography>
                   <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>{viewReport.form_data.compliance?.certified || '-'}</Typography>
-                </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Invoice</Typography>
-                  <Typography sx={{ color: '#059669', fontWeight: 900 }}>{viewReport.invoice?.invoice_number || 'Pending'}</Typography>
                 </Card>
               </Box>
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Summary</Typography>
@@ -3048,49 +2947,22 @@ const Inspections = () => {
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
+          {viewReport?.status === 'completed' && (
+            <Button
+              startIcon={generateInvoiceMut.isPending ? <CircularProgress size={18} /> : <ReceiptLongIcon />}
+              onClick={() => viewReport && generateInvoiceMut.mutate(viewReport.id)}
+              disabled={!canEditInspections || Boolean(viewReport.invoice) || generateInvoiceMut.isPending}
+              variant="outlined"
+              sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: '#059669', borderColor: '#059669', '&:hover': { borderColor: '#047857', bgcolor: '#F0FDF4' } }}
+            >
+              {viewReport.invoice ? 'Invoice Generated' : 'Generate Invoice'}
+            </Button>
+          )}
           <Button onClick={() => viewReport && printInspectionReport(viewReport)} variant="outlined" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Print Report</Button>
           <Button onClick={() => setViewReport(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Close</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(invoiceEdit)} onClose={() => setInvoiceEdit(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Edit Inspection Invoice</DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, pt: 1 }}>
-            {['subtotal', 'tax_amount', 'discount_amount', 'total_amount', 'amount_paid'].map(key => (
-              <NumericField key={key} label={key.replace(/_/g, ' ')} value={Number(invoiceForm[key] ?? 0)} onChange={val => setInvoiceForm((prev: any) => ({ ...prev, [key]: val }))} />
-            ))}
-            <NumericField
-              label="Travel Charges ($)"
-              value={Number(invoiceForm.travel_charges ?? 0)}
-              onChange={val => setInvoiceForm((prev: any) => ({ ...prev, travel_charges: val }))}
-              inputProps={{ min: 0, step: 0.01 }}
-            />
-            <NumericField
-              label="Service Charges ($)"
-              value={Number(invoiceForm.service_charges ?? 0)}
-              onChange={val => setInvoiceForm((prev: any) => ({ ...prev, service_charges: val }))}
-              inputProps={{ min: 0, step: 0.01 }}
-            />
-            <TextField label="Due date" type="date" value={invoiceForm.due_date || ''} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-            <TextField select label="Status" value={invoiceForm.status || 'pending'} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, status: e.target.value }))}>
-              <MenuItem value="pending">Pending</MenuItem>
-              <MenuItem value="partially_paid">Partially Paid</MenuItem>
-              <MenuItem value="paid">Paid</MenuItem>
-              <MenuItem value="overdue">Overdue</MenuItem>
-              <MenuItem value="cancelled">Cancelled</MenuItem>
-            </TextField>
-            <TextField label="Payment terms" value={invoiceForm.payment_terms || ''} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, payment_terms: e.target.value }))} />
-            <TextField label="Notes" value={invoiceForm.notes || ''} onChange={e => setInvoiceForm((prev: any) => ({ ...prev, notes: e.target.value }))} multiline rows={3} sx={{ gridColumn: '1 / -1' }} />
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setInvoiceEdit(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={invoiceMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={saveInvoice} disabled={!canEditInspections || invoiceMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
-            Save Invoice
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   )
 }

@@ -120,6 +120,9 @@ const billingTypeLabel = (item: BillingItem) => {
   if (item.source === 'service') {
     return item.billingKind === 'service_invoice' ? 'Service Invoice' : 'Service Quote'
   }
+  if (item.source === 'inspection') {
+    return (item.raw as InspectionInvoice).inspection_batch_id ? 'Inspection Batch Invoice' : 'Inspection Invoice'
+  }
   return SOURCE_LABEL[item.source]
 }
 
@@ -274,11 +277,13 @@ const Billing = () => {
       id: invoice.id,
       facilityId: invoice.facility_id,
       number: invoice.invoice_number,
-      relatedNumber: invoice.inspection_number || '-',
+      relatedNumber: invoice.inspection_batch_number || invoice.inspection_number || '-',
       facility: invoice.facility_name || '-',
       customer: invoice.customer_name,
       customerEmail: invoice.customer_email,
-      description: invoice.inventory_part_name || 'Inspection invoice',
+      description: invoice.inspection_batch_id
+        ? `${invoice.batch_asset_count || invoice.batch_items?.length || 0} asset inspection batch`
+        : invoice.inventory_part_name || 'Inspection invoice',
       amount: Number(invoice.total_amount || 0),
       paid: Number(invoice.amount_paid || 0),
       balance: Number(invoice.balance_due || 0),
@@ -579,6 +584,18 @@ const Billing = () => {
     }
     if (item.source === 'inspection') {
       const invoice = item.raw as InspectionInvoice
+      if (invoice.inspection_batch_id && invoice.batch_items?.length) {
+        return invoice.batch_items.map(line => ({
+          item_number: line.inspection_number,
+          description: line.asset_name || 'Inspection asset',
+          quantity: 1,
+          unit_price: Number(line.subtotal || 0),
+          shipping_fee: 0,
+          setup_fee: 0,
+          condition: line.serial_number || line.asset_tag || null,
+          total_amount: Number(line.subtotal || 0),
+        }))
+      }
       const baseAmount = Number((invoice as any).subtotal || item.amount || 0)
       const rows: PrintableLineItem[] = [{
         item_number: item.relatedNumber || item.number,
@@ -775,7 +792,7 @@ const Billing = () => {
                               if (item.source === 'service') navigate(`/service-requests/${(item.raw as any).service_request_id}?highlightBilling=${item.id}`)
                               if (item.source === 'sales') navigate(`/sales/invoices?highlightInvoice=${item.id}`)
                               if (item.source === 'rental') navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
-                              if (item.source === 'inspection') navigate(`/inspections?tab=quotations&highlightInvoice=${item.id}`)
+                              if (item.source === 'inspection') setExpandedKey(expanded ? null : item.key)
                             }}
                             sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none' }}
                           >
@@ -941,6 +958,7 @@ const Kpi = ({ label, value, color }: { label: string; value: string; color: str
 const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountItems: BillingItem[] }) => {
   const serviceQuotation = item.source === 'service' && item.billingKind !== 'service_invoice' ? item.raw as ServiceRequestQuotationList : null
   const serviceInvoice = item.source === 'service' && item.billingKind === 'service_invoice' ? item.raw as ServiceInvoice : null
+  const inspectionInvoice = item.source === 'inspection' ? item.raw as InspectionInvoice : null
   const rawSubtotal = Number((item.raw as any).subtotal ?? item.amount)
   const rawTax = Number((item.raw as any).tax_amount || 0)
   const rawDiscount = Number((item.raw as any).discount_amount || 0)
@@ -995,6 +1013,14 @@ const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountIt
       quantity: line.quantity,
       price: line.unit_price,
       total: line.total,
+    }))
+    : inspectionInvoice?.inspection_batch_id && inspectionInvoice.batch_items?.length
+    ? inspectionInvoice.batch_items.map(line => ({
+      label: line.asset_name || 'Inspection asset',
+      meta: `${line.inspection_number}${line.serial_number ? ` / ${line.serial_number}` : ''}`,
+      quantity: 1,
+      price: Number(line.subtotal || 0),
+      total: Number(line.subtotal || 0),
     }))
     : [{
       label: item.description,
