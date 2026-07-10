@@ -32,7 +32,7 @@ const ClippedTooltipText = ({
   field = false,
   maxWidth = '100%',
   variant = 'body2',
-  fontWeight = 700,
+  fontWeight = 600,
   color = '#1E1B4B',
   monospace = false,
   sx,

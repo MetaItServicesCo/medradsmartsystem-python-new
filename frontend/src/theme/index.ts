@@ -28,21 +28,21 @@ const theme = createTheme({
     info: { main: '#4F46E5' },
   },
   typography: {
-    fontFamily: '"Inter", "Segoe UI", sans-serif',
-    fontWeightRegular: 500,
-    fontWeightMedium: 700,
-    fontWeightBold: 900,
-    h1: { fontWeight: 900, color: '#1E1B4B' },
-    h2: { fontWeight: 900, color: '#1E1B4B' },
-    h3: { fontWeight: 900, color: '#1E1B4B' },
-    h4: { fontWeight: 900, color: '#1E1B4B' },
-    h5: { fontWeight: 900, color: '#1E1B4B' },
-    h6: { fontWeight: 800, color: '#1E1B4B' },
-    subtitle1: { color: '#6B7280', fontWeight: 700 },
-    subtitle2: { color: '#6B7280', fontWeight: 700 },
+    fontFamily: '"Manrope", "Inter", "Segoe UI", sans-serif',
+    fontWeightRegular: 400,
+    fontWeightMedium: 600,
+    fontWeightBold: 800,
+    h1: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.035em' },
+    h2: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.03em' },
+    h3: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.025em' },
+    h4: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.02em' },
+    h5: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.015em' },
+    h6: { fontWeight: 700, color: '#1E1B4B', letterSpacing: '-0.01em' },
+    subtitle1: { color: '#6B7280', fontWeight: 600 },
+    subtitle2: { color: '#6B7280', fontWeight: 600 },
     body1: { color: '#374151' },
     body2: { color: '#6B7280' },
-    button: { textTransform: 'none', fontWeight: 800 },
+    button: { textTransform: 'none', fontWeight: 700, letterSpacing: '-0.01em' },
   },
   shape: {
     borderRadius: 18,
@@ -62,6 +62,9 @@ const theme = createTheme({
         body: {
           backgroundColor: '#E9EEFA',
           color: '#1E1B4B',
+          WebkitFontSmoothing: 'antialiased',
+          MozOsxFontSmoothing: 'grayscale',
+          textRendering: 'optimizeLegibility',
         },
         '::selection': {
           backgroundColor: 'rgba(113,97,216,0.18)',
@@ -170,7 +173,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           color: '#64748B',
-          fontWeight: 700,
+          fontWeight: 600,
           '&.Mui-focused': {
             color: '#7161D8',
           },
@@ -200,7 +203,7 @@ const theme = createTheme({
           borderRadius: 10,
           margin: '3px 6px',
           minHeight: 40,
-          fontWeight: 700,
+          fontWeight: 600,
           '&.Mui-selected': {
             backgroundColor: 'rgba(113,97,216,0.10)',
             color: '#5445B3',
@@ -228,7 +231,7 @@ const theme = createTheme({
         root: {
           minHeight: 58,
           textTransform: 'none',
-          fontWeight: 850,
+          fontWeight: 700,
           color: '#64748B',
           '&.Mui-selected': {
             color: '#5445B3',
@@ -242,7 +245,7 @@ const theme = createTheme({
           '& .MuiTableCell-head': {
             backgroundColor: '#F8FAFC',
             color: '#6B7280',
-            fontWeight: 900,
+            fontWeight: 700,
             fontSize: '0.75rem',
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
@@ -275,7 +278,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 9,
-          fontWeight: 800,
+          fontWeight: 700,
           fontSize: '0.75rem',
         },
       },
@@ -294,7 +297,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           color: '#1E1B4B',
-          fontWeight: 900,
+          fontWeight: 800,
           padding: '22px 28px 18px',
         },
       },
