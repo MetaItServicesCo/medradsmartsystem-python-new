@@ -18,6 +18,7 @@ from app.models.sales import SalesQuotation, SalesQuotationLineItem
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.invoice_editing import compose_invoice_edit_notes, editable_line_items, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notifications
@@ -66,11 +67,21 @@ class SalesQuotationUpdate(BaseModel):
 
 
 class SalesInvoiceUpdate(BaseModel):
+    customer_name: Optional[str] = None
+    customer_email: Optional[EmailStr] = None
+    customer_phone: Optional[str] = None
+    customer_address: Optional[str] = None
+    subtotal: Optional[Decimal] = None
+    tax_amount: Optional[Decimal] = None
+    discount_amount: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
     amount_paid: Optional[Decimal] = None
+    issue_date: Optional[date] = None
     due_date: Optional[date] = None
     status: Optional[InvoiceStatus] = None
     payment_method: Optional[str] = None
     notes: Optional[str] = None
+    line_items: Optional[list[dict[str, Any]]] = None
 
 
 class SalesInvoiceCreate(BaseModel):
@@ -173,6 +184,8 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "work_order": invoice.sales_quotation.work_order if invoice.sales_quotation else None,
         "customer_name": invoice.customer_name,
         "customer_email": invoice.customer_email,
+        "customer_phone": invoice.customer_phone,
+        "customer_address": invoice.customer_address,
         "facility_id": invoice.facility_id,
         "facility_name": invoice.facility.name if invoice.facility else None,
         "subtotal": invoice.subtotal,
@@ -185,10 +198,11 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "issue_date": invoice.issue_date,
         "due_date": invoice.due_date,
         "payment_method": invoice.payment_method,
-        "notes": invoice.notes,
+        "notes": strip_invoice_edit_metadata(invoice.notes),
         "created_at": invoice.created_at,
         "updated_at": invoice.updated_at,
         "transactions": [transaction_response(item) for item in invoice.transactions or []],
+        "line_items": editable_line_items(invoice.notes),
     }
 
 
@@ -695,9 +709,20 @@ def update_sales_invoice(
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
-    for field in ["amount_paid", "due_date", "notes", "status", "payment_method"]:
+    existing_metadata = parse_invoice_edit_metadata(invoice.notes)
+    if "line_items" in update_data:
+        existing_metadata["line_items"] = update_data.pop("line_items") or []
+    for field in [
+        "customer_name", "customer_email", "customer_phone", "customer_address",
+        "subtotal", "tax_amount", "discount_amount", "total_amount",
+        "amount_paid", "issue_date", "due_date", "status", "payment_method",
+    ]:
         if field in update_data:
             setattr(invoice, field, update_data[field])
+    if "notes" in update_data or existing_metadata:
+        invoice.notes = compose_invoice_edit_notes(invoice.notes, update_data.get("notes"), existing_metadata)
+    if "total_amount" not in update_data and any(field in update_data for field in ["subtotal", "tax_amount", "discount_amount"]):
+        invoice.total_amount = _money(invoice.subtotal) + _money(invoice.tax_amount) - _money(invoice.discount_amount)
     invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
     if invoice.balance_due <= 0:
         invoice.status = InvoiceStatus.PAID

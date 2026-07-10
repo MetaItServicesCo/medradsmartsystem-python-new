@@ -574,10 +574,20 @@ const Billing = () => {
     mutationFn: async ({ item, data }: { item: BillingItem; data: PrintableInvoiceEditPayload }) => {
       const amountPaid = data.amount_paid === undefined ? undefined : Number(data.amount_paid || 0)
       const commonPayload = {
+        customer_name: data.customer_name,
+        customer_email: data.customer_email || undefined,
+        customer_phone: data.customer_phone || null,
+        customer_address: data.customer_address || null,
+        subtotal: data.subtotal,
+        tax_amount: data.tax_amount,
+        discount_amount: data.discount_amount,
+        total_amount: data.total_amount,
         ...(amountPaid !== undefined ? { amount_paid: amountPaid } : {}),
+        issue_date: data.issue_date || undefined,
         due_date: data.due_date || undefined,
         status: data.status,
         notes: data.notes || undefined,
+        line_items: data.line_items,
       }
 
       if (item.source === 'sales') {
@@ -716,6 +726,20 @@ const Billing = () => {
     return 'Qty'
   }
 
+  const normalizeCustomLineItems = (rows?: any[] | null, fallbackNumber?: string): PrintableLineItem[] => (
+    (rows || []).map((line, index) => ({
+      item_number: line.item_number || line.part_number || fallbackNumber || `ITEM-${index + 1}`,
+      description: line.description || line.part_description || 'Invoice item',
+      quantity: Number(line.quantity || 0),
+      unit_price: Number(line.unit_price || 0),
+      shipping_fee: Number(line.shipping_fee || 0),
+      setup_fee: Number(line.setup_fee || 0),
+      condition: line.condition || line.item_type || null,
+      total_amount: Number(line.total_amount ?? line.total ?? 0),
+      unitLabel: line.unitLabel,
+    }))
+  )
+
   const printableLineItems = (item: BillingItem | null): PrintableLineItem[] => {
     if (!item) return []
     if (item.source === 'service' && item.billingKind === 'service_invoice') {
@@ -751,6 +775,8 @@ const Billing = () => {
     }
     if (item.source === 'inspection') {
       const invoice = item.raw as InspectionInvoice
+      const customRows = normalizeCustomLineItems((invoice as any).line_items, item.number)
+      if (customRows.length) return customRows
       if (invoice.inspection_batch_id && invoice.batch_items?.length) {
         return invoice.batch_items.map(line => ({
           item_number: line.inspection_number,
@@ -799,6 +825,16 @@ const Billing = () => {
         })
       }
       return rows
+    }
+    if (item.source === 'sales') {
+      const invoice = item.raw as SalesInvoice
+      const customRows = normalizeCustomLineItems((invoice as any).line_items, item.number)
+      if (customRows.length) return customRows
+    }
+    if (item.source === 'rental') {
+      const invoice = item.raw as RentalInvoice
+      const customRows = normalizeCustomLineItems((invoice as any).line_items, item.number)
+      if (customRows.length) return customRows
     }
     return [{
       item_number: item.relatedNumber || item.number,

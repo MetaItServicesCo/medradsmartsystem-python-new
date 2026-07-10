@@ -9,11 +9,15 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   MenuItem,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import PrintIcon from '@mui/icons-material/Print'
+import AddIcon from '@mui/icons-material/Add'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 
 export type PrintDocumentType = 'invoice' | 'packing_slip' | 'ledger'
 
@@ -97,11 +101,21 @@ export interface PrintablePaidQuotation {
 }
 
 export interface PrintableInvoiceEditPayload {
+  customer_name?: string
+  customer_email?: string | null
+  customer_phone?: string | null
+  customer_address?: string | null
+  subtotal?: number
+  tax_amount?: number
+  discount_amount?: number
+  total_amount?: number
   amount_paid?: number
+  issue_date?: string | null
   due_date?: string | null
   status?: string
   payment_method?: string | null
   notes?: string | null
+  line_items?: PrintableLineItem[]
 }
 
 interface InvoicePrintDialogProps {
@@ -461,12 +475,22 @@ const InvoicePrintDialog = ({
 }: InvoicePrintDialogProps) => {
   const [documentType, setDocumentType] = useState<PrintDocumentType>('invoice')
   const [editForm, setEditForm] = useState({
+    customer_name: '',
+    customer_email: '',
+    customer_phone: '',
+    customer_address: '',
+    subtotal: '',
+    tax_amount: '',
+    discount_amount: '',
+    total_amount: '',
     due_date: '',
+    issue_date: '',
     status: '',
     payment_method: '',
     amount_paid: '',
     notes: '',
   })
+  const [editRows, setEditRows] = useState<PrintableLineItem[]>([])
   const previewAccentSoft = softAccentFor(accent)
   const isEditMode = mode === 'edit'
 
@@ -474,21 +498,41 @@ const InvoicePrintDialog = ({
     if (!invoice || !open) return
     setDocumentType('invoice')
     setEditForm({
+      customer_name: invoice.customer_name || '',
+      customer_email: invoice.customer_email || '',
+      customer_phone: invoice.customer_phone || '',
+      customer_address: invoice.customer_address || '',
+      subtotal: String(Number(invoice.subtotal || 0)),
+      tax_amount: String(Number(invoice.tax_amount || 0)),
+      discount_amount: String(Number(invoice.discount_amount || 0)),
+      total_amount: String(Number(invoice.total_amount || 0)),
       due_date: dateInputValue(invoice.due_date),
+      issue_date: dateInputValue(invoice.issue_date),
       status: invoice.status || 'pending',
       payment_method: invoice.payment_method || '',
       amount_paid: String(Number(invoice.amount_paid || 0)),
       notes: invoice.notes || '',
     })
-  }, [invoice, open])
+    setEditRows(lineItems.map(item => ({ ...item })))
+  }, [invoice, lineItems, open])
 
   const displayInvoice = useMemo<PrintableInvoice | null>(() => {
     if (!invoice || !isEditMode) return invoice
     const amountPaid = Number(editForm.amount_paid || 0)
+    const totalAmount = Number(editForm.total_amount || 0)
     return {
       ...invoice,
+      customer_name: editForm.customer_name || invoice.customer_name,
+      customer_email: editForm.customer_email || null,
+      customer_phone: editForm.customer_phone || null,
+      customer_address: editForm.customer_address || null,
+      subtotal: Number(editForm.subtotal || 0),
+      tax_amount: Number(editForm.tax_amount || 0),
+      discount_amount: Number(editForm.discount_amount || 0),
+      total_amount: totalAmount,
       amount_paid: amountPaid,
-      balance_due: Math.max(0, Number(invoice.total_amount || 0) - amountPaid),
+      balance_due: Math.max(0, totalAmount - amountPaid),
+      issue_date: editForm.issue_date || null,
       due_date: editForm.due_date || null,
       status: editForm.status || invoice.status,
       payment_method: editForm.payment_method || null,
@@ -505,13 +549,14 @@ const InvoicePrintDialog = ({
         amount: money(item.amount),
       }))
     }
-    return lineItems.map(item => ({
+    const rows = isEditMode ? editRows : lineItems
+    return rows.map(item => ({
       first: item.item_number,
       second: item.description,
       third: item.unitLabel ? `${item.quantity} ${item.unitLabel}` : `${quantityLabel} ${item.quantity}`,
       amount: documentType === 'packing_slip' ? item.condition || '-' : money(item.total_amount),
     }))
-  }, [displayInvoice?.invoice_number, documentType, ledgerTransactions, lineItems, quantityLabel])
+  }, [displayInvoice?.invoice_number, documentType, editRows, isEditMode, ledgerTransactions, lineItems, quantityLabel])
 
   const handlePrint = () => {
     if (!displayInvoice) return
@@ -522,12 +567,58 @@ const InvoicePrintDialog = ({
   const handleSave = () => {
     if (!onSave) return
     onSave({
+      customer_name: editForm.customer_name,
+      customer_email: editForm.customer_email || null,
+      customer_phone: editForm.customer_phone || null,
+      customer_address: editForm.customer_address || null,
+      subtotal: Number(editForm.subtotal || 0),
+      tax_amount: Number(editForm.tax_amount || 0),
+      discount_amount: Number(editForm.discount_amount || 0),
+      total_amount: Number(editForm.total_amount || 0),
       amount_paid: Number(editForm.amount_paid || 0),
+      issue_date: editForm.issue_date || null,
       due_date: editForm.due_date || null,
       status: editForm.status || undefined,
       payment_method: editForm.payment_method || null,
       notes: editForm.notes || null,
+      line_items: editRows.map(row => ({
+        ...row,
+        quantity: Number(row.quantity || 0),
+        unit_price: Number(row.unit_price || 0),
+        shipping_fee: Number(row.shipping_fee || 0),
+        setup_fee: Number(row.setup_fee || 0),
+        total_amount: Number(row.total_amount || 0),
+      })),
     })
+  }
+
+  const updateEditRow = (index: number, patch: Partial<PrintableLineItem>) => {
+    setEditRows(rows => rows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      const next = { ...row, ...patch }
+      if ('quantity' in patch || 'unit_price' in patch || 'shipping_fee' in patch || 'setup_fee' in patch) {
+        const quantity = Number(next.quantity || 0)
+        const unitPrice = Number(next.unit_price || 0)
+        next.total_amount = Number((quantity * unitPrice + Number(next.shipping_fee || 0) + Number(next.setup_fee || 0)).toFixed(2))
+      }
+      return next
+    }))
+  }
+
+  const addEditRow = () => {
+    setEditRows(rows => [
+      ...rows,
+      {
+        item_number: `ITEM-${rows.length + 1}`,
+        description: 'New item',
+        quantity: 1,
+        unit_price: 0,
+        shipping_fee: 0,
+        setup_fee: 0,
+        condition: null,
+        total_amount: 0,
+      },
+    ])
   }
 
   return (
@@ -592,13 +683,29 @@ const InvoicePrintDialog = ({
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, pb: 2 }}>
                 <Box sx={{ p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC' }}>
                   <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Customer</Typography>
-                  <Typography sx={{ fontWeight: 900 }}>{displayInvoice.customer_name}</Typography>
-                  <Typography sx={{ color: '#6B7280' }}>{displayInvoice.customer_email || '-'}</Typography>
-                  <Typography sx={{ color: '#6B7280' }}>{displayInvoice.facility_name || '-'}</Typography>
+                  {isEditMode ? (
+                    <Box sx={{ display: 'grid', gap: 1, mt: 1 }}>
+                      <TextField size="small" label="Customer name" value={editForm.customer_name} onChange={event => setEditForm(prev => ({ ...prev, customer_name: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                      <TextField size="small" label="Customer email" value={editForm.customer_email} onChange={event => setEditForm(prev => ({ ...prev, customer_email: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                      <TextField size="small" label="Customer phone" value={editForm.customer_phone} onChange={event => setEditForm(prev => ({ ...prev, customer_phone: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                      <TextField size="small" label="Customer address" value={editForm.customer_address} onChange={event => setEditForm(prev => ({ ...prev, customer_address: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                    </Box>
+                  ) : (
+                    <>
+                      <Typography sx={{ fontWeight: 900 }}>{displayInvoice.customer_name}</Typography>
+                      <Typography sx={{ color: '#6B7280' }}>{displayInvoice.customer_email || '-'}</Typography>
+                      <Typography sx={{ color: '#6B7280' }}>{displayInvoice.facility_name || '-'}</Typography>
+                    </>
+                  )}
                 </Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: previewAccentSoft }}>
                   <Typography sx={{ fontWeight: 900 }}>Reference</Typography><Typography>{displayInvoice.reference_number || '-'}</Typography>
-                  <Typography sx={{ fontWeight: 900 }}>Issued</Typography><Typography>{formatDate(displayInvoice.issue_date)}</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>Issued</Typography>
+                  {isEditMode ? (
+                    <TextField size="small" type="date" value={editForm.issue_date} onChange={event => setEditForm(prev => ({ ...prev, issue_date: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                  ) : (
+                    <Typography>{formatDate(displayInvoice.issue_date)}</Typography>
+                  )}
                   <Typography sx={{ fontWeight: 900 }}>Due</Typography>
                   {isEditMode ? (
                     <TextField size="small" type="date" value={editForm.due_date} onChange={event => setEditForm(prev => ({ ...prev, due_date: event.target.value }))} sx={{ bgcolor: '#fff' }} />
@@ -627,7 +734,63 @@ const InvoicePrintDialog = ({
 
               <Divider />
               <Box sx={{ display: 'grid', gap: 1.2, pt: 2 }}>
-                {previewRows.length === 0 ? (
+                {isEditMode && documentType === 'invoice' ? (
+                  <Box sx={{ display: 'grid', gap: 1.2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Invoice Items</Typography>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            const subtotal = editRows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0)
+                            const tax = Number(editForm.tax_amount || 0)
+                            const discount = Number(editForm.discount_amount || 0)
+                            setEditForm(prev => ({
+                              ...prev,
+                              subtotal: subtotal.toFixed(2),
+                              total_amount: Math.max(0, subtotal + tax - discount).toFixed(2),
+                            }))
+                          }}
+                          sx={{ borderRadius: '10px', fontWeight: 900, textTransform: 'none' }}
+                        >
+                          Use Row Totals
+                        </Button>
+                        <Button
+                          size="small"
+                          startIcon={<AddIcon />}
+                          onClick={addEditRow}
+                          sx={{ borderRadius: '10px', fontWeight: 900, textTransform: 'none', bgcolor: `${accent}14`, color: accent }}
+                        >
+                          Add Item
+                        </Button>
+                      </Box>
+                    </Box>
+                    {editRows.map((row, index) => (
+                      <Box key={`${row.item_number}-${index}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 0.8fr 1fr 1fr 1fr 1fr 44px' }, gap: 1, p: 1.4, borderRadius: '14px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
+                        <TextField size="small" label="Item #" value={row.item_number} onChange={event => updateEditRow(index, { item_number: event.target.value })} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label="Description" value={row.description} onChange={event => updateEditRow(index, { description: event.target.value })} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label="Qty" type="number" value={row.quantity} onChange={event => updateEditRow(index, { quantity: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label="Unit price" type="number" value={row.unit_price} onChange={event => updateEditRow(index, { unit_price: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label="Shipping" type="number" value={row.shipping_fee || 0} onChange={event => updateEditRow(index, { shipping_fee: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label="Setup" type="number" value={row.setup_fee || 0} onChange={event => updateEditRow(index, { setup_fee: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label="Total" type="number" value={row.total_amount} onChange={event => updateEditRow(index, { total_amount: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <Tooltip title="Remove item">
+                          <span>
+                            <IconButton
+                              size="small"
+                              disabled={editRows.length <= 1}
+                              onClick={() => setEditRows(rows => rows.filter((_, rowIndex) => rowIndex !== index))}
+                              sx={{ mt: 0.5, color: '#DC2626', bgcolor: '#FEF2F2', '&:hover': { bgcolor: '#FEE2E2' } }}
+                            >
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <TextField size="small" label="Condition / Type" value={row.condition || ''} onChange={event => updateEditRow(index, { condition: event.target.value || null })} sx={{ bgcolor: '#fff', gridColumn: { xs: 'auto', md: '1 / span 2' } }} />
+                      </Box>
+                    ))}
+                  </Box>
+                ) : previewRows.length === 0 ? (
                   <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No rows available for this document.</Typography>
                 ) : previewRows.map((row, index) => (
                   <Box key={`${row.first}-${index}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 1fr 1fr' }, gap: 1, p: 1.4, borderRadius: '12px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
@@ -660,17 +823,36 @@ const InvoicePrintDialog = ({
               {documentType === 'invoice' && (
                 <Box sx={{ display: 'grid', gap: 0.8, maxWidth: 320, ml: 'auto', mt: 2 }}>
                   {[
-                    ['Subtotal', money(displayInvoice.subtotal)],
-                    ['Tax', money(displayInvoice.tax_amount)],
-                    ['Discount', money(displayInvoice.discount_amount)],
-                    ['Total', money(displayInvoice.total_amount)],
-                    ['Paid', isEditMode ? null : money(displayInvoice.amount_paid)],
-                    ['Balance Due', money(displayInvoice.balance_due)],
-                  ].map(([label, value]) => (
+                    ['Subtotal', 'subtotal', money(displayInvoice.subtotal)],
+                    ['Tax', 'tax_amount', money(displayInvoice.tax_amount)],
+                    ['Discount', 'discount_amount', money(displayInvoice.discount_amount)],
+                    ['Total', 'total_amount', money(displayInvoice.total_amount)],
+                    ['Paid', 'amount_paid', money(displayInvoice.amount_paid)],
+                    ['Balance Due', 'balance_due', money(displayInvoice.balance_due)],
+                  ].map(([label, key, value]) => (
                     <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, fontWeight: label === 'Total' ? 950 : 800 }}>
                       <span>{label}</span>
-                      {isEditMode && label === 'Paid' ? (
-                        <TextField size="small" type="number" value={editForm.amount_paid} onChange={event => setEditForm(prev => ({ ...prev, amount_paid: event.target.value }))} inputProps={{ min: 0, step: 0.01 }} sx={{ width: 150, bgcolor: '#fff' }} />
+                      {isEditMode && key !== 'balance_due' ? (
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={(editForm as any)[key]}
+                          onChange={event => {
+                            const nextValue = event.target.value
+                            setEditForm(prev => {
+                              const next = { ...prev, [key]: nextValue }
+                              if (['subtotal', 'tax_amount', 'discount_amount'].includes(String(key))) {
+                                const subtotal = Number(key === 'subtotal' ? nextValue : next.subtotal || 0)
+                                const tax = Number(key === 'tax_amount' ? nextValue : next.tax_amount || 0)
+                                const discount = Number(key === 'discount_amount' ? nextValue : next.discount_amount || 0)
+                                next.total_amount = String(Math.max(0, subtotal + tax - discount).toFixed(2))
+                              }
+                              return next
+                            })
+                          }}
+                          inputProps={{ min: 0, step: 0.01 }}
+                          sx={{ width: 150, bgcolor: '#fff' }}
+                        />
                       ) : (
                         <span>{value}</span>
                       )}

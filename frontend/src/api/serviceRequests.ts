@@ -152,11 +152,21 @@ export interface ServiceInvoiceCreatePayload {
 }
 
 export interface ServiceInvoiceUpdatePayload {
+  customer_name?: string
+  customer_email?: string
+  customer_phone?: string | null
+  customer_address?: string | null
+  subtotal?: number
+  tax_amount?: number
+  discount_amount?: number
+  total_amount?: number
   amount_paid?: number
+  issue_date?: string
   due_date?: string
   status?: string
   payment_method?: string | null
   notes?: string
+  line_items?: ServiceInvoiceLineItem[]
 }
 
 // ── Quotation ───────────────────────────────────────────────────────────────

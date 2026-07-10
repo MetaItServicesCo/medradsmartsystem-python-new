@@ -82,6 +82,7 @@ export interface InspectionInvoice {
   transactions?: InvoiceTransaction[]
   travel_charges?: number | null
   service_charges?: number | null
+  line_items?: any[]
 }
 
 export interface InspectionInvoiceBatchItem {
@@ -286,11 +287,16 @@ export interface BatchExistingAssetsPayload {
 }
 
 export interface InspectionInvoiceUpdatePayload {
+  customer_name?: string
+  customer_email?: string
+  customer_phone?: string | null
+  customer_address?: string | null
   subtotal?: number
   tax_amount?: number
   discount_amount?: number
   total_amount?: number
   amount_paid?: number
+  issue_date?: string
   due_date?: string
   payment_terms?: string
   payment_method?: string | null
@@ -298,6 +304,7 @@ export interface InspectionInvoiceUpdatePayload {
   status?: InvoiceStatus
   travel_charges?: number
   service_charges?: number
+  line_items?: any[]
 }
 
 export const fetchInspectionFacilities = async (): Promise<InspectionFacility[]> => {

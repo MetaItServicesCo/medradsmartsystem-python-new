@@ -97,6 +97,8 @@ export interface SalesInvoice {
   work_order: string | null
   customer_name: string
   customer_email: string
+  customer_phone?: string | null
+  customer_address?: string | null
   facility_id: number | null
   facility_name: string | null
   subtotal: number
@@ -113,6 +115,7 @@ export interface SalesInvoice {
   created_at: string
   updated_at: string
   transactions?: InvoiceTransaction[]
+  line_items?: SalesQuotationLineItem[]
 }
 
 export interface InvoiceTransaction {
@@ -223,7 +226,23 @@ export const fetchSalesInvoices = async (
 
 export const updateSalesInvoice = async (
   id: number,
-  data: { amount_paid?: number; due_date?: string; status?: SalesInvoiceStatus; payment_method?: string | null; notes?: string }
+  data: {
+    customer_name?: string
+    customer_email?: string
+    customer_phone?: string | null
+    customer_address?: string | null
+    subtotal?: number
+    tax_amount?: number
+    discount_amount?: number
+    total_amount?: number
+    amount_paid?: number
+    issue_date?: string
+    due_date?: string
+    status?: SalesInvoiceStatus | string
+    payment_method?: string | null
+    notes?: string | null
+    line_items?: any[]
+  }
 ): Promise<SalesInvoice> => {
   const res = await apiClient.put(`/sales/invoices/${id}`, data)
   return res.data

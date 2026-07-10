@@ -34,6 +34,7 @@ from app.schemas.service_request import (
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.invoice_editing import compose_invoice_edit_notes, editable_line_items, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 
 router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
@@ -73,11 +74,21 @@ class ServiceInvoiceCreate(BaseModel):
 
 
 class ServiceInvoiceUpdate(BaseModel):
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_address: Optional[str] = None
+    subtotal: Optional[Decimal] = None
+    tax_amount: Optional[Decimal] = None
+    discount_amount: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
     amount_paid: Optional[Decimal] = None
+    issue_date: Optional[date] = None
     due_date: Optional[date] = None
     status: Optional[InvoiceStatus] = None
     payment_method: Optional[str] = None
     notes: Optional[str] = None
+    line_items: Optional[list[dict[str, Any]]] = None
 
 
 def _money(value: Any) -> Decimal:
@@ -209,6 +220,7 @@ def _parse_fee_notes(notes: Optional[str]) -> tuple[Optional[Decimal], Optional[
 
 def _strip_fee_prefix(notes: Optional[str]) -> Optional[str]:
     """Remove __FEES__:..:: prefix from stored notes before returning to client."""
+    notes = strip_invoice_edit_metadata(notes)
     if not notes or not notes.startswith("__FEES__:"):
         return notes
     _, _, rest = notes.partition("::")
@@ -216,6 +228,9 @@ def _strip_fee_prefix(notes: Optional[str]) -> Optional[str]:
 
 
 def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
+    custom_rows = editable_line_items(invoice.notes)
+    if custom_rows:
+        return custom_rows
     sr = invoice.service_request
     if not sr:
         return []
@@ -530,10 +545,22 @@ def update_service_invoice(
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
-    for field in ["amount_paid", "due_date", "notes", "status", "payment_method"]:
+    existing_metadata = parse_invoice_edit_metadata(invoice.notes)
+    if "line_items" in update_data:
+        existing_metadata["line_items"] = update_data.pop("line_items") or []
+
+    for field in [
+        "customer_name", "customer_email", "customer_phone", "customer_address",
+        "subtotal", "tax_amount", "discount_amount", "total_amount",
+        "amount_paid", "issue_date", "due_date", "status", "payment_method",
+    ]:
         if field in update_data:
             setattr(invoice, field, update_data[field])
 
+    if "notes" in update_data or existing_metadata:
+        invoice.notes = compose_invoice_edit_notes(invoice.notes, update_data.get("notes"), existing_metadata)
+    if "total_amount" not in update_data and any(field in update_data for field in ["subtotal", "tax_amount", "discount_amount"]):
+        invoice.total_amount = _money(invoice.subtotal) + _money(invoice.tax_amount) - _money(invoice.discount_amount)
     invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
     if invoice.balance_due <= 0:
         invoice.status = InvoiceStatus.PAID

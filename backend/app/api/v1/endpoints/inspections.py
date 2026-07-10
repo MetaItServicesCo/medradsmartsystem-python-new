@@ -21,6 +21,7 @@ from app.models.modality import Modality
 from app.models.tier import Tier
 from app.models.user import User, UserRole
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
+from app.utils.invoice_editing import compose_invoice_edit_notes, editable_line_items, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
@@ -165,11 +166,16 @@ class BatchExistingAssetsCreate(BaseModel):
 
 
 class InspectionInvoiceUpdate(BaseModel):
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_address: Optional[str] = None
     subtotal: Optional[Decimal] = None
     tax_amount: Optional[Decimal] = None
     discount_amount: Optional[Decimal] = None
     total_amount: Optional[Decimal] = None
     amount_paid: Optional[Decimal] = None
+    issue_date: Optional[date] = None
     due_date: Optional[date] = None
     payment_terms: Optional[str] = None
     payment_method: Optional[str] = None
@@ -177,6 +183,7 @@ class InspectionInvoiceUpdate(BaseModel):
     status: Optional[InvoiceStatus] = None
     travel_charges: Optional[Decimal] = None
     service_charges: Optional[Decimal] = None
+    line_items: Optional[list[dict[str, Any]]] = None
 
 
 class InspectionFormUpdate(BaseModel):
@@ -225,6 +232,7 @@ def _parse_inspection_fees(notes: Optional[str]) -> tuple[Optional[Decimal], Opt
 
 
 def _strip_inspection_fee_prefix(notes: Optional[str]) -> Optional[str]:
+    notes = strip_invoice_edit_metadata(notes)
     if not notes or not notes.startswith("__FEES__:"):
         return notes
     _, _, rest = notes.partition("::")
@@ -391,6 +399,7 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["inspection_batch_number"] = invoice.inspection_batch.batch_number if getattr(invoice, "inspection_batch", None) else None
     data["batch_asset_count"] = len(invoice.inspection_batch.inspections or []) if getattr(invoice, "inspection_batch", None) else None
     data["batch_items"] = getattr(invoice, "_batch_items", [])
+    data["line_items"] = editable_line_items(invoice.notes)
     data["transactions"] = [transaction_response(item) for item in invoice.transactions or []]
     travel, service = _parse_inspection_fees(invoice.notes)
     data["travel_charges"] = travel
@@ -2078,28 +2087,47 @@ def update_inspection_invoice(
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
     if not can_edit_inspection_invoice:
-        billing_only_fields = {"amount_paid", "due_date", "payment_method", "status", "notes"}
+        billing_only_fields = {
+            "customer_name", "customer_email", "customer_phone", "customer_address",
+            "subtotal", "tax_amount", "discount_amount", "total_amount",
+            "amount_paid", "issue_date", "due_date", "payment_terms", "payment_method",
+            "status", "notes", "line_items",
+        }
         disallowed_fields = set(update_data) - billing_only_fields
         if disallowed_fields:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Billing permission can only update payment amount, status, and notes",
+                detail="Billing permission can only update invoice billing fields",
             )
 
-    # Extract fee fields before standard field assignment
-    travel_charges = _money(update_data.pop("travel_charges", None))
-    service_charges = _money(update_data.pop("service_charges", None))
+    # Extract fee fields before standard field assignment, preserving current fees unless explicitly changed.
+    existing_travel_charges, existing_service_charges = _parse_inspection_fees(invoice.notes)
+    travel_charges_raw = update_data.pop("travel_charges", None)
+    service_charges_raw = update_data.pop("service_charges", None)
+    travel_charges = _money(travel_charges_raw) if travel_charges_raw is not None else _money(existing_travel_charges)
+    service_charges = _money(service_charges_raw) if service_charges_raw is not None else _money(existing_service_charges)
+    existing_metadata = parse_invoice_edit_metadata(invoice.notes)
+    if "line_items" in update_data:
+        existing_metadata["line_items"] = update_data.pop("line_items") or []
 
-    for field in ["subtotal", "tax_amount", "discount_amount", "amount_paid", "due_date", "payment_terms", "payment_method", "status"]:
+    for field in [
+        "customer_name", "customer_email", "customer_phone", "customer_address",
+        "subtotal", "tax_amount", "discount_amount", "amount_paid",
+        "issue_date", "due_date", "payment_terms", "payment_method", "status",
+    ]:
         if field in update_data:
             setattr(invoice, field, update_data[field])
 
     # Rebuild notes with fee prefix if any fee is set
     user_notes = update_data.get("notes", _strip_inspection_fee_prefix(invoice.notes)) or ""
     if travel_charges > Decimal("0") or service_charges > Decimal("0"):
-        invoice.notes = f"__FEES__:travel={travel_charges},service={service_charges}::{user_notes}"
+        invoice.notes = compose_invoice_edit_notes(
+            f"__FEES__:travel={travel_charges},service={service_charges}::{_strip_inspection_fee_prefix(invoice.notes) or ''}",
+            user_notes,
+            existing_metadata,
+        )
     else:
-        invoice.notes = user_notes or None
+        invoice.notes = compose_invoice_edit_notes(invoice.notes, user_notes, existing_metadata)
 
     if "total_amount" in update_data and update_data["total_amount"] is not None:
         invoice.total_amount = update_data["total_amount"]

@@ -83,6 +83,8 @@ export interface RentalInvoice {
   rental_number: string | null
   customer_name: string
   customer_email: string
+  customer_phone?: string | null
+  customer_address?: string | null
   facility_id: number | null
   facility_name: string | null
   subtotal: number
@@ -99,6 +101,7 @@ export interface RentalInvoice {
   created_at: string
   updated_at: string
   transactions?: InvoiceTransaction[]
+  line_items?: any[]
 }
 
 export interface InvoiceTransaction {
@@ -211,7 +214,23 @@ export const fetchRentalInvoices = async (
 
 export const updateRentalInvoice = async (
   id: number,
-  data: { amount_paid?: number; due_date?: string; status?: RentalInvoiceStatus; payment_method?: string | null; notes?: string }
+  data: {
+    customer_name?: string
+    customer_email?: string
+    customer_phone?: string | null
+    customer_address?: string | null
+    subtotal?: number
+    tax_amount?: number
+    discount_amount?: number
+    total_amount?: number
+    amount_paid?: number
+    issue_date?: string
+    due_date?: string
+    status?: RentalInvoiceStatus | string
+    payment_method?: string | null
+    notes?: string | null
+    line_items?: any[]
+  }
 ): Promise<RentalInvoice> => {
   const res = await apiClient.put(`/rentals/invoices/${id}`, data)
   return res.data
