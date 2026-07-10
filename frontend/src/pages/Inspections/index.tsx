@@ -35,7 +35,6 @@ import {
   fetchInspectionBatch,
   fetchInspectionBatches,
   fetchInspectionFacilityEquipment,
-  fetchInspectionFacilityInventory,
   fetchInspectionFacilities,
   fetchInspectionForms,
   fetchInspectionSummary,
@@ -54,10 +53,10 @@ import {
   type InspectionBatch,
   type InspectionEquipmentItem,
   type InspectionInvoice,
-  type InspectionInventoryItem,
   type InspectionFrequency,
   type InspectionFormOption,
 } from '@/api/inspections'
+import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 import { fetchModalities, type Modality } from '@/api/modalities'
 import { fetchUsers, resolveUploadUrl, type UserData } from '@/api/users'
 import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
@@ -836,9 +835,9 @@ const Inspections = () => {
     enabled: Boolean(reportInspection),
   })
   const reportPartsQ = useQuery({
-    queryKey: ['inspection-inventory-parts', reportInspection?.facility_id, partSearch],
-    queryFn: () => fetchInspectionFacilityInventory(Number(reportInspection?.facility_id), partSearch || undefined),
-    enabled: Boolean(reportInspection?.facility_id),
+    queryKey: ['inventory-parts', 'inspection-report-options', partSearch],
+    queryFn: () => fetchInventoryParts({ search: partSearch || undefined, limit: 500 }),
+    enabled: Boolean(reportInspection),
   })
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
@@ -1204,7 +1203,7 @@ const Inspections = () => {
     image_url: item.image_url || '',
   })
 
-  const inventoryPartSnapshot = (item: InspectionInventoryItem) => ({
+  const inventoryPartSnapshot = (item: InventoryPart) => ({
     id: item.id,
     description: item.description || item.part_type || '',
     part_number: item.part_number || '',
@@ -2941,7 +2940,7 @@ const Inspections = () => {
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
                   <Autocomplete
                     multiple
-                    options={reportPartsQ.data || []}
+                    options={reportPartsQ.data?.items || []}
                     inputValue={partSearch}
                     onInputChange={(_, value, reason) => {
                       if (reason !== 'reset') setPartSearch(value)
