@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { NumericField } from '../../components/NumericField'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Box, Card, Typography, Button, TextField, IconButton, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, Divider,
   FormControl, InputLabel, Select, MenuItem, CircularProgress,
   Collapse, Table, TableBody, TableCell, TableHead, TableRow,
-  Radio, RadioGroup, FormControlLabel, FormLabel,
+  Radio, RadioGroup, FormControlLabel, FormLabel, Autocomplete,
 } from '@mui/material'
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
 import AddIcon from '@mui/icons-material/Add'
@@ -29,6 +29,7 @@ import {
   type LineItemCreate,
   type QuotationPaymentCreate,
 } from '@/api/serviceRequests'
+import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 
 interface Props {
   serviceRequestId: number
@@ -42,6 +43,9 @@ interface Props {
 const EMPTY_LINE_ITEM: LineItemCreate = {
   item_type: 'part', description: '', quantity: 1, unit_price: 0, total: 0,
 }
+
+const PART_OPTION_PAGE_SIZE = 50
+type LineItemForm = LineItemCreate & { inventory_part_id?: number | null }
 
 const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
   draft: { bg: '#FEF3C7', color: '#B45309' },
@@ -60,7 +64,9 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
   // Create/Edit form state
   const [description, setDescription] = useState('')
-  const [lineItems, setLineItems] = useState<LineItemCreate[]>([{ ...EMPTY_LINE_ITEM }])
+  const [lineItems, setLineItems] = useState<LineItemForm[]>([{ ...EMPTY_LINE_ITEM }])
+  const [partSearch, setPartSearch] = useState('')
+  const [selectedPartsByLine, setSelectedPartsByLine] = useState<Record<number, InventoryPart | null>>({})
 
   // Payment form state
   const [payMethod, setPayMethod] = useState<'credit_card' | 'ach' | 'mbmts_ach'>('credit_card')
@@ -78,6 +84,29 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
   // ACH sub-choice
   const [achChoice, setAchChoice] = useState<'ach' | 'mbmts_ach'>('ach')
+
+  const {
+    data: inventoryPartsData,
+    fetchNextPage: fetchNextPartPage,
+    hasNextPage: hasNextPartPage,
+    isFetchingNextPage: isFetchingNextPartPage,
+    isLoading: inventoryPartsLoading,
+  } = useInfiniteQuery({
+    queryKey: ['inventory-parts', 'service-quotation-options', partSearch],
+    queryFn: ({ pageParam }) => fetchInventoryParts({
+      search: partSearch || undefined,
+      skip: Number(pageParam || 0),
+      limit: PART_OPTION_PAGE_SIZE,
+    }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, page) => sum + page.items.length, 0)
+      return loaded < lastPage.total ? loaded : undefined
+    },
+    enabled: createOpen,
+  })
+
+  const inventoryPartOptions = inventoryPartsData?.pages.flatMap((page) => page.items) || []
 
   const createMut = useMutation({
     mutationFn: (data: { description: string; line_items: LineItemCreate[] }) =>
@@ -107,6 +136,8 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   const resetForm = () => {
     setCreateOpen(false); setEditQuotationId(null)
     setDescription(''); setLineItems([{ ...EMPTY_LINE_ITEM }])
+    setSelectedPartsByLine({})
+    setPartSearch('')
   }
 
   const resetPayForm = () => {
@@ -123,21 +154,55 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       item_type: li.item_type, description: li.description,
       quantity: Number(li.quantity), unit_price: Number(li.unit_price), total: Number(li.total),
     })) : [{ ...EMPTY_LINE_ITEM }])
+    setSelectedPartsByLine({})
+    setPartSearch('')
     setCreateOpen(true)
   }
 
-  const updateLineItem = (idx: number, field: keyof LineItemCreate, value: any) => {
+  const updateLineItem = (idx: number, field: keyof LineItemForm, value: any) => {
     const items = [...lineItems]
     ;(items[idx] as any)[field] = value
+    if (field === 'item_type' && value !== 'part') {
+      items[idx].inventory_part_id = null
+      setSelectedPartsByLine(prev => ({ ...prev, [idx]: null }))
+    }
     if (field === 'quantity' || field === 'unit_price') {
       items[idx].total = Number(items[idx].quantity) * Number(items[idx].unit_price)
     }
     setLineItems(items)
   }
 
+  const handleSelectInventoryPart = (idx: number, part: InventoryPart | null) => {
+    setSelectedPartsByLine(prev => ({ ...prev, [idx]: part }))
+    if (!part) {
+      updateLineItem(idx, 'inventory_part_id', null)
+      return
+    }
+    const quantity = Number(lineItems[idx]?.quantity || 1)
+    const unitPrice = Number(part.unit_price || 0)
+    const descriptionParts = [
+      part.part_number,
+      part.description || part.part_type,
+      [part.make, part.model].filter(Boolean).join(' '),
+      part.serial_number ? `SN: ${part.serial_number}` : '',
+    ].filter(Boolean)
+    const items = [...lineItems]
+    items[idx] = {
+      ...items[idx],
+      item_type: 'part',
+      inventory_part_id: part.id,
+      description: descriptionParts.join(' - '),
+      unit_price: unitPrice,
+      total: quantity * unitPrice,
+    }
+    setLineItems(items)
+  }
+
   const handleSubmit = () => {
     if (!description.trim()) { toast.warning('Add a description'); return }
-    const validItems = lineItems.filter(li => li.description.trim() && li.total > 0)
+    const validItems: LineItemCreate[] = lineItems
+      .filter(li => li.description.trim() && li.total > 0)
+      .map(({ item_type, description, quantity, unit_price, total }) => ({ item_type, description, quantity, unit_price, total }))
     if (editQuotationId) {
       updateMut.mutate({ id: editQuotationId, data: { description, line_items: validItems } })
     } else {
@@ -309,7 +374,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
           <TextField label="Description" multiline rows={2} fullWidth value={description} onChange={e => setDescription(e.target.value)} sx={{ mt: 1, mb: 2 }} />
           <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', mb: 1 }}>Line Items</Typography>
           {lineItems.map((li, idx) => (
-            <Box key={idx} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+            <Box key={idx} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
               <FormControl size="small" sx={{ minWidth: 100 }}>
                 <InputLabel>Type</InputLabel>
                 <Select value={li.item_type} label="Type" onChange={e => updateLineItem(idx, 'item_type', e.target.value)}>
@@ -318,6 +383,50 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                   <MenuItem value="other">Other</MenuItem>
                 </Select>
               </FormControl>
+              {li.item_type === 'part' && (
+                <Autocomplete
+                  size="small"
+                  options={inventoryPartOptions}
+                  value={selectedPartsByLine[idx] || null}
+                  inputValue={partSearch}
+                  onInputChange={(_, value, reason) => {
+                    if (reason !== 'reset') setPartSearch(value)
+                  }}
+                  onChange={(_, value) => handleSelectInventoryPart(idx, value)}
+                  filterOptions={(options) => options}
+                  loading={inventoryPartsLoading || isFetchingNextPartPage}
+                  getOptionLabel={(option) => `${option.part_number}${option.description ? ` - ${option.description}` : ''}`}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  ListboxProps={{
+                    style: { maxHeight: 320, overflow: 'auto' },
+                    onScroll: (event) => {
+                      const listbox = event.currentTarget
+                      const nearBottom = listbox.scrollTop + listbox.clientHeight >= listbox.scrollHeight - 40
+                      if (nearBottom && hasNextPartPage && !isFetchingNextPartPage) {
+                        fetchNextPartPage()
+                      }
+                    },
+                  }}
+                  renderOption={(props, option) => (
+                    <Box component="li" {...props}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 800 }}>{option.part_number}</Typography>
+                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                          {[option.description, option.make, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block', color: '#7C3AED', fontWeight: 700 }}>
+                          ${Number(option.unit_price || 0).toFixed(2)}
+                          {option.facility_name ? ` · ${option.facility_name}` : ''}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Inventory Part" placeholder="Search parts list..." />
+                  )}
+                  sx={{ flex: '1 1 260px', minWidth: 240 }}
+                />
+              )}
               <TextField size="small" label="Description" value={li.description} onChange={e => updateLineItem(idx, 'description', e.target.value)} sx={{ flex: 2 }} />
               <NumericField size="small" label="Qty" value={li.quantity} onChange={val => updateLineItem(idx, 'quantity', val)} sx={{ width: 80 }} inputProps={{ min: 0, step: 0.5 }} />
               <NumericField size="small" label="Unit $" value={li.unit_price} onChange={val => updateLineItem(idx, 'unit_price', val)} sx={{ width: 100 }} inputProps={{ min: 0, step: 0.01 }} />
