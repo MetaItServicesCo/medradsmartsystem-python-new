@@ -24,6 +24,7 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailable'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
 
 import {
@@ -717,8 +718,11 @@ const Inspections = () => {
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().slice(0, 10))
   const [reportInspection, setReportInspection] = useState<Inspection | null>(null)
   const [viewReport, setViewReport] = useState<Inspection | null>(null)
+  const [viewForm, setViewForm] = useState<InspectionFormOption | null>(null)
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [report, setReport] = useState<any>(null)
+  const [partSearch, setPartSearch] = useState('')
+  const [testEquipmentSearch, setTestEquipmentSearch] = useState('')
   const [reportStatus, setReportStatus] = useState<'completed' | 'in_progress'>('completed')
   const [reportFormSource, setReportFormSource] = useState<ReportFormSource>('default')
   const [selectedReportFormId, setSelectedReportFormId] = useState<number | null>(null)
@@ -744,6 +748,8 @@ const Inspections = () => {
   const [selectedExistingEquipmentIds, setSelectedExistingEquipmentIds] = useState<number[]>([])
   const [assetActionAnchor, setAssetActionAnchor] = useState<HTMLElement | null>(null)
   const [assetActionItem, setAssetActionItem] = useState<Inspection | null>(null)
+  const [formActionAnchor, setFormActionAnchor] = useState<HTMLElement | null>(null)
+  const [formActionItem, setFormActionItem] = useState<InspectionFormOption | null>(null)
   const [upcomingSearch, setUpcomingSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
@@ -760,6 +766,12 @@ const Inspections = () => {
     setExistingAssetSearch('')
     setSelectedExistingEquipmentIds([])
   }, [addExistingAssetOpen])
+
+  useEffect(() => {
+    if (reportInspection) return
+    setPartSearch('')
+    setTestEquipmentSearch('')
+  }, [reportInspection])
 
   const summaryQ = useQuery({ queryKey: ['inspection-summary'], queryFn: fetchInspectionSummary })
   const facilitiesQ = useQuery({
@@ -816,16 +828,16 @@ const Inspections = () => {
     enabled: tab === 3,
   })
   const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 4 || Boolean(reportInspection) })
-  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || tab === 4 || addAssetOpen })
+  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen })
   const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) })
   const testEquipmentQ = useQuery({
-    queryKey: ['test-equipment', 'inspection-active-options'],
-    queryFn: () => fetchActiveTestEquipment({ limit: 500 }),
+    queryKey: ['test-equipment', 'inspection-active-options', testEquipmentSearch],
+    queryFn: () => fetchActiveTestEquipment({ search: testEquipmentSearch || undefined, limit: 500 }),
     enabled: Boolean(reportInspection),
   })
   const reportPartsQ = useQuery({
-    queryKey: ['inspection-inventory-parts', reportInspection?.facility_id],
-    queryFn: () => fetchInspectionFacilityInventory(Number(reportInspection?.facility_id)),
+    queryKey: ['inspection-inventory-parts', reportInspection?.facility_id, partSearch],
+    queryFn: () => fetchInspectionFacilityInventory(Number(reportInspection?.facility_id), partSearch || undefined),
     enabled: Boolean(reportInspection?.facility_id),
   })
 
@@ -988,15 +1000,6 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not change technician'),
-  })
-
-  const formMut = useMutation({
-    mutationFn: ({ id, modality_id }: { id: number; modality_id: number | null }) => updateInspectionForm(id, { modality_id }),
-    onSuccess: () => {
-      toast.success('Inspection form asset tag updated')
-      queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
-    },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update inspection form'),
   })
 
   const formBuilderMut = useMutation({
@@ -2165,15 +2168,14 @@ const Inspections = () => {
                     <TableCell sx={{ fontWeight: 900 }}>Form</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Fields</TableCell>
-                    <TableCell sx={{ fontWeight: 900 }}>Tagged Asset Type</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {formsQ.isLoading ? Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={5}><Skeleton /></TableCell></TableRow>
+                    <TableRow key={i}><TableCell colSpan={4}><Skeleton /></TableCell></TableRow>
                   )) : (formsQ.data?.items || []).length === 0 ? (
-                    <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspection forms found.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspection forms found.</TableCell></TableRow>
                   ) : formsQ.data!.items.map((form: InspectionFormOption) => {
                     const schema = schemaForForm(form)
                     const grid = schema.custom_grid
@@ -2188,28 +2190,17 @@ const Inspections = () => {
                         </TableCell>
                         <TableCell><ClippedTooltipText value={form.description || '-'} field /></TableCell>
                         <TableCell><Chip size="small" label={`${cellCount} custom cell${cellCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
-                        <TableCell sx={{ minWidth: 280 }}>
-                          <TextField
-                            select
-                            size="small"
-                            fullWidth
-                            value={form.modality_id ?? ''}
-                            onChange={(event) => formMut.mutate({
-                              id: form.id,
-                              modality_id: event.target.value ? Number(event.target.value) : null,
-                            })}
-                            disabled={!canEditInspections || formMut.isPending}
-                          >
-                            <MenuItem value="">General - available to all assets</MenuItem>
-                            {assignableModalities.map((modality) => (
-                              <MenuItem key={modality.id} value={modality.id}>{modality.name}</MenuItem>
-                            ))}
-                          </TextField>
-                        </TableCell>
                         <TableCell align="right">
-                          <Button size="small" startIcon={<EditIcon />} variant="outlined" onClick={() => openEditFormBuilder(form)} disabled={!canEditInspections} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                            Edit
-                          </Button>
+                          <IconButton
+                            size="small"
+                            onClick={(event) => {
+                              setFormActionAnchor(event.currentTarget)
+                              setFormActionItem(form)
+                            }}
+                            sx={{ bgcolor: '#F4F1FF', color: '#7C3AED' }}
+                          >
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
                         </TableCell>
                       </TableRow>
                     )
@@ -2406,6 +2397,37 @@ const Inspections = () => {
         </MenuItem>
       </Menu>
 
+      <Menu
+        anchorEl={formActionAnchor}
+        open={Boolean(formActionAnchor)}
+        onClose={() => {
+          setFormActionAnchor(null)
+          setFormActionItem(null)
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            if (!formActionItem) return
+            setViewForm(formActionItem)
+            setFormActionAnchor(null)
+            setFormActionItem(null)
+          }}
+        >
+          <VisibilityOutlinedIcon fontSize="small" sx={{ mr: 1 }} /> View Form
+        </MenuItem>
+        <MenuItem
+          disabled={!canEditInspections}
+          onClick={() => {
+            if (!formActionItem) return
+            openEditFormBuilder(formActionItem)
+            setFormActionAnchor(null)
+            setFormActionItem(null)
+          }}
+        >
+          <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit Form
+        </MenuItem>
+      </Menu>
+
       <Dialog open={Boolean(techEdit)} onClose={() => setTechEdit(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Change Technician</DialogTitle>
         <DialogContent dividers>
@@ -2551,6 +2573,125 @@ const Inspections = () => {
         </DialogActions>
       </Dialog>
 
+      {viewForm && (() => {
+        const previewSchema = schemaForForm(viewForm)
+        const grid = previewSchema.custom_grid
+        const leftChecks = ['physical_inspection', 'display', 'functional', 'electrical_safety', 'battery', 'pm_kit'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
+        const rightChecks = ['cleaning', 'lubrication', 'calibration'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
+        return (
+          <Dialog open={Boolean(viewForm)} onClose={() => setViewForm(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+            <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+              {viewForm.name}
+              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+                {viewForm.description || 'Inspection form preview'}
+              </Typography>
+            </DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'grid', gap: 2.5 }}>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Inspection Report</Typography>
+                  <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          {['Test', 'Pass', 'Fail', 'N/A', 'Test', 'Pass', 'Fail', 'N/A'].map(header => (
+                            <TableCell key={header} align="center" sx={{ fontWeight: 900 }}>{header}</TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {Array.from({ length: 6 }).map((_, index) => {
+                          const left = leftChecks[index]
+                          const right = rightChecks[index]
+                          return (
+                            <TableRow key={index} sx={{ bgcolor: index % 2 ? '#fff' : '#F3F4F6' }}>
+                              <TableCell align="center">{left?.[1] || ''}</TableCell>
+                              {['pass', 'fail', 'na'].map(value => (
+                                <TableCell key={`preview-left-${value}`} align="center">{left && <Radio disabled size="small" />}</TableCell>
+                              ))}
+                              <TableCell align="center">
+                                {right?.[1] || (index === 3 ? 'Set:' : index === 4 || index === 5 ? 'Replaced on' : '')}
+                              </TableCell>
+                              {right ? ['pass', 'fail', 'na'].map(value => (
+                                <TableCell key={`preview-right-${value}`} align="center"><Radio disabled size="small" /></TableCell>
+                              )) : (
+                                <>
+                                  <TableCell align="center">{index >= 3 && <TextField disabled size="small" />}</TableCell>
+                                  <TableCell align="center">{index === 3 ? 'Read:' : index === 4 || index === 5 ? 'Due' : ''}</TableCell>
+                                  <TableCell align="center">{index >= 3 && <TextField disabled size="small" />}</TableCell>
+                                </>
+                              )}
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Card>
+
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
+                  <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{grid?.title || 'Custom Grid'}</Typography>
+                  {!grid ? (
+                    <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No custom grid is saved on this form.</Typography>
+                  ) : (
+                    <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
+                      <Table size="small">
+                        <TableBody>
+                          {grid.cells.map((row, rowIndex) => (
+                            <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : '#F3F4F6' }}>
+                              {row.map((cell) => (
+                                <TableCell key={cell.id} align="center" sx={{ minWidth: 180 }}>
+                                  <Box sx={{ display: 'grid', gap: 0.75 }}>
+                                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{cell.label || 'Question'}</Typography>
+                                    {cell.type === 'input' ? (
+                                      <TextField disabled size="small" fullWidth placeholder={cell.label || 'Input'} />
+                                    ) : (
+                                      <RadioGroup row sx={{ justifyContent: 'center' }}>
+                                        {(cell.options?.length ? cell.options : ['Option']).map((option: string) => (
+                                          <FormControlLabel key={option} value={option} control={<Radio disabled size="small" />} label={option} />
+                                        ))}
+                                      </RadioGroup>
+                                    )}
+                                  </Box>
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Card>
+
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Biomed Notes</Typography>
+                  <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
+                    <Table size="small">
+                      <TableBody>
+                        {[
+                          ['Reported Problem'],
+                          ['Problem Found'],
+                          ['Corrective action taken'],
+                          ['Summary'],
+                        ].map(([label]) => (
+                          <TableRow key={label}>
+                            <TableCell sx={{ width: 280, fontWeight: 900 }}>{label}</TableCell>
+                            <TableCell><TextField disabled size="small" fullWidth /></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Card>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 2 }}>
+              <Button onClick={() => setViewForm(null)} variant="contained" sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>Close</Button>
+            </DialogActions>
+          </Dialog>
+        )
+      })()}
+
       <Dialog open={formBuilderOpen} onClose={() => setFormBuilderOpen(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           {formBuilderMode === 'create' ? 'Create Inspection Form' : formBuilderMode === 'report-custom' ? 'Customize Report Form' : 'Edit Inspection Form'}
@@ -2560,22 +2701,9 @@ const Inspections = () => {
         </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gap: 2.5 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: formBuilderMode === 'report-custom' ? '1fr 1.4fr' : '1fr 1.4fr 280px' }, gap: 2 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.4fr' }, gap: 2 }}>
               <TextField label="Form Title / Name" value={formBuilderName} onChange={e => setFormBuilderName(e.target.value)} />
               <TextField label="Description" value={formBuilderDescription} onChange={e => setFormBuilderDescription(e.target.value)} />
-              {formBuilderMode !== 'report-custom' && (
-                <TextField
-                  select
-                  label="Tagged Asset Type"
-                  value={formBuilderModalityId ?? ''}
-                  onChange={e => setFormBuilderModalityId(e.target.value ? Number(e.target.value) : null)}
-                >
-                  <MenuItem value="">General - available to all assets</MenuItem>
-                  {assignableModalities.map((modality) => (
-                    <MenuItem key={modality.id} value={modality.id}>{modality.name}</MenuItem>
-                  ))}
-                </TextField>
-              )}
             </Box>
 
             <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: 'none' }}>
@@ -2814,7 +2942,12 @@ const Inspections = () => {
                   <Autocomplete
                     multiple
                     options={reportPartsQ.data || []}
-                    value={(reportPartsQ.data || []).filter((item) => (report.parts || []).some((selected: any) => selected.id === item.id))}
+                    inputValue={partSearch}
+                    onInputChange={(_, value, reason) => {
+                      if (reason !== 'reset') setPartSearch(value)
+                    }}
+                    filterOptions={(options) => options}
+                    value={(report.parts || []).filter((selected: any) => selected.id)}
                     onChange={(_, value) => setReport((prev: any) => ({
                       ...prev,
                       parts: value.length ? value.map(inventoryPartSnapshot) : [{ description: '', part_number: '', price: 0, condition: '' }],
@@ -2853,10 +2986,16 @@ const Inspections = () => {
                   <Autocomplete
                     multiple
                     options={testEquipmentQ.data?.items || []}
-                    value={(testEquipmentQ.data?.items || []).filter((item) => (report.test_equipment || []).some((selected: any) => selected.id === item.id))}
+                    inputValue={testEquipmentSearch}
+                    onInputChange={(_, value, reason) => {
+                      if (reason !== 'reset') setTestEquipmentSearch(value)
+                    }}
+                    filterOptions={(options) => options}
+                    value={(report.test_equipment || []).filter((selected: any) => selected.id)}
                     onChange={(_, value) => setReport((prev: any) => ({ ...prev, test_equipment: value.map(testEquipmentSnapshot) }))}
                     getOptionLabel={(option) => `${option.tem}${option.serial_number ? ` - ${option.serial_number}` : ''}`}
                     isOptionEqualToValue={(option, value) => option.id === value.id}
+                    loading={testEquipmentQ.isLoading}
                     renderOption={(props, option) => (
                       <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
