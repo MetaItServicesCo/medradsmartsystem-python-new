@@ -86,6 +86,29 @@ export interface ServiceInvoiceLineItem {
   total_amount: number
 }
 
+export interface ServiceInvoicePaidQuotationLineItem {
+  id?: number
+  quotation_id?: number
+  item_type?: string | null
+  description: string
+  quantity: number
+  unit_price: number
+  total: number
+  created_at?: string | null
+}
+
+export interface ServiceInvoicePaidQuotation {
+  id: number
+  quotation_number: string
+  description?: string | null
+  amount: number
+  paid_amount: number
+  paid_at?: string | null
+  payment_method?: string | null
+  reference_number?: string | null
+  line_items?: ServiceInvoicePaidQuotationLineItem[]
+}
+
 export interface ServiceInvoice {
   id: number
   invoice_number: string
@@ -113,6 +136,7 @@ export interface ServiceInvoice {
   updated_at: string
   transactions?: InvoiceTransaction[]
   line_items?: ServiceInvoiceLineItem[]
+  paid_quotations?: ServiceInvoicePaidQuotation[]
 }
 
 export interface ServiceInvoiceCreatePayload {

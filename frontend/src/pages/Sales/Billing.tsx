@@ -11,6 +11,7 @@ import {
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FilterListIcon from '@mui/icons-material/FilterList'
@@ -33,7 +34,12 @@ import {
   type ServiceInvoice,
   type ServiceRequestQuotationList,
 } from '@/api/serviceRequests'
-import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
+import InvoicePrintDialog, {
+  type PrintableInvoiceEditPayload,
+  type PrintableLedgerTransaction,
+  type PrintableLineItem,
+  type PrintablePaidQuotation,
+} from '@/components/Billing/InvoicePrintDialog'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
@@ -312,6 +318,7 @@ const Billing = () => {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [payOpen, setPayOpen] = useState<BillingItem | null>(null)
   const [printItem, setPrintItem] = useState<BillingItem | null>(null)
+  const [editItem, setEditItem] = useState<BillingItem | null>(null)
   const [tab, setTab] = useState(0)
   const [page, setPage] = useState(0)
   const rowsPerPage = 25
@@ -418,6 +425,7 @@ const Billing = () => {
       status: invoice.status,
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
+      paymentMethod: invoice.payment_method,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
     }))
@@ -560,6 +568,35 @@ const Billing = () => {
       invalidateBilling()
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice payment'),
+  })
+
+  const invoiceEditMut = useMutation({
+    mutationFn: async ({ item, data }: { item: BillingItem; data: PrintableInvoiceEditPayload }) => {
+      const amountPaid = data.amount_paid === undefined ? undefined : Number(data.amount_paid || 0)
+      const commonPayload = {
+        ...(amountPaid !== undefined ? { amount_paid: amountPaid } : {}),
+        due_date: data.due_date || undefined,
+        status: data.status,
+        notes: data.notes || undefined,
+      }
+
+      if (item.source === 'sales') {
+        return updateSalesInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null } as any)
+      }
+      if (item.source === 'rental') {
+        return updateRentalInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null } as any)
+      }
+      if (item.source === 'service' && item.billingKind === 'service_invoice') {
+        return updateServiceInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null })
+      }
+      return updateInspectionInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null } as any)
+    },
+    onSuccess: () => {
+      toast.success('Invoice updated')
+      setEditItem(null)
+      invalidateBilling()
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice'),
   })
 
   const resetPayForm = () => {
@@ -775,6 +812,28 @@ const Billing = () => {
     }]
   }
 
+  const printablePaidQuotations = (item: BillingItem | null): PrintablePaidQuotation[] => {
+    if (!item || item.source !== 'service' || item.billingKind !== 'service_invoice') return []
+    const invoice = item.raw as ServiceInvoice
+    return (invoice.paid_quotations || []).map(quotation => ({
+      id: quotation.id,
+      quotation_number: quotation.quotation_number,
+      description: quotation.description,
+      amount: Number(quotation.amount || 0),
+      paid_amount: Number(quotation.paid_amount || 0),
+      paid_at: quotation.paid_at,
+      payment_method: quotation.payment_method,
+      reference_number: quotation.reference_number,
+      line_items: (quotation.line_items || []).map(line => ({
+        description: line.description,
+        quantity: Number(line.quantity || 0),
+        unit_price: Number(line.unit_price || 0),
+        total: Number(line.total || 0),
+        item_type: line.item_type,
+      })),
+    }))
+  }
+
   const printableLedgerTransactions = (item: BillingItem | null): PrintableLedgerTransaction[] => {
     if (!item) return []
     return items
@@ -858,7 +917,7 @@ const Billing = () => {
           <Tab label="Paid" />
         </Tabs>
         <TableContainer className="list-scroll-panel">
-          <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: 1580 }}>
+          <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: 1640 }}>
             <colgroup>
               <col style={{ width: 150 }} />
               <col style={{ width: 140 }} />
@@ -869,7 +928,7 @@ const Billing = () => {
               <col style={{ width: 120 }} />
               <col style={{ width: 120 }} />
               <col style={{ width: 140 }} />
-              <col style={{ width: 340 }} />
+              <col style={{ width: 400 }} />
             </colgroup>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F9FAFB' }}>
@@ -967,6 +1026,17 @@ const Billing = () => {
                               Pay
                             </Button>
                           )}
+                          {canPay && !(item.source === 'service' && item.billingKind !== 'service_invoice') && (
+                            <Tooltip title="Edit invoice">
+                              <IconButton
+                                size="small"
+                                onClick={() => setEditItem(item)}
+                                sx={{ borderRadius: '10px', border: '1px solid #E9D5FF', color: '#7C3AED', bgcolor: '#F7F0FF' }}
+                              >
+                                <EditOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           <Button
                             size="small"
                             variant="outlined"
@@ -1026,11 +1096,30 @@ const Billing = () => {
         invoice={printableItem(printItem)}
         lineItems={printableLineItems(printItem)}
         ledgerTransactions={printableLedgerTransactions(printItem)}
+        paidQuotations={printablePaidQuotations(printItem)}
         moduleLabel={printItem ? SOURCE_LABEL[printItem.source] : 'Billing'}
         primaryDocumentLabel={printItem?.source === 'service' && printItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
         accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
         quantityLabel={printItem?.source === 'service' && printItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
         appendHtml={printSrData ? buildServiceReportSheet(printSrData) : undefined}
+      />
+
+      <InvoicePrintDialog
+        open={Boolean(editItem)}
+        onClose={() => setEditItem(null)}
+        invoice={printableItem(editItem)}
+        lineItems={printableLineItems(editItem)}
+        ledgerTransactions={printableLedgerTransactions(editItem)}
+        paidQuotations={printablePaidQuotations(editItem)}
+        moduleLabel={editItem ? SOURCE_LABEL[editItem.source] : 'Billing'}
+        primaryDocumentLabel="Invoice"
+        accent={editItem ? SOURCE_COLOR[editItem.source] : '#7C3AED'}
+        quantityLabel={editItem?.source === 'service' && editItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
+        mode="edit"
+        onSave={payload => {
+          if (editItem) invoiceEditMut.mutate({ item: editItem, data: payload })
+        }}
+        saving={invoiceEditMut.isPending}
       />
 
       <Dialog open={Boolean(payOpen)} onClose={closePayDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>

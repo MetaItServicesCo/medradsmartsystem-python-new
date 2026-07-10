@@ -275,6 +275,42 @@ def _service_invoice_line_items(invoice: Invoice) -> list[dict[str, Any]]:
     return rows
 
 
+def _service_invoice_paid_quotations(invoice: Invoice) -> list[dict[str, Any]]:
+    sr = invoice.service_request
+    if not sr:
+        return []
+
+    paid_rows: list[dict[str, Any]] = []
+    for quotation in sr.quotations or []:
+        if quotation.status != "paid":
+            continue
+        payments = list(quotation.payments or [])
+        paid_amount = sum((_money(payment.amount) for payment in payments), Decimal("0")).quantize(Decimal("0.01"))
+        if paid_amount <= Decimal("0"):
+            continue
+        latest_payment = max(
+            payments,
+            key=lambda payment: payment.paid_at or payment.created_at or datetime.min,
+            default=None,
+        )
+        paid_rows.append({
+            "id": quotation.id,
+            "quotation_number": quotation.quotation_number,
+            "description": quotation.description or "Service quotation",
+            "amount": quotation.amount,
+            "paid_amount": paid_amount,
+            "paid_at": latest_payment.paid_at if latest_payment else None,
+            "payment_method": latest_payment.payment_method if latest_payment else None,
+            "reference_number": latest_payment.reference_number if latest_payment else None,
+            "line_items": [
+                {c.name: getattr(line, c.name) for c in line.__table__.columns}
+                for line in (quotation.line_items or [])
+            ],
+        })
+
+    return paid_rows
+
+
 def _sync_last_session_timestamps(sr: ServiceRequest, new_total: Decimal) -> None:
     """When time_spent_hours is manually edited, backfill the last clock-out
     entry's clocked_out_at so history stays consistent with the corrected total."""
@@ -336,6 +372,7 @@ def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
         "updated_at": invoice.updated_at,
         "transactions": [transaction_response(item) for item in invoice.transactions or []],
         "line_items": _service_invoice_line_items(invoice),
+        "paid_quotations": _service_invoice_paid_quotations(invoice),
     }
 
 
@@ -427,6 +464,7 @@ def list_service_invoices(
             joinedload(Invoice.transactions),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
         )
         .filter(Invoice.invoice_type == InvoiceType.SERVICE)
     )
@@ -477,6 +515,7 @@ def update_service_invoice(
             joinedload(Invoice.transactions),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
         )
         .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.SERVICE)
         .first()
@@ -558,6 +597,7 @@ def get_service_request(
             joinedload(Invoice.transactions),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
         )
         .filter(
             Invoice.service_request_id == sr.id,
@@ -809,6 +849,7 @@ def generate_service_invoice(
             joinedload(ServiceRequest.facility),
             joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
         )
         .filter(ServiceRequest.id == request_id)
         .first()
@@ -826,6 +867,7 @@ def generate_service_invoice(
             joinedload(Invoice.transactions),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
         )
         .filter(
             Invoice.invoice_type == InvoiceType.SERVICE,

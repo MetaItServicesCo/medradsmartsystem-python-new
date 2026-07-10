@@ -68,6 +68,7 @@ export interface InspectionInvoice {
   issue_date: string
   due_date: string
   payment_terms: string | null
+  payment_method?: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -292,6 +293,7 @@ export interface InspectionInvoiceUpdatePayload {
   amount_paid?: number
   due_date?: string
   payment_terms?: string
+  payment_method?: string | null
   notes?: string
   status?: InvoiceStatus
   travel_charges?: number

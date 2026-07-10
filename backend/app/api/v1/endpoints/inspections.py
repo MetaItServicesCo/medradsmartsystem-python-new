@@ -172,6 +172,7 @@ class InspectionInvoiceUpdate(BaseModel):
     amount_paid: Optional[Decimal] = None
     due_date: Optional[date] = None
     payment_terms: Optional[str] = None
+    payment_method: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[InvoiceStatus] = None
     travel_charges: Optional[Decimal] = None
@@ -2077,7 +2078,7 @@ def update_inspection_invoice(
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
     if not can_edit_inspection_invoice:
-        billing_only_fields = {"amount_paid", "status", "notes"}
+        billing_only_fields = {"amount_paid", "due_date", "payment_method", "status", "notes"}
         disallowed_fields = set(update_data) - billing_only_fields
         if disallowed_fields:
             raise HTTPException(
@@ -2089,7 +2090,7 @@ def update_inspection_invoice(
     travel_charges = _money(update_data.pop("travel_charges", None))
     service_charges = _money(update_data.pop("service_charges", None))
 
-    for field in ["subtotal", "tax_amount", "discount_amount", "amount_paid", "due_date", "payment_terms", "status"]:
+    for field in ["subtotal", "tax_amount", "discount_amount", "amount_paid", "due_date", "payment_terms", "payment_method", "status"]:
         if field in update_data:
             setattr(invoice, field, update_data[field])
 
