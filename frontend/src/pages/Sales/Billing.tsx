@@ -126,13 +126,17 @@ const billingTypeLabel = (item: BillingItem) => {
   return SOURCE_LABEL[item.source]
 }
 
-const ClippedText = ({
+const ValueBox = ({
   value,
   maxWidth,
   color = '#1E1B4B',
   fontWeight = 800,
   fontSize,
   fontFamily,
+  bgcolor = '#F8F5FF',
+  borderColor = '#E9D5FF',
+  minHeight = 40,
+  align = 'left',
 }: {
   value?: string | number | null
   maxWidth: number | string
@@ -140,28 +144,119 @@ const ClippedText = ({
   fontWeight?: number
   fontSize?: number
   fontFamily?: string
+  bgcolor?: string
+  borderColor?: string
+  minHeight?: number
+  align?: 'left' | 'right' | 'center'
 }) => {
   const text = value === null || value === undefined || value === '' ? '-' : String(value)
 
   return (
     <Tooltip title={text} arrow placement="top">
-      <Typography
-        component="span"
+      <Box
         sx={{
-          display: 'block',
+          display: 'flex',
+          alignItems: 'center',
           maxWidth,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          color,
-          fontWeight,
-          fontSize,
-          fontFamily,
-          lineHeight: 1.45,
+          minHeight,
+          ml: align === 'right' ? 'auto' : undefined,
+          mx: align === 'center' ? 'auto' : undefined,
+          px: 1.5,
+          py: 0.75,
+          borderRadius: '12px',
+          border: `1px solid ${borderColor}`,
+          bgcolor,
+          boxSizing: 'border-box',
         }}
       >
-        {text}
-      </Typography>
+        <Typography
+          component="span"
+          sx={{
+            display: 'block',
+            width: '100%',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color,
+            fontWeight,
+            fontSize,
+            fontFamily,
+            lineHeight: 1.35,
+            textAlign: align,
+          }}
+        >
+          {text}
+        </Typography>
+      </Box>
+    </Tooltip>
+  )
+}
+
+const StackedValueBox = ({
+  primary,
+  secondary,
+  maxWidth,
+}: {
+  primary?: string | number | null
+  secondary?: string | number | null
+  maxWidth: number | string
+}) => {
+  const primaryText = primary === null || primary === undefined || primary === '' ? '-' : String(primary)
+  const secondaryText = secondary === null || secondary === undefined || secondary === '' ? '' : String(secondary)
+  const tooltip = secondaryText ? `${primaryText}\n${secondaryText}` : primaryText
+
+  return (
+    <Tooltip title={<Box sx={{ whiteSpace: 'pre-line' }}>{tooltip}</Box>} arrow placement="top">
+      <Box
+        sx={{
+          maxWidth,
+          minHeight: 54,
+          px: 1.5,
+          py: 1,
+          borderRadius: '14px',
+          border: '1px solid #E5E7EB',
+          bgcolor: '#F9FAFB',
+          boxSizing: 'border-box',
+        }}
+      >
+        <Typography
+          component="span"
+          sx={{
+            display: 'block',
+            width: '100%',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: '#1E1B4B',
+            fontWeight: 900,
+            lineHeight: 1.3,
+          }}
+        >
+          {primaryText}
+        </Typography>
+        {secondaryText && (
+          <Typography
+            component="span"
+            sx={{
+              display: 'block',
+              width: '100%',
+              minWidth: 0,
+              mt: 0.25,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: '#8B95A7',
+              fontSize: 13,
+              fontWeight: 700,
+              lineHeight: 1.25,
+            }}
+          >
+            {secondaryText}
+          </Typography>
+        )}
+      </Box>
     </Tooltip>
   )
 }
@@ -818,18 +913,23 @@ const Billing = () => {
                         </Tooltip>
                       </TableCell>
                       <TableCell sx={{ width: 135 }}>
-                        <ClippedText value={item.number} maxWidth={112} color="#5B21B6" fontWeight={900} fontFamily="monospace" />
+                        <ValueBox value={item.number} maxWidth={118} color="#5B21B6" fontWeight={900} fontFamily="monospace" bgcolor="#F3E8FF" borderColor="#DDD6FE" />
                       </TableCell>
                       <TableCell sx={{ width: 135 }}>
-                        <ClippedText value={item.relatedNumber} maxWidth={112} fontWeight={800} fontFamily="monospace" />
+                        <ValueBox value={item.relatedNumber} maxWidth={118} fontWeight={850} fontFamily="monospace" bgcolor="#EEF2FF" borderColor="#C7D2FE" />
                       </TableCell>
                       <TableCell sx={{ width: 260 }}>
-                        <ClippedText value={item.facility} maxWidth={220} fontWeight={900} />
-                        <ClippedText value={item.customer} maxWidth={220} color="#8B95A7" fontWeight={700} fontSize={13} />
+                        <StackedValueBox primary={item.facility} secondary={item.customer} maxWidth={230} />
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}>{money(item.amount)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 900, color: '#059669', whiteSpace: 'nowrap' }}>{money(item.paid)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 900, color: item.balance > 0 ? '#DC2626' : '#059669', whiteSpace: 'nowrap' }}>{money(item.balance)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}>
+                        <ValueBox value={money(item.amount)} maxWidth={104} align="right" fontWeight={900} bgcolor="#F8FAFC" borderColor="#E2E8F0" />
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 900, color: '#059669', whiteSpace: 'nowrap' }}>
+                        <ValueBox value={money(item.paid)} maxWidth={100} align="right" color="#059669" fontWeight={900} bgcolor="#ECFDF5" borderColor="#BBF7D0" />
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 900, color: item.balance > 0 ? '#DC2626' : '#059669', whiteSpace: 'nowrap' }}>
+                        <ValueBox value={money(item.balance)} maxWidth={112} align="right" color={item.balance > 0 ? '#DC2626' : '#059669'} fontWeight={900} bgcolor={item.balance > 0 ? '#FEF2F2' : '#ECFDF5'} borderColor={item.balance > 0 ? '#FECACA' : '#BBF7D0'} />
+                      </TableCell>
                       <TableCell sx={{ width: 120 }}>
                         <Tooltip title={methodLabel(item.status)} arrow placement="top">
                           <Chip
@@ -849,7 +949,7 @@ const Billing = () => {
                         </Tooltip>
                       </TableCell>
                       <TableCell sx={{ width: 120 }}>
-                        <ClippedText value={formatDate(item.dueDate || item.date)} maxWidth={96} fontWeight={700} />
+                        <ValueBox value={formatDate(item.dueDate || item.date)} maxWidth={106} fontWeight={800} bgcolor="#F8FAFC" borderColor="#E2E8F0" />
                       </TableCell>
                       <TableCell align="right" sx={{ width: 315 }}>
                         <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
