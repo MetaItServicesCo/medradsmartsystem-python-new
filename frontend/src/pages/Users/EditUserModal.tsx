@@ -5,10 +5,10 @@ import {
   Box, Typography, CircularProgress, Chip, Autocomplete, Switch,
   FormControlLabel,
 } from '@mui/material'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 import { updateUser, type UserData, type UpdateUserPayload } from '@/api/users'
-import { fetchFacilities } from '@/api/facilities'
+import { fetchFacilities, type Facility } from '@/api/facilities'
 
 const ROLE_OPTIONS = [
   { value: 'superadmin', label: 'Super Admin' },
@@ -21,6 +21,8 @@ const ROLE_OPTIONS = [
   { value: 'client', label: 'Client' },
 ]
 
+const FACILITY_ASSIGN_PAGE_SIZE = 50
+
 interface Props {
   open: boolean
   user: UserData
@@ -29,6 +31,8 @@ interface Props {
 
 const EditUserModal = ({ open, user, onClose }: Props) => {
   const queryClient = useQueryClient()
+  const [facilitySearch, setFacilitySearch] = useState('')
+  const [selectedFacilities, setSelectedFacilities] = useState<Array<Pick<Facility, 'id' | 'name'> & Partial<Facility>>>([])
   const [form, setForm] = useState({
     username: '',
     email: '',
@@ -54,16 +58,37 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
         is_active: user.is_active,
         facility_ids: user.facilities?.map((f) => f.id) || [],
       })
+      setSelectedFacilities(user.facilities || [])
+      setFacilitySearch('')
     }
-  }, [user])
+  }, [user, open])
 
-  const { data: facilitiesData } = useQuery({
-    queryKey: ['facilities-brief'],
-    queryFn: () => fetchFacilities(),
+  const {
+    data: facilitiesData,
+    fetchNextPage: fetchNextFacilityPage,
+    hasNextPage: hasNextFacilityPage,
+    isFetchingNextPage: isFetchingNextFacilityPage,
+    isLoading: facilitiesLoading,
+  } = useInfiniteQuery({
+    queryKey: ['facilities-assign-options', facilitySearch],
+    queryFn: ({ pageParam }) => fetchFacilities({
+      search: facilitySearch || undefined,
+      skip: pageParam,
+      limit: FACILITY_ASSIGN_PAGE_SIZE,
+    }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextSkip = lastPage.skip + lastPage.items.length
+      return nextSkip < lastPage.total ? nextSkip : undefined
+    },
     enabled: open,
   })
 
-  const facilities = facilitiesData?.items || []
+  const facilities = facilitiesData?.pages.flatMap((page) => page.items) || []
+  const facilityOptions = [
+    ...selectedFacilities,
+    ...facilities.filter((facility) => !selectedFacilities.some((selected) => selected.id === facility.id)),
+  ]
 
   const mutation = useMutation({
     mutationFn: (payload: UpdateUserPayload) => updateUser(user.id, payload),
@@ -167,10 +192,42 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
               <Autocomplete
                 multiple
                 size="small"
-                options={facilities}
+                options={facilityOptions}
+                inputValue={facilitySearch}
+                onInputChange={(_, value, reason) => {
+                  if (reason !== 'reset') setFacilitySearch(value)
+                }}
+                filterOptions={(options) => options}
+                loading={facilitiesLoading || isFetchingNextFacilityPage}
+                ListboxProps={{
+                  style: { maxHeight: 320, overflow: 'auto' },
+                  onScroll: (event) => {
+                    const listbox = event.currentTarget
+                    const nearBottom = listbox.scrollTop + listbox.clientHeight >= listbox.scrollHeight - 40
+                    if (nearBottom && hasNextFacilityPage && !isFetchingNextFacilityPage) {
+                      fetchNextFacilityPage()
+                    }
+                  },
+                }}
                 getOptionLabel={(option: any) => option.name}
-                value={facilities.filter((f: any) => form.facility_ids.includes(f.id))}
-                onChange={(_, val) => setForm({ ...form, facility_ids: val.map((v: any) => v.id) })}
+                isOptionEqualToValue={(option: any, value: any) => option.id === value.id}
+                value={selectedFacilities}
+                onChange={(_, val) => {
+                  setSelectedFacilities(val as typeof selectedFacilities)
+                  setForm({ ...form, facility_ids: val.map((v: any) => v.id) })
+                }}
+                renderOption={(props, option: any) => (
+                  <Box component="li" {...props}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>{option.name}</Typography>
+                      {(option.city || option.state || option.country) && (
+                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                          {[option.city, option.state, option.country].filter(Boolean).join(', ')}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                )}
                 renderInput={(params) => <TextField {...params} label="Assign Facilities" />}
                 renderTags={(value, getTagProps) =>
                   value.map((option: any, index) => (

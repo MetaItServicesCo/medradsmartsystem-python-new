@@ -121,7 +121,12 @@ def read_facilities(
             or_(
                 Facility.name.ilike(f"%{search}%"),
                 Facility.city.ilike(f"%{search}%"),
-                Facility.country.ilike(f"%{search}%")
+                Facility.state.ilike(f"%{search}%"),
+                Facility.zip_code.ilike(f"%{search}%"),
+                Facility.country.ilike(f"%{search}%"),
+                Facility.email.ilike(f"%{search}%"),
+                Facility.phone.ilike(f"%{search}%"),
+                Facility.contact_person.ilike(f"%{search}%")
             )
         )
     total = query.count()
