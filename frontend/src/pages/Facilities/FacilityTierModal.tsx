@@ -3,7 +3,7 @@ import {
   Dialog, DialogContent, DialogActions,
   Button, Box, Typography, IconButton,
   CircularProgress, Chip, Skeleton, Alert,
-  TextField, MenuItem, Collapse, Tooltip
+  TextField, MenuItem, Collapse, Tooltip, TablePagination
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium'
@@ -40,19 +40,29 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
   const [form, setForm] = useState<Partial<TierCreate>>(initialFormState)
   const [viewTierId, setViewTierId] = useState<number | null>(null)
   const [editTierId, setEditTierId] = useState<number | null>(null)
+  const [tierSearch, setTierSearch] = useState('')
+  const [tierPage, setTierPage] = useState(0)
+  const [tierRowsPerPage, setTierRowsPerPage] = useState(25)
 
   const { data: tiersData, isLoading: tiersLoading } = useQuery({
-    queryKey: ['tiers'],
-    queryFn: fetchTiers,
+    queryKey: ['tiers', 'facility-tier-modal', tierSearch, tierPage, tierRowsPerPage],
+    queryFn: () => fetchTiers({
+      search: tierSearch || undefined,
+      skip: tierPage * tierRowsPerPage,
+      limit: tierRowsPerPage,
+    }),
     enabled: open,
   })
 
   const tiers = tiersData?.items ?? []
+  const tiersTotal = tiersData?.total ?? 0
 
   useEffect(() => {
     if (facility) {
       setSelectedTierIds(facility.tier_ids?.length ? facility.tier_ids : (facility.tier_id ? [facility.tier_id] : []))
     }
+    setTierPage(0)
+    setTierSearch('')
   }, [facility, open])
 
   // Mutations
@@ -192,7 +202,19 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
           </Alert>
         )}
 
-        <Typography variant="overline" sx={{ color: '#1E1B4B', fontWeight: 700, mb: 1.5, display: 'block' }}>Available Tiers</Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, mb: 1.5 }}>
+          <Typography variant="overline" sx={{ color: '#1E1B4B', fontWeight: 700, display: 'block' }}>Available Tiers</Typography>
+          <TextField
+            size="small"
+            placeholder="Search tiers..."
+            value={tierSearch}
+            onChange={(event) => {
+              setTierSearch(event.target.value)
+              setTierPage(0)
+            }}
+            sx={{ width: { xs: '100%', sm: 280 } }}
+          />
+        </Box>
 
         {tiersLoading ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -299,6 +321,25 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
                 })}
               </tbody>
             </table>
+            <TablePagination
+              component="div"
+              count={tiersTotal}
+              page={tierPage}
+              onPageChange={(_, nextPage) => {
+                setViewTierId(null)
+                setEditTierId(null)
+                setTierPage(nextPage)
+              }}
+              rowsPerPage={tierRowsPerPage}
+              onRowsPerPageChange={(event) => {
+                setTierRowsPerPage(Number(event.target.value))
+                setTierPage(0)
+                setViewTierId(null)
+                setEditTierId(null)
+              }}
+              rowsPerPageOptions={[10, 25, 50, 100]}
+              sx={{ borderTop: '1px solid #E5E7EB' }}
+            />
 
             {facility && facility.id !== 0 && (
               <Box onClick={() => setSelectedTierIds([])} sx={{ mt: 3, p: 2, borderRadius: '12px', border: selectedTierIds.length === 0 ? '1px solid #EF4444' : '1px solid #E5E7EB', backgroundColor: selectedTierIds.length === 0 ? '#FEF2F2' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>

@@ -44,8 +44,14 @@ export interface TierListResponse {
   total: number
 }
 
-export const fetchTiers = async (): Promise<TierListResponse> => {
-  const res = await apiClient.get('/tiers/')
+export interface TierListParams {
+  search?: string
+  skip?: number
+  limit?: number
+}
+
+export const fetchTiers = async (params: TierListParams = {}): Promise<TierListResponse> => {
+  const res = await apiClient.get('/tiers/', { params })
   return res.data
 }
 

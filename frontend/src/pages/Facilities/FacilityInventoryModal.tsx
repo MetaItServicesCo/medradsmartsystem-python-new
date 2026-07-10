@@ -108,7 +108,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
 
   const { data: tiersData } = useQuery({
     queryKey: ['tiers'],
-    queryFn: fetchTiers,
+    queryFn: () => fetchTiers(),
     enabled: open,
   })
 

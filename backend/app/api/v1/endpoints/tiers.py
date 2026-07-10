@@ -1,5 +1,6 @@
-from typing import Any
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import crud
@@ -20,11 +21,27 @@ router = APIRouter()
 @router.get("/", response_model=TierListResponse)
 def read_tiers(
     db: Session = Depends(get_db),
+    search: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: Optional[int] = Query(None, ge=1, le=2000),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Retrieve all tiers."""
-    items = db.query(Tier).order_by(Tier.created_at.desc(), Tier.id.desc()).all()
-    return {"items": items, "total": len(items)}
+    """Retrieve tiers, optionally paginated for large assignment lists."""
+    query = db.query(Tier)
+    if search:
+        term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Tier.tier_code.ilike(term),
+                Tier.name.ilike(term),
+                Tier.description.ilike(term),
+            )
+        )
+    total = query.count()
+    query = query.order_by(Tier.created_at.desc(), Tier.id.desc()).offset(skip)
+    if limit is not None:
+        query = query.limit(limit)
+    return {"items": query.all(), "total": total}
 
 
 @router.get("/{id}", response_model=TierSchema)
