@@ -7,7 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app import crud
@@ -1363,6 +1363,8 @@ def delete_quotation(
 def get_all_quotations(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Get all service request quotations."""
@@ -1371,8 +1373,8 @@ def get_all_quotations(
         .join(ServiceRequest, ServiceRequest.id == ServiceRequestQuotation.service_request_id)
         .options(
             joinedload(ServiceRequestQuotation.service_request).joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequestQuotation.line_items),
-            joinedload(ServiceRequestQuotation.payments),
+            selectinload(ServiceRequestQuotation.line_items),
+            selectinload(ServiceRequestQuotation.payments),
         )
         .order_by(ServiceRequestQuotation.created_at.desc())
     )
@@ -1387,7 +1389,12 @@ def get_all_quotations(
                 Facility.name.ilike(like),
             )
         )
-    quotations = scope_query_to_user_facilities(quotations, ServiceRequest.facility_id, db, current_user).all()
+    quotations = (
+        scope_query_to_user_facilities(quotations, ServiceRequest.facility_id, db, current_user)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
     result = []
     for q in quotations:

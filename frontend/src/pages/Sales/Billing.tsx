@@ -218,7 +218,7 @@ const Billing = () => {
   const salesQ = useQuery({ queryKey: ['billing-sales-invoices', search], queryFn: () => fetchSalesInvoices({ search: search || undefined }) })
   const rentalsQ = useQuery({ queryKey: ['billing-rental-invoices', search], queryFn: () => fetchRentalInvoices({ search: search || undefined }) })
 
-  const isLoading = serviceQ.isLoading || serviceInvoicesQ.isLoading || inspectionQ.isLoading || salesQ.isLoading || rentalsQ.isLoading
+  const anyBillingSourceLoading = serviceQ.isLoading || serviceInvoicesQ.isLoading || inspectionQ.isLoading || salesQ.isLoading || rentalsQ.isLoading
 
   const items = useMemo<BillingItem[]>(() => {
     const serviceInvoiceItems = (serviceInvoicesQ.data?.items || []).map((invoice): BillingItem => ({
@@ -341,6 +341,8 @@ const Billing = () => {
     return [...serviceInvoiceItems, ...serviceItems, ...inspectionItems, ...salesItems, ...rentalItems]
       .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
   }, [inspectionQ.data, rentalsQ.data, salesQ.data, serviceInvoicesQ.data, serviceQ.data])
+
+  const isInitialLoading = anyBillingSourceLoading && items.length === 0
 
   const filteredItems = items.filter(item => {
     const normalizedSearch = search.trim().toLowerCase()
@@ -744,7 +746,7 @@ const Billing = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {isLoading ? Array.from({ length: 5 }).map((_, index) => (
+              {isInitialLoading ? Array.from({ length: 5 }).map((_, index) => (
                 <TableRow key={index}>{Array.from({ length: 10 }).map((__, cell) => <TableCell key={cell}><Skeleton /></TableCell>)}</TableRow>
               )) : filteredItems.length === 0 ? (
                 <TableRow><TableCell colSpan={10} align="center" sx={{ py: 6, color: '#6B7280', fontWeight: 800 }}>No billing records found.</TableCell></TableRow>

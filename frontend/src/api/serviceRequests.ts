@@ -405,10 +405,27 @@ export const deleteServiceRequestQuotation = async (
   await apiClient.delete(`/service-requests/quotations/${quotationId}`)
 }
 
+const fetchServiceQuotationsPage = async (
+  params: { search?: string; skip?: number; limit?: number } = {}
+): Promise<ServiceRequestQuotationList[]> => {
+  const res = await apiClient.get('/service-requests/quotations/all', { params })
+  return res.data
+}
+
 export const fetchAllQuotations = async (search?: unknown): Promise<ServiceRequestQuotationList[]> => {
   const normalizedSearch = typeof search === 'string' ? search : undefined
-  const res = await apiClient.get('/service-requests/quotations/all', { params: { search: normalizedSearch } })
-  return res.data
+  const limit = 100
+  let skip = 0
+  const quotations: ServiceRequestQuotationList[] = []
+
+  while (true) {
+    const page = await fetchServiceQuotationsPage({ search: normalizedSearch, skip, limit })
+    quotations.push(...page)
+    if (page.length < limit) break
+    skip += page.length
+  }
+
+  return quotations
 }
 
 // ─── Payment Functions ───────────────────────────────────────
