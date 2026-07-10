@@ -104,7 +104,7 @@ const Inventory = () => {
     queryKey: ['facilities', 'inventory-filter'],
     queryFn: () => fetchFacilities({ limit: 500 }),
   })
-  const { data: tiersData } = useQuery({ queryKey: ['tiers'], queryFn: () => fetchTiers() })
+  const { data: tiersData } = useQuery({ queryKey: ['tiers', 'inventory-options'], queryFn: () => fetchTiers({ limit: 500 }) })
   const inventoryFilters = {
     search: search || undefined,
     facility_id: facilityId || undefined,

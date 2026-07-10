@@ -23,7 +23,7 @@ def read_tiers(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: Optional[int] = Query(None, ge=1, le=2000),
+    limit: int = Query(100, ge=1, le=2000),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Retrieve tiers, optionally paginated for large assignment lists."""
@@ -38,9 +38,7 @@ def read_tiers(
             )
         )
     total = query.count()
-    query = query.order_by(Tier.created_at.desc(), Tier.id.desc()).offset(skip)
-    if limit is not None:
-        query = query.limit(limit)
+    query = query.order_by(Tier.created_at.desc(), Tier.id.desc()).offset(skip).limit(limit)
     return {"items": query.all(), "total": total}
 
 

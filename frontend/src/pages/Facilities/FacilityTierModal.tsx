@@ -18,6 +18,7 @@ import { toast } from 'react-toastify'
 
 import { fetchTiers, createTier, updateTier, deleteTier, duplicateTier, type Tier, type TierCreate, type TierUpdate } from '@/api/tiers'
 import { updateFacility, type Facility } from '@/api/facilities'
+import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 interface Props {
   open: boolean
@@ -56,6 +57,10 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
 
   const tiers = tiersData?.items ?? []
   const tiersTotal = tiersData?.total ?? 0
+  const pageStart = tierPage * tierRowsPerPage
+  const visibleTiers = tiers.length > tierRowsPerPage
+    ? tiers.slice(pageStart, pageStart + tierRowsPerPage)
+    : tiers
 
   useEffect(() => {
     if (facility) {
@@ -159,21 +164,24 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
-      PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden', boxShadow: '0 24px 80px rgba(124,58,237,0.18)' } }}
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth
+      PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden', boxShadow: '0 24px 80px rgba(124,58,237,0.18)', width: { xs: 'calc(100% - 16px)', sm: 'calc(100% - 48px)' } } }}
     >
-      <Box sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 50%, #5B21B6 100%)', px: 3.5, py: 3, display: 'flex', alignItems: 'center', gap: 2, position: 'relative', overflow: 'hidden' }}>
+      <Box sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 50%, #5B21B6 100%)', px: { xs: 2, sm: 3.5 }, py: { xs: 2, sm: 3 }, display: 'flex', alignItems: 'center', gap: 2, position: 'relative', overflow: 'hidden', flexWrap: 'wrap' }}>
         <Box sx={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <WorkspacePremiumIcon sx={{ color: '#fff', fontSize: '1.5rem' }} />
         </Box>
-        <Box sx={{ flex: 1, zIndex: 1 }}>
+        <Box sx={{ flex: '1 1 260px', minWidth: 0, zIndex: 1 }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>Facility Tier</Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.8rem' }}>
-            {facility?.name ? `Assign tier for ${facility.name}` : 'Manage service tiers'}
-          </Typography>
+          <ClippedTooltipText
+            value={facility?.name ? `Assign tier for ${facility.name}` : 'Manage service tiers'}
+            variant="caption"
+            fontWeight={700}
+            color="rgba(255,255,255,0.75)"
+          />
         </Box>
         <Button size="small" startIcon={<AddIcon />} onClick={() => { setShowForm(!showForm); setEditTierId(null); setForm(initialFormState); }}
-          sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', border: '1px solid', borderRadius: '10px', fontSize: '0.75rem' }}>
+          sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', border: '1px solid', borderRadius: '10px', fontSize: '0.75rem', minWidth: 132, flexShrink: 0 }}>
           {showForm ? 'Hide Form' : 'New Tier'}
         </Button>
         <IconButton onClick={onClose} sx={{ color: '#fff', zIndex: 1, '&:hover': { background: 'rgba(255,255,255,0.12)' } }}>
@@ -181,7 +189,7 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
         </IconButton>
       </Box>
 
-      <DialogContent sx={{ p: 3.5, pt: 3 }}>
+      <DialogContent sx={{ p: { xs: 2, sm: 3.5 }, pt: { xs: 2, sm: 3 } }}>
         <Collapse in={showForm}>
           <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid rgba(124,58,237,0.12)' }}>
             <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, mb: 1.5, display: 'block' }}>Create New Tier</Typography>
@@ -198,7 +206,17 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
 
         {facility && facility.id !== 0 && selectedTierIds.length > 0 && (
           <Alert severity="info" icon={<CheckCircleIcon />} sx={{ mb: 2.5, borderRadius: '12px', backgroundColor: '#F5F3FF', color: '#5B21B6', border: '1px solid rgba(124,58,237,0.12)', '& .MuiAlert-icon': { color: '#7C3AED' } }}>
-            Currently assigned: <strong>{selectedTierIds.map((id) => tiers.find((t) => t.id === id)?.name || `Tier #${id}`).join(', ')}</strong>
+            <Box sx={{ display: 'flex', gap: 0.5, minWidth: 0 }}>
+              <Box component="span" sx={{ flexShrink: 0 }}>Currently assigned:</Box>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <ClippedTooltipText
+                  value={selectedTierIds.map((id) => tiers.find((t) => t.id === id)?.name || `Tier #${id}`).join(', ')}
+                  variant="body2"
+                  fontWeight={900}
+                  color="#5B21B6"
+                />
+              </Box>
+            </Box>
           </Alert>
         )}
 
@@ -226,8 +244,17 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
             <Typography variant="body2">No tiers configured yet.</Typography>
           </Box>
         ) : (
-          <Box sx={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+          <Box sx={{ overflowX: 'auto', border: '1px solid #EEF0F6', borderRadius: '16px' }}>
+            <table style={{ width: '100%', minWidth: 1040, borderCollapse: 'collapse', tableLayout: 'fixed', textAlign: 'left', fontSize: '0.85rem' }}>
+              <colgroup>
+                <col style={{ width: 250 }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 320 }} />
+              </colgroup>
               <thead>
                 <tr style={{ borderBottom: '2px solid rgba(124,58,237,0.1)', color: '#7C3AED' }}>
                   <th style={{ padding: '12px 8px' }}>Code / Name</th>
@@ -240,53 +267,66 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
                 </tr>
               </thead>
               <tbody>
-                {tiers.map((tier) => {
+                {visibleTiers.map((tier) => {
                   const selected = selectedTierIds.includes(tier.id)
                   const isViewing = viewTierId === tier.id
                   const isEditing = editTierId === tier.id
                   return (
                     <React.Fragment key={tier.id}>
-                      <tr style={{ borderBottom: (isViewing || isEditing) ? 'none' : '1px solid #E5E7EB', backgroundColor: selected ? '#F5F3FF' : (isViewing || isEditing) ? '#FAFAFA' : 'transparent', transition: 'background-color 0.2s' }}>
+                      <Box
+                        component="tr"
+                        sx={{
+                          borderBottom: (isViewing || isEditing) ? 'none' : '1px solid #E5E7EB',
+                          backgroundColor: selected ? '#F5F3FF' : (isViewing || isEditing) ? '#FAFAFA' : 'transparent',
+                          transition: 'background-color 0.18s ease, box-shadow 0.18s ease',
+                          '&:hover': {
+                            backgroundColor: selected ? '#EEE7FF' : '#FAF7FF',
+                            boxShadow: 'inset 3px 0 0 #7C3AED',
+                          },
+                        }}
+                      >
                         <td style={{ padding: '12px 8px' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E1B4B' }}>{tier.name}</Typography>
-                          <Typography variant="caption" sx={{ color: '#6B7280' }}>ID: {tier.tier_code}</Typography>
+                          <ClippedTooltipText value={tier.name} variant="body2" fontWeight={800} />
+                          <ClippedTooltipText value={`ID: ${tier.tier_code}`} variant="caption" fontWeight={600} color="#6B7280" />
                         </td>
-                        <td style={{ padding: '12px 8px' }}>${tier.labor_rate_per_hour}/hr</td>
-                        <td style={{ padding: '12px 8px' }}>${tier.service_call_fee}</td>
-                        <td style={{ padding: '12px 8px' }}>${tier.preventive_maintenance_fee}</td>
-                        <td style={{ padding: '12px 8px' }}>${tier.mileage_rate}/mi</td>
+                        <td style={{ padding: '12px 8px' }}><ClippedTooltipText value={`$${tier.labor_rate_per_hour}/hr`} fontWeight={700} /></td>
+                        <td style={{ padding: '12px 8px' }}><ClippedTooltipText value={`$${tier.service_call_fee}`} fontWeight={700} /></td>
+                        <td style={{ padding: '12px 8px' }}><ClippedTooltipText value={`$${tier.preventive_maintenance_fee}`} fontWeight={700} /></td>
+                        <td style={{ padding: '12px 8px' }}><ClippedTooltipText value={`$${tier.mileage_rate}/mi`} fontWeight={700} /></td>
                         <td style={{ padding: '12px 8px' }}>
                           <Chip label={tier.status} size="small" sx={{ backgroundColor: tier.status === 'active' ? '#D1FAE5' : '#FEE2E2', color: tier.status === 'active' ? '#065F46' : '#991B1B', fontWeight: 600, fontSize: '0.7rem', textTransform: 'capitalize' }} />
                         </td>
                         <td style={{ padding: '12px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          <Tooltip title="View Details">
-                            <IconButton size="small" onClick={() => { setViewTierId(isViewing ? null : tier.id); setEditTierId(null); }} sx={{ mr: 1, color: '#3B82F6', backgroundColor: '#EFF6FF', borderRadius: '8px' }}>
-                              <VisibilityOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Edit Tier">
-                            <IconButton size="small" onClick={() => handleEditClick(tier)} sx={{ mr: 1, color: '#F59E0B', backgroundColor: '#FEF3C7', borderRadius: '8px' }}>
-                              <EditOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Duplicate Tier">
-                            <IconButton size="small" onClick={() => { if(window.confirm('Duplicate this tier?')) duplicateMut.mutate(tier.id) }} sx={{ mr: 1, color: '#10B981', backgroundColor: '#D1FAE5', borderRadius: '8px' }}>
-                              <ContentCopyOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete Tier">
-                            <IconButton size="small" onClick={() => { if(window.confirm('Delete this tier?')) deleteMut.mutate(tier.id) }} sx={{ mr: 2, color: '#EF4444', backgroundColor: '#FEF2F2', borderRadius: '8px' }}>
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          {facility && facility.id !== 0 && (
-                            <Button size="small" variant={selected ? 'contained' : 'outlined'} onClick={() => setSelectedTierIds((ids) => selected ? ids.filter((id) => id !== tier.id) : [...ids, tier.id])}
-                              sx={{ minWidth: '80px', borderColor: '#7C3AED', color: selected ? '#fff' : '#7C3AED', backgroundColor: selected ? '#7C3AED' : 'transparent', borderRadius: '8px', textTransform: 'none', '&:hover': { backgroundColor: selected ? '#6D28D9' : 'rgba(124,58,237,0.08)' } }}>
-                              {selected ? 'Assigned' : 'Add'}
-                            </Button>
-                          )}
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.75 }}>
+                            <Tooltip title="View Details">
+                              <IconButton size="small" onClick={() => { setViewTierId(isViewing ? null : tier.id); setEditTierId(null); }} sx={{ color: '#3B82F6', backgroundColor: '#EFF6FF', borderRadius: '8px', '&:hover': { backgroundColor: '#DBEAFE' } }}>
+                                <VisibilityOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Edit Tier">
+                              <IconButton size="small" onClick={() => handleEditClick(tier)} sx={{ color: '#F59E0B', backgroundColor: '#FEF3C7', borderRadius: '8px', '&:hover': { backgroundColor: '#FDE68A' } }}>
+                                <EditOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Duplicate Tier">
+                              <IconButton size="small" onClick={() => { if(window.confirm('Duplicate this tier?')) duplicateMut.mutate(tier.id) }} sx={{ color: '#10B981', backgroundColor: '#D1FAE5', borderRadius: '8px', '&:hover': { backgroundColor: '#A7F3D0' } }}>
+                                <ContentCopyOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete Tier">
+                              <IconButton size="small" onClick={() => { if(window.confirm('Delete this tier?')) deleteMut.mutate(tier.id) }} sx={{ color: '#EF4444', backgroundColor: '#FEF2F2', borderRadius: '8px', '&:hover': { backgroundColor: '#FEE2E2' } }}>
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            {facility && facility.id !== 0 && (
+                              <Button size="small" variant={selected ? 'contained' : 'outlined'} onClick={() => setSelectedTierIds((ids) => selected ? ids.filter((id) => id !== tier.id) : [...ids, tier.id])}
+                                sx={{ minWidth: '90px', borderColor: '#7C3AED', color: selected ? '#fff' : '#7C3AED', backgroundColor: selected ? '#7C3AED' : 'transparent', borderRadius: '10px', textTransform: 'none', fontWeight: 900, '&:hover': { backgroundColor: selected ? '#6D28D9' : 'rgba(124,58,237,0.08)' } }}>
+                                {selected ? 'Assigned' : 'Add'}
+                              </Button>
+                            )}
+                          </Box>
                         </td>
-                      </tr>
+                      </Box>
                       {isViewing && !isEditing && (
                         <tr style={{ backgroundColor: '#FAFAFA', borderBottom: '1px solid #E5E7EB' }}>
                           <td colSpan={7} style={{ padding: '0 8px 16px 8px' }}>
