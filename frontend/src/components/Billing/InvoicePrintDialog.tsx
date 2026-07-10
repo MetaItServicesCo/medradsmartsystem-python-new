@@ -493,6 +493,7 @@ const InvoicePrintDialog = ({
   const [editRows, setEditRows] = useState<PrintableLineItem[]>([])
   const previewAccentSoft = softAccentFor(accent)
   const isEditMode = mode === 'edit'
+  const activeDocumentType: PrintDocumentType = isEditMode ? 'invoice' : documentType
 
   useEffect(() => {
     if (!invoice || !open) return
@@ -541,7 +542,7 @@ const InvoicePrintDialog = ({
   }, [editForm, invoice, isEditMode])
 
   const previewRows = useMemo(() => {
-    if (documentType === 'ledger') {
+    if (activeDocumentType === 'ledger') {
       return ledgerTransactions.map(item => ({
         first: formatDate(item.created_at),
         second: item.invoice_number || displayInvoice?.invoice_number || '-',
@@ -554,14 +555,14 @@ const InvoicePrintDialog = ({
       first: item.item_number,
       second: item.description,
       third: item.unitLabel ? `${item.quantity} ${item.unitLabel}` : `${quantityLabel} ${item.quantity}`,
-      amount: documentType === 'packing_slip' ? item.condition || '-' : money(item.total_amount),
+      amount: activeDocumentType === 'packing_slip' ? item.condition || '-' : money(item.total_amount),
     }))
-  }, [displayInvoice?.invoice_number, documentType, editRows, isEditMode, ledgerTransactions, lineItems, quantityLabel])
+  }, [activeDocumentType, displayInvoice?.invoice_number, editRows, isEditMode, ledgerTransactions, lineItems, quantityLabel])
 
   const handlePrint = () => {
     if (!displayInvoice) return
-    const html = buildPrintableHtml(displayInvoice, documentType, lineItems, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations)
-    printHtml(`${displayInvoice.invoice_number} ${documentLabel(documentType, primaryDocumentLabel)}`, html + (appendHtml || ''))
+    const html = buildPrintableHtml(displayInvoice, activeDocumentType, lineItems, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations)
+    printHtml(`${displayInvoice.invoice_number} ${documentLabel(activeDocumentType, primaryDocumentLabel)}`, html + (appendHtml || ''))
   }
 
   const handleSave = () => {
@@ -622,7 +623,7 @@ const InvoicePrintDialog = ({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
+    <Dialog open={open} onClose={onClose} maxWidth={isEditMode ? 'lg' : 'md'} fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
       <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
         {isEditMode ? 'Edit' : 'Print'} {displayInvoice?.invoice_number || primaryDocumentLabel}
         <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
@@ -633,19 +634,22 @@ const InvoicePrintDialog = ({
         {displayInvoice && (
           <Box sx={{ display: 'grid', gap: 2 }}>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-              <TextField
-                select
-                size="small"
-                label="Document"
-                value={documentType}
-                onChange={event => setDocumentType(event.target.value as PrintDocumentType)}
-                disabled={isEditMode}
-                sx={{ minWidth: 220, bgcolor: '#fff' }}
-              >
-                <MenuItem value="invoice">{primaryDocumentLabel}</MenuItem>
-                <MenuItem value="packing_slip">Packing Slip</MenuItem>
-                <MenuItem value="ledger">Account Ledger</MenuItem>
-              </TextField>
+              {isEditMode ? (
+                <Chip label="Invoice editor" sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900 }} />
+              ) : (
+                <TextField
+                  select
+                  size="small"
+                  label="Document"
+                  value={documentType}
+                  onChange={event => setDocumentType(event.target.value as PrintDocumentType)}
+                  sx={{ minWidth: 220, bgcolor: '#fff' }}
+                >
+                  <MenuItem value="invoice">{primaryDocumentLabel}</MenuItem>
+                  <MenuItem value="packing_slip">Packing Slip</MenuItem>
+                  <MenuItem value="ledger">Account Ledger</MenuItem>
+                </TextField>
+              )}
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 <Chip label={displayInvoice.status.replace(/_/g, ' ')} sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900, textTransform: 'uppercase' }} />
                 <Chip label={`Balance ${money(displayInvoice.balance_due)}`} sx={{ bgcolor: '#fff', fontWeight: 900 }} />
@@ -674,7 +678,7 @@ const InvoicePrintDialog = ({
                   </Box>
                 </Box>
                 <Box sx={{ textAlign: 'right' }}>
-                  <Typography sx={{ fontWeight: 950, fontSize: 24 }}>{documentLabel(documentType, primaryDocumentLabel)}</Typography>
+                  <Typography sx={{ fontWeight: 950, fontSize: 24 }}>{documentLabel(activeDocumentType, primaryDocumentLabel)}</Typography>
                   <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{displayInvoice.invoice_number}</Typography>
                 </Box>
               </Box>
@@ -734,7 +738,7 @@ const InvoicePrintDialog = ({
 
               <Divider />
               <Box sx={{ display: 'grid', gap: 1.2, pt: 2 }}>
-                {isEditMode && documentType === 'invoice' ? (
+                {isEditMode ? (
                   <Box sx={{ display: 'grid', gap: 1.2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
                       <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Invoice Items</Typography>
@@ -802,7 +806,7 @@ const InvoicePrintDialog = ({
                 ))}
               </Box>
 
-              {documentType === 'invoice' && paidQuotations.length > 0 && (
+              {activeDocumentType === 'invoice' && paidQuotations.length > 0 && (
                 <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #C7D2FE', bgcolor: '#EEF2FF' }}>
                   <Typography sx={{ fontWeight: 950, color: '#312E81', mb: 1 }}>Paid Service Quotations</Typography>
                   <Typography sx={{ color: '#475569', fontWeight: 700, fontSize: 13, mb: 1.5 }}>
@@ -820,7 +824,7 @@ const InvoicePrintDialog = ({
                 </Box>
               )}
 
-              {documentType === 'invoice' && (
+              {activeDocumentType === 'invoice' && (
                 <Box sx={{ display: 'grid', gap: 0.8, maxWidth: 320, ml: 'auto', mt: 2 }}>
                   {[
                     ['Subtotal', 'subtotal', money(displayInvoice.subtotal)],
@@ -861,7 +865,7 @@ const InvoicePrintDialog = ({
                 </Box>
               )}
 
-              {isEditMode && documentType === 'invoice' && (
+              {isEditMode && (
                 <TextField
                   label="Invoice notes"
                   multiline
@@ -885,7 +889,7 @@ const InvoicePrintDialog = ({
           </Button>
         ) : (
           <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
-            Print {documentLabel(documentType, primaryDocumentLabel)}
+            Print {documentLabel(activeDocumentType, primaryDocumentLabel)}
           </Button>
         )}
       </DialogActions>
