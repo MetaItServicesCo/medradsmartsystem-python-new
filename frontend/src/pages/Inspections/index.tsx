@@ -2980,32 +2980,41 @@ const Inspections = () => {
                   />
                   <FormControlLabel value="custom" control={<Radio />} label="Customize Form" />
                 </RadioGroup>
-                {reportFormSource === 'existing' && (
-                  <Box sx={{ mt: 1.5, maxWidth: 520 }}>
-                    <TextField
-                      select
-                      fullWidth
-                      size="small"
-                      label="Select Inspection Form"
-                      value={selectedReportFormId || ''}
-                      onChange={e => {
-                        const formId = Number(e.target.value)
-                        setSelectedReportFormId(formId || null)
-                        const template = inspectionForms.find(form => form.id === formId) || null
-                        const schema = template ? schemaForForm(template) : null
-                        setReportCustomSchema(schema)
-                        setReport((prev: any) => mergeSchemaDefaultsIntoReport(prev, schema))
-                      }}
-                      helperText={formsQ.isLoading ? 'Loading saved inspection forms...' : 'Choose any saved form from the Inspection Forms list.'}
-                    >
-                      {inspectionForms.map(form => (
-                        <MenuItem key={form.id} value={form.id}>
-                          {form.name}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Box>
-                )}
+                <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '14px', bgcolor: '#FFFFFF', border: reportFormSource === 'existing' ? '1px solid #7C3AED' : '1px solid #EDE9FE', maxWidth: 620 }}>
+                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.75 }}>
+                    Use Existing Inspection Form
+                  </Typography>
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    label="Select from saved Inspection Forms"
+                    value={reportFormSource === 'existing' ? selectedReportFormId || '' : ''}
+                    onChange={e => {
+                      const formId = Number(e.target.value)
+                      const template = inspectionForms.find(form => form.id === formId) || null
+                      const schema = template ? schemaForForm(template) : null
+                      setReportFormSource('existing')
+                      setSelectedReportFormId(formId || null)
+                      setReportCustomSchema(schema)
+                      setReport((prev: any) => mergeSchemaDefaultsIntoReport(prev, schema))
+                    }}
+                    disabled={formsQ.isLoading || inspectionForms.length === 0}
+                    helperText={
+                      formsQ.isLoading
+                        ? 'Loading saved inspection forms...'
+                        : inspectionForms.length
+                          ? 'Selecting a form here will use that saved form for this report.'
+                          : 'No saved inspection forms are available yet.'
+                    }
+                  >
+                    {inspectionForms.map(form => (
+                      <MenuItem key={form.id} value={form.id}>
+                        {form.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Box>
                 {reportFormSource === 'custom' && (
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.4fr auto' }, gap: 1.5, mt: 1.5, alignItems: 'center' }}>
                     <TextField size="small" label="Reusable Form Name" value={customFormName} onChange={e => setCustomFormName(e.target.value)} />
