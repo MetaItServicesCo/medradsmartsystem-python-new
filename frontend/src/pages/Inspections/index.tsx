@@ -1570,7 +1570,7 @@ const Inspections = () => {
 
   const addGridCellBlockOption = (rowIndex: number, columnIndex: number, blockIndex: number) => {
     const block = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]?.blocks?.[blockIndex]
-    updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options: [...(block?.options || []), 'Option'] })
+    updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options: [...(block?.options?.length ? block.options : ['Option']), 'Option'] })
   }
 
   const updateGridCellBlockOption = (rowIndex: number, columnIndex: number, blockIndex: number, optionIndex: number, value: string) => {
@@ -3359,6 +3359,91 @@ const Inspections = () => {
                       Tip: drag the right edge of a cell to resize width, or the bottom edge to resize height.
                     </Typography>
                   </Card>
+
+                  {selectedBuilderCell && selectedGridCell && (
+                    <Card sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #C4B5FD', bgcolor: '#FFFFFF', boxShadow: 'none' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                        <Box>
+                          <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                            Cell Contents - {selectedBuilderCell.row + 1}.{selectedBuilderCell.column + 1}
+                          </Typography>
+                          <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800 }}>
+                            Add multiple inputs or checkbox options here. This is easier than editing inside the tiny table cell.
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button size="small" startIcon={<AddIcon />} onClick={() => addSelectedCellBlock('input')} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Input Field</Button>
+                          <Button size="small" startIcon={<AddIcon />} onClick={() => addSelectedCellBlock('checkbox')} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Checkbox Group</Button>
+                          <Button size="small" startIcon={<AddIcon />} onClick={() => addSelectedCellBlock('label')} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Label</Button>
+                          <Button size="small" startIcon={<AddIcon />} onClick={() => addSelectedCellBlock('textarea')} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Comments</Button>
+                        </Box>
+                      </Box>
+                      {selectedGridCell.blocks?.length ? (
+                        <Box sx={{ display: 'grid', gap: 1 }}>
+                          {selectedGridCell.blocks.map((block, blockIndex) => (
+                            <Box key={block.id} sx={{ p: 1.25, borderRadius: '12px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC', display: 'grid', gap: 1 }}>
+                              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 150px auto' }, gap: 1, alignItems: 'center' }}>
+                                <TextField
+                                  size="small"
+                                  label={block.type === 'checkbox' ? 'Checkbox group title' : block.type === 'input' ? 'Input field label' : block.type === 'textarea' ? 'Comments label' : 'Label text'}
+                                  value={block.label}
+                                  onChange={e => updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, { label: e.target.value })}
+                                />
+                                <TextField
+                                  select
+                                  size="small"
+                                  label="Block Type"
+                                  value={block.type}
+                                  onChange={e => updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, { type: e.target.value as GridCellBlockType })}
+                                >
+                                  <MenuItem value="label">Label</MenuItem>
+                                  <MenuItem value="input">Input</MenuItem>
+                                  <MenuItem value="checkbox">Checkbox Group</MenuItem>
+                                  <MenuItem value="textarea">Comments</MenuItem>
+                                </TextField>
+                                <Button size="small" color="error" startIcon={<RemoveIcon />} onClick={() => removeGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>
+                                  Remove
+                                </Button>
+                              </Box>
+                              {block.type === 'input' && (
+                                <FormControlLabel
+                                  control={<Checkbox size="small" checked={Boolean(block.inline)} onChange={e => updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, { inline: e.target.checked })} />}
+                                  label="Show label and input box on the same row"
+                                />
+                              )}
+                              {block.type === 'checkbox' && (
+                                <Box sx={{ display: 'grid', gap: 0.75 }}>
+                                  <Typography sx={{ color: '#475569', fontSize: 12, fontWeight: 900 }}>Checkbox options</Typography>
+                                  {(block.options?.length ? block.options : ['Option']).map((option, optionIndex) => (
+                                    <Box key={`${block.id}-panel-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 0.75 }}>
+                                      <TextField
+                                        size="small"
+                                        label={`Checkbox option ${optionIndex + 1}`}
+                                        value={option}
+                                        onChange={e => updateGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex, e.target.value)}
+                                      />
+                                      <IconButton size="small" onClick={() => removeGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex)} disabled={(block.options?.length ? block.options : ['Option']).length <= 1} sx={{ color: '#DC2626' }}>
+                                        <RemoveIcon fontSize="small" />
+                                      </IconButton>
+                                    </Box>
+                                  ))}
+                                  <Button size="small" startIcon={<AddIcon />} onClick={() => addGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex)} sx={{ justifySelf: 'start', borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>
+                                    Add another checkbox
+                                  </Button>
+                                </Box>
+                              )}
+                            </Box>
+                          ))}
+                        </Box>
+                      ) : (
+                        <Box sx={{ p: 2, borderRadius: '12px', border: '1px dashed #C4B5FD', bgcolor: '#FAF5FF' }}>
+                          <Typography sx={{ color: '#5B21B6', fontWeight: 900 }}>
+                            No internal fields yet. Click “Input Field” twice for two input boxes, or “Checkbox Group” then “Add another checkbox” for multiple checkboxes in this same cell.
+                          </Typography>
+                        </Box>
+                      )}
+                    </Card>
+                  )}
 
                   <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 560, overflow: 'auto', bgcolor: '#FFFFFF' }}>
                     <Table size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
