@@ -77,7 +77,7 @@ const CHECK_FIELDS = [
   ['pm_kit', 'PM Kit'],
 ]
 
-type ReportFormSource = 'default' | 'attached' | 'custom'
+type ReportFormSource = 'default' | 'attached' | 'existing' | 'custom'
 type FormBuilderMode = 'create' | 'edit' | 'report-custom'
 type GridCellType = 'input' | 'radio' | 'checkbox'
 type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
@@ -892,9 +892,16 @@ const Inspections = () => {
   }, [inspectionForms, selectedReportFormId])
   const activeReportSchema = useMemo(() => {
     if (reportFormSource === 'custom') return reportCustomSchema
-    const template = selectedReportTemplate || defaultReportForm
-    return template ? normalizeInspectionFormSchema(template.schema, template.name) : null
-  }, [defaultReportForm, reportCustomSchema, reportFormSource, selectedReportTemplate])
+    if (reportFormSource === 'attached') {
+      return reportInspection?.attached_form_schema
+        ? normalizeInspectionFormSchema(reportInspection.attached_form_schema, reportInspection.attached_form_name || 'Asset attached form')
+        : null
+    }
+    if (reportFormSource === 'existing') {
+      return selectedReportTemplate ? normalizeInspectionFormSchema(selectedReportTemplate.schema, selectedReportTemplate.name) : null
+    }
+    return defaultReportForm ? normalizeInspectionFormSchema(defaultReportForm.schema, defaultReportForm.name) : null
+  }, [defaultReportForm, reportCustomSchema, reportFormSource, reportInspection?.attached_form_name, reportInspection?.attached_form_schema, selectedReportTemplate])
   const assignableModalities = useMemo(
     () => flattenModalities(modalitiesQ.data?.items || []),
     [modalitiesQ.data?.items],
@@ -1454,6 +1461,15 @@ const Inspections = () => {
       setReport((prev: any) => mergeSchemaDefaultsIntoReport(prev, base))
       return
     }
+    if (source === 'existing') {
+      const selectedId = selectedReportTemplate?.id || defaultReportForm?.id || inspectionForms[0]?.id || null
+      setSelectedReportFormId(selectedId)
+      const template = inspectionForms.find(form => form.id === selectedId) || defaultReportForm || inspectionForms[0] || null
+      const base = template ? schemaForForm(template) : null
+      setReportCustomSchema(base)
+      setReport((prev: any) => mergeSchemaDefaultsIntoReport(prev, base))
+      return
+    }
     setSelectedReportFormId(null)
     const base = reportCustomSchema || (reportInspection?.form_template_schema ? normalizeInspectionFormSchema(reportInspection.form_template_schema, reportInspection.form_template_name || 'Custom form') : activeReportSchema)
     if (base) {
@@ -1464,6 +1480,7 @@ const Inspections = () => {
 
   const selectedReportFormName = () => {
     if (reportFormSource === 'attached') return reportInspection?.attached_form_name || 'Asset attached form'
+    if (reportFormSource === 'existing') return selectedReportTemplate?.name || 'Existing inspection form'
     if (reportFormSource === 'custom') return customFormName || 'Customized form'
     return defaultReportForm?.name || 'Default form'
   }
@@ -1982,7 +1999,9 @@ const Inspections = () => {
     </>
   )
 
-  const isCustomGridReport = () => reportFormSource === 'custom' || (reportFormSource === 'attached' && Boolean(activeReportSchema?.custom_grid))
+  const isCustomGridReport = () => reportFormSource === 'custom'
+    || (reportFormSource === 'attached' && Boolean(activeReportSchema?.custom_grid))
+    || (reportFormSource === 'existing' && Boolean(activeReportSchema?.custom_grid))
 
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
@@ -2953,8 +2972,40 @@ const Inspections = () => {
                     control={<Radio />}
                     label={reportInspection?.attached_form_id ? `Asset Attached Form - ${reportInspection.attached_form_name}` : 'Asset Attached Form - none attached'}
                   />
+                  <FormControlLabel
+                    value="existing"
+                    disabled={formsQ.isLoading || inspectionForms.length === 0}
+                    control={<Radio />}
+                    label="Existing Form"
+                  />
                   <FormControlLabel value="custom" control={<Radio />} label="Customize Form" />
                 </RadioGroup>
+                {reportFormSource === 'existing' && (
+                  <Box sx={{ mt: 1.5, maxWidth: 520 }}>
+                    <TextField
+                      select
+                      fullWidth
+                      size="small"
+                      label="Select Inspection Form"
+                      value={selectedReportFormId || ''}
+                      onChange={e => {
+                        const formId = Number(e.target.value)
+                        setSelectedReportFormId(formId || null)
+                        const template = inspectionForms.find(form => form.id === formId) || null
+                        const schema = template ? schemaForForm(template) : null
+                        setReportCustomSchema(schema)
+                        setReport((prev: any) => mergeSchemaDefaultsIntoReport(prev, schema))
+                      }}
+                      helperText={formsQ.isLoading ? 'Loading saved inspection forms...' : 'Choose any saved form from the Inspection Forms list.'}
+                    >
+                      {inspectionForms.map(form => (
+                        <MenuItem key={form.id} value={form.id}>
+                          {form.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
+                )}
                 {reportFormSource === 'custom' && (
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.4fr auto' }, gap: 1.5, mt: 1.5, alignItems: 'center' }}>
                     <TextField size="small" label="Reusable Form Name" value={customFormName} onChange={e => setCustomFormName(e.target.value)} />
