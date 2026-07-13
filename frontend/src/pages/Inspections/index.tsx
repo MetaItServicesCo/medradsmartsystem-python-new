@@ -80,6 +80,8 @@ const CHECK_FIELDS = [
 type ReportFormSource = 'default' | 'attached' | 'existing' | 'custom'
 type FormBuilderMode = 'create' | 'edit' | 'report-custom'
 type GridCellType = 'text' | 'input' | 'radio' | 'checkbox'
+type GridHorizontalAlign = 'left' | 'center' | 'right'
+type GridVerticalAlign = 'top' | 'middle' | 'bottom'
 type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
 
 type GridCellSchema = {
@@ -90,6 +92,9 @@ type GridCellSchema = {
   rowSpan?: number
   colSpan?: number
   width?: number
+  height?: number
+  align?: GridHorizontalAlign
+  verticalAlign?: GridVerticalAlign
   hidden?: boolean
 }
 
@@ -143,7 +148,22 @@ const createGridCell = (row: number, column: number): GridCellSchema => ({
   rowSpan: 1,
   colSpan: 1,
   width: 180,
+  height: 74,
+  align: 'center',
+  verticalAlign: 'middle',
 })
+
+const normalizeGridHorizontalAlign = (value: any): GridHorizontalAlign =>
+  value === 'left' || value === 'right' || value === 'center' ? value : 'center'
+
+const normalizeGridVerticalAlign = (value: any): GridVerticalAlign =>
+  value === 'top' || value === 'bottom' || value === 'middle' ? value : 'middle'
+
+const gridAlignItems = (align?: GridHorizontalAlign) =>
+  align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center'
+
+const gridJustifyContent = (verticalAlign?: GridVerticalAlign) =>
+  verticalAlign === 'top' ? 'flex-start' : verticalAlign === 'bottom' ? 'flex-end' : 'center'
 
 const createEmptyGrid = (rows = 3, columns = 3, title = 'Set Title'): CustomGridSchema => ({
   title,
@@ -167,6 +187,9 @@ const normalizeGridCell = (cell: any, row: number, column: number): GridCellSche
     rowSpan: Math.max(1, Math.min(30, Number(cell?.rowSpan || 1))),
     colSpan: Math.max(1, Math.min(12, Number(cell?.colSpan || 1))),
     width: Math.max(90, Math.min(520, Number(cell?.width || 180))),
+    height: Math.max(44, Math.min(460, Number(cell?.height || 74))),
+    align: normalizeGridHorizontalAlign(cell?.align),
+    verticalAlign: normalizeGridVerticalAlign(cell?.verticalAlign),
     hidden: Boolean(cell?.hidden),
   }
 }
@@ -466,7 +489,8 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
               const value = customGridValues[cell.id]
               const display = displayCustomGridCellValue(cell, value)
               const span = `${cell.colSpan && cell.colSpan > 1 ? ` colspan="${cell.colSpan}"` : ''}${cell.rowSpan && cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : ''}`
-              return `<td${span}>${escapeHtml(display)}</td>`
+              const style = ` style="text-align:${escapeHtml(cell.align || 'center')};vertical-align:${escapeHtml(cell.verticalAlign || 'middle')};width:${Math.max(90, Number(cell.width || 180))}px;height:${Math.max(44, Number(cell.height || 74))}px"`
+              return `<td${span}${style}>${escapeHtml(display)}</td>`
             }).join('')}
           </tr>
         `).join('')}
@@ -1449,6 +1473,11 @@ const Inspections = () => {
     })
   }
 
+  const updateSelectedGridCell = (patch: Partial<GridCellSchema>) => {
+    if (!selectedBuilderCell) return toast.info('Select a table cell first')
+    updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, patch)
+  }
+
   const addBuilderRow = () => {
     setFormBuilderSchema(prev => {
       const grid = prev.custom_grid || createEmptyGrid()
@@ -1519,10 +1548,39 @@ const Inspections = () => {
     updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, { label: '', type: 'text', options: undefined, rowSpan: 1, colSpan: 1, hidden: false })
   }
 
-  const resizeSelectedBuilderCell = (delta: number) => {
-    if (!selectedBuilderCell || !selectedGridCell) return toast.info('Select a table cell first')
-    const nextWidth = Math.max(90, Math.min(520, Number(selectedGridCell.width || 180) + delta))
-    updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, { width: nextWidth })
+  const startGridCellResize = (
+    event: MouseEvent<HTMLElement>,
+    rowIndex: number,
+    columnIndex: number,
+    axis: 'width' | 'height',
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    if (!cell) return
+    const startX = event.clientX
+    const startY = event.clientY
+    const startWidth = Number(cell.width || 180)
+    const startHeight = Number(cell.height || 74)
+
+    const onMove = (moveEvent: globalThis.MouseEvent) => {
+      const nextSize = axis === 'width'
+        ? Math.max(90, Math.min(720, startWidth + moveEvent.clientX - startX))
+        : Math.max(44, Math.min(520, startHeight + moveEvent.clientY - startY))
+      updateGridCell(rowIndex, columnIndex, axis === 'width' ? { width: nextSize } : { height: nextSize })
+    }
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = axis === 'width' ? 'col-resize' : 'row-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
   }
 
   const splitSelectedBuilderCell = () => {
@@ -1558,17 +1616,33 @@ const Inspections = () => {
     const targetColumn = direction === 'right' ? column + colSpan : column
     const target = grid.cells[targetRow]?.[targetColumn]
     if (!target || target.hidden) return toast.error(`No visible cell to merge ${direction}`)
+    const targetRowSpan = target.rowSpan || 1
+    const targetColSpan = target.colSpan || 1
+    const mergeRows = direction === 'down'
+      ? { start: row + rowSpan, end: row + rowSpan + targetRowSpan }
+      : { start: row, end: row + rowSpan }
+    const mergeColumns = direction === 'right'
+      ? { start: column + colSpan, end: column + colSpan + targetColSpan }
+      : { start: column, end: column + colSpan }
+    const canMergeRectangle = Array.from({ length: mergeRows.end - mergeRows.start }, (_, rowOffset) => mergeRows.start + rowOffset)
+      .every(rowIndex => Array.from({ length: mergeColumns.end - mergeColumns.start }, (_, columnOffset) => mergeColumns.start + columnOffset)
+        .every(columnIndex => Boolean(grid.cells[rowIndex]?.[columnIndex])))
+    if (!canMergeRectangle) return toast.error('Only a complete rectangular merge is supported')
     setFormBuilderSchema(prev => {
       const grid = prev.custom_grid || createEmptyGrid()
       const cells = grid.cells.map((gridRow, rowIndex) => gridRow.map((cell, columnIndex) => {
         if (rowIndex === row && columnIndex === column) {
           return {
             ...cell,
-            rowSpan: direction === 'down' ? rowSpan + (target.rowSpan || 1) : rowSpan,
-            colSpan: direction === 'right' ? colSpan + (target.colSpan || 1) : colSpan,
+            rowSpan: direction === 'down' ? rowSpan + targetRowSpan : rowSpan,
+            colSpan: direction === 'right' ? colSpan + targetColSpan : colSpan,
           }
         }
-        if (rowIndex === targetRow && columnIndex === targetColumn) {
+        const inMergedRectangle = rowIndex >= mergeRows.start
+          && rowIndex < mergeRows.end
+          && columnIndex >= mergeColumns.start
+          && columnIndex < mergeColumns.end
+        if (inMergedRectangle) {
           return { ...cell, hidden: true }
         }
         return cell
@@ -2055,25 +2129,40 @@ const Inspections = () => {
                   {row.map((cell: GridCellSchema) => cell.hidden ? null : (
                     <TableCell
                       key={cell.id}
-                      align="center"
+                      align={cell.align || 'center'}
                       colSpan={cell.colSpan || 1}
                       rowSpan={cell.rowSpan || 1}
-                      sx={{ minWidth: cell.width || 180, width: cell.width || 180, verticalAlign: 'middle' }}
+                      sx={{
+                        minWidth: cell.width || 180,
+                        width: cell.width || 180,
+                        height: cell.height || 74,
+                        verticalAlign: cell.verticalAlign || 'middle',
+                      }}
                     >
-                      <Box sx={{ display: 'grid', gap: 0.75 }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 0.75,
+                          minHeight: Math.max(44, Number(cell.height || 74)) - 16,
+                          alignItems: gridAlignItems(cell.align),
+                          justifyContent: gridJustifyContent(cell.verticalAlign),
+                          textAlign: cell.align || 'center',
+                        }}
+                      >
                         {cell.label?.trim() && (
-                          <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{cell.label}</Typography>
+                          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
                         )}
                         {cell.type === 'text' ? null : cell.type === 'input' ? (
                           <TextField size="small" fullWidth value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} />
                         ) : cell.type === 'radio' ? (
-                          <RadioGroup row value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} sx={{ justifyContent: 'center' }}>
+                          <RadioGroup row value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} sx={{ justifyContent: gridAlignItems(cell.align) }}>
                             {(cell.options?.length ? cell.options : DEFAULT_GRID_OPTIONS).map((option: string) => (
                               <FormControlLabel key={option} value={option} control={<Radio size="small" />} label={option} />
                             ))}
                           </RadioGroup>
                         ) : cell.options?.length ? (
-                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: gridAlignItems(cell.align) }}>
                             {cell.options.map((option: string) => (
                               <FormControlLabel
                                 key={option}
@@ -2895,25 +2984,40 @@ const Inspections = () => {
                               {row.map((cell) => cell.hidden ? null : (
                                 <TableCell
                                   key={cell.id}
-                                  align="center"
+                                  align={cell.align || 'center'}
                                   colSpan={cell.colSpan || 1}
                                   rowSpan={cell.rowSpan || 1}
-                                  sx={{ minWidth: cell.width || 180, width: cell.width || 180, verticalAlign: 'middle' }}
+                                  sx={{
+                                    minWidth: cell.width || 180,
+                                    width: cell.width || 180,
+                                    height: cell.height || 74,
+                                    verticalAlign: cell.verticalAlign || 'middle',
+                                  }}
                                 >
-                                  <Box sx={{ display: 'grid', gap: 0.75 }}>
+                                  <Box
+                                    sx={{
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: 0.75,
+                                      minHeight: Math.max(44, Number(cell.height || 74)) - 16,
+                                      alignItems: gridAlignItems(cell.align),
+                                      justifyContent: gridJustifyContent(cell.verticalAlign),
+                                      textAlign: cell.align || 'center',
+                                    }}
+                                  >
                                     {cell.label?.trim() && (
-                                      <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{cell.label}</Typography>
+                                      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
                                     )}
                                     {cell.type === 'text' ? null : cell.type === 'input' ? (
                                       <TextField disabled size="small" fullWidth placeholder={cell.label || 'Input field'} />
                                     ) : cell.type === 'radio' ? (
-                                      <RadioGroup row sx={{ justifyContent: 'center' }}>
+                                      <RadioGroup row sx={{ justifyContent: gridAlignItems(cell.align) }}>
                                         {(cell.options?.length ? cell.options : DEFAULT_GRID_OPTIONS).map((option: string) => (
                                           <FormControlLabel key={option} value={option} control={<Radio disabled size="small" />} label={option} />
                                         ))}
                                       </RadioGroup>
                                     ) : cell.options?.length ? (
-                                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+                                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: gridAlignItems(cell.align) }}>
                                         {cell.options.map((option: string) => (
                                           <FormControlLabel key={option} control={<Checkbox disabled size="small" />} label={option} />
                                         ))}
@@ -3025,13 +3129,21 @@ const Inspections = () => {
                       <Button size="small" variant={selectedGridCell?.type === 'checkbox' ? 'contained' : 'outlined'} onClick={() => setSelectedGridCellType('checkbox')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Checkbox</Button>
                       <Button size="small" startIcon={<AddIcon />} onClick={() => selectedBuilderCell && addGridCellOption(selectedBuilderCell.row, selectedBuilderCell.column)} disabled={!selectedBuilderCell || !selectedGridCell || !optionCellTypes.includes(selectedGridCell.type)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Option</Button>
                       <Divider orientation="vertical" flexItem />
+                      <Button size="small" variant={selectedGridCell?.align === 'left' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ align: 'left' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Left</Button>
+                      <Button size="small" variant={(selectedGridCell?.align || 'center') === 'center' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ align: 'center' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Center</Button>
+                      <Button size="small" variant={selectedGridCell?.align === 'right' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ align: 'right' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Right</Button>
+                      <Button size="small" variant={selectedGridCell?.verticalAlign === 'top' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ verticalAlign: 'top' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Top</Button>
+                      <Button size="small" variant={(selectedGridCell?.verticalAlign || 'middle') === 'middle' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ verticalAlign: 'middle' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Middle</Button>
+                      <Button size="small" variant={selectedGridCell?.verticalAlign === 'bottom' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ verticalAlign: 'bottom' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Bottom</Button>
+                      <Divider orientation="vertical" flexItem />
                       <Button size="small" onClick={() => mergeSelectedBuilderCell('right')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Merge Right</Button>
                       <Button size="small" onClick={() => mergeSelectedBuilderCell('down')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Merge Down</Button>
                       <Button size="small" onClick={splitSelectedBuilderCell} disabled={!selectedBuilderCell || !selectedGridCell || ((selectedGridCell.rowSpan || 1) === 1 && (selectedGridCell.colSpan || 1) === 1)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Split</Button>
-                      <Button size="small" onClick={() => resizeSelectedBuilderCell(-30)} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Narrower</Button>
-                      <Button size="small" onClick={() => resizeSelectedBuilderCell(30)} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Wider</Button>
                       <Button size="small" onClick={clearSelectedBuilderCell} disabled={!selectedBuilderCell} color="error" sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Clear Cell</Button>
                     </Box>
+                    <Typography sx={{ mt: 1, color: '#64748B', fontSize: 12, fontWeight: 800 }}>
+                      Tip: drag the right edge of a cell to resize width, or the bottom edge to resize height.
+                    </Typography>
                   </Card>
 
                   <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 560, overflow: 'auto', bgcolor: '#FFFFFF' }}>
@@ -3053,16 +3165,29 @@ const Inspections = () => {
                                     width: cell.width || 180,
                                     minWidth: cell.width || 180,
                                     maxWidth: cell.width || 180,
-                                    verticalAlign: 'top',
+                                    height: cell.height || 74,
+                                    verticalAlign: cell.verticalAlign || 'middle',
                                     border: '1px solid #D8DEE9',
                                     bgcolor: isSelected ? '#F5F3FF' : rowIndex % 2 ? '#FAFAFA' : '#FFFFFF',
                                     outline: isSelected ? '2px solid #7C3AED' : 'none',
                                     outlineOffset: '-2px',
                                     cursor: 'pointer',
-                                    p: 1.25,
+                                    position: 'relative',
+                                    p: 0,
                                   }}
                                 >
-                                  <Box sx={{ display: 'grid', gap: 1 }}>
+                                  <Box
+                                    sx={{
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: 1,
+                                      minHeight: Math.max(44, Number(cell.height || 74)),
+                                      p: 1.25,
+                                      alignItems: gridAlignItems(cell.align),
+                                      justifyContent: gridJustifyContent(cell.verticalAlign),
+                                      textAlign: cell.align || 'center',
+                                    }}
+                                  >
                                     <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 900 }}>
                                       Cell {rowIndex + 1}.{columnIndex + 1}
                                       {(cell.rowSpan || 1) > 1 || (cell.colSpan || 1) > 1
@@ -3076,12 +3201,13 @@ const Inspections = () => {
                                       placeholder="Type label or leave blank"
                                       value={cell.label}
                                       onChange={e => updateGridCell(rowIndex, columnIndex, { label: e.target.value })}
+                                      onClick={event => event.stopPropagation()}
                                       InputProps={{ disableUnderline: true }}
                                       sx={{
                                         '& input': {
                                           fontWeight: cell.type === 'text' ? 900 : 800,
                                           color: '#1E1B4B',
-                                          textAlign: 'center',
+                                          textAlign: cell.align || 'center',
                                         },
                                       }}
                                     />
@@ -3090,7 +3216,7 @@ const Inspections = () => {
                                     )}
                                     {cell.type === 'radio' && (
                                       <Box sx={{ display: 'grid', gap: 0.75 }}>
-                                        <RadioGroup row sx={{ justifyContent: 'center', gap: 0.5 }}>
+                                        <RadioGroup row sx={{ justifyContent: gridAlignItems(cell.align), gap: 0.5 }}>
                                           {options.map(option => (
                                             <FormControlLabel key={option} value={option} control={<Radio size="small" disabled />} label={option} />
                                           ))}
@@ -3098,7 +3224,7 @@ const Inspections = () => {
                                       </Box>
                                     )}
                                     {cell.type === 'checkbox' && (
-                                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+                                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: gridAlignItems(cell.align) }}>
                                         {options.length ? options.map(option => (
                                           <FormControlLabel key={option} control={<Checkbox size="small" disabled />} label={option} />
                                         )) : (
@@ -3144,6 +3270,34 @@ const Inspections = () => {
                                       </Box>
                                     )}
                                   </Box>
+                                  <Box
+                                    onMouseDown={(event) => startGridCellResize(event, rowIndex, columnIndex, 'width')}
+                                    onClick={event => event.stopPropagation()}
+                                    sx={{
+                                      position: 'absolute',
+                                      top: 0,
+                                      right: -3,
+                                      width: 7,
+                                      height: '100%',
+                                      cursor: 'col-resize',
+                                      zIndex: 2,
+                                      '&:hover': { bgcolor: 'rgba(124, 58, 237, 0.18)' },
+                                    }}
+                                  />
+                                  <Box
+                                    onMouseDown={(event) => startGridCellResize(event, rowIndex, columnIndex, 'height')}
+                                    onClick={event => event.stopPropagation()}
+                                    sx={{
+                                      position: 'absolute',
+                                      left: 0,
+                                      bottom: -3,
+                                      width: '100%',
+                                      height: 7,
+                                      cursor: 'row-resize',
+                                      zIndex: 2,
+                                      '&:hover': { bgcolor: 'rgba(124, 58, 237, 0.18)' },
+                                    }}
+                                  />
                                 </TableCell>
                               )
                             })}
