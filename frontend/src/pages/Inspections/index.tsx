@@ -79,7 +79,7 @@ const CHECK_FIELDS = [
 
 type ReportFormSource = 'default' | 'attached' | 'existing' | 'custom'
 type FormBuilderMode = 'create' | 'edit' | 'report-custom'
-type GridCellType = 'input' | 'radio' | 'checkbox'
+type GridCellType = 'text' | 'input' | 'radio' | 'checkbox'
 type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
 
 type GridCellSchema = {
@@ -87,6 +87,10 @@ type GridCellSchema = {
   label: string
   type: GridCellType
   options?: string[]
+  rowSpan?: number
+  colSpan?: number
+  width?: number
+  hidden?: boolean
 }
 
 type CustomGridSchema = {
@@ -105,6 +109,7 @@ type InspectionFormSchema = {
 }
 
 const GRID_CELL_TYPES: { value: GridCellType; label: string }[] = [
+  { value: 'text', label: 'Text' },
   { value: 'input', label: 'Input Field' },
   { value: 'radio', label: 'Radio Button' },
   { value: 'checkbox', label: 'Checkbox' },
@@ -134,7 +139,10 @@ const slugifyKey = (value: string, fallback = 'field') => {
 const createGridCell = (row: number, column: number): GridCellSchema => ({
   id: `cell_${row + 1}_${column + 1}`,
   label: '',
-  type: 'input',
+  type: 'text',
+  rowSpan: 1,
+  colSpan: 1,
+  width: 180,
 })
 
 const createEmptyGrid = (rows = 3, columns = 3, title = 'Set Title'): CustomGridSchema => ({
@@ -147,7 +155,7 @@ const createEmptyGrid = (rows = 3, columns = 3, title = 'Set Title'): CustomGrid
 })
 
 const normalizeGridCell = (cell: any, row: number, column: number): GridCellSchema => {
-  const type: GridCellType = cell?.type === 'radio' || cell?.type === 'checkbox' ? cell.type : 'input'
+  const type: GridCellType = ['text', 'input', 'radio', 'checkbox'].includes(cell?.type) ? cell.type : 'input'
   const options = Array.isArray(cell?.options) && cell.options.length
     ? cell.options.map((option: any) => String(option)).filter(Boolean)
     : type === 'radio' ? DEFAULT_GRID_OPTIONS : []
@@ -156,6 +164,10 @@ const normalizeGridCell = (cell: any, row: number, column: number): GridCellSche
     label: String(cell?.label ?? cell?.value ?? ''),
     type,
     options: optionCellTypes.includes(type) && options.length ? options : undefined,
+    rowSpan: Math.max(1, Math.min(30, Number(cell?.rowSpan || 1))),
+    colSpan: Math.max(1, Math.min(12, Number(cell?.colSpan || 1))),
+    width: Math.max(90, Math.min(520, Number(cell?.width || 180))),
+    hidden: Boolean(cell?.hidden),
   }
 }
 
@@ -194,7 +206,7 @@ const gridFromLegacySections = (schema: any): CustomGridSchema | null => {
   if (!customSections.length) return null
   const fields = customSections.flatMap((section: any) => (section.fields || []).map((field: any) => ({
     label: typeof field === 'string' ? labelFromKey(field) : String(field?.label || field?.key || 'view'),
-    type: typeof field === 'object' && ['radio', 'checkbox'].includes(field?.type) ? field.type : 'input',
+    type: typeof field === 'object' && ['text', 'radio', 'checkbox'].includes(field?.type) ? field.type : 'input',
     options: typeof field === 'object' && ['radio', 'checkbox'].includes(field?.type)
       ? (Array.isArray(field?.options) && field.options.length ? field.options.map((option: any) => String(option)) : DEFAULT_GRID_OPTIONS)
       : undefined,
@@ -226,6 +238,7 @@ const schemaToPayload = (schema: InspectionFormSchema, title: string): Inspectio
 })
 
 const defaultGridCellValue = (cell: GridCellSchema, existing: any) => {
+  if (cell.type === 'text') return ''
   if (cell.type === 'checkbox') {
     if (cell.options?.length) return Array.isArray(existing) ? existing : []
     if (existing !== undefined) return Array.isArray(existing) ? existing.length > 0 : Boolean(existing)
@@ -247,6 +260,7 @@ const toggleCheckboxOptionValue = (value: any, option: string, checked: boolean)
 
 const displayCustomGridCellValue = (cell: GridCellSchema, value: any) => {
   const label = cell.label?.trim()
+  if (cell.type === 'text') return label || '-'
   if (cell.type === 'checkbox') {
     const checkedDisplay = Array.isArray(value)
       ? value.filter(Boolean).join(', ')
@@ -263,6 +277,7 @@ const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFor
   if (!schema?.custom_grid) return currentReport
   const existing = currentReport?.custom_grid_values || {}
   const defaults = schema.custom_grid.cells.flat().reduce((acc, cell) => {
+    if (cell.hidden || cell.type === 'text') return acc
     acc[cell.id] = defaultGridCellValue(cell, existing[cell.id])
     return acc
   }, {} as Record<string, any>)
@@ -447,9 +462,11 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
         ${customGrid.cells.map((row: GridCellSchema[]) => `
           <tr>
             ${row.map(cell => {
+              if (cell.hidden) return ''
               const value = customGridValues[cell.id]
               const display = displayCustomGridCellValue(cell, value)
-              return `<td>${escapeHtml(display)}</td>`
+              const span = `${cell.colSpan && cell.colSpan > 1 ? ` colspan="${cell.colSpan}"` : ''}${cell.rowSpan && cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : ''}`
+              return `<td${span}>${escapeHtml(display)}</td>`
             }).join('')}
           </tr>
         `).join('')}
@@ -777,6 +794,7 @@ const Inspections = () => {
   const [formBuilderSchema, setFormBuilderSchema] = useState<InspectionFormSchema>(() => normalizeInspectionFormSchema({ sections: [] }))
   const [formBuilderRows, setFormBuilderRows] = useState(3)
   const [formBuilderColumns, setFormBuilderColumns] = useState(3)
+  const [selectedBuilderCell, setSelectedBuilderCell] = useState<{ row: number; column: number } | null>(null)
   const [techEdit, setTechEdit] = useState<Inspection | null>(null)
   const [selectedTechId, setSelectedTechId] = useState<number | ''>('')
   const [addAssetOpen, setAddAssetOpen] = useState(false)
@@ -1416,6 +1434,149 @@ const Inspections = () => {
     updateGridCell(rowIndex, columnIndex, { options: options.length ? options : undefined })
   }
 
+  const selectedGridCell = selectedBuilderCell
+    ? formBuilderSchema.custom_grid?.cells?.[selectedBuilderCell.row]?.[selectedBuilderCell.column]
+    : null
+
+  const selectedRowIndex = selectedBuilderCell?.row ?? 0
+  const selectedColumnIndex = selectedBuilderCell?.column ?? 0
+
+  const setSelectedGridCellType = (type: GridCellType) => {
+    if (!selectedBuilderCell) return toast.info('Select a table cell first')
+    updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, {
+      type,
+      options: type === 'radio' ? (selectedGridCell?.options?.length ? selectedGridCell.options : DEFAULT_GRID_OPTIONS) : type === 'checkbox' ? selectedGridCell?.options : undefined,
+    })
+  }
+
+  const addBuilderRow = () => {
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid || createEmptyGrid()
+      const insertAfter = selectedBuilderCell?.row ?? grid.cells.length - 1
+      const columnCount = Math.max(1, grid.columns || Math.max(...grid.cells.map(row => row.length)))
+      const nextRow = Array.from({ length: columnCount }, (_, column) => createGridCell(insertAfter + 1, column))
+      const cells = [...grid.cells.slice(0, insertAfter + 1), nextRow, ...grid.cells.slice(insertAfter + 1)]
+      return { ...prev, custom_grid: { ...grid, rows: cells.length, columns: columnCount, cells } }
+    })
+  }
+
+  const addBuilderColumn = () => {
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid || createEmptyGrid()
+      const insertAfter = selectedBuilderCell?.column ?? Math.max(0, grid.columns - 1)
+      const cells = grid.cells.map((row, rowIndex) => [
+        ...row.slice(0, insertAfter + 1),
+        createGridCell(rowIndex, insertAfter + 1),
+        ...row.slice(insertAfter + 1),
+      ])
+      return { ...prev, custom_grid: { ...grid, rows: cells.length, columns: Math.max(...cells.map(row => row.length)), cells } }
+    })
+  }
+
+  const deleteBuilderRow = () => {
+    if (!formBuilderSchema.custom_grid || formBuilderSchema.custom_grid.cells.length <= 1) return toast.error('At least one row is required')
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid || createEmptyGrid()
+      const removeIndex = Math.min(selectedRowIndex, grid.cells.length - 1)
+      const cells = grid.cells.filter((_, index) => index !== removeIndex)
+      return { ...prev, custom_grid: { ...grid, rows: cells.length, columns: Math.max(...cells.map(row => row.length)), cells } }
+    })
+    setSelectedBuilderCell(null)
+  }
+
+  const deleteBuilderColumn = () => {
+    const grid = formBuilderSchema.custom_grid
+    if (!grid || Math.max(...grid.cells.map(row => row.length)) <= 1) return toast.error('At least one column is required')
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid || createEmptyGrid()
+      const removeIndex = Math.min(selectedColumnIndex, Math.max(...grid.cells.map(row => row.length)) - 1)
+      const cells = grid.cells.map(row => row.filter((_, index) => index !== removeIndex)).filter(row => row.length > 0)
+      return { ...prev, custom_grid: { ...grid, rows: cells.length, columns: Math.max(...cells.map(row => row.length)), cells } }
+    })
+    setSelectedBuilderCell(null)
+  }
+
+  const duplicateBuilderRow = () => {
+    const grid = formBuilderSchema.custom_grid
+    if (!grid) return
+    const rowIndex = Math.min(selectedRowIndex, grid.cells.length - 1)
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid || createEmptyGrid()
+      const cloned = grid.cells[rowIndex].map((cell, columnIndex) => ({
+        ...cell,
+        id: `cell_${rowIndex + 2}_${columnIndex + 1}_${Date.now()}`,
+        hidden: false,
+        rowSpan: 1,
+        colSpan: 1,
+      }))
+      const cells = [...grid.cells.slice(0, rowIndex + 1), cloned, ...grid.cells.slice(rowIndex + 1)]
+      return { ...prev, custom_grid: { ...grid, rows: cells.length, columns: Math.max(...cells.map(row => row.length)), cells } }
+    })
+  }
+
+  const clearSelectedBuilderCell = () => {
+    if (!selectedBuilderCell) return toast.info('Select a table cell first')
+    updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, { label: '', type: 'text', options: undefined, rowSpan: 1, colSpan: 1, hidden: false })
+  }
+
+  const resizeSelectedBuilderCell = (delta: number) => {
+    if (!selectedBuilderCell || !selectedGridCell) return toast.info('Select a table cell first')
+    const nextWidth = Math.max(90, Math.min(520, Number(selectedGridCell.width || 180) + delta))
+    updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, { width: nextWidth })
+  }
+
+  const splitSelectedBuilderCell = () => {
+    if (!selectedBuilderCell || !selectedGridCell) return toast.info('Select a merged cell first')
+    const rowSpan = selectedGridCell.rowSpan || 1
+    const colSpan = selectedGridCell.colSpan || 1
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid || createEmptyGrid()
+      const cells = grid.cells.map((row, rowIndex) => row.map((cell, columnIndex) => {
+        const inMerge = rowIndex >= selectedBuilderCell.row
+          && rowIndex < selectedBuilderCell.row + rowSpan
+          && columnIndex >= selectedBuilderCell.column
+          && columnIndex < selectedBuilderCell.column + colSpan
+        if (!inMerge) return cell
+        if (rowIndex === selectedBuilderCell.row && columnIndex === selectedBuilderCell.column) {
+          return { ...cell, rowSpan: 1, colSpan: 1, hidden: false }
+        }
+        return { ...cell, hidden: false, rowSpan: 1, colSpan: 1 }
+      }))
+      return { ...prev, custom_grid: { ...grid, cells } }
+    })
+  }
+
+  const mergeSelectedBuilderCell = (direction: 'right' | 'down') => {
+    if (!selectedBuilderCell || !selectedGridCell) return toast.info('Select a table cell first')
+    const grid = formBuilderSchema.custom_grid
+    if (!grid) return
+    const row = selectedBuilderCell.row
+    const column = selectedBuilderCell.column
+    const rowSpan = selectedGridCell.rowSpan || 1
+    const colSpan = selectedGridCell.colSpan || 1
+    const targetRow = direction === 'down' ? row + rowSpan : row
+    const targetColumn = direction === 'right' ? column + colSpan : column
+    const target = grid.cells[targetRow]?.[targetColumn]
+    if (!target || target.hidden) return toast.error(`No visible cell to merge ${direction}`)
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid || createEmptyGrid()
+      const cells = grid.cells.map((gridRow, rowIndex) => gridRow.map((cell, columnIndex) => {
+        if (rowIndex === row && columnIndex === column) {
+          return {
+            ...cell,
+            rowSpan: direction === 'down' ? rowSpan + (target.rowSpan || 1) : rowSpan,
+            colSpan: direction === 'right' ? colSpan + (target.colSpan || 1) : colSpan,
+          }
+        }
+        if (rowIndex === targetRow && columnIndex === targetColumn) {
+          return { ...cell, hidden: true }
+        }
+        return cell
+      }))
+      return { ...prev, custom_grid: { ...grid, cells } }
+    })
+  }
+
   const saveFormBuilder = () => {
     const name = formBuilderName.trim()
     if (!name) return toast.error('Form name is required')
@@ -1891,13 +2052,19 @@ const Inspections = () => {
             <TableBody>
               {grid.cells.map((row: GridCellSchema[], rowIndex: number) => (
                 <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : '#F3F4F6' }}>
-                  {row.map((cell: GridCellSchema) => (
-                    <TableCell key={cell.id} align="center" sx={{ minWidth: 180 }}>
+                  {row.map((cell: GridCellSchema) => cell.hidden ? null : (
+                    <TableCell
+                      key={cell.id}
+                      align="center"
+                      colSpan={cell.colSpan || 1}
+                      rowSpan={cell.rowSpan || 1}
+                      sx={{ minWidth: cell.width || 180, width: cell.width || 180, verticalAlign: 'middle' }}
+                    >
                       <Box sx={{ display: 'grid', gap: 0.75 }}>
                         {cell.label?.trim() && (
                           <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{cell.label}</Typography>
                         )}
-                        {cell.type === 'input' ? (
+                        {cell.type === 'text' ? null : cell.type === 'input' ? (
                           <TextField size="small" fullWidth value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} />
                         ) : cell.type === 'radio' ? (
                           <RadioGroup row value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} sx={{ justifyContent: 'center' }}>
@@ -2725,13 +2892,19 @@ const Inspections = () => {
                         <TableBody>
                           {grid.cells.map((row, rowIndex) => (
                             <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : '#F3F4F6' }}>
-                              {row.map((cell) => (
-                                <TableCell key={cell.id} align="center" sx={{ minWidth: 180 }}>
+                              {row.map((cell) => cell.hidden ? null : (
+                                <TableCell
+                                  key={cell.id}
+                                  align="center"
+                                  colSpan={cell.colSpan || 1}
+                                  rowSpan={cell.rowSpan || 1}
+                                  sx={{ minWidth: cell.width || 180, width: cell.width || 180, verticalAlign: 'middle' }}
+                                >
                                   <Box sx={{ display: 'grid', gap: 0.75 }}>
                                     {cell.label?.trim() && (
                                       <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{cell.label}</Typography>
                                     )}
-                                    {cell.type === 'input' ? (
+                                    {cell.type === 'text' ? null : cell.type === 'input' ? (
                                       <TextField disabled size="small" fullWidth placeholder={cell.label || 'Input field'} />
                                     ) : cell.type === 'radio' ? (
                                       <RadioGroup row sx={{ justifyContent: 'center' }}>
@@ -2832,94 +3005,154 @@ const Inspections = () => {
                   <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>Enter row and column count, then click Add to generate the editable grid.</Typography>
                 </Card>
               ) : (
-                <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 520 }}>
-                  <Table size="small" stickyHeader>
-                    <TableBody>
-                      {formBuilderSchema.custom_grid.cells.map((row, rowIndex) => (
-                        <TableRow key={rowIndex}>
-                          {row.map((cell, columnIndex) => (
-                            <TableCell key={cell.id} sx={{ minWidth: 280, verticalAlign: 'top', bgcolor: rowIndex % 2 ? '#F8FAFC' : '#fff' }}>
-                              <Box sx={{ display: 'grid', gap: 1 }}>
-                                <TextField
-                                  size="small"
-                                  label={`Cell ${rowIndex + 1}.${columnIndex + 1} Title (optional)`}
-                                  placeholder="Leave blank for no title"
-                                  value={cell.label}
-                                  onChange={e => updateGridCell(rowIndex, columnIndex, { label: e.target.value })}
-                                />
-                                <TextField
-                                  select
-                                  size="small"
-                                  label="Cell Type"
-                                  value={cell.type}
-                                  onChange={e => updateGridCell(rowIndex, columnIndex, { type: e.target.value as GridCellType })}
+                <Box sx={{ display: 'grid', gap: 1.5 }}>
+                  <Card sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FBFAFF', boxShadow: 'none' }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <Chip
+                        label={selectedBuilderCell ? `Selected: Cell ${selectedBuilderCell.row + 1}.${selectedBuilderCell.column + 1}` : 'Select a cell to edit'}
+                        sx={{ fontWeight: 900, bgcolor: '#EDE9FE', color: '#5B21B6' }}
+                      />
+                      <Divider orientation="vertical" flexItem />
+                      <Button size="small" startIcon={<AddIcon />} onClick={addBuilderRow} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Row</Button>
+                      <Button size="small" startIcon={<AddIcon />} onClick={addBuilderColumn} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Column</Button>
+                      <Button size="small" onClick={duplicateBuilderRow} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Duplicate Row</Button>
+                      <Button size="small" startIcon={<RemoveIcon />} onClick={deleteBuilderRow} disabled={!selectedBuilderCell} color="error" sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Delete Row</Button>
+                      <Button size="small" startIcon={<RemoveIcon />} onClick={deleteBuilderColumn} disabled={!selectedBuilderCell} color="error" sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Delete Column</Button>
+                      <Divider orientation="vertical" flexItem />
+                      <Button size="small" variant={selectedGridCell?.type === 'text' ? 'contained' : 'outlined'} onClick={() => setSelectedGridCellType('text')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Text</Button>
+                      <Button size="small" variant={selectedGridCell?.type === 'input' ? 'contained' : 'outlined'} onClick={() => setSelectedGridCellType('input')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Input Box</Button>
+                      <Button size="small" variant={selectedGridCell?.type === 'radio' ? 'contained' : 'outlined'} onClick={() => setSelectedGridCellType('radio')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Radio Group</Button>
+                      <Button size="small" variant={selectedGridCell?.type === 'checkbox' ? 'contained' : 'outlined'} onClick={() => setSelectedGridCellType('checkbox')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Checkbox</Button>
+                      <Button size="small" startIcon={<AddIcon />} onClick={() => selectedBuilderCell && addGridCellOption(selectedBuilderCell.row, selectedBuilderCell.column)} disabled={!selectedBuilderCell || !selectedGridCell || !optionCellTypes.includes(selectedGridCell.type)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Option</Button>
+                      <Divider orientation="vertical" flexItem />
+                      <Button size="small" onClick={() => mergeSelectedBuilderCell('right')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Merge Right</Button>
+                      <Button size="small" onClick={() => mergeSelectedBuilderCell('down')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Merge Down</Button>
+                      <Button size="small" onClick={splitSelectedBuilderCell} disabled={!selectedBuilderCell || !selectedGridCell || ((selectedGridCell.rowSpan || 1) === 1 && (selectedGridCell.colSpan || 1) === 1)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Split</Button>
+                      <Button size="small" onClick={() => resizeSelectedBuilderCell(-30)} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Narrower</Button>
+                      <Button size="small" onClick={() => resizeSelectedBuilderCell(30)} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Wider</Button>
+                      <Button size="small" onClick={clearSelectedBuilderCell} disabled={!selectedBuilderCell} color="error" sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Clear Cell</Button>
+                    </Box>
+                  </Card>
+
+                  <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 560, overflow: 'auto', bgcolor: '#FFFFFF' }}>
+                    <Table size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+                      <TableBody>
+                        {formBuilderSchema.custom_grid.cells.map((row, rowIndex) => (
+                          <TableRow key={rowIndex}>
+                            {row.map((cell, columnIndex) => {
+                              if (cell.hidden) return null
+                              const isSelected = selectedBuilderCell?.row === rowIndex && selectedBuilderCell?.column === columnIndex
+                              const options = cell.options?.length ? cell.options : cell.type === 'radio' ? DEFAULT_GRID_OPTIONS : []
+                              return (
+                                <TableCell
+                                  key={cell.id}
+                                  colSpan={cell.colSpan || 1}
+                                  rowSpan={cell.rowSpan || 1}
+                                  onClick={() => setSelectedBuilderCell({ row: rowIndex, column: columnIndex })}
+                                  sx={{
+                                    width: cell.width || 180,
+                                    minWidth: cell.width || 180,
+                                    maxWidth: cell.width || 180,
+                                    verticalAlign: 'top',
+                                    border: '1px solid #D8DEE9',
+                                    bgcolor: isSelected ? '#F5F3FF' : rowIndex % 2 ? '#FAFAFA' : '#FFFFFF',
+                                    outline: isSelected ? '2px solid #7C3AED' : 'none',
+                                    outlineOffset: '-2px',
+                                    cursor: 'pointer',
+                                    p: 1.25,
+                                  }}
                                 >
-                                  {GRID_CELL_TYPES.map(type => <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>)}
-                                </TextField>
-                                <Box sx={{ p: 1, borderRadius: '10px', bgcolor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
-                                  {cell.label?.trim() && (
-                                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 13, mb: 0.75 }}>{cell.label}</Typography>
-                                  )}
-                                  {cell.type === 'input' ? (
-                                    <TextField size="small" disabled fullWidth />
-                                  ) : (
-                                    <Box sx={{ display: 'grid', gap: 1 }}>
-                                      {cell.type === 'radio' ? (
-                                        <RadioGroup row>
-                                          {(cell.options?.length ? cell.options : DEFAULT_GRID_OPTIONS).map(option => (
+                                  <Box sx={{ display: 'grid', gap: 1 }}>
+                                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 900 }}>
+                                      Cell {rowIndex + 1}.{columnIndex + 1}
+                                      {(cell.rowSpan || 1) > 1 || (cell.colSpan || 1) > 1
+                                        ? ` · ${cell.rowSpan || 1}x${cell.colSpan || 1}`
+                                        : ''}
+                                    </Typography>
+                                    <TextField
+                                      variant="standard"
+                                      size="small"
+                                      fullWidth
+                                      placeholder="Type label or leave blank"
+                                      value={cell.label}
+                                      onChange={e => updateGridCell(rowIndex, columnIndex, { label: e.target.value })}
+                                      InputProps={{ disableUnderline: true }}
+                                      sx={{
+                                        '& input': {
+                                          fontWeight: cell.type === 'text' ? 900 : 800,
+                                          color: '#1E1B4B',
+                                          textAlign: 'center',
+                                        },
+                                      }}
+                                    />
+                                    {cell.type === 'input' && (
+                                      <TextField size="small" disabled fullWidth placeholder="Input field" />
+                                    )}
+                                    {cell.type === 'radio' && (
+                                      <Box sx={{ display: 'grid', gap: 0.75 }}>
+                                        <RadioGroup row sx={{ justifyContent: 'center', gap: 0.5 }}>
+                                          {options.map(option => (
                                             <FormControlLabel key={option} value={option} control={<Radio size="small" disabled />} label={option} />
                                           ))}
                                         </RadioGroup>
-                                      ) : cell.options?.length ? (
-                                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                          {cell.options.map(option => (
-                                            <FormControlLabel key={option} control={<Checkbox size="small" disabled />} label={option} />
-                                          ))}
-                                        </Box>
-                                      ) : (
-                                        <Checkbox size="small" disabled sx={{ justifySelf: 'start' }} />
-                                      )}
-                                      <Box sx={{ display: 'grid', gap: 0.75 }}>
-                                        {(cell.options?.length ? cell.options : cell.type === 'radio' ? DEFAULT_GRID_OPTIONS : []).map((option, optionIndex) => (
+                                      </Box>
+                                    )}
+                                    {cell.type === 'checkbox' && (
+                                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+                                        {options.length ? options.map(option => (
+                                          <FormControlLabel key={option} control={<Checkbox size="small" disabled />} label={option} />
+                                        )) : (
+                                          <Checkbox size="small" disabled />
+                                        )}
+                                      </Box>
+                                    )}
+                                    {isSelected && optionCellTypes.includes(cell.type) && (
+                                      <Box sx={{ display: 'grid', gap: 0.75, mt: 0.5 }}>
+                                        {options.map((option, optionIndex) => (
                                           <Box key={`${cell.id}-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.75 }}>
                                             <TextField
                                               size="small"
                                               label={`Option ${optionIndex + 1}`}
                                               value={option}
                                               onChange={e => updateGridCellOption(rowIndex, columnIndex, optionIndex, e.target.value)}
+                                              onClick={event => event.stopPropagation()}
                                             />
-                                            <IconButton size="small" onClick={() => removeGridCellOption(rowIndex, columnIndex, optionIndex)} disabled={cell.type === 'radio' && (cell.options || DEFAULT_GRID_OPTIONS).length <= 1} sx={{ color: '#DC2626' }}>
+                                            <IconButton
+                                              size="small"
+                                              onClick={(event) => {
+                                                event.stopPropagation()
+                                                removeGridCellOption(rowIndex, columnIndex, optionIndex)
+                                              }}
+                                              disabled={cell.type === 'radio' && options.length <= 1}
+                                              sx={{ color: '#DC2626' }}
+                                            >
                                               <RemoveIcon fontSize="small" />
                                             </IconButton>
                                           </Box>
                                         ))}
-                                        <Button size="small" startIcon={<AddIcon />} onClick={() => addGridCellOption(rowIndex, columnIndex)} sx={{ justifySelf: 'start', borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>
-                                          {cell.type === 'checkbox' ? 'Add Checkbox Option' : 'Add Option'}
+                                        <Button
+                                          size="small"
+                                          startIcon={<AddIcon />}
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            addGridCellOption(rowIndex, columnIndex)
+                                          }}
+                                          sx={{ justifySelf: 'center', borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}
+                                        >
+                                          Add option
                                         </Button>
                                       </Box>
-                                    </Box>
-                                  )}
-                                </Box>
-                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                                  <Tooltip title="Add cell after this one">
-                                    <IconButton size="small" onClick={() => addGridCell(rowIndex, columnIndex)} sx={{ bgcolor: '#DCFCE7', color: '#16A34A', '&:hover': { bgcolor: '#BBF7D0' } }}>
-                                      <AddIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                  <Tooltip title="Remove this cell">
-                                    <IconButton size="small" onClick={() => removeGridCell(rowIndex, columnIndex)} sx={{ bgcolor: '#FEE2E2', color: '#DC2626', '&:hover': { bgcolor: '#FECACA' } }}>
-                                      <RemoveIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                </Box>
-                              </Box>
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                                    )}
+                                  </Box>
+                                </TableCell>
+                              )
+                            })}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
               )}
             </Card>
 
