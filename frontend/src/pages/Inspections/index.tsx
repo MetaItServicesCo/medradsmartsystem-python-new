@@ -80,15 +80,26 @@ const CHECK_FIELDS = [
 type ReportFormSource = 'default' | 'attached' | 'existing' | 'custom'
 type FormBuilderMode = 'create' | 'edit' | 'report-custom'
 type GridCellType = 'text' | 'input' | 'radio' | 'checkbox'
+type GridCellBlockType = 'label' | 'input' | 'checkbox' | 'textarea'
 type GridHorizontalAlign = 'left' | 'center' | 'right'
 type GridVerticalAlign = 'top' | 'middle' | 'bottom'
 type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
+
+type GridCellBlock = {
+  id: string
+  type: GridCellBlockType
+  label: string
+  options?: string[]
+  inline?: boolean
+  width?: number
+}
 
 type GridCellSchema = {
   id: string
   label: string
   type: GridCellType
   options?: string[]
+  blocks?: GridCellBlock[]
   rowSpan?: number
   colSpan?: number
   width?: number
@@ -122,6 +133,15 @@ const GRID_CELL_TYPES: { value: GridCellType; label: string }[] = [
 
 const DEFAULT_GRID_OPTIONS = ['Option']
 const optionCellTypes: GridCellType[] = ['radio', 'checkbox']
+
+const createGridCellBlock = (type: GridCellBlockType, index = 0): GridCellBlock => ({
+  id: `block_${Date.now()}_${index}`,
+  type,
+  label: type === 'label' ? 'Label' : type === 'input' ? 'Input Label' : type === 'textarea' ? 'Comments' : 'Checkbox',
+  options: type === 'checkbox' ? ['Option'] : undefined,
+  inline: type === 'input',
+  width: type === 'label' ? 100 : 180,
+})
 
 const UPCOMING_DATE_RANGES: { value: UpcomingDateRange; label: string; months?: number; years?: number }[] = [
   { value: '1m', label: '1 Month', months: 1 },
@@ -165,6 +185,24 @@ const gridAlignItems = (align?: GridHorizontalAlign) =>
 const gridJustifyContent = (verticalAlign?: GridVerticalAlign) =>
   verticalAlign === 'top' ? 'flex-start' : verticalAlign === 'bottom' ? 'flex-end' : 'center'
 
+const normalizeGridCellBlock = (block: any, index: number): GridCellBlock => {
+  const type: GridCellBlockType = ['label', 'input', 'checkbox', 'textarea'].includes(block?.type) ? block.type : 'label'
+  const options = Array.isArray(block?.options) && block.options.length
+    ? block.options.map((option: any) => String(option))
+    : type === 'checkbox' ? ['Option'] : undefined
+  return {
+    id: String(block?.id || `block_${index + 1}`),
+    type,
+    label: String(block?.label ?? ''),
+    options,
+    inline: block?.inline !== undefined ? Boolean(block.inline) : type === 'input',
+    width: Math.max(60, Math.min(520, Number(block?.width || (type === 'label' ? 100 : 180)))),
+  }
+}
+
+const gridCellBlockValueKey = (cell: GridCellSchema, block: GridCellBlock, optionIndex?: number) =>
+  optionIndex === undefined ? `${cell.id}__${block.id}` : `${cell.id}__${block.id}__${optionIndex}`
+
 const createEmptyGrid = (rows = 3, columns = 3, title = 'Set Title'): CustomGridSchema => ({
   title,
   rows,
@@ -184,6 +222,9 @@ const normalizeGridCell = (cell: any, row: number, column: number): GridCellSche
     label: String(cell?.label ?? cell?.value ?? ''),
     type,
     options: optionCellTypes.includes(type) && options.length ? options : undefined,
+    blocks: Array.isArray(cell?.blocks) && cell.blocks.length
+      ? cell.blocks.slice(0, 30).map((block: any, index: number) => normalizeGridCellBlock(block, index))
+      : undefined,
     rowSpan: Math.max(1, Math.min(30, Number(cell?.rowSpan || 1))),
     colSpan: Math.max(1, Math.min(12, Number(cell?.colSpan || 1))),
     width: Math.max(90, Math.min(520, Number(cell?.width || 180))),
@@ -271,6 +312,22 @@ const defaultGridCellValue = (cell: GridCellSchema, existing: any) => {
   return ''
 }
 
+const addGridCellBlockDefaults = (acc: Record<string, any>, cell: GridCellSchema, existing: Record<string, any>) => {
+  ;(cell.blocks || []).forEach(block => {
+    if (block.type === 'label') return
+    if (block.type === 'checkbox') {
+      const options = block.options?.length ? block.options : ['Option']
+      options.forEach((_, optionIndex) => {
+        const key = gridCellBlockValueKey(cell, block, optionIndex)
+        acc[key] = existing[key] !== undefined ? Boolean(existing[key]) : false
+      })
+      return
+    }
+    const key = gridCellBlockValueKey(cell, block)
+    acc[key] = existing[key] !== undefined ? existing[key] : ''
+  })
+}
+
 const isCheckboxOptionChecked = (value: any, option: string) => Array.isArray(value)
   ? value.includes(option)
   : Boolean(value)
@@ -296,11 +353,32 @@ const displayCustomGridCellValue = (cell: GridCellSchema, value: any) => {
   return display || label || '-'
 }
 
+const displayCustomGridCellBlocks = (cell: GridCellSchema, values: Record<string, any>) => {
+  const displays = (cell.blocks || []).map(block => {
+    const label = block.label?.trim()
+    if (block.type === 'label') return label
+    if (block.type === 'checkbox') {
+      const checked = (block.options?.length ? block.options : ['Option'])
+        .map((option, optionIndex) => values[gridCellBlockValueKey(cell, block, optionIndex)] ? (option.trim() || `Option ${optionIndex + 1}`) : '')
+        .filter(Boolean)
+      return label && checked.length ? `${label}: ${checked.join(', ')}` : checked.join(', ')
+    }
+    const value = values[gridCellBlockValueKey(cell, block)]
+    return label && value ? `${label}: ${value}` : (value || label)
+  }).filter(Boolean)
+  return displays.length ? displays.join('\n') : displayCustomGridCellValue(cell, values[cell.id])
+}
+
 const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFormSchema | null) => {
   if (!schema?.custom_grid) return currentReport
   const existing = currentReport?.custom_grid_values || {}
   const defaults = schema.custom_grid.cells.flat().reduce((acc, cell) => {
-    if (cell.hidden || cell.type === 'text') return acc
+    if (cell.hidden) return acc
+    if (cell.blocks?.length) {
+      addGridCellBlockDefaults(acc, cell, existing)
+      return acc
+    }
+    if (cell.type === 'text') return acc
     acc[cell.id] = defaultGridCellValue(cell, existing[cell.id])
     return acc
   }, {} as Record<string, any>)
@@ -487,10 +565,12 @@ const buildReportSheetHtml = (inspection: Inspection, batchNumber?: string): str
             ${row.map(cell => {
               if (cell.hidden) return ''
               const value = customGridValues[cell.id]
-              const display = displayCustomGridCellValue(cell, value)
+              const display = cell.blocks?.length
+                ? displayCustomGridCellBlocks(cell, customGridValues)
+                : displayCustomGridCellValue(cell, value)
               const span = `${cell.colSpan && cell.colSpan > 1 ? ` colspan="${cell.colSpan}"` : ''}${cell.rowSpan && cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : ''}`
               const style = ` style="text-align:${escapeHtml(cell.align || 'center')};vertical-align:${escapeHtml(cell.verticalAlign || 'middle')};width:${Math.max(90, Number(cell.width || 180))}px;height:${Math.max(44, Number(cell.height || 74))}px"`
-              return `<td${span}${style}>${escapeHtml(display)}</td>`
+              return `<td${span}${style}>${escapeHtml(display).replace(/\n/g, '<br>')}</td>`
             }).join('')}
           </tr>
         `).join('')}
@@ -1458,6 +1538,54 @@ const Inspections = () => {
     updateGridCell(rowIndex, columnIndex, { options: options.length ? options : undefined })
   }
 
+  const addSelectedCellBlock = (type: GridCellBlockType) => {
+    if (!selectedBuilderCell) return toast.info('Select a table cell first')
+    const cell = formBuilderSchema.custom_grid?.cells?.[selectedBuilderCell.row]?.[selectedBuilderCell.column]
+    const blocks = [...(cell?.blocks || []), createGridCellBlock(type, cell?.blocks?.length || 0)]
+    updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, { blocks, type: 'text', options: undefined })
+  }
+
+  const updateGridCellBlock = (rowIndex: number, columnIndex: number, blockIndex: number, patch: Partial<GridCellBlock>) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    if (!cell) return
+    const blocks = [...(cell.blocks || [])]
+    const current = blocks[blockIndex]
+    if (!current) return
+    const nextType = patch.type || current.type
+    blocks[blockIndex] = {
+      ...current,
+      ...patch,
+      options: nextType === 'checkbox'
+        ? (patch.options || current.options || ['Option'])
+        : undefined,
+    }
+    updateGridCell(rowIndex, columnIndex, { blocks })
+  }
+
+  const removeGridCellBlock = (rowIndex: number, columnIndex: number, blockIndex: number) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    const blocks = (cell?.blocks || []).filter((_, index) => index !== blockIndex)
+    updateGridCell(rowIndex, columnIndex, { blocks: blocks.length ? blocks : undefined })
+  }
+
+  const addGridCellBlockOption = (rowIndex: number, columnIndex: number, blockIndex: number) => {
+    const block = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]?.blocks?.[blockIndex]
+    updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options: [...(block?.options || []), 'Option'] })
+  }
+
+  const updateGridCellBlockOption = (rowIndex: number, columnIndex: number, blockIndex: number, optionIndex: number, value: string) => {
+    const block = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]?.blocks?.[blockIndex]
+    const options = [...(block?.options || ['Option'])]
+    options[optionIndex] = value
+    updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options: options.map(option => option.trim()) })
+  }
+
+  const removeGridCellBlockOption = (rowIndex: number, columnIndex: number, blockIndex: number, optionIndex: number) => {
+    const block = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]?.blocks?.[blockIndex]
+    const options = (block?.options || []).filter((_, index) => index !== optionIndex)
+    updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options: options.length ? options : ['Option'] })
+  }
+
   const selectedGridCell = selectedBuilderCell
     ? formBuilderSchema.custom_grid?.cells?.[selectedBuilderCell.row]?.[selectedBuilderCell.column]
     : null
@@ -1545,7 +1673,7 @@ const Inspections = () => {
 
   const clearSelectedBuilderCell = () => {
     if (!selectedBuilderCell) return toast.info('Select a table cell first')
-    updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, { label: '', type: 'text', options: undefined, rowSpan: 1, colSpan: 1, hidden: false })
+    updateGridCell(selectedBuilderCell.row, selectedBuilderCell.column, { label: '', type: 'text', options: undefined, blocks: undefined, rowSpan: 1, colSpan: 1, hidden: false })
   }
 
   const startGridCellResize = (
@@ -2112,6 +2240,79 @@ const Inspections = () => {
     )
   }
 
+  const renderCustomGridCellBlocks = (cell: GridCellSchema, values: Record<string, any>, readOnly = false) => (
+    <Box sx={{ display: 'grid', gap: 1, width: '100%', textAlign: cell.align || 'left' }}>
+      {cell.label?.trim() && (
+        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'left' }}>{cell.label}</Typography>
+      )}
+      {(cell.blocks || []).map((block, blockIndex) => {
+        const key = gridCellBlockValueKey(cell, block)
+        if (block.type === 'label') {
+          return (
+            <Typography key={block.id} sx={{ fontWeight: 900, color: '#475569', textAlign: cell.align || 'left' }}>
+              {block.label || `Label ${blockIndex + 1}`}
+            </Typography>
+          )
+        }
+        if (block.type === 'input') {
+          return (
+            <Box key={block.id} sx={{ display: block.inline ? 'grid' : 'block', gridTemplateColumns: block.inline ? 'auto 1fr' : undefined, gap: 1, alignItems: 'center' }}>
+              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569', whiteSpace: 'nowrap' }}>{block.label}</Typography>}
+              <TextField
+                disabled={readOnly}
+                size="small"
+                fullWidth
+                value={values[key] || ''}
+                onChange={e => updateReportGridValue(key, e.target.value)}
+              />
+            </Box>
+          )
+        }
+        if (block.type === 'textarea') {
+          return (
+            <Box key={block.id} sx={{ display: 'grid', gap: 0.75 }}>
+              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+              <TextField
+                disabled={readOnly}
+                size="small"
+                fullWidth
+                multiline
+                minRows={2}
+                value={values[key] || ''}
+                onChange={e => updateReportGridValue(key, e.target.value)}
+              />
+            </Box>
+          )
+        }
+        const options = block.options?.length ? block.options : ['Option']
+        return (
+          <Box key={block.id} sx={{ display: 'grid', gap: 0.5 }}>
+            {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: gridAlignItems(cell.align) }}>
+              {options.map((option, optionIndex) => {
+                const optionKey = gridCellBlockValueKey(cell, block, optionIndex)
+                return (
+                  <FormControlLabel
+                    key={optionKey}
+                    control={
+                      <Checkbox
+                        disabled={readOnly}
+                        size="small"
+                        checked={Boolean(values[optionKey])}
+                        onChange={e => updateReportGridValue(optionKey, e.target.checked)}
+                      />
+                    }
+                    label={option || `Option ${optionIndex + 1}`}
+                  />
+                )
+              })}
+            </Box>
+          </Box>
+        )
+      })}
+    </Box>
+  )
+
   const renderCustomGridReport = () => {
     const grid = activeReportSchema?.custom_grid || report?.custom_grid
     if (!grid) return null
@@ -2150,10 +2351,12 @@ const Inspections = () => {
                           textAlign: cell.align || 'center',
                         }}
                       >
-                        {cell.label?.trim() && (
-                          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
-                        )}
-                        {cell.type === 'text' ? null : cell.type === 'input' ? (
+                        {cell.blocks?.length ? renderCustomGridCellBlocks(cell, values) : (
+                          <>
+                            {cell.label?.trim() && (
+                              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
+                            )}
+                            {cell.type === 'text' ? null : cell.type === 'input' ? (
                           <TextField size="small" fullWidth value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} />
                         ) : cell.type === 'radio' ? (
                           <RadioGroup row value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} sx={{ justifyContent: gridAlignItems(cell.align) }}>
@@ -2183,6 +2386,8 @@ const Inspections = () => {
                             checked={Boolean(values[cell.id])}
                             onChange={e => updateReportGridValue(cell.id, e.target.checked)}
                           />
+                        )}
+                          </>
                         )}
                       </Box>
                     </TableCell>
@@ -3005,10 +3210,12 @@ const Inspections = () => {
                                       textAlign: cell.align || 'center',
                                     }}
                                   >
-                                    {cell.label?.trim() && (
-                                      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
-                                    )}
-                                    {cell.type === 'text' ? null : cell.type === 'input' ? (
+                                    {cell.blocks?.length ? renderCustomGridCellBlocks(cell, {}, true) : (
+                                      <>
+                                        {cell.label?.trim() && (
+                                          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
+                                        )}
+                                        {cell.type === 'text' ? null : cell.type === 'input' ? (
                                       <TextField disabled size="small" fullWidth placeholder={cell.label || 'Input field'} />
                                     ) : cell.type === 'radio' ? (
                                       <RadioGroup row sx={{ justifyContent: gridAlignItems(cell.align) }}>
@@ -3024,6 +3231,8 @@ const Inspections = () => {
                                       </Box>
                                     ) : (
                                       <Checkbox disabled size="small" />
+                                    )}
+                                      </>
                                     )}
                                   </Box>
                                 </TableCell>
@@ -3129,6 +3338,11 @@ const Inspections = () => {
                       <Button size="small" variant={selectedGridCell?.type === 'checkbox' ? 'contained' : 'outlined'} onClick={() => setSelectedGridCellType('checkbox')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Checkbox</Button>
                       <Button size="small" startIcon={<AddIcon />} onClick={() => selectedBuilderCell && addGridCellOption(selectedBuilderCell.row, selectedBuilderCell.column)} disabled={!selectedBuilderCell || !selectedGridCell || !optionCellTypes.includes(selectedGridCell.type)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Option</Button>
                       <Divider orientation="vertical" flexItem />
+                      <Button size="small" startIcon={<AddIcon />} onClick={() => addSelectedCellBlock('label')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Label</Button>
+                      <Button size="small" startIcon={<AddIcon />} onClick={() => addSelectedCellBlock('input')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Input</Button>
+                      <Button size="small" startIcon={<AddIcon />} onClick={() => addSelectedCellBlock('checkbox')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Checkbox Group</Button>
+                      <Button size="small" startIcon={<AddIcon />} onClick={() => addSelectedCellBlock('textarea')} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Comments</Button>
+                      <Divider orientation="vertical" flexItem />
                       <Button size="small" variant={selectedGridCell?.align === 'left' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ align: 'left' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Left</Button>
                       <Button size="small" variant={(selectedGridCell?.align || 'center') === 'center' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ align: 'center' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Center</Button>
                       <Button size="small" variant={selectedGridCell?.align === 'right' ? 'contained' : 'outlined'} onClick={() => updateSelectedGridCell({ align: 'right' })} disabled={!selectedBuilderCell} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Right</Button>
@@ -3211,10 +3425,71 @@ const Inspections = () => {
                                         },
                                       }}
                                     />
-                                    {cell.type === 'input' && (
+                                    {cell.blocks?.length ? (
+                                      <Box sx={{ display: 'grid', gap: 1, width: '100%' }}>
+                                        {cell.blocks.map((block, blockIndex) => (
+                                          <Box
+                                            key={block.id}
+                                            onClick={event => event.stopPropagation()}
+                                            sx={{ p: 1, borderRadius: '10px', border: '1px solid #DDD6FE', bgcolor: '#FFFFFF', display: 'grid', gap: 0.75 }}
+                                          >
+                                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 118px auto', gap: 0.75, alignItems: 'center' }}>
+                                              <TextField
+                                                size="small"
+                                                label="Block label"
+                                                value={block.label}
+                                                onChange={e => updateGridCellBlock(rowIndex, columnIndex, blockIndex, { label: e.target.value })}
+                                              />
+                                              <TextField
+                                                select
+                                                size="small"
+                                                label="Type"
+                                                value={block.type}
+                                                onChange={e => updateGridCellBlock(rowIndex, columnIndex, blockIndex, { type: e.target.value as GridCellBlockType })}
+                                              >
+                                                <MenuItem value="label">Label</MenuItem>
+                                                <MenuItem value="input">Input</MenuItem>
+                                                <MenuItem value="checkbox">Checkbox</MenuItem>
+                                                <MenuItem value="textarea">Textarea</MenuItem>
+                                              </TextField>
+                                              <IconButton size="small" onClick={() => removeGridCellBlock(rowIndex, columnIndex, blockIndex)} sx={{ color: '#DC2626' }}>
+                                                <RemoveIcon fontSize="small" />
+                                              </IconButton>
+                                            </Box>
+                                            {block.type === 'input' && (
+                                              <FormControlLabel
+                                                control={<Checkbox size="small" checked={Boolean(block.inline)} onChange={e => updateGridCellBlock(rowIndex, columnIndex, blockIndex, { inline: e.target.checked })} />}
+                                                label="Label and input on same row"
+                                              />
+                                            )}
+                                            {block.type === 'checkbox' && (
+                                              <Box sx={{ display: 'grid', gap: 0.75 }}>
+                                                {(block.options?.length ? block.options : ['Option']).map((option, optionIndex) => (
+                                                  <Box key={`${block.id}-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.75 }}>
+                                                    <TextField
+                                                      size="small"
+                                                      label={`Checkbox ${optionIndex + 1}`}
+                                                      value={option}
+                                                      onChange={e => updateGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, e.target.value)}
+                                                    />
+                                                    <IconButton size="small" onClick={() => removeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex)} disabled={(block.options || ['Option']).length <= 1} sx={{ color: '#DC2626' }}>
+                                                      <RemoveIcon fontSize="small" />
+                                                    </IconButton>
+                                                  </Box>
+                                                ))}
+                                                <Button size="small" startIcon={<AddIcon />} onClick={() => addGridCellBlockOption(rowIndex, columnIndex, blockIndex)} sx={{ justifySelf: 'start', borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>
+                                                  Add checkbox
+                                                </Button>
+                                              </Box>
+                                            )}
+                                          </Box>
+                                        ))}
+                                      </Box>
+                                    ) : null}
+                                    {!cell.blocks?.length && cell.type === 'input' && (
                                       <TextField size="small" disabled fullWidth placeholder="Input field" />
                                     )}
-                                    {cell.type === 'radio' && (
+                                    {!cell.blocks?.length && cell.type === 'radio' && (
                                       <Box sx={{ display: 'grid', gap: 0.75 }}>
                                         <RadioGroup row sx={{ justifyContent: gridAlignItems(cell.align), gap: 0.5 }}>
                                           {options.map(option => (
@@ -3223,7 +3498,7 @@ const Inspections = () => {
                                         </RadioGroup>
                                       </Box>
                                     )}
-                                    {cell.type === 'checkbox' && (
+                                    {!cell.blocks?.length && cell.type === 'checkbox' && (
                                       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: gridAlignItems(cell.align) }}>
                                         {options.length ? options.map(option => (
                                           <FormControlLabel key={option} control={<Checkbox size="small" disabled />} label={option} />
@@ -3232,7 +3507,7 @@ const Inspections = () => {
                                         )}
                                       </Box>
                                     )}
-                                    {isSelected && optionCellTypes.includes(cell.type) && (
+                                    {isSelected && !cell.blocks?.length && optionCellTypes.includes(cell.type) && (
                                       <Box sx={{ display: 'grid', gap: 0.75, mt: 0.5 }}>
                                         {options.map((option, optionIndex) => (
                                           <Box key={`${cell.id}-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.75 }}>
