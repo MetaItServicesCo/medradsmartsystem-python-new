@@ -3,11 +3,12 @@ import os
 import uuid
 import io
 import csv
+import re
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app import crud, schemas
 from app.core.deps import get_current_user, get_admin_user, get_facility_admin_user, get_superadmin_user
@@ -26,6 +27,30 @@ from app.utils.permissions import require_module_permission
 router = APIRouter(dependencies=[Depends(require_module_access("facilities"))])
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "facility_documents")
+
+SCOPED_EXPORT_SCOPES = {
+    "facility_info",
+    "facility_inventory",
+    "facility_with_inventory",
+    "children",
+    "children_with_inventory",
+    "parent",
+    "parent_with_inventory",
+    "family",
+    "family_with_inventory",
+}
+
+SCOPED_EXPORT_LABELS = {
+    "facility_info": "Facility Information",
+    "facility_inventory": "Facility Inventory",
+    "facility_with_inventory": "Facility Information and Inventory",
+    "children": "Child Facilities",
+    "children_with_inventory": "Child Facilities and Inventory",
+    "parent": "Parent Facility",
+    "parent_with_inventory": "Parent Facility and Inventory",
+    "family": "Parent / Child Facility Group",
+    "family_with_inventory": "Parent / Child Facility Group and Inventory",
+}
 
 
 def _format_us_phone(value: Optional[str]) -> str:
@@ -65,6 +90,145 @@ def _normalize_facility_timezone(value: Optional[str]) -> str:
     if normalized in {"america/chicago", "central", "ct", "cst", "cdt", "utc", ""}:
         return "America/Chicago"
     return "America/Chicago"
+
+
+def _safe_filename(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", value.strip())
+    return cleaned.strip("_") or "facility_export"
+
+
+def _facility_tier_names(facility: Facility) -> str:
+    tiers = [ft.tier.name for ft in facility.facility_tiers if ft.tier]
+    if not tiers and facility.tier:
+        tiers = [facility.tier.name]
+    return ", ".join(tiers)
+
+
+def _status_value(value: Any) -> str:
+    return value.value if hasattr(value, "value") else str(value or "")
+
+
+def _facility_csv_headers() -> list[str]:
+    return [
+        "id", "name", "status", "parent_facility_id", "address", "suite", "city", "state",
+        "zip_code", "country", "phone", "email", "contact_person", "timezone", "operating_hours",
+        "tiers", "billing_name", "billing_email", "created_at", "updated_at",
+    ]
+
+
+def _facility_csv_row(facility: Facility) -> list[Any]:
+    return [
+        facility.id,
+        facility.name,
+        facility.status,
+        facility.parent_facility_id,
+        facility.address,
+        facility.suite,
+        facility.city,
+        facility.state,
+        facility.zip_code,
+        facility.country,
+        _format_us_phone(facility.phone),
+        facility.email,
+        facility.contact_person,
+        _facility_timezone_label(facility.timezone),
+        facility.operating_hours,
+        _facility_tier_names(facility),
+        facility.billing_name,
+        facility.billing_email,
+        facility.created_at,
+        facility.updated_at,
+    ]
+
+
+def _equipment_csv_headers() -> list[str]:
+    return [
+        "id", "asset_tag", "facility", "tier", "make", "model", "serial_number", "modality",
+        "inspection_form", "status", "risk_priority", "risk_name", "location", "department",
+        "pm_scheduling", "last_pm_date", "next_generated_pm_date", "created_at", "updated_at",
+    ]
+
+
+def _equipment_csv_row(item: Equipment) -> list[Any]:
+    return [
+        item.id,
+        item.asset_tag,
+        item.facility.name if item.facility else "",
+        item.tier.name if item.tier else "",
+        item.make,
+        item.model,
+        item.serial_number,
+        item.modality.name if item.modality else "",
+        item.inspection_form.name if item.inspection_form else "",
+        _status_value(item.status),
+        item.risk_priority,
+        item.risk_name,
+        item.location,
+        item.department,
+        item.pm_scheduling,
+        item.last_pm_date,
+        item.next_generated_pm_date,
+        item.created_at,
+        item.updated_at,
+    ]
+
+
+def _scoped_facilities(db: Session, facility: Facility, scope: str) -> list[Facility]:
+    if scope.startswith("facility_"):
+        return [facility]
+
+    if scope.startswith("children"):
+        return (
+            db.query(Facility)
+            .filter(Facility.parent_facility_id == facility.id)
+            .order_by(Facility.name.asc(), Facility.id.asc())
+            .all()
+        )
+
+    if scope.startswith("parent"):
+        if not facility.parent_facility_id:
+            return []
+        parent = db.query(Facility).filter(Facility.id == facility.parent_facility_id).first()
+        return [parent] if parent else []
+
+    if scope.startswith("family"):
+        root = facility
+        if facility.parent_facility_id:
+            root = db.query(Facility).filter(Facility.id == facility.parent_facility_id).first() or facility
+        children = (
+            db.query(Facility)
+            .filter(Facility.parent_facility_id == root.id)
+            .order_by(Facility.name.asc(), Facility.id.asc())
+            .all()
+        )
+        return [root] + children
+
+    return [facility]
+
+
+def _scoped_equipment(db: Session, facility_ids: list[int]) -> list[Equipment]:
+    if not facility_ids:
+        return []
+    return (
+        db.query(Equipment)
+        .options(
+            joinedload(Equipment.facility),
+            joinedload(Equipment.modality),
+            joinedload(Equipment.tier),
+            joinedload(Equipment.inspection_form),
+        )
+        .filter(Equipment.facility_id.in_(facility_ids))
+        .order_by(Equipment.asset_tag.asc(), Equipment.id.asc())
+        .all()
+    )
+
+
+def _scope_includes_facility_rows(scope: str) -> bool:
+    return scope not in {"facility_inventory"}
+
+
+def _scope_includes_inventory(scope: str) -> bool:
+    return scope.endswith("_inventory") or scope.endswith("_with_inventory")
 
 
 def _sync_facility_tiers(db: Session, facility: Facility, tier_ids: Optional[List[int]]) -> None:
@@ -239,6 +403,152 @@ def export_facilities_csv(
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="facilities.csv"'},
     )
+
+
+@router.get("/{id}/export-scoped")
+def export_scoped_facility_data(
+    id: int,
+    scope: str = Query("facility_info"),
+    format: str = Query("csv", pattern="^(csv|pdf)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Export scoped facility information and/or facility inventory.
+
+    Every facility included in the export is checked with the normal facility
+    access rules, so parent/child exports cannot leak data outside the user's
+    allowed facility scope.
+    """
+    if scope not in SCOPED_EXPORT_SCOPES:
+        raise HTTPException(status_code=400, detail="Unsupported export scope")
+
+    facility = db.query(Facility).filter(Facility.id == id).first()
+    if not facility:
+        raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility.id)
+
+    facilities = _scoped_facilities(db, facility, scope)
+    for scoped_facility in facilities:
+        require_facility_access(db, current_user, scoped_facility.id)
+
+    facility_ids = [item.id for item in facilities]
+    include_facilities = _scope_includes_facility_rows(scope)
+    include_inventory = _scope_includes_inventory(scope)
+    equipment_items = _scoped_equipment(db, facility_ids) if include_inventory else []
+    label = SCOPED_EXPORT_LABELS.get(scope, "Facility Export")
+    filename_base = _safe_filename(f"{facility.name}_{scope}")
+
+    if format == "csv":
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["Export", label])
+        writer.writerow(["Base Facility", facility.name])
+        writer.writerow(["Generated For", current_user.username])
+        writer.writerow([])
+
+        if include_facilities:
+            writer.writerow(["Facilities"])
+            writer.writerow(_facility_csv_headers())
+            for scoped_facility in facilities:
+                writer.writerow(_facility_csv_row(scoped_facility))
+            if not facilities:
+                writer.writerow(["No facilities found for selected scope"])
+            writer.writerow([])
+
+        if include_inventory:
+            writer.writerow(["Facility Inventory"])
+            writer.writerow(_equipment_csv_headers())
+            for item in equipment_items:
+                writer.writerow(_equipment_csv_row(item))
+            if not equipment_items:
+                writer.writerow(["No inventory found for selected scope"])
+
+        return StreamingResponse(
+            iter([buffer.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename_base}.csv"'},
+        )
+
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas as pdf_canvas
+
+        buffer = io.BytesIO()
+        c = pdf_canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+        y = height - 56
+
+        def write_line(text: str, font_size=10, bold=False):
+            nonlocal y
+            if y < 56:
+                c.showPage()
+                y = height - 56
+            c.setFont("Helvetica-Bold" if bold else "Helvetica", font_size)
+            c.drawString(44, y, str(text))
+            y -= font_size + 5
+
+        def write_section(title: str):
+            nonlocal y
+            y -= 8
+            write_line(title, 13, bold=True)
+            y -= 3
+
+        c.setFont("Helvetica-Bold", 18)
+        c.drawString(44, y, label)
+        y -= 26
+        c.setStrokeColorRGB(0.486, 0.227, 0.929)
+        c.setLineWidth(2)
+        c.line(44, y, width - 44, y)
+        y -= 18
+        write_line(f"Base Facility: {facility.name}", 10, bold=True)
+        write_line(f"Generated For: {current_user.username}", 9)
+
+        if include_facilities:
+            write_section("Facilities")
+            if facilities:
+                for scoped_facility in facilities:
+                    write_line(scoped_facility.name, 11, bold=True)
+                    write_line(f"ID: {scoped_facility.id} | Status: {scoped_facility.status or '—'}")
+                    write_line(f"Address: {scoped_facility.address}, {scoped_facility.city}, {scoped_facility.state} {scoped_facility.zip_code}")
+                    write_line(f"Phone: {_format_us_phone(scoped_facility.phone)} | Email: {scoped_facility.email or '—'}")
+                    write_line(f"Timezone: {_facility_timezone_label(scoped_facility.timezone)} | Hours: {scoped_facility.operating_hours or '—'}")
+                    write_line(f"Tiers: {_facility_tier_names(scoped_facility) or '—'}")
+                    parent_name = "—"
+                    if scoped_facility.parent_facility_id:
+                        parent = db.query(Facility).filter(Facility.id == scoped_facility.parent_facility_id).first()
+                        parent_name = parent.name if parent else f"ID #{scoped_facility.parent_facility_id}"
+                    write_line(f"Parent Facility: {parent_name}")
+                    y -= 4
+            else:
+                write_line("No facilities found for selected scope.")
+
+        if include_inventory:
+            write_section("Facility Inventory")
+            if equipment_items:
+                for item in equipment_items:
+                    facility_name = item.facility.name if item.facility else "—"
+                    write_line(f"{item.asset_tag or '—'} | {item.make or ''} {item.model or ''}", 10, bold=True)
+                    write_line(f"Facility: {facility_name} | Serial: {item.serial_number or '—'} | Status: {_status_value(item.status) or '—'}")
+                    write_line(f"Modality: {item.modality.name if item.modality else '—'} | Tier: {item.tier.name if item.tier else '—'}")
+                    write_line(f"Location: {item.location or '—'} | PM: {item.pm_scheduling or '—'} | Next PM: {item.next_generated_pm_date or '—'}")
+                    y -= 3
+            else:
+                write_line("No inventory found for selected scope.")
+
+        c.setFont("Helvetica-Oblique", 8)
+        c.drawString(44, 28, "Generated by Medrad Admin Panel")
+        c.save()
+        buffer.seek(0)
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename_base}.pdf"'},
+        )
+    except ImportError:
+        raise HTTPException(
+            status_code=501,
+            detail="PDF generation requires the 'reportlab' package. Install it with: pip install reportlab",
+        )
 
 
 @router.post("/", response_model=schemas.Facility, status_code=201)

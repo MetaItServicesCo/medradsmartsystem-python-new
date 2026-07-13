@@ -128,6 +128,19 @@ export interface FacilityDocumentListResponse {
   total: number
 }
 
+export type FacilityScopedExportScope =
+  | 'facility_info'
+  | 'facility_inventory'
+  | 'facility_with_inventory'
+  | 'children'
+  | 'children_with_inventory'
+  | 'parent'
+  | 'parent_with_inventory'
+  | 'family'
+  | 'family_with_inventory'
+
+export type FacilityScopedExportFormat = 'csv' | 'pdf'
+
 // ─── Facilities CRUD ──────────────────────────────────────────
 
 export const fetchFacilities = async (params: FacilityListParams = {}): Promise<FacilityListResponse> => {
@@ -208,6 +221,31 @@ export const exportFacilitiesCsv = async (): Promise<void> => {
   const a = document.createElement('a')
   a.href = url
   a.download = 'facilities.csv'
+  document.body.appendChild(a)
+  a.click()
+  window.URL.revokeObjectURL(url)
+  a.remove()
+}
+
+export const exportScopedFacility = async (
+  facilityId: number,
+  scope: FacilityScopedExportScope,
+  format: FacilityScopedExportFormat,
+  fallbackName = 'facility_export',
+): Promise<void> => {
+  const res = await apiClient.get(`/facilities/${facilityId}/export-scoped`, {
+    params: { scope, format },
+    responseType: 'blob',
+  })
+  const contentType = format === 'pdf' ? 'application/pdf' : 'text/csv'
+  const blob = new Blob([res.data], { type: res.headers?.['content-type'] || contentType })
+  const disposition = res.headers?.['content-disposition'] || ''
+  const match = disposition.match(/filename="?([^"]+)"?/)
+  const filename = match?.[1] || `${fallbackName}.${format}`
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
   document.body.appendChild(a)
   a.click()
   window.URL.revokeObjectURL(url)

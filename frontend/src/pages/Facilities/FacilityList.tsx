@@ -6,7 +6,8 @@ import {
   TableContainer, TableHead, TableRow, IconButton, Chip, Avatar,
   InputBase, Tooltip, Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions, Skeleton, Menu, MenuItem,
-  ListItemIcon, ListItemText, Pagination, Divider
+  ListItemIcon, ListItemText, Pagination, Divider, RadioGroup, FormControlLabel, Radio,
+  CircularProgress
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -34,7 +35,15 @@ import PublicOutlinedIcon from '@mui/icons-material/PublicOutlined'
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined'
 import { toast } from 'react-toastify'
 
-import { fetchFacilities, deleteFacility, exportFacilitiesCsv, type Facility } from '@/api/facilities'
+import {
+  fetchFacilities,
+  deleteFacility,
+  exportFacilitiesCsv,
+  exportScopedFacility,
+  type Facility,
+  type FacilityScopedExportFormat,
+  type FacilityScopedExportScope,
+} from '@/api/facilities'
 import { exportEquipmentCsv } from '@/api/equipment'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
@@ -83,6 +92,82 @@ const STAT_CARDS = [
   },
 ]
 
+type FacilityExportOption = {
+  scope: FacilityScopedExportScope
+  label: string
+  description: string
+  availability: 'always' | 'parent' | 'child'
+}
+
+const FACILITY_EXPORT_OPTIONS: FacilityExportOption[] = [
+  {
+    scope: 'facility_info',
+    label: 'Facility info only',
+    description: 'Download this facility profile, contacts, billing settings, tiers, and parent/child summary.',
+    availability: 'always',
+  },
+  {
+    scope: 'facility_inventory',
+    label: 'Facility inventory only',
+    description: 'Download only this facility inventory/assets.',
+    availability: 'always',
+  },
+  {
+    scope: 'facility_with_inventory',
+    label: 'Facility info + inventory',
+    description: 'Download this facility profile together with its inventory/assets.',
+    availability: 'always',
+  },
+  {
+    scope: 'children',
+    label: 'Child facilities only',
+    description: 'Download child facility profiles under this parent facility.',
+    availability: 'parent',
+  },
+  {
+    scope: 'children_with_inventory',
+    label: 'Child facilities + inventory',
+    description: 'Download child facility profiles and their inventory/assets.',
+    availability: 'parent',
+  },
+  {
+    scope: 'family',
+    label: 'Parent + child facility group',
+    description: 'Download this facility and its child facilities as a group.',
+    availability: 'parent',
+  },
+  {
+    scope: 'family_with_inventory',
+    label: 'Parent + child group + inventory',
+    description: 'Download this facility, child facilities, and all included inventory/assets.',
+    availability: 'parent',
+  },
+  {
+    scope: 'parent',
+    label: 'Parent facility only',
+    description: 'Download the parent facility profile for this child facility.',
+    availability: 'child',
+  },
+  {
+    scope: 'parent_with_inventory',
+    label: 'Parent facility + inventory',
+    description: 'Download the parent facility profile and its inventory/assets.',
+    availability: 'child',
+  },
+  {
+    scope: 'family',
+    label: 'Parent + child facility group',
+    description: 'Download the parent and child facility group when your access allows it.',
+    availability: 'child',
+  },
+  {
+    scope: 'family_with_inventory',
+    label: 'Parent + child group + inventory',
+    description: 'Download the parent and child facility group with inventory when your access allows it.',
+    availability: 'child',
+  },
+]
+
 const FacilityList = () => {
   const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.user)
@@ -100,6 +185,11 @@ const FacilityList = () => {
   const [deleteTarget, setDeleteTarget] = useState<Facility | null>(null)
   const [tierModalOpen, setTierModalOpen] = useState(false)
   const [tierFacility, setTierFacility] = useState<Facility | null>(null)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportFacility, setExportFacility] = useState<Facility | null>(null)
+  const [exportScope, setExportScope] = useState<FacilityScopedExportScope>('facility_info')
+  const [exportFormat, setExportFormat] = useState<FacilityScopedExportFormat>('pdf')
+  const [exporting, setExporting] = useState(false)
 
   // Sync state from URL
   useEffect(() => {
@@ -260,6 +350,16 @@ const FacilityList = () => {
     handleActionsClose()
   }
 
+  const handleActionExport = () => {
+    if (menuFacility) {
+      setExportFacility(menuFacility)
+      setExportScope('facility_info')
+      setExportFormat('pdf')
+      setExportDialogOpen(true)
+    }
+    handleActionsClose()
+  }
+
   const handleActionInventory = (mode: 'view' | 'add') => {
     if (menuFacility) {
       setInvModalMode(mode)
@@ -295,6 +395,36 @@ const FacilityList = () => {
       toast.error(err.response?.data?.detail || 'Unable to download inventory')
     } finally {
       setMainMenuAnchor(null)
+    }
+  }
+
+  const availableExportOptions = (facility: Facility | null) => {
+    if (!facility) return []
+    const isChild = Boolean(facility.parent_facility_id)
+    return FACILITY_EXPORT_OPTIONS.filter(option => (
+      option.availability === 'always'
+      || (option.availability === 'child' && isChild)
+      || (option.availability === 'parent' && !isChild)
+    ))
+  }
+
+  const handleScopedExport = async () => {
+    if (!exportFacility) return
+    setExporting(true)
+    try {
+      await exportScopedFacility(
+        exportFacility.id,
+        exportScope,
+        exportFormat,
+        `${exportFacility.name.replace(/\s+/g, '_')}_${exportScope}.${exportFormat}`,
+      )
+      toast.success('Export download started')
+      setExportDialogOpen(false)
+      setExportFacility(null)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Unable to export facility data')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -770,6 +900,11 @@ const FacilityList = () => {
           <ListItemText primary="View Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
         </MenuItem>
 
+        <MenuItem onClick={handleActionExport} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
+          <ListItemIcon><DownloadOutlinedIcon sx={{ color: '#059669', fontSize: '1.2rem' }} /></ListItemIcon>
+          <ListItemText primary="Export Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+        </MenuItem>
+
         <MenuItem onClick={handleActionEdit} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
           <ListItemIcon><EditOutlinedIcon sx={{ color: '#6D28D9', fontSize: '1.2rem' }} /></ListItemIcon>
           <ListItemText primary="Edit Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
@@ -859,6 +994,88 @@ const FacilityList = () => {
       <FacilityUsersModal open={usersModalOpen} onClose={() => setUsersModalOpen(false)} facility={menuFacility} />
       <ModalitiesModal open={modalitiesModalOpen} onClose={() => setModalitiesModalOpen(false)} />
       <DepartmentsModal open={deptsModalOpen} onClose={() => setDeptsModalOpen(false)} />
+
+      {/* Scoped Export Dialog */}
+      <Dialog
+        open={exportDialogOpen}
+        onClose={() => !exporting && setExportDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}
+      >
+        <DialogTitle sx={{
+          fontWeight: 900,
+          color: '#fff',
+          background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+        }}>
+          <DownloadOutlinedIcon />
+          Export Facility Data
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 3 }}>
+          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.5 }}>
+            {exportFacility?.name || 'Facility'}
+          </Typography>
+          <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13, mb: 2.5 }}>
+            Choose exactly what you want to download. Parent/child exports still respect facility access permissions.
+          </Typography>
+
+          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Export scope</Typography>
+          <RadioGroup value={exportScope} onChange={event => setExportScope(event.target.value as FacilityScopedExportScope)}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 1.25 }}>
+              {availableExportOptions(exportFacility).map(option => (
+                <Box
+                  key={`${option.scope}-${option.availability}`}
+                  onClick={() => setExportScope(option.scope)}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: '14px',
+                    border: exportScope === option.scope ? '1px solid #7C3AED' : '1px solid #E5E7EB',
+                    bgcolor: exportScope === option.scope ? '#F5F3FF' : '#fff',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    '&:hover': { borderColor: '#A78BFA', bgcolor: '#FAF5FF' },
+                  }}
+                >
+                  <FormControlLabel
+                    value={option.scope}
+                    control={<Radio size="small" />}
+                    label={<Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{option.label}</Typography>}
+                    sx={{ m: 0, alignItems: 'flex-start' }}
+                  />
+                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, pl: 3.75 }}>
+                    {option.description}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </RadioGroup>
+
+          <Divider sx={{ my: 2.5 }} />
+
+          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>File format</Typography>
+          <RadioGroup row value={exportFormat} onChange={event => setExportFormat(event.target.value as FacilityScopedExportFormat)}>
+            <FormControlLabel value="pdf" control={<Radio />} label="PDF" />
+            <FormControlLabel value="csv" control={<Radio />} label="CSV" />
+          </RadioGroup>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+          <Button onClick={() => setExportDialogOpen(false)} disabled={exporting} sx={{ fontWeight: 900 }}>
+            Cancel
+          </Button>
+          <Button
+            startIcon={exporting ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <DownloadOutlinedIcon />}
+            onClick={handleScopedExport}
+            disabled={exporting || !exportFacility}
+            variant="contained"
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Download {exportFormat.toUpperCase()}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <Dialog
