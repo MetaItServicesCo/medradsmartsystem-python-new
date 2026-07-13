@@ -28,6 +28,45 @@ router = APIRouter(dependencies=[Depends(require_module_access("facilities"))])
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "uploads", "facility_documents")
 
 
+def _format_us_phone(value: Optional[str]) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return "—"
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    if len(digits) == 7:
+        return f"{digits[:3]}-{digits[3:]}"
+    return raw
+
+
+def _normalize_us_phone(value: Optional[str]) -> str:
+    formatted = _format_us_phone(value)
+    return "" if formatted == "—" else formatted
+
+
+def _facility_timezone_label(value: Optional[str]) -> str:
+    normalized = _normalize_facility_timezone(value)
+    if normalized == "America/Los_Angeles":
+        return "West Coast"
+    if normalized == "America/New_York":
+        return "East Coast"
+    return "Central"
+
+
+def _normalize_facility_timezone(value: Optional[str]) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"america/los_angeles", "america/denver", "west coast", "pacific", "pt", "pst", "pdt"}:
+        return "America/Los_Angeles"
+    if normalized in {"america/new_york", "east coast", "eastern", "et", "est", "edt"}:
+        return "America/New_York"
+    if normalized in {"america/chicago", "central", "ct", "cst", "cdt", "utc", ""}:
+        return "America/Chicago"
+    return "America/Chicago"
+
+
 def _sync_facility_tiers(db: Session, facility: Facility, tier_ids: Optional[List[int]]) -> None:
     if tier_ids is None:
         return
@@ -183,10 +222,10 @@ def export_facilities_csv(
             facility.state,
             facility.zip_code,
             facility.country,
-            facility.phone,
+            _format_us_phone(facility.phone),
             facility.email,
             facility.contact_person,
-            facility.timezone,
+            _facility_timezone_label(facility.timezone),
             facility.operating_hours,
             ", ".join(tiers),
             facility.billing_name,
@@ -212,6 +251,8 @@ def create_facility(
     """Create a new facility — admin/superadmin only."""
     tier_ids = facility_in.tier_ids
     data = facility_in.model_dump(exclude={"tier_ids"})
+    data["phone"] = _normalize_us_phone(data.get("phone"))
+    data["timezone"] = _normalize_facility_timezone(data.get("timezone"))
     if tier_ids is None and data.get("tier_id"):
         tier_ids = [data["tier_id"]]
     _validate_parent_facility(db, parent_facility_id=data.get("parent_facility_id"))
@@ -260,10 +301,14 @@ def update_facility(
     if tier_ids is None and facility_in.tier_id is not None:
         tier_ids = [facility_in.tier_id] if facility_in.tier_id else []
     update_data = facility_in.model_dump(exclude_unset=True)
+    if "phone" in update_data:
+        update_data["phone"] = _normalize_us_phone(update_data.get("phone"))
+    if "timezone" in update_data:
+        update_data["timezone"] = _normalize_facility_timezone(update_data.get("timezone"))
     if "parent_facility_id" in update_data:
         _validate_parent_facility(db, facility_id=facility.id, parent_facility_id=update_data.get("parent_facility_id"))
         _ensure_parent_can_become_child(db, facility, update_data.get("parent_facility_id"))
-    updated = crud.facility.update(db=db, db_obj=facility, obj_in=facility_in)
+    updated = crud.facility.update(db=db, db_obj=facility, obj_in=update_data)
     _sync_facility_tiers(db, updated, tier_ids)
     if tier_ids is not None:
         db.commit()
@@ -441,7 +486,7 @@ def export_facility_pdf(
         write_section("General Information")
         write_line(f"Name: {facility.name}")
         write_line(f"Contact Person: {facility.contact_person or '—'}")
-        write_line(f"Phone: {facility.phone}")
+        write_line(f"Phone: {_format_us_phone(facility.phone)}")
         write_line(f"Email: {facility.email}")
         write_line(f"Address: {facility.address}")
         write_line(f"Suite: {facility.suite or '—'}")
@@ -450,7 +495,7 @@ def export_facility_pdf(
         write_line(f"Zip Code: {facility.zip_code}")
         write_line(f"Country: {facility.country}")
         write_line(f"Website: {facility.website or '—'}")
-        write_line(f"Timezone: {facility.timezone}")
+        write_line(f"Timezone: {_facility_timezone_label(facility.timezone)}")
         write_line(f"Operating Hours: {facility.operating_hours or '—'}")
 
         # Facility Details

@@ -21,6 +21,7 @@ import {
   uploadFacilityDocument, fetchFacilityDocuments, deleteFacilityDocument, exportFacilityPdf,
   type Facility, type FacilityCreate 
 } from '@/api/facilities'
+import { FACILITY_TIMEZONE_OPTIONS, formatUSPhoneInput, normalizeFacilityTimezone } from '@/utils/formatters'
 
 const schema = z.object({
   // General Info
@@ -35,7 +36,7 @@ const schema = z.object({
   zip_code: z.string().min(3, 'Zip code is required'),
   country: z.string().min(2, 'Country is required'),
   website: z.string().optional().nullable(),
-  timezone: z.string().default('UTC'),
+  timezone: z.string().default('America/Chicago'),
   operating_hours: z.string().optional().nullable(),
   
   // Details
@@ -61,12 +62,6 @@ const schema = z.object({
 })
 
 type FormData = z.infer<typeof schema>
-
-const TIMEZONES = [
-  'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-  'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Karachi', 'Asia/Dubai',
-  'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney',
-]
 
 const INHERITANCE_OPTIONS = ['Full', 'Partial', 'None']
 const INSTALLMENT_OPTIONS = ['Monthly', 'Quarterly', 'Annual', 'One-time']
@@ -118,7 +113,7 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
     defaultValues: {
       name: '', contact_person: '', phone: '', email: '', 
       address: '', suite: '', city: '', state: '', zip_code: '', country: '', 
-      website: '', timezone: 'UTC', operating_hours: '',
+      website: '', timezone: 'America/Chicago', operating_hours: '',
       parent_facility_id: null, status: 'active', tier_id: null,
       billing_name: '', billing_email: '', billing_street: '', billing_suite: '', 
       billing_city: '', billing_state: '', billing_zip_code: '',
@@ -141,13 +136,15 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
       
       reset({
         ...cleanedData,
+        timezone: normalizeFacilityTimezone(cleanedData.timezone),
+        phone: formatUSPhoneInput(cleanedData.phone),
         tax_exemption: facility.tax_exemption || false,
       });
     } else if (open) {
       reset({
         name: '', contact_person: '', phone: '', email: '', 
         address: '', suite: '', city: '', state: '', zip_code: '', country: '', 
-        website: '', timezone: 'UTC', operating_hours: '',
+        website: '', timezone: 'America/Chicago', operating_hours: '',
         parent_facility_id: null, status: 'active', tier_id: null,
         billing_name: '', billing_email: '', billing_street: '', billing_suite: '', 
         billing_city: '', billing_state: '', billing_zip_code: '',
@@ -203,7 +200,7 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
   const onSubmit = (data: FormData) => {
     // Need to handle conversion of empty strings to null for some fields if required by backend, 
     // but schema optional handles it fine. Let's sanitize slightly.
-    const payload = { ...data };
+    const payload = { ...data, timezone: normalizeFacilityTimezone(data.timezone), phone: formatUSPhoneInput(data.phone) };
     Object.keys(payload).forEach(key => {
       if (payload[key as keyof FormData] === '') {
         (payload as any)[key] = null;
@@ -287,7 +284,7 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Controller name="phone" control={control} render={({ field }) => (
-                    <TextField {...field} fullWidth label="Phone Number *" error={!!errors.phone} helperText={errors.phone?.message} />
+                    <TextField {...field} value={field.value || ''} onChange={(event) => field.onChange(formatUSPhoneInput(event.target.value))} fullWidth label="Phone Number *" error={!!errors.phone} helperText={errors.phone?.message} />
                   )} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -337,8 +334,8 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
                 <Grid item xs={12} sm={6}>
                   <Controller name="timezone" control={control} render={({ field }) => (
                     <TextField {...field} fullWidth select label="Timezone" error={!!errors.timezone} helperText={errors.timezone?.message}>
-                      {TIMEZONES.map((tz) => (
-                        <MenuItem key={tz} value={tz}>{tz}</MenuItem>
+                      {FACILITY_TIMEZONE_OPTIONS.map((tz) => (
+                        <MenuItem key={tz.value} value={tz.value}>{tz.label}</MenuItem>
                       ))}
                     </TextField>
                   )} />

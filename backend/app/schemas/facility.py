@@ -12,7 +12,7 @@ class FacilityBase(BaseModel):
     country: str
     phone: str
     email: str
-    timezone: Optional[str] = "UTC"
+    timezone: Optional[str] = "America/Chicago"
     operating_hours: Optional[str] = None
     tier_id: Optional[int] = None
     tier_ids: Optional[List[int]] = None

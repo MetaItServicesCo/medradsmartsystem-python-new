@@ -18,6 +18,7 @@ import {
 import PrintIcon from '@mui/icons-material/Print'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 export type PrintDocumentType = 'invoice' | 'packing_slip' | 'ledger'
 
@@ -385,7 +386,7 @@ const buildPrintableHtml = (
           <h3>Bill To</h3>
           <strong class="customer">${escapeHtml(invoice.customer_name)}</strong><br>
           ${invoice.customer_email ? `<span class="muted">${escapeHtml(invoice.customer_email)}</span><br>` : ''}
-          ${invoice.customer_phone ? `<span class="muted">${escapeHtml(invoice.customer_phone)}</span><br>` : ''}
+          ${invoice.customer_phone ? `<span class="muted">${escapeHtml(formatUSPhone(invoice.customer_phone))}</span><br>` : ''}
           ${invoice.customer_address ? `<span class="muted">${escapeHtml(invoice.customer_address)}</span><br>` : ''}
           <span class="muted">${escapeHtml(invoice.facility_name || '')}</span>
         </div>
@@ -501,7 +502,7 @@ const InvoicePrintDialog = ({
     setEditForm({
       customer_name: invoice.customer_name || '',
       customer_email: invoice.customer_email || '',
-      customer_phone: invoice.customer_phone || '',
+      customer_phone: formatUSPhoneInput(invoice.customer_phone || ''),
       customer_address: invoice.customer_address || '',
       subtotal: String(Number(invoice.subtotal || 0)),
       tax_amount: String(Number(invoice.tax_amount || 0)),
@@ -525,7 +526,7 @@ const InvoicePrintDialog = ({
       ...invoice,
       customer_name: editForm.customer_name || invoice.customer_name,
       customer_email: editForm.customer_email || null,
-      customer_phone: editForm.customer_phone || null,
+      customer_phone: formatUSPhoneInput(editForm.customer_phone) || null,
       customer_address: editForm.customer_address || null,
       subtotal: Number(editForm.subtotal || 0),
       tax_amount: Number(editForm.tax_amount || 0),
@@ -570,7 +571,7 @@ const InvoicePrintDialog = ({
     onSave({
       customer_name: editForm.customer_name,
       customer_email: editForm.customer_email || null,
-      customer_phone: editForm.customer_phone || null,
+      customer_phone: formatUSPhoneInput(editForm.customer_phone) || null,
       customer_address: editForm.customer_address || null,
       subtotal: Number(editForm.subtotal || 0),
       tax_amount: Number(editForm.tax_amount || 0),
@@ -691,7 +692,7 @@ const InvoicePrintDialog = ({
                     <Box sx={{ display: 'grid', gap: 1, mt: 1 }}>
                       <TextField size="small" label="Customer name" value={editForm.customer_name} onChange={event => setEditForm(prev => ({ ...prev, customer_name: event.target.value }))} sx={{ bgcolor: '#fff' }} />
                       <TextField size="small" label="Customer email" value={editForm.customer_email} onChange={event => setEditForm(prev => ({ ...prev, customer_email: event.target.value }))} sx={{ bgcolor: '#fff' }} />
-                      <TextField size="small" label="Customer phone" value={editForm.customer_phone} onChange={event => setEditForm(prev => ({ ...prev, customer_phone: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                      <TextField size="small" label="Customer phone" value={editForm.customer_phone} onChange={event => setEditForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(event.target.value) }))} sx={{ bgcolor: '#fff' }} />
                       <TextField size="small" label="Customer address" value={editForm.customer_address} onChange={event => setEditForm(prev => ({ ...prev, customer_address: event.target.value }))} sx={{ bgcolor: '#fff' }} />
                     </Box>
                   ) : (

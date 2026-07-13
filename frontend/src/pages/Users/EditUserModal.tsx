@@ -9,6 +9,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { toast } from 'react-toastify'
 import { updateUser, type UserData, type UpdateUserPayload } from '@/api/users'
 import { fetchFacilities, type Facility } from '@/api/facilities'
+import { formatUSPhoneInput } from '@/utils/formatters'
 
 const ROLE_OPTIONS = [
   { value: 'superadmin', label: 'Super Admin' },
@@ -51,7 +52,7 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
         username: user.username,
         email: user.email,
         full_name: user.full_name,
-        phone: user.phone || '',
+        phone: formatUSPhoneInput(user.phone || ''),
         password: '',
         role: user.role,
         user_type: user.user_type,
@@ -108,7 +109,7 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
       username: form.username,
       email: form.email,
       full_name: form.full_name,
-      phone: form.phone || undefined,
+      phone: formatUSPhoneInput(form.phone) || undefined,
       role: form.role,
       user_type: form.user_type,
       is_active: form.is_active,
@@ -157,7 +158,7 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
               <TextField
                 fullWidth size="small" label="Phone"
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(e) => setForm({ ...form, phone: formatUSPhoneInput(e.target.value) })}
               />
             </Grid>
             <Grid item xs={12}>

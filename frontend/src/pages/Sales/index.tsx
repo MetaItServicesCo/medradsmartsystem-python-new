@@ -46,6 +46,7 @@ import {
   type SalesQuotation,
   type SalesQuotationPayload,
 } from '@/api/sales'
+import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed', '/sales/history']
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)'
@@ -290,7 +291,7 @@ const Sales = () => {
       facility_id: quotation.facility_id,
       customer_name: quotation.customer_name,
       customer_email: quotation.customer_email || '',
-      customer_phone: quotation.customer_phone || '',
+      customer_phone: formatUSPhoneInput(quotation.customer_phone || ''),
       customer_address: quotation.customer_address || '',
       quotation_type: quotation.quotation_type || 'standard',
       requested_date: quotation.requested_date || new Date().toISOString().slice(0, 10),
@@ -457,7 +458,7 @@ const Sales = () => {
       facility_id: facilityId ? Number(facilityId) : null,
       customer_name: facility?.billing_name || facility?.name || prev.customer_name,
       customer_email: facility?.billing_email || facility?.email || prev.customer_email,
-      customer_phone: facility?.phone || prev.customer_phone,
+      customer_phone: facility?.phone ? formatUSPhoneInput(facility.phone) : prev.customer_phone,
       customer_address: facility
         ? [facility.billing_street || facility.address, facility.billing_city || facility.city, facility.billing_state || facility.state, facility.billing_zip_code || facility.zip_code].filter(Boolean).join(', ')
         : prev.customer_address,
@@ -1011,7 +1012,7 @@ const Sales = () => {
             </FormControl>
             <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
-            <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: e.target.value }))} />
+            <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
             <TextField select label="Quotation Type" value={quotationForm.quotation_type || 'standard'} onChange={e => setQuotationForm(prev => ({ ...prev, quotation_type: e.target.value }))}>
               <MenuItem value="standard">Standard</MenuItem>
               <MenuItem value="urgent">Urgent</MenuItem>
@@ -1135,7 +1136,7 @@ const Sales = () => {
                       <TableRow>
                         <TableCell><ClippedTooltipText value={convertQuotation.facility_name || convertQuotation.customer_name} /></TableCell>
                         <TableCell><ClippedTooltipText value={convertQuotation.customer_email || '-'} /></TableCell>
-                        <TableCell>{convertQuotation.customer_phone || '-'}</TableCell>
+                        <TableCell>{formatUSPhone(convertQuotation.customer_phone) || '-'}</TableCell>
                         <TableCell><ClippedTooltipText value={convertQuotation.customer_address || '-'} field /></TableCell>
                       </TableRow>
                     </TableBody>

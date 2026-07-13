@@ -23,6 +23,7 @@ import { fetchTiers } from '@/api/tiers'
 import { type Facility } from '@/api/facilities'
 import CreateServiceRequestModal from '@/pages/ServiceRequests/CreateServiceRequestModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { formatUSPhoneInput } from '@/utils/formatters'
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   active: { bg: '#F0FDF4', color: '#10B981' },
@@ -217,8 +218,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
       po_no: item.po_no || '',
       requester_first_name: item.requester_first_name || '',
       requester_last_name: item.requester_last_name || '',
-      requester_phone: item.requester_phone || '',
-      requester_fax: item.requester_fax || '',
+      requester_phone: formatUSPhoneInput(item.requester_phone || ''),
+      requester_fax: formatUSPhoneInput(item.requester_fax || ''),
       requester_mailing_address: item.requester_mailing_address || '',
       requester_email: item.requester_email || '',
       owning_department: item.owning_department || '',
@@ -226,7 +227,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
       acquired_company_name: item.acquired_company_name || '',
       acquired_account_number: item.acquired_account_number || '',
       acquired_sales_person: item.acquired_sales_person || '',
-      acquired_phone: item.acquired_phone || '',
+      acquired_phone: formatUSPhoneInput(item.acquired_phone || ''),
       acquired_email: item.acquired_email || '',
       acquired_mailing_address: item.acquired_mailing_address || '',
       cost: Number(item.cost || 0),
@@ -395,8 +396,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <TextField size="small" label="PO No" value={form.po_no || ''} onChange={e => setForm({ ...form, po_no: e.target.value })} />
                 <TextField size="small" label="First Name" value={form.requester_first_name || ''} onChange={e => setForm({ ...form, requester_first_name: e.target.value })} />
                 <TextField size="small" label="Last Name" value={form.requester_last_name || ''} onChange={e => setForm({ ...form, requester_last_name: e.target.value })} />
-                <TextField size="small" label="Phone" value={form.requester_phone || ''} onChange={e => setForm({ ...form, requester_phone: e.target.value })} />
-                <TextField size="small" label="Fax Number" value={form.requester_fax || ''} onChange={e => setForm({ ...form, requester_fax: e.target.value })} />
+                <TextField size="small" label="Phone" value={form.requester_phone || ''} onChange={e => setForm({ ...form, requester_phone: formatUSPhoneInput(e.target.value) })} />
+                <TextField size="small" label="Fax Number" value={form.requester_fax || ''} onChange={e => setForm({ ...form, requester_fax: formatUSPhoneInput(e.target.value) })} />
                 <TextField size="small" label="Mailing Address" value={form.requester_mailing_address || ''} onChange={e => setForm({ ...form, requester_mailing_address: e.target.value })} />
                 <TextField size="small" label="Email" value={form.requester_email || ''} onChange={e => setForm({ ...form, requester_email: e.target.value })} />
                 <TextField size="small" label="Owning Department" value={form.owning_department || ''} onChange={e => setForm({ ...form, owning_department: e.target.value })} />
@@ -414,7 +415,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <TextField size="small" label="Company Name" value={form.acquired_company_name || ''} onChange={e => setForm({ ...form, acquired_company_name: e.target.value })} />
                 <TextField size="small" label="Account Number" value={form.acquired_account_number || ''} onChange={e => setForm({ ...form, acquired_account_number: e.target.value })} />
                 <TextField size="small" label="Sales Person Name" value={form.acquired_sales_person || ''} onChange={e => setForm({ ...form, acquired_sales_person: e.target.value })} />
-                <TextField size="small" label="Phone Number" value={form.acquired_phone || ''} onChange={e => setForm({ ...form, acquired_phone: e.target.value })} />
+                <TextField size="small" label="Phone Number" value={form.acquired_phone || ''} onChange={e => setForm({ ...form, acquired_phone: formatUSPhoneInput(e.target.value) })} />
                 <TextField size="small" label="Email" value={form.acquired_email || ''} onChange={e => setForm({ ...form, acquired_email: e.target.value })} />
                 <TextField size="small" label="Mailing Address" value={form.acquired_mailing_address || ''} onChange={e => setForm({ ...form, acquired_mailing_address: e.target.value })} sx={{ gridColumn: { md: 'span 2' } }} />
               </Box>

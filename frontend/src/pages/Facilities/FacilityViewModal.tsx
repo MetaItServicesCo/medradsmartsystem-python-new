@@ -17,6 +17,7 @@ import PaymentsIcon from '@mui/icons-material/Payments'
 import SettingsIcon from '@mui/icons-material/Settings'
 import PersonIcon from '@mui/icons-material/Person'
 import { type Facility, fetchFacilityDocuments, exportFacilityPdf, fetchFacility } from '@/api/facilities'
+import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
 
 interface Props {
   open: boolean
@@ -131,11 +132,11 @@ const FacilityViewModal = ({ open, onClose, facility }: Props) => {
           <InfoItem icon={<LocationOnIcon />} label="Address" value={`${facility.address} ${facility.suite ? `Ste ${facility.suite}` : ''}`} />
           <InfoItem icon={<LocationOnIcon />} label="City / State" value={`${facility.city}, ${facility.state}`} />
           <InfoItem icon={<PublicIcon />} label="Country" value={`${facility.country} · ${facility.zip_code}`} />
-          <InfoItem icon={<PhoneIcon />} label="Phone" value={facility.phone} />
+          <InfoItem icon={<PhoneIcon />} label="Phone" value={formatUSPhone(facility.phone)} />
           <InfoItem icon={<EmailIcon />} label="Email" value={facility.email} />
           <InfoItem icon={<PublicIcon />} label="Website" value={facility.website} />
           <InfoItem icon={<PersonIcon />} label="Contact Person" value={facility.contact_person} />
-          <InfoItem icon={<AccessTimeIcon />} label="Timezone / Hours" value={`${facility.timezone} · ${facility.operating_hours || 'N/A'}`} />
+          <InfoItem icon={<AccessTimeIcon />} label="Timezone / Hours" value={`${facilityTimezoneLabel(facility.timezone)} · ${facility.operating_hours || 'N/A'}`} />
         </Grid>
 
         {/* Details & Parent */}

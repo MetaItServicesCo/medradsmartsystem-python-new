@@ -50,6 +50,7 @@ import {
   type RentalStatus,
   type RentalInvoiceStatus,
 } from '@/api/rentals'
+import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/rentals/agreements', '/rentals/invoices', '/rentals/products', '/rentals/history']
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)'
@@ -289,7 +290,7 @@ const Rentals = () => {
       part_id: rental.part_id,
       customer_name: rental.customer_name,
       customer_email: rental.customer_email,
-      customer_phone: rental.customer_phone,
+      customer_phone: formatUSPhoneInput(rental.customer_phone),
       customer_address: rental.customer_address,
       billing_frequency: rental.billing_frequency,
       rental_rate: Number(rental.rental_rate),
@@ -323,7 +324,7 @@ const Rentals = () => {
             ...prev,
             customer_name: fac.billing_name || fac.name || prev.customer_name,
             customer_email: fac.billing_email || fac.email || prev.customer_email,
-            customer_phone: fac.phone || prev.customer_phone,
+            customer_phone: fac.phone ? formatUSPhoneInput(fac.phone) : prev.customer_phone,
             customer_address: [
               fac.billing_street || fac.address,
               fac.billing_city || fac.city,
@@ -1055,7 +1056,7 @@ const Rentals = () => {
 
             <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
-            <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: e.target.value }))} />
+            <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
             <TextField
               select
               label="Billing Frequency"
@@ -1142,7 +1143,7 @@ const Rentals = () => {
                         <TableCell sx={{ fontFamily: 'monospace', fontWeight: 900 }}>{convertAgreement.rental_number}</TableCell>
                         <TableCell>{convertAgreement.customer_name}</TableCell>
                         <TableCell>{convertAgreement.customer_email || '-'}</TableCell>
-                        <TableCell>{convertAgreement.customer_phone || '-'}</TableCell>
+                        <TableCell>{formatUSPhone(convertAgreement.customer_phone) || '-'}</TableCell>
                         <TableCell>{convertAgreement.customer_address || '-'}</TableCell>
                       </TableRow>
                     </TableBody>
@@ -1322,7 +1323,7 @@ const Rentals = () => {
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>CUSTOMER CONTACT</Typography>
-                  <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_email} / {viewAgreement.customer_phone || '-'}</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_email} / {formatUSPhone(viewAgreement.customer_phone) || '-'}</Typography>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>RENTAL PERIOD</Typography>

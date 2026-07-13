@@ -24,6 +24,7 @@ import {
   type UpdateOwnProfilePayload,
 } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
+import { formatUSPhoneInput } from '@/utils/formatters'
 
 const Profile = () => {
   const queryClient = useQueryClient()
@@ -48,7 +49,7 @@ const Profile = () => {
     setForm({
       full_name: profile.full_name || '',
       email: profile.email || '',
-      phone: profile.phone || '',
+      phone: formatUSPhoneInput(profile.phone || ''),
       password: '',
       confirm_password: '',
     })
@@ -92,7 +93,7 @@ const Profile = () => {
     updateMutation.mutate({
       full_name: form.full_name.trim(),
       email: form.email.trim(),
-      phone: form.phone.trim(),
+      phone: formatUSPhoneInput(form.phone.trim()),
       ...(form.password ? { password: form.password } : {}),
     })
   }
@@ -224,7 +225,7 @@ const Profile = () => {
                   <TextField label="Email" type="email" fullWidth required value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <TextField label="Phone" fullWidth value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} />
+                  <TextField label="Phone" fullWidth value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: formatUSPhoneInput(e.target.value) }))} />
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField label="Username" fullWidth value={profile?.username || ''} disabled />

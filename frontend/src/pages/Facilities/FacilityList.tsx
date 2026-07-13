@@ -28,6 +28,10 @@ import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined'
 import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
+import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import PublicOutlinedIcon from '@mui/icons-material/PublicOutlined'
+import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined'
 import { toast } from 'react-toastify'
 
 import { fetchFacilities, deleteFacility, exportFacilitiesCsv, type Facility } from '@/api/facilities'
@@ -42,30 +46,39 @@ import FacilityUsersModal from './FacilityUsersModal'
 import ModalitiesModal from './ModalitiesModal'
 import DepartmentsModal from './DepartmentsModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
 
 const STAT_CARDS = [
   {
     label: 'Total Facilities',
     key: 'total',
     icon: <BusinessIcon />,
+    accent: '#A78BFA',
+    caption: 'All records in scope',
     bg: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
   },
   {
     label: 'Active',
     key: 'active',
-    icon: <LocationOnOutlinedIcon />,
+    icon: <CheckCircleOutlineIcon />,
+    accent: '#93C5FD',
+    caption: 'Available facilities',
     bg: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
   },
   {
     label: 'Countries',
     key: 'countries',
-    icon: <PhoneOutlinedIcon />,
+    icon: <PublicOutlinedIcon />,
+    accent: '#6EE7B7',
+    caption: 'Visible on this page',
     bg: 'linear-gradient(135deg, #10B981 0%, #047857 100%)',
   },
   {
     label: 'With Tiers',
     key: 'tiered',
-    icon: <EmailOutlinedIcon />,
+    icon: <LayersOutlinedIcon />,
+    accent: '#F0ABFC',
+    caption: 'Visible tiered records',
     bg: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
   },
 ]
@@ -168,6 +181,26 @@ const FacilityList = () => {
 
   const avatarColors = ['#7C3AED', '#EC4899', '#3B82F6', '#10B981', '#F59E0B', '#EF4444']
   const getAvatarColor = (name: string) => avatarColors[name.charCodeAt(0) % avatarColors.length]
+  const getVisibleChildCount = (facilityId: number) => facilities.filter((f) => f.parent_facility_id === facilityId).length
+
+  const softCellSx = {
+    border: '1px solid rgba(148,163,184,0.18)',
+    background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+    borderRadius: '14px',
+    px: 1.5,
+    py: 1,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+    minWidth: 0,
+  }
+
+  const hierarchyChipSx = {
+    height: 22,
+    borderRadius: '999px',
+    fontSize: '0.65rem',
+    fontWeight: 800,
+    letterSpacing: '0.02em',
+    '& .MuiChip-icon': { fontSize: '0.9rem' },
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -268,28 +301,52 @@ const FacilityList = () => {
   return (
     <Box className="page-enter">
       {/* Stat Cards */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', xl: 'repeat(4, 1fr)' }, gap: 2.25, mb: 3 }}>
         {STAT_CARDS.map((card) => (
           <Card
             key={card.key}
             sx={{
-              p: 2,
+              p: 2.5,
               background: card.bg,
               color: '#fff',
               position: 'relative',
               overflow: 'hidden',
+              borderRadius: '26px',
+              minHeight: 126,
+              boxShadow: '0 20px 50px rgba(30,27,75,0.14)',
+              border: '1px solid rgba(255,255,255,0.16)',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-3px)',
+                boxShadow: '0 26px 60px rgba(30,27,75,0.2)',
+              },
             }}
           >
             <Box sx={{
-              position: 'absolute', right: -10, top: -10, opacity: 0.15,
-              '& svg': { fontSize: '5rem' },
+              position: 'absolute', right: -28, top: -26, width: 132, height: 132,
+              borderRadius: '50%', background: 'rgba(255,255,255,0.12)',
+              opacity: 1,
+              '& svg': { position: 'absolute', right: 28, top: 28, fontSize: '4.8rem', opacity: 0.24 },
             }}>
               {card.icon}
             </Box>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em', mb: 1 }}>
+            <Box sx={{
+              width: 36, height: 36, borderRadius: '13px',
+              background: 'rgba(255,255,255,0.18)',
+              border: '1px solid rgba(255,255,255,0.25)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              mb: 1.1,
+              '& svg': { fontSize: '1.2rem', color: '#fff' },
+            }}>
+              {card.icon}
+            </Box>
+            <Typography sx={{ position: 'relative', zIndex: 1, fontSize: '0.8rem', fontWeight: 900, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.35 }}>
               {card.label}
             </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: '#fff' }}>
+            <Typography sx={{ position: 'relative', zIndex: 1, fontSize: '0.72rem', fontWeight: 700, color: card.accent, mb: 0.7 }}>
+              {card.caption}
+            </Typography>
+            <Typography variant="h4" sx={{ position: 'relative', zIndex: 1, fontWeight: 900, color: '#fff', letterSpacing: '-0.04em' }}>
               {isLoading ? '—' : statsValues[card.key]}
             </Typography>
           </Card>
@@ -299,7 +356,7 @@ const FacilityList = () => {
       {/* Main table card */}
       <Card sx={{ overflow: 'hidden' }}>
         {/* Toolbar */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2.5, borderBottom: '1px solid rgba(124,58,237,0.08)' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2.5, borderBottom: '1px solid rgba(124,58,237,0.08)', flexWrap: 'wrap' }}>
           <Box component="form" onSubmit={handleSearch} sx={{
             display: 'flex', alignItems: 'center', gap: 1,
             backgroundColor: '#F5F3FF', borderRadius: '12px', px: 2, py: 1,
@@ -322,6 +379,21 @@ const FacilityList = () => {
               </IconButton>
             )}
           </Box>
+
+          <Chip
+            icon={<BusinessIcon />}
+            label={`${facilities.length} shown of ${total}`}
+            size="small"
+            sx={{
+              height: 38,
+              borderRadius: '12px',
+              backgroundColor: '#F8FAFC',
+              border: '1px solid rgba(148,163,184,0.22)',
+              color: '#475569',
+              fontWeight: 800,
+              '& .MuiChip-icon': { color: '#7C3AED' },
+            }}
+          />
 
           <Box sx={{ flex: 1 }} />
 
@@ -388,24 +460,43 @@ const FacilityList = () => {
         </Box>
 
         {/* Table */}
-        <TableContainer className="list-scroll-panel">
-          <Table stickyHeader>
+        <TableContainer className="list-scroll-panel" sx={{ background: 'linear-gradient(180deg, #FFFFFF 0%, #FBFAFF 100%)' }}>
+          <Table stickyHeader sx={{
+            minWidth: 1180,
+            borderCollapse: 'separate',
+            borderSpacing: '0 10px',
+            px: 2,
+            '& .MuiTableHead-root .MuiTableCell-root': {
+              backgroundColor: '#F8FAFC',
+              color: '#64748B',
+              fontWeight: 900,
+              fontSize: '0.74rem',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              borderBottom: '1px solid rgba(148,163,184,0.18)',
+              py: 1.5,
+            },
+            '& .MuiTableBody-root .MuiTableCell-root': {
+              borderBottom: '1px solid rgba(226,232,240,0.72)',
+              py: 1.5,
+            },
+          }}>
             <TableHead>
               <TableRow>
-                <TableCell>Facility</TableCell>
-                <TableCell>Location</TableCell>
-                <TableCell>Contact</TableCell>
-                <TableCell>Timezone</TableCell>
-                <TableCell>Users</TableCell>
-                <TableCell>Hours</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell sx={{ width: 290 }}>Facility</TableCell>
+                <TableCell sx={{ width: 220 }}>Location</TableCell>
+                <TableCell sx={{ width: 250 }}>Contact</TableCell>
+                <TableCell sx={{ width: 150 }}>Timezone</TableCell>
+                <TableCell sx={{ width: 150 }}>Users</TableCell>
+                <TableCell sx={{ width: 190 }}>Hours</TableCell>
+                <TableCell align="right" sx={{ width: 120 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading
                 ? Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 7 }).map((_, j) => (
                       <TableCell key={j}><Skeleton variant="text" /></TableCell>
                     ))}
                   </TableRow>
@@ -413,7 +504,7 @@ const FacilityList = () => {
                 : facilities.length === 0
                   ? (
                     <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                      <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                         <Box sx={{ textAlign: 'center', opacity: 0.8 }}>
                           <BusinessIcon sx={{ fontSize: '3.5rem', color: '#DDD6FE', mb: 2 }} />
                           <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B', mb: 0.5 }}>
@@ -446,44 +537,103 @@ const FacilityList = () => {
                       </TableCell>
                     </TableRow>
                   )
-                  : facilities.map((facility) => (
-                    <TableRow key={facility.id} sx={{ '&:hover': { backgroundColor: '#FAFAFF' } }}>
+                  : facilities.map((facility) => {
+                    const visibleChildCount = getVisibleChildCount(facility.id)
+                    const isChild = Boolean(facility.parent_facility_id)
+                    return (
+                    <TableRow
+                      key={facility.id}
+                      sx={{
+                        '&:hover': {
+                          backgroundColor: '#FAFAFF',
+                          '& .facility-row-avatar': {
+                            transform: 'scale(1.04)',
+                            boxShadow: '0 10px 24px rgba(124,58,237,0.22)',
+                          },
+                          '& .facility-soft-cell': {
+                            borderColor: 'rgba(124,58,237,0.24)',
+                            boxShadow: '0 10px 28px rgba(124,58,237,0.08)',
+                          },
+                        },
+                      }}
+                    >
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                           <Avatar
+                            className="facility-row-avatar"
                             sx={{
-                              width: 38, height: 38, borderRadius: '10px',
-                              background: getAvatarColor(facility.name),
-                              fontSize: '0.8rem', fontWeight: 700,
+                              width: 46, height: 46, borderRadius: '16px',
+                              background: `linear-gradient(135deg, ${getAvatarColor(facility.name)} 0%, #4C1D95 100%)`,
+                              fontSize: '0.86rem', fontWeight: 900,
+                              border: '3px solid #fff',
+                              transition: 'all 0.2s ease',
                             }}
                           >
                             {getInitials(facility.name)}
                           </Avatar>
-                          <Box sx={{ minWidth: 0, maxWidth: 220 }}>
-                            <ClippedTooltipText value={facility.name} fontWeight={600} />
-                            <ClippedTooltipText value={`ID: #${facility.id}`} variant="caption" color="#9CA3AF" fontWeight={500} />
+                          <Box sx={{ minWidth: 0, maxWidth: 230 }}>
+                            <ClippedTooltipText value={facility.name} fontWeight={800} />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.65, flexWrap: 'wrap' }}>
+                              <Chip
+                                label={`#${facility.id}`}
+                                size="small"
+                                sx={{ ...hierarchyChipSx, backgroundColor: '#F1F5F9', color: '#64748B' }}
+                              />
+                              {isChild && (
+                                <Chip
+                                  icon={<AccountTreeOutlinedIcon />}
+                                  label="Child"
+                                  size="small"
+                                  sx={{ ...hierarchyChipSx, backgroundColor: '#EFF6FF', color: '#2563EB' }}
+                                />
+                              )}
+                              {!isChild && visibleChildCount > 0 && (
+                                <Chip
+                                  icon={<AccountTreeOutlinedIcon />}
+                                  label={`${visibleChildCount} child${visibleChildCount > 1 ? 'ren' : ''}`}
+                                  size="small"
+                                  sx={{ ...hierarchyChipSx, backgroundColor: '#ECFDF5', color: '#059669' }}
+                                />
+                              )}
+                            </Box>
                           </Box>
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <ClippedTooltipText value={`${facility.city}, ${facility.state}`} fontWeight={500} />
-                        <Typography variant="caption" color="text.secondary">
+                        <Box className="facility-soft-cell" sx={softCellSx}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                            <LocationOnOutlinedIcon sx={{ color: '#7C3AED', fontSize: '1rem', flexShrink: 0 }} />
+                            <ClippedTooltipText value={`${facility.city}, ${facility.state}`} fontWeight={700} />
+                          </Box>
+                        <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {facility.country} · {facility.zip_code}
                         </Typography>
+                        </Box>
                       </TableCell>
                       <TableCell>
-                        <ClippedTooltipText value={facility.phone} />
-                        <ClippedTooltipText value={facility.email} variant="caption" color="#6B7280" fontWeight={500} />
+                        <Box className="facility-soft-cell" sx={softCellSx}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                            <PhoneOutlinedIcon sx={{ color: '#10B981', fontSize: '1rem', flexShrink: 0 }} />
+                            <ClippedTooltipText value={formatUSPhone(facility.phone)} fontWeight={700} />
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, mt: 0.35 }}>
+                            <EmailOutlinedIcon sx={{ color: '#94A3B8', fontSize: '0.95rem', flexShrink: 0 }} />
+                            <ClippedTooltipText value={facility.email} variant="caption" color="#64748B" fontWeight={600} />
+                          </Box>
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={facility.timezone}
+                          label={facilityTimezoneLabel(facility.timezone)}
                           size="small"
                           sx={{
+                            height: 34,
+                            borderRadius: '12px',
                             backgroundColor: '#F5F3FF',
                             color: '#7C3AED',
-                            fontWeight: 600,
-                            fontSize: '0.7rem',
+                            fontWeight: 900,
+                            fontSize: '0.75rem',
+                            border: '1px solid rgba(124,58,237,0.14)',
                           }}
                         />
                       </TableCell>
@@ -520,15 +670,21 @@ const FacilityList = () => {
                               </Avatar>
                             )}
                             {(!facility.assigned_users || facility.assigned_users.length === 0) && (
-                              <Typography variant="caption" sx={{ color: '#D1D5DB' }}>No users</Typography>
+                              <Chip
+                                label="No users"
+                                size="small"
+                                sx={{ height: 26, borderRadius: '9px', backgroundColor: '#F8FAFC', color: '#94A3B8', fontWeight: 800 }}
+                              />
                             )}
                           </Box>
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" sx={{ color: '#6B7280', fontSize: '0.8rem' }}>
+                        <Box className="facility-soft-cell" sx={{ ...softCellSx, maxWidth: 180 }}>
+                        <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {facility.operating_hours || '—'}
                         </Typography>
+                        </Box>
                       </TableCell>
                       <TableCell align="right">
                         <Tooltip title="Actions">
@@ -553,7 +709,7 @@ const FacilityList = () => {
                         </Tooltip>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
             </TableBody>
           </Table>
         </TableContainer>

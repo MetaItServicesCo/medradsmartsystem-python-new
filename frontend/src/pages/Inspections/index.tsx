@@ -63,6 +63,7 @@ import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipmen
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { formatUSPhone } from '@/utils/formatters'
 
 const CHECK_FIELDS = [
   ['physical_inspection', 'Physical Inspection'],
@@ -524,7 +525,7 @@ const buildInvoiceSheetHtml = (invoice: InspectionInvoice, pageBreak = false): s
       </section>
       <section class="content">
         <div class="grid2">
-          <div class="box"><small>Bill To</small><strong>${escapeHtml(invoice.customer_name || '-')}</strong>${invoice.customer_email ? `<div style="color:#64748B;font-size:12px;margin-top:4px">${escapeHtml(invoice.customer_email)}</div>` : ''}${invoice.customer_phone ? `<div style="color:#64748B;font-size:12px">${escapeHtml(invoice.customer_phone)}</div>` : ''}${invoice.customer_address ? `<div style="color:#64748B;font-size:12px">${escapeHtml(invoice.customer_address)}</div>` : ''}</div>
+          <div class="box"><small>Bill To</small><strong>${escapeHtml(invoice.customer_name || '-')}</strong>${invoice.customer_email ? `<div style="color:#64748B;font-size:12px;margin-top:4px">${escapeHtml(invoice.customer_email)}</div>` : ''}${invoice.customer_phone ? `<div style="color:#64748B;font-size:12px">${escapeHtml(formatUSPhone(invoice.customer_phone))}</div>` : ''}${invoice.customer_address ? `<div style="color:#64748B;font-size:12px">${escapeHtml(invoice.customer_address)}</div>` : ''}</div>
           <div class="box"><small>Facility</small><strong>${escapeHtml(invoice.facility_name || '-')}</strong></div>
           <div class="box"><small>Issue Date</small><strong>${escapeHtml(formatDate(invoice.issue_date))}</strong></div>
           <div class="box"><small>Due Date</small><strong>${escapeHtml(formatDate(invoice.due_date))}</strong></div>

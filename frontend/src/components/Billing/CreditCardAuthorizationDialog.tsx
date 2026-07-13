@@ -15,6 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { formatUSPhoneInput } from '@/utils/formatters'
 
 export interface AuthorizationLineItem {
   item_number: string
@@ -81,7 +82,7 @@ const CreditCardAuthorizationDialog = ({ open, customerName, requestType = 'Serv
       card_holder_name: form.card_holder_name,
       card_type: form.card_type,
       name_on_card: form.name_on_card,
-      phone: form.phone,
+      phone: formatUSPhoneInput(form.phone),
       title: form.title,
       expiration: form.expiration,
       masked_card_number: maskCardNumber(form.card_number),
@@ -181,7 +182,7 @@ const CreditCardAuthorizationDialog = ({ open, customerName, requestType = 'Serv
               <TextField size="small" placeholder="Card Number" value={form.card_number} onChange={e => setForm(prev => ({ ...prev, card_number: e.target.value }))} />
             </FormCell>
             <FormCell label="PH#">
-              <TextField size="small" placeholder="Phone Number" value={form.phone} onChange={e => setForm(prev => ({ ...prev, phone: e.target.value }))} />
+              <TextField size="small" placeholder="Phone Number" value={form.phone} onChange={e => setForm(prev => ({ ...prev, phone: formatUSPhoneInput(e.target.value) }))} />
             </FormCell>
             <FormCell label="Security Code">
               <TextField size="small" placeholder="Security Code" value={form.security_code} onChange={e => setForm(prev => ({ ...prev, security_code: e.target.value }))} />

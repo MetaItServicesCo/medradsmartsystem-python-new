@@ -70,6 +70,7 @@ import {
   fetchEmployeePolicyAssignments, createEmployeePolicyAssignment, deleteEmployeePolicyAssignment,
 } from '@/api/hr'
 import { fetchAttendanceEvents } from '@/api/attendance'
+import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,7 @@ function SimpleDialog({ open, title, fields, initial, onClose, onSave }: {
           return (
             <TextField key={f.key} label={f.label} size="small" fullWidth
               type={f.type ?? 'text'} value={form[f.key] ?? ''}
-              onChange={e => set(f.key, f.type === 'number' ? Number(e.target.value) : e.target.value)}
+              onChange={e => set(f.key, f.key.toLowerCase().includes('phone') ? formatUSPhoneInput(e.target.value) : f.type === 'number' ? Number(e.target.value) : e.target.value)}
               InputLabelProps={f.type === 'date' ? { shrink: true } : undefined} />
           )
         })}
@@ -2178,7 +2179,7 @@ function CandidatesTab() {
         <TableHead><TableRow>{['Name','Email','Phone','Status',''].map(h => <Th key={h}>{h}</Th>)}</TableRow></TableHead>
         <TableBody>{list.map((c: any) => (
           <TableRow key={c.id} hover>
-            <TableCell>{c.first_name} {c.last_name}</TableCell><TableCell>{c.email}</TableCell><TableCell>{c.phone ?? '—'}</TableCell>
+            <TableCell>{c.first_name} {c.last_name}</TableCell><TableCell>{c.email}</TableCell><TableCell>{formatUSPhone(c.phone) || '—'}</TableCell>
             <TableCell><Chip size="small" label={c.status} color={sColor(c.status) as any} /></TableCell>
             <TableCell sx={{ whiteSpace: 'nowrap' }}><CrudEditBtn onEdit={() => setDlg({ open: true, item: c })} /><CrudDeleteBtn onDelete={() => del.mutate(c.id)} /></TableCell>
           </TableRow>

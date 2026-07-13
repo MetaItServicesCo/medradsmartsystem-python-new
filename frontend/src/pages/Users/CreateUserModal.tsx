@@ -11,6 +11,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { toast } from 'react-toastify'
 import { createUser } from '@/api/users'
 import { fetchFacilities, type Facility } from '@/api/facilities'
+import { formatUSPhoneInput } from '@/utils/formatters'
 
 const ROLE_OPTIONS = [
   { value: 'superadmin', label: 'Super Admin' },
@@ -79,7 +80,7 @@ const CreateUserModal = ({ open, onClose }: Props) => {
       email: form.email,
       full_name: form.full_name,
       password: form.password,
-      phone: form.phone || undefined,
+      phone: formatUSPhoneInput(form.phone) || undefined,
       role: form.role,
       user_type: form.user_type,
       facility_ids: form.facility_ids.length > 0 ? form.facility_ids : undefined,
@@ -163,7 +164,7 @@ const CreateUserModal = ({ open, onClose }: Props) => {
               <TextField
                 fullWidth size="small" label="Phone"
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(e) => setForm({ ...form, phone: formatUSPhoneInput(e.target.value) })}
               />
             </Grid>
             <Grid item xs={12}>

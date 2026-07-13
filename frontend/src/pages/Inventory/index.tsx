@@ -30,6 +30,7 @@ import {
 import { resolveUploadUrl } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const PAGE_SIZE = 25
 
@@ -216,7 +217,7 @@ const Inventory = () => {
       supplier_name: part.supplier_name || '',
       supplier_contact: part.supplier_contact || '',
       supplier_email: part.supplier_email || '',
-      supplier_phone: part.supplier_phone || '',
+      supplier_phone: formatUSPhoneInput(part.supplier_phone || ''),
       supplier_address: part.supplier_address || '',
       vendor_name: part.vendor_name || '',
       purchase_location: part.purchase_location || '',
@@ -408,7 +409,7 @@ const Inventory = () => {
                     </TableCell>
                     <TableCell>
                       <ClippedTooltipText value={part.supplier_name || 'Unspecified'} />
-                      <ClippedTooltipText value={part.supplier_phone || part.supplier_email || ''} variant="caption" color="#6B7280" fontWeight={500} />
+                      <ClippedTooltipText value={part.supplier_phone ? formatUSPhone(part.supplier_phone) : part.supplier_email || ''} variant="caption" color="#6B7280" fontWeight={500} />
                     </TableCell>
                     <TableCell>
                       <Chip label={`${part.quantity_on_hand} on hand`} size="small" sx={{ backgroundColor: low ? '#FEF2F2' : '#ECFDF5', color: low ? '#DC2626' : '#059669', fontWeight: 800 }} />
@@ -460,7 +461,7 @@ const Inventory = () => {
                 <TextField label="Model" placeholder="Model" value={partForm.model} onChange={(e) => setPartForm({ ...partForm, model: e.target.value })} />
                 <TextField type="number" label="Amount" placeholder="Amount" value={partForm.unit_price} onChange={(e) => setPartForm({ ...partForm, unit_price: Number(e.target.value) })} />
                 <TextField label="Company" placeholder="Company Name" value={partForm.supplier_name} onChange={(e) => setPartForm({ ...partForm, supplier_name: e.target.value })} />
-                <TextField label="Phone" placeholder="Phone number" value={partForm.supplier_phone} onChange={(e) => setPartForm({ ...partForm, supplier_phone: e.target.value })} />
+                <TextField label="Phone" placeholder="Phone number" value={partForm.supplier_phone} onChange={(e) => setPartForm({ ...partForm, supplier_phone: formatUSPhoneInput(e.target.value) })} />
                 <TextField label="Sales Person Name" placeholder="Contact Name" value={partForm.supplier_contact} onChange={(e) => setPartForm({ ...partForm, supplier_contact: e.target.value })} />
                 <TextField label="Address" placeholder="Address" value={partForm.supplier_address || ''} onChange={(e) => setPartForm({ ...partForm, supplier_address: e.target.value })} />
                 <TextField label="Email" placeholder="Email" value={partForm.supplier_email} onChange={(e) => setPartForm({ ...partForm, supplier_email: e.target.value })} />

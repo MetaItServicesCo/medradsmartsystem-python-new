@@ -20,7 +20,7 @@ class Facility(Base):
     zip_code = Column(String, nullable=False)
     country = Column(String, nullable=False)
     website = Column(String, nullable=True)
-    timezone = Column(String, default="UTC")
+    timezone = Column(String, default="America/Chicago")
     operating_hours = Column(String, nullable=True)
 
     # Facility Details
