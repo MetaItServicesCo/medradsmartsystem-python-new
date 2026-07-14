@@ -112,6 +112,11 @@ type GridCellSchema = {
   hidden?: boolean
 }
 
+type BuilderDragState =
+  | { kind: 'block'; blockId: string }
+  | { kind: 'option'; blockId: string; optionIndex: number }
+  | null
+
 type CustomGridSchema = {
   title: string
   rows: number
@@ -1039,6 +1044,7 @@ const Inspections = () => {
   const [formBuilderColumns, setFormBuilderColumns] = useState(3)
   const [tablePickerHover, setTablePickerHover] = useState<{ rows: number; columns: number } | null>(null)
   const [selectedBuilderCell, setSelectedBuilderCell] = useState<{ row: number; column: number } | null>(null)
+  const [builderDrag, setBuilderDrag] = useState<BuilderDragState>(null)
   const [techEdit, setTechEdit] = useState<Inspection | null>(null)
   const [selectedTechId, setSelectedTechId] = useState<number | ''>('')
   const [addAssetOpen, setAddAssetOpen] = useState(false)
@@ -1756,6 +1762,26 @@ const Inspections = () => {
     updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options })
   }
 
+  const moveGridCellBlockById = (rowIndex: number, columnIndex: number, blockId: string, toIndex: number) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    const fromIndex = cell?.blocks?.findIndex(block => block.id === blockId) ?? -1
+    if (fromIndex < 0) return
+    moveGridCellBlock(rowIndex, columnIndex, fromIndex, toIndex)
+  }
+
+  const handleBuilderBlockDragEnter = (rowIndex: number, columnIndex: number, targetBlock: GridCellBlock, targetIndex: number) => {
+    if (builderDrag?.kind !== 'block' || builderDrag.blockId === targetBlock.id) return
+    moveGridCellBlockById(rowIndex, columnIndex, builderDrag.blockId, targetIndex)
+  }
+
+  const handleBuilderOptionDragEnter = (rowIndex: number, columnIndex: number, block: GridCellBlock, targetIndex: number) => {
+    if (builderDrag?.kind !== 'option' || builderDrag.blockId !== block.id || builderDrag.optionIndex === targetIndex) return
+    const blockIndex = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]?.blocks?.findIndex(item => item.id === block.id) ?? -1
+    if (blockIndex < 0) return
+    moveGridCellBlockOption(rowIndex, columnIndex, blockIndex, builderDrag.optionIndex, targetIndex)
+    setBuilderDrag({ kind: 'option', blockId: block.id, optionIndex: targetIndex })
+  }
+
   const selectedGridCell = selectedBuilderCell
     ? formBuilderSchema.custom_grid?.cells?.[selectedBuilderCell.row]?.[selectedBuilderCell.column]
     : null
@@ -1815,12 +1841,22 @@ const Inspections = () => {
                 if (!isSelected) return
                 event.preventDefault()
               }}
+              onDragEnter={(event) => {
+                if (!isSelected) return
+                event.preventDefault()
+                handleBuilderBlockDragEnter(rowIndex, columnIndex, block, blockIndex)
+              }}
               onDrop={(event) => {
                 if (!isSelected) return
                 event.preventDefault()
                 event.stopPropagation()
-                const fromIndex = Number(event.dataTransfer.getData('application/x-grid-block-index'))
-                if (Number.isFinite(fromIndex)) moveGridCellBlock(rowIndex, columnIndex, fromIndex, blockIndex)
+                if (builderDrag?.kind === 'block') {
+                  moveGridCellBlockById(rowIndex, columnIndex, builderDrag.blockId, blockIndex)
+                } else {
+                  const fromIndex = Number(event.dataTransfer.getData('application/x-grid-block-index'))
+                  if (Number.isFinite(fromIndex)) moveGridCellBlock(rowIndex, columnIndex, fromIndex, blockIndex)
+                }
+                setBuilderDrag(null)
               }}
               sx={{
                 display: 'grid',
@@ -1843,6 +1879,11 @@ const Inspections = () => {
                       event.stopPropagation()
                       event.dataTransfer.effectAllowed = 'move'
                       event.dataTransfer.setData('application/x-grid-block-index', String(blockIndex))
+                      event.dataTransfer.setData('text/plain', `block:${block.id}`)
+                      setBuilderDrag({ kind: 'block', blockId: block.id })
+                    }}
+                    onDragEnd={() => {
+                      setBuilderDrag(null)
                     }}
                     sx={dragHandleSx}
                   >
@@ -1914,18 +1955,30 @@ const Inspections = () => {
                         event.stopPropagation()
                         event.dataTransfer.effectAllowed = 'move'
                         event.dataTransfer.setData('application/x-grid-option-index', String(optionIndex))
+                        event.dataTransfer.setData('text/plain', `option:${block.id}:${optionIndex}`)
+                        setBuilderDrag({ kind: 'option', blockId: block.id, optionIndex })
                       }}
                       onDragOver={(event) => {
                         if (!allowOptionDrag) return
                         event.preventDefault()
                       }}
+                      onDragEnter={(event) => {
+                        if (!allowOptionDrag) return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        handleBuilderOptionDragEnter(rowIndex, columnIndex, block, optionIndex)
+                      }}
                       onDrop={(event) => {
                         if (!allowOptionDrag) return
                         event.preventDefault()
                         event.stopPropagation()
-                        const fromIndex = Number(event.dataTransfer.getData('application/x-grid-option-index'))
+                        const fromIndex = builderDrag?.kind === 'option' && builderDrag.blockId === block.id
+                          ? builderDrag.optionIndex
+                          : Number(event.dataTransfer.getData('application/x-grid-option-index'))
                         if (Number.isFinite(fromIndex)) moveGridCellBlockOption(rowIndex, columnIndex, blockIndex, fromIndex, optionIndex)
+                        setBuilderDrag(null)
                       }}
+                      onDragEnd={() => setBuilderDrag(null)}
                       sx={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -1958,24 +2011,36 @@ const Inspections = () => {
                   <Box
                     key={`${block.id}-builder-checkbox-${optionIndex}`}
                     draggable={allowOptionDrag}
-                    onDragStart={(event) => {
-                      if (!allowOptionDrag) return
-                      event.stopPropagation()
-                      event.dataTransfer.effectAllowed = 'move'
-                      event.dataTransfer.setData('application/x-grid-option-index', String(optionIndex))
-                    }}
-                    onDragOver={(event) => {
-                      if (!allowOptionDrag) return
-                      event.preventDefault()
-                    }}
-                    onDrop={(event) => {
-                      if (!allowOptionDrag) return
-                      event.preventDefault()
-                      event.stopPropagation()
-                      const fromIndex = Number(event.dataTransfer.getData('application/x-grid-option-index'))
-                      if (Number.isFinite(fromIndex)) moveGridCellBlockOption(rowIndex, columnIndex, blockIndex, fromIndex, optionIndex)
-                    }}
-                    sx={{
+                      onDragStart={(event) => {
+                        if (!allowOptionDrag) return
+                        event.stopPropagation()
+                        event.dataTransfer.effectAllowed = 'move'
+                        event.dataTransfer.setData('application/x-grid-option-index', String(optionIndex))
+                        event.dataTransfer.setData('text/plain', `option:${block.id}:${optionIndex}`)
+                        setBuilderDrag({ kind: 'option', blockId: block.id, optionIndex })
+                      }}
+                      onDragOver={(event) => {
+                        if (!allowOptionDrag) return
+                        event.preventDefault()
+                      }}
+                      onDragEnter={(event) => {
+                        if (!allowOptionDrag) return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        handleBuilderOptionDragEnter(rowIndex, columnIndex, block, optionIndex)
+                      }}
+                      onDrop={(event) => {
+                        if (!allowOptionDrag) return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        const fromIndex = builderDrag?.kind === 'option' && builderDrag.blockId === block.id
+                          ? builderDrag.optionIndex
+                          : Number(event.dataTransfer.getData('application/x-grid-option-index'))
+                        if (Number.isFinite(fromIndex)) moveGridCellBlockOption(rowIndex, columnIndex, blockIndex, fromIndex, optionIndex)
+                        setBuilderDrag(null)
+                      }}
+                      onDragEnd={() => setBuilderDrag(null)}
+                      sx={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 0.25,
