@@ -1,6 +1,8 @@
 import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { NumericField } from '../../components/NumericField'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Form, FormBuilder } from '@formio/react'
+import '@formio/js/dist/formio.full.min.css'
 import {
   Autocomplete,
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
@@ -93,6 +95,7 @@ type GridCellBlock = {
   inline?: boolean
   layout?: 'inline' | 'stacked'
   width?: number
+  height?: number
 }
 
 type GridCellSchema = {
@@ -117,11 +120,18 @@ type CustomGridSchema = {
   cells: GridCellSchema[][]
 }
 
+type FormioFormSchema = {
+  display?: 'form' | 'wizard'
+  components: any[]
+  [key: string]: any
+}
+
 type InspectionFormSchema = {
   title: string
   version: number
   source?: string
   based_on?: string
+  formio_form?: FormioFormSchema | null
   custom_grid: CustomGridSchema | null
 }
 
@@ -135,6 +145,32 @@ const GRID_CELL_TYPES: { value: GridCellType; label: string }[] = [
 const DEFAULT_GRID_OPTIONS = ['Option']
 const optionCellTypes: GridCellType[] = ['radio', 'checkbox']
 
+const FORMIO_SCHEMA_SOURCE = 'formio_builder'
+
+const createEmptyFormioForm = (title = 'Inspection Form'): FormioFormSchema => ({
+  display: 'form',
+  title,
+  components: [],
+})
+
+const isFormioSchema = (schema: any) =>
+  Boolean(schema?.formio_form?.components)
+  || schema?.source === FORMIO_SCHEMA_SOURCE
+  || (Array.isArray(schema?.components) && (schema?.display === 'form' || schema?.display === 'wizard' || schema?.type === 'form'))
+
+const normalizeFormioDisplay = (display: any): 'form' | 'wizard' => display === 'wizard' ? 'wizard' : 'form'
+
+const normalizeFormioForm = (schema: any, fallbackTitle = 'Inspection Form'): FormioFormSchema | null => {
+  const form = schema?.formio_form?.components ? schema.formio_form : Array.isArray(schema?.components) ? schema : null
+  if (!form) return null
+  return {
+    display: normalizeFormioDisplay(form.display),
+    title: form.title || fallbackTitle,
+    ...form,
+    components: Array.isArray(form.components) ? form.components : [],
+  }
+}
+
 const createGridCellBlock = (type: GridCellBlockType, index = 0): GridCellBlock => ({
   id: `block_${Date.now()}_${index}`,
   type,
@@ -143,6 +179,7 @@ const createGridCellBlock = (type: GridCellBlockType, index = 0): GridCellBlock 
   inline: type === 'input',
   layout: type === 'input' ? 'inline' : 'stacked',
   width: type === 'label' ? 100 : 180,
+  height: type === 'textarea' ? 90 : 40,
 })
 
 const UPCOMING_DATE_RANGES: { value: UpcomingDateRange; label: string; months?: number; years?: number }[] = [
@@ -200,6 +237,7 @@ const normalizeGridCellBlock = (block: any, index: number): GridCellBlock => {
     inline: block?.inline !== undefined ? Boolean(block.inline) : block?.layout ? block.layout === 'inline' : type === 'input',
     layout: block?.layout === 'inline' || block?.layout === 'stacked' ? block.layout : type === 'input' ? 'inline' : 'stacked',
     width: Math.max(60, Math.min(520, Number(block?.width || (type === 'label' ? 100 : 180)))),
+    height: Math.max(28, Math.min(240, Number(block?.height || (type === 'textarea' ? 90 : 40)))),
   }
 }
 
@@ -288,19 +326,78 @@ const gridFromLegacySections = (schema: any): CustomGridSchema | null => {
   return grid
 }
 
+const formioComponentKey = (label: string, fallback: string) => slugifyKey(label || fallback, fallback)
+
+const formioFromGridCell = (cell: GridCellSchema, fallback: string): any[] => {
+  if (cell.blocks?.length) {
+    return cell.blocks.flatMap((block, blockIndex): any[] => {
+      const label = block.label || `Field ${blockIndex + 1}`
+      const key = formioComponentKey(label, `${fallback}_${blockIndex + 1}`)
+      if (block.type === 'label') return [{ type: 'htmlelement', tag: 'p', content: label }]
+      if (block.type === 'textarea') return [{ type: 'textarea', key, label, input: true }]
+      if (block.type === 'radio') return [{
+        type: 'radio',
+        key,
+        label,
+        input: true,
+        values: (block.options?.length ? block.options : DEFAULT_GRID_OPTIONS).map(option => ({ label: option, value: slugifyKey(option, 'option') })),
+      }]
+      if (block.type === 'checkbox') return [{
+        type: 'selectboxes',
+        key,
+        label,
+        input: true,
+        values: (block.options?.length ? block.options : DEFAULT_GRID_OPTIONS).map(option => ({ label: option, value: slugifyKey(option, 'option') })),
+      }]
+      return [{ type: 'textfield', key, label, input: true }]
+    })
+  }
+  const label = cell.label || fallback
+  const key = formioComponentKey(label, fallback)
+  if (cell.type === 'text') return cell.label ? [{ type: 'htmlelement', tag: 'p', content: cell.label }] : []
+  if (cell.type === 'radio') return [{
+    type: 'radio',
+    key,
+    label,
+    input: true,
+    values: (cell.options?.length ? cell.options : DEFAULT_GRID_OPTIONS).map(option => ({ label: option, value: slugifyKey(option, 'option') })),
+  }]
+  if (cell.type === 'checkbox') return [{
+    type: 'selectboxes',
+    key,
+    label,
+    input: true,
+    values: (cell.options?.length ? cell.options : DEFAULT_GRID_OPTIONS).map(option => ({ label: option, value: slugifyKey(option, 'option') })),
+  }]
+  return [{ type: 'textfield', key, label, input: true }]
+}
+
+const formioFromLegacySchema = (schema: InspectionFormSchema | null, title = 'Inspection Form'): FormioFormSchema => {
+  if (schema?.formio_form) return schema.formio_form
+  const components = schema?.custom_grid?.cells
+    ? schema.custom_grid.cells.flatMap((row, rowIndex) => row.flatMap((cell, columnIndex) => formioFromGridCell(cell, `cell_${rowIndex + 1}_${columnIndex + 1}`)))
+    : []
+  return {
+    ...createEmptyFormioForm(title),
+    components,
+  }
+}
+
 const normalizeInspectionFormSchema = (schema: any, fallbackTitle = 'Inspection Form'): InspectionFormSchema => ({
   title: String(schema?.title || fallbackTitle),
-  version: Number(schema?.version || 3),
-  source: schema?.source,
+  version: Number(schema?.version || (isFormioSchema(schema) ? 4 : 3)),
+  source: isFormioSchema(schema) ? FORMIO_SCHEMA_SOURCE : schema?.source,
   based_on: schema?.based_on,
-  custom_grid: normalizeGrid(schema?.custom_grid, schema?.custom_grid?.title) || gridFromLegacySections(schema),
+  formio_form: normalizeFormioForm(schema, fallbackTitle),
+  custom_grid: isFormioSchema(schema) ? null : normalizeGrid(schema?.custom_grid, schema?.custom_grid?.title) || gridFromLegacySections(schema),
 })
 
 const schemaToPayload = (schema: InspectionFormSchema, title: string): InspectionFormSchema => ({
   title,
-  version: 3,
-  source: 'medrad_grid_form_builder',
+  version: schema.formio_form ? 4 : 3,
+  source: schema.formio_form ? FORMIO_SCHEMA_SOURCE : 'medrad_grid_form_builder',
   based_on: schema.based_on,
+  formio_form: schema.formio_form ? { ...schema.formio_form, title } : null,
   custom_grid: schema.custom_grid ? normalizeGrid(schema.custom_grid, schema.custom_grid.title || 'Set Title') : null,
 })
 
@@ -381,7 +478,21 @@ const displayCustomGridCellBlocks = (cell: GridCellSchema, values: Record<string
   return displays.length ? displays.join('\n') : displayCustomGridCellValue(cell, values[cell.id])
 }
 
+const shouldShowGridCellTitle = (cell: GridCellSchema) => {
+  const title = cell.label?.trim()
+  if (!title) return false
+  if (!cell.blocks?.length) return true
+  return !cell.blocks.some(block => block.label?.trim().toLowerCase() === title.toLowerCase())
+}
+
 const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFormSchema | null) => {
+  if (schema?.formio_form) {
+    return {
+      ...currentReport,
+      formio_form: schema.formio_form,
+      formio_data: currentReport?.formio_data || {},
+    }
+  }
   if (!schema?.custom_grid) return currentReport
   const existing = currentReport?.custom_grid_values || {}
   const defaults = schema.custom_grid.cells.flat().reduce((acc, cell) => {
@@ -908,6 +1019,7 @@ const Inspections = () => {
   const [formBuilderDescription, setFormBuilderDescription] = useState('')
   const [formBuilderModalityId, setFormBuilderModalityId] = useState<number | null>(null)
   const [formBuilderSchema, setFormBuilderSchema] = useState<InspectionFormSchema>(() => normalizeInspectionFormSchema({ sections: [] }))
+  const [formBuilderFormioForm, setFormBuilderFormioForm] = useState<FormioFormSchema>(() => createEmptyFormioForm())
   const [formBuilderRows, setFormBuilderRows] = useState(3)
   const [formBuilderColumns, setFormBuilderColumns] = useState(3)
   const [tablePickerHover, setTablePickerHover] = useState<{ rows: number; columns: number } | null>(null)
@@ -1190,7 +1302,14 @@ const Inspections = () => {
         name,
         description: formBuilderDescription.trim() || null,
         modality_id: formBuilderModalityId,
-        schema: schemaToPayload(formBuilderSchema, name),
+        schema: schemaToPayload({
+          ...formBuilderSchema,
+          title: name,
+          source: FORMIO_SCHEMA_SOURCE,
+          version: 4,
+          formio_form: { ...formBuilderFormioForm, title: name },
+          custom_grid: null,
+        }, name),
       }
       if (formBuilderMode === 'create') return createInspectionForm(payload)
       if (!formBuilderId) throw new Error('Inspection form was not selected')
@@ -1215,7 +1334,7 @@ const Inspections = () => {
         reportCustomSchema || normalizeInspectionFormSchema(buildReusableFormSchema(name, report || {}), name),
         name,
       )
-      if (!schema.custom_grid) throw new Error('Create the custom grid before saving the form')
+      if (!schema.custom_grid && !schema.formio_form?.components) throw new Error('Create the custom form before saving it')
       const payload = {
         name,
         description: customFormDescription.trim() || `Custom inspection form${reportInspection ? ` created from ${reportInspection.inspection_number}` : ''}`,
@@ -1406,11 +1525,13 @@ const Inspections = () => {
     setFormBuilderModalityId(null)
     setFormBuilderSchema({
       title: 'New Inspection Form',
-      version: 3,
-      source: 'medrad_grid_form_builder',
+      version: 4,
+      source: FORMIO_SCHEMA_SOURCE,
       based_on: defaultReportForm?.name,
+      formio_form: createEmptyFormioForm('New Inspection Form'),
       custom_grid: null,
     })
+    setFormBuilderFormioForm(createEmptyFormioForm('New Inspection Form'))
     setFormBuilderRows(3)
     setFormBuilderColumns(3)
     setTablePickerHover(null)
@@ -1425,6 +1546,7 @@ const Inspections = () => {
     setFormBuilderModalityId(form.modality_id)
     const schema = schemaForForm(form)
     setFormBuilderSchema(schema)
+    setFormBuilderFormioForm(formioFromLegacySchema(schema, form.name))
     setFormBuilderRows(schema.custom_grid?.rows || 3)
     setFormBuilderColumns(schema.custom_grid?.columns || 3)
     setTablePickerHover(null)
@@ -1438,7 +1560,10 @@ const Inspections = () => {
     setFormBuilderName(customFormName || `${reportInspection?.asset_name || reportInspection?.equipment_name || 'Asset'} Custom Inspection Form`)
     setFormBuilderDescription(customFormDescription)
     setFormBuilderModalityId(null)
-    setFormBuilderSchema({ ...base, title: customFormName || base.title })
+    const title = customFormName || base.title
+    const formioForm = formioFromLegacySchema(base, title)
+    setFormBuilderSchema({ ...base, title, source: FORMIO_SCHEMA_SOURCE, version: 4, formio_form: formioForm, custom_grid: null })
+    setFormBuilderFormioForm(formioForm)
     setFormBuilderRows(base.custom_grid?.rows || 3)
     setFormBuilderColumns(base.custom_grid?.columns || 3)
     setTablePickerHover(null)
@@ -1600,6 +1725,24 @@ const Inspections = () => {
     const block = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]?.blocks?.[blockIndex]
     const options = (block?.options || []).filter((_, index) => index !== optionIndex)
     updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options: options.length ? options : ['Option'] })
+  }
+
+  const moveGridCellBlock = (rowIndex: number, columnIndex: number, fromIndex: number, toIndex: number) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    if (!cell?.blocks?.length || fromIndex === toIndex || toIndex < 0 || toIndex >= cell.blocks.length) return
+    const blocks = [...cell.blocks]
+    const [moved] = blocks.splice(fromIndex, 1)
+    blocks.splice(toIndex, 0, moved)
+    updateGridCell(rowIndex, columnIndex, { blocks })
+  }
+
+  const moveGridCellBlockOption = (rowIndex: number, columnIndex: number, blockIndex: number, fromIndex: number, toIndex: number) => {
+    const block = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]?.blocks?.[blockIndex]
+    const options = [...(block?.options?.length ? block.options : ['Option'])]
+    if (fromIndex === toIndex || toIndex < 0 || toIndex >= options.length) return
+    const [moved] = options.splice(fromIndex, 1)
+    options.splice(toIndex, 0, moved)
+    updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options })
   }
 
   const selectedGridCell = selectedBuilderCell
@@ -1803,7 +1946,14 @@ const Inspections = () => {
   const saveFormBuilder = () => {
     const name = formBuilderName.trim()
     if (!name) return toast.error('Form name is required')
-    const schema = schemaToPayload(formBuilderSchema, name)
+    const schema = schemaToPayload({
+      ...formBuilderSchema,
+      title: name,
+      source: FORMIO_SCHEMA_SOURCE,
+      version: 4,
+      formio_form: { ...formBuilderFormioForm, title: name },
+      custom_grid: null,
+    }, name)
     if (formBuilderMode === 'report-custom') {
       setCustomFormName(name)
       setCustomFormDescription(formBuilderDescription)
@@ -1871,9 +2021,10 @@ const Inspections = () => {
 
   const buildReusableFormSchema = (formName: string, currentReport: any) => ({
     title: formName,
-    version: 3,
-    source: 'medrad_grid_form_builder',
+    version: currentReport?.formio_form || reportCustomSchema?.formio_form ? 4 : 3,
+    source: currentReport?.formio_form || reportCustomSchema?.formio_form ? FORMIO_SCHEMA_SOURCE : 'medrad_grid_form_builder',
     based_on: reportInspection?.form_template_name || defaultReportForm?.name || 'Default inspection report',
+    formio_form: currentReport?.formio_form || reportCustomSchema?.formio_form || null,
     custom_grid: currentReport?.custom_grid || reportCustomSchema?.custom_grid || null,
   })
 
@@ -2263,7 +2414,7 @@ const Inspections = () => {
 
   const renderCustomGridCellBlocks = (cell: GridCellSchema, values: Record<string, any>, readOnly = false) => (
     <Box sx={{ display: 'grid', gap: 1, width: '100%', textAlign: cell.align || 'left' }}>
-      {cell.label?.trim() && (
+      {shouldShowGridCellTitle(cell) && (
         <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'left' }}>{cell.label}</Typography>
       )}
       {(cell.blocks || []).map((block, blockIndex) => {
@@ -2278,7 +2429,7 @@ const Inspections = () => {
         if (block.type === 'input') {
           const isInline = block.layout ? block.layout === 'inline' : Boolean(block.inline)
           return (
-            <Box key={block.id} sx={{ display: isInline ? 'grid' : 'block', gridTemplateColumns: isInline ? 'auto 1fr' : undefined, gap: 1, alignItems: 'center' }}>
+            <Box key={block.id} sx={{ display: isInline ? 'grid' : 'block', gridTemplateColumns: isInline ? 'auto minmax(80px, 1fr)' : undefined, gap: 1, alignItems: 'center', width: '100%', maxWidth: block.width || 180 }}>
               {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569', whiteSpace: 'nowrap' }}>{block.label}</Typography>}
               <TextField
                 disabled={readOnly}
@@ -2286,22 +2437,23 @@ const Inspections = () => {
                 fullWidth
                 value={values[key] || ''}
                 onChange={e => updateReportGridValue(key, e.target.value)}
+                sx={{ '& .MuiInputBase-root': { height: block.height || 40 } }}
               />
             </Box>
           )
         }
         if (block.type === 'textarea') {
           return (
-            <Box key={block.id} sx={{ display: 'grid', gap: 0.75 }}>
+            <Box key={block.id} sx={{ display: 'grid', gap: 0.75, width: '100%', maxWidth: block.width || 220 }}>
               {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
               <TextField
                 disabled={readOnly}
                 size="small"
                 fullWidth
                 multiline
-                minRows={2}
                 value={values[key] || ''}
                 onChange={e => updateReportGridValue(key, e.target.value)}
+                sx={{ '& .MuiInputBase-root': { height: block.height || 90, alignItems: 'flex-start' } }}
               />
             </Box>
           )
@@ -2398,7 +2550,7 @@ const Inspections = () => {
                       >
                         {cell.blocks?.length ? renderCustomGridCellBlocks(cell, values) : (
                           <>
-                            {cell.label?.trim() && (
+                            {shouldShowGridCellTitle(cell) && (
                               <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
                             )}
                             {cell.type === 'text' ? null : cell.type === 'input' ? (
@@ -2442,6 +2594,34 @@ const Inspections = () => {
             </TableBody>
           </Table>
         </TableContainer>
+      </Card>
+    )
+  }
+
+  const renderFormioReport = () => {
+    const formioForm = activeReportSchema?.formio_form || report?.formio_form
+    if (!formioForm?.components) return null
+    const submission = { data: report?.formio_data || {} }
+    return (
+      <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
+        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>
+          {formioForm.title || activeReportSchema?.title || 'Custom Inspection Form'}
+        </Typography>
+        <Box sx={{ '& .formio-component-submit': { display: 'none' } }}>
+          <Form
+            key={`${reportInspection?.id || 'report'}-${activeReportSchema?.title || formioForm.title || 'formio'}`}
+            src={formioForm as any}
+            submission={submission}
+            options={{ noAlerts: true } as any}
+            onChange={(change: any) => {
+              setReport((prev: any) => ({
+                ...prev,
+                formio_form: formioForm,
+                formio_data: change?.data || {},
+              }))
+            }}
+          />
+        </Box>
       </Card>
     )
   }
@@ -2505,7 +2685,7 @@ const Inspections = () => {
     </>
   )
 
-  const isCustomGridReport = () => reportFormSource === 'custom'
+  const isCustomGridReport = () => Boolean(activeReportSchema?.custom_grid || activeReportSchema?.formio_form || report?.custom_grid || report?.formio_form)
     || (reportFormSource === 'attached' && Boolean(activeReportSchema?.custom_grid))
     || (reportFormSource === 'existing' && Boolean(activeReportSchema?.custom_grid))
 
@@ -2771,17 +2951,19 @@ const Inspections = () => {
                   ) : formsQ.data!.items.map((form: InspectionFormOption) => {
                     const schema = schemaForForm(form)
                     const grid = schema.custom_grid
+                    const formioForm = schema.formio_form
                     const cellCount = grid ? grid.rows * grid.columns : 0
+                    const fieldCount = formioForm?.components?.length || cellCount
                     return (
                       <TableRow key={form.id} hover>
                         <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
                           {form.name}
                           <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>
-                            Fixed checklist + {grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom grid'} + Biomed Notes
+                            Fixed checklist + {formioForm ? 'Form.io custom form' : grid ? `${grid.rows}x${grid.columns} legacy grid` : 'no custom form'} + Biomed Notes
                           </Typography>
                         </TableCell>
                         <TableCell><ClippedTooltipText value={form.description || '-'} field /></TableCell>
-                        <TableCell><Chip size="small" label={`${cellCount} custom cell${cellCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
+                        <TableCell><Chip size="small" label={`${fieldCount} custom field${fieldCount === 1 ? '' : 's'}`} sx={{ fontWeight: 900 }} /></TableCell>
                         <TableCell align="right">
                           <IconButton
                             size="small"
@@ -3168,6 +3350,7 @@ const Inspections = () => {
       {viewForm && (() => {
         const previewSchema = schemaForForm(viewForm)
         const grid = previewSchema.custom_grid
+        const formioForm = previewSchema.formio_form
         const leftChecks = ['physical_inspection', 'display', 'functional', 'electrical_safety', 'battery', 'pm_kit'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
         const rightChecks = ['cleaning', 'lubrication', 'calibration'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
         return (
@@ -3222,8 +3405,12 @@ const Inspections = () => {
                 </Card>
 
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{grid?.title || 'Custom Grid'}</Typography>
-                  {!grid ? (
+                  <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{formioForm?.title || grid?.title || 'Custom Form'}</Typography>
+                  {formioForm?.components ? (
+                    <Box sx={{ '& .formio-component-submit': { display: 'none' } }}>
+                      <Form src={formioForm as any} submission={{ data: {} }} options={{ noAlerts: true, readOnly: true } as any} />
+                    </Box>
+                  ) : !grid ? (
                     <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No custom grid is saved on this form.</Typography>
                   ) : (
                     <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
@@ -3257,7 +3444,7 @@ const Inspections = () => {
                                   >
                                     {cell.blocks?.length ? renderCustomGridCellBlocks(cell, {}, true) : (
                                       <>
-                                        {cell.label?.trim() && (
+                                        {shouldShowGridCellTitle(cell) && (
                                           <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
                                         )}
                                         {cell.type === 'text' ? null : cell.type === 'input' ? (
@@ -3323,7 +3510,7 @@ const Inspections = () => {
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           {formBuilderMode === 'create' ? 'Create Inspection Form' : formBuilderMode === 'report-custom' ? 'Customize Report Form' : 'Edit Inspection Form'}
           <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
-            The default Inspection Report and Biomed Notes stay fixed. Only the middle custom grid is generated and edited here.
+            The default Inspection Report and Biomed Notes stay fixed. Build the reusable middle form here with the open-source Form.io builder.
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
@@ -3341,6 +3528,36 @@ const Inspections = () => {
             </Card>
 
             <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.75 }}>Custom Form Builder</Typography>
+              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
+                Drag fields from the builder into the form. Use Layout components such as Columns, Field Set, Panel, and Table for tabular inspection forms.
+              </Typography>
+              <Box sx={{ '& .formio.builder': { maxWidth: '100%' }, '& .formarea': { minHeight: 420 } }}>
+                <FormBuilder
+                  key={`${formBuilderMode}-${formBuilderId || 'new'}-${formBuilderOpen ? 'open' : 'closed'}`}
+                  initialForm={formBuilderFormioForm as any}
+                  onChange={(form: any) => {
+                    const nextForm = {
+                      display: normalizeFormioDisplay(form?.display),
+                      ...form,
+                      title: formBuilderName.trim() || form?.title || 'Inspection Form',
+                      components: Array.isArray(form?.components) ? form.components : [],
+                    }
+                    setFormBuilderFormioForm(nextForm)
+                    setFormBuilderSchema(prev => ({
+                      ...prev,
+                      title: formBuilderName.trim() || prev.title,
+                      source: FORMIO_SCHEMA_SOURCE,
+                      version: 4,
+                      formio_form: nextForm,
+                      custom_grid: null,
+                    }))
+                  }}
+                />
+              </Box>
+            </Card>
+
+            <Card sx={{ display: 'none', p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Middle Custom Grid</Typography>
               <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
                 Create the table first, then click any cell to add input fields, radio groups, checkboxes, or text.
@@ -3530,9 +3747,20 @@ const Inspections = () => {
                                     ? 'Comments label'
                                     : 'Text'
                             return (
-                              <Box key={block.id} sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC', display: 'grid', gap: 1 }}>
+                              <Box
+                                key={block.id}
+                                draggable
+                                onDragStart={(event) => event.dataTransfer.setData('application/x-grid-block-index', String(blockIndex))}
+                                onDragOver={(event) => event.preventDefault()}
+                                onDrop={(event) => {
+                                  event.preventDefault()
+                                  const fromIndex = Number(event.dataTransfer.getData('application/x-grid-block-index'))
+                                  if (Number.isFinite(fromIndex)) moveGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, fromIndex, blockIndex)
+                                }}
+                                sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC', display: 'grid', gap: 1, cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
+                              >
                                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'auto 1fr auto' }, gap: 1, alignItems: 'center' }}>
-                                  <Chip size="small" label={blockName} sx={{ fontWeight: 950, bgcolor: '#EDE9FE', color: '#5B21B6' }} />
+                                  <Chip size="small" label={`Drag · ${blockName}`} sx={{ fontWeight: 950, bgcolor: '#EDE9FE', color: '#5B21B6' }} />
                                   <TextField
                                     size="small"
                                     label={labelName}
@@ -3543,10 +3771,36 @@ const Inspections = () => {
                                     <RemoveIcon fontSize="small" />
                                   </IconButton>
                                 </Box>
+                                {(block.type === 'input' || block.type === 'textarea') && (
+                                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: '140px 140px' }, gap: 1, pl: { xs: 0, md: 8 } }}>
+                                    <NumericField
+                                      label="Box width"
+                                      value={block.width || (block.type === 'textarea' ? 220 : 180)}
+                                      onChange={value => updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, { width: Math.max(60, Math.min(520, Number(value || 60))) })}
+                                    />
+                                    <NumericField
+                                      label="Box height"
+                                      value={block.height || (block.type === 'textarea' ? 90 : 40)}
+                                      onChange={value => updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, { height: Math.max(28, Math.min(240, Number(value || 28))) })}
+                                    />
+                                  </Box>
+                                )}
                                 {(block.type === 'checkbox' || block.type === 'radio') && (
                                   <Box sx={{ display: 'grid', gap: 0.75, pl: { xs: 0, md: 8 } }}>
                                     {(block.options?.length ? block.options : ['Option']).map((option, optionIndex) => (
-                                      <Box key={`${block.id}-panel-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 0.75 }}>
+                                      <Box
+                                        key={`${block.id}-panel-option-${optionIndex}`}
+                                        draggable
+                                        onDragStart={(event) => event.dataTransfer.setData('application/x-grid-option-index', String(optionIndex))}
+                                        onDragOver={(event) => event.preventDefault()}
+                                        onDrop={(event) => {
+                                          event.preventDefault()
+                                          const fromIndex = Number(event.dataTransfer.getData('application/x-grid-option-index'))
+                                          if (Number.isFinite(fromIndex)) moveGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, fromIndex, optionIndex)
+                                        }}
+                                        sx={{ display: 'grid', gridTemplateColumns: { xs: 'auto 1fr auto', md: '72px 1fr auto' }, gap: 0.75, alignItems: 'center', cursor: 'grab' }}
+                                      >
+                                        <Chip size="small" label="Drag" sx={{ fontWeight: 900, bgcolor: '#F1F5F9', color: '#475569' }} />
                                         <TextField
                                           size="small"
                                           label={`Option ${optionIndex + 1}`}
@@ -3625,7 +3879,7 @@ const Inspections = () => {
                                         ? ` · ${cell.rowSpan || 1}x${cell.colSpan || 1}`
                                         : ''}
                                     </Typography>
-                                    {cell.label?.trim() ? (
+                                    {shouldShowGridCellTitle(cell) ? (
                                       <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>
                                         {cell.label}
                                       </Typography>
@@ -3714,7 +3968,7 @@ const Inspections = () => {
                                         ? ` · ${cell.rowSpan || 1}x${cell.colSpan || 1}`
                                         : ''}
                                     </Typography>
-                                    {cell.label?.trim() ? (
+                                    {shouldShowGridCellTitle(cell) ? (
                                       <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>
                                         {cell.label}
                                       </Typography>
@@ -3932,7 +4186,7 @@ const Inspections = () => {
                         startIcon={saveCustomTemplateMut.isPending ? <CircularProgress size={16} /> : <SaveIcon />}
                         variant="contained"
                         onClick={() => saveCustomTemplateMut.mutate()}
-                        disabled={saveCustomTemplateMut.isPending || !reportCustomSchema?.custom_grid}
+                        disabled={saveCustomTemplateMut.isPending || (!reportCustomSchema?.custom_grid && !reportCustomSchema?.formio_form?.components)}
                         sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
                       >
                         Save Form Only
@@ -3944,7 +4198,7 @@ const Inspections = () => {
               {isCustomGridReport() ? (
                 <>
                   {renderFixedInspectionTable()}
-                  {renderCustomGridReport()}
+                  {activeReportSchema?.formio_form || report?.formio_form ? renderFormioReport() : renderCustomGridReport()}
                   {renderBiomedNotes()}
                 </>
               ) : renderDefaultReportCore()}
