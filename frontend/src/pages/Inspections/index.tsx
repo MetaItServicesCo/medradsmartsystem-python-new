@@ -88,6 +88,7 @@ type GridCellType = 'text' | 'input' | 'radio' | 'checkbox'
 type GridCellBlockType = 'label' | 'input' | 'radio' | 'checkbox' | 'textarea'
 type GridHorizontalAlign = 'left' | 'center' | 'right'
 type GridVerticalAlign = 'top' | 'middle' | 'bottom'
+type GridOptionLayout = 'vertical' | 'horizontal' | 'wrap'
 type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
 
 type GridCellBlock = {
@@ -97,6 +98,7 @@ type GridCellBlock = {
   options?: string[]
   inline?: boolean
   layout?: 'inline' | 'stacked'
+  optionLayout?: GridOptionLayout
   width?: number
   height?: number
 }
@@ -186,6 +188,7 @@ const createGridCellBlock = (type: GridCellBlockType, index = 0): GridCellBlock 
   options: type === 'checkbox' || type === 'radio' ? ['Option'] : undefined,
   inline: type === 'input',
   layout: type === 'input' ? 'inline' : 'stacked',
+  optionLayout: type === 'checkbox' || type === 'radio' ? 'wrap' : undefined,
   width: type === 'label' ? 100 : 180,
   height: type === 'textarea' ? 90 : 40,
 })
@@ -226,11 +229,31 @@ const normalizeGridHorizontalAlign = (value: any): GridHorizontalAlign =>
 const normalizeGridVerticalAlign = (value: any): GridVerticalAlign =>
   value === 'top' || value === 'bottom' || value === 'middle' ? value : 'middle'
 
+const normalizeGridOptionLayout = (value: any): GridOptionLayout =>
+  value === 'vertical' || value === 'horizontal' || value === 'wrap' ? value : 'wrap'
+
 const gridAlignItems = (align?: GridHorizontalAlign) =>
   align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center'
 
 const gridJustifyContent = (verticalAlign?: GridVerticalAlign) =>
   verticalAlign === 'top' ? 'flex-start' : verticalAlign === 'bottom' ? 'flex-end' : 'center'
+
+const gridOptionContainerSx = (layout: GridOptionLayout | undefined, align?: GridHorizontalAlign): any => {
+  const normalizedLayout = normalizeGridOptionLayout(layout)
+  return normalizedLayout === 'vertical'
+    ? {
+        display: 'grid',
+        gap: 0.75,
+        justifyItems: gridAlignItems(align),
+      }
+    : {
+        display: 'flex',
+        gap: 1.25,
+        flexWrap: normalizedLayout === 'wrap' ? 'wrap' : 'nowrap',
+        justifyContent: gridAlignItems(align),
+        alignItems: 'center',
+      }
+}
 
 const normalizeGridCellBlock = (block: any, index: number): GridCellBlock => {
   const type: GridCellBlockType = ['label', 'input', 'radio', 'checkbox', 'textarea'].includes(block?.type) ? block.type : 'label'
@@ -244,6 +267,7 @@ const normalizeGridCellBlock = (block: any, index: number): GridCellBlock => {
     options,
     inline: block?.inline !== undefined ? Boolean(block.inline) : block?.layout ? block.layout === 'inline' : type === 'input',
     layout: block?.layout === 'inline' || block?.layout === 'stacked' ? block.layout : type === 'input' ? 'inline' : 'stacked',
+    optionLayout: type === 'checkbox' || type === 'radio' ? normalizeGridOptionLayout(block?.optionLayout) : undefined,
     width: Math.max(60, Math.min(520, Number(block?.width || (type === 'label' ? 100 : 180)))),
     height: Math.max(28, Math.min(240, Number(block?.height || (type === 'textarea' ? 90 : 40)))),
   }
@@ -1957,7 +1981,7 @@ const Inspections = () => {
                   size="small"
                   disabled
                   fullWidth
-                  placeholder={block.label?.trim() ? '' : 'Input field'}
+                  placeholder=""
                   sx={{ '& .MuiInputBase-root': { height: block.height || 40 } }}
                 />
               </Box>,
@@ -1984,7 +2008,7 @@ const Inspections = () => {
             return blockShell(
               <Box sx={{ display: 'grid', gap: 0.75, width: '100%' }}>
                 {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: gridAlignItems(cell.align) }}>
+                <Box sx={gridOptionContainerSx(block.optionLayout, cell.align)}>
                   {options.map((option, optionIndex) => (
                     <Box
                       key={`${block.id}-builder-radio-${optionIndex}`}
@@ -2088,7 +2112,7 @@ const Inspections = () => {
           return blockShell(
             <Box sx={{ display: 'grid', gap: 0.75, width: '100%' }}>
               {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: gridAlignItems(cell.align) }}>
+              <Box sx={gridOptionContainerSx(block.optionLayout, cell.align)}>
                 {options.map((option, optionIndex) => (
                   <Box
                     key={`${block.id}-builder-checkbox-${optionIndex}`}
@@ -2885,10 +2909,10 @@ const Inspections = () => {
             <Box key={block.id} sx={{ display: 'grid', gap: 0.5 }}>
               {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
               <RadioGroup
-                row
+                row={normalizeGridOptionLayout(block.optionLayout) !== 'vertical'}
                 value={values[key] || ''}
                 onChange={e => updateReportGridValue(key, e.target.value)}
-                sx={{ justifyContent: gridAlignItems(cell.align), gap: 0.5 }}
+                sx={gridOptionContainerSx(block.optionLayout, cell.align)}
               >
                 {options.map((option, optionIndex) => (
                   <FormControlLabel
@@ -2906,7 +2930,7 @@ const Inspections = () => {
         return (
           <Box key={block.id} sx={{ display: 'grid', gap: 0.5 }}>
             {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
-            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: gridAlignItems(cell.align) }}>
+            <Box sx={gridOptionContainerSx(block.optionLayout, cell.align)}>
               {options.map((option, optionIndex) => {
                 const optionKey = gridCellBlockValueKey(cell, block, optionIndex)
                 return (
@@ -3856,7 +3880,7 @@ const Inspections = () => {
                                           <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
                                         )}
                                         {cell.type === 'text' ? null : cell.type === 'input' ? (
-                                      <TextField disabled size="small" fullWidth placeholder={cell.label || 'Input field'} />
+                <TextField disabled size="small" fullWidth placeholder="" />
                                     ) : cell.type === 'radio' ? (
                                       <RadioGroup row sx={{ justifyContent: gridAlignItems(cell.align) }}>
                                         {(cell.options?.length ? cell.options : DEFAULT_GRID_OPTIONS).map((option: string) => (
@@ -4116,13 +4140,13 @@ const Inspections = () => {
                                     ? 'Comments box'
                                     : 'Text label'
                             const labelName = block.type === 'radio'
-                              ? 'Question / title'
+                              ? 'Radio title (optional)'
                               : block.type === 'checkbox'
-                                ? 'Checkbox group title'
+                                ? 'Checkbox title (optional)'
                                 : block.type === 'input'
-                                  ? 'Input label'
+                                  ? 'Input title (optional)'
                                   : block.type === 'textarea'
-                                    ? 'Comments label'
+                                    ? 'Comments title (optional)'
                                     : 'Text'
                             return (
                               <Box
@@ -4165,6 +4189,26 @@ const Inspections = () => {
                                 )}
                                 {(block.type === 'checkbox' || block.type === 'radio') && (
                                   <Box sx={{ display: 'grid', gap: 0.75, pl: { xs: 0, md: 8 } }}>
+                                    <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
+                                      <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, mr: 0.5 }}>
+                                        Option layout
+                                      </Typography>
+                                      {([
+                                        ['wrap', 'Wrap'],
+                                        ['horizontal', 'Horizontal'],
+                                        ['vertical', 'Vertical'],
+                                      ] as [GridOptionLayout, string][]).map(([layoutValue, layoutLabel]) => (
+                                        <Button
+                                          key={layoutValue}
+                                          size="small"
+                                          variant={normalizeGridOptionLayout(block.optionLayout) === layoutValue ? 'contained' : 'outlined'}
+                                          onClick={() => updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, { optionLayout: layoutValue })}
+                                          sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 900, minWidth: 90 }}
+                                        >
+                                          {layoutLabel}
+                                        </Button>
+                                      ))}
+                                    </Box>
                                     {(block.options?.length ? block.options : ['Option']).map((option, optionIndex) => (
                                       <Box
                                         key={`${block.id}-panel-option-${optionIndex}`}
@@ -4279,7 +4323,7 @@ const Inspections = () => {
                                     ) : null}
                                     {cell.blocks?.length ? renderBuilderGridCellBlocks(cell, rowIndex, columnIndex, isSelected) : null}
                                     {!cell.blocks?.length && cell.type === 'input' && (
-                                      <TextField size="small" disabled fullWidth placeholder="Input field" />
+                                      <TextField size="small" disabled fullWidth placeholder="" />
                                     )}
                                     {!cell.blocks?.length && cell.type === 'radio' && (
                                       <Box sx={{ display: 'grid', gap: 0.75 }}>
@@ -4368,7 +4412,7 @@ const Inspections = () => {
                                     ) : null}
                                     {cell.blocks?.length ? renderBuilderGridCellBlocks(cell, rowIndex, columnIndex, isSelected) : null}
                                     {!cell.blocks?.length && cell.type === 'input' && (
-                                      <TextField size="small" disabled fullWidth placeholder="Input field" />
+                                      <TextField size="small" disabled fullWidth placeholder="" />
                                     )}
                                     {!cell.blocks?.length && cell.type === 'radio' && (
                                       <Box sx={{ display: 'grid', gap: 0.75 }}>
