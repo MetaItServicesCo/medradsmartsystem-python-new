@@ -178,7 +178,7 @@ const normalizeFormioForm = (schema: any, fallbackTitle = 'Inspection Form'): Fo
 const createGridCellBlock = (type: GridCellBlockType, index = 0): GridCellBlock => ({
   id: `block_${Date.now()}_${index}`,
   type,
-  label: type === 'label' ? 'Label' : type === 'input' ? 'Input Label' : type === 'textarea' ? 'Comments' : type === 'radio' ? 'Radio Question' : 'Checkbox',
+  label: type === 'label' ? 'Label' : type === 'input' ? 'Input Label' : type === 'textarea' ? 'Comments' : '',
   options: type === 'checkbox' || type === 'radio' ? ['Option'] : undefined,
   inline: type === 'input',
   layout: type === 'input' ? 'inline' : 'stacked',
@@ -1063,6 +1063,17 @@ const Inspections = () => {
   const [completedBatchPage, setCompletedBatchPage] = useState(0)
   const [legacyInProgressPage, setLegacyInProgressPage] = useState(0)
   const [legacyCompletedPage, setLegacyCompletedPage] = useState(0)
+
+  useEffect(() => {
+    if (!builderDrag) return undefined
+    const stopDragging = () => setBuilderDrag(null)
+    window.addEventListener('mouseup', stopDragging)
+    window.addEventListener('blur', stopDragging)
+    return () => {
+      window.removeEventListener('mouseup', stopDragging)
+      window.removeEventListener('blur', stopDragging)
+    }
+  }, [builderDrag])
   useEffect(() => {
     setUpcomingPage(0)
   }, [upcomingSearch, upcomingRange])
@@ -1846,6 +1857,10 @@ const Inspections = () => {
                 event.preventDefault()
                 handleBuilderBlockDragEnter(rowIndex, columnIndex, block, blockIndex)
               }}
+              onMouseEnter={() => {
+                if (!isSelected || builderDrag?.kind !== 'block') return
+                handleBuilderBlockDragEnter(rowIndex, columnIndex, block, blockIndex)
+              }}
               onDrop={(event) => {
                 if (!isSelected) return
                 event.preventDefault()
@@ -1875,6 +1890,11 @@ const Inspections = () => {
                 <Tooltip title="Drag this item">
                   <Box
                     draggable
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setBuilderDrag({ kind: 'block', blockId: block.id })
+                    }}
                     onDragStart={(event) => {
                       event.stopPropagation()
                       event.dataTransfer.effectAllowed = 'move'
@@ -1968,6 +1988,16 @@ const Inspections = () => {
                         event.stopPropagation()
                         handleBuilderOptionDragEnter(rowIndex, columnIndex, block, optionIndex)
                       }}
+                      onMouseDown={(event) => {
+                        if (!allowOptionDrag) return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        setBuilderDrag({ kind: 'option', blockId: block.id, optionIndex })
+                      }}
+                      onMouseEnter={() => {
+                        if (!allowOptionDrag || builderDrag?.kind !== 'option') return
+                        handleBuilderOptionDragEnter(rowIndex, columnIndex, block, optionIndex)
+                      }}
                       onDrop={(event) => {
                         if (!allowOptionDrag) return
                         event.preventDefault()
@@ -2027,6 +2057,16 @@ const Inspections = () => {
                         if (!allowOptionDrag) return
                         event.preventDefault()
                         event.stopPropagation()
+                        handleBuilderOptionDragEnter(rowIndex, columnIndex, block, optionIndex)
+                      }}
+                      onMouseDown={(event) => {
+                        if (!allowOptionDrag) return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        setBuilderDrag({ kind: 'option', blockId: block.id, optionIndex })
+                      }}
+                      onMouseEnter={() => {
+                        if (!allowOptionDrag || builderDrag?.kind !== 'option') return
                         handleBuilderOptionDragEnter(rowIndex, columnIndex, block, optionIndex)
                       }}
                       onDrop={(event) => {
