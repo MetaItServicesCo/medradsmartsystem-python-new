@@ -16,6 +16,10 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import EditIcon from '@mui/icons-material/Edit'
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
+import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft'
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight'
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PersonIcon from '@mui/icons-material/Person'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -178,7 +182,7 @@ const normalizeFormioForm = (schema: any, fallbackTitle = 'Inspection Form'): Fo
 const createGridCellBlock = (type: GridCellBlockType, index = 0): GridCellBlock => ({
   id: `block_${Date.now()}_${index}`,
   type,
-  label: type === 'label' ? 'Label' : type === 'input' ? 'Input Label' : type === 'textarea' ? 'Comments' : '',
+  label: type === 'label' ? 'Label' : type === 'textarea' ? 'Comments' : '',
   options: type === 'checkbox' || type === 'radio' ? ['Option'] : undefined,
   inline: type === 'input',
   layout: type === 'input' ? 'inline' : 'stacked',
@@ -335,9 +339,9 @@ const formioComponentKey = (label: string, fallback: string) => slugifyKey(label
 const formioFromGridCell = (cell: GridCellSchema, fallback: string): any[] => {
   if (cell.blocks?.length) {
     return cell.blocks.flatMap((block, blockIndex): any[] => {
-      const label = block.label || `Field ${blockIndex + 1}`
+      const label = block.label?.trim() || ''
       const key = formioComponentKey(label, `${fallback}_${blockIndex + 1}`)
-      if (block.type === 'label') return [{ type: 'htmlelement', tag: 'p', content: label }]
+      if (block.type === 'label') return label ? [{ type: 'htmlelement', tag: 'p', content: label }] : []
       if (block.type === 'textarea') return [{ type: 'textarea', key, label, input: true }]
       if (block.type === 'radio') return [{
         type: 'radio',
@@ -356,7 +360,7 @@ const formioFromGridCell = (cell: GridCellSchema, fallback: string): any[] => {
       return [{ type: 'textfield', key, label, input: true }]
     })
   }
-  const label = cell.label || fallback
+  const label = cell.label?.trim() || ''
   const key = formioComponentKey(label, fallback)
   if (cell.type === 'text') return cell.label ? [{ type: 'htmlelement', tag: 'p', content: cell.label }] : []
   if (cell.type === 'radio') return [{
@@ -1781,6 +1785,10 @@ const Inspections = () => {
     updateGridCellBlock(rowIndex, columnIndex, blockIndex, { options })
   }
 
+  const nudgeGridCellBlockOption = (rowIndex: number, columnIndex: number, blockIndex: number, optionIndex: number, direction: -1 | 1) => {
+    moveGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, optionIndex + direction)
+  }
+
   const moveGridCellBlockById = (rowIndex: number, columnIndex: number, blockId: string, toIndex: number) => {
     const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
     const fromIndex = cell?.blocks?.findIndex(block => block.id === blockId) ?? -1
@@ -2033,6 +2041,38 @@ const Inspections = () => {
                       }}
                     >
                       {isSelected && <DragIndicatorIcon sx={{ fontSize: 16, color: '#94A3B8' }} />}
+                      {isSelected && (
+                        <Box sx={{ display: 'inline-flex', gap: 0.25 }}>
+                          <IconButton
+                            size="small"
+                            aria-label="Move option left"
+                            disabled={optionIndex === 0}
+                            onMouseDown={event => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              nudgeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, -1)
+                            }}
+                            sx={{ width: 24, height: 24, color: '#6D28D9' }}
+                          >
+                            <KeyboardArrowLeftIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            aria-label="Move option right"
+                            disabled={optionIndex >= options.length - 1}
+                            onMouseDown={event => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              nudgeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, 1)
+                            }}
+                            sx={{ width: 24, height: 24, color: '#6D28D9' }}
+                          >
+                            <KeyboardArrowRightIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      )}
                       <FormControlLabel
                         control={<Radio disabled size="small" />}
                         label={option || `Option ${optionIndex + 1}`}
@@ -2105,6 +2145,38 @@ const Inspections = () => {
                     }}
                   >
                     {isSelected && <DragIndicatorIcon sx={{ fontSize: 16, color: '#94A3B8' }} />}
+                    {isSelected && (
+                      <Box sx={{ display: 'inline-flex', gap: 0.25 }}>
+                        <IconButton
+                          size="small"
+                          aria-label="Move option left"
+                          disabled={optionIndex === 0}
+                          onMouseDown={event => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            nudgeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, -1)
+                          }}
+                          sx={{ width: 24, height: 24, color: '#6D28D9' }}
+                        >
+                          <KeyboardArrowLeftIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          aria-label="Move option right"
+                          disabled={optionIndex >= options.length - 1}
+                          onMouseDown={event => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            nudgeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, 1)
+                          }}
+                          sx={{ width: 24, height: 24, color: '#6D28D9' }}
+                        >
+                          <KeyboardArrowRightIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    )}
                     <FormControlLabel
                       control={<Checkbox disabled size="small" />}
                       label={option || `Option ${optionIndex + 1}`}
@@ -4096,17 +4168,28 @@ const Inspections = () => {
                                     {(block.options?.length ? block.options : ['Option']).map((option, optionIndex) => (
                                       <Box
                                         key={`${block.id}-panel-option-${optionIndex}`}
-                                        draggable
-                                        onDragStart={(event) => event.dataTransfer.setData('application/x-grid-option-index', String(optionIndex))}
-                                        onDragOver={(event) => event.preventDefault()}
-                                        onDrop={(event) => {
-                                          event.preventDefault()
-                                          const fromIndex = Number(event.dataTransfer.getData('application/x-grid-option-index'))
-                                          if (Number.isFinite(fromIndex)) moveGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, fromIndex, optionIndex)
-                                        }}
-                                        sx={{ display: 'grid', gridTemplateColumns: { xs: 'auto 1fr auto', md: '72px 1fr auto' }, gap: 0.75, alignItems: 'center', cursor: 'grab' }}
+                                        sx={{ display: 'grid', gridTemplateColumns: { xs: 'auto 1fr auto', md: '88px 1fr auto' }, gap: 0.75, alignItems: 'center' }}
                                       >
-                                        <Chip size="small" label="Drag" sx={{ fontWeight: 900, bgcolor: '#F1F5F9', color: '#475569' }} />
+                                        <Box sx={{ display: 'inline-flex', gap: 0.25 }}>
+                                          <IconButton
+                                            size="small"
+                                            aria-label="Move option up"
+                                            disabled={optionIndex === 0}
+                                            onClick={() => nudgeGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex, -1)}
+                                            sx={{ width: 30, height: 30, color: '#6D28D9', border: '1px solid #EDE9FE' }}
+                                          >
+                                            <KeyboardArrowUpIcon fontSize="small" />
+                                          </IconButton>
+                                          <IconButton
+                                            size="small"
+                                            aria-label="Move option down"
+                                            disabled={optionIndex >= (block.options?.length ? block.options : ['Option']).length - 1}
+                                            onClick={() => nudgeGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex, 1)}
+                                            sx={{ width: 30, height: 30, color: '#6D28D9', border: '1px solid #EDE9FE' }}
+                                          >
+                                            <KeyboardArrowDownIcon fontSize="small" />
+                                          </IconButton>
+                                        </Box>
                                         <TextField
                                           size="small"
                                           label={`Option ${optionIndex + 1}`}
