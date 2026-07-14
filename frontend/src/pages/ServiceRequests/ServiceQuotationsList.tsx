@@ -1,16 +1,48 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   Avatar, Box, Card, Typography, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Skeleton, Button, Chip
+  TableContainer, TableHead, TableRow, Skeleton, Chip, IconButton, ListItemIcon, Menu, MenuItem
 } from '@mui/material'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 
 import { fetchAllQuotations } from '@/api/serviceRequests'
+import type { ServiceRequestQuotationList } from '@/api/serviceRequests'
+
+const ACTION_MENU_PAPER = {
+  sx: {
+    borderRadius: '16px',
+    minWidth: 170,
+    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
+    border: '1px solid #EEF0F6',
+  },
+}
+const ACTION_MENU_ITEM = {
+  py: 1.15,
+  px: 1.5,
+  mx: 0.75,
+  borderRadius: '10px',
+  fontWeight: 800,
+}
 
 const ServiceQuotationsList = () => {
   const navigate = useNavigate()
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionQuotation, setActionQuotation] = useState<ServiceRequestQuotationList | null>(null)
+
+  const openActions = (event: React.MouseEvent<HTMLElement>, quotation: ServiceRequestQuotationList) => {
+    event.stopPropagation()
+    setActionAnchor(event.currentTarget)
+    setActionQuotation(quotation)
+  }
+
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionQuotation(null)
+  }
 
   const { data: quotations, isLoading } = useQuery({
     queryKey: ['service-quotations'],
@@ -128,24 +160,27 @@ const ServiceQuotationsList = () => {
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Button
+                          <IconButton
                             size="small"
-                            variant="outlined"
-                            startIcon={<VisibilityOutlinedIcon />}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              navigate(`/service-requests/${q.service_request_id}`)
-                            }}
-                            sx={{ borderRadius: '14px', textTransform: 'none', fontWeight: 800, borderColor: '#CBBFFF', color: '#6757D8' }}
+                            onClick={(event) => openActions(event, q)}
+                            sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#6757D8', '&:hover': { bgcolor: '#EDE9FE' } }}
                           >
-                            View Details
-                          </Button>
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
                         </TableCell>
                       </TableRow>
                     ))}
             </TableBody>
           </Table>
         </TableContainer>
+        <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+          {actionQuotation && (
+            <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { navigate(`/service-requests/${actionQuotation.service_request_id}`); closeActions() }}>
+              <ListItemIcon><VisibilityOutlinedIcon fontSize="small" sx={{ color: '#6757D8' }} /></ListItemIcon>
+              View Details
+            </MenuItem>
+          )}
+        </Menu>
       </Card>
     </Box>
   )

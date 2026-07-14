@@ -596,7 +596,7 @@ const Sales = () => {
     return total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0
   }
 
-  const renderQuotationTable = (items: SalesQuotation[], emptyText: string, showComplete = false) => (
+  const renderQuotationTable = (items: SalesQuotation[], emptyText: string) => (
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader>
         <TableHead>
@@ -645,22 +645,13 @@ const Sales = () => {
                       {paymentMethodLabel(item.converted_invoice_payment_method || item.payment_method)}
                     </Typography>
                   )}
-                  {showComplete ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                      <Button size="small" variant="outlined" startIcon={<VisibilityIcon />} onClick={() => setViewQuotation(item)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>View</Button>
-                      <Button size="small" variant="contained" startIcon={<CheckCircleIcon />} onClick={() => completeMut.mutate(item.id)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Complete</Button>
-                    </Box>
-                  ) : (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      endIcon={<MoreVertIcon />}
-                      onClick={(event) => openActions(event, item)}
-                      sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}
-                    >
-                      Actions
-                    </Button>
-                  )}
+                  <IconButton
+                    size="small"
+                    onClick={(event) => openActions(event, item)}
+                    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#4F46E5', '&:hover': { bgcolor: '#EDE9FE' } }}
+                  >
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             )
@@ -718,15 +709,13 @@ const Sales = () => {
                   {highlighted && (
                     <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
                   )}
-                  <Button
+                  <IconButton
                     size="small"
-                    variant="contained"
-                    endIcon={<MoreVertIcon />}
                     onClick={(event) => openInvoiceActions(event, invoice)}
-                    sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}
+                    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#4F46E5', '&:hover': { bgcolor: '#EDE9FE' } }}
                   >
-                    Actions
-                  </Button>
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             )
@@ -801,7 +790,7 @@ const Sales = () => {
               <LinearProgress variant="determinate" value={inProgressPaymentPercent} sx={{ height: 10, borderRadius: 10, bgcolor: '#E0E7FF', '& .MuiLinearProgress-bar': { borderRadius: 10, bgcolor: '#7C3AED' } }} />
               <Typography sx={{ mt: 1, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>{inProgressPaymentPercent}% collected across active sales.</Typography>
             </Card>
-            {renderQuotationTable(inProgressQuotations, 'No sales orders in progress.', true)}
+              {renderQuotationTable(inProgressQuotations, 'No sales orders in progress.')}
           </Box>
         )}
         {tab === 3 && (
@@ -871,6 +860,12 @@ const Sales = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View
         </MenuItem>
+        {actionQuotation?.status === 'in_progress' && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionQuotation) completeMut.mutate(actionQuotation.id); closeActions() }}>
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CheckCircleIcon fontSize="small" /></ListItemIcon>
+            Complete
+          </MenuItem>
+        )}
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionQuotation) setPrintQuotation(actionQuotation); closeActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>
           Print Documents

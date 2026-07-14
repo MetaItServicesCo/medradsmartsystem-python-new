@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert, Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, FormControlLabel, IconButton, InputAdornment,
-  MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer,
+  ListItemIcon, Menu, MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer,
   TableHead, TablePagination, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -13,6 +13,7 @@ import InventoryIcon from '@mui/icons-material/Inventory'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
 import LowPriorityIcon from '@mui/icons-material/LowPriority'
 import MoveUpIcon from '@mui/icons-material/MoveUp'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import SearchIcon from '@mui/icons-material/Search'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -33,6 +34,21 @@ import ClippedTooltipText from '@/components/ClippedTooltipText'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const PAGE_SIZE = 25
+const ACTION_MENU_PAPER = {
+  sx: {
+    borderRadius: '16px',
+    minWidth: 190,
+    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
+    border: '1px solid #EEF0F6',
+  },
+}
+const ACTION_MENU_ITEM = {
+  py: 1.15,
+  px: 1.5,
+  mx: 0.75,
+  borderRadius: '10px',
+  fontWeight: 800,
+}
 
 const emptyPart: InventoryPartPayload = {
   facility_id: null,
@@ -84,6 +100,8 @@ const Inventory = () => {
   const [page, setPage] = useState(0)
   const [partDialogOpen, setPartDialogOpen] = useState(false)
   const [editingPart, setEditingPart] = useState<InventoryPart | null>(null)
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionPart, setActionPart] = useState<InventoryPart | null>(null)
   const [partForm, setPartForm] = useState<InventoryPartPayload>(emptyPart)
   const [transactionPart, setTransactionPart] = useState<InventoryPart | null>(null)
   const [historyPart, setHistoryPart] = useState<InventoryPart | null>(null)
@@ -235,6 +253,16 @@ const Inventory = () => {
       status: part.status,
     })
     setPartDialogOpen(true)
+  }
+
+  const openActions = (event: React.MouseEvent<HTMLElement>, part: InventoryPart) => {
+    setActionAnchor(event.currentTarget)
+    setActionPart(part)
+  }
+
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionPart(null)
   }
 
   const handleSavePart = () => {
@@ -417,10 +445,15 @@ const Inventory = () => {
                     </TableCell>
                     <TableCell>{part.expiry_date || '-'}</TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Stock Operation"><IconButton onClick={() => setTransactionPart(part)} sx={{ color: '#10B981' }}><MoveUpIcon /></IconButton></Tooltip>
-                      <Tooltip title="History"><IconButton onClick={() => setHistoryPart(part)} sx={{ color: '#3B82F6' }}><ReceiptLongIcon /></IconButton></Tooltip>
-                      <Tooltip title="Edit"><IconButton onClick={() => handleOpenEdit(part)} sx={{ color: '#F59E0B' }}><EditIcon /></IconButton></Tooltip>
-                      <Tooltip title="Delete"><IconButton onClick={() => deleteMut.mutate(part.id)} sx={{ color: '#EF4444' }}><DeleteIcon /></IconButton></Tooltip>
+                      <Tooltip title="Actions" arrow>
+                        <IconButton
+                          size="small"
+                          onClick={(event) => openActions(event, part)}
+                          sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 )
@@ -438,6 +471,33 @@ const Inventory = () => {
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
         />
       </Card>
+
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {actionPart && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setTransactionPart(actionPart); closeActions() }}>
+            <ListItemIcon><MoveUpIcon fontSize="small" sx={{ color: '#10B981' }} /></ListItemIcon>
+            Stock Operation
+          </MenuItem>
+        )}
+        {actionPart && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setHistoryPart(actionPart); closeActions() }}>
+            <ListItemIcon><ReceiptLongIcon fontSize="small" sx={{ color: '#3B82F6' }} /></ListItemIcon>
+            History
+          </MenuItem>
+        )}
+        {actionPart && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { handleOpenEdit(actionPart); closeActions() }}>
+            <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#F59E0B' }} /></ListItemIcon>
+            Edit
+          </MenuItem>
+        )}
+        {actionPart && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { deleteMut.mutate(actionPart.id); closeActions() }}>
+            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            Delete
+          </MenuItem>
+        )}
+      </Menu>
 
       <Dialog open={partDialogOpen} onClose={() => setPartDialogOpen(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '14px', overflow: 'hidden' } }}>
         <DialogTitle sx={{ fontWeight: 800, borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

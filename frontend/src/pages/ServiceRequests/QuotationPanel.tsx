@@ -6,7 +6,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Divider,
   FormControl, InputLabel, Select, MenuItem, CircularProgress,
   Collapse, Table, TableBody, TableCell, TableHead, TableRow,
-  Radio, RadioGroup, FormControlLabel, FormLabel, Autocomplete,
+  Radio, RadioGroup, FormControlLabel, FormLabel, Autocomplete, ListItemIcon, Menu,
 } from '@mui/material'
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
 import AddIcon from '@mui/icons-material/Add'
@@ -15,6 +15,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import PaymentIcon from '@mui/icons-material/Payment'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
@@ -46,6 +47,21 @@ const EMPTY_LINE_ITEM: LineItemCreate = {
 
 const PART_OPTION_PAGE_SIZE = 50
 type LineItemForm = LineItemCreate & { inventory_part_id?: number | null }
+const ACTION_MENU_PAPER = {
+  sx: {
+    borderRadius: '16px',
+    minWidth: 170,
+    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
+    border: '1px solid #EEF0F6',
+  },
+}
+const ACTION_MENU_ITEM = {
+  py: 1.15,
+  px: 1.5,
+  mx: 0.75,
+  borderRadius: '10px',
+  fontWeight: 800,
+}
 
 const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
   draft: { bg: '#FEF3C7', color: '#B45309' },
@@ -61,6 +77,8 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   const [editQuotationId, setEditQuotationId] = useState<number | null>(null)
   const [payOpen, setPayOpen] = useState<number | null>(null)
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionQuotation, setActionQuotation] = useState<ServiceRequestQuotation | null>(null)
 
   // Create/Edit form state
   const [description, setDescription] = useState('')
@@ -145,6 +163,16 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     setPayBankName(''); setPayAcctLast4(''); setPayRoutingLast4('')
     setCcName(''); setCcNumber(''); setCcExpiry(''); setCcCvv('')
     setAchChoice('ach')
+  }
+
+  const openActions = (event: React.MouseEvent<HTMLElement>, quotation: ServiceRequestQuotation) => {
+    setActionAnchor(event.currentTarget)
+    setActionQuotation(quotation)
+  }
+
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionQuotation(null)
   }
 
   const openEdit = (q: ServiceRequestQuotation) => {
@@ -306,14 +334,8 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                 <Chip label={q.status} size="small" sx={{ bgcolor: sc.bg, color: sc.color, fontWeight: 700, fontSize: '0.7rem' }} />
               </Box>
               <Box sx={{ display: 'flex', gap: 0.5 }}>
-                {canModify && (
-                  <>
-                    <IconButton size="small" onClick={() => openEdit(q)} sx={{ color: '#7C3AED' }}><EditIcon fontSize="small" /></IconButton>
-                    <IconButton size="small" onClick={() => { if (window.confirm('Delete this quotation?')) deleteMut.mutate(q.id) }} sx={{ color: '#EF4444' }}><DeleteOutlineIcon fontSize="small" /></IconButton>
-                  </>
-                )}
-                <IconButton size="small" onClick={() => setExpandedId(isExpanded ? null : q.id)}>
-                  {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                <IconButton size="small" onClick={(event) => openActions(event, q)} sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                  <MoreVertIcon fontSize="small" />
                 </IconButton>
               </Box>
             </Box>
@@ -392,6 +414,32 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       })}
 
       {/* ── Create/Edit Dialog ───────────────────────────────────────── */}
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {actionQuotation && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setExpandedId(expandedId === actionQuotation.id ? null : actionQuotation.id); closeActions() }}>
+            <ListItemIcon sx={{ minWidth: 34 }}>
+              {expandedId === actionQuotation.id ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+            </ListItemIcon>
+            {expandedId === actionQuotation.id ? 'Hide Details' : 'View Details'}
+          </MenuItem>
+        )}
+        {canModify && actionQuotation && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openEdit(actionQuotation); closeActions() }}>
+            <ListItemIcon sx={{ minWidth: 34 }}><EditIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            Edit
+          </MenuItem>
+        )}
+        {canModify && actionQuotation && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
+            if (window.confirm('Delete this quotation?')) deleteMut.mutate(actionQuotation.id)
+            closeActions()
+          }}>
+            <ListItemIcon sx={{ minWidth: 34 }}><DeleteOutlineIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            Delete
+          </MenuItem>
+        )}
+      </Menu>
+
       <Dialog open={createOpen} onClose={resetForm} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
         <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>
           {editQuotationId ? 'Edit Quotation' : 'Create Quotation'}

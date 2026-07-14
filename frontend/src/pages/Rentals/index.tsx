@@ -635,10 +635,13 @@ const Rentals = () => {
                   <Chip size="small" label={item.status} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} />
                 </TableCell>
                 <TableCell align="right">
-                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                    <Button size="small" variant="outlined" startIcon={<VisibilityIcon />} onClick={() => setViewAgreement(item)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>View</Button>
-                    <IconButton onClick={(event) => openActions(event, item)} sx={{ bgcolor: '#F3F4F6' }}><MoreVertIcon /></IconButton>
-                  </Box>
+                  <IconButton
+                    size="small"
+                    onClick={(event) => openActions(event, item)}
+                    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#2563EB', '&:hover': { bgcolor: '#DBEAFE' } }}
+                  >
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             )
@@ -694,15 +697,13 @@ const Rentals = () => {
                   {highlighted && (
                     <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 900 }} />
                   )}
-                  <Button
+                  <IconButton
                     size="small"
-                    variant="contained"
-                    endIcon={<MoreVertIcon />}
                     onClick={(event) => openInvoiceActions(event, invoice)}
-                    sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900, background: SYSTEM_GRADIENT }}
+                    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#2563EB', '&:hover': { bgcolor: '#DBEAFE' } }}
                   >
-                    Actions
-                  </Button>
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             )

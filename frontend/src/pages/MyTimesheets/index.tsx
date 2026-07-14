@@ -4,6 +4,7 @@ import {
   Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions,
   DialogContent, DialogTitle, IconButton, Paper, Tab, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Tabs, TextField,
+  ListItemIcon, Menu, MenuItem,
   Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -11,6 +12,7 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import SendIcon from '@mui/icons-material/Send'
 import SaveIcon from '@mui/icons-material/Save'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import TimerIcon from '@mui/icons-material/Timer'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty'
@@ -31,11 +33,33 @@ const STATUS_META: Record<string, { label: string; color: 'default' | 'warning' 
 const TABS = ['all', 'draft', 'submitted', 'approved', 'rejected'] as const
 const EMPTY_FORM = { work_date: new Date().toISOString().slice(0, 10), task_title: '', project: '', hours: '', description: '' }
 
+const ACTION_MENU_PAPER = {
+  elevation: 12,
+  sx: {
+    minWidth: 210,
+    borderRadius: '18px',
+    border: '1px solid rgba(124,58,237,0.14)',
+    boxShadow: '0 24px 60px rgba(30,27,75,0.18)',
+    overflow: 'hidden',
+  },
+}
+
+const ACTION_MENU_ITEM = {
+  gap: 1,
+  px: 2,
+  py: 1.2,
+  fontWeight: 800,
+  color: '#1E1B4B',
+  '& .MuiListItemIcon-root': { minWidth: 30, color: 'inherit' },
+}
+
 export default function MyTimesheets() {
   const qc = useQueryClient()
   const [tab, setTab]   = useState(0)
   const [dlg, setDlg]   = useState<{ open: boolean; item?: any }>({ open: false })
   const [form, setForm] = useState<any>(EMPTY_FORM)
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionItem, setActionItem] = useState<any | null>(null)
 
   const statusFilter = TABS[tab] === 'all' ? undefined : TABS[tab]
 
@@ -72,6 +96,15 @@ export default function MyTimesheets() {
     setDlg({ open: true, item })
   }
   const closeDialog = () => { setDlg({ open: false }); setForm(EMPTY_FORM) }
+  const openActions = (event: React.MouseEvent<HTMLElement>, item: any) => {
+    event.stopPropagation()
+    setActionAnchor(event.currentTarget)
+    setActionItem(item)
+  }
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionItem(null)
+  }
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((p: any) => ({ ...p, [k]: e.target.value }))
 
@@ -232,41 +265,15 @@ export default function MyTimesheets() {
                         : <Typography variant="caption" color="text.disabled">—</Typography>}
                     </TableCell>
                     <TableCell>
-                      <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        {isDraft && (
-                          <>
-                            <Tooltip title="Edit draft">
-                              <IconButton size="small" sx={{ color: 'text.secondary' }} onClick={() => openEdit(item)}>
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Submit for review">
-                              <IconButton size="small" color="primary" onClick={() => quickSubmitMut.mutate(item.id)} disabled={quickSubmitMut.isPending}>
-                                <SendIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete">
-                              <IconButton size="small" color="error" onClick={() => deleteMut.mutate(item.id)}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                        {isRejected && (
-                          <>
-                            <Tooltip title="Edit and resubmit">
-                              <IconButton size="small" sx={{ color: 'text.secondary' }} onClick={() => openEdit(item)}>
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete">
-                              <IconButton size="small" color="error" onClick={() => deleteMut.mutate(item.id)}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                      </Box>
+                      {isDraft || isRejected ? (
+                        <Tooltip title="Actions">
+                          <IconButton size="small" onClick={(event) => openActions(event, item)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="caption" color="text.disabled">—</Typography>
+                      )}
                     </TableCell>
                   </TableRow>
                 )
@@ -275,6 +282,49 @@ export default function MyTimesheets() {
           </Table>
         </TableContainer>
       )}
+
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {(actionItem?.status === 'draft' || actionItem?.status === 'rejected') && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            onClick={() => {
+              const item = actionItem
+              closeActions()
+              if (item) openEdit(item)
+            }}
+          >
+            <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+            {actionItem?.status === 'rejected' ? 'Edit and Resubmit' : 'Edit Draft'}
+          </MenuItem>
+        )}
+        {actionItem?.status === 'draft' && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            disabled={quickSubmitMut.isPending}
+            onClick={() => {
+              const item = actionItem
+              closeActions()
+              if (item) quickSubmitMut.mutate(item.id)
+            }}
+          >
+            <ListItemIcon><SendIcon fontSize="small" /></ListItemIcon>
+            Submit for Review
+          </MenuItem>
+        )}
+        {(actionItem?.status === 'draft' || actionItem?.status === 'rejected') && (
+          <MenuItem
+            sx={{ ...ACTION_MENU_ITEM, color: '#DC2626' }}
+            onClick={() => {
+              const item = actionItem
+              closeActions()
+              if (item) deleteMut.mutate(item.id)
+            }}
+          >
+            <ListItemIcon><DeleteIcon fontSize="small" /></ListItemIcon>
+            Delete
+          </MenuItem>
+        )}
+      </Menu>
 
       {/* Add / Edit Dialog */}
       <Dialog open={dlg.open} onClose={closeDialog} maxWidth="sm" fullWidth>

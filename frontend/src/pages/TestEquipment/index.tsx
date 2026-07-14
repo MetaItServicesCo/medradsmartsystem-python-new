@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions,
-  DialogContent, DialogTitle, IconButton, InputAdornment, MenuItem, Skeleton,
+  DialogContent, DialogTitle, IconButton, InputAdornment, ListItemIcon, Menu, MenuItem, Skeleton,
   Table, TableBody, TableCell, TableContainer, TableHead, TablePagination,
   TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
@@ -10,6 +10,7 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import SearchIcon from '@mui/icons-material/Search'
 import ScienceIcon from '@mui/icons-material/Science'
 import { toast } from 'react-toastify'
@@ -28,6 +29,21 @@ import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const PAGE_SIZE = 25
+const ACTION_MENU_PAPER = {
+  sx: {
+    borderRadius: '16px',
+    minWidth: 170,
+    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
+    border: '1px solid #EEF0F6',
+  },
+}
+const ACTION_MENU_ITEM = {
+  py: 1.15,
+  px: 1.5,
+  mx: 0.75,
+  borderRadius: '10px',
+  fontWeight: 800,
+}
 
 const emptyForm: TestEquipmentPayload = {
   tem: '',
@@ -55,6 +71,8 @@ const TestEquipmentPage = () => {
   const [page, setPage] = useState(0)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<TestEquipment | null>(null)
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionItem, setActionItem] = useState<TestEquipment | null>(null)
   const [form, setForm] = useState<TestEquipmentPayload>(emptyForm)
   const [previewUrl, setPreviewUrl] = useState<string | undefined>()
   const [removeImage, setRemoveImage] = useState(false)
@@ -156,6 +174,16 @@ const TestEquipmentPage = () => {
     setForm(emptyForm)
     setPreviewUrl(undefined)
     setRemoveImage(false)
+  }
+
+  const openActions = (event: React.MouseEvent<HTMLElement>, item: TestEquipment) => {
+    setActionAnchor(event.currentTarget)
+    setActionItem(item)
+  }
+
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionItem(null)
   }
 
   const handleImage = (file?: File) => {
@@ -280,18 +308,14 @@ const TestEquipmentPage = () => {
                       <Chip label={item.status} size="small" sx={{ backgroundColor: colors.bg, color: colors.color, fontWeight: 900, textTransform: 'capitalize' }} />
                     </TableCell>
                     <TableCell align="right">
-                      {canEdit && (
-                        <Tooltip title="Edit"><IconButton onClick={() => openEdit(item)} sx={{ color: '#F59E0B' }}><EditIcon /></IconButton></Tooltip>
-                      )}
-                      {canDelete && (
-                        <Tooltip title="Delete">
+                      {(canEdit || canDelete) && (
+                        <Tooltip title="Actions" arrow>
                           <IconButton
-                            onClick={() => {
-                              if (window.confirm(`Delete ${item.tem}?`)) deleteMut.mutate(item.id)
-                            }}
-                            sx={{ color: '#EF4444' }}
+                            size="small"
+                            onClick={(event) => openActions(event, item)}
+                            sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
                           >
-                            <DeleteIcon />
+                            <MoreVertIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       )}
@@ -311,6 +335,24 @@ const TestEquipmentPage = () => {
           rowsPerPageOptions={[PAGE_SIZE]}
         />
       </Card>
+
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {canEdit && actionItem && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openEdit(actionItem); closeActions() }}>
+            <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#F59E0B' }} /></ListItemIcon>
+            Edit
+          </MenuItem>
+        )}
+        {canDelete && actionItem && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
+            if (window.confirm(`Delete ${actionItem.tem}?`)) deleteMut.mutate(actionItem.id)
+            closeActions()
+          }}>
+            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            Delete
+          </MenuItem>
+        )}
+      </Menu>
 
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '18px', overflow: 'hidden' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', borderBottom: '1px solid #E5E7EB' }}>

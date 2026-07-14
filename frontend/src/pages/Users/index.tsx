@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Box, Typography, Button, TextField, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Chip, IconButton,
-  InputAdornment, Select, MenuItem, FormControl, InputLabel,
+  InputAdornment, Select, ListItemIcon, Menu, MenuItem, FormControl, InputLabel,
   Avatar, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
   CircularProgress, Alert,
 } from '@mui/material'
@@ -14,6 +14,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import LoginIcon from '@mui/icons-material/Login'
 import DeleteIcon from '@mui/icons-material/Delete'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import SecurityIcon from '@mui/icons-material/Security'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -51,6 +52,22 @@ const ROLE_COLORS: Record<string, string> = {
   client: '#9CA3AF',
 }
 
+const ACTION_MENU_PAPER = {
+  sx: {
+    borderRadius: '16px',
+    minWidth: 190,
+    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
+    border: '1px solid #EEF0F6',
+  },
+}
+const ACTION_MENU_ITEM = {
+  py: 1.15,
+  px: 1.5,
+  mx: 0.75,
+  borderRadius: '10px',
+  fontWeight: 800,
+}
+
 const Users = () => {
   const currentUser = useAuthStore((s) => s.user)
   const isSuperAdmin = currentUser?.role === 'superadmin'
@@ -65,6 +82,8 @@ const Users = () => {
   const [editUser, setEditUser] = useState<UserData | null>(null)
   const [roleEditUser, setRoleEditUser] = useState<UserData | null>(null)
   const [permissionUser, setPermissionUser] = useState<UserData | null>(null)
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionUser, setActionUser] = useState<UserData | null>(null)
   const [selectedRole, setSelectedRole] = useState('')
   const [confirmDeactivate, setConfirmDeactivate] = useState<UserData | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<UserData | null>(null)
@@ -72,6 +91,16 @@ const Users = () => {
   useEffect(() => {
     setSearch(searchParams.get('search') || '')
   }, [searchParams.get('search')])
+
+  const openActions = (event: React.MouseEvent<HTMLElement>, user: UserData) => {
+    setActionAnchor(event.currentTarget)
+    setActionUser(user)
+  }
+
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionUser(null)
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', search, roleFilter],
@@ -291,49 +320,15 @@ const Users = () => {
                     </TableCell>
                     {isSuperAdmin && (
                       <TableCell align="right">
-                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
-                          <Tooltip title="Edit User">
-                            <IconButton size="small" onClick={() => setEditUser(u)}
-                              sx={{ color: '#7C3AED' }}>
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Edit Permissions">
-                            <IconButton size="small" onClick={() => setPermissionUser(u)}
-                              sx={{ color: '#4F46E5' }}>
-                              <SecurityIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Login as User">
-                            <IconButton size="small" onClick={() => impersonateMutation.mutate(u.id)}
-                              disabled={impersonateMutation.isPending || u.id === currentUser?.id}
-                              sx={{ color: '#8B5CF6' }}>
-                              {impersonateMutation.isPending ? <CircularProgress size={20} /> : <LoginIcon fontSize="small" />}
-                            </IconButton>
-                          </Tooltip>
-                          {u.is_active ? (
-                            <Tooltip title="Deactivate">
-                              <IconButton size="small" onClick={() => setConfirmDeactivate(u)}
-                                sx={{ color: '#EF4444' }}>
-                                <BlockIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          ) : (
-                            <Tooltip title="Activate">
-                              <IconButton size="small" onClick={() => activateMutation.mutate(u.id)}
-                                sx={{ color: '#10B981' }}>
-                                <CheckCircleIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                          <Tooltip title="Delete Permanently">
-                            <IconButton size="small" onClick={() => setConfirmDelete(u)}
-                              disabled={u.id === currentUser?.id}
-                              sx={{ color: '#EF4444' }}>
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
+                        <Tooltip title="Actions" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={(event) => openActions(event, u)}
+                            sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                          >
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </TableCell>
                     )}
                   </TableRow>
@@ -350,6 +345,55 @@ const Users = () => {
           Showing {users.length} of {data.total} users
         </Typography>
       )}
+
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {actionUser && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setEditUser(actionUser); closeActions() }}>
+            <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            Edit User
+          </MenuItem>
+        )}
+        {actionUser && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setPermissionUser(actionUser); closeActions() }}>
+            <ListItemIcon><SecurityIcon fontSize="small" sx={{ color: '#4F46E5' }} /></ListItemIcon>
+            Edit Permissions
+          </MenuItem>
+        )}
+        {actionUser && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            disabled={impersonateMutation.isPending || actionUser.id === currentUser?.id}
+            onClick={() => { impersonateMutation.mutate(actionUser.id); closeActions() }}
+          >
+            <ListItemIcon>
+              {impersonateMutation.isPending ? <CircularProgress size={18} /> : <LoginIcon fontSize="small" sx={{ color: '#8B5CF6' }} />}
+            </ListItemIcon>
+            Login as User
+          </MenuItem>
+        )}
+        {actionUser && actionUser.is_active && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setConfirmDeactivate(actionUser); closeActions() }}>
+            <ListItemIcon><BlockIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            Deactivate
+          </MenuItem>
+        )}
+        {actionUser && !actionUser.is_active && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { activateMutation.mutate(actionUser.id); closeActions() }}>
+            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: '#10B981' }} /></ListItemIcon>
+            Activate
+          </MenuItem>
+        )}
+        {actionUser && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            disabled={actionUser.id === currentUser?.id}
+            onClick={() => { setConfirmDelete(actionUser); closeActions() }}
+          >
+            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            Delete Permanently
+          </MenuItem>
+        )}
+      </Menu>
 
       {/* Create User Modal */}
       <CreateUserModal

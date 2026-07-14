@@ -11,7 +11,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   InputAdornment,
+  ListItemIcon,
+  Menu,
   MenuItem,
   Tab,
   Table,
@@ -31,6 +34,7 @@ import DoneAllIcon from '@mui/icons-material/DoneAll'
 import LoginIcon from '@mui/icons-material/Login'
 import LogoutIcon from '@mui/icons-material/Logout'
 import ModelTrainingIcon from '@mui/icons-material/ModelTraining'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import SearchIcon from '@mui/icons-material/Search'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
@@ -67,6 +71,26 @@ const EVENT_COLORS: Record<string, { bg: string; color: string }> = {
   check_out: { bg: '#E0E7FF', color: '#4338CA' },
   break_start: { bg: '#FEF3C7', color: '#B45309' },
   break_end: { bg: '#ECFDF5', color: '#059669' },
+}
+
+const ACTION_MENU_PAPER = {
+  elevation: 12,
+  sx: {
+    minWidth: 210,
+    borderRadius: '18px',
+    border: '1px solid rgba(124,58,237,0.14)',
+    boxShadow: '0 24px 60px rgba(30,27,75,0.18)',
+    overflow: 'hidden',
+  },
+}
+
+const ACTION_MENU_ITEM = {
+  gap: 1,
+  px: 2,
+  py: 1.2,
+  fontWeight: 800,
+  color: '#1E1B4B',
+  '& .MuiListItemIcon-root': { minWidth: 30, color: 'inherit' },
 }
 
 const FACE_STATUS: Record<string, { label: string; bg: string; color: string }> = {
@@ -187,6 +211,8 @@ const Attendance = () => {
   const [recognitionBusy, setRecognitionBusy] = useState(false)
   const [eventType, setEventType] = useState<AttendanceEventPayload['event_type']>('check_in')
   const [remark, setRemark] = useState('')
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionProfile, setActionProfile] = useState<AttendanceProfile | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const attendanceVideoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -431,6 +457,17 @@ const Attendance = () => {
     faceSampleMut.mutate({ profileId: profile.id, file })
   }
 
+  const openActions = (event: React.MouseEvent<HTMLElement>, profile: AttendanceProfile) => {
+    event.stopPropagation()
+    setActionAnchor(event.currentTarget)
+    setActionProfile(profile)
+  }
+
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionProfile(null)
+  }
+
   const openLiveEnroll = async (profile: AttendanceProfile) => {
     if (profile.id <= 0) {
       toast.error('Create the attendance profile before live enrollment')
@@ -653,29 +690,9 @@ const Attendance = () => {
                         </TableCell>
                         <TableCell>{profile.face_samples_count}</TableCell>
                         <TableCell align="right">
-                          {profile.id <= 0 ? (
-                            <Button size="small" onClick={() => createProfileMut.mutate(profile)} disabled={createProfileMut.isPending} sx={{ fontWeight: 900 }}>Create Profile</Button>
-                          ) : (
-                            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
-                              <Button size="small" startIcon={<VideocamIcon />} onClick={() => openLiveEnroll(profile)} sx={{ fontWeight: 900 }}>
-                                Live Enroll
-                              </Button>
-                              <Button component="label" size="small" startIcon={<CameraAltIcon />} sx={{ fontWeight: 900 }}>
-                                Upload Image
-                                <input hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => uploadSample(profile, e.target.files?.[0])} />
-                              </Button>
-                              <Button
-                                size="small"
-                                startIcon={<ModelTrainingIcon />}
-                                disabled={trainFaceMut.isPending || profile.face_samples_count < 1}
-                                onClick={() => trainFaceMut.mutate(profile.id)}
-                                sx={{ fontWeight: 900 }}
-                              >
-                                Train
-                              </Button>
-                              <Button size="small" onClick={() => setEventDialog(profile)} sx={{ fontWeight: 900 }}>Mark Event</Button>
-                            </Box>
-                          )}
+                          <IconButton size="small" onClick={(event) => openActions(event, profile)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
                         </TableCell>
                       </TableRow>
                     )
@@ -685,6 +702,74 @@ const Attendance = () => {
                 </TableBody>
               </Table>
             </TableContainer>
+            <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+              {actionProfile && actionProfile.id <= 0 ? (
+                <MenuItem
+                  sx={ACTION_MENU_ITEM}
+                  disabled={createProfileMut.isPending}
+                  onClick={() => {
+                    const profile = actionProfile
+                    closeActions()
+                    if (profile) createProfileMut.mutate(profile)
+                  }}
+                >
+                  <ListItemIcon><BadgeIcon fontSize="small" /></ListItemIcon>
+                  Create Profile
+                </MenuItem>
+              ) : (
+                <>
+                  <MenuItem
+                    sx={ACTION_MENU_ITEM}
+                    onClick={() => {
+                      const profile = actionProfile
+                      closeActions()
+                      if (profile) openLiveEnroll(profile)
+                    }}
+                  >
+                    <ListItemIcon><VideocamIcon fontSize="small" /></ListItemIcon>
+                    Live Enroll
+                  </MenuItem>
+                  <MenuItem component="label" sx={ACTION_MENU_ITEM}>
+                    <ListItemIcon><CameraAltIcon fontSize="small" /></ListItemIcon>
+                    Upload Image
+                    <input
+                      hidden
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={(event) => {
+                        const profile = actionProfile
+                        const file = event.target.files?.[0]
+                        closeActions()
+                        if (profile) uploadSample(profile, file)
+                      }}
+                    />
+                  </MenuItem>
+                  <MenuItem
+                    sx={ACTION_MENU_ITEM}
+                    disabled={trainFaceMut.isPending || !actionProfile || actionProfile.face_samples_count < 1}
+                    onClick={() => {
+                      const profile = actionProfile
+                      closeActions()
+                      if (profile) trainFaceMut.mutate(profile.id)
+                    }}
+                  >
+                    <ListItemIcon><ModelTrainingIcon fontSize="small" /></ListItemIcon>
+                    Train
+                  </MenuItem>
+                  <MenuItem
+                    sx={ACTION_MENU_ITEM}
+                    onClick={() => {
+                      const profile = actionProfile
+                      closeActions()
+                      if (profile) setEventDialog(profile)
+                    }}
+                  >
+                    <ListItemIcon><DoneAllIcon fontSize="small" /></ListItemIcon>
+                    Mark Event
+                  </MenuItem>
+                </>
+              )}
+            </Menu>
           </Box>
         )}
 

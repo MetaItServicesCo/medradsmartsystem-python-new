@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions,
   DialogContent, DialogTitle, FormControl, IconButton, InputLabel,
-  MenuItem, Paper, Select, Tab, Table, TableBody, TableCell,
+  ListItemIcon, Menu, MenuItem, Paper, Select, Tab, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -15,6 +15,7 @@ import CancelIcon from '@mui/icons-material/Cancel'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { toast } from 'react-toastify'
 import { fetchLeaveRequests, createLeaveRequest, deleteLeaveRequest, fetchLeaveTypes } from '@/api/hr'
 
@@ -28,6 +29,26 @@ const STATUS_META: Record<string, { label: string; color: 'default' | 'warning' 
 const CUSTOM_VALUE = '__custom__'
 const fmt = (d?: string | null) => d ? new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
 const EMPTY_FORM = { leave_type_id: '', custom_leave_name: '', start_date: '', end_date: '', reason: '' }
+
+const ACTION_MENU_PAPER = {
+  elevation: 12,
+  sx: {
+    minWidth: 190,
+    borderRadius: '18px',
+    border: '1px solid rgba(124,58,237,0.14)',
+    boxShadow: '0 24px 60px rgba(30,27,75,0.18)',
+    overflow: 'hidden',
+  },
+}
+
+const ACTION_MENU_ITEM = {
+  gap: 1,
+  px: 2,
+  py: 1.2,
+  fontWeight: 800,
+  color: '#1E1B4B',
+  '& .MuiListItemIcon-root': { minWidth: 30, color: 'inherit' },
+}
 
 function KpiCard({ label, value, icon, gradient }: { label: string; value: number; icon: React.ReactNode; gradient: string }) {
   return (
@@ -115,6 +136,8 @@ export default function MyLeave() {
   const [dlg, setDlg] = useState(false)
   const [form, setForm] = useState<any>(EMPTY_FORM)
   const [cancelId, setCancelId] = useState<number | null>(null)
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionItem, setActionItem] = useState<any | null>(null)
 
   const statusFilter = (['', 'pending', 'approved', 'rejected', 'cancelled'] as const)[tab] || undefined
 
@@ -204,6 +227,15 @@ export default function MyLeave() {
   }
 
   const f = (k: string) => (e: any) => setForm((p: any) => ({ ...p, [k]: e.target.value }))
+  const openActions = (event: React.MouseEvent<HTMLElement>, item: any) => {
+    event.stopPropagation()
+    setActionAnchor(event.currentTarget)
+    setActionItem(item)
+  }
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionItem(null)
+  }
 
   const dayCount = form.start_date && form.end_date && new Date(form.end_date) >= new Date(form.start_date)
     ? Math.round((new Date(form.end_date).getTime() - new Date(form.start_date).getTime()) / 86400000) + 1
@@ -303,9 +335,9 @@ export default function MyLeave() {
                       </TableCell>
                       <TableCell>
                         {r.status === 'pending' && (
-                          <Tooltip title="Cancel request">
-                            <IconButton size="small" color="error" onClick={() => setCancelId(r.id)}>
-                              <DeleteIcon fontSize="small" />
+                          <Tooltip title="Actions">
+                            <IconButton size="small" onClick={(event) => openActions(event, r)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                              <MoreVertIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         )}
@@ -324,6 +356,22 @@ export default function MyLeave() {
           <LeaveCalendar approvedLeaves={approved} />
         </Box>
       </Box>
+
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {actionItem?.status === 'pending' && (
+          <MenuItem
+            sx={{ ...ACTION_MENU_ITEM, color: '#DC2626' }}
+            onClick={() => {
+              const item = actionItem
+              closeActions()
+              if (item) setCancelId(item.id)
+            }}
+          >
+            <ListItemIcon><DeleteIcon fontSize="small" /></ListItemIcon>
+            Cancel Request
+          </MenuItem>
+        )}
+      </Menu>
 
       {/* Apply Dialog */}
       <Dialog open={dlg} onClose={() => { setDlg(false); setForm(EMPTY_FORM) }} maxWidth="xs" fullWidth>

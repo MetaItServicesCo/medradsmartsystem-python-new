@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
-  FormControlLabel, FormLabel, IconButton, Radio, RadioGroup, Skeleton,
+  FormControlLabel, FormLabel, IconButton, ListItemIcon, Menu, MenuItem, Radio, RadioGroup, Skeleton,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow,
   Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
@@ -15,6 +15,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FilterListIcon from '@mui/icons-material/FilterList'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PaymentIcon from '@mui/icons-material/Payment'
 import PrintIcon from '@mui/icons-material/Print'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
@@ -305,6 +306,23 @@ const sameAccount = (left: BillingItem, right: BillingItem) => {
   return left.customer === right.customer
 }
 
+const ACTION_MENU_PAPER = {
+  sx: {
+    borderRadius: '16px',
+    minWidth: 190,
+    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
+    border: '1px solid #EEF0F6',
+  },
+}
+
+const ACTION_MENU_ITEM = {
+  py: 1.15,
+  px: 1.5,
+  mx: 0.75,
+  borderRadius: '10px',
+  fontWeight: 800,
+}
+
 const Billing = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -319,6 +337,8 @@ const Billing = () => {
   const [payOpen, setPayOpen] = useState<BillingItem | null>(null)
   const [printItem, setPrintItem] = useState<BillingItem | null>(null)
   const [editItem, setEditItem] = useState<BillingItem | null>(null)
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionItem, setActionItem] = useState<BillingItem | null>(null)
   const [tab, setTab] = useState(0)
   const [page, setPage] = useState(0)
   const rowsPerPage = 25
@@ -631,6 +651,23 @@ const Billing = () => {
   const openPayment = (item: BillingItem) => {
     setPayOpen(item)
     setPayAmount(String(Math.max(0, item.balance || item.amount).toFixed(2)))
+  }
+
+  const openActions = (event: React.MouseEvent<HTMLElement>, item: BillingItem) => {
+    setActionAnchor(event.currentTarget)
+    setActionItem(item)
+  }
+
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionItem(null)
+  }
+
+  const viewBillingItem = (item: BillingItem) => {
+    if (item.source === 'service') navigate(`/service-requests/${(item.raw as any).service_request_id}?highlightBilling=${item.id}`)
+    if (item.source === 'sales') navigate(`/sales/invoices?highlightInvoice=${item.id}`)
+    if (item.source === 'rental') navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
+    if (item.source === 'inspection') setExpandedKey(prev => (prev === item.key ? null : item.key))
   }
 
   const handlePay = () => {
@@ -1050,56 +1087,21 @@ const Billing = () => {
                         </Tooltip>
                       </TableCell>
                       <TableCell align="right" sx={{ pl: 2 }}>
-                        <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
-                          {canPay && item.balance > 0 && (
-                            <Button
-                              size="small"
-                              variant="contained"
-                              startIcon={<PaymentIcon />}
-                              onClick={() => openPayment(item)}
-                              sx={{ borderRadius: '10px', fontWeight: 700, textTransform: 'none', minWidth: 82, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
-                            >
-                              Pay
-                            </Button>
-                          )}
-                          {canPay && !(item.source === 'service' && item.billingKind !== 'service_invoice') && (
-                            <Tooltip title="Edit invoice">
-                              <IconButton
-                                size="small"
-                                onClick={() => setEditItem(item)}
-                                sx={{ borderRadius: '10px', border: '1px solid #E9D5FF', color: '#7C3AED', bgcolor: '#F7F0FF' }}
-                              >
-                                <EditOutlinedIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                          <Button
+                        <Tooltip title="Actions" arrow>
+                          <IconButton
                             size="small"
-                            variant="outlined"
-                            startIcon={<VisibilityOutlinedIcon />}
-                            onClick={() => {
-                              if (item.source === 'service') navigate(`/service-requests/${(item.raw as any).service_request_id}?highlightBilling=${item.id}`)
-                              if (item.source === 'sales') navigate(`/sales/invoices?highlightInvoice=${item.id}`)
-                              if (item.source === 'rental') navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
-                              if (item.source === 'inspection') setExpandedKey(expanded ? null : item.key)
+                            onClick={(event) => openActions(event, item)}
+                            sx={{
+                              borderRadius: '12px',
+                              border: '1px solid #E9D5FF',
+                              color: '#7C3AED',
+                              bgcolor: '#F7F0FF',
+                              '&:hover': { bgcolor: '#EDE9FE' },
                             }}
-                            sx={{ borderRadius: '10px', fontWeight: 700, textTransform: 'none', minWidth: 82 }}
                           >
-                            View
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<PrintIcon />}
-                            onClick={() => setPrintItem(item)}
-                            sx={{ borderRadius: '10px', fontWeight: 700, textTransform: 'none', minWidth: 82 }}
-                          >
-                            Print
-                          </Button>
-                          <IconButton size="small" onClick={() => setExpandedKey(expanded ? null : item.key)}>
-                            {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            <MoreVertIcon fontSize="small" />
                           </IconButton>
-                        </Box>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                     <TableRow key={`${item.key}-details`}>
@@ -1125,6 +1127,43 @@ const Billing = () => {
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
         />
       </Card>
+
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {actionItem && canPay && actionItem.balance > 0 && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openPayment(actionItem); closeActions() }}>
+            <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            Pay
+          </MenuItem>
+        )}
+        {actionItem && canPay && !(actionItem.source === 'service' && actionItem.billingKind !== 'service_invoice') && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setEditItem(actionItem); closeActions() }}>
+            <ListItemIcon><EditOutlinedIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            Edit Invoice
+          </MenuItem>
+        )}
+        {actionItem && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { viewBillingItem(actionItem); closeActions() }}>
+            <ListItemIcon><VisibilityOutlinedIcon fontSize="small" sx={{ color: '#2563EB' }} /></ListItemIcon>
+            View
+          </MenuItem>
+        )}
+        {actionItem && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setPrintItem(actionItem); closeActions() }}>
+            <ListItemIcon><PrintIcon fontSize="small" sx={{ color: '#059669' }} /></ListItemIcon>
+            Print
+          </MenuItem>
+        )}
+        {actionItem && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setExpandedKey(prev => (prev === actionItem.key ? null : actionItem.key)); closeActions() }}>
+            <ListItemIcon>
+              {expandedKey === actionItem.key
+                ? <ExpandLessIcon fontSize="small" sx={{ color: '#64748B' }} />
+                : <ExpandMoreIcon fontSize="small" sx={{ color: '#64748B' }} />}
+            </ListItemIcon>
+            {expandedKey === actionItem.key ? 'Hide Details' : 'Show Details'}
+          </MenuItem>
+        )}
+      </Menu>
 
       <InvoicePrintDialog
         open={Boolean(printItem)}

@@ -12,6 +12,10 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
+  ListItemIcon,
+  Menu,
+  MenuItem,
   Skeleton,
   Table,
   TableBody,
@@ -25,12 +29,28 @@ import AssessmentIcon from '@mui/icons-material/Assessment'
 import BuildIcon from '@mui/icons-material/Build'
 import BusinessIcon from '@mui/icons-material/Business'
 import EngineeringIcon from '@mui/icons-material/Engineering'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import PrintIcon from '@mui/icons-material/Print'
 import { fetchServiceRequests, type ServiceRequest } from '@/api/serviceRequests'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
+const ACTION_MENU_PAPER = {
+  sx: {
+    borderRadius: '16px',
+    minWidth: 170,
+    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
+    border: '1px solid #EEF0F6',
+  },
+}
+const ACTION_MENU_ITEM = {
+  py: 1.15,
+  px: 1.5,
+  mx: 0.75,
+  borderRadius: '10px',
+  fontWeight: 800,
+}
 
 const escapeHtml = (value: unknown) => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -206,7 +226,19 @@ const Reports = () => {
   const [params] = useSearchParams()
   const highlightedId = Number(params.get('serviceRequest') || 0)
   const [selectedReport, setSelectedReport] = useState<ServiceRequest | null>(null)
+  const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
+  const [actionReport, setActionReport] = useState<ServiceRequest | null>(null)
   const [dismissedAutoOpenId, setDismissedAutoOpenId] = useState<number | null>(null)
+
+  const openActions = (event: React.MouseEvent<HTMLElement>, report: ServiceRequest) => {
+    setActionAnchor(event.currentTarget)
+    setActionReport(report)
+  }
+
+  const closeActions = () => {
+    setActionAnchor(null)
+    setActionReport(null)
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['reports', 'completed-service-requests'],
@@ -321,15 +353,13 @@ const Reports = () => {
                       <Typography sx={{ color: '#047857', fontWeight: 950 }}>{money(report.total_cost)}</Typography>
                     </TableCell>
                     <TableCell align="right">
-                      <Button
+                      <IconButton
                         size="small"
-                        variant="outlined"
-                        startIcon={<VisibilityIcon />}
-                        onClick={() => setSelectedReport(report)}
-                        sx={{ borderRadius: '12px', fontWeight: 900, borderColor: '#7C3AED', color: '#7C3AED' }}
+                        onClick={(event) => openActions(event, report)}
+                        sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
                       >
-                        View Report
-                      </Button>
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 )
@@ -338,6 +368,15 @@ const Reports = () => {
           </Table>
         </TableContainer>
       </Card>
+
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {actionReport && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setSelectedReport(actionReport); closeActions() }}>
+            <ListItemIcon><VisibilityIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            View Report
+          </MenuItem>
+        )}
+      </Menu>
 
       <Dialog open={!!selectedReport} onClose={closeReport} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
         <DialogTitle sx={{ p: 0 }}>
