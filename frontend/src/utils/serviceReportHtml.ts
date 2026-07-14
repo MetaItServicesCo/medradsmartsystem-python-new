@@ -15,7 +15,7 @@ const fmtMoney = (v: number | string | null | undefined) => `$${Number(v || 0).t
 
 const getSessions = (sr: any) =>
   (sr?.history || [])
-    .filter((e: any) => e.action === 'technician_clock_out')
+    .filter((e: any) => e.action === 'technician_clock_out' || e.action === 'technician_work_session')
     .map((e: any) => ({ user: e.user || sr?.technician_name || 'Technician', timestamp: e.timestamp, ...e.changes }))
 
 /** CSS classes used by the report sheet — add to InvoicePrintDialog.printStyles. */
@@ -25,7 +25,7 @@ export const SERVICE_REPORT_EXTRA_CSS = `
   .report-session { border: 1px solid #E5E7EB; border-left: 5px solid #7C3AED; border-radius: 14px; padding: 16px; margin-top: 12px; page-break-inside: avoid; }
   .report-session-head { display: flex; justify-content: space-between; color: #1E1B4B; font-size: 16px; }
   .report-session-head span { color: #047857; font-weight: 900; }
-  .report-times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; color: #475569; }
+  .report-times { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 14px 0; color: #475569; }
   .report-h4 { margin: 12px 0 5px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
   .report-equipment-list { display: grid; gap: 8px; margin-top: 8px; }
   .report-equipment-item { border: 1px solid #EDE9FE; border-radius: 10px; padding: 8px 10px; background: #FAF5FF; color: #312E81; }
@@ -64,8 +64,9 @@ export const buildServiceReportSheet = (sr: any): string => {
             <span>${esc(Number(s.duration_hours || 0).toFixed(2))} hrs</span>
           </div>
           <div class="report-times">
-            <div><b>Clock In</b><br>${esc(fmtDateTime(s.clocked_in_at))}</div>
-            <div><b>Clock Out</b><br>${esc(fmtDateTime(s.clocked_out_at || s.timestamp))}</div>
+            <div><b>Start Time</b><br>${esc(fmtDateTime(s.start_time || s.clocked_in_at))}</div>
+            <div><b>End Time</b><br>${esc(fmtDateTime(s.end_time || s.clocked_out_at || s.timestamp))}</div>
+            ${s.break_minutes !== undefined ? `<div><b>Break Time</b><br>${esc(String(s.break_minutes))} min</div>` : ''}
           </div>
           <div class="report-h4">Diagnosis</div><p>${esc(s.diagnosis || '-')}</p>
           <div class="report-h4">Work Done</div><p>${esc(s.work_done || '-')}</p>

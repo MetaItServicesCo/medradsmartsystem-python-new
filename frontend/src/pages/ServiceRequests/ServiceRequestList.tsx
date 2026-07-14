@@ -42,6 +42,10 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   new:         { bg: '#E0E7FF', color: '#4338CA' },
   assigned:    { bg: '#DBEAFE', color: '#1D4ED8' },
   in_progress: { bg: '#FEF3C7', color: '#B45309' },
+  waiting_on_parts: { bg: '#FFE4E6', color: '#BE123C' },
+  waiting_for_approval: { bg: '#E0F2FE', color: '#0369A1' },
+  waiting_for_depot_repair: { bg: '#F3E8FF', color: '#7E22CE' },
+  waiting_for_vendor_repair: { bg: '#FFEDD5', color: '#C2410C' },
   completed:   { bg: '#D1FAE5', color: '#047857' },
   cancelled:   { bg: '#F3F4F6', color: '#6B7280' },
 }
@@ -49,10 +53,22 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
 const STATUS_LABELS: Record<string, string> = {
   new: 'New',
   assigned: 'Assigned',
-  in_progress: 'In Progress',
+  in_progress: 'Service In Progress',
+  waiting_on_parts: 'Waiting on Parts',
+  waiting_for_approval: 'Waiting for Approval',
+  waiting_for_depot_repair: 'Waiting for Depot Repair',
+  waiting_for_vendor_repair: 'Waiting for Vendor Repair',
   completed: 'Completed',
   cancelled: 'Cancelled',
 }
+
+const WORKFLOW_OPEN_STATUSES = [
+  'in_progress',
+  'waiting_on_parts',
+  'waiting_for_approval',
+  'waiting_for_depot_repair',
+  'waiting_for_vendor_repair',
+]
 
 const STAT_CARDS = [
   {
@@ -70,7 +86,7 @@ const STAT_CARDS = [
     soft: '#EFF6FF',
   },
   {
-    label: 'In Progress',
+    label: 'Active Workflow',
     key: 'in_progress',
     icon: <PendingActionsIcon />,
     color: '#E39B23',
@@ -156,7 +172,7 @@ const ServiceRequestList = () => {
   const statsValues: Record<string, number> = {
     total,
     new: countByStatus('new') + countByStatus('assigned'),
-    in_progress: countByStatus('in_progress'),
+    in_progress: WORKFLOW_OPEN_STATUSES.reduce((sum, status) => sum + countByStatus(status), 0),
     completed: countByStatus('completed'),
   }
 
@@ -278,7 +294,11 @@ const ServiceRequestList = () => {
               <MenuItem value="">All</MenuItem>
               <MenuItem value="new">New</MenuItem>
               <MenuItem value="assigned">Assigned</MenuItem>
-              <MenuItem value="in_progress">In Progress</MenuItem>
+              <MenuItem value="in_progress">Service In Progress</MenuItem>
+              <MenuItem value="waiting_on_parts">Waiting on Parts</MenuItem>
+              <MenuItem value="waiting_for_approval">Waiting for Approval</MenuItem>
+              <MenuItem value="waiting_for_depot_repair">Waiting for Depot Repair</MenuItem>
+              <MenuItem value="waiting_for_vendor_repair">Waiting for Vendor Repair</MenuItem>
               <MenuItem value="completed">Completed</MenuItem>
               <MenuItem value="cancelled">Cancelled</MenuItem>
             </Select>

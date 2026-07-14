@@ -1,7 +1,16 @@
 import apiClient from './client'
 
 export type ServiceRequestPriority = 'low' | 'medium' | 'high' | 'critical'
-export type ServiceRequestStatus = 'new' | 'assigned' | 'in_progress' | 'completed' | 'cancelled'
+export type ServiceRequestStatus =
+  | 'new'
+  | 'assigned'
+  | 'in_progress'
+  | 'waiting_on_parts'
+  | 'waiting_for_approval'
+  | 'waiting_for_depot_repair'
+  | 'waiting_for_vendor_repair'
+  | 'completed'
+  | 'cancelled'
 
 // ── Line Items ──────────────────────────────────────────────────────────────
 
@@ -358,8 +367,19 @@ export interface ServiceRequestClockOutPayload {
   test_equipment_ids?: number[]
 }
 
+export interface ServiceRequestWorkSessionPayload extends ServiceRequestClockOutPayload {
+  start_time: string
+  end_time: string
+  break_minutes?: number
+}
+
 export const clockOutServiceRequest = async (id: number, data: ServiceRequestClockOutPayload): Promise<ServiceRequest> => {
   const res = await apiClient.post(`/service-requests/${id}/clock-out`, data)
+  return res.data
+}
+
+export const createServiceRequestWorkSession = async (id: number, data: ServiceRequestWorkSessionPayload): Promise<ServiceRequest> => {
+  const res = await apiClient.post(`/service-requests/${id}/work-sessions`, data)
   return res.data
 }
 

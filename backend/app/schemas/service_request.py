@@ -139,6 +139,16 @@ class ServiceRequestClockOutCreate(BaseModel):
     test_equipment_ids: Optional[List[int]] = None
 
 
+class ServiceRequestWorkSessionCreate(BaseModel):
+    start_time: datetime
+    end_time: datetime
+    break_minutes: Decimal = Decimal("0")
+    diagnosis: Optional[str] = None
+    work_done: Optional[str] = None
+    notes: Optional[str] = None
+    test_equipment_ids: Optional[List[int]] = None
+
+
 class ServiceRequestResponse(BaseModel):
     id: int
     request_number: str

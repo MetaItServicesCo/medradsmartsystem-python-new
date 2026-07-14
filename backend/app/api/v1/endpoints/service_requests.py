@@ -31,6 +31,7 @@ from app.schemas.service_request import (
     ServiceRequestQuotationResponse, ServiceRequestQuotationListResponse,
     QuotationPaymentCreate, QuotationPaymentResponse,
     LineItemCreate, ServiceRequestNoteCreate, ServiceRequestClockOutCreate,
+    ServiceRequestWorkSessionCreate,
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
@@ -52,10 +53,23 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_IMAGE_SIZE = 8 * 1024 * 1024
 
 # Allowed ordered transitions  (+ cancelled from any state)
+SERVICE_WORKFLOW_STATUSES = [
+    ServiceRequestStatus.IN_PROGRESS,
+    ServiceRequestStatus.WAITING_ON_PARTS,
+    ServiceRequestStatus.WAITING_FOR_APPROVAL,
+    ServiceRequestStatus.WAITING_FOR_DEPOT_REPAIR,
+    ServiceRequestStatus.WAITING_FOR_VENDOR_REPAIR,
+    ServiceRequestStatus.COMPLETED,
+]
+
 VALID_TRANSITIONS = {
     ServiceRequestStatus.NEW: [ServiceRequestStatus.ASSIGNED, ServiceRequestStatus.CANCELLED],
-    ServiceRequestStatus.ASSIGNED: [ServiceRequestStatus.IN_PROGRESS, ServiceRequestStatus.CANCELLED],
-    ServiceRequestStatus.IN_PROGRESS: [ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED],
+    ServiceRequestStatus.ASSIGNED: [*SERVICE_WORKFLOW_STATUSES, ServiceRequestStatus.CANCELLED],
+    ServiceRequestStatus.IN_PROGRESS: [*SERVICE_WORKFLOW_STATUSES, ServiceRequestStatus.CANCELLED],
+    ServiceRequestStatus.WAITING_ON_PARTS: [*SERVICE_WORKFLOW_STATUSES, ServiceRequestStatus.CANCELLED],
+    ServiceRequestStatus.WAITING_FOR_APPROVAL: [*SERVICE_WORKFLOW_STATUSES, ServiceRequestStatus.CANCELLED],
+    ServiceRequestStatus.WAITING_FOR_DEPOT_REPAIR: [*SERVICE_WORKFLOW_STATUSES, ServiceRequestStatus.CANCELLED],
+    ServiceRequestStatus.WAITING_FOR_VENDOR_REPAIR: [*SERVICE_WORKFLOW_STATUSES, ServiceRequestStatus.CANCELLED],
     ServiceRequestStatus.COMPLETED: [],   # terminal
     ServiceRequestStatus.CANCELLED: [],   # terminal
 }
@@ -177,6 +191,31 @@ def _active_clock_session(sr: ServiceRequest) -> Optional[dict]:
         if action == "technician_clock_in":
             return entry
     return None
+
+
+def _test_equipment_history_items(db: Session, test_equipment_ids: list[int]) -> list[dict[str, Any]]:
+    ids = list(dict.fromkeys(test_equipment_ids or []))
+    if not ids:
+        return []
+    equipment_rows = db.query(TestEquipment).filter(TestEquipment.id.in_(ids)).all()
+    found_ids = {item.id for item in equipment_rows}
+    missing_ids = [item_id for item_id in ids if item_id not in found_ids]
+    if missing_ids:
+        raise HTTPException(status_code=404, detail=f"Test equipment not found: {', '.join(map(str, missing_ids))}")
+    equipment_by_id = {item.id: item for item in equipment_rows}
+    return [
+        {
+            "id": item.id,
+            "tem": item.tem,
+            "mrf": item.mrf,
+            "model": item.model,
+            "serial_number": item.serial_number,
+            "description": item.description,
+            "asset": item.asset,
+            "image_url": item.image_url,
+        }
+        for item in (equipment_by_id[item_id] for item_id in ids)
+    ]
 
 
 def _next_service_invoice_number(db: Session) -> str:
@@ -787,11 +826,18 @@ def update_service_request(
         # Auto-set timestamps based on transition
         if new_status == ServiceRequestStatus.ASSIGNED:
             update_data["assigned_at"] = datetime.utcnow()
-        elif new_status == ServiceRequestStatus.IN_PROGRESS:
-            update_data["started_at"] = datetime.utcnow()
+        elif new_status in [
+            ServiceRequestStatus.IN_PROGRESS,
+            ServiceRequestStatus.WAITING_ON_PARTS,
+            ServiceRequestStatus.WAITING_FOR_APPROVAL,
+            ServiceRequestStatus.WAITING_FOR_DEPOT_REPAIR,
+            ServiceRequestStatus.WAITING_FOR_VENDOR_REPAIR,
+        ]:
+            if not db_sr.started_at:
+                update_data["started_at"] = datetime.utcnow()
         elif new_status == ServiceRequestStatus.COMPLETED:
             if _active_clock_session(db_sr):
-                raise HTTPException(status_code=400, detail="Clock out before marking this service request complete")
+                raise HTTPException(status_code=400, detail="End the active work session before marking this service request complete")
             update_data["completed_at"] = datetime.utcnow()
             update_data["total_cost"] = _calculate_service_cost(db_sr)
 
@@ -1033,6 +1079,87 @@ def clock_in_service_request(
 
 class ActiveSessionAdjust(BaseModel):
     session_hours: float
+
+
+@router.post("/{request_id}/work-sessions", response_model=ServiceRequestResponse)
+def create_manual_work_session(
+    request_id: int,
+    session: ServiceRequestWorkSessionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Save one manual technician work-session ledger entry."""
+    db_sr = _load_service_request_for_work(db, request_id, current_user)
+
+    start_time = session.start_time
+    end_time = session.end_time
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+    if end_time <= start_time:
+        raise HTTPException(status_code=400, detail="End time must be after start time")
+
+    break_minutes = Decimal(str(session.break_minutes or 0))
+    if break_minutes < 0:
+        raise HTTPException(status_code=400, detail="Break time cannot be negative")
+    raw_hours = Decimal(str((end_time - start_time).total_seconds() / 3600))
+    break_hours = break_minutes / Decimal("60")
+    duration_hours = max(raw_hours - break_hours, Decimal("0")).quantize(Decimal("0.01"))
+
+    diagnosis = (session.diagnosis or "").strip()
+    work_done = (session.work_done or "").strip()
+    notes = (session.notes or "").strip()
+    test_equipment_used = _test_equipment_history_items(db, list(session.test_equipment_ids or []))
+    if duration_hours <= 0:
+        raise HTTPException(status_code=400, detail="Work-session duration must be greater than zero after break time")
+    if not diagnosis and not work_done and not notes and not test_equipment_used:
+        raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, or test equipment before saving the session")
+
+    now = datetime.utcnow()
+    if db_sr.status == ServiceRequestStatus.ASSIGNED:
+        db_sr.status = ServiceRequestStatus.IN_PROGRESS
+    if db_sr.status == ServiceRequestStatus.NEW:
+        raise HTTPException(status_code=400, detail="Assign a technician before saving work")
+    if not db_sr.started_at:
+        db_sr.started_at = now
+
+    existing_hours = Decimal(str(db_sr.time_spent_hours or 0))
+    db_sr.time_spent_hours = existing_hours + duration_hours
+    db_sr.total_cost = _calculate_service_cost(db_sr)
+
+    history = list(db_sr.history or [])
+    history.append(_history_entry("technician_work_session", current_user, {
+        "session_id": uuid.uuid4().hex,
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+        "break_minutes": float(break_minutes),
+        "duration_hours": float(duration_hours),
+        "total_hours": float(db_sr.time_spent_hours or 0),
+        "diagnosis": diagnosis,
+        "work_done": work_done,
+        "notes": notes,
+        "test_equipment": test_equipment_used,
+        # Compatibility for report utilities that still read clock fields.
+        "clocked_in_at": start_time.isoformat(),
+        "clocked_out_at": end_time.isoformat(),
+    }))
+    db_sr.history = history
+    db.commit()
+    db.refresh(db_sr)
+    return _enrich(
+        db.query(ServiceRequest)
+        .options(
+            joinedload(ServiceRequest.facility),
+            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+            joinedload(ServiceRequest.requester),
+            joinedload(ServiceRequest.assigned_technician),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+        )
+        .filter(ServiceRequest.id == db_sr.id)
+        .first()
+    )
 
 
 @router.patch("/{request_id}/active-session", response_model=ServiceRequestResponse)

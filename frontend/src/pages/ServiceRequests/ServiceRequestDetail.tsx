@@ -17,7 +17,6 @@ import EngineeringIcon from '@mui/icons-material/Engineering'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
@@ -27,16 +26,12 @@ import ThumbDownIcon from '@mui/icons-material/ThumbDown'
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import HistoryIcon from '@mui/icons-material/History'
 import ImageIcon from '@mui/icons-material/Image'
-import PlayArrowIcon from '@mui/icons-material/PlayArrow'
-import StopIcon from '@mui/icons-material/Stop'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import EditIcon from '@mui/icons-material/Edit'
 import { toast } from 'react-toastify'
 
 import {
-  adjustActiveSession,
-  clockInServiceRequest,
-  clockOutServiceRequest,
+  createServiceRequestWorkSession,
   fetchServiceRequest,
   fetchServiceInvoices,
   generateServiceInvoice,
@@ -63,6 +58,10 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   new:         { bg: '#E0E7FF', color: '#4338CA' },
   assigned:    { bg: '#DBEAFE', color: '#1D4ED8' },
   in_progress: { bg: '#FEF3C7', color: '#B45309' },
+  waiting_on_parts: { bg: '#FFE4E6', color: '#BE123C' },
+  waiting_for_approval: { bg: '#E0F2FE', color: '#0369A1' },
+  waiting_for_depot_repair: { bg: '#F3E8FF', color: '#7E22CE' },
+  waiting_for_vendor_repair: { bg: '#FFEDD5', color: '#C2410C' },
   completed:   { bg: '#D1FAE5', color: '#047857' },
   cancelled:   { bg: '#F3F4F6', color: '#6B7280' },
 }
@@ -70,7 +69,11 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
 const STATUS_LABELS: Record<string, string> = {
   new: 'New',
   assigned: 'Assigned',
-  in_progress: 'In Progress',
+  in_progress: 'Service In Progress',
+  waiting_on_parts: 'Waiting on Parts',
+  waiting_for_approval: 'Waiting for Approval',
+  waiting_for_depot_repair: 'Waiting for Depot Repair',
+  waiting_for_vendor_repair: 'Waiting for Vendor Repair',
   completed: 'Completed',
   cancelled: 'Cancelled',
 }
@@ -79,10 +82,46 @@ const STATUS_LABELS: Record<string, string> = {
 const NEXT_STATUS: Record<string, string> = {
   new: 'assigned',
   assigned: 'in_progress',
-  in_progress: 'completed',
 }
 
 const STATUS_STEPS = ['new', 'assigned', 'in_progress', 'completed']
+const SERVICE_WORKFLOW_STATUS_OPTIONS: { value: SRStatus; label: string }[] = [
+  { value: 'waiting_on_parts', label: 'Waiting on Parts' },
+  { value: 'in_progress', label: 'Service In Progress' },
+  { value: 'waiting_for_approval', label: 'Waiting for Approval' },
+  { value: 'waiting_for_depot_repair', label: 'Waiting for Depot Repair' },
+  { value: 'waiting_for_vendor_repair', label: 'Waiting for Vendor Repair' },
+  { value: 'completed', label: 'Completed' },
+]
+
+const toDateTimeLocalValue = (date = new Date()) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
+
+const HISTORY_FIELD_LABELS: Record<string, string> = {
+  start_time: 'Start Time',
+  end_time: 'End Time',
+  break_minutes: 'Break Time',
+  duration_hours: 'Session Duration',
+  total_hours: 'Total Saved Time',
+  diagnosis: 'Diagnosis',
+  work_done: 'Work Done',
+  notes: 'Notes',
+  status: 'Status',
+  assigned_technician_id: 'Assigned Technician',
+  cc_auth_requested: 'CC Authorization',
+}
+
+const HISTORY_DATE_FIELDS = new Set(['start_time', 'end_time', 'clocked_in_at', 'clocked_out_at'])
+const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'test_equipment', 'clocked_in_at', 'clocked_out_at'])
+
+const historyActionLabel = (action?: string) => {
+  if (action === 'technician_work_session' || action === 'technician_clock_out') return 'Technician Work Session'
+  if (action === 'technician_clock_in') return 'Work Session Started'
+  if (action === 'status_changed') return 'Status Changed'
+  return String(action || 'updated').replace(/_/g, ' ')
+}
 
 const ServiceRequestDetail = () => {
   const { id } = useParams()
@@ -93,8 +132,11 @@ const ServiceRequestDetail = () => {
   const [sessionDiagnosis, setSessionDiagnosis] = useState('')
   const [sessionWorkDone, setSessionWorkDone] = useState('')
   const [sessionNotes, setSessionNotes] = useState('')
+  const [sessionStartTime, setSessionStartTime] = useState(toDateTimeLocalValue())
+  const [sessionEndTime, setSessionEndTime] = useState(toDateTimeLocalValue())
+  const [sessionBreakMinutes, setSessionBreakMinutes] = useState('0')
   const [selectedTestEquipmentIds, setSelectedTestEquipmentIds] = useState<number[]>([])
-  const [nowTick, setNowTick] = useState(Date.now())
+  const [serviceWorkflowStatus, setServiceWorkflowStatus] = useState<SRStatus>('in_progress')
   const [cancelOpen, setCancelOpen] = useState(false)
   const [changeTechOpen, setChangeTechOpen] = useState(false)
   const [imageOpen, setImageOpen] = useState(false)
@@ -109,8 +151,6 @@ const ServiceRequestDetail = () => {
   const [invoiceLaborFees, setInvoiceLaborFees] = useState('0')
   const [editingTime, setEditingTime] = useState(false)
   const [editTimeValue, setEditTimeValue] = useState('')
-  const [editingSession, setEditingSession] = useState(false)
-  const [editSessionValue, setEditSessionValue] = useState('')
   const [editInvoiceOpen, setEditInvoiceOpen] = useState(false)
   const [editInvoiceAmountPaid, setEditInvoiceAmountPaid] = useState('0')
   const [editInvoiceStatus, setEditInvoiceStatus] = useState('')
@@ -127,6 +167,12 @@ const ServiceRequestDetail = () => {
     queryFn: () => fetchServiceRequest(Number(id)),
     enabled: !!id,
   })
+
+  useEffect(() => {
+    if (sr?.status && SERVICE_WORKFLOW_STATUS_OPTIONS.some(option => option.value === sr.status)) {
+      setServiceWorkflowStatus(sr.status)
+    }
+  }, [sr?.status])
 
   // Secondary invoice check — fallback for backends that don't yet embed service_invoice in the SR response
   const { data: srInvoicesData } = useQuery({
@@ -164,28 +210,22 @@ const ServiceRequestDetail = () => {
     },
   })
 
-  const clockInMutation = useMutation({
-    mutationFn: () => clockInServiceRequest(Number(id)),
-    onSuccess: () => {
-      toast.success('Clocked in. Work session started.')
-      setNowTick(Date.now())
-      queryClient.invalidateQueries({ queryKey: ['service-request', id] })
-      queryClient.invalidateQueries({ queryKey: ['service-requests'] })
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || 'Clock in failed')
-    },
-  })
-
-  const clockOutMutation = useMutation({
-    mutationFn: () => clockOutServiceRequest(Number(id), {
+  const workSessionMutation = useMutation({
+    mutationFn: () => createServiceRequestWorkSession(Number(id), {
+      start_time: new Date(sessionStartTime).toISOString(),
+      end_time: new Date(sessionEndTime).toISOString(),
+      break_minutes: Number(sessionBreakMinutes || 0),
       diagnosis: sessionDiagnosis.trim(),
       work_done: sessionWorkDone.trim(),
       notes: sessionNotes.trim(),
       test_equipment_ids: selectedTestEquipmentIds,
     }),
     onSuccess: () => {
-      toast.success('Clocked out. Hours were calculated automatically.')
+      toast.success('Work session saved')
+      const now = new Date()
+      setSessionStartTime(toDateTimeLocalValue(now))
+      setSessionEndTime(toDateTimeLocalValue(now))
+      setSessionBreakMinutes('0')
       setSessionDiagnosis('')
       setSessionWorkDone('')
       setSessionNotes('')
@@ -194,19 +234,7 @@ const ServiceRequestDetail = () => {
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.detail || 'Clock out failed')
-    },
-  })
-
-  const adjustSessionMutation = useMutation({
-    mutationFn: (hours: number) => adjustActiveSession(Number(id), hours),
-    onSuccess: (updatedSr) => {
-      queryClient.setQueryData(['service-request', id], updatedSr)
-      setNowTick(Date.now())
-      setEditingSession(false)
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || 'Failed to adjust session time')
+      toast.error(err.response?.data?.detail || 'Failed to save work session')
     },
   })
 
@@ -288,18 +316,44 @@ const ServiceRequestDetail = () => {
       payload.assigned_technician_id = technicianId as number
     }
 
-    if (next === 'completed') {
-      if (activeClockStart) {
-        toast.warning('Clock out and save the current work session before completing')
-        return
-      }
+    updateMutation.mutate(payload)
+  }
+
+  const handleWorkflowStatusChange = () => {
+    if (!sr) return
+    if (serviceWorkflowStatus === sr.status) {
+      toast.info('Select a different status first')
+      return
+    }
+    if (serviceWorkflowStatus === 'completed') {
       if (timeSpentHours <= 0) {
-        toast.warning('Complete at least one clock in/out session before marking this service complete')
+        toast.warning('Save at least one work session before completing')
         return
       }
     }
+    updateMutation.mutate({ status: serviceWorkflowStatus })
+  }
 
-    updateMutation.mutate(payload)
+  const handleSaveManualSession = () => {
+    if (!sessionStartTime || !sessionEndTime) {
+      toast.error('Start time and end time are required')
+      return
+    }
+    const start = new Date(sessionStartTime)
+    const end = new Date(sessionEndTime)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      toast.error('End time must be after start time')
+      return
+    }
+    if (Number(sessionBreakMinutes || 0) < 0) {
+      toast.error('Break time cannot be negative')
+      return
+    }
+    if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0) {
+      toast.info('Add diagnosis, work done, notes, or test equipment before saving the session')
+      return
+    }
+    workSessionMutation.mutate()
   }
 
   const handleCancel = () => {
@@ -332,39 +386,10 @@ const ServiceRequestDetail = () => {
     })
   }
 
-  const activeClockEntry = useMemo(() => {
-    for (const entry of [...(sr?.history || [])].reverse()) {
-      if (entry.action === 'technician_clock_out') return null
-      if (entry.action === 'technician_clock_in') return entry
-    }
-    return null
-  }, [sr?.history])
-
   const billableQuotations = useMemo(
     () => (sr?.quotations || []).filter(q => !['paid', 'included_in_invoice', 'cancelled', 'rejected'].includes(String(q.status || '').toLowerCase())),
     [sr?.quotations]
   )
-
-  const activeClockStart = activeClockEntry?.changes?.clocked_in_at || activeClockEntry?.timestamp || null
-
-  useEffect(() => {
-    if (!activeClockStart) return undefined
-    const timer = window.setInterval(() => setNowTick(Date.now()), 30000)
-    return () => window.clearInterval(timer)
-  }, [activeClockStart])
-
-  const parseUTC = (s: string) => new Date(/Z|[+-]\d{2}:/.test(s) ? s : s + 'Z')
-  const activeElapsedHours = activeClockStart
-    ? Math.max((nowTick - parseUTC(activeClockStart).getTime()) / 3600000, 0)
-    : 0
-
-  const formatElapsedHours = (hours: number) => {
-    const totalMinutes = Math.max(Math.round(hours * 60), 0)
-    const h = Math.floor(totalMinutes / 60)
-    const m = totalMinutes % 60
-    if (h <= 0) return `${m}m`
-    return `${h}h ${m.toString().padStart(2, '0')}m`
-  }
 
   const formatDateTime = (d: string | null) => {
     if (!d) return '—'
@@ -380,8 +405,12 @@ const ServiceRequestDetail = () => {
     return changes as Record<string, unknown>
   }
 
-  const formatHistoryValue = (value: unknown) => {
+  const formatHistoryValue = (value: unknown, field?: string) => {
     if (value === null || value === undefined || value === '') return '---'
+    if (field && HISTORY_DATE_FIELDS.has(field) && typeof value === 'string') return formatDateTime(value)
+    if (field === 'break_minutes') return `${Number(value || 0)} min`
+    if (field === 'duration_hours' || field === 'total_hours') return `${Number(value || 0).toFixed(2)} hrs`
+    if (field === 'status' && typeof value === 'string') return STATUS_LABELS[value] || value.replace(/_/g, ' ')
     if (typeof value === 'object') {
       try {
         return JSON.stringify(value)
@@ -392,12 +421,12 @@ const ServiceRequestDetail = () => {
     return String(value)
   }
 
-  const renderHistoryChange = (change: unknown) => {
+  const renderHistoryChange = (field: string, change: unknown) => {
     if (change && typeof change === 'object' && !Array.isArray(change) && ('from' in change || 'to' in change)) {
       const pair = change as { from?: unknown; to?: unknown }
-      return `${formatHistoryValue(pair.from)} -> ${formatHistoryValue(pair.to)}`
+      return `${formatHistoryValue(pair.from, field)} -> ${formatHistoryValue(pair.to, field)}`
     }
-    return formatHistoryValue(change)
+    return formatHistoryValue(change, field)
   }
 
   const renderTestEquipmentHistory = (value: unknown) => {
@@ -444,6 +473,22 @@ const ServiceRequestDetail = () => {
     )
   }
 
+  const displayedHistory = useMemo(() => {
+    const history = sr?.history || []
+    const completedSessionIds = new Set(
+      history
+        .filter((entry) => entry.action === 'technician_clock_out' || entry.action === 'technician_work_session')
+        .map((entry) => getHistoryChanges(entry.changes).session_id)
+        .filter(Boolean)
+    )
+
+    return history.filter((entry) => {
+      if (entry.action !== 'technician_clock_in') return true
+      const sessionId = getHistoryChanges(entry.changes).session_id
+      return !sessionId || !completedSessionIds.has(sessionId)
+    })
+  }, [sr?.history])
+
   if (isLoading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -466,7 +511,10 @@ const ServiceRequestDetail = () => {
 
   const pColor = PRIORITY_COLORS[sr.priority] || PRIORITY_COLORS.low
   const sColor = STATUS_COLORS[sr.status] || STATUS_COLORS.new
-  const currentStepIndex = STATUS_STEPS.indexOf(sr.status)
+  const progressStatus = SERVICE_WORKFLOW_STATUS_OPTIONS.some(option => option.value === sr.status) && sr.status !== 'completed'
+    ? 'in_progress'
+    : sr.status
+  const currentStepIndex = STATUS_STEPS.indexOf(progressStatus)
   const isTerminal = sr.status === 'completed' || sr.status === 'cancelled'
   const nextStatus = NEXT_STATUS[sr.status]
   const requestImageUrl = resolveUploadUrl(sr.request_image_url) || sr.request_image_url || ''
@@ -474,8 +522,6 @@ const ServiceRequestDetail = () => {
   const timeSpentHours = Number(sr.time_spent_hours || 0)
   const tierLaborRate = Number(sr.tier_labor_rate_per_hour || 0)
   const calculatedServiceCost = Number(sr.calculated_service_cost ?? (timeSpentHours * tierLaborRate))
-  const activeProjectedHours = timeSpentHours + activeElapsedHours
-  const activeProjectedCost = activeProjectedHours * tierLaborRate
   const selectedQuotationTotal = includeQuotations
     ? billableQuotations
       .filter(q => selectedQuotationIds.includes(q.id))
@@ -565,7 +611,7 @@ const ServiceRequestDetail = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 2 }}>
             {STATUS_STEPS.map((step, i) => {
               const isActive = i <= currentStepIndex && sr.status !== 'cancelled'
-              const isCurrent = step === sr.status
+              const isCurrent = step === progressStatus
               return (
                 <Box key={step} sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
                   <Box
@@ -746,13 +792,13 @@ const ServiceRequestDetail = () => {
               Service Request History
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 340, overflowY: 'auto', pr: 0.5 }}>
-              {(sr.history || []).length === 0 ? (
+              {displayedHistory.length === 0 ? (
                 <Typography sx={{ color: '#94A3B8', fontSize: '0.875rem' }}>No history recorded yet.</Typography>
               ) : (
-                [...(sr.history || [])].reverse().map((entry, index) => {
+                [...displayedHistory].reverse().map((entry, index) => {
                   const changes = getHistoryChanges(entry.changes)
                   const visibleChanges = Object.entries(changes)
-                    .filter(([field]) => !['session_id', 'test_equipment'].includes(field))
+                    .filter(([field]) => !HISTORY_HIDDEN_FIELDS.has(field))
                     .slice(0, 8)
                   return (
                     <Box key={`${entry.timestamp}-${index}`} sx={{ display: 'flex', gap: 1.5, p: 1.5, borderRadius: '12px', backgroundColor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
@@ -760,8 +806,8 @@ const ServiceRequestDetail = () => {
                         <HistoryIcon sx={{ fontSize: '1rem' }} />
                       </Avatar>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '0.85rem', textTransform: 'capitalize' }}>
-                          {String(entry.action || 'updated').replace(/_/g, ' ')}
+                        <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '0.85rem' }}>
+                          {historyActionLabel(entry.action)}
                         </Typography>
                         <Typography sx={{ color: '#64748B', fontSize: '0.78rem' }}>
                           {entry.user || 'System'} - {formatDateTime(entry.timestamp)}
@@ -770,7 +816,7 @@ const ServiceRequestDetail = () => {
                           <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
                             {visibleChanges.map(([field, change]) => (
                               <Typography key={field} sx={{ color: '#475569', fontSize: '0.75rem' }}>
-                                <strong>{field.replace(/_/g, ' ')}:</strong> {renderHistoryChange(change)}
+                                <strong>{HISTORY_FIELD_LABELS[field] || field.replace(/_/g, ' ')}:</strong> {renderHistoryChange(field, change)}
                               </Typography>
                             ))}
                             {renderTestEquipmentHistory(changes.test_equipment)}
@@ -821,9 +867,9 @@ const ServiceRequestDetail = () => {
         {/* Right Column — Actions */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {canLogWork && (
-            <Card sx={{ p: 3, border: activeClockStart ? '1px solid #FBBF24' : '1px solid #D1FAE5' }}>
+            <Card sx={{ p: 3, border: '1px solid #D1FAE5' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                <Avatar sx={{ bgcolor: activeClockStart ? '#FEF3C7' : '#D1FAE5', color: activeClockStart ? '#B45309' : '#047857' }}>
+                <Avatar sx={{ bgcolor: '#D1FAE5', color: '#047857' }}>
                   <AccessTimeIcon />
                 </Avatar>
                 <Box>
@@ -831,7 +877,7 @@ const ServiceRequestDetail = () => {
                     Technician Work Session
                   </Typography>
                   <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: '0.82rem' }}>
-                    Each clock-in starts at 0.00. Saved sessions become the total time.
+                    Manually enter start time, end time, and break time. Saved sessions become the total time.
                   </Typography>
                 </Box>
               </Box>
@@ -888,77 +934,21 @@ const ServiceRequestDetail = () => {
                         {timeSpentHours.toFixed(2)} hrs
                       </Typography>
                       <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
-                        Completed clock-out sessions
+                        Completed work sessions
                       </Typography>
                     </>
                   )}
                 </Box>
-                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: activeClockStart ? '#FFFBEB' : '#F0FDF4', border: '1px solid #EEF2F7' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
-                      Current Session
-                    </Typography>
-                    {canManageServiceBilling && activeClockStart && !editingSession && (
-                      <IconButton
-                        size="small"
-                        onClick={() => { setEditSessionValue(activeElapsedHours.toFixed(2)); setEditingSession(true) }}
-                        sx={{ p: 0.25, color: '#94A3B8', '&:hover': { color: '#B45309' } }}
-                      >
-                        <EditIcon sx={{ fontSize: '0.85rem' }} />
-                      </IconButton>
-                    )}
-                  </Box>
-                  {editingSession ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={editSessionValue}
-                        onChange={(e) => setEditSessionValue(e.target.value)}
-                        inputProps={{ min: 0, step: 0.01 }}
-                        sx={{ width: 90 }}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            const h = parseFloat(editSessionValue)
-                            if (!isNaN(h) && h >= 0) adjustSessionMutation.mutate(h)
-                            else toast.error('Enter a valid number of hours')
-                          }
-                          if (e.key === 'Escape') setEditingSession(false)
-                        }}
-                      />
-                      <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        onClick={() => {
-                          const h = parseFloat(editSessionValue)
-                          if (!isNaN(h) && h >= 0) adjustSessionMutation.mutate(h)
-                          else toast.error('Enter a valid number of hours')
-                        }}
-                        disabled={adjustSessionMutation.isPending}
-                        sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#B45309', '&:hover': { bgcolor: '#92400E' } }}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="small"
-                        onClick={() => setEditingSession(false)}
-                        sx={{ minWidth: 0, px: 1, py: 0.4, fontSize: '0.75rem' }}
-                      >
-                        Cancel
-                      </Button>
-                    </Box>
-                  ) : (
-                    <>
-                      <Typography sx={{ fontWeight: 950, color: activeClockStart ? '#B45309' : '#047857', fontSize: '1.25rem' }}>
-                        {activeClockStart ? formatElapsedHours(activeElapsedHours) : 'Not active'}
-                      </Typography>
-                      <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
-                        {activeClockStart ? `${activeElapsedHours.toFixed(2)} hrs will save on clock-out` : 'Starts fresh at clock-in'}
-                      </Typography>
-                    </>
-                  )}
+                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F0FDF4', border: '1px solid #EEF2F7' }}>
+                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    Manual Work Session
+                  </Typography>
+                  <Typography sx={{ fontWeight: 950, color: '#047857', fontSize: '1.25rem' }}>
+                    Start / End / Break
+                  </Typography>
+                  <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
+                    Save one clean ledger entry per work session.
+                  </Typography>
                 </Box>
               </Box>
 
@@ -992,102 +982,94 @@ const ServiceRequestDetail = () => {
                     </Typography>
                   </Box>
                 </Box>
-                {activeClockStart && tierLaborRate > 0 && (
-                  <Typography sx={{ mt: 1, color: '#B45309', fontSize: '0.78rem', fontWeight: 800 }}>
-                    If clocked out now: {activeProjectedHours.toFixed(2)} hrs x ${tierLaborRate.toFixed(2)} = ${activeProjectedCost.toFixed(2)}
-                  </Typography>
-                )}
               </Box>
 
-              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
-                {!activeClockStart ? (
-                  <Button
-                    variant="contained"
-                    startIcon={<PlayArrowIcon />}
-                    onClick={() => clockInMutation.mutate()}
-                    disabled={clockInMutation.isPending}
-                    sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
-                  >
-                    Clock In
-                  </Button>
-                ) : (
-                  <Button
-                    variant="contained"
-                    startIcon={<StopIcon />}
-                    onClick={() => {
-                      if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0) {
-                        toast.info('Add diagnosis, work done, notes, or test equipment before clocking out')
-                        return
-                      }
-                      clockOutMutation.mutate()
-                    }}
-                    disabled={clockOutMutation.isPending}
-                    sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: '#DC2626', '&:hover': { bgcolor: '#B91C1C' } }}
-                  >
-                    Clock Out & Save Work
-                  </Button>
-                )}
-              </Box>
-
-              {activeClockStart ? (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 140px' }, gap: 1.25 }}>
                   <TextField
-                    label="Diagnosis"
-                    multiline
-                    minRows={2}
-                    fullWidth
-                    value={sessionDiagnosis}
-                    onChange={(e) => setSessionDiagnosis(e.target.value)}
-                    placeholder="What was diagnosed during this session?"
+                    label="Start Time"
+                    type="datetime-local"
+                    value={sessionStartTime}
+                    onChange={(e) => setSessionStartTime(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
                   />
                   <TextField
-                    label="Work Done"
-                    multiline
-                    minRows={2}
-                    fullWidth
-                    value={sessionWorkDone}
-                    onChange={(e) => setSessionWorkDone(e.target.value)}
-                    placeholder="What work was completed during this session?"
+                    label="End Time"
+                    type="datetime-local"
+                    value={sessionEndTime}
+                    onChange={(e) => setSessionEndTime(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
                   />
                   <TextField
-                    label="Additional Notes"
-                    multiline
-                    minRows={2}
-                    fullWidth
-                    value={sessionNotes}
-                    onChange={(e) => setSessionNotes(e.target.value)}
-                    placeholder="Parts used, follow-up needed, customer notes, etc."
-                  />
-                  <Autocomplete
-                    multiple
-                    options={testEquipmentOptions}
-                    value={testEquipmentOptions.filter((item: TestEquipment) => selectedTestEquipmentIds.includes(item.id))}
-                    onChange={(_, value) => setSelectedTestEquipmentIds(value.map((item) => item.id))}
-                    getOptionLabel={(option) => `${option.tem}${option.serial_number ? ` - ${option.serial_number}` : ''}`}
-                    isOptionEqualToValue={(option, value) => option.id === value.id}
-                    renderOption={(props, option) => (
-                      <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
-                          <AssessmentIcon fontSize="small" />
-                        </Avatar>
-                        <Box>
-                          <Typography sx={{ fontWeight: 800 }}>{option.tem}</Typography>
-                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
-                            {[option.mrf, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    )}
-                    renderInput={(params) => (
-                      <TextField {...params} label="Test Equipment Used" placeholder="Select equipment used in this session" />
-                    )}
+                    label="Break Time"
+                    type="number"
+                    value={sessionBreakMinutes}
+                    onChange={(e) => setSessionBreakMinutes(e.target.value)}
+                    inputProps={{ min: 0, step: 1 }}
+                    helperText="minutes"
                   />
                 </Box>
-              ) : (
-                <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: '0.84rem' }}>
-                  Clock in to start a fresh 0.00 hour session. Diagnosis and work done will be saved when you clock out.
-                </Typography>
-              )}
+                <TextField
+                  label="Diagnosis"
+                  multiline
+                  minRows={2}
+                  fullWidth
+                  value={sessionDiagnosis}
+                  onChange={(e) => setSessionDiagnosis(e.target.value)}
+                  placeholder="What was diagnosed during this session?"
+                />
+                <TextField
+                  label="Work Done"
+                  multiline
+                  minRows={2}
+                  fullWidth
+                  value={sessionWorkDone}
+                  onChange={(e) => setSessionWorkDone(e.target.value)}
+                  placeholder="What work was completed during this session?"
+                />
+                <TextField
+                  label="Additional Notes"
+                  multiline
+                  minRows={2}
+                  fullWidth
+                  value={sessionNotes}
+                  onChange={(e) => setSessionNotes(e.target.value)}
+                  placeholder="Parts used, follow-up needed, customer notes, etc."
+                />
+                <Autocomplete
+                  multiple
+                  options={testEquipmentOptions}
+                  value={testEquipmentOptions.filter((item: TestEquipment) => selectedTestEquipmentIds.includes(item.id))}
+                  onChange={(_, value) => setSelectedTestEquipmentIds(value.map((item) => item.id))}
+                  getOptionLabel={(option) => `${option.tem}${option.serial_number ? ` - ${option.serial_number}` : ''}`}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  renderOption={(props, option) => (
+                    <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
+                        <AssessmentIcon fontSize="small" />
+                      </Avatar>
+                      <Box>
+                        <Typography sx={{ fontWeight: 800 }}>{option.tem}</Typography>
+                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                          {[option.mrf, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Test Equipment Used" placeholder="Select equipment used in this session" />
+                  )}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={workSessionMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleIcon />}
+                  onClick={handleSaveManualSession}
+                  disabled={workSessionMutation.isPending}
+                  sx={{ alignSelf: 'flex-start', borderRadius: '12px', fontWeight: 900, bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                >
+                  Save Work Session
+                </Button>
+              </Box>
             </Card>
           )}
 
@@ -1119,24 +1101,41 @@ const ServiceRequestDetail = () => {
                 </FormControl>
               )}
 
-              {sr.status === 'in_progress' && (
+              {sr.status !== 'new' && (
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Service Status</InputLabel>
+                  <Select
+                    value={serviceWorkflowStatus}
+                    label="Service Status"
+                    onChange={(e) => setServiceWorkflowStatus(e.target.value as SRStatus)}
+                  >
+                    {SERVICE_WORKFLOW_STATUS_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {sr.status !== 'new' && (
                 <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', mb: 2 }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-                    Ready to complete?
+                    Service workflow
                   </Typography>
                   <Typography sx={{ color: '#64748B', fontSize: '0.84rem', fontWeight: 700, mt: 0.5 }}>
-                    Clock out first. The report uses the saved session diagnosis and work done, and the service cost is calculated from saved hours x asset tier rate.
+                    Update the request to waiting on parts, service in progress, approval, depot repair, vendor repair, or completed. Completion requires at least one saved work session.
                   </Typography>
                 </Box>
               )}
 
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                {nextStatus && (
+                {sr.status === 'new' && nextStatus && (
                   <Button
                     variant="contained"
                     onClick={handleAdvanceStatus}
                     disabled={updateMutation.isPending}
-                    endIcon={updateMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ArrowForwardIcon />}
+                    endIcon={updateMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : undefined}
                     sx={{
                       flex: 1, minWidth: 150,
                       background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
@@ -1147,12 +1146,29 @@ const ServiceRequestDetail = () => {
                       },
                     }}
                   >
-                    {sr.status === 'new' && 'Assign'}
-                    {sr.status === 'assigned' && 'Start Work'}
-                    {sr.status === 'in_progress' && 'Mark Complete'}
+                    Assign
                   </Button>
                 )}
-                {sr.status === 'in_progress' && (
+                {sr.status !== 'new' && (
+                  <Button
+                    variant="contained"
+                    onClick={handleWorkflowStatusChange}
+                    disabled={updateMutation.isPending || serviceWorkflowStatus === sr.status}
+                    startIcon={updateMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleIcon />}
+                    sx={{
+                      flex: 1, minWidth: 180,
+                      background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
+                      boxShadow: '0 8px 24px rgba(124,58,237,0.25)',
+                      borderRadius: '12px', fontWeight: 800,
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)',
+                      },
+                    }}
+                  >
+                    Update Status
+                  </Button>
+                )}
+                {sr.status !== 'new' && (
                   <>
                     <Button
                       variant="outlined"

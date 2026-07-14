@@ -59,8 +59,11 @@ interface ServiceSessionReport {
   user: string
   timestamp: string
   session_id?: string
+  start_time?: string
+  end_time?: string
   clocked_in_at?: string
   clocked_out_at?: string
+  break_minutes?: number
   duration_hours?: number
   total_hours?: number
   diagnosis?: string
@@ -70,7 +73,7 @@ interface ServiceSessionReport {
 
 const serviceSessions = (report: ServiceRequest | null) =>
   (report?.history || [])
-    .filter(entry => entry.action === 'technician_clock_out')
+    .filter(entry => entry.action === 'technician_clock_out' || entry.action === 'technician_work_session')
     .map((entry): ServiceSessionReport => ({
       user: entry.user || report?.technician_name || 'Technician',
       timestamp: entry.timestamp,
@@ -86,8 +89,9 @@ const printReport = (report: ServiceRequest) => {
         <span>${escapeHtml(Number(session.duration_hours || 0).toFixed(2))} hrs</span>
       </div>
       <div class="times">
-        <div><b>Clock In</b><br>${escapeHtml(formatDateTime(session.clocked_in_at))}</div>
-        <div><b>Clock Out</b><br>${escapeHtml(formatDateTime(session.clocked_out_at || session.timestamp))}</div>
+        <div><b>Start Time</b><br>${escapeHtml(formatDateTime(session.start_time || session.clocked_in_at))}</div>
+        <div><b>End Time</b><br>${escapeHtml(formatDateTime(session.end_time || session.clocked_out_at || session.timestamp))}</div>
+        ${session.break_minutes !== undefined ? `<div><b>Break Time</b><br>${escapeHtml(String(session.break_minutes))} min</div>` : ''}
       </div>
       <h4>Diagnosis</h4>
       <p>${escapeHtml(session.diagnosis || '-')}</p>
@@ -370,7 +374,7 @@ const Reports = () => {
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 2 }}>
                   <Box>
                     <Typography sx={{ color: '#1E1B4B', fontWeight: 950 }}>Technician Sessions</Typography>
-                    <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13 }}>Each clock-out stores the completed work for that session.</Typography>
+                    <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13 }}>Each saved work session stores the completed work for that session.</Typography>
                   </Box>
                   <Chip label={`${Number(selectedReport.time_spent_hours || 0).toFixed(2)} total hrs`} sx={{ bgcolor: '#ECFDF5', color: '#047857', fontWeight: 950 }} />
                 </Box>
@@ -386,8 +390,11 @@ const Reports = () => {
                           <Chip size="small" label={`${Number(session.duration_hours || 0).toFixed(2)} hrs`} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 950 }} />
                         </Box>
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5, mb: 1.5 }}>
-                          <Typography sx={{ color: '#64748B', fontSize: 13 }}><strong>Clock In:</strong> {formatDateTime(session.clocked_in_at)}</Typography>
-                          <Typography sx={{ color: '#64748B', fontSize: 13 }}><strong>Clock Out:</strong> {formatDateTime(session.clocked_out_at || session.timestamp)}</Typography>
+                          <Typography sx={{ color: '#64748B', fontSize: 13 }}><strong>Start Time:</strong> {formatDateTime(session.start_time || session.clocked_in_at)}</Typography>
+                          <Typography sx={{ color: '#64748B', fontSize: 13 }}><strong>End Time:</strong> {formatDateTime(session.end_time || session.clocked_out_at || session.timestamp)}</Typography>
+                          {session.break_minutes !== undefined && (
+                            <Typography sx={{ color: '#64748B', fontSize: 13 }}><strong>Break Time:</strong> {session.break_minutes} min</Typography>
+                          )}
                         </Box>
                         <Divider sx={{ my: 1.5 }} />
                         <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, textTransform: 'uppercase' }}>Diagnosis</Typography>

@@ -104,6 +104,10 @@ class ServiceRequestStatus(str, enum.Enum):
     NEW = "new"
     ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
+    WAITING_ON_PARTS = "waiting_on_parts"
+    WAITING_FOR_APPROVAL = "waiting_for_approval"
+    WAITING_FOR_DEPOT_REPAIR = "waiting_for_depot_repair"
+    WAITING_FOR_VENDOR_REPAIR = "waiting_for_vendor_repair"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 

@@ -54,6 +54,10 @@ def read_dashboard_summary(
         ServiceRequestStatus.NEW,
         ServiceRequestStatus.ASSIGNED,
         ServiceRequestStatus.IN_PROGRESS,
+        ServiceRequestStatus.WAITING_ON_PARTS,
+        ServiceRequestStatus.WAITING_FOR_APPROVAL,
+        ServiceRequestStatus.WAITING_FOR_DEPOT_REPAIR,
+        ServiceRequestStatus.WAITING_FOR_VENDOR_REPAIR,
     ]
     facility_query = db.query(Facility)
     if allowed_facility_ids is not None:
