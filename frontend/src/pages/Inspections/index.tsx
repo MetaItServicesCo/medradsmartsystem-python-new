@@ -1,8 +1,6 @@
 import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { NumericField } from '../../components/NumericField'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Form, FormBuilder } from '@formio/react'
-import '@formio/js/dist/formio.full.min.css'
 import {
   Autocomplete,
   Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
@@ -1305,10 +1303,9 @@ const Inspections = () => {
         schema: schemaToPayload({
           ...formBuilderSchema,
           title: name,
-          source: FORMIO_SCHEMA_SOURCE,
-          version: 4,
-          formio_form: { ...formBuilderFormioForm, title: name },
-          custom_grid: null,
+          source: 'medrad_grid_form_builder',
+          version: 3,
+          formio_form: null,
         }, name),
       }
       if (formBuilderMode === 'create') return createInspectionForm(payload)
@@ -1525,13 +1522,12 @@ const Inspections = () => {
     setFormBuilderModalityId(null)
     setFormBuilderSchema({
       title: 'New Inspection Form',
-      version: 4,
-      source: FORMIO_SCHEMA_SOURCE,
+      version: 3,
+      source: 'medrad_grid_form_builder',
       based_on: defaultReportForm?.name,
-      formio_form: createEmptyFormioForm('New Inspection Form'),
+      formio_form: null,
       custom_grid: null,
     })
-    setFormBuilderFormioForm(createEmptyFormioForm('New Inspection Form'))
     setFormBuilderRows(3)
     setFormBuilderColumns(3)
     setTablePickerHover(null)
@@ -1561,9 +1557,7 @@ const Inspections = () => {
     setFormBuilderDescription(customFormDescription)
     setFormBuilderModalityId(null)
     const title = customFormName || base.title
-    const formioForm = formioFromLegacySchema(base, title)
-    setFormBuilderSchema({ ...base, title, source: FORMIO_SCHEMA_SOURCE, version: 4, formio_form: formioForm, custom_grid: null })
-    setFormBuilderFormioForm(formioForm)
+    setFormBuilderSchema({ ...base, title, source: 'medrad_grid_form_builder', version: 3, formio_form: null, custom_grid: base.custom_grid || null })
     setFormBuilderRows(base.custom_grid?.rows || 3)
     setFormBuilderColumns(base.custom_grid?.columns || 3)
     setTablePickerHover(null)
@@ -1949,10 +1943,9 @@ const Inspections = () => {
     const schema = schemaToPayload({
       ...formBuilderSchema,
       title: name,
-      source: FORMIO_SCHEMA_SOURCE,
-      version: 4,
-      formio_form: { ...formBuilderFormioForm, title: name },
-      custom_grid: null,
+      source: 'medrad_grid_form_builder',
+      version: 3,
+      formio_form: null,
     }, name)
     if (formBuilderMode === 'report-custom') {
       setCustomFormName(name)
@@ -2601,27 +2594,14 @@ const Inspections = () => {
   const renderFormioReport = () => {
     const formioForm = activeReportSchema?.formio_form || report?.formio_form
     if (!formioForm?.components) return null
-    const submission = { data: report?.formio_data || {} }
     return (
       <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
         <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>
           {formioForm.title || activeReportSchema?.title || 'Custom Inspection Form'}
         </Typography>
-        <Box sx={{ '& .formio-component-submit': { display: 'none' } }}>
-          <Form
-            key={`${reportInspection?.id || 'report'}-${activeReportSchema?.title || formioForm.title || 'formio'}`}
-            src={formioForm as any}
-            submission={submission}
-            options={{ noAlerts: true } as any}
-            onChange={(change: any) => {
-              setReport((prev: any) => ({
-                ...prev,
-                formio_form: formioForm,
-                formio_data: change?.data || {},
-              }))
-            }}
-          />
-        </Box>
+        <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+          This form was created with the temporary Form.io builder. Please recreate it with the custom grid builder before using it for reports.
+        </Typography>
       </Card>
     )
   }
@@ -2959,7 +2939,7 @@ const Inspections = () => {
                         <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
                           {form.name}
                           <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>
-                            Fixed checklist + {formioForm ? 'Form.io custom form' : grid ? `${grid.rows}x${grid.columns} legacy grid` : 'no custom form'} + Biomed Notes
+                            Fixed checklist + {formioForm ? 'temporary external form' : grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom form'} + Biomed Notes
                           </Typography>
                         </TableCell>
                         <TableCell><ClippedTooltipText value={form.description || '-'} field /></TableCell>
@@ -3407,9 +3387,9 @@ const Inspections = () => {
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
                   <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{formioForm?.title || grid?.title || 'Custom Form'}</Typography>
                   {formioForm?.components ? (
-                    <Box sx={{ '& .formio-component-submit': { display: 'none' } }}>
-                      <Form src={formioForm as any} submission={{ data: {} }} options={{ noAlerts: true, readOnly: true } as any} />
-                    </Box>
+                    <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+                      This is a temporary Form.io form. Please edit/recreate it with the custom grid builder.
+                    </Typography>
                   ) : !grid ? (
                     <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No custom grid is saved on this form.</Typography>
                   ) : (
@@ -3510,7 +3490,7 @@ const Inspections = () => {
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           {formBuilderMode === 'create' ? 'Create Inspection Form' : formBuilderMode === 'report-custom' ? 'Customize Report Form' : 'Edit Inspection Form'}
           <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
-            The default Inspection Report and Biomed Notes stay fixed. Build the reusable middle form here with the open-source Form.io builder.
+            The default Inspection Report and Biomed Notes stay fixed. Build the reusable middle custom grid here.
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
@@ -3528,36 +3508,6 @@ const Inspections = () => {
             </Card>
 
             <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.75 }}>Custom Form Builder</Typography>
-              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
-                Drag fields from the builder into the form. Use Layout components such as Columns, Field Set, Panel, and Table for tabular inspection forms.
-              </Typography>
-              <Box sx={{ '& .formio.builder': { maxWidth: '100%' }, '& .formarea': { minHeight: 420 } }}>
-                <FormBuilder
-                  key={`${formBuilderMode}-${formBuilderId || 'new'}-${formBuilderOpen ? 'open' : 'closed'}`}
-                  initialForm={formBuilderFormioForm as any}
-                  onChange={(form: any) => {
-                    const nextForm = {
-                      display: normalizeFormioDisplay(form?.display),
-                      ...form,
-                      title: formBuilderName.trim() || form?.title || 'Inspection Form',
-                      components: Array.isArray(form?.components) ? form.components : [],
-                    }
-                    setFormBuilderFormioForm(nextForm)
-                    setFormBuilderSchema(prev => ({
-                      ...prev,
-                      title: formBuilderName.trim() || prev.title,
-                      source: FORMIO_SCHEMA_SOURCE,
-                      version: 4,
-                      formio_form: nextForm,
-                      custom_grid: null,
-                    }))
-                  }}
-                />
-              </Box>
-            </Card>
-
-            <Card sx={{ display: 'none', p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Middle Custom Grid</Typography>
               <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
                 Create the table first, then click any cell to add input fields, radio groups, checkboxes, or text.
