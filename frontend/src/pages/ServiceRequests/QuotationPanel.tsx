@@ -200,13 +200,39 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
   const handleSubmit = () => {
     if (!description.trim()) { toast.warning('Add a description'); return }
-    const validItems: LineItemCreate[] = lineItems
-      .filter(li => li.description.trim() && li.total > 0)
-      .map(({ item_type, description, quantity, unit_price, total }) => ({ item_type, description, quantity, unit_price, total }))
+    const validItems: LineItemCreate[] = []
+    for (const li of lineItems) {
+      const quantity = Number(li.quantity || 0)
+      const unitPrice = Number(li.unit_price || 0)
+      const total = Number(li.total || quantity * unitPrice || 0)
+      const descriptionText = li.description.trim() || (li.item_type === 'labor' ? 'Labor' : '')
+
+      if (total <= 0 && !descriptionText) continue
+      if (total <= 0) {
+        toast.warning('Each quotation line item must have an amount greater than $0')
+        return
+      }
+      if (!descriptionText) {
+        toast.warning('Add a description for each part or other line item')
+        return
+      }
+
+      validItems.push({
+        item_type: li.item_type,
+        description: descriptionText,
+        quantity,
+        unit_price: unitPrice,
+        total,
+      })
+    }
+    if (validItems.length === 0) {
+      toast.warning('Add at least one line item before saving the quotation')
+      return
+    }
     if (editQuotationId) {
-      updateMut.mutate({ id: editQuotationId, data: { description, line_items: validItems } })
+      updateMut.mutate({ id: editQuotationId, data: { description: description.trim(), line_items: validItems } })
     } else {
-      createMut.mutate({ description, line_items: validItems })
+      createMut.mutate({ description: description.trim(), line_items: validItems })
     }
   }
 
