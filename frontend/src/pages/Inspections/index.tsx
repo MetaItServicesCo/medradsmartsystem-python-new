@@ -80,7 +80,7 @@ const CHECK_FIELDS = [
 type ReportFormSource = 'default' | 'attached' | 'existing' | 'custom'
 type FormBuilderMode = 'create' | 'edit' | 'report-custom'
 type GridCellType = 'text' | 'input' | 'radio' | 'checkbox'
-type GridCellBlockType = 'label' | 'input' | 'checkbox' | 'textarea'
+type GridCellBlockType = 'label' | 'input' | 'radio' | 'checkbox' | 'textarea'
 type GridHorizontalAlign = 'left' | 'center' | 'right'
 type GridVerticalAlign = 'top' | 'middle' | 'bottom'
 type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
@@ -138,8 +138,8 @@ const optionCellTypes: GridCellType[] = ['radio', 'checkbox']
 const createGridCellBlock = (type: GridCellBlockType, index = 0): GridCellBlock => ({
   id: `block_${Date.now()}_${index}`,
   type,
-  label: type === 'label' ? 'Label' : type === 'input' ? 'Input Label' : type === 'textarea' ? 'Comments' : 'Checkbox',
-  options: type === 'checkbox' ? ['Option'] : undefined,
+  label: type === 'label' ? 'Label' : type === 'input' ? 'Input Label' : type === 'textarea' ? 'Comments' : type === 'radio' ? 'Radio Question' : 'Checkbox',
+  options: type === 'checkbox' || type === 'radio' ? ['Option'] : undefined,
   inline: type === 'input',
   layout: type === 'input' ? 'inline' : 'stacked',
   width: type === 'label' ? 100 : 180,
@@ -188,10 +188,10 @@ const gridJustifyContent = (verticalAlign?: GridVerticalAlign) =>
   verticalAlign === 'top' ? 'flex-start' : verticalAlign === 'bottom' ? 'flex-end' : 'center'
 
 const normalizeGridCellBlock = (block: any, index: number): GridCellBlock => {
-  const type: GridCellBlockType = ['label', 'input', 'checkbox', 'textarea'].includes(block?.type) ? block.type : 'label'
+  const type: GridCellBlockType = ['label', 'input', 'radio', 'checkbox', 'textarea'].includes(block?.type) ? block.type : 'label'
   const options = Array.isArray(block?.options) && block.options.length
     ? block.options.map((option: any) => String(option))
-    : type === 'checkbox' ? ['Option'] : undefined
+    : type === 'checkbox' || type === 'radio' ? ['Option'] : undefined
   return {
     id: String(block?.id || `block_${index + 1}`),
     type,
@@ -326,6 +326,11 @@ const addGridCellBlockDefaults = (acc: Record<string, any>, cell: GridCellSchema
       })
       return
     }
+    if (block.type === 'radio') {
+      const key = gridCellBlockValueKey(cell, block)
+      acc[key] = existing[key] !== undefined ? existing[key] : ''
+      return
+    }
     const key = gridCellBlockValueKey(cell, block)
     acc[key] = existing[key] !== undefined ? existing[key] : ''
   })
@@ -365,6 +370,10 @@ const displayCustomGridCellBlocks = (cell: GridCellSchema, values: Record<string
         .map((option, optionIndex) => values[gridCellBlockValueKey(cell, block, optionIndex)] ? (option.trim() || `Option ${optionIndex + 1}`) : '')
         .filter(Boolean)
       return label && checked.length ? `${label}: ${checked.join(', ')}` : checked.join(', ')
+    }
+    if (block.type === 'radio') {
+      const value = values[gridCellBlockValueKey(cell, block)]
+      return label && value ? `${label}: ${value}` : (value || label)
     }
     const value = values[gridCellBlockValueKey(cell, block)]
     return label && value ? `${label}: ${value}` : (value || label)
@@ -901,6 +910,7 @@ const Inspections = () => {
   const [formBuilderSchema, setFormBuilderSchema] = useState<InspectionFormSchema>(() => normalizeInspectionFormSchema({ sections: [] }))
   const [formBuilderRows, setFormBuilderRows] = useState(3)
   const [formBuilderColumns, setFormBuilderColumns] = useState(3)
+  const [tablePickerHover, setTablePickerHover] = useState<{ rows: number; columns: number } | null>(null)
   const [selectedBuilderCell, setSelectedBuilderCell] = useState<{ row: number; column: number } | null>(null)
   const [techEdit, setTechEdit] = useState<Inspection | null>(null)
   const [selectedTechId, setSelectedTechId] = useState<number | ''>('')
@@ -1403,6 +1413,7 @@ const Inspections = () => {
     })
     setFormBuilderRows(3)
     setFormBuilderColumns(3)
+    setTablePickerHover(null)
     setFormBuilderOpen(true)
   }
 
@@ -1416,6 +1427,7 @@ const Inspections = () => {
     setFormBuilderSchema(schema)
     setFormBuilderRows(schema.custom_grid?.rows || 3)
     setFormBuilderColumns(schema.custom_grid?.columns || 3)
+    setTablePickerHover(null)
     setFormBuilderOpen(true)
   }
 
@@ -1429,6 +1441,7 @@ const Inspections = () => {
     setFormBuilderSchema({ ...base, title: customFormName || base.title })
     setFormBuilderRows(base.custom_grid?.rows || 3)
     setFormBuilderColumns(base.custom_grid?.columns || 3)
+    setTablePickerHover(null)
     setFormBuilderOpen(true)
   }
 
@@ -1558,7 +1571,7 @@ const Inspections = () => {
     blocks[blockIndex] = {
       ...current,
       ...patch,
-      options: nextType === 'checkbox'
+      options: nextType === 'checkbox' || nextType === 'radio'
         ? (patch.options || current.options || ['Option'])
         : undefined,
     }
@@ -2290,6 +2303,29 @@ const Inspections = () => {
                 value={values[key] || ''}
                 onChange={e => updateReportGridValue(key, e.target.value)}
               />
+            </Box>
+          )
+        }
+        if (block.type === 'radio') {
+          const options = block.options?.length ? block.options : ['Option']
+          return (
+            <Box key={block.id} sx={{ display: 'grid', gap: 0.5 }}>
+              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+              <RadioGroup
+                row
+                value={values[key] || ''}
+                onChange={e => updateReportGridValue(key, e.target.value)}
+                sx={{ justifyContent: gridAlignItems(cell.align), gap: 0.5 }}
+              >
+                {options.map((option, optionIndex) => (
+                  <FormControlLabel
+                    key={`${block.id}-radio-${optionIndex}`}
+                    value={option || `Option ${optionIndex + 1}`}
+                    control={<Radio disabled={readOnly} size="small" />}
+                    label={option || `Option ${optionIndex + 1}`}
+                  />
+                ))}
+              </RadioGroup>
             </Box>
           )
         }
@@ -3321,10 +3357,78 @@ const Inspections = () => {
                   Add
                 </Button>
               </Box>
+              <Card sx={{ p: 1.5, mb: 2, borderRadius: '16px', border: '1px solid #DDD6FE', bgcolor: '#FBFAFF', boxShadow: 'none' }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Insert table</Typography>
+                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800 }}>
+                      Hover to choose rows and columns, then click a square to create the tabular form.
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={`${tablePickerHover?.rows || formBuilderRows} x ${tablePickerHover?.columns || formBuilderColumns}`}
+                      sx={{ mt: 1, bgcolor: '#EDE9FE', color: '#5B21B6', fontWeight: 950 }}
+                    />
+                  </Box>
+                  <Box
+                    onMouseLeave={() => setTablePickerHover(null)}
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(10, 20px)',
+                      gap: 0.5,
+                      p: 1,
+                      borderRadius: '12px',
+                      bgcolor: '#FFFFFF',
+                      border: '1px solid #E5E7EB',
+                    }}
+                  >
+                    {Array.from({ length: 100 }).map((_, index) => {
+                      const row = Math.floor(index / 10) + 1
+                      const column = (index % 10) + 1
+                      const activeRows = tablePickerHover?.rows || 0
+                      const activeColumns = tablePickerHover?.columns || 0
+                      const active = row <= activeRows && column <= activeColumns
+                      return (
+                        <Box
+                          key={`table-picker-${row}-${column}`}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Create ${row} by ${column} table`}
+                          onMouseEnter={() => {
+                            setTablePickerHover({ rows: row, columns: column })
+                            setFormBuilderRows(row)
+                            setFormBuilderColumns(column)
+                          }}
+                          onClick={() => setBuilderGrid(row, column)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              setBuilderGrid(row, column)
+                            }
+                          }}
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: '5px',
+                            border: active ? '1px solid #7C3AED' : '1px solid #CBD5E1',
+                            bgcolor: active ? '#DDD6FE' : '#FFFFFF',
+                            cursor: 'pointer',
+                            transition: 'all 120ms ease',
+                            '&:hover': { transform: 'scale(1.08)' },
+                          }}
+                        />
+                      )
+                    })}
+                  </Box>
+                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800, maxWidth: 320 }}>
+                    Need a larger table? Use the row and column fields above, then click Add.
+                  </Typography>
+                </Box>
+              </Card>
 
               {!formBuilderSchema.custom_grid ? (
                 <Card sx={{ p: 4, borderRadius: '14px', border: '1px dashed #C4B5FD', textAlign: 'center', boxShadow: 'none' }}>
-                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>Enter row and column count, then click Add to generate the editable grid.</Typography>
+                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>Pick table size above, or enter row and column count, then click Add to generate the editable grid.</Typography>
                 </Card>
               ) : (
                 <Box sx={{ display: 'grid', gap: 1.5 }}>
@@ -3363,9 +3467,10 @@ const Inspections = () => {
                           </Typography>
                         </Box>
                       </Box>
-                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 1, mb: 1.5 }}>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 1, mb: 1.5 }}>
                         {[
                           { label: 'Input field', helper: 'Asset Tag, Make, Model', type: 'input' as GridCellBlockType },
+                          { label: 'Radio group', helper: 'One answer from options', type: 'radio' as GridCellBlockType },
                           { label: 'Checkbox group', helper: 'Multiple choices in one cell', type: 'checkbox' as GridCellBlockType },
                           { label: 'Text label', helper: 'Section labels or headings', type: 'label' as GridCellBlockType },
                           { label: 'Comments', helper: 'Large text area', type: 'textarea' as GridCellBlockType },
@@ -3416,7 +3521,7 @@ const Inspections = () => {
                               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 150px auto' }, gap: 1, alignItems: 'center' }}>
                                 <TextField
                                   size="small"
-                                  label={block.type === 'checkbox' ? 'Checkbox group title' : block.type === 'input' ? 'Input field label' : block.type === 'textarea' ? 'Comments label' : 'Label text'}
+                                  label={block.type === 'radio' ? 'Radio question / title' : block.type === 'checkbox' ? 'Checkbox group title' : block.type === 'input' ? 'Input field label' : block.type === 'textarea' ? 'Comments label' : 'Label text'}
                                   value={block.label}
                                   onChange={e => updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, { label: e.target.value })}
                                 />
@@ -3429,6 +3534,7 @@ const Inspections = () => {
                                 >
                                   <MenuItem value="label">Label</MenuItem>
                                   <MenuItem value="input">Input</MenuItem>
+                                  <MenuItem value="radio">Radio Group</MenuItem>
                                   <MenuItem value="checkbox">Checkbox Group</MenuItem>
                                   <MenuItem value="textarea">Comments</MenuItem>
                                 </TextField>
@@ -3449,14 +3555,16 @@ const Inspections = () => {
                                   <MenuItem value="stacked">Label above input</MenuItem>
                                 </TextField>
                               )}
-                              {block.type === 'checkbox' && (
+                              {(block.type === 'checkbox' || block.type === 'radio') && (
                                 <Box sx={{ display: 'grid', gap: 0.75 }}>
-                                  <Typography sx={{ color: '#475569', fontSize: 12, fontWeight: 900 }}>Checkbox options</Typography>
+                                  <Typography sx={{ color: '#475569', fontSize: 12, fontWeight: 900 }}>
+                                    {block.type === 'radio' ? 'Radio options' : 'Checkbox options'}
+                                  </Typography>
                                   {(block.options?.length ? block.options : ['Option']).map((option, optionIndex) => (
                                     <Box key={`${block.id}-panel-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 0.75 }}>
                                       <TextField
                                         size="small"
-                                        label={`Checkbox option ${optionIndex + 1}`}
+                                        label={`${block.type === 'radio' ? 'Radio' : 'Checkbox'} option ${optionIndex + 1}`}
                                         value={option}
                                         onChange={e => updateGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex, e.target.value)}
                                       />
@@ -3466,7 +3574,7 @@ const Inspections = () => {
                                     </Box>
                                   ))}
                                   <Button size="small" startIcon={<AddIcon />} onClick={() => addGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex)} sx={{ justifySelf: 'start', borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>
-                                    Add another checkbox
+                                    Add another {block.type === 'radio' ? 'radio option' : 'checkbox'}
                                   </Button>
                                 </Box>
                               )}
@@ -3476,7 +3584,7 @@ const Inspections = () => {
                       ) : (
                         <Box sx={{ p: 2, borderRadius: '12px', border: '1px dashed #C4B5FD', bgcolor: '#FAF5FF' }}>
                           <Typography sx={{ color: '#5B21B6', fontWeight: 900 }}>
-                            No internal fields yet. Click “Input Field” twice for two input boxes, or “Checkbox Group” then “Add another checkbox” for multiple checkboxes in this same cell.
+                            No internal fields yet. Add input fields, radio groups, checkbox groups, or labels to build this table cell.
                           </Typography>
                         </Box>
                       )}
@@ -3531,23 +3639,15 @@ const Inspections = () => {
                                         ? ` · ${cell.rowSpan || 1}x${cell.colSpan || 1}`
                                         : ''}
                                     </Typography>
-                                    <TextField
-                                      variant="standard"
-                                      size="small"
-                                      fullWidth
-                                      placeholder="Type label or leave blank"
-                                      value={cell.label}
-                                      onChange={e => updateGridCell(rowIndex, columnIndex, { label: e.target.value })}
-                                      onClick={event => event.stopPropagation()}
-                                      InputProps={{ disableUnderline: true }}
-                                      sx={{
-                                        '& input': {
-                                          fontWeight: cell.type === 'text' ? 900 : 800,
-                                          color: '#1E1B4B',
-                                          textAlign: cell.align || 'center',
-                                        },
-                                      }}
-                                    />
+                                    {cell.label?.trim() ? (
+                                      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>
+                                        {cell.label}
+                                      </Typography>
+                                    ) : !cell.blocks?.length && cell.type === 'text' ? (
+                                      <Typography sx={{ color: '#94A3B8', fontSize: 12, fontWeight: 800 }}>
+                                        Click to edit
+                                      </Typography>
+                                    ) : null}
                                     {cell.blocks?.length ? renderCustomGridCellBlocks(cell, {}, true) : null}
                                     {!cell.blocks?.length && cell.type === 'input' && (
                                       <TextField size="small" disabled fullWidth placeholder="Input field" />
