@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useMemo, useState } from 'react'
+import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { NumericField } from '../../components/NumericField'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -14,6 +14,7 @@ import BoltIcon from '@mui/icons-material/Bolt'
 import BuildIcon from '@mui/icons-material/Build'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PersonIcon from '@mui/icons-material/Person'
@@ -481,6 +482,22 @@ const shouldShowGridCellTitle = (cell: GridCellSchema) => {
   if (!title) return false
   if (!cell.blocks?.length) return true
   return !cell.blocks.some(block => block.label?.trim().toLowerCase() === title.toLowerCase())
+}
+
+const normalizedGridLabel = (value?: string) => value?.trim().toLowerCase() || ''
+
+const builderGridCellBlockEntries = (cell: GridCellSchema) => {
+  const seenLabels = new Set<string>()
+  return (cell.blocks || [])
+    .map((block, index) => ({ block, index }))
+    .filter(({ block }) => {
+      if (block.type !== 'label') return true
+      const label = normalizedGridLabel(block.label)
+      if (!label) return true
+      if (seenLabels.has(label)) return false
+      seenLabels.add(label)
+      return true
+    })
 }
 
 const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFormSchema | null) => {
@@ -1762,6 +1779,227 @@ const Inspections = () => {
   const updateSelectedGridCellBlock = (blockIndex: number, patch: Partial<GridCellBlock>) => {
     if (!selectedBuilderCell) return toast.info('Select a table cell first')
     updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, patch)
+  }
+
+  const renderBuilderGridCellBlocks = (cell: GridCellSchema, rowIndex: number, columnIndex: number, isSelected: boolean) => {
+    const blockEntries = builderGridCellBlockEntries(cell)
+    if (!blockEntries.length) return null
+
+    const dragHandleSx = {
+      width: 28,
+      height: 28,
+      borderRadius: '10px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      bgcolor: '#EEF2FF',
+      color: '#6D28D9',
+      border: '1px solid #DDD6FE',
+      cursor: 'grab',
+      '&:active': { cursor: 'grabbing' },
+      '&:hover': { bgcolor: '#EDE9FE', borderColor: '#8B5CF6' },
+    } as const
+
+    return (
+      <Box sx={{ display: 'grid', gap: 1, width: '100%', textAlign: cell.align || 'center' }}>
+        {blockEntries.map(({ block, index: blockIndex }) => {
+          const isInlineInput = block.type === 'input' && (block.layout ? block.layout === 'inline' : Boolean(block.inline))
+          const allowOptionDrag = isSelected && (block.type === 'radio' || block.type === 'checkbox')
+          const options = block.options?.length ? block.options : ['Option']
+
+          const blockShell = (content: ReactNode) => (
+            <Box
+              key={block.id}
+              onClick={event => event.stopPropagation()}
+              onDragOver={(event) => {
+                if (!isSelected) return
+                event.preventDefault()
+              }}
+              onDrop={(event) => {
+                if (!isSelected) return
+                event.preventDefault()
+                event.stopPropagation()
+                const fromIndex = Number(event.dataTransfer.getData('application/x-grid-block-index'))
+                if (Number.isFinite(fromIndex)) moveGridCellBlock(rowIndex, columnIndex, fromIndex, blockIndex)
+              }}
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: isSelected ? 'auto minmax(0, 1fr)' : '1fr',
+                gap: 0.75,
+                alignItems: 'start',
+                justifyItems: cell.align === 'left' ? 'start' : cell.align === 'right' ? 'end' : 'center',
+                width: '100%',
+                p: isSelected ? 0.5 : 0,
+                borderRadius: '12px',
+                border: isSelected ? '1px dashed transparent' : 'none',
+                '&:hover': isSelected ? { borderColor: '#C4B5FD', bgcolor: 'rgba(245, 243, 255, 0.55)' } : undefined,
+              }}
+            >
+              {isSelected && (
+                <Tooltip title="Drag this item">
+                  <Box
+                    draggable
+                    onDragStart={(event) => {
+                      event.stopPropagation()
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('application/x-grid-block-index', String(blockIndex))
+                    }}
+                    sx={dragHandleSx}
+                  >
+                    <DragIndicatorIcon fontSize="small" />
+                  </Box>
+                </Tooltip>
+              )}
+              <Box sx={{ width: '100%', minWidth: 0 }}>{content}</Box>
+            </Box>
+          )
+
+          if (block.type === 'label') {
+            return blockShell(
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>
+                {block.label || `Text ${blockIndex + 1}`}
+              </Typography>,
+            )
+          }
+
+          if (block.type === 'input') {
+            return blockShell(
+              <Box sx={{
+                display: isInlineInput ? 'grid' : 'block',
+                gridTemplateColumns: isInlineInput ? 'auto minmax(80px, 1fr)' : undefined,
+                gap: 1,
+                alignItems: 'center',
+                width: '100%',
+                maxWidth: block.width || 180,
+              }}>
+                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569', whiteSpace: 'nowrap' }}>{block.label}</Typography>}
+                <TextField
+                  size="small"
+                  disabled
+                  fullWidth
+                  placeholder={block.label?.trim() ? '' : 'Input field'}
+                  sx={{ '& .MuiInputBase-root': { height: block.height || 40 } }}
+                />
+              </Box>,
+            )
+          }
+
+          if (block.type === 'textarea') {
+            return blockShell(
+              <Box sx={{ display: 'grid', gap: 0.75, width: '100%', maxWidth: block.width || 220 }}>
+                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+                <TextField
+                  size="small"
+                  disabled
+                  fullWidth
+                  multiline
+                  placeholder={block.label?.trim() ? '' : 'Comments'}
+                  sx={{ '& .MuiInputBase-root': { height: block.height || 90, alignItems: 'flex-start' } }}
+                />
+              </Box>,
+            )
+          }
+
+          if (block.type === 'radio') {
+            return blockShell(
+              <Box sx={{ display: 'grid', gap: 0.75, width: '100%' }}>
+                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: gridAlignItems(cell.align) }}>
+                  {options.map((option, optionIndex) => (
+                    <Box
+                      key={`${block.id}-builder-radio-${optionIndex}`}
+                      draggable={allowOptionDrag}
+                      onDragStart={(event) => {
+                        if (!allowOptionDrag) return
+                        event.stopPropagation()
+                        event.dataTransfer.effectAllowed = 'move'
+                        event.dataTransfer.setData('application/x-grid-option-index', String(optionIndex))
+                      }}
+                      onDragOver={(event) => {
+                        if (!allowOptionDrag) return
+                        event.preventDefault()
+                      }}
+                      onDrop={(event) => {
+                        if (!allowOptionDrag) return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        const fromIndex = Number(event.dataTransfer.getData('application/x-grid-option-index'))
+                        if (Number.isFinite(fromIndex)) moveGridCellBlockOption(rowIndex, columnIndex, blockIndex, fromIndex, optionIndex)
+                      }}
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.25,
+                        borderRadius: '999px',
+                        px: isSelected ? 0.5 : 0,
+                        border: isSelected ? '1px solid transparent' : 'none',
+                        cursor: allowOptionDrag ? 'grab' : 'default',
+                        '&:hover': isSelected ? { borderColor: '#DDD6FE', bgcolor: '#F8FAFC' } : undefined,
+                      }}
+                    >
+                      {isSelected && <DragIndicatorIcon sx={{ fontSize: 16, color: '#94A3B8' }} />}
+                      <FormControlLabel
+                        control={<Radio disabled size="small" />}
+                        label={option || `Option ${optionIndex + 1}`}
+                        sx={{ m: 0, '& .MuiFormControlLabel-label': { fontWeight: 800, color: '#475569' } }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+              </Box>,
+            )
+          }
+
+          return blockShell(
+            <Box sx={{ display: 'grid', gap: 0.75, width: '100%' }}>
+              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: gridAlignItems(cell.align) }}>
+                {options.map((option, optionIndex) => (
+                  <Box
+                    key={`${block.id}-builder-checkbox-${optionIndex}`}
+                    draggable={allowOptionDrag}
+                    onDragStart={(event) => {
+                      if (!allowOptionDrag) return
+                      event.stopPropagation()
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('application/x-grid-option-index', String(optionIndex))
+                    }}
+                    onDragOver={(event) => {
+                      if (!allowOptionDrag) return
+                      event.preventDefault()
+                    }}
+                    onDrop={(event) => {
+                      if (!allowOptionDrag) return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      const fromIndex = Number(event.dataTransfer.getData('application/x-grid-option-index'))
+                      if (Number.isFinite(fromIndex)) moveGridCellBlockOption(rowIndex, columnIndex, blockIndex, fromIndex, optionIndex)
+                    }}
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.25,
+                      borderRadius: '999px',
+                      px: isSelected ? 0.5 : 0,
+                      border: isSelected ? '1px solid transparent' : 'none',
+                      cursor: allowOptionDrag ? 'grab' : 'default',
+                      '&:hover': isSelected ? { borderColor: '#DDD6FE', bgcolor: '#F8FAFC' } : undefined,
+                    }}
+                  >
+                    {isSelected && <DragIndicatorIcon sx={{ fontSize: 16, color: '#94A3B8' }} />}
+                    <FormControlLabel
+                      control={<Checkbox disabled size="small" />}
+                      label={option || `Option ${optionIndex + 1}`}
+                      sx={{ m: 0, '& .MuiFormControlLabel-label': { fontWeight: 800, color: '#475569' } }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            </Box>,
+          )
+        })}
+      </Box>
+    )
   }
 
   const addBuilderRow = () => {
@@ -3838,7 +4076,7 @@ const Inspections = () => {
                                         Click to edit
                                       </Typography>
                                     ) : null}
-                                    {cell.blocks?.length ? renderCustomGridCellBlocks(cell, {}, true) : null}
+                                    {cell.blocks?.length ? renderBuilderGridCellBlocks(cell, rowIndex, columnIndex, isSelected) : null}
                                     {!cell.blocks?.length && cell.type === 'input' && (
                                       <TextField size="small" disabled fullWidth placeholder="Input field" />
                                     )}
@@ -3927,7 +4165,7 @@ const Inspections = () => {
                                         Click to edit
                                       </Typography>
                                     ) : null}
-                                    {cell.blocks?.length ? renderCustomGridCellBlocks(cell, {}, true) : null}
+                                    {cell.blocks?.length ? renderBuilderGridCellBlocks(cell, rowIndex, columnIndex, isSelected) : null}
                                     {!cell.blocks?.length && cell.type === 'input' && (
                                       <TextField size="small" disabled fullWidth placeholder="Input field" />
                                     )}
