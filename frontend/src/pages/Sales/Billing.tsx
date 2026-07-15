@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
@@ -324,7 +324,6 @@ const ACTION_MENU_ITEM = {
 }
 
 const Billing = () => {
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
@@ -335,6 +334,7 @@ const Billing = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [payOpen, setPayOpen] = useState<BillingItem | null>(null)
+  const [viewItem, setViewItem] = useState<BillingItem | null>(null)
   const [printItem, setPrintItem] = useState<BillingItem | null>(null)
   const [editItem, setEditItem] = useState<BillingItem | null>(null)
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
@@ -664,10 +664,7 @@ const Billing = () => {
   }
 
   const viewBillingItem = (item: BillingItem) => {
-    if (item.source === 'service') navigate(`/service-requests/${(item.raw as any).service_request_id}?highlightBilling=${item.id}`)
-    if (item.source === 'sales') navigate(`/sales/invoices?highlightInvoice=${item.id}`)
-    if (item.source === 'rental') navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
-    if (item.source === 'inspection') setExpandedKey(prev => (prev === item.key ? null : item.key))
+    setViewItem(item)
   }
 
   const handlePay = () => {
@@ -990,7 +987,7 @@ const Billing = () => {
           <Tab label="Paid" />
         </Tabs>
         <TableContainer className="list-scroll-panel">
-          <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: 1640 }}>
+          <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: 1340 }}>
             <colgroup>
               <col style={{ width: 150 }} />
               <col style={{ width: 140 }} />
@@ -1001,7 +998,7 @@ const Billing = () => {
               <col style={{ width: 120 }} />
               <col style={{ width: 120 }} />
               <col style={{ width: 140 }} />
-              <col style={{ width: 400 }} />
+              <col style={{ width: 100 }} />
             </colgroup>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F9FAFB' }}>
@@ -1014,7 +1011,7 @@ const Billing = () => {
                 <TableCell sx={{ fontWeight: 700 }} align="right">Balance</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
                 <TableCell sx={{ fontWeight: 700, pl: 3, pr: 2 }}>Due</TableCell>
-                <TableCell sx={{ fontWeight: 700, pl: 2 }} align="right">Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700, px: 1.5 }} align="center">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -1086,7 +1083,7 @@ const Billing = () => {
                           </Typography>
                         </Tooltip>
                       </TableCell>
-                      <TableCell align="right" sx={{ pl: 2 }}>
+                      <TableCell align="center" sx={{ px: 1.5 }}>
                         <Tooltip title="Actions" arrow>
                           <IconButton
                             size="small"
@@ -1164,6 +1161,20 @@ const Billing = () => {
           </MenuItem>
         )}
       </Menu>
+
+      <InvoicePrintDialog
+        open={Boolean(viewItem)}
+        onClose={() => setViewItem(null)}
+        invoice={printableItem(viewItem)}
+        lineItems={printableLineItems(viewItem)}
+        ledgerTransactions={printableLedgerTransactions(viewItem)}
+        paidQuotations={printablePaidQuotations(viewItem)}
+        moduleLabel={viewItem ? SOURCE_LABEL[viewItem.source] : 'Billing'}
+        primaryDocumentLabel={viewItem?.source === 'service' && viewItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
+        accent={viewItem ? SOURCE_COLOR[viewItem.source] : '#7C3AED'}
+        quantityLabel={viewItem?.source === 'service' && viewItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
+        mode="view"
+      />
 
       <InvoicePrintDialog
         open={Boolean(printItem)}

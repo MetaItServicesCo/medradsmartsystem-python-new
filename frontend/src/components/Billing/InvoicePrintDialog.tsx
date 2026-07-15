@@ -133,7 +133,7 @@ interface InvoicePrintDialogProps {
   quantityLabel?: string
   /** Optional HTML appended after the invoice sheet (e.g. service report). */
   appendHtml?: string
-  mode?: 'print' | 'edit'
+  mode?: 'print' | 'edit' | 'view'
   onSave?: (payload: PrintableInvoiceEditPayload) => void
   saving?: boolean
 }
@@ -494,7 +494,8 @@ const InvoicePrintDialog = ({
   const [editRows, setEditRows] = useState<PrintableLineItem[]>([])
   const previewAccentSoft = softAccentFor(accent)
   const isEditMode = mode === 'edit'
-  const activeDocumentType: PrintDocumentType = isEditMode ? 'invoice' : documentType
+  const isViewMode = mode === 'view'
+  const activeDocumentType: PrintDocumentType = (isEditMode || isViewMode) ? 'invoice' : documentType
 
   useEffect(() => {
     if (!invoice || !open) return
@@ -626,9 +627,13 @@ const InvoicePrintDialog = ({
   return (
     <Dialog open={open} onClose={onClose} maxWidth={isEditMode ? 'lg' : 'md'} fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
       <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-        {isEditMode ? 'Edit' : 'Print'} {displayInvoice?.invoice_number || primaryDocumentLabel}
+        {isEditMode ? 'Edit' : isViewMode ? 'View' : 'Print'} {displayInvoice?.invoice_number || primaryDocumentLabel}
         <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
-          {isEditMode ? 'Edit the invoice in the same layout that will be printed.' : 'Print one clean document at a time.'}
+          {isEditMode
+            ? 'Edit the invoice in the same layout that will be printed.'
+            : isViewMode
+              ? 'Preview the billing document without leaving the billing module.'
+              : 'Print one clean document at a time.'}
         </Typography>
       </DialogTitle>
       <DialogContent dividers sx={{ bgcolor: '#F8FAFC' }}>
@@ -637,6 +642,8 @@ const InvoicePrintDialog = ({
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
               {isEditMode ? (
                 <Chip label="Invoice editor" sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900 }} />
+              ) : isViewMode ? (
+                <Chip label={`${primaryDocumentLabel} preview`} sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900 }} />
               ) : (
                 <TextField
                   select
@@ -888,7 +895,7 @@ const InvoicePrintDialog = ({
           <Button disabled={saving} onClick={handleSave} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
             {saving ? 'Saving...' : 'Save Invoice'}
           </Button>
-        ) : (
+        ) : isViewMode ? null : (
           <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
             Print {documentLabel(activeDocumentType, primaryDocumentLabel)}
           </Button>
