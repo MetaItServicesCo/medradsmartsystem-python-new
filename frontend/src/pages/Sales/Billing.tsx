@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
@@ -366,7 +366,6 @@ const ACTION_MENU_ITEM = {
 }
 
 const Billing = () => {
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
@@ -708,48 +707,6 @@ const Billing = () => {
 
   const viewBillingItem = (item: BillingItem) => {
     setViewItem(item)
-  }
-
-  const openBillingDocumentSource = (item: BillingItem) => {
-    if (item.source === 'service') {
-      const serviceRequestId = (item.raw as any).service_request_id
-      if (serviceRequestId) navigate(`/service-requests/${serviceRequestId}`)
-      return
-    }
-    if (item.source === 'sales') {
-      navigate(`/sales/invoices?highlightInvoice=${item.id}`)
-      return
-    }
-    if (item.source === 'rental') {
-      navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
-      return
-    }
-    setViewItem(item)
-  }
-
-  const openBillingRelatedSource = (item: BillingItem) => {
-    if (!item.relatedNumber || item.relatedNumber === '-') return
-    if (item.source === 'service') {
-      const serviceRequestId = (item.raw as any).service_request_id
-      if (serviceRequestId) navigate(`/service-requests/${serviceRequestId}`)
-      return
-    }
-    if (item.source === 'sales') {
-      const salesQuotationId = (item.raw as SalesInvoice).sales_quotation_id
-      navigate(salesQuotationId ? `/sales/quotations?highlightQuotation=${salesQuotationId}` : '/sales/quotations')
-      return
-    }
-    if (item.source === 'rental') {
-      const rentalId = (item.raw as RentalInvoice).rental_id
-      navigate(rentalId ? `/rentals/agreements?highlightAgreement=${rentalId}` : '/rentals/agreements')
-      return
-    }
-    if (item.source === 'inspection') navigate('/inspections')
-  }
-
-  const openBillingFacility = (item: BillingItem) => {
-    if (!item.facility || item.facility === '-') return
-    navigate(`/facilities?search=${encodeURIComponent(item.facility)}`)
   }
 
   const handlePay = () => {
@@ -1132,13 +1089,13 @@ const Billing = () => {
                         </Tooltip>
                       </TableCell>
                       <TableCell>
-                        <ValueBox value={item.number} maxWidth={116} color="#5B21B6" fontWeight={700} fontFamily="monospace" bgcolor="#F7F0FF" borderColor="#E9D5FF" onClick={() => openBillingDocumentSource(item)} />
+                        <ValueBox value={item.number} maxWidth={116} color="#5B21B6" fontWeight={700} fontFamily="monospace" bgcolor="#F7F0FF" borderColor="#E9D5FF" onClick={() => viewBillingItem(item)} />
                       </TableCell>
                       <TableCell>
-                        <ValueBox value={item.relatedNumber} maxWidth={116} fontWeight={700} fontFamily="monospace" bgcolor="#F5F7FF" borderColor="#D8E1FF" onClick={() => openBillingRelatedSource(item)} />
+                        <ValueBox value={item.relatedNumber} maxWidth={116} fontWeight={700} fontFamily="monospace" bgcolor="#F5F7FF" borderColor="#D8E1FF" onClick={() => viewBillingItem(item)} />
                       </TableCell>
                       <TableCell>
-                        <EntityValueBox primary={item.facility} secondary={item.customer} maxWidth={290} onClick={item.facility !== '-' ? () => openBillingFacility(item) : undefined} />
+                        <EntityValueBox primary={item.facility} secondary={item.customer} maxWidth={290} onClick={() => viewBillingItem(item)} />
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#1E1B4B' }}>{money(item.amount)}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>{money(item.paid)}</TableCell>

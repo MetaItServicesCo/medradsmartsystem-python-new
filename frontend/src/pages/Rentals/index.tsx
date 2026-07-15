@@ -642,7 +642,7 @@ const Rentals = () => {
                 } : undefined}
               >
                 <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setViewAgreement(item)} /></TableCell>
-                <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field /></TableCell>
+                <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field onClick={item.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(item.part_number!)}`) : undefined} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ color: '#047857', fontWeight: 800 }}>{money(item.rental_rate)}</TableCell>
                 <TableCell>{item.quantity || 1}</TableCell>
@@ -766,7 +766,7 @@ const Rentals = () => {
                   <LocalShippingIcon fontSize="small" />
                 </Avatar>
               </TableCell>
-              <TableCell><ClippedTooltipText value={part.part_number} monospace fontWeight={900} /></TableCell>
+              <TableCell><ClippedTooltipText value={part.part_number} monospace fontWeight={900} onClick={() => navigate(`/inventory?search=${encodeURIComponent(part.part_number)}`)} /></TableCell>
               <TableCell><ClippedTooltipText value={part.description} fontWeight={800} field /></TableCell>
               <TableCell><ClippedTooltipText value={part.facility_name || 'Global / Independent'} onClick={part.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(part.facility_name!)}`) : undefined} /></TableCell>
               <TableCell><ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' / ') || '-'} /></TableCell>
@@ -811,7 +811,7 @@ const Rentals = () => {
               }} /></TableCell>
               <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
               <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
-              <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field /></TableCell>
+              <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field onClick={item.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(item.part_number!)}`) : undefined} /></TableCell>
               <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
               <TableCell>{item.by}</TableCell>
             </TableRow>

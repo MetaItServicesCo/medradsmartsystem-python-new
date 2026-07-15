@@ -1100,7 +1100,7 @@ const Sales = () => {
                           <Inventory2Icon fontSize="small" />
                         </Avatar>
                       </TableCell>
-                      <TableCell><ClippedTooltipText value={part?.part_number || item.part_id} monospace fontWeight={900} /></TableCell>
+                      <TableCell><ClippedTooltipText value={part?.part_number || item.part_id} monospace fontWeight={900} onClick={part?.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(part.part_number)}`) : undefined} /></TableCell>
                       <TableCell><ClippedTooltipText value={item.description} field /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.quantity} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(e.target.value) } : line) }))} sx={{ width: 90 }} /></TableCell>
@@ -1189,7 +1189,7 @@ const Sales = () => {
                         const part = parts.find(item => item.id === line.part_id)
                         return (
                           <TableRow key={line.id}>
-                            <TableCell><ClippedTooltipText value={line.part_number} monospace fontWeight={900} /></TableCell>
+                            <TableCell><ClippedTooltipText value={line.part_number} monospace fontWeight={900} onClick={line.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(line.part_number!)}`) : undefined} /></TableCell>
                             <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                             <TableCell>{money(line.unit_price)}</TableCell>
                             <TableCell>{line.quantity}</TableCell>
@@ -1299,7 +1299,7 @@ const Sales = () => {
                   <TableBody>
                     {viewQuotation.line_items.map(line => (
                       <TableRow key={line.id}>
-                        <TableCell><ClippedTooltipText value={line.part_number} /></TableCell>
+                        <TableCell><ClippedTooltipText value={line.part_number} onClick={line.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(line.part_number!)}`) : undefined} /></TableCell>
                         <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                         <TableCell>{line.quantity}</TableCell>
                         <TableCell>{money(line.shipping_fee)}</TableCell>

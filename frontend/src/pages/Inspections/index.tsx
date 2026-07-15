@@ -1,4 +1,5 @@
 import { type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { NumericField } from '../../components/NumericField'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -1035,6 +1036,7 @@ const emptyBatchAssetForm = (): BatchAssetCreatePayload => ({
 const Inspections = () => {
   const pageSize = 10
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const currentUser = useAuthStore((state) => state.user)
   const canAddInspections = hasPermission(currentUser, 'inspections', 'add')
   const canEditInspections = hasPermission(currentUser, 'inspections', 'edit')
@@ -1096,6 +1098,21 @@ const Inspections = () => {
   const [completedBatchPage, setCompletedBatchPage] = useState(0)
   const [legacyInProgressPage, setLegacyInProgressPage] = useState(0)
   const [legacyCompletedPage, setLegacyCompletedPage] = useState(0)
+
+  const openFacilityFromInspection = (facilityName?: string | null) => {
+    if (!facilityName || facilityName === '-') return
+    navigate(`/facilities?search=${encodeURIComponent(facilityName)}`)
+  }
+
+  const openInspectionRecord = (inspection: Inspection, mode: 'progress' | 'completed') => {
+    if (mode === 'completed') {
+      setViewReport(inspection)
+      return
+    }
+    if (canEditInspections) {
+      setReportInspection(inspection)
+    }
+  }
 
   useEffect(() => {
     if (!builderDrag) return undefined
@@ -2630,11 +2647,11 @@ const Inspections = () => {
             const resultStyle = statusChip(item.result)
             return (
               <TableRow key={item.id} hover>
-                <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{item.inspection_number}</TableCell>
-              <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(item, mode)} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
               <TableCell>
-                <ClippedTooltipText value={item.asset_name || item.equipment_name || '-'} fontWeight={800} />
-                <ClippedTooltipText value={item.serial_number || item.part_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} />
+                <ClippedTooltipText value={item.asset_name || item.equipment_name || '-'} fontWeight={800} onClick={() => openInspectionRecord(item, mode)} />
+                <ClippedTooltipText value={item.serial_number || item.part_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={() => openInspectionRecord(item, mode)} />
               </TableCell>
                 <TableCell>{item.tier_name || '-'}</TableCell>
                 <TableCell><Chip size="small" label={item.result} sx={{ bgcolor: resultStyle.bg, color: resultStyle.color, fontWeight: 900 }} /></TableCell>
@@ -2685,8 +2702,8 @@ const Inspections = () => {
             const total = batch.asset_count || 0
             return (
               <TableRow key={batch.id} hover>
-                <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{batch.batch_number}</TableCell>
-                <TableCell><ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} /></TableCell>
+                <TableCell><ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} /></TableCell>
+                <TableCell><ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} /></TableCell>
                 <TableCell>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{total} asset{total === 1 ? '' : 's'}</Typography>
                   <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{batch.inspection_frequency || 'instant'} inspection batch</Typography>
@@ -2769,11 +2786,11 @@ const Inspections = () => {
             <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No upcoming inspections scheduled.</TableCell></TableRow>
           ) : upcomingQ.data!.items.map(item => (
             <TableRow key={item.id} hover>
-              <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{item.inspection_number}</TableCell>
-              <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={canEditInspections ? () => startMut.mutate(item.id) : undefined} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
               <TableCell>
-                <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} />
-                <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} />
+                <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={canEditInspections ? () => startMut.mutate(item.id) : undefined} />
+                <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={canEditInspections ? () => startMut.mutate(item.id) : undefined} />
               </TableCell>
               <TableCell>{(item.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
               <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
@@ -3389,7 +3406,7 @@ const Inspections = () => {
                     return (
                       <TableRow key={form.id} hover>
                         <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-                          {form.name}
+                          <ClippedTooltipText value={form.name} fontWeight={900} onClick={() => setViewForm(form)} />
                           <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>
                             Fixed checklist + {formioForm ? 'temporary external form' : grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom form'} + Biomed Notes
                           </Typography>
@@ -3493,9 +3510,9 @@ const Inspections = () => {
                       const chip = statusChip(asset.status)
                       return (
                         <TableRow key={asset.id} hover>
-                          <TableCell sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{asset.asset_tag || asset.part_number || '-'}</TableCell>
-                          <TableCell><ClippedTooltipText value={asset.serial_number || '-'} /></TableCell>
-                          <TableCell><ClippedTooltipText value={asset.asset_name || asset.equipment_name || '-'} fontWeight={800} /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.serial_number || '-'} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.asset_name || asset.equipment_name || '-'} fontWeight={800} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
                           <TableCell>{asset.tier_name || '-'}</TableCell>
                           <TableCell>{asset.inspector_name || '-'}</TableCell>
                           <TableCell><Chip size="small" label={asset.status} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
