@@ -1091,21 +1091,33 @@ def create_manual_work_session(
     """Save one manual technician work-session ledger entry."""
     db_sr = _load_service_request_for_work(db, request_id, current_user)
 
-    start_time = session.start_time
-    end_time = session.end_time
-    if start_time.tzinfo is None:
-        start_time = start_time.replace(tzinfo=timezone.utc)
-    if end_time.tzinfo is None:
-        end_time = end_time.replace(tzinfo=timezone.utc)
-    if end_time <= start_time:
-        raise HTTPException(status_code=400, detail="End time must be after start time")
-
     break_minutes = Decimal(str(session.break_minutes or 0))
     if break_minutes < 0:
         raise HTTPException(status_code=400, detail="Break time cannot be negative")
-    raw_hours = Decimal(str((end_time - start_time).total_seconds() / 3600))
-    break_hours = break_minutes / Decimal("60")
-    duration_hours = max(raw_hours - break_hours, Decimal("0")).quantize(Decimal("0.01"))
+
+    manual_total_hours = Decimal(str(session.total_work_hours)) if session.total_work_hours is not None else None
+    if manual_total_hours is not None and manual_total_hours < 0:
+        raise HTTPException(status_code=400, detail="Total work hours cannot be negative")
+
+    start_time = session.start_time
+    end_time = session.end_time
+    duration_source = "manual_total_hours"
+    raw_hours: Optional[Decimal] = None
+    if manual_total_hours is not None and manual_total_hours > 0:
+        duration_hours = manual_total_hours.quantize(Decimal("0.01"))
+    else:
+        if not start_time or not end_time:
+            raise HTTPException(status_code=400, detail="Start/end time or total work hours is required")
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+        if end_time <= start_time:
+            raise HTTPException(status_code=400, detail="End time must be after start time")
+        raw_hours = Decimal(str((end_time - start_time).total_seconds() / 3600))
+        break_hours = break_minutes / Decimal("60")
+        duration_hours = max(raw_hours - break_hours, Decimal("0")).quantize(Decimal("0.01"))
+        duration_source = "start_end_time"
 
     diagnosis = (session.diagnosis or "").strip()
     work_done = (session.work_done or "").strip()
@@ -1129,21 +1141,28 @@ def create_manual_work_session(
     db_sr.total_cost = _calculate_service_cost(db_sr)
 
     history = list(db_sr.history or [])
-    history.append(_history_entry("technician_work_session", current_user, {
+    session_changes = {
         "session_id": uuid.uuid4().hex,
-        "start_time": start_time.isoformat(),
-        "end_time": end_time.isoformat(),
         "break_minutes": float(break_minutes),
         "duration_hours": float(duration_hours),
+        "total_work_hours": float(duration_hours),
+        "duration_source": duration_source,
         "total_hours": float(db_sr.time_spent_hours or 0),
         "diagnosis": diagnosis,
         "work_done": work_done,
         "notes": notes,
         "test_equipment": test_equipment_used,
+    }
+    if start_time:
+        session_changes["start_time"] = start_time.isoformat()
         # Compatibility for report utilities that still read clock fields.
-        "clocked_in_at": start_time.isoformat(),
-        "clocked_out_at": end_time.isoformat(),
-    }))
+        session_changes["clocked_in_at"] = start_time.isoformat()
+    if end_time:
+        session_changes["end_time"] = end_time.isoformat()
+        session_changes["clocked_out_at"] = end_time.isoformat()
+    if raw_hours is not None:
+        session_changes["raw_hours"] = float(raw_hours.quantize(Decimal("0.01")))
+    history.append(_history_entry("technician_work_session", current_user, session_changes))
     db_sr.history = history
     db.commit()
     db.refresh(db_sr)

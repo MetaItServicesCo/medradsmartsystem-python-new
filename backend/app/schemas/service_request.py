@@ -140,9 +140,10 @@ class ServiceRequestClockOutCreate(BaseModel):
 
 
 class ServiceRequestWorkSessionCreate(BaseModel):
-    start_time: datetime
-    end_time: datetime
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     break_minutes: Decimal = Decimal("0")
+    total_work_hours: Optional[Decimal] = None
     diagnosis: Optional[str] = None
     work_done: Optional[str] = None
     notes: Optional[str] = None

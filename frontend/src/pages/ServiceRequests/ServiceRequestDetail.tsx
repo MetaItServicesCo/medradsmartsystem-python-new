@@ -104,6 +104,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   end_time: 'End Time',
   break_minutes: 'Break Time',
   duration_hours: 'Session Duration',
+  total_work_hours: 'Manual Total Work Hours',
   total_hours: 'Total Saved Time',
   diagnosis: 'Diagnosis',
   work_done: 'Work Done',
@@ -114,7 +115,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 }
 
 const HISTORY_DATE_FIELDS = new Set(['start_time', 'end_time', 'clocked_in_at', 'clocked_out_at'])
-const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'test_equipment', 'clocked_in_at', 'clocked_out_at'])
+const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'test_equipment', 'clocked_in_at', 'clocked_out_at', 'duration_source', 'raw_hours', 'total_work_hours'])
 
 const historyActionLabel = (action?: string) => {
   if (action === 'technician_work_session' || action === 'technician_clock_out') return 'Technician Work Session'
@@ -135,6 +136,7 @@ const ServiceRequestDetail = () => {
   const [sessionStartTime, setSessionStartTime] = useState(toDateTimeLocalValue())
   const [sessionEndTime, setSessionEndTime] = useState(toDateTimeLocalValue())
   const [sessionBreakMinutes, setSessionBreakMinutes] = useState('0')
+  const [sessionTotalWorkHours, setSessionTotalWorkHours] = useState('')
   const [selectedTestEquipmentIds, setSelectedTestEquipmentIds] = useState<number[]>([])
   const [serviceWorkflowStatus, setServiceWorkflowStatus] = useState<SRStatus>('in_progress')
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -211,21 +213,26 @@ const ServiceRequestDetail = () => {
   })
 
   const workSessionMutation = useMutation({
-    mutationFn: () => createServiceRequestWorkSession(Number(id), {
-      start_time: new Date(sessionStartTime).toISOString(),
-      end_time: new Date(sessionEndTime).toISOString(),
-      break_minutes: Number(sessionBreakMinutes || 0),
-      diagnosis: sessionDiagnosis.trim(),
-      work_done: sessionWorkDone.trim(),
-      notes: sessionNotes.trim(),
-      test_equipment_ids: selectedTestEquipmentIds,
-    }),
+    mutationFn: () => {
+      const totalWorkHours = sessionTotalWorkHours.trim() ? Number(sessionTotalWorkHours) : null
+      return createServiceRequestWorkSession(Number(id), {
+        start_time: totalWorkHours && totalWorkHours > 0 ? undefined : new Date(sessionStartTime).toISOString(),
+        end_time: totalWorkHours && totalWorkHours > 0 ? undefined : new Date(sessionEndTime).toISOString(),
+        break_minutes: Number(sessionBreakMinutes || 0),
+        total_work_hours: totalWorkHours && totalWorkHours > 0 ? totalWorkHours : undefined,
+        diagnosis: sessionDiagnosis.trim(),
+        work_done: sessionWorkDone.trim(),
+        notes: sessionNotes.trim(),
+        test_equipment_ids: selectedTestEquipmentIds,
+      })
+    },
     onSuccess: () => {
       toast.success('Work session saved')
       const now = new Date()
       setSessionStartTime(toDateTimeLocalValue(now))
       setSessionEndTime(toDateTimeLocalValue(now))
       setSessionBreakMinutes('0')
+      setSessionTotalWorkHours('')
       setSessionDiagnosis('')
       setSessionWorkDone('')
       setSessionNotes('')
@@ -247,7 +254,7 @@ const ServiceRequestDetail = () => {
       due_date: invoiceDueDate || null,
       notes: invoiceNotes || undefined,
       travel_charges: Number(invoiceTravelCharges || 0),
-      labor_fee_override: Number(invoiceLaborFees || 0),
+      labor_fee_override: invoiceLaborFees.trim() === '' ? undefined : Number(invoiceLaborFees || 0),
     }),
     onSuccess: (invoice) => {
       toast.success(`Invoice ${invoice.invoice_number} is ready in Billing`)
@@ -335,15 +342,24 @@ const ServiceRequestDetail = () => {
   }
 
   const handleSaveManualSession = () => {
-    if (!sessionStartTime || !sessionEndTime) {
-      toast.error('Start time and end time are required')
-      return
-    }
-    const start = new Date(sessionStartTime)
-    const end = new Date(sessionEndTime)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
-      toast.error('End time must be after start time')
-      return
+    const manualHoursProvided = sessionTotalWorkHours.trim() !== ''
+    const manualHours = manualHoursProvided ? Number(sessionTotalWorkHours) : 0
+    if (manualHoursProvided) {
+      if (Number.isNaN(manualHours) || manualHours <= 0) {
+        toast.error('Total working hours must be greater than zero')
+        return
+      }
+    } else {
+      if (!sessionStartTime || !sessionEndTime) {
+        toast.error('Start/end time or total working hours is required')
+        return
+      }
+      const start = new Date(sessionStartTime)
+      const end = new Date(sessionEndTime)
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+        toast.error('End time must be after start time')
+        return
+      }
     }
     if (Number(sessionBreakMinutes || 0) < 0) {
       toast.error('Break time cannot be negative')
@@ -527,8 +543,9 @@ const ServiceRequestDetail = () => {
       .filter(q => selectedQuotationIds.includes(q.id))
       .reduce((sum, q) => sum + Number(q.amount || 0), 0)
     : 0
+  const invoiceLaborAmount = invoiceLaborFees.trim() === '' ? calculatedServiceCost : Number(invoiceLaborFees || 0)
   const invoicePreviewTotal = Math.max(
-    Number(invoiceLaborFees || 0) + Number(invoiceTravelCharges || 0) + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
+    invoiceLaborAmount + Number(invoiceTravelCharges || 0) + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
     0
   )
 
@@ -877,7 +894,7 @@ const ServiceRequestDetail = () => {
                     Technician Work Session
                   </Typography>
                   <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: '0.82rem' }}>
-                    Manually enter start time, end time, and break time. Saved sessions become the total time.
+                    Enter start/end time or directly enter total working hours for the session.
                   </Typography>
                 </Box>
               </Box>
@@ -944,7 +961,7 @@ const ServiceRequestDetail = () => {
                     Manual Work Session
                   </Typography>
                   <Typography sx={{ fontWeight: 950, color: '#047857', fontSize: '1.25rem' }}>
-                    Start / End / Break
+                    Start / End or Total Hours
                   </Typography>
                   <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
                     Save one clean ledger entry per work session.
@@ -1009,6 +1026,15 @@ const ServiceRequestDetail = () => {
                     helperText="minutes"
                   />
                 </Box>
+                <TextField
+                  label="Total Working Hours"
+                  type="number"
+                  value={sessionTotalWorkHours}
+                  onChange={(e) => setSessionTotalWorkHours(e.target.value)}
+                  inputProps={{ min: 0, step: 0.01 }}
+                  helperText="Optional. If entered, this total is used for billing instead of calculating from start/end time."
+                  sx={{ maxWidth: { xs: '100%', sm: 260 } }}
+                />
                 <TextField
                   label="Diagnosis"
                   multiline

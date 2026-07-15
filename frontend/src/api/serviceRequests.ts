@@ -368,9 +368,10 @@ export interface ServiceRequestClockOutPayload {
 }
 
 export interface ServiceRequestWorkSessionPayload extends ServiceRequestClockOutPayload {
-  start_time: string
-  end_time: string
+  start_time?: string
+  end_time?: string
   break_minutes?: number
+  total_work_hours?: number
 }
 
 export const clockOutServiceRequest = async (id: number, data: ServiceRequestClockOutPayload): Promise<ServiceRequest> => {
