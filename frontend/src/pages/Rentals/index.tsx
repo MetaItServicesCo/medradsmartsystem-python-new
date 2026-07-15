@@ -138,6 +138,20 @@ const emptyInvoiceDetails = (): RentalInvoiceCreatePayload => ({
   notes: '',
 })
 
+interface RentalPartInfo {
+  partNumber: string
+  description: string
+  make: string | null
+  model: string | null
+  serialNumber: string | null
+  condition: string | null
+  quantity: number | null
+  unitPrice: number | null
+  facilityName: string | null
+  status: string | null
+  imageUrl: string | null
+}
+
 const Rentals = () => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -171,6 +185,7 @@ const Rentals = () => {
 
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
+  const [partInfo, setPartInfo] = useState<RentalPartInfo | null>(null)
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
@@ -352,6 +367,30 @@ const Rentals = () => {
     if (!agreementForm.rental_rate) return toast.error('Rental rate is required')
     if (!agreementForm.quantity || agreementForm.quantity < 1) return toast.error('Quantity must be greater than zero')
     saveAgreementMut.mutate()
+  }
+
+  const openRentalPartInfo = (
+    part?: Partial<RentalPart> | null,
+    fallback?: { part_id?: number | null; part_number?: string | null; part_description?: string | null; quantity?: number | null; rental_rate?: number | null; item_condition?: string | null },
+  ) => {
+    const partNumber = part?.part_number || fallback?.part_number || ''
+    const matchedPart = part || parts.find(item =>
+      (fallback?.part_id && item.id === fallback.part_id) ||
+      (partNumber && item.part_number === partNumber),
+    )
+    setPartInfo({
+      partNumber: matchedPart?.part_number || partNumber || String(fallback?.part_id || '-'),
+      description: matchedPart?.description || fallback?.part_description || '-',
+      make: matchedPart?.make ?? null,
+      model: matchedPart?.model ?? null,
+      serialNumber: matchedPart?.serial_number ?? null,
+      condition: matchedPart?.condition || fallback?.item_condition || null,
+      quantity: matchedPart?.quantity_on_hand ?? fallback?.quantity ?? null,
+      unitPrice: matchedPart?.unit_price ?? fallback?.rental_rate ?? null,
+      facilityName: matchedPart?.facility_name ?? null,
+      status: matchedPart?.status ?? null,
+      imageUrl: matchedPart?.default_picture_url || null,
+    })
   }
 
   const openActions = (event: MouseEvent<HTMLElement>, rental: Rental) => {
@@ -642,7 +681,7 @@ const Rentals = () => {
                 } : undefined}
               >
                 <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setViewAgreement(item)} /></TableCell>
-                <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field onClick={item.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(item.part_number!)}`) : undefined} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field onClick={() => openRentalPartInfo(parts.find(part => part.id === item.part_id), item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ color: '#047857', fontWeight: 800 }}>{money(item.rental_rate)}</TableCell>
                 <TableCell>{item.quantity || 1}</TableCell>
@@ -766,7 +805,7 @@ const Rentals = () => {
                   <LocalShippingIcon fontSize="small" />
                 </Avatar>
               </TableCell>
-              <TableCell><ClippedTooltipText value={part.part_number} monospace fontWeight={900} onClick={() => navigate(`/inventory?search=${encodeURIComponent(part.part_number)}`)} /></TableCell>
+              <TableCell><ClippedTooltipText value={part.part_number} monospace fontWeight={900} onClick={() => openRentalPartInfo(part)} /></TableCell>
               <TableCell><ClippedTooltipText value={part.description} fontWeight={800} field /></TableCell>
               <TableCell><ClippedTooltipText value={part.facility_name || 'Global / Independent'} onClick={part.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(part.facility_name!)}`) : undefined} /></TableCell>
               <TableCell><ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' / ') || '-'} /></TableCell>
@@ -811,7 +850,7 @@ const Rentals = () => {
               }} /></TableCell>
               <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
               <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
-              <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field onClick={item.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(item.part_number!)}`) : undefined} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field onClick={() => openRentalPartInfo(parts.find(part => part.part_number === item.part_number), item)} /></TableCell>
               <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
               <TableCell>{item.by}</TableCell>
             </TableRow>
@@ -1323,6 +1362,49 @@ const Rentals = () => {
           <Button variant="contained" onClick={() => invoiceEdit && invoiceMut.mutate({ id: invoiceEdit.id, data: invoiceForm })} sx={{ borderRadius: '12px', fontWeight: 900, background: SYSTEM_GRADIENT }}>
             Save Changes
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(partInfo)} onClose={() => setPartInfo(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>
+          Rental Product Details
+          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            View-only inventory information
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {partInfo && (
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <Avatar src={resolveUploadUrl(partInfo.imageUrl)} variant="rounded" sx={{ width: 76, height: 76, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '18px' }}>
+                  <LocalShippingIcon />
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <ClippedTooltipText value={partInfo.partNumber} monospace color="#1D4ED8" fontWeight={900} />
+                  <ClippedTooltipText value={partInfo.description} field fontWeight={800} />
+                </Box>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 1.5 }}>
+                {[
+                  ['Make / Model', [partInfo.make, partInfo.model].filter(Boolean).join(' / ') || '-'],
+                  ['Serial #', partInfo.serialNumber || '-'],
+                  ['Condition', partInfo.condition || '-'],
+                  ['Qty Available', partInfo.quantity ?? '-'],
+                  ['Standard Rate', partInfo.unitPrice === null ? '-' : money(partInfo.unitPrice)],
+                  ['Facility', partInfo.facilityName || 'Global / Independent'],
+                  ['Status', partInfo.status || '-'],
+                ].map(([label, value]) => (
+                  <Card key={label} sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #DBEAFE', bgcolor: '#F8FAFC' }}>
+                    <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+                    <Typography sx={{ color: '#1E3A8A', fontWeight: 850 }}>{value}</Typography>
+                  </Card>
+                ))}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setPartInfo(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}>Close</Button>
         </DialogActions>
       </Dialog>
 

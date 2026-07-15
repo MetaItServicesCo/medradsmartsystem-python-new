@@ -1050,6 +1050,7 @@ const Inspections = () => {
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().slice(0, 10))
   const [reportInspection, setReportInspection] = useState<Inspection | null>(null)
   const [viewReport, setViewReport] = useState<Inspection | null>(null)
+  const [infoInspection, setInfoInspection] = useState<Inspection | null>(null)
   const [viewForm, setViewForm] = useState<InspectionFormOption | null>(null)
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [report, setReport] = useState<any>(null)
@@ -1112,6 +1113,10 @@ const Inspections = () => {
     if (canEditInspections) {
       setReportInspection(inspection)
     }
+  }
+
+  const openInspectionInfo = (inspection: Inspection) => {
+    setInfoInspection(inspection)
   }
 
   useEffect(() => {
@@ -2786,11 +2791,11 @@ const Inspections = () => {
             <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No upcoming inspections scheduled.</TableCell></TableRow>
           ) : upcomingQ.data!.items.map(item => (
             <TableRow key={item.id} hover>
-              <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={canEditInspections ? () => startMut.mutate(item.id) : undefined} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} /></TableCell>
               <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
               <TableCell>
-                <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={canEditInspections ? () => startMut.mutate(item.id) : undefined} />
-                <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={canEditInspections ? () => startMut.mutate(item.id) : undefined} />
+                <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />
+                <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={() => openInspectionInfo(item)} />
               </TableCell>
               <TableCell>{(item.inspection_frequency || 'annual').replace('_', '-')}</TableCell>
               <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
@@ -4805,6 +4810,74 @@ const Inspections = () => {
           <Button startIcon={reportMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />} onClick={submitReport} disabled={!canEditInspections || reportMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
             {reportStatus === 'completed' ? 'Complete Report' : 'Save as In Progress'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(infoInspection)} onClose={() => setInfoInspection(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Inspection Details
+          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            View-only inspection information
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {infoInspection && (
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Inspection #</Typography>
+                  <Typography sx={{ color: '#7161D8', fontWeight: 900, fontFamily: 'monospace' }}>{infoInspection.inspection_number}</Typography>
+                </Card>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Status</Typography>
+                  <Chip
+                    size="small"
+                    label={String(infoInspection.status).replace(/_/g, ' ')}
+                    sx={{
+                      mt: 1,
+                      fontWeight: 900,
+                      textTransform: 'uppercase',
+                      bgcolor: statusChip(infoInspection.status).bg,
+                      color: statusChip(infoInspection.status).color,
+                    }}
+                  />
+                </Card>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Scheduled</Typography>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{formatDate(infoInspection.scheduled_date)}</Typography>
+                </Card>
+              </Box>
+
+              <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', bgcolor: '#F8FAFC' }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
+                  {[
+                    ['Facility', infoInspection.facility_name || '-'],
+                    ['Asset / Equipment', infoInspection.asset_name || infoInspection.equipment_name || infoInspection.inventory_part_name || '-'],
+                    ['Asset Tag', infoInspection.asset_tag || '-'],
+                    ['Serial #', infoInspection.serial_number || '-'],
+                    ['Make / Model', [infoInspection.make, infoInspection.model].filter(Boolean).join(' / ') || '-'],
+                    ['Tier', infoInspection.tier_name || '-'],
+                    ['Frequency', String(infoInspection.inspection_frequency || '-').replace(/_/g, ' ')],
+                    ['Criticality', infoInspection.criticality || '-'],
+                    ['Technician', infoInspection.inspector_name || '-'],
+                    ['Batch', infoInspection.batch_number || '-'],
+                  ].map(([label, value]) => (
+                    <Box key={label}>
+                      <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+                      <Typography sx={{ color: '#1E1B4B', fontWeight: 800 }}>{value}</Typography>
+                    </Box>
+                  ))}
+                  <Box sx={{ gridColumn: '1 / -1' }}>
+                    <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Requirement</Typography>
+                    <Typography sx={{ color: '#1E1B4B', fontWeight: 800, whiteSpace: 'pre-wrap' }}>{infoInspection.compliance_requirement || '-'}</Typography>
+                  </Box>
+                </Box>
+              </Card>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setInfoInspection(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Close</Button>
         </DialogActions>
       </Dialog>
 

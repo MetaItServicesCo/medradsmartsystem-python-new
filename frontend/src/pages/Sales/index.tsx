@@ -44,6 +44,7 @@ import {
   type SalesInvoiceCreatePayload,
   type SalesPart,
   type SalesQuotation,
+  type SalesQuotationLineItem,
   type SalesQuotationPayload,
 } from '@/api/sales'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
@@ -130,6 +131,20 @@ const emptyInvoiceDetails = (): SalesInvoiceCreatePayload => ({
   notes: '',
 })
 
+interface SalesPartInfo {
+  partNumber: string
+  description: string
+  make: string | null
+  model: string | null
+  serialNumber: string | null
+  condition: string | null
+  quantity: number | null
+  unitPrice: number | null
+  facilityName: string | null
+  status: string | null
+  imageUrl: string | null
+}
+
 const Sales = () => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -158,6 +173,7 @@ const Sales = () => {
   const [invoiceForm, setInvoiceForm] = useState({ amount_paid: 0, due_date: '', status: 'pending', payment_method: '', notes: '' })
   const [convertQuotation, setConvertQuotation] = useState<SalesQuotation | null>(null)
   const [invoiceDetails, setInvoiceDetails] = useState<SalesInvoiceCreatePayload>(emptyInvoiceDetails())
+  const [partInfo, setPartInfo] = useState<SalesPartInfo | null>(null)
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
@@ -353,6 +369,30 @@ const Sales = () => {
     if (!quotationForm.customer_name) return toast.error('Customer name is required')
     if (quotationForm.items.length === 0) return toast.error('Add at least one sales part')
     saveQuotationMut.mutate()
+  }
+
+  const openSalesPartInfo = (
+    part?: Partial<SalesPart> | null,
+    fallback?: Partial<SalesQuotationLineItem> & { part_id?: number; default_picture_url?: string | null },
+  ) => {
+    const partNumber = part?.part_number || fallback?.part_number || ''
+    const matchedPart = part || parts.find(item =>
+      (fallback?.part_id && item.id === fallback.part_id) ||
+      (partNumber && item.part_number === partNumber),
+    )
+    setPartInfo({
+      partNumber: matchedPart?.part_number || partNumber || String(fallback?.part_id || '-'),
+      description: matchedPart?.description || fallback?.description || fallback?.part_description || '-',
+      make: matchedPart?.make ?? null,
+      model: matchedPart?.model ?? null,
+      serialNumber: matchedPart?.serial_number ?? null,
+      condition: matchedPart?.condition || fallback?.condition || null,
+      quantity: matchedPart?.quantity_on_hand ?? null,
+      unitPrice: matchedPart?.unit_price ?? fallback?.unit_price ?? null,
+      facilityName: matchedPart?.facility_name ?? null,
+      status: matchedPart?.status ?? null,
+      imageUrl: matchedPart?.default_picture_url || fallback?.default_picture_url || null,
+    })
   }
 
   const openActions = (event: MouseEvent<HTMLElement>, quotation: SalesQuotation) => {
@@ -1100,7 +1140,7 @@ const Sales = () => {
                           <Inventory2Icon fontSize="small" />
                         </Avatar>
                       </TableCell>
-                      <TableCell><ClippedTooltipText value={part?.part_number || item.part_id} monospace fontWeight={900} onClick={part?.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(part.part_number)}`) : undefined} /></TableCell>
+                      <TableCell><ClippedTooltipText value={part?.part_number || item.part_id} monospace fontWeight={900} onClick={() => openSalesPartInfo(part, item)} /></TableCell>
                       <TableCell><ClippedTooltipText value={item.description} field /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.quantity} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(e.target.value) } : line) }))} sx={{ width: 90 }} /></TableCell>
@@ -1189,7 +1229,7 @@ const Sales = () => {
                         const part = parts.find(item => item.id === line.part_id)
                         return (
                           <TableRow key={line.id}>
-                            <TableCell><ClippedTooltipText value={line.part_number} monospace fontWeight={900} onClick={line.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(line.part_number!)}`) : undefined} /></TableCell>
+                            <TableCell><ClippedTooltipText value={line.part_number} monospace fontWeight={900} onClick={() => openSalesPartInfo(part, line)} /></TableCell>
                             <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                             <TableCell>{money(line.unit_price)}</TableCell>
                             <TableCell>{line.quantity}</TableCell>
@@ -1299,7 +1339,7 @@ const Sales = () => {
                   <TableBody>
                     {viewQuotation.line_items.map(line => (
                       <TableRow key={line.id}>
-                        <TableCell><ClippedTooltipText value={line.part_number} onClick={line.part_number ? () => navigate(`/inventory?search=${encodeURIComponent(line.part_number!)}`) : undefined} /></TableCell>
+                        <TableCell><ClippedTooltipText value={line.part_number} onClick={() => openSalesPartInfo(parts.find(item => item.id === line.part_id), line)} /></TableCell>
                         <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                         <TableCell>{line.quantity}</TableCell>
                         <TableCell>{money(line.shipping_fee)}</TableCell>
@@ -1338,6 +1378,49 @@ const Sales = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setViewInvoice(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900 }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(partInfo)} onClose={() => setPartInfo(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Sales Part Details
+          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            View-only inventory information
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {partInfo && (
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <Avatar src={resolveUploadUrl(partInfo.imageUrl)} variant="rounded" sx={{ width: 76, height: 76, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '18px' }}>
+                  <Inventory2Icon />
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <ClippedTooltipText value={partInfo.partNumber} monospace color="#7C3AED" fontWeight={900} />
+                  <ClippedTooltipText value={partInfo.description} field fontWeight={800} />
+                </Box>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 1.5 }}>
+                {[
+                  ['Make / Model', [partInfo.make, partInfo.model].filter(Boolean).join(' / ') || '-'],
+                  ['Serial #', partInfo.serialNumber || '-'],
+                  ['Condition', partInfo.condition || '-'],
+                  ['Qty Available', partInfo.quantity ?? '-'],
+                  ['Unit Price', partInfo.unitPrice === null ? '-' : money(partInfo.unitPrice)],
+                  ['Facility', partInfo.facilityName || 'Global / Independent'],
+                  ['Status', partInfo.status || '-'],
+                ].map(([label, value]) => (
+                  <Card key={label} sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #EEF0F6', bgcolor: '#F8FAFC' }}>
+                    <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+                    <Typography sx={{ color: '#1E1B4B', fontWeight: 850 }}>{value}</Typography>
+                  </Card>
+                ))}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setPartInfo(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Close</Button>
         </DialogActions>
       </Dialog>
 
