@@ -102,6 +102,11 @@ const Users = () => {
     setActionUser(null)
   }
 
+  const openUserDetails = (user: UserData) => {
+    if (!isSuperAdmin) return
+    setEditUser(user)
+  }
+
   const { data, isLoading } = useQuery({
     queryKey: ['users', search, roleFilter],
     queryFn: () => fetchUsers({ search: search || undefined, role: roleFilter || undefined, limit: 200 }),
@@ -257,13 +262,13 @@ const Users = () => {
                           {u.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                         </Avatar>
                         <Box sx={{ minWidth: 0, maxWidth: 190 }}>
-                          <ClippedTooltipText value={u.full_name} fontWeight={600} textSx={{ fontSize: '0.875rem' }} />
-                          <ClippedTooltipText value={`@${u.username}`} variant="caption" color="#9CA3AF" fontWeight={500} />
+                          <ClippedTooltipText value={u.full_name} fontWeight={600} textSx={{ fontSize: '0.875rem' }} onClick={isSuperAdmin ? () => openUserDetails(u) : undefined} />
+                          <ClippedTooltipText value={`@${u.username}`} variant="caption" color="#9CA3AF" fontWeight={500} onClick={isSuperAdmin ? () => openUserDetails(u) : undefined} />
                         </Box>
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <ClippedTooltipText value={u.email} />
+                      <ClippedTooltipText value={u.email} onClick={isSuperAdmin ? () => openUserDetails(u) : undefined} />
                     </TableCell>
                     <TableCell>
                       {isSuperAdmin ? (

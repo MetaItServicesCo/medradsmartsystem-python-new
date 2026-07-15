@@ -161,6 +161,7 @@ const Sales = () => {
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
+  const highlightQuotationId = Number(new URLSearchParams(location.search).get('highlightQuotation') || 0)
 
   useEffect(() => {
     if (location.pathname === '/sales') navigate('/sales/quotations', { replace: true })
@@ -195,6 +196,13 @@ const Sales = () => {
       document.getElementById(`sales-invoice-${highlightInvoiceId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 150)
   }, [highlightInvoiceId, invoices.length])
+
+  useEffect(() => {
+    if (!highlightQuotationId || quotations.length === 0) return
+    window.setTimeout(() => {
+      document.getElementById(`sales-quotation-${highlightQuotationId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+  }, [highlightQuotationId, quotations.length])
 
   const stats = useMemo(() => ({
     quotations: pendingQuotations.length,
@@ -620,17 +628,31 @@ const Sales = () => {
           ) : items.map(item => {
             const status = statusChip(item.status)
             const paid = statusChip(item.paid_status)
+            const highlighted = highlightQuotationId === item.id
             return (
-              <TableRow key={item.id} hover>
+              <TableRow
+                key={item.id}
+                id={`sales-quotation-${item.id}`}
+                hover
+                sx={highlighted ? {
+                  bgcolor: '#F5F3FF',
+                  outline: '2px solid #7C3AED',
+                  outlineOffset: '-2px',
+                  '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
+                } : undefined}
+              >
                 <TableCell>{item.id}</TableCell>
-                <TableCell><ClippedTooltipText value={item.work_order} monospace color="#1E40AF" fontWeight={900} /></TableCell>
-                <TableCell><ClippedTooltipText value={item.facility_name || item.customer_name} fontWeight={800} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.work_order} monospace color="#1E40AF" fontWeight={900} onClick={() => setViewQuotation(item)} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.facility_name || item.customer_name} fontWeight={800} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
                 <TableCell sx={{ textTransform: 'capitalize' }}>{item.quotation_type}</TableCell>
                 <TableCell>{item.created_by_name || '-'}</TableCell>
                 <TableCell>{formatDate(item.requested_date)}</TableCell>
                 <TableCell><Chip size="small" label={item.status.replace('_', ' ')} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                 <TableCell><Chip size="small" label={item.paid_status === 'paid' ? 'Paid' : 'Un Paid'} sx={{ bgcolor: paid.bg, color: paid.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                 <TableCell align="right">
+                  {highlighted && (
+                    <Chip size="small" label="Selected" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
+                  )}
                   {item.status === 'in_progress' && (
                     <Box sx={{ minWidth: 150, mb: 1 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
@@ -697,10 +719,13 @@ const Sales = () => {
                   '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#7161D8" fontWeight={900} /></TableCell>
-                <TableCell><ClippedTooltipText value={invoice.work_order || '-'} monospace fontWeight={800} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#7161D8" fontWeight={900} onClick={() => setViewInvoice(invoice)} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.work_order || '-'} monospace fontWeight={800} onClick={() => {
+                  const quotation = quotations.find(item => item.id === invoice.sales_quotation_id)
+                  if (quotation) setViewQuotation(quotation)
+                }} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
-                <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} onClick={invoice.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(invoice.facility_name!)}`) : undefined} /></TableCell>
                 <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
                 <TableCell>{money(invoice.amount_paid)}</TableCell>
                 <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
@@ -833,10 +858,16 @@ const Sales = () => {
                 ) : historyQ.data!.items.map((item, index) => (
                   <TableRow key={`${item.quotation_id}-${item.action}-${index}`} hover>
                     <TableCell>{formatDate(item.at)}</TableCell>
-                    <TableCell><ClippedTooltipText value={item.work_order} monospace fontWeight={900} /></TableCell>
-                    <TableCell><ClippedTooltipText value={item.quotation_number} monospace color="#7161D8" fontWeight={900} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.work_order} monospace fontWeight={900} onClick={() => {
+                      const quotation = quotations.find(q => q.id === item.quotation_id)
+                      if (quotation) setViewQuotation(quotation)
+                    }} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.quotation_number} monospace color="#7161D8" fontWeight={900} onClick={() => {
+                      const quotation = quotations.find(q => q.id === item.quotation_id)
+                      if (quotation) setViewQuotation(quotation)
+                    }} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.customer_name} /></TableCell>
-                    <TableCell><ClippedTooltipText value={item.facility_name || '-'} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
                     <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
                     <TableCell>{item.by}</TableCell>
                   </TableRow>

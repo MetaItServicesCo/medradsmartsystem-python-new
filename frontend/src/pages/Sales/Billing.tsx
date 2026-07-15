@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
@@ -144,6 +144,7 @@ const ValueBox = ({
   borderColor = '#E4D7FF',
   minHeight = 38,
   align = 'left',
+  onClick,
 }: {
   value?: string | number | null
   maxWidth: number | string
@@ -155,12 +156,23 @@ const ValueBox = ({
   borderColor?: string
   minHeight?: number
   align?: 'left' | 'right' | 'center'
+  onClick?: () => void
 }) => {
   const text = value === null || value === undefined || value === '' ? '-' : String(value)
+  const clickable = Boolean(onClick && text !== '-')
 
   return (
     <Tooltip title={text} arrow placement="top">
       <Box
+        onClick={clickable ? onClick : undefined}
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onKeyDown={clickable ? (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onClick?.()
+          }
+        } : undefined}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -174,6 +186,13 @@ const ValueBox = ({
           border: `1px solid ${borderColor}`,
           bgcolor,
           boxSizing: 'border-box',
+          cursor: clickable ? 'pointer' : undefined,
+          transition: clickable ? 'all 0.15s ease' : undefined,
+          '&:hover': clickable ? {
+            borderColor: '#A78BFA',
+            bgcolor: '#F5F3FF',
+            transform: 'translateY(-1px)',
+          } : undefined,
         }}
       >
         <Typography
@@ -191,6 +210,8 @@ const ValueBox = ({
             fontFamily,
             lineHeight: 1.35,
             textAlign: align,
+            textDecoration: clickable ? 'underline' : undefined,
+            textUnderlineOffset: '3px',
           }}
         >
           {text}
@@ -208,10 +229,12 @@ const EntityValueBox = ({
   primary,
   secondary,
   maxWidth,
+  onClick,
 }: {
   primary?: string | number | null
   secondary?: string | number | null
   maxWidth: number | string
+  onClick?: () => void
 }) => {
   const primaryText = primary === null || primary === undefined || primary === '' ? '-' : String(primary)
   const secondaryText = secondary === null || secondary === undefined || secondary === '' ? '' : String(secondary)
@@ -225,10 +248,20 @@ const EntityValueBox = ({
   )
   const displayText = primaryText !== '-' ? primaryText : (secondaryText || '-')
   const tooltip = hasDistinctSecondary ? `${primaryText}\n${secondaryText}` : displayText
+  const clickable = Boolean(onClick && displayText !== '-')
 
   return (
     <Tooltip title={<Box sx={{ whiteSpace: 'pre-line' }}>{tooltip}</Box>} arrow placement="top">
       <Box
+        onClick={clickable ? onClick : undefined}
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onKeyDown={clickable ? (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onClick?.()
+          }
+        } : undefined}
         sx={{
           maxWidth,
           minHeight: 44,
@@ -238,6 +271,13 @@ const EntityValueBox = ({
           border: '1px solid #E5E7EB',
           bgcolor: '#F8FAFC',
           boxSizing: 'border-box',
+          cursor: clickable ? 'pointer' : undefined,
+          transition: clickable ? 'all 0.15s ease' : undefined,
+          '&:hover': clickable ? {
+            borderColor: '#A78BFA',
+            bgcolor: '#F5F3FF',
+            transform: 'translateY(-1px)',
+          } : undefined,
         }}
       >
         <Typography
@@ -252,6 +292,8 @@ const EntityValueBox = ({
             color: '#1E1B4B',
             fontWeight: 700,
             lineHeight: 1.35,
+            textDecoration: clickable ? 'underline' : undefined,
+            textUnderlineOffset: '3px',
           }}
         >
           {displayText}
@@ -324,6 +366,7 @@ const ACTION_MENU_ITEM = {
 }
 
 const Billing = () => {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
@@ -665,6 +708,48 @@ const Billing = () => {
 
   const viewBillingItem = (item: BillingItem) => {
     setViewItem(item)
+  }
+
+  const openBillingDocumentSource = (item: BillingItem) => {
+    if (item.source === 'service') {
+      const serviceRequestId = (item.raw as any).service_request_id
+      if (serviceRequestId) navigate(`/service-requests/${serviceRequestId}`)
+      return
+    }
+    if (item.source === 'sales') {
+      navigate(`/sales/invoices?highlightInvoice=${item.id}`)
+      return
+    }
+    if (item.source === 'rental') {
+      navigate(`/rentals/invoices?highlightInvoice=${item.id}`)
+      return
+    }
+    setViewItem(item)
+  }
+
+  const openBillingRelatedSource = (item: BillingItem) => {
+    if (!item.relatedNumber || item.relatedNumber === '-') return
+    if (item.source === 'service') {
+      const serviceRequestId = (item.raw as any).service_request_id
+      if (serviceRequestId) navigate(`/service-requests/${serviceRequestId}`)
+      return
+    }
+    if (item.source === 'sales') {
+      const salesQuotationId = (item.raw as SalesInvoice).sales_quotation_id
+      navigate(salesQuotationId ? `/sales/quotations?highlightQuotation=${salesQuotationId}` : '/sales/quotations')
+      return
+    }
+    if (item.source === 'rental') {
+      const rentalId = (item.raw as RentalInvoice).rental_id
+      navigate(rentalId ? `/rentals/agreements?highlightAgreement=${rentalId}` : '/rentals/agreements')
+      return
+    }
+    if (item.source === 'inspection') navigate('/inspections')
+  }
+
+  const openBillingFacility = (item: BillingItem) => {
+    if (!item.facility || item.facility === '-') return
+    navigate(`/facilities?search=${encodeURIComponent(item.facility)}`)
   }
 
   const handlePay = () => {
@@ -1047,13 +1132,13 @@ const Billing = () => {
                         </Tooltip>
                       </TableCell>
                       <TableCell>
-                        <ValueBox value={item.number} maxWidth={116} color="#5B21B6" fontWeight={700} fontFamily="monospace" bgcolor="#F7F0FF" borderColor="#E9D5FF" />
+                        <ValueBox value={item.number} maxWidth={116} color="#5B21B6" fontWeight={700} fontFamily="monospace" bgcolor="#F7F0FF" borderColor="#E9D5FF" onClick={() => openBillingDocumentSource(item)} />
                       </TableCell>
                       <TableCell>
-                        <ValueBox value={item.relatedNumber} maxWidth={116} fontWeight={700} fontFamily="monospace" bgcolor="#F5F7FF" borderColor="#D8E1FF" />
+                        <ValueBox value={item.relatedNumber} maxWidth={116} fontWeight={700} fontFamily="monospace" bgcolor="#F5F7FF" borderColor="#D8E1FF" onClick={() => openBillingRelatedSource(item)} />
                       </TableCell>
                       <TableCell>
-                        <EntityValueBox primary={item.facility} secondary={item.customer} maxWidth={290} />
+                        <EntityValueBox primary={item.facility} secondary={item.customer} maxWidth={290} onClick={item.facility !== '-' ? () => openBillingFacility(item) : undefined} />
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#1E1B4B' }}>{money(item.amount)}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>{money(item.paid)}</TableCell>

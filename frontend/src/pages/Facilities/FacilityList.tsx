@@ -350,6 +350,11 @@ const FacilityList = () => {
     handleActionsClose()
   }
 
+  const openFacilityView = (facility: Facility) => {
+    setMenuFacility(facility)
+    setViewModalOpen(true)
+  }
+
   const handleActionExport = () => {
     if (menuFacility) {
       setExportFacility(menuFacility)
@@ -702,11 +707,12 @@ const FacilityList = () => {
                             {getInitials(facility.name)}
                           </Avatar>
                           <Box sx={{ minWidth: 0, maxWidth: 230 }}>
-                            <ClippedTooltipText value={facility.name} fontWeight={800} />
+                            <ClippedTooltipText value={facility.name} fontWeight={800} onClick={() => openFacilityView(facility)} />
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.65, flexWrap: 'wrap' }}>
                               <Chip
                                 label={`#${facility.id}`}
                                 size="small"
+                                onClick={() => openFacilityView(facility)}
                                 sx={{ ...hierarchyChipSx, backgroundColor: '#F1F5F9', color: '#64748B' }}
                               />
                               {isChild && (

@@ -174,6 +174,7 @@ const Rentals = () => {
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
+  const highlightAgreementId = Number(new URLSearchParams(location.search).get('highlightAgreement') || 0)
 
   useEffect(() => {
     if (location.pathname === '/rentals') navigate('/rentals/agreements', { replace: true })
@@ -206,6 +207,13 @@ const Rentals = () => {
       document.getElementById(`rental-invoice-${highlightInvoiceId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 150)
   }, [highlightInvoiceId, invoices.length])
+
+  useEffect(() => {
+    if (!highlightAgreementId || rentals.length === 0) return
+    window.setTimeout(() => {
+      document.getElementById(`rental-agreement-${highlightAgreementId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+  }, [highlightAgreementId, rentals.length])
 
   const stats = useMemo(() => ({
     agreements: rentals.length,
@@ -620,9 +628,20 @@ const Rentals = () => {
             <TableRow><TableCell colSpan={11} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
           ) : items.map(item => {
             const status = statusChip(item.status)
+            const highlighted = highlightAgreementId === item.id
             return (
-              <TableRow key={item.id} hover>
-                <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} /></TableCell>
+              <TableRow
+                key={item.id}
+                id={`rental-agreement-${item.id}`}
+                hover
+                sx={highlighted ? {
+                  bgcolor: '#EFF6FF',
+                  outline: '2px solid #2563EB',
+                  outlineOffset: '-2px',
+                  '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
+                } : undefined}
+              >
+                <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setViewAgreement(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field /></TableCell>
                 <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ color: '#047857', fontWeight: 800 }}>{money(item.rental_rate)}</TableCell>
@@ -635,6 +654,9 @@ const Rentals = () => {
                   <Chip size="small" label={item.status} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} />
                 </TableCell>
                 <TableCell align="right">
+                  {highlighted && (
+                    <Chip size="small" label="Selected" sx={{ mr: 1, bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 900 }} />
+                  )}
                   <IconButton
                     size="small"
                     onClick={(event) => openActions(event, item)}
@@ -686,8 +708,11 @@ const Rentals = () => {
                   '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} /></TableCell>
-                <TableCell><ClippedTooltipText value={invoice.rental_number || '-'} monospace fontWeight={800} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setViewInvoice(invoice)} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.rental_number || '-'} monospace fontWeight={800} onClick={() => {
+                  const agreement = rentals.find(item => item.id === invoice.rental_id)
+                  if (agreement) setViewAgreement(agreement)
+                }} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
                 <TableCell>{money(invoice.amount_paid)}</TableCell>
@@ -743,7 +768,7 @@ const Rentals = () => {
               </TableCell>
               <TableCell><ClippedTooltipText value={part.part_number} monospace fontWeight={900} /></TableCell>
               <TableCell><ClippedTooltipText value={part.description} fontWeight={800} field /></TableCell>
-              <TableCell><ClippedTooltipText value={part.facility_name || 'Global / Independent'} /></TableCell>
+              <TableCell><ClippedTooltipText value={part.facility_name || 'Global / Independent'} onClick={part.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(part.facility_name!)}`) : undefined} /></TableCell>
               <TableCell><ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' / ') || '-'} /></TableCell>
               <TableCell sx={{ color: '#2563EB', fontWeight: 800 }}>{money(part.unit_price)}</TableCell>
               <TableCell sx={{ fontWeight: 900, color: part.quantity_on_hand > 0 ? '#059669' : '#DC2626' }}>
@@ -780,9 +805,12 @@ const Rentals = () => {
           ) : historyQ.data!.items.map((item, index) => (
             <TableRow key={`${item.rental_id}-${item.action}-${index}`} hover>
               <TableCell>{formatDate(item.at)}</TableCell>
-              <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => {
+                const agreement = rentals.find(rental => rental.id === item.rental_id)
+                if (agreement) setViewAgreement(agreement)
+              }} /></TableCell>
               <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
-              <TableCell><ClippedTooltipText value={item.facility_name || '-'} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
               <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field /></TableCell>
               <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
               <TableCell>{item.by}</TableCell>
