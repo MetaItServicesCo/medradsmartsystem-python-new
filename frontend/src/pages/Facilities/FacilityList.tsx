@@ -355,6 +355,13 @@ const FacilityList = () => {
     setViewModalOpen(true)
   }
 
+  const openFacilityUsers = (facility: Facility) => {
+    setMenuFacility(facility)
+    setViewModalOpen(false)
+    setUsersModalOpen(true)
+    handleActionsClose()
+  }
+
   const handleActionExport = () => {
     if (menuFacility) {
       setExportFacility(menuFacility)
@@ -926,7 +933,7 @@ const FacilityList = () => {
           <ListItemText primary="Facility Tier" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
         </MenuItem>
 
-        <MenuItem onClick={() => { setUsersModalOpen(true); handleActionsClose() }} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
+        <MenuItem onClick={() => menuFacility && openFacilityUsers(menuFacility)} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
           <ListItemIcon><PeopleOutlinedIcon sx={{ color: '#3B82F6', fontSize: '1.2rem' }} /></ListItemIcon>
           <ListItemText primary="Facility Managers" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
         </MenuItem>
@@ -995,7 +1002,7 @@ const FacilityList = () => {
       />
 
       {/* Core Modals */}
-      <FacilityViewModal open={viewModalOpen} onClose={() => setViewModalOpen(false)} facility={menuFacility} />
+      <FacilityViewModal open={viewModalOpen} onClose={() => setViewModalOpen(false)} facility={menuFacility} onManageUsers={openFacilityUsers} />
       <FacilityInventoryModal open={invModalOpen} onClose={() => setInvModalOpen(false)} facility={menuFacility} mode={invModalMode} />
       <FacilityUsersModal open={usersModalOpen} onClose={() => setUsersModalOpen(false)} facility={menuFacility} />
       <ModalitiesModal open={modalitiesModalOpen} onClose={() => setModalitiesModalOpen(false)} />

@@ -16,6 +16,7 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import PaymentsIcon from '@mui/icons-material/Payments'
 import SettingsIcon from '@mui/icons-material/Settings'
 import PersonIcon from '@mui/icons-material/Person'
+import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined'
 import { type Facility, fetchFacilityDocuments, exportFacilityPdf, fetchFacility } from '@/api/facilities'
 import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
 
@@ -23,9 +24,10 @@ interface Props {
   open: boolean
   onClose: () => void
   facility: Facility | null
+  onManageUsers?: (facility: Facility) => void
 }
 
-const FacilityViewModal = ({ open, onClose, facility }: Props) => {
+const FacilityViewModal = ({ open, onClose, facility, onManageUsers }: Props) => {
   if (!facility) return null
 
   // Fetch documents
@@ -106,6 +108,12 @@ const FacilityViewModal = ({ open, onClose, facility }: Props) => {
           sx={{ zIndex: 1, backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', '&:hover': { backgroundColor: 'rgba(255,255,255,0.25)' }, border: '1px solid rgba(255,255,255,0.3)', borderRadius: '10px' }}>
           Export PDF
         </Button>
+        {onManageUsers && (
+          <Button size="small" variant="contained" startIcon={<PeopleOutlinedIcon />} onClick={() => onManageUsers(facility)}
+            sx={{ zIndex: 1, backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', '&:hover': { backgroundColor: 'rgba(255,255,255,0.25)' }, border: '1px solid rgba(255,255,255,0.3)', borderRadius: '10px' }}>
+            Facility Managers
+          </Button>
+        )}
         <IconButton onClick={onClose} sx={{ color: '#fff', zIndex: 1, '&:hover': { background: 'rgba(255,255,255,0.12)' } }}>
           <CloseIcon />
         </IconButton>
