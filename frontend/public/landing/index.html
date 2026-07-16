@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MedRad Smart System</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; background: linear-gradient(180deg, #E7E0FD 0%, #EFEAFF 18%, #F4F1FF 42%, #EAE3FB 72%, #EFEAFF 100%); font-family: 'Public Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+    @keyframes gradientText { 0% { background-position: 0% 50%; } 100% { background-position: 300% 50%; } }
+    * { box-sizing: border-box; }
+    a { color: #7C3AED; text-decoration: none; }
+    a:hover { color: #5B21B6; }
+    @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    @keyframes fadeUp { from { opacity:0; transform: translateY(20px); } to { opacity:1; transform: translateY(0); } }
+    @keyframes pulseDot { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); } 50% { box-shadow: 0 0 0 6px rgba(16,185,129,0); } }
+    @keyframes gradientMove { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+    @keyframes dashFlow { from { background-position: 0 0; } to { background-position: 40px 0; } }
+    @keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-30px,20px) scale(1.08); } }
+    @keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(25px,-15px) scale(1.05); } }
+    @keyframes cardPop { from { opacity:0; transform: translateY(24px) scale(0.96); } to { opacity:1; transform: translateY(0) scale(1); } }
+    @keyframes floatA { 0%,100% { transform: translate3d(0,0,0) rotate(-1deg); } 50% { transform: translate3d(0,-16px,0) rotate(-1deg); } }
+    @keyframes floatB { 0%,100% { transform: translate3d(0,0,0) rotate(1.5deg); } 50% { transform: translate3d(0,14px,0) rotate(1.5deg); } }
+    @keyframes floatC { 0%,100% { transform: translate3d(0,0,0) rotate(2deg); } 50% { transform: translate3d(0,-12px,0) rotate(2deg); } }
+    @keyframes ringSpin { to { transform: rotate(360deg); } }
+    @keyframes dashDraw { to { stroke-dashoffset: -24; } }
+    @keyframes twinkle { 0%,100% { opacity:0.25; transform: scale(0.8); } 50% { opacity:0.9; transform: scale(1.2); } }
+    @keyframes glassIn { from { opacity:0; transform: translateY(30px) scale(0.9); } to { opacity:1; transform: translateY(0) scale(1); } }
+    @keyframes tilt3d { 0%,100% { transform: perspective(1600px) rotateX(2.5deg) rotateY(-5deg); } 50% { transform: perspective(1600px) rotateX(-2.5deg) rotateY(5deg); } }
+    @keyframes kpiFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    @keyframes mockupIn { 0% { opacity:0; transform: perspective(1600px) rotateX(24deg) rotateY(-14deg) translateY(80px) scale(0.9); } 100% { opacity:1; transform: perspective(1600px) rotateX(2.5deg) rotateY(-5deg) translateY(0) scale(1); } }
+    @keyframes kpiIn { 0% { opacity:0; transform: perspective(900px) rotateX(30deg) translateY(40px); } 100% { opacity:1; transform: perspective(900px) rotateX(0) translateY(0); } }
+    .hero-anim-1 { animation: fadeUp 0.7s ease both; }
+    .hero-anim-2 { animation: fadeUp 0.7s ease 0.12s both; }
+    .hero-anim-3 { animation: fadeUp 0.7s ease 0.24s both; }
+    .hero-anim-4 { animation: fadeUp 0.7s ease 0.36s both; }
+    .hero-anim-5 { animation: fadeUp 0.8s ease 0.5s both; }
+  </style>
+</helmet>
+<div style="width:100%; overflow-x:hidden; color:#1E1B4B; position:relative;">
+
+  <div style="position:absolute; top:-80px; right:-160px; width:560px; height:560px; border-radius:50%; background:radial-gradient(circle, rgba(124,58,237,0.16), transparent 70%); filter:blur(10px); z-index:-1; animation:drift1 18s ease-in-out infinite;"></div>
+  <div style="position:absolute; top:520px; left:-200px; width:480px; height:480px; border-radius:50%; background:radial-gradient(circle, rgba(236,72,153,0.13), transparent 70%); filter:blur(10px); z-index:-1; animation:drift2 20s ease-in-out infinite;"></div>
+  <div style="position:absolute; top:1600px; right:-140px; width:440px; height:440px; border-radius:50%; background:radial-gradient(circle, rgba(59,130,246,0.12), transparent 70%); filter:blur(10px); z-index:-1; animation:drift1 22s ease-in-out infinite;"></div>
+
+  <div style="position:fixed; top:0; left:0; height:3px; background:{{ ctaGradientCss }}; z-index:100; width:{{ scrollProgress }}; transition:width 0.1s linear;"></div>
+
+  <!-- NAV -->
+  <header style="position:sticky; top:0; z-index:50; background:rgba(247,245,255,0.82); backdrop-filter:blur(10px); border-bottom:1px solid #E5E7EB; box-shadow:{{ navShadow }}; transition:box-shadow 0.3s ease;">
+    <div style="max-width:1280px; margin:0 auto; padding:{{ navPadding }}; display:flex; align-items:center; justify-content:space-between; transition:padding 0.3s ease;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg, #7C3AED 0%, #EC4899 100%); display:flex; align-items:center; justify-content:center;">
+          <div style="width:12px; height:12px; border-radius:50%; background:#fff;"></div>
+        </div>
+        <span style="font-family:'Sora',sans-serif; font-weight:700; font-size:19px; letter-spacing:-0.01em;">MedRad<span style="color:#7C3AED;">Smart</span></span>
+      </div>
+      <nav style="display:flex; align-items:center; gap:36px;">
+        <a href="#solution" style="font-size:15px; font-weight:500; color:#1E1B4B;">Platform</a>
+        <a href="#features" style="font-size:15px; font-weight:500; color:#1E1B4B;">Features</a>
+        <a href="#workflow" style="font-size:15px; font-weight:500; color:#1E1B4B;">Workflow</a>
+        <a href="#roles" style="font-size:15px; font-weight:500; color:#1E1B4B;">Roles</a>
+        <a href="#benefits" style="font-size:15px; font-weight:500; color:#1E1B4B;">Benefits</a>
+      </nav>
+      <div style="display:flex; align-items:center; gap:14px;">
+        <a href="/login" target="_parent" style="font-size:15px; font-weight:600; color:#1E1B4B;">Sign In</a>
+        <a href="#demo" style="padding:10px 20px; border-radius:10px; background:{{ ctaGradientCss }}; color:#fff; font-size:14px; font-weight:600; box-shadow:0 8px 20px -8px rgba(124,58,237,0.5);">Request Demo</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section style="max-width:1280px; margin:0 auto; padding:88px 32px 64px; display:grid; grid-template-columns:1fr; gap:56px; position:relative; z-index:1;">
+    <div style="max-width:760px; margin:0 auto; text-align:center; display:flex; flex-direction:column; align-items:center; gap:24px;">
+      <div class="hero-anim-1" style="display:inline-flex; align-items:center; gap:8px; padding:7px 16px; border-radius:999px; background:#F9FAFB; border:1px solid #E5E7EB; font-size:13px; font-weight:600; color:#7C3AED;">
+        <div style="width:6px; height:6px; border-radius:50%; background:#10B981; animation:pulseDot 2s ease infinite;"></div>
+        Trusted by biomedical service teams
+      </div>
+      <h1 class="hero-anim-2" style="font-family:'Sora',sans-serif; font-size:56px; line-height:1.08; font-weight:800; letter-spacing:-0.02em; margin:0; color:#1E1B4B;">
+        Smarter Healthcare Facility &amp; <span style="display:inline-block; background:linear-gradient(90deg, #7C3AED, #EC4899, #3B82F6, #7C3AED); background-size:300% auto; -webkit-background-clip:text; background-clip:text; color:transparent; animation:gradientText 8s linear infinite; transition:opacity 0.45s ease, transform 0.45s ease; {{ wordStyle }}">{{ rotatingWord }}</span> Management
+      </h1>
+      <p class="hero-anim-3" style="font-size:19px; line-height:1.6; color:#4B5563; margin:0; max-width:600px;">
+        Manage facilities, medical assets, service requests, inspections, inventory, rentals, sales, and billing from one secure, role-based platform.
+      </p>
+      <div class="hero-anim-4" style="display:flex; gap:14px; margin-top:8px; flex-wrap:wrap; justify-content:center;">
+        <a href="#demo" style="padding:15px 28px; border-radius:12px; background:{{ ctaGradientCss }}; background-size:200% 200%; color:#fff; font-size:16px; font-weight:700; box-shadow:0 14px 30px -10px rgba(124,58,237,0.55); transition:transform 0.25s ease, box-shadow 0.25s ease;" style-hover="transform:translateY(-3px); box-shadow:0 20px 34px -10px rgba(124,58,237,0.6); animation:gradientMove 2.5s linear infinite;">Request Demo</a>
+        <a href="#features" style="padding:15px 28px; border-radius:12px; background:#fff; color:#1E1B4B; font-size:16px; font-weight:700; border:1px solid #E5E7EB; transition:transform 0.25s ease, border-color 0.25s ease;" style-hover="transform:translateY(-3px); border-color:#7C3AED;">Explore Features</a>
+      </div>
+    </div>
+
+    <!-- dashboard mockup -->
+    <div class="hero-anim-5" style="position:relative; max-width:1040px; width:100%; margin:0 auto; animation:floaty 7s ease-in-out infinite;">
+      <div style="position:absolute; inset:-40px; background:linear-gradient(135deg, rgba(124,58,237,0.16) 0%, rgba(236,72,153,0.12) 100%); filter:blur(50px); border-radius:40px; z-index:0;"></div>
+
+      <!-- connection-node layer -->
+      <svg viewBox="0 0 1040 500" preserveAspectRatio="none" style="position:absolute; inset:0; width:100%; height:100%; z-index:0; opacity:0.5; pointer-events:none;">
+        <line x1="70" y1="90" x2="250" y2="210" stroke="#A78BFA" stroke-width="1.5" stroke-dasharray="5 7" style="animation:dashDraw 1.2s linear infinite;"></line>
+        <line x1="980" y1="120" x2="780" y2="260" stroke="#F0ABFC" stroke-width="1.5" stroke-dasharray="5 7" style="animation:dashDraw 1.4s linear infinite;"></line>
+        <line x1="90" y1="430" x2="300" y2="330" stroke="#93C5FD" stroke-width="1.5" stroke-dasharray="5 7" style="animation:dashDraw 1.6s linear infinite;"></line>
+        <circle cx="70" cy="90" r="4" fill="#7C3AED"></circle>
+        <circle cx="980" cy="120" r="4" fill="#EC4899"></circle>
+        <circle cx="90" cy="430" r="4" fill="#3B82F6"></circle>
+      </svg>
+      <sc-for list="{{ particles }}" as="p" hint-placeholder-count="7">
+        <div style="position:absolute; z-index:0; width:{{ p.size }}; height:{{ p.size }}; border-radius:50%; background:{{ p.color }}; top:{{ p.top }}; left:{{ p.left }}; animation:twinkle {{ p.dur }} ease-in-out {{ p.delay }} infinite;"></div>
+      </sc-for>
+
+      <!-- floating glass card: technician activity (top-left) -->
+      <div style="position:absolute; z-index:3; top:-26px; left:-30px; width:216px; padding:14px 16px; border-radius:16px; background:rgba(255,255,255,0.68); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.8); box-shadow:0 22px 44px -22px rgba(30,27,75,0.4); animation:glassIn 0.7s ease 0.6s both, floatA 6.5s ease-in-out 0.6s infinite;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <span style="font-size:11px; font-weight:700; color:#6B7280; text-transform:uppercase; letter-spacing:0.05em;">Technicians Active</span>
+          <div style="width:7px; height:7px; border-radius:50%; background:#10B981; animation:pulseDot 2s ease infinite;"></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:-6px; margin-top:10px;">
+          <sc-for list="{{ techAvatars }}" as="av" hint-placeholder-count="4">
+            <div style="width:28px; height:28px; border-radius:50%; background:{{ av }}; border:2px solid #fff; margin-left:-6px;"></div>
+          </sc-for>
+          <div style="width:28px; height:28px; border-radius:50%; background:#EEF2FF; border:2px solid #fff; margin-left:-6px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#6D28D9;">+9</div>
+        </div>
+        <div style="font-family:'Sora',sans-serif; font-size:20px; font-weight:800; color:#1E1B4B; margin-top:8px;">{{ techCount }} on-site</div>
+      </div>
+
+      <!-- floating glass card: inspection progress ring (right) -->
+      <div style="position:absolute; z-index:3; top:38%; right:-28px; width:176px; padding:16px; border-radius:16px; background:rgba(255,255,255,0.68); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.8); box-shadow:0 22px 44px -22px rgba(30,27,75,0.4); animation:glassIn 0.7s ease 0.8s both, floatB 7.5s ease-in-out 0.8s infinite;">
+        <div style="font-size:11px; font-weight:700; color:#6B7280; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">Inspection Cycle</div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="position:relative; width:56px; height:56px; border-radius:50%; background:conic-gradient(#7C3AED 0% {{ inspectPct }}, #EDE9FE {{ inspectPct }} 100%);">
+            <div style="position:absolute; inset:6px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; font-family:'Sora',sans-serif; font-size:13px; font-weight:800; color:#1E1B4B;">{{ inspectLabel }}</div>
+          </div>
+          <div>
+            <div style="font-family:'Sora',sans-serif; font-size:15px; font-weight:800; color:#1E1B4B;">On schedule</div>
+            <div style="font-size:11px; color:#6B7280; margin-top:2px;">11,512 done</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- floating glass card: invoice paid (bottom-left) -->
+      <div style="position:absolute; z-index:3; bottom:-22px; left:6%; width:200px; padding:13px 15px; border-radius:16px; background:rgba(255,255,255,0.68); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.8); box-shadow:0 22px 44px -22px rgba(30,27,75,0.4); animation:glassIn 0.7s ease 1s both, floatC 8s ease-in-out 1s infinite;">
+        <div style="display:flex; align-items:center; gap:11px;">
+          <div style="width:34px; height:34px; border-radius:10px; background:#10B981; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+            <div style="width:12px; height:8px; border-left:2px solid #fff; border-bottom:2px solid #fff; transform:rotate(-45deg) translate(1px,-2px);"></div>
+          </div>
+          <div>
+            <div style="font-size:11px; font-weight:700; color:#6B7280;">Invoice #{{ invoiceId }} paid</div>
+            <div style="font-family:'Sora',sans-serif; font-size:16px; font-weight:800; color:#1E1B4B;">{{ invoiceAmt }}</div>
+          </div>
+        </div>
+      </div>
+      <div style="position:relative; z-index:1; transform-style:preserve-3d; animation:mockupIn 1.2s cubic-bezier(0.2,0.8,0.2,1) 0.3s both, tilt3d 16s ease-in-out 1.5s infinite;">
+      <div onMouseMove="{{ onMockupMove }}" onMouseLeave="{{ onMockupLeave }}" style="position:relative; z-index:1; background:#fff; border-radius:24px; border:1px solid #E5E7EB; box-shadow:0 40px 80px -30px rgba(30,27,75,0.25); overflow:hidden; transform:{{ mockupTiltStyle }}; transition:transform 0.15s ease-out;">
+        <div style="display:flex; align-items:center; gap:8px; padding:14px 20px; border-bottom:1px solid #E5E7EB; background:#F9FAFB;">
+          <div style="width:10px; height:10px; border-radius:50%; background:#EC4899;"></div>
+          <div style="width:10px; height:10px; border-radius:50%; background:#F59E0B;"></div>
+          <div style="width:10px; height:10px; border-radius:50%; background:#10B981;"></div>
+          <span style="margin-left:10px; font-size:12px; color:#9CA3AF; font-family:monospace;">app.medradsmart.com/dashboard</span>
+        </div>
+        <div style="position:relative; background:#F6F4FF;">
+          <img src="./uploads/pasted-1784216776510-0.png" alt="MedRad Smart System dashboard" style="display:block; width:100%; height:auto;">
+        </div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS BAR (tweakable) -->
+  <sc-if value="{{ showStatsBar }}" hint-placeholder-val="{{ true }}">
+    <section ref="{{ statsReveal.ref }}" style="max-width:1280px; margin:0 auto; padding:0 32px 64px; position:relative; z-index:1; {{ statsReveal.style }}">
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:20px; perspective:1200px;">
+        <sc-for list="{{ trustStats }}" as="s" hint-placeholder-count="4">
+          <div style="background:#fff; padding:28px 22px; text-align:center; border:1px solid #EDE9FE; border-radius:20px; box-shadow:0 22px 44px -26px rgba(124,58,237,0.5); transform-style:preserve-3d; animation:kpiIn 0.8s cubic-bezier(0.2,0.8,0.2,1) {{ s.delay }} both, kpiFloat 5s ease-in-out {{ s.delay }} infinite; transition:transform 0.3s ease, box-shadow 0.3s ease;" style-hover="transform:translateY(-8px) scale(1.03); box-shadow:0 30px 54px -22px rgba(124,58,237,0.55);">
+            <div style="width:44px; height:44px; margin:0 auto 14px; border-radius:14px; background:{{ s.grad }}; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 22px -10px rgba(124,58,237,0.6);">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ s.icon }}"></path></svg>
+            </div>
+            <div style="font-family:'Sora',sans-serif; font-size:32px; font-weight:800; color:#1E1B4B;">{{ s.display }}</div>
+            <div style="font-size:13px; color:#6B7280; margin-top:6px; font-weight:500;">{{ s.label }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </sc-if>
+
+  <!-- PROBLEM -->
+  <section ref="{{ problemReveal.ref }}" style="max-width:1120px; margin:0 auto; padding:64px 32px; display:grid; grid-template-columns:1fr 1fr; gap:64px; align-items:center; position:relative; z-index:1; {{ problemReveal.style }}">
+    <div>
+      <div style="font-size:13px; font-weight:700; color:#EC4899; text-transform:uppercase; letter-spacing:0.06em;">The Problem</div>
+      <h2 style="font-family:'Sora',sans-serif; font-size:34px; font-weight:700; letter-spacing:-0.01em; margin:12px 0 16px; line-height:1.2;">Biomedical operations are scattered across too many disconnected tools</h2>
+      <p style="font-size:16px; line-height:1.7; color:#4B5563; margin:0;">Facilities, medical assets, technicians, inspections, invoices, and reports often live in spreadsheets, paper forms, and siloed systems — making it hard to see what's happening across a single site, let alone hundreds of them.</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:14px;">
+      <sc-for list="{{ problemPoints }}" as="p" hint-placeholder-count="4">
+        <div style="display:flex; gap:14px; align-items:flex-start; background:#F9FAFB; border:1px solid #E5E7EB; border-radius:16px; padding:16px 18px;">
+          <div style="width:42px; height:42px; border-radius:12px; background:{{ p.grad }}; flex-shrink:0; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 20px -10px {{ p.glow }};">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ p.icon }}"></path></svg>
+          </div>
+          <div>
+            <div style="font-weight:700; font-size:15px; color:#1E1B4B;">{{ p.title }}</div>
+            <div style="font-size:14px; color:#6B7280; margin-top:2px; line-height:1.5;">{{ p.desc }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- SOLUTION -->
+  <section id="solution" ref="{{ solutionReveal.ref }}" style="background:#1E1B4B; padding:80px 32px; position:relative; overflow:hidden; {{ solutionReveal.style }}">
+    <div style="position:absolute; top:-120px; right:-120px; width:400px; height:400px; border-radius:50%; background:radial-gradient(circle, rgba(124,58,237,0.35), transparent 70%); animation:drift1 14s ease-in-out infinite;"></div>
+    <div style="position:absolute; bottom:-140px; left:-100px; width:360px; height:360px; border-radius:50%; background:radial-gradient(circle, rgba(236,72,153,0.25), transparent 70%); animation:drift2 16s ease-in-out infinite;"></div>
+    <div style="max-width:900px; margin:0 auto; position:relative; z-index:1; text-align:center;">
+      <div style="font-size:13px; font-weight:700; color:#F0ABFC; text-transform:uppercase; letter-spacing:0.06em;">The Solution</div>
+      <h2 style="font-family:'Sora',sans-serif; font-size:36px; font-weight:700; color:#fff; margin:14px 0 18px; letter-spacing:-0.01em;">One intelligent system for every facility, asset, and workflow</h2>
+      <p style="font-size:17px; line-height:1.7; color:#C7D2FE; max-width:680px; margin:0 auto;">MedRad Smart System centralizes facility management, biomedical equipment service, inspections, inventory, and billing into a single secure, role-based platform — giving every team the same source of truth.</p>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features" ref="{{ featuresReveal.ref }}" style="max-width:1280px; margin:0 auto; padding:80px 32px; position:relative; z-index:1; {{ featuresReveal.style }}">
+    <div style="text-align:center; max-width:640px; margin:0 auto 48px;">
+      <div style="font-size:13px; font-weight:700; color:#7C3AED; text-transform:uppercase; letter-spacing:0.06em;">Platform</div>
+      <h2 style="font-family:'Sora',sans-serif; font-size:34px; font-weight:700; margin:12px 0; letter-spacing:-0.01em;">Everything your operations team needs</h2>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:24px;">
+      <sc-for list="{{ features }}" as="f" hint-placeholder-count="6">
+        <div style="background:#fff; border:1px solid #E5E7EB; border-radius:20px; padding:28px; box-shadow:0 12px 24px -18px rgba(30,27,75,0.15); display:flex; flex-direction:column; gap:14px; transition:transform 0.3s ease, box-shadow 0.3s ease; animation:cardPop 0.6s ease {{ f.delay }} both; animation-play-state:{{ featuresPlay }};" style-hover="transform:translateY(-8px); box-shadow:0 24px 40px -20px rgba(124,58,237,0.3);">
+          <div style="width:48px; height:48px; border-radius:14px; background:{{ f.grad }}; display:flex; align-items:center; justify-content:center; box-shadow:0 10px 20px -10px rgba(124,58,237,0.5);">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ f.icon }}"></path></svg>
+          </div>
+          <div style="font-family:'Sora',sans-serif; font-weight:700; font-size:17px; color:#1E1B4B;">{{ f.title }}</div>
+          <div style="font-size:14px; line-height:1.6; color:#6B7280;">{{ f.desc }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- WORKFLOW -->
+  <section id="workflow" ref="{{ workflowReveal.ref }}" style="background:linear-gradient(180deg, #F5F3FF 0%, #F9F8FF 100%); border-top:1px solid #E5E7EB; border-bottom:1px solid #E5E7EB; padding:80px 32px; position:relative; z-index:1; {{ workflowReveal.style }}">
+    <div style="max-width:1120px; margin:0 auto;">
+      <div style="text-align:center; max-width:640px; margin:0 auto 48px;">
+        <div style="font-size:13px; font-weight:700; color:#3B82F6; text-transform:uppercase; letter-spacing:0.06em;">Workflow</div>
+        <h2 style="font-family:'Sora',sans-serif; font-size:34px; font-weight:700; margin:12px 0; letter-spacing:-0.01em;">From facility to invoice, fully connected</h2>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:0;">
+        <sc-for list="{{ workflowSteps }}" as="w" hint-placeholder-count="6">
+          <div style="display:flex; align-items:center;">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:10px; width:150px;">
+              <div style="width:56px; height:56px; border-radius:16px; background:#fff; border:2px solid {{ w.color }}; display:flex; align-items:center; justify-content:center; font-family:'Sora',sans-serif; font-weight:800; font-size:18px; color:{{ w.color }}; transition:transform 0.3s ease;" style-hover="transform:scale(1.1);">{{ w.num }}</div>
+              <div style="font-size:14px; font-weight:700; text-align:center; color:#1E1B4B;">{{ w.label }}</div>
+            </div>
+            <sc-if value="{{ w.showArrow }}" hint-placeholder-val="{{ true }}">
+              <div style="width:32px; height:2px; margin:0 4px; background-image:linear-gradient(90deg, #C4B5FD 50%, transparent 50%); background-size:16px 2px; animation:dashFlow 1s linear infinite;"></div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROLES -->
+  <section id="roles" ref="{{ rolesReveal.ref }}" style="max-width:1280px; margin:0 auto; padding:80px 32px; position:relative; z-index:1; {{ rolesReveal.style }}">
+    <div style="text-align:center; max-width:640px; margin:0 auto 48px;">
+      <div style="font-size:13px; font-weight:700; color:#6D28D9; text-transform:uppercase; letter-spacing:0.06em;">Role-Based Access</div>
+      <h2 style="font-family:'Sora',sans-serif; font-size:34px; font-weight:700; margin:12px 0; letter-spacing:-0.01em;">Every role sees exactly what they need</h2>
+      <p style="font-size:16px; color:#6B7280; margin:0;">Facility admins and managers see only their assigned facilities. Super admins see everything.</p>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:18px; justify-content:center;">
+      <sc-for list="{{ roles }}" as="r" hint-placeholder-count="7">
+        <div style="width:280px; background:#fff; border:1px solid #E5E7EB; border-radius:18px; padding:22px; display:flex; flex-direction:column; gap:10px; transition:transform 0.3s ease, border-color 0.3s ease; animation:cardPop 0.5s ease {{ r.delay }} both; animation-play-state:{{ rolesPlay }};" style-hover="transform:translateY(-6px); border-color:#C4B5FD;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="width:38px; height:38px; border-radius:10px; background:{{ r.grad }}; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 16px -8px rgba(124,58,237,0.5);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
+            </div>
+            <div style="font-family:'Sora',sans-serif; font-weight:700; font-size:15px; color:#1E1B4B;">{{ r.title }}</div>
+          </div>
+          <div style="font-size:13.5px; color:#6B7280; line-height:1.6;">{{ r.desc }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- BENEFITS -->
+  <section id="benefits" ref="{{ benefitsReveal.ref }}" style="background:#1E1B4B; padding:80px 32px; {{ benefitsReveal.style }}">
+    <div style="max-width:1120px; margin:0 auto;">
+      <div style="text-align:center; max-width:640px; margin:0 auto 48px;">
+        <div style="font-size:13px; font-weight:700; color:#F0ABFC; text-transform:uppercase; letter-spacing:0.06em;">Benefits</div>
+        <h2 style="font-family:'Sora',sans-serif; font-size:34px; font-weight:700; color:#fff; margin:12px 0; letter-spacing:-0.01em;">Built to scale with your operations</h2>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:20px;">
+        <sc-for list="{{ benefits }}" as="b" hint-placeholder-count="6">
+          <div style="display:flex; gap:14px; align-items:flex-start; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:16px; padding:20px; animation:cardPop 0.5s ease {{ b.delay }} both; animation-play-state:{{ benefitsPlay }};">
+            <div style="width:30px; height:30px; border-radius:8px; background:#10B981; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+              <div style="width:12px; height:8px; border-left:2px solid #fff; border-bottom:2px solid #fff; transform:rotate(-45deg) translate(1px,-2px);"></div>
+            </div>
+            <div style="font-size:15px; color:#E0E7FF; line-height:1.5; font-weight:500;">{{ b.text }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section id="demo" ref="{{ ctaReveal.ref }}" style="padding:90px 32px; background:{{ ctaGradientCss }}; text-align:center; {{ ctaReveal.style }}">
+    <h2 style="font-family:'Sora',sans-serif; font-size:38px; font-weight:800; color:#fff; margin:0 0 16px; letter-spacing:-0.01em; max-width:700px; margin-left:auto; margin-right:auto;">Bring your biomedical operations into one intelligent system.</h2>
+    <p style="font-size:17px; color:rgba(255,255,255,0.85); margin:0 0 32px;">See how MedRad Smart System fits your facilities in a 20-minute walkthrough.</p>
+    <div style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
+      <a href="/login" target="_parent" style="padding:15px 30px; border-radius:12px; background:#fff; color:#5B21B6; font-size:16px; font-weight:700; transition:transform 0.25s ease;" style-hover="transform:translateY(-3px);">Request Demo</a>
+      <a href="/login" target="_parent" style="padding:15px 30px; border-radius:12px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.4); color:#fff; font-size:16px; font-weight:700; transition:transform 0.25s ease, background 0.25s ease;" style-hover="transform:translateY(-3px); background:rgba(255,255,255,0.22);">Talk to Sales</a>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer style="background:#fff; border-top:1px solid #E5E7EB; padding:48px 32px 32px;">
+    <div style="max-width:1280px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:26px; height:26px; border-radius:8px; background:linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);"></div>
+        <span style="font-family:'Sora',sans-serif; font-weight:700; font-size:15px; color:#1E1B4B;">MedRad Smart System</span>
+      </div>
+      <div style="font-size:13.5px; color:#9CA3AF;">© 2026 MedRad Smart System. All rights reserved.</div>
+    </div>
+  </footer>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;ctaGradient&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;purple-pink&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;options&quot;: [&quot;purple-pink&quot;, &quot;indigo-purple-pink&quot;, &quot;solid-purple&quot;], &quot;section&quot;: &quot;Style&quot;}, &quot;showStatsBar&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Sections&quot;}}">
+class Component extends DCLogic {
+  state = { visible: {}, scrollProgress: 0, scrolled: false, tiltX: 0, tiltY: 0, countTick: 0, wordIndex: 0, wordShown: true, techCount: 13, invoiceId: 4821, invoiceAmt: 24900, inspectPct: 92 };
+  sectionEls = {};
+  countStarted = false;
+  words = ['Biomedical Operations', 'Facility Management', 'Service Workflows', 'Inspection Cycles', 'Billing & Invoicing', 'Asset Tracking'];
+
+  componentDidMount() {
+    this.onScroll = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      const pct = max > 0 ? (h.scrollTop / max) * 100 : 0;
+      this.checkReveals();
+      this.setState({ scrollProgress: pct, scrolled: h.scrollTop > 10 });
+    };
+    window.addEventListener('scroll', this.onScroll, { passive: true });
+    this.checkReveals();
+
+    this.wordTimer = setInterval(() => {
+      this.setState({ wordShown: false });
+      this.swapTimer = setTimeout(() => {
+        this.setState((s) => ({ wordIndex: (s.wordIndex + 1) % this.words.length, wordShown: true }));
+      }, 450);
+    }, 2800);
+
+    this.numTimer = setInterval(() => {
+      const r = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
+      this.setState((s) => ({
+        techCount: Math.max(8, Math.min(24, s.techCount + r(-2, 2))),
+        inspectPct: Math.max(84, Math.min(99, s.inspectPct + r(-2, 2))),
+        invoiceId: s.invoiceId + r(1, 4),
+        invoiceAmt: r(9, 48) * 500 + 400,
+      }));
+    }, 2200);
+  }
+
+  checkReveals() {
+    const threshold = window.innerHeight * 0.88;
+    let changed = null;
+    Object.keys(this.sectionEls).forEach((key) => {
+      if (this.state.visible[key]) return;
+      const el = this.sectionEls[key];
+      if (el && el.getBoundingClientRect().top < threshold) {
+        changed = changed || {};
+        changed[key] = true;
+      }
+    });
+    if (changed) this.setState((s) => ({ visible: { ...s.visible, ...changed } }));
+  }
+
+  onMockupMove = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    this.setState({ tiltX: py * -6, tiltY: px * 8 });
+  };
+  onMockupLeave = () => this.setState({ tiltX: 0, tiltY: 0 });
+
+  startCountUp() {
+    if (this.countStarted) return;
+    this.countStarted = true;
+    const start = performance.now();
+    const duration = 1400;
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      this.setState({ countTick: eased });
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  makeReveal(key) {
+    const isVisible = !!this.state.visible[key];
+    return {
+      ref: (el) => { if (el) this.sectionEls[key] = el; },
+      style: isVisible
+        ? 'opacity:1; transform:translateY(0); transition:opacity 0.8s ease, transform 0.8s ease;'
+        : 'opacity:0; transform:translateY(28px); transition:opacity 0.8s ease, transform 0.8s ease;',
+      visible: isVisible,
+    };
+  }
+
+  componentWillUnmount() {
+    if (this.onScroll) window.removeEventListener('scroll', this.onScroll);
+    clearInterval(this.wordTimer);
+    clearInterval(this.numTimer);
+    clearTimeout(this.swapTimer);
+  }
+
+  renderVals() {
+    const problemReveal = this.makeReveal('problem');
+    const solutionReveal = this.makeReveal('solution');
+    const featuresReveal = this.makeReveal('features');
+    const workflowReveal = this.makeReveal('workflow');
+    const rolesReveal = this.makeReveal('roles');
+    const benefitsReveal = this.makeReveal('benefits');
+    const ctaReveal = this.makeReveal('cta');
+    const statsReveal = this.makeReveal('stats');
+    if (statsReveal.visible) this.startCountUp();
+    const t = this.state.countTick;
+    const fmt = (target, decimals, suffix) => (target * t).toFixed(decimals) + suffix;
+    const gradients = {
+      'purple-pink': 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
+      'indigo-purple-pink': 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #EC4899 100%)',
+      'solid-purple': 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)',
+    };
+    const ctaGradientCss = gradients[this.props.ctaGradient ?? 'purple-pink'];
+
+    const shown = this.state.wordShown;
+    return {
+      rotatingWord: this.words[this.state.wordIndex],
+      wordStyle: shown ? 'opacity:1; transform:translateY(0);' : 'opacity:0; transform:translateY(-14px);',
+      techCount: this.state.techCount,
+      inspectPct: this.state.inspectPct + '%',
+      inspectLabel: this.state.inspectPct + '%',
+      invoiceId: this.state.invoiceId,
+      invoiceAmt: '$' + this.state.invoiceAmt.toLocaleString(),
+      ctaGradientCss,
+      showStatsBar: this.props.showStatsBar ?? true,
+      problemReveal, solutionReveal, featuresReveal, workflowReveal, rolesReveal, benefitsReveal, ctaReveal, statsReveal,
+      scrollProgress: this.state.scrollProgress.toFixed(1) + '%',
+      navPadding: this.state.scrolled ? '12px 32px' : '18px 32px',
+      navShadow: this.state.scrolled ? '0 8px 24px -12px rgba(30,27,75,0.18)' : 'none',
+      techAvatars: [
+        'linear-gradient(135deg,#7C3AED,#5B21B6)',
+        'linear-gradient(135deg,#EC4899,#7C3AED)',
+        'linear-gradient(135deg,#3B82F6,#6D28D9)',
+        'linear-gradient(135deg,#10B981,#3B82F6)',
+      ],
+      particles: [
+        { size: '8px', color: '#C4B5FD', top: '12%', left: '4%', dur: '4s', delay: '0s' },
+        { size: '6px', color: '#F5D0FE', top: '68%', left: '2%', dur: '5s', delay: '0.4s' },
+        { size: '7px', color: '#BFDBFE', top: '22%', left: '94%', dur: '4.5s', delay: '0.8s' },
+        { size: '5px', color: '#A7F3D0', top: '80%', left: '90%', dur: '5.5s', delay: '0.2s' },
+        { size: '6px', color: '#DDD6FE', top: '48%', left: '48%', dur: '6s', delay: '1s' },
+        { size: '5px', color: '#FBCFE8', top: '8%', left: '58%', dur: '4.8s', delay: '0.6s' },
+        { size: '7px', color: '#C7D2FE', top: '90%', left: '40%', dur: '5.2s', delay: '1.2s' },
+      ],
+      onMockupMove: this.onMockupMove,
+      onMockupLeave: this.onMockupLeave,
+      mockupTiltStyle: `perspective(1200px) rotateX(${this.state.tiltX}deg) rotateY(${this.state.tiltY}deg)`,
+      featuresPlay: featuresReveal.visible ? 'running' : 'paused',
+      rolesPlay: rolesReveal.visible ? 'running' : 'paused',
+      benefitsPlay: benefitsReveal.visible ? 'running' : 'paused',
+      sidebarItems: [
+        { active: 'rgba(255,255,255,0.22)', shape: '6px', opacity: 1 },
+        { active: 'transparent', shape: '50%', opacity: 0.85 },
+        { active: 'transparent', shape: '4px', opacity: 0.85 },
+        { active: 'transparent', shape: '50%', opacity: 0.85 },
+        { active: 'transparent', shape: '6px', opacity: 0.85 },
+        { active: 'transparent', shape: '4px', opacity: 0.85 },
+        { active: 'transparent', shape: '50%', opacity: 0.85 },
+        { active: 'transparent', shape: '6px', opacity: 0.85 },
+      ],
+      statTiles: [
+        { label: 'Facilities', value: '693', color: '#7C3AED', pct: '78%', grad: 'linear-gradient(135deg,#7C3AED,#5B21B6)', icon: 'M4 22V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v18M4 22h11M8 7h3M8 11h3M15 22V9l5 2v11' },
+        { label: 'Service Requests', value: '55', color: '#EC4899', pct: '40%', grad: 'linear-gradient(135deg,#EC4899,#7C3AED)', icon: 'M14 7a4 4 0 0 0-5.3 5.3L3 18v3h3l5.7-5.7A4 4 0 0 0 17 10' },
+        { label: 'Invoices', value: '119', color: '#3B82F6', pct: '62%', grad: 'linear-gradient(135deg,#3B82F6,#2563EB)', icon: 'M6 2h12v20l-3-2-3 2-3-2-3 2V2zM9 8h6M9 12h6' },
+      ],
+      miniStats: [
+        { label: 'Permissions', value: '85', color: '#7C3AED', icon: 'M15 7a4 4 0 1 1-4 4l-6 6v3h3l1-1v-2h2v-2h2z' },
+        { label: 'Inspections', value: '11,512', color: '#3B82F6', icon: 'M9 4h6v2H9zM8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2M9 14l2 2 4-4' },
+        { label: 'Rentals', value: '2', color: '#EC4899', icon: 'M20 12l-8 8-9-9V3h8l9 9z' },
+        { label: 'Users', value: '667', color: '#10B981', icon: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 6-6h2M17 3.5a4 4 0 0 1 0 7.7M22 21v-1a6 6 0 0 0-4-5.6' },
+      ],
+      focusQueue: [
+        { label: 'Critical service requests', count: '0', color: '#EF4444' },
+        { label: 'Overdue inspections', count: '0', color: '#F59E0B' },
+        { label: 'Low stock parts', count: '5', color: '#7C3AED' },
+        { label: 'Expiring parts', count: '0', color: '#3B82F6' },
+      ],
+      recentActivity: [
+        { time: 'Jul 16, 10:49 AM', text: 'Omar Ahmad viewed Notifications' },
+        { time: 'Jul 16, 10:46 AM', text: 'Omar Ahmad signed in' },
+        { time: 'Jul 16, 3:56 PM', text: 'Omar Ahmad viewed Notifications' },
+      ],
+      trustStats: [
+        { display: fmt(1200, 0, '+').replace(/\B(?=(\d{3})+(?!\d))/g, ','), label: 'Facilities managed', grad: 'linear-gradient(135deg,#7C3AED,#5B21B6)', icon: 'M4 22V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v18M4 22h11M8 7h3M8 11h3M15 22V9l5 2v11', delay: '0s' },
+        { display: fmt(85, 0, 'K+'), label: 'Medical assets tracked', grad: 'linear-gradient(135deg,#3B82F6,#6D28D9)', icon: 'M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8', delay: '0.12s' },
+        { display: fmt(99.9, 1, '%'), label: 'Platform uptime', grad: 'linear-gradient(135deg,#10B981,#3B82F6)', icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 12l2 2 4-4', delay: '0.24s' },
+        { display: fmt(40, 0, '%'), label: 'Faster billing cycles', grad: 'linear-gradient(135deg,#EC4899,#7C3AED)', icon: 'M6 2h12v20l-3-2-3 2-3-2-3 2V2zM9 8h6M9 12h6', delay: '0.36s' },
+      ],
+      problemPoints: [
+        { title: 'Fragmented facility data', desc: 'Asset and facility records live in separate spreadsheets and tools.', grad: 'linear-gradient(135deg,#F472B6,#DB2777)', glow: 'rgba(219,39,119,0.5)', icon: 'M4 4h6v6H4zM14 7h6v6h-6zM7 15h6v6H7z' },
+        { title: 'Manual inspection tracking', desc: 'Paper forms make it hard to prove compliance or catch overdue checks.', grad: 'linear-gradient(135deg,#FB923C,#EA580C)', glow: 'rgba(234,88,12,0.5)', icon: 'M9 4h6v2H9zM8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2M9 14l2 2 4-4' },
+        { title: 'Slow technician coordination', desc: 'Service requests bounce between emails, calls, and sticky notes.', grad: 'linear-gradient(135deg,#A78BFA,#7C3AED)', glow: 'rgba(124,58,237,0.5)', icon: 'M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H8l-4 4V5a1 1 0 0 1 1-1zM8 9h8M8 12h5' },
+        { title: 'Delayed billing', desc: 'Invoices lag behind completed work, hurting cash flow visibility.', grad: 'linear-gradient(135deg,#60A5FA,#2563EB)', glow: 'rgba(37,99,235,0.5)', icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2' },
+      ],
+      features: [
+        { title: 'Facilities & Asset Management', desc: 'Manage parent/child facility hierarchies and every medical asset in one registry.', grad: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)', icon: 'M4 22V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v18M4 22h11M8 7h3M8 11h3M8 15h3M15 22V9l5 2v11', delay: '0ms' },
+        { title: 'Service Requests & Technician Workflows', desc: 'Assign, track, and resolve service requests with full technician accountability.', grad: 'linear-gradient(135deg, #3B82F6 0%, #6D28D9 100%)', icon: 'M14 7a4 4 0 0 0-5.3 5.3L3 18v3h3l5.7-5.7A4 4 0 0 0 17 10', delay: '80ms' },
+        { title: 'Inspection Scheduling & Custom Forms', desc: 'Schedule recurring inspections and capture results with configurable forms.', grad: 'linear-gradient(135deg, #EC4899 0%, #7C3AED 100%)', icon: 'M9 4h6v2H9zM8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2M9 13l2 2 4-4', delay: '160ms' },
+        { title: 'Inventory, Parts, Sales & Rentals', desc: 'Track parts and equipment across inventory, sales, quotations, and rentals.', grad: 'linear-gradient(135deg, #10B981 0%, #3B82F6 100%)', icon: 'M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8', delay: '240ms' },
+        { title: 'Billing, Invoices & Payments', desc: 'Generate invoices tied directly to completed service and rental work.', grad: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)', icon: 'M6 2h12v20l-3-2-3 2-3-2-3 2V2zM9 8h6M9 12h6M9 16h4', delay: '320ms' },
+        { title: 'Role-Based Dashboards & Permissions', desc: 'Give every role — from technician to super admin — the exact view they need.', grad: 'linear-gradient(135deg, #7C3AED 0%, #3B82F6 100%)', icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM9 12l2 2 4-4', delay: '400ms' },
+      ],
+      workflowSteps: [
+        { num: 1, label: 'Facility', color: '#7C3AED', showArrow: true },
+        { num: 2, label: 'Asset', color: '#6D28D9', showArrow: true },
+        { num: 3, label: 'Service / Inspection', color: '#EC4899', showArrow: true },
+        { num: 4, label: 'Report', color: '#3B82F6', showArrow: true },
+        { num: 5, label: 'Invoice', color: '#10B981', showArrow: true },
+        { num: 6, label: 'Billing', color: '#1E1B4B', showArrow: false },
+      ],
+      roles: [
+        { title: 'Super Admin', desc: 'Full visibility and control across every facility, user, and workflow.', grad: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)', icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM9 12l2 2 4-4', delay: '0ms' },
+        { title: 'Facility Admin', desc: 'Manages assigned facilities, staff, and equipment records.', grad: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)', icon: 'M4 22V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v18M4 22h11M8 7h3M8 11h3M15 22V9l5 2v11', delay: '60ms' },
+        { title: 'Facility Manager', desc: 'Oversees day-to-day operations for one or more assigned sites.', grad: 'linear-gradient(135deg, #3B82F6 0%, #6D28D9 100%)', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21v-1a6 6 0 0 1 6-6h2M18 14l.9 1.6 1.8.3-1.3 1.3.3 1.8-1.7-.8-1.7.8.3-1.8-1.3-1.3 1.8-.3z', delay: '120ms' },
+        { title: 'Technician', desc: 'Views assigned service requests, inspections, and job details.', grad: 'linear-gradient(135deg, #10B981 0%, #3B82F6 100%)', icon: 'M14 7a4 4 0 0 0-5.3 5.3L3 18v3h3l5.7-5.7A4 4 0 0 0 17 10', delay: '180ms' },
+        { title: 'HR Manager', desc: 'Manages timesheets, leave, and workforce records.', grad: 'linear-gradient(135deg, #EC4899 0%, #7C3AED 100%)', icon: 'M9 6V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9zM3 13h18', delay: '240ms' },
+        { title: 'Employee', desc: 'Accesses calendar, chat, notifications, and personal workflows.', grad: 'linear-gradient(135deg, #7C3AED 0%, #3B82F6 100%)', icon: 'M7 3v3M17 3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z', delay: '300ms' },
+        { title: 'Client', desc: 'Tracks service status and billing for their own facilities.', grad: 'linear-gradient(135deg, #1E1B4B 0%, #7C3AED 100%)', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1', delay: '360ms' },
+      ],
+      benefits: [
+        { text: 'Reduce manual work across facilities and teams', delay: '0ms' },
+        { text: 'Improve service visibility from request to resolution', delay: '80ms' },
+        { text: 'Track every asset and inspection in one place', delay: '160ms' },
+        { text: 'Speed up billing with work-linked invoicing', delay: '240ms' },
+        { text: 'Improve technician accountability and response times', delay: '320ms' },
+        { text: 'Scale across hundreds or thousands of facilities', delay: '400ms' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

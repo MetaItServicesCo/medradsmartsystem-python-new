@@ -23,7 +23,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
 
 const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Module; subItems?: { text: string; path: string }[] }[] = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', module: 'dashboard' },
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', module: 'dashboard' },
   { text: 'Facilities', icon: <BusinessIcon />, path: '/facilities', module: 'facilities' },
   { text: 'Users', icon: <PeopleIcon />, path: '/users', module: 'users' },
   { 

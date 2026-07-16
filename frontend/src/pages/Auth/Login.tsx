@@ -26,7 +26,7 @@ const Login = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/')
+      navigate('/dashboard')
     }
   }, [isAuthenticated, navigate])
 
@@ -55,7 +55,7 @@ const Login = () => {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         })
         login(res.data.user, res.data.access_token)
-        navigate('/')
+        navigate('/dashboard')
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'An error occurred')

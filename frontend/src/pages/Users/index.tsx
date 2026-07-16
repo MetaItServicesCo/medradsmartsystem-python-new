@@ -158,8 +158,7 @@ const Users = () => {
       login(data.user, data.access_token)
       // Clear all cached data to prevent stale superadmin data rendering
       queryClient.clear()
-      // Dashboard is the index route at '/', not '/dashboard'
-      navigate('/', { replace: true })
+      navigate('/dashboard', { replace: true })
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to impersonate'),
   })

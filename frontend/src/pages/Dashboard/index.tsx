@@ -248,7 +248,7 @@ const Dashboard = () => {
       detail: 'enabled actions',
       icon: <PeopleAltIcon />,
       color: '#7C3AED',
-      path: '/',
+      path: '/dashboard',
     },
     {
       key: 'inspections',

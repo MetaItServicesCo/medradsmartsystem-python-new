@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import Layout from './components/Layout'
+import Landing from './pages/Landing'
 import Login from './pages/Auth/Login'
 import Dashboard from './pages/Dashboard'
 import Facilities from './pages/Facilities'
@@ -23,7 +24,7 @@ import MyLeave from './pages/MyLeave'
 import { canAccessModule, getVisibleModules, type Module } from './config/permissions'
 
 const modulePath: Record<Module, string> = {
-  dashboard: '/',
+  dashboard: '/dashboard',
   facilities: '/facilities',
   users: '/users',
   'service-requests': '/service-requests',
@@ -61,6 +62,8 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/landing" element={<Landing />} />
+      <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
 
       <Route
         path="/"
@@ -68,7 +71,7 @@ function App() {
           isAuthenticated ? <Layout key={useAuthStore.getState().user?.id} /> : <Navigate to="/login" replace />
         }
       >
-        <Route index element={<ProtectedPage module="dashboard"><Dashboard /></ProtectedPage>} />
+        <Route path="dashboard" element={<ProtectedPage module="dashboard"><Dashboard /></ProtectedPage>} />
         <Route path="facilities/*" element={<ProtectedPage module="facilities"><Facilities /></ProtectedPage>} />
         <Route path="users/*" element={<ProtectedPage module="users"><Users /></ProtectedPage>} />
         <Route path="chat/*" element={<ProtectedPage module="chat"><Chat /></ProtectedPage>} />
