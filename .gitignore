@@ -67,6 +67,8 @@ alembic_err.txt
 
 # Uploads
 uploads/
+!frontend/public/landing/uploads/
+!frontend/public/landing/uploads/*.png
 temp/
 
 # Logs
