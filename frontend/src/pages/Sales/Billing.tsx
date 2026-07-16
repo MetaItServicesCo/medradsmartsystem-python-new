@@ -470,13 +470,15 @@ const Billing = () => {
     placeholderData: previousData => previousData,
   })
 
-  const anyBillingSourceLoading = [
-    shouldFetchService ? serviceQ : null,
-    shouldFetchService ? serviceInvoicesQ : null,
-    shouldFetchInspection ? inspectionQ : null,
-    shouldFetchSales ? salesQ : null,
-    shouldFetchRental ? rentalsQ : null,
-  ].filter(Boolean).some(query => query?.isLoading)
+  const activeBillingQueries = [
+    { enabled: shouldFetchService, isLoading: serviceQ.isLoading, isFetching: serviceQ.isFetching },
+    { enabled: shouldFetchService, isLoading: serviceInvoicesQ.isLoading, isFetching: serviceInvoicesQ.isFetching },
+    { enabled: shouldFetchInspection, isLoading: inspectionQ.isLoading, isFetching: inspectionQ.isFetching },
+    { enabled: shouldFetchSales, isLoading: salesQ.isLoading, isFetching: salesQ.isFetching },
+    { enabled: shouldFetchRental, isLoading: rentalsQ.isLoading, isFetching: rentalsQ.isFetching },
+  ].filter(query => query.enabled)
+  const allBillingSourcesLoading = activeBillingQueries.length > 0 && activeBillingQueries.every(query => query.isLoading)
+  const anyBillingSourceFetching = activeBillingQueries.some(query => query.isFetching)
 
   const items = useMemo<BillingItem[]>(() => {
     const serviceInvoiceItems = shouldFetchService ? (serviceInvoicesQ.data?.items || []).map((invoice): BillingItem => ({
@@ -611,7 +613,7 @@ const Billing = () => {
     shouldFetchService,
   ])
 
-  const isInitialLoading = anyBillingSourceLoading && items.length === 0
+  const isInitialLoading = allBillingSourcesLoading && items.length === 0
 
   const filteredItems = items.filter(item => {
     const normalizedSearch = search.trim().toLowerCase()
@@ -1064,6 +1066,9 @@ const Billing = () => {
           onChange={event => setSearchInput(event.target.value)}
           sx={{ minWidth: 260 }}
         />
+        {anyBillingSourceFetching && !isInitialLoading && (
+          <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+        )}
         <Typography sx={{ fontWeight: 700, color: '#374151', fontSize: '0.9rem' }}>Source:</Typography>
         {(['all', 'service', 'inspection', 'sales', 'rental'] as const).map(source => (
           <Chip

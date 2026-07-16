@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react'
 import {
-  Box, InputBase, Avatar, Badge, IconButton, Typography,
+  Box, Avatar, Badge, IconButton, Typography,
   Menu, MenuItem, ListItemIcon, Divider, Button, CircularProgress
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import SearchIcon from '@mui/icons-material/Search'
-import ClearIcon from '@mui/icons-material/Clear'
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone'
 import LogoutIcon from '@mui/icons-material/Logout'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
@@ -13,7 +11,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { fetchCurrentUser, resolveUploadUrl } from '@/api/users'
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead, type NotificationItem } from '@/api/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 interface HeaderProps {
   title: string
@@ -24,12 +22,9 @@ const Header = ({ title }: HeaderProps) => {
   const setUser = useAuthStore((s) => s.setUser)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
-  const location = useLocation()
   const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [notificationAnchorEl, setNotificationAnchorEl] = useState<null | HTMLElement>(null)
-  const [searchInput, setSearchInput] = useState(searchParams.get('search') || '')
 
   const { data: notificationData, isLoading: notificationsLoading } = useQuery({
     queryKey: ['notifications-header'],
@@ -60,38 +55,6 @@ const Header = ({ title }: HeaderProps) => {
       queryClient.invalidateQueries({ queryKey: ['notifications-header'] })
     },
   })
-
-  useEffect(() => {
-    setSearchInput(searchParams.get('search') || '')
-  }, [searchParams.get('search')])
-
-  const searchPath = (value: string) => {
-    const next = new URLSearchParams(location.search)
-    if (value) next.set('search', value)
-    else next.delete('search')
-    const qs = next.toString()
-    return `${location.pathname}${qs ? `?${qs}` : ''}`
-  }
-
-  // Live search debounce
-  useEffect(() => {
-    const trimmed = searchInput.trim()
-    const currentParam = searchParams.get('search') || ''
-    
-    // Only navigate if the trimmed input doesn't match the current URL param
-    if (trimmed === currentParam) return
-
-    const handler = setTimeout(() => {
-      navigate(searchPath(trimmed), { replace: true })
-    }, 400)
-
-    return () => clearTimeout(handler)
-  }, [searchInput, navigate, searchParams, location.pathname, location.search])
-
-  const handleClearSearch = () => {
-    setSearchInput('')
-    navigate(searchPath(''), { replace: true })
-  }
 
   const handleOpenMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget)
@@ -160,47 +123,6 @@ const Header = ({ title }: HeaderProps) => {
         <Typography variant="h5" sx={{ fontWeight: 900, color: '#1E1B4B', lineHeight: 1.2, letterSpacing: '-0.5px' }}>
           {title}
         </Typography>
-      </Box>
-
-      {/* Search bar */}
-      <Box
-        component="form"
-        onSubmit={(e) => {
-          e.preventDefault()
-          navigate(searchPath(searchInput.trim()))
-        }}
-        sx={{
-          display: { xs: 'none', sm: 'flex' },
-          alignItems: 'center',
-          gap: 1.5,
-          backgroundColor: '#fff',
-          borderRadius: '18px',
-          px: 2.5,
-          py: 1,
-          width: { xs: 0, sm: 260, lg: 360 },
-          border: '1px solid #E8ECF4',
-          boxShadow: '0 12px 30px rgba(71,85,105,0.06)',
-          '&:focus-within': {
-            border: '1px solid #7161D8',
-            boxShadow: '0 14px 34px rgba(113,97,216,0.14)',
-          },
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
-      >
-        <IconButton type="submit" size="small" sx={{ p: '2px' }}>
-          <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
-        </IconButton>
-        <InputBase
-          placeholder="Search..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}
-        />
-        {searchInput && (
-          <IconButton size="small" onClick={handleClearSearch} sx={{ p: '2px' }}>
-            <ClearIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
-          </IconButton>
-        )}
       </Box>
 
       {/* Notifications */}
