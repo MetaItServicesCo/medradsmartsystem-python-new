@@ -385,6 +385,13 @@ const Billing = () => {
   const [page, setPage] = useState(0)
   const rowsPerPage = 25
   const search = searchParams.get('search') || ''
+  const [searchInput, setSearchInput] = useState(search)
+  const activeSearch = search.trim()
+  const querySearch = activeSearch || undefined
+  const shouldFetchService = sourceFilter === 'all' || sourceFilter === 'service'
+  const shouldFetchInspection = sourceFilter === 'all' || sourceFilter === 'inspection'
+  const shouldFetchSales = sourceFilter === 'all' || sourceFilter === 'sales'
+  const shouldFetchRental = sourceFilter === 'all' || sourceFilter === 'rental'
 
   const [payMethod, setPayMethod] = useState<PayMethod>('credit_card')
   const [achChoice, setAchChoice] = useState<AchChoice>('ach')
@@ -398,8 +405,38 @@ const Billing = () => {
   const [payAcctLast4, setPayAcctLast4] = useState('')
   const [payRoutingLast4, setPayRoutingLast4] = useState('')
 
-  const serviceQ = useQuery({ queryKey: ['billing-service-quotations', search], queryFn: () => fetchAllQuotations(search || undefined) })
-  const serviceInvoicesQ = useQuery({ queryKey: ['billing-service-invoices', search], queryFn: () => fetchAllServiceInvoices(search || undefined) })
+  useEffect(() => {
+    setSearchInput(search)
+  }, [search])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const trimmed = searchInput.trim()
+      if (trimmed === search) return
+
+      const next = new URLSearchParams(searchParams)
+      if (trimmed) next.set('search', trimmed)
+      else next.delete('search')
+      setSearchParams(next, { replace: true })
+    }, 350)
+
+    return () => window.clearTimeout(timeout)
+  }, [searchInput, search, searchParams, setSearchParams])
+
+  const serviceQ = useQuery({
+    queryKey: ['billing-service-quotations', querySearch],
+    queryFn: () => fetchAllQuotations(querySearch),
+    enabled: shouldFetchService,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+  })
+  const serviceInvoicesQ = useQuery({
+    queryKey: ['billing-service-invoices', querySearch],
+    queryFn: () => fetchAllServiceInvoices(querySearch),
+    enabled: shouldFetchService,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+  })
 
   // Fetch full SR data (with history) when printing a service invoice — needed to append the service report
   const printSrId = printItem?.source === 'service' && printItem?.billingKind === 'service_invoice'
@@ -411,14 +448,38 @@ const Billing = () => {
     enabled: !!printSrId,
     staleTime: 60_000,
   })
-  const inspectionQ = useQuery({ queryKey: ['billing-inspection-invoices', search], queryFn: () => fetchAllInspectionQuotations(search || undefined) })
-  const salesQ = useQuery({ queryKey: ['billing-sales-invoices', search], queryFn: () => fetchSalesInvoices({ search: search || undefined }) })
-  const rentalsQ = useQuery({ queryKey: ['billing-rental-invoices', search], queryFn: () => fetchRentalInvoices({ search: search || undefined }) })
+  const inspectionQ = useQuery({
+    queryKey: ['billing-inspection-invoices', querySearch],
+    queryFn: () => fetchAllInspectionQuotations(querySearch),
+    enabled: shouldFetchInspection,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+  })
+  const salesQ = useQuery({
+    queryKey: ['billing-sales-invoices', querySearch],
+    queryFn: () => fetchSalesInvoices({ search: querySearch }),
+    enabled: shouldFetchSales,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+  })
+  const rentalsQ = useQuery({
+    queryKey: ['billing-rental-invoices', querySearch],
+    queryFn: () => fetchRentalInvoices({ search: querySearch }),
+    enabled: shouldFetchRental,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+  })
 
-  const anyBillingSourceLoading = serviceQ.isLoading || serviceInvoicesQ.isLoading || inspectionQ.isLoading || salesQ.isLoading || rentalsQ.isLoading
+  const anyBillingSourceLoading = [
+    shouldFetchService ? serviceQ : null,
+    shouldFetchService ? serviceInvoicesQ : null,
+    shouldFetchInspection ? inspectionQ : null,
+    shouldFetchSales ? salesQ : null,
+    shouldFetchRental ? rentalsQ : null,
+  ].filter(Boolean).some(query => query?.isLoading)
 
   const items = useMemo<BillingItem[]>(() => {
-    const serviceInvoiceItems = (serviceInvoicesQ.data?.items || []).map((invoice): BillingItem => ({
+    const serviceInvoiceItems = shouldFetchService ? (serviceInvoicesQ.data?.items || []).map((invoice): BillingItem => ({
       key: `service-invoice-${invoice.id}`,
       source: 'service',
       billingKind: 'service_invoice',
@@ -439,9 +500,9 @@ const Billing = () => {
       paymentMethod: invoice.payment_method,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
-    }))
+    })) : []
 
-    const serviceItems = (serviceQ.data || [])
+    const serviceItems = shouldFetchService ? (serviceQ.data || [])
       .filter(q => q.status !== 'included_in_invoice')
       .map((q): BillingItem => {
       const amount = Number(q.amount || 0)
@@ -466,9 +527,9 @@ const Billing = () => {
         transactions: serviceTransactions(q),
         raw: q,
       }
-    })
+    }) : []
 
-    const inspectionItems = (inspectionQ.data?.items || []).map((invoice): BillingItem => ({
+    const inspectionItems = shouldFetchInspection ? (inspectionQ.data?.items || []).map((invoice): BillingItem => ({
       key: `inspection-${invoice.id}`,
       source: 'inspection',
       id: invoice.id,
@@ -490,9 +551,9 @@ const Billing = () => {
       paymentMethod: invoice.payment_method,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
-    }))
+    })) : []
 
-    const salesItems = (salesQ.data?.items || []).map((invoice): BillingItem => ({
+    const salesItems = shouldFetchSales ? (salesQ.data?.items || []).map((invoice): BillingItem => ({
       key: `sales-${invoice.id}`,
       source: 'sales',
       id: invoice.id,
@@ -512,9 +573,9 @@ const Billing = () => {
       paymentMethod: invoice.payment_method,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
-    }))
+    })) : []
 
-    const rentalItems = (rentalsQ.data?.items || []).map((invoice): BillingItem => ({
+    const rentalItems = shouldFetchRental ? (rentalsQ.data?.items || []).map((invoice): BillingItem => ({
       key: `rental-${invoice.id}`,
       source: 'rental',
       id: invoice.id,
@@ -534,11 +595,21 @@ const Billing = () => {
       paymentMethod: invoice.payment_method,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
-    }))
+    })) : []
 
     return [...serviceInvoiceItems, ...serviceItems, ...inspectionItems, ...salesItems, ...rentalItems]
       .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
-  }, [inspectionQ.data, rentalsQ.data, salesQ.data, serviceInvoicesQ.data, serviceQ.data])
+  }, [
+    inspectionQ.data,
+    rentalsQ.data,
+    salesQ.data,
+    serviceInvoicesQ.data,
+    serviceQ.data,
+    shouldFetchInspection,
+    shouldFetchRental,
+    shouldFetchSales,
+    shouldFetchService,
+  ])
 
   const isInitialLoading = anyBillingSourceLoading && items.length === 0
 
@@ -568,14 +639,6 @@ const Billing = () => {
   useEffect(() => {
     setPage(0)
   }, [sourceFilter, statusFilter, tab, search])
-
-  const updateSearch = (value: string) => {
-    const next = new URLSearchParams(searchParams)
-    const trimmed = value.trim()
-    if (trimmed) next.set('search', trimmed)
-    else next.delete('search')
-    setSearchParams(next, { replace: true })
-  }
 
   const totals = useMemo(() => {
     const outstanding = items.filter(item => item.balance > 0).reduce((sum, item) => sum + item.balance, 0)
@@ -997,8 +1060,8 @@ const Billing = () => {
         <TextField
           size="small"
           placeholder="Search billing..."
-          value={search}
-          onChange={event => updateSearch(event.target.value)}
+          value={searchInput}
+          onChange={event => setSearchInput(event.target.value)}
           sx={{ minWidth: 260 }}
         />
         <Typography sx={{ fontWeight: 700, color: '#374151', fontSize: '0.9rem' }}>Source:</Typography>
