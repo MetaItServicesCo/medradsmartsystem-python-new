@@ -4,7 +4,7 @@ import {
   TableContainer, TableHead, TableRow, Paper, Chip, IconButton,
   InputAdornment, Select, ListItemIcon, Menu, MenuItem, FormControl, InputLabel,
   Avatar, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
-  CircularProgress, Alert,
+  CircularProgress, Alert, TablePagination,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import AddIcon from '@mui/icons-material/Add'
@@ -77,7 +77,10 @@ const Users = () => {
   const login = useAuthStore((s) => s.login)
 
   const [search, setSearch] = useState(searchParams.get('search') || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('search') || '')
   const [roleFilter, setRoleFilter] = useState('')
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
   const [createOpen, setCreateOpen] = useState(false)
   const [editUser, setEditUser] = useState<UserData | null>(null)
   const [roleEditUser, setRoleEditUser] = useState<UserData | null>(null)
@@ -90,7 +93,21 @@ const Users = () => {
 
   useEffect(() => {
     setSearch(searchParams.get('search') || '')
+    setDebouncedSearch(searchParams.get('search') || '')
   }, [searchParams.get('search')])
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedSearch(search.trim())
+      setPage(0)
+    }, 350)
+
+    return () => window.clearTimeout(handle)
+  }, [search])
+
+  useEffect(() => {
+    setPage(0)
+  }, [roleFilter])
 
   const openActions = (event: React.MouseEvent<HTMLElement>, user: UserData) => {
     setActionAnchor(event.currentTarget)
@@ -107,9 +124,15 @@ const Users = () => {
     setEditUser(user)
   }
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['users', search, roleFilter],
-    queryFn: () => fetchUsers({ search: search || undefined, role: roleFilter || undefined, limit: 200 }),
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['users', debouncedSearch, roleFilter, page, rowsPerPage],
+    queryFn: () => fetchUsers({
+      search: debouncedSearch || undefined,
+      role: roleFilter || undefined,
+      skip: page * rowsPerPage,
+      limit: rowsPerPage,
+    }),
+    placeholderData: previousData => previousData,
   })
 
   const deactivateMutation = useMutation({
@@ -205,6 +228,9 @@ const Users = () => {
           </Select>
         </FormControl>
         <Box sx={{ flex: 1 }} />
+        {isFetching && !isLoading && (
+          <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+        )}
         {isSuperAdmin && (
           <Button
             variant="contained"
@@ -345,9 +371,23 @@ const Users = () => {
 
       {/* Total count */}
       {data && (
-        <Typography variant="caption" sx={{ mt: 2, display: 'block', color: '#9CA3AF' }}>
-          Showing {users.length} of {data.total} users
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2, gap: 2, flexWrap: 'wrap' }}>
+          <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
+            Showing {users.length} of {data.total} users
+          </Typography>
+          <TablePagination
+            component="div"
+            count={data.total}
+            page={page}
+            onPageChange={(_, nextPage) => setPage(nextPage)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(event) => {
+              setRowsPerPage(Number(event.target.value))
+              setPage(0)
+            }}
+            rowsPerPageOptions={[25, 50, 100]}
+          />
+        </Box>
       )}
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>

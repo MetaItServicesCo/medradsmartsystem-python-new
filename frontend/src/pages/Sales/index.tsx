@@ -152,6 +152,7 @@ const Sales = () => {
 
   const routeSearch = new URLSearchParams(location.search).get('search') || ''
   const [search, setSearch] = useState(routeSearch)
+  const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [quotationDialog, setQuotationDialog] = useState(false)
   const [editingQuotation, setEditingQuotation] = useState<SalesQuotation | null>(null)
   const [viewQuotation, setViewQuotation] = useState<SalesQuotation | null>(null)
@@ -186,12 +187,33 @@ const Sales = () => {
 
   useEffect(() => {
     setSearch(routeSearch)
+    setDebouncedSearch(routeSearch)
   }, [routeSearch])
 
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedSearch(search.trim())
+    }, 350)
+
+    return () => window.clearTimeout(handle)
+  }, [search])
+
   const facilitiesQ = useQuery({ queryKey: ['sales-facilities'], queryFn: () => fetchFacilities({ limit: 500 }) })
-  const partsQ = useQuery({ queryKey: ['sales-parts', search], queryFn: () => fetchSalesParts(search || undefined) })
-  const quotationsQ = useQuery({ queryKey: ['sales-quotations', search], queryFn: () => fetchSalesQuotations({ search: search || undefined }) })
-  const invoicesQ = useQuery({ queryKey: ['sales-invoices', search], queryFn: () => fetchSalesInvoices({ search: search || undefined }) })
+  const partsQ = useQuery({
+    queryKey: ['sales-parts', debouncedSearch],
+    queryFn: () => fetchSalesParts(debouncedSearch || undefined),
+    placeholderData: previousData => previousData,
+  })
+  const quotationsQ = useQuery({
+    queryKey: ['sales-quotations', debouncedSearch],
+    queryFn: () => fetchSalesQuotations({ search: debouncedSearch || undefined }),
+    placeholderData: previousData => previousData,
+  })
+  const invoicesQ = useQuery({
+    queryKey: ['sales-invoices', debouncedSearch],
+    queryFn: () => fetchSalesInvoices({ search: debouncedSearch || undefined }),
+    placeholderData: previousData => previousData,
+  })
   const historyQ = useQuery({ queryKey: ['sales-history'], queryFn: fetchSalesHistory })
 
   const facilities = facilitiesQ.data?.items || []

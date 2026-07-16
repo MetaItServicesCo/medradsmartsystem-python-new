@@ -233,9 +233,10 @@ const FacilityList = () => {
 
   const skip = (page - 1) * limit
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['facilities', search, skip, limit],
     queryFn: () => fetchFacilities({ search, skip, limit }),
+    placeholderData: previousData => previousData,
   })
 
   const deleteMutation = useMutation({
@@ -536,6 +537,9 @@ const FacilityList = () => {
               '& .MuiChip-icon': { color: '#7C3AED' },
             }}
           />
+          {isFetching && !isLoading && (
+            <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+          )}
 
           <Box sx={{ flex: 1 }} />
 

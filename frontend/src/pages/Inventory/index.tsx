@@ -94,6 +94,7 @@ const Inventory = () => {
   const user = useAuthStore((state) => state.user)
   const isSuperAdmin = user?.role === 'superadmin'
   const [search, setSearch] = useState(searchParams.get('search') || '')
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('search') || '')
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [tierId, setTierId] = useState<number | ''>('')
   const [lowStock, setLowStock] = useState(false)
@@ -117,7 +118,17 @@ const Inventory = () => {
 
   useEffect(() => {
     setSearch(searchParams.get('search') || '')
+    setDebouncedSearch(searchParams.get('search') || '')
   }, [searchParams.get('search')])
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedSearch(search.trim())
+      setPage(0)
+    }, 350)
+
+    return () => window.clearTimeout(handle)
+  }, [search])
 
   const { data: facilitiesData } = useQuery({
     queryKey: ['facilities', 'inventory-filter'],
@@ -125,22 +136,24 @@ const Inventory = () => {
   })
   const { data: tiersData } = useQuery({ queryKey: ['tiers', 'inventory-options'], queryFn: () => fetchTiers({ limit: 500 }) })
   const inventoryFilters = {
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     facility_id: facilityId || undefined,
     tier_id: tierId || undefined,
     low_stock: lowStock || undefined,
   }
-  const { data, isLoading } = useQuery({
-    queryKey: ['inventory-parts', search, facilityId, tierId, lowStock, page],
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['inventory-parts', debouncedSearch, facilityId, tierId, lowStock, page],
     queryFn: () => fetchInventoryParts({
       ...inventoryFilters,
       skip: page * PAGE_SIZE,
       limit: PAGE_SIZE,
     }),
+    placeholderData: previousData => previousData,
   })
   const { data: summaryData } = useQuery({
-    queryKey: ['inventory-summary', search, facilityId, tierId, lowStock],
+    queryKey: ['inventory-summary', debouncedSearch, facilityId, tierId, lowStock],
     queryFn: () => fetchInventorySummary(inventoryFilters),
+    placeholderData: previousData => previousData,
   })
   const facilities = facilitiesData?.items ?? []
   const tiers = tiersData?.items ?? []
@@ -149,7 +162,7 @@ const Inventory = () => {
 
   useEffect(() => {
     setPage(0)
-  }, [search, facilityId, tierId, lowStock])
+  }, [debouncedSearch, facilityId, tierId, lowStock])
 
   const stats = {
     totalUnits: summaryData ? Number(summaryData.total_units) : parts.reduce((sum, p) => sum + p.quantity_on_hand, 0),
@@ -383,6 +396,9 @@ const Inventory = () => {
             {tiers.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
           </TextField>
           <FormControlLabel control={<Switch checked={lowStock} onChange={(e) => setLowStock(e.target.checked)} />} label="Low stock" />
+          {isFetching && !isLoading && (
+            <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+          )}
         </Box>
 
         <TableContainer className="list-scroll-panel">

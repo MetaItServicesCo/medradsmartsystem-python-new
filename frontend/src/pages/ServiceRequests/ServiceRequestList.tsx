@@ -7,7 +7,7 @@ import {
   InputBase, Tooltip, Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions, Skeleton, Menu, MenuItem,
   ListItemIcon, ListItemText, Pagination, Select, FormControl,
-  InputLabel, SelectChangeEvent, TextField,
+  InputLabel, SelectChangeEvent, TextField, CircularProgress,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -138,7 +138,7 @@ const ServiceRequestList = () => {
 
   const skip = (page - 1) * limit
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['service-requests', querySearch, queryStatus, queryPriority, skip, limit],
     queryFn: () =>
       fetchServiceRequests({
@@ -148,6 +148,7 @@ const ServiceRequestList = () => {
         skip,
         limit,
       }),
+    placeholderData: previousData => previousData,
   })
 
   const deleteMutation = useMutation({
@@ -322,6 +323,9 @@ const ServiceRequestList = () => {
           </FormControl>
 
           <Box sx={{ flex: 1 }} />
+          {isFetching && !isLoading && (
+            <CircularProgress size={18} thickness={5} sx={{ color: '#7161D8' }} />
+          )}
 
           <Button
             variant="contained"
