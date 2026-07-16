@@ -31,10 +31,6 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
     icon: <BuildIcon />, 
     path: '/service-requests', 
     module: 'service-requests',
-    subItems: [
-      { text: 'All Requests', path: '/service-requests' },
-      { text: 'Quotations', path: '/service-requests/quotations' }
-    ]
   },
   { text: 'Inspections', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections' },
   { 
