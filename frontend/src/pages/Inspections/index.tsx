@@ -32,6 +32,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
+import { CanvasFormBuilder, CanvasFormViewer, type CanvasFormSchema, type CanvasFormValues } from './CanvasFormBuilder'
 
 import {
   addInspectionBatchAsset,
@@ -122,6 +123,8 @@ type GridCellSchema = {
 type BuilderDragState =
   | { kind: 'block'; blockId: string }
   | { kind: 'option'; blockId: string; optionIndex: number }
+  | { kind: 'cell-option'; row: number; col: number; optionIndex: number }
+  | { kind: 'row'; rowIndex: number }
   | null
 
 type CustomGridSchema = {
@@ -144,6 +147,7 @@ type InspectionFormSchema = {
   based_on?: string
   formio_form?: FormioFormSchema | null
   custom_grid: CustomGridSchema | null
+  canvas_form?: CanvasFormSchema | null
 }
 
 const GRID_CELL_TYPES: { value: GridCellType; label: string }[] = [
@@ -423,15 +427,17 @@ const normalizeInspectionFormSchema = (schema: any, fallbackTitle = 'Inspection 
   based_on: schema?.based_on,
   formio_form: normalizeFormioForm(schema, fallbackTitle),
   custom_grid: isFormioSchema(schema) ? null : normalizeGrid(schema?.custom_grid, schema?.custom_grid?.title) || gridFromLegacySections(schema),
+  canvas_form: schema?.canvas_form && Array.isArray(schema.canvas_form.elements) ? schema.canvas_form : null,
 })
 
 const schemaToPayload = (schema: InspectionFormSchema, title: string): InspectionFormSchema => ({
   title,
-  version: schema.formio_form ? 4 : 3,
+  version: schema.formio_form ? 4 : schema.canvas_form ? 5 : 3,
   source: schema.formio_form ? FORMIO_SCHEMA_SOURCE : 'medrad_grid_form_builder',
   based_on: schema.based_on,
   formio_form: schema.formio_form ? { ...schema.formio_form, title } : null,
   custom_grid: schema.custom_grid ? normalizeGrid(schema.custom_grid, schema.custom_grid.title || 'Set Title') : null,
+  canvas_form: schema.canvas_form ?? null,
 })
 
 const defaultGridCellValue = (cell: GridCellSchema, existing: any) => {
@@ -1069,6 +1075,9 @@ const Inspections = () => {
   const [formBuilderName, setFormBuilderName] = useState('')
   const [formBuilderDescription, setFormBuilderDescription] = useState('')
   const [formBuilderModalityId, setFormBuilderModalityId] = useState<number | null>(null)
+  const [formBuilderEngine, setFormBuilderEngine] = useState<'grid' | 'canvas'>('grid')
+  const [canvasFormSchema, setCanvasFormSchema] = useState<CanvasFormSchema | null>(null)
+  const [canvasFormValues, setCanvasFormValues] = useState<CanvasFormValues>({})
   const [formBuilderSchema, setFormBuilderSchema] = useState<InspectionFormSchema>(() => normalizeInspectionFormSchema({ sections: [] }))
   const [formBuilderFormioForm, setFormBuilderFormioForm] = useState<FormioFormSchema>(() => createEmptyFormioForm())
   const [formBuilderRows, setFormBuilderRows] = useState(3)
@@ -1396,8 +1405,10 @@ const Inspections = () => {
           ...formBuilderSchema,
           title: name,
           source: 'medrad_grid_form_builder',
-          version: 3,
+          version: formBuilderEngine === 'canvas' ? 5 : 3,
           formio_form: null,
+          custom_grid: formBuilderEngine === 'canvas' ? null : formBuilderSchema.custom_grid,
+          canvas_form: formBuilderEngine === 'canvas' ? (canvasFormSchema ?? null) : null,
         }, name),
       }
       if (formBuilderMode === 'create') return createInspectionForm(payload)
@@ -1612,6 +1623,8 @@ const Inspections = () => {
     setFormBuilderName('New Inspection Form')
     setFormBuilderDescription('')
     setFormBuilderModalityId(null)
+    setFormBuilderEngine('grid')
+    setCanvasFormSchema(null)
     setFormBuilderSchema({
       title: 'New Inspection Form',
       version: 3,
@@ -1638,6 +1651,9 @@ const Inspections = () => {
     setFormBuilderRows(schema.custom_grid?.rows || 3)
     setFormBuilderColumns(schema.custom_grid?.columns || 3)
     setTablePickerHover(null)
+    const isCanvas = Boolean(schema.canvas_form?.elements)
+    setFormBuilderEngine(isCanvas ? 'canvas' : 'grid')
+    setCanvasFormSchema(isCanvas ? schema.canvas_form! : null)
     setFormBuilderOpen(true)
   }
 
@@ -1765,6 +1781,15 @@ const Inspections = () => {
     updateGridCell(rowIndex, columnIndex, { options: options.length ? options : undefined })
   }
 
+  const moveGridCellOption = (rowIndex: number, columnIndex: number, fromIndex: number, toIndex: number) => {
+    const cell = formBuilderSchema.custom_grid?.cells?.[rowIndex]?.[columnIndex]
+    const options = [...(cell?.options || [])]
+    if (fromIndex === toIndex || toIndex < 0 || toIndex >= options.length) return
+    const [moved] = options.splice(fromIndex, 1)
+    options.splice(toIndex, 0, moved)
+    updateGridCell(rowIndex, columnIndex, { options })
+  }
+
   const addSelectedCellBlock = (type: GridCellBlockType) => {
     if (!selectedBuilderCell) return toast.info('Select a table cell first')
     const cell = formBuilderSchema.custom_grid?.cells?.[selectedBuilderCell.row]?.[selectedBuilderCell.column]
@@ -1820,6 +1845,26 @@ const Inspections = () => {
     const [moved] = blocks.splice(fromIndex, 1)
     blocks.splice(toIndex, 0, moved)
     updateGridCell(rowIndex, columnIndex, { blocks })
+  }
+
+  const moveGridRow = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    setFormBuilderSchema(prev => {
+      const grid = prev.custom_grid
+      if (!grid) return prev
+      const cells = [...grid.cells]
+      const [removed] = cells.splice(fromIndex, 1)
+      cells.splice(toIndex, 0, removed)
+      return { ...prev, custom_grid: { ...grid, cells, rows: cells.length } }
+    })
+    if (selectedBuilderCell) {
+      const { row, column } = selectedBuilderCell
+      let nextRow = row
+      if (row === fromIndex) nextRow = toIndex
+      else if (fromIndex < toIndex && row > fromIndex && row <= toIndex) nextRow = row - 1
+      else if (fromIndex > toIndex && row >= toIndex && row < fromIndex) nextRow = row + 1
+      if (nextRow !== row) setSelectedBuilderCell({ row: nextRow, column })
+    }
   }
 
   const moveGridCellBlockOption = (rowIndex: number, columnIndex: number, blockIndex: number, fromIndex: number, toIndex: number) => {
@@ -3139,7 +3184,25 @@ const Inspections = () => {
     </>
   )
 
-  const isCustomGridReport = () => Boolean(activeReportSchema?.custom_grid || activeReportSchema?.formio_form || report?.custom_grid || report?.formio_form)
+  const renderCanvasReport = () => {
+    const canvas = activeReportSchema?.canvas_form
+    if (!canvas?.elements?.length) return null
+    const title = activeReportSchema?.title || selectedReportFormName()
+    return (
+      <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
+        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>{title || 'Custom Inspection Form'}</Typography>
+        <Box sx={{ overflowX: 'auto' }}>
+          <CanvasFormViewer
+            schema={canvas}
+            values={canvasFormValues}
+            onChange={setCanvasFormValues}
+          />
+        </Box>
+      </Card>
+    )
+  }
+
+  const isCustomGridReport = () => Boolean(activeReportSchema?.canvas_form?.elements?.length || activeReportSchema?.custom_grid || activeReportSchema?.formio_form || report?.custom_grid || report?.formio_form)
     || (reportFormSource === 'attached' && Boolean(activeReportSchema?.custom_grid))
     || (reportFormSource === 'existing' && Boolean(activeReportSchema?.custom_grid))
 
@@ -3982,7 +4045,44 @@ const Inspections = () => {
             </Card>
 
             <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Middle Custom Grid</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Middle Custom Section</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography sx={{ fontSize: 12, color: '#64748B', fontWeight: 700 }}>Builder:</Typography>
+                  <Box sx={{ display: 'flex', borderRadius: '10px', border: '1px solid #DDD6FE', overflow: 'hidden' }}>
+                    {(['grid', 'canvas'] as const).map(eng => (
+                      <Box
+                        key={eng}
+                        onClick={() => {
+                          setFormBuilderEngine(eng)
+                          if (eng === 'canvas' && !canvasFormSchema) setCanvasFormSchema({ canvas_width: 1080, canvas_height: 900, elements: [] })
+                        }}
+                        sx={{
+                          px: 2, py: 0.5, cursor: 'pointer', fontSize: 12, fontWeight: 800,
+                          bgcolor: formBuilderEngine === eng ? '#7C3AED' : 'transparent',
+                          color: formBuilderEngine === eng ? '#fff' : '#5B21B6',
+                          transition: 'all 0.15s',
+                          '&:hover': { bgcolor: formBuilderEngine === eng ? '#6D28D9' : '#F5F3FF' },
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {eng === 'grid' ? 'Grid' : 'Canvas'}
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              </Box>
+
+              {formBuilderEngine === 'canvas' && (
+                <Box sx={{ height: 640, borderRadius: '12px', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+                  <CanvasFormBuilder
+                    schema={canvasFormSchema}
+                    onChange={setCanvasFormSchema}
+                  />
+                </Box>
+              )}
+              {formBuilderEngine !== 'canvas' && (
+              <Box>
               <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
                 Create the table first, then click any cell to add input fields, radio groups, checkboxes, or text.
               </Typography>
@@ -4379,7 +4479,52 @@ const Inspections = () => {
                     <Table size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
                       <TableBody>
                         {formBuilderSchema.custom_grid.cells.map((row, rowIndex) => (
-                          <TableRow key={rowIndex}>
+                          <TableRow
+                            key={rowIndex}
+                            onDragOver={(event) => {
+                              if (builderDragRef.current?.kind !== 'row') return
+                              event.preventDefault()
+                            }}
+                            onDrop={(event) => {
+                              const activeDrag = builderDragRef.current
+                              if (activeDrag?.kind !== 'row') return
+                              event.preventDefault()
+                              moveGridRow(activeDrag.rowIndex, rowIndex)
+                              setBuilderDragState(null)
+                            }}
+                            sx={{ opacity: builderDrag?.kind === 'row' && builderDrag.rowIndex === rowIndex ? 0.4 : 1, transition: 'opacity 0.12s' }}
+                          >
+                            <TableCell
+                              draggable
+                              onMouseDown={(event) => {
+                                event.stopPropagation()
+                                setBuilderDragState({ kind: 'row', rowIndex })
+                              }}
+                              onDragStart={(event) => {
+                                event.dataTransfer.effectAllowed = 'move'
+                                event.dataTransfer.setData('application/x-grid-row-index', String(rowIndex))
+                                setBuilderDragState({ kind: 'row', rowIndex })
+                              }}
+                              onDragEnd={() => setBuilderDragState(null)}
+                              onClick={(event) => event.stopPropagation()}
+                              sx={{
+                                width: 22,
+                                minWidth: 22,
+                                maxWidth: 22,
+                                p: 0,
+                                border: '1px solid #D8DEE9',
+                                bgcolor: '#F8FAFC',
+                                textAlign: 'center',
+                                verticalAlign: 'middle',
+                                cursor: 'grab',
+                                '&:active': { cursor: 'grabbing' },
+                                '&:hover': { bgcolor: '#EDE9FE' },
+                              }}
+                            >
+                              <Tooltip title={`Drag to reorder row ${rowIndex + 1}`} placement="left">
+                                <DragIndicatorIcon sx={{ fontSize: 16, color: '#94A3B8', display: 'block', mx: 'auto' }} />
+                              </Tooltip>
+                            </TableCell>
                             {row.map((cell, columnIndex) => {
                               if (cell.hidden) return null
                               const isSelected = selectedBuilderCell?.row === rowIndex && selectedBuilderCell?.column === columnIndex
@@ -4456,28 +4601,68 @@ const Inspections = () => {
                                     )}
                                     {isSelected && !cell.blocks?.length && optionCellTypes.includes(cell.type) && (
                                       <Box sx={{ display: 'grid', gap: 0.75, mt: 0.5 }}>
-                                        {options.map((option, optionIndex) => (
-                                          <Box key={`${cell.id}-option-${optionIndex}`} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.75 }}>
-                                            <TextField
-                                              size="small"
-                                              label={`Option ${optionIndex + 1}`}
-                                              value={option}
-                                              onChange={e => updateGridCellOption(rowIndex, columnIndex, optionIndex, e.target.value)}
-                                              onClick={event => event.stopPropagation()}
-                                            />
-                                            <IconButton
-                                              size="small"
-                                              onClick={(event) => {
-                                                event.stopPropagation()
-                                                removeGridCellOption(rowIndex, columnIndex, optionIndex)
+                                        {options.map((option, optionIndex) => {
+                                          const isCellOptDragging = builderDrag?.kind === 'cell-option'
+                                            && builderDrag.row === rowIndex && builderDrag.col === columnIndex
+                                            && builderDrag.optionIndex === optionIndex
+                                          return (
+                                            <Box
+                                              key={`${cell.id}-option-${optionIndex}`}
+                                              onMouseEnter={() => {
+                                                const drag = builderDragRef.current
+                                                if (drag?.kind !== 'cell-option' || drag.row !== rowIndex || drag.col !== columnIndex || drag.optionIndex === optionIndex) return
+                                                moveGridCellOption(rowIndex, columnIndex, drag.optionIndex, optionIndex)
+                                                setBuilderDragState({ kind: 'cell-option', row: rowIndex, col: columnIndex, optionIndex })
                                               }}
-                                              disabled={cell.type === 'radio' && options.length <= 1}
-                                              sx={{ color: '#DC2626' }}
+                                              sx={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'auto 1fr auto',
+                                                gap: 0.75,
+                                                alignItems: 'center',
+                                                opacity: isCellOptDragging ? 0.4 : 1,
+                                                transition: 'opacity 0.1s',
+                                              }}
                                             >
-                                              <RemoveIcon fontSize="small" />
-                                            </IconButton>
-                                          </Box>
-                                        ))}
+                                              <Tooltip title="Drag to reorder">
+                                                <Box
+                                                  onMouseDown={(event) => {
+                                                    event.preventDefault()
+                                                    event.stopPropagation()
+                                                    setBuilderDragState({ kind: 'cell-option', row: rowIndex, col: columnIndex, optionIndex })
+                                                  }}
+                                                  sx={{
+                                                    width: 24, height: 24,
+                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                    cursor: 'grab', color: '#94A3B8', borderRadius: '6px',
+                                                    '&:active': { cursor: 'grabbing' },
+                                                    '&:hover': { bgcolor: '#EDE9FE', color: '#6D28D9' },
+                                                  }}
+                                                >
+                                                  <DragIndicatorIcon sx={{ fontSize: 16 }} />
+                                                </Box>
+                                              </Tooltip>
+                                              <TextField
+                                                size="small"
+                                                label={`Option ${optionIndex + 1}`}
+                                                value={option}
+                                                onChange={e => updateGridCellOption(rowIndex, columnIndex, optionIndex, e.target.value)}
+                                                onClick={event => event.stopPropagation()}
+                                                onMouseDown={event => event.stopPropagation()}
+                                              />
+                                              <IconButton
+                                                size="small"
+                                                onClick={(event) => {
+                                                  event.stopPropagation()
+                                                  removeGridCellOption(rowIndex, columnIndex, optionIndex)
+                                                }}
+                                                disabled={cell.type === 'radio' && options.length <= 1}
+                                                sx={{ color: '#DC2626' }}
+                                              >
+                                                <RemoveIcon fontSize="small" />
+                                              </IconButton>
+                                            </Box>
+                                          )
+                                        })}
                                         <Button
                                           size="small"
                                           startIcon={<AddIcon />}
@@ -4530,10 +4715,13 @@ const Inspections = () => {
                   </TableContainer>
                 </Box>
               )}
+              </Box>
+              )}
             </Card>
 
             <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: 'none' }}>
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Biomed Notes</Typography>
+
               <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
                 Fixed default notes: Reported Problem, Problem Found, Corrective action taken, and Summary.
               </Typography>
@@ -4653,7 +4841,11 @@ const Inspections = () => {
               {isCustomGridReport() ? (
                 <>
                   {renderFixedInspectionTable()}
-                  {activeReportSchema?.formio_form || report?.formio_form ? renderFormioReport() : renderCustomGridReport()}
+                  {activeReportSchema?.canvas_form?.elements?.length
+                    ? renderCanvasReport()
+                    : activeReportSchema?.formio_form || report?.formio_form
+                      ? renderFormioReport()
+                      : renderCustomGridReport()}
                   {renderBiomedNotes()}
                 </>
               ) : renderDefaultReportCore()}
