@@ -105,6 +105,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   break_minutes: 'Break Time',
   duration_hours: 'Session Duration',
   total_work_hours: 'Manual Total Work Hours',
+  total_mileage: 'Total Mileage',
   total_hours: 'Total Saved Time',
   diagnosis: 'Diagnosis',
   work_done: 'Work Done',
@@ -137,6 +138,7 @@ const ServiceRequestDetail = () => {
   const [sessionEndTime, setSessionEndTime] = useState(toDateTimeLocalValue())
   const [sessionBreakMinutes, setSessionBreakMinutes] = useState('0')
   const [sessionTotalWorkHours, setSessionTotalWorkHours] = useState('')
+  const [sessionTotalMileage, setSessionTotalMileage] = useState('')
   const [selectedTestEquipmentIds, setSelectedTestEquipmentIds] = useState<number[]>([])
   const [serviceWorkflowStatus, setServiceWorkflowStatus] = useState<SRStatus>('in_progress')
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -149,6 +151,7 @@ const ServiceRequestDetail = () => {
   const [invoiceTaxAmount, setInvoiceTaxAmount] = useState('0')
   const [invoiceDiscountAmount, setInvoiceDiscountAmount] = useState('0')
   const [invoiceNotes, setInvoiceNotes] = useState('')
+  const [invoiceTravelMode, setInvoiceTravelMode] = useState<'fixed' | 'mileage'>('fixed')
   const [invoiceTravelCharges, setInvoiceTravelCharges] = useState('0')
   const [invoiceLaborFees, setInvoiceLaborFees] = useState('0')
   const [editingTime, setEditingTime] = useState(false)
@@ -220,6 +223,7 @@ const ServiceRequestDetail = () => {
         end_time: totalWorkHours && totalWorkHours > 0 ? undefined : new Date(sessionEndTime).toISOString(),
         break_minutes: Number(sessionBreakMinutes || 0),
         total_work_hours: totalWorkHours && totalWorkHours > 0 ? totalWorkHours : undefined,
+        total_mileage: sessionTotalMileage.trim() === '' ? undefined : Number(sessionTotalMileage || 0),
         diagnosis: sessionDiagnosis.trim(),
         work_done: sessionWorkDone.trim(),
         notes: sessionNotes.trim(),
@@ -233,6 +237,7 @@ const ServiceRequestDetail = () => {
       setSessionEndTime(toDateTimeLocalValue(now))
       setSessionBreakMinutes('0')
       setSessionTotalWorkHours('')
+      setSessionTotalMileage('')
       setSessionDiagnosis('')
       setSessionWorkDone('')
       setSessionNotes('')
@@ -253,7 +258,7 @@ const ServiceRequestDetail = () => {
       discount_amount: Number(invoiceDiscountAmount || 0),
       due_date: invoiceDueDate || null,
       notes: invoiceNotes || undefined,
-      travel_charges: Number(invoiceTravelCharges || 0),
+      travel_charges: invoiceTravelAmount,
       labor_fee_override: invoiceLaborFees.trim() === '' ? undefined : Number(invoiceLaborFees || 0),
     }),
     onSuccess: (invoice) => {
@@ -365,6 +370,13 @@ const ServiceRequestDetail = () => {
       toast.error('Break time cannot be negative')
       return
     }
+    if (sessionTotalMileage.trim() !== '') {
+      const mileage = Number(sessionTotalMileage)
+      if (Number.isNaN(mileage) || mileage < 0) {
+        toast.error('Total mileage cannot be negative')
+        return
+      }
+    }
     if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0) {
       toast.info('Add diagnosis, work done, notes, or test equipment before saving the session')
       return
@@ -425,6 +437,7 @@ const ServiceRequestDetail = () => {
     if (value === null || value === undefined || value === '') return '---'
     if (field && HISTORY_DATE_FIELDS.has(field) && typeof value === 'string') return formatDateTime(value)
     if (field === 'break_minutes') return `${Number(value || 0)} min`
+    if (field === 'total_mileage') return `${Number(value || 0).toFixed(2)} mi`
     if (field === 'duration_hours' || field === 'total_hours') return `${Number(value || 0).toFixed(2)} hrs`
     if (field === 'status' && typeof value === 'string') return STATUS_LABELS[value] || value.replace(/_/g, ' ')
     if (typeof value === 'object') {
@@ -537,15 +550,23 @@ const ServiceRequestDetail = () => {
   const canLogWork = !isTerminal && !!sr.assigned_technician_id && (user?.role === 'superadmin' || user?.role === 'admin' || user?.id === sr.assigned_technician_id)
   const timeSpentHours = Number(sr.time_spent_hours || 0)
   const tierLaborRate = Number(sr.tier_labor_rate_per_hour || 0)
+  const tierMileageRate = Number(sr.tier_mileage_rate || 0)
   const calculatedServiceCost = Number(sr.calculated_service_cost ?? (timeSpentHours * tierLaborRate))
+  const totalSessionMileage = (sr.history || [])
+    .filter(entry => entry.action === 'technician_clock_out' || entry.action === 'technician_work_session')
+    .reduce((sum, entry) => sum + Number(getHistoryChanges(entry.changes).total_mileage || 0), 0)
+  const calculatedMileageTravelCharge = totalSessionMileage * tierMileageRate
   const selectedQuotationTotal = includeQuotations
     ? billableQuotations
       .filter(q => selectedQuotationIds.includes(q.id))
       .reduce((sum, q) => sum + Number(q.amount || 0), 0)
     : 0
   const invoiceLaborAmount = invoiceLaborFees.trim() === '' ? calculatedServiceCost : Number(invoiceLaborFees || 0)
+  const invoiceTravelAmount = invoiceTravelMode === 'mileage'
+    ? calculatedMileageTravelCharge
+    : Number(invoiceTravelCharges || 0)
   const invoicePreviewTotal = Math.max(
-    invoiceLaborAmount + Number(invoiceTravelCharges || 0) + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
+    invoiceLaborAmount + invoiceTravelAmount + selectedQuotationTotal + Number(invoiceTaxAmount || 0) - Number(invoiceDiscountAmount || 0),
     0
   )
 
@@ -557,6 +578,7 @@ const ServiceRequestDetail = () => {
     setInvoiceDiscountAmount('0')
     setInvoiceNotes(`Service invoice for ${sr.request_number}.`)
     setInvoiceLaborFees(calculatedServiceCost.toFixed(2))
+    setInvoiceTravelMode('fixed')
     setInvoiceTravelCharges('0')
     setInvoiceOpen(true)
   }
@@ -973,7 +995,7 @@ const ServiceRequestDetail = () => {
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>
                   Billing Calculation
                 </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 1.25 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, 1fr)' }, gap: 1.25 }}>
                   <Box>
                     <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
                       Asset Tier
@@ -996,6 +1018,14 @@ const ServiceRequestDetail = () => {
                     </Typography>
                     <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>
                       ${calculatedServiceCost.toFixed(2)}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                      Mileage
+                    </Typography>
+                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                      {totalSessionMileage.toFixed(2)} mi x ${tierMileageRate.toFixed(2)}
                     </Typography>
                   </Box>
                 </Box>
@@ -1026,15 +1056,24 @@ const ServiceRequestDetail = () => {
                     helperText="minutes"
                   />
                 </Box>
-                <TextField
-                  label="Total Working Hours"
-                  type="number"
-                  value={sessionTotalWorkHours}
-                  onChange={(e) => setSessionTotalWorkHours(e.target.value)}
-                  inputProps={{ min: 0, step: 0.01 }}
-                  helperText="Optional. If entered, this total is used for billing instead of calculating from start/end time."
-                  sx={{ maxWidth: { xs: '100%', sm: 260 } }}
-                />
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
+                  <TextField
+                    label="Total Working Hours"
+                    type="number"
+                    value={sessionTotalWorkHours}
+                    onChange={(e) => setSessionTotalWorkHours(e.target.value)}
+                    inputProps={{ min: 0, step: 0.01 }}
+                    helperText="Optional. If entered, this total is used for billing instead of calculating from start/end time."
+                  />
+                  <TextField
+                    label="Total Mileage"
+                    type="number"
+                    value={sessionTotalMileage}
+                    onChange={(e) => setSessionTotalMileage(e.target.value)}
+                    inputProps={{ min: 0, step: 0.01 }}
+                    helperText="Optional. Saved with this session and used for mileage-based travel billing."
+                  />
+                </Box>
                 <TextField
                   label="Diagnosis"
                   multiline
@@ -1550,14 +1589,39 @@ const ServiceRequestDetail = () => {
                 helperText="Pre-filled from tier labor rate × hours. Edit to override."
               />
 
-              <TextField
-                label="Travel Charges ($)"
-                type="number"
-                value={invoiceTravelCharges}
-                onChange={(e) => setInvoiceTravelCharges(e.target.value)}
-                fullWidth
-                inputProps={{ min: 0, step: 0.01 }}
-              />
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: invoiceTravelMode === 'fixed' ? '1fr 1fr' : '1fr' }, gap: 1.25 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Travel Charges</InputLabel>
+                  <Select
+                    label="Travel Charges"
+                    value={invoiceTravelMode}
+                    onChange={(e) => setInvoiceTravelMode(e.target.value as 'fixed' | 'mileage')}
+                  >
+                    <MenuItem value="fixed">Fixed</MenuItem>
+                    <MenuItem value="mileage">Mileage</MenuItem>
+                  </Select>
+                </FormControl>
+                {invoiceTravelMode === 'fixed' && (
+                  <TextField
+                    label="Fixed Travel Charges ($)"
+                    type="number"
+                    value={invoiceTravelCharges}
+                    onChange={(e) => setInvoiceTravelCharges(e.target.value)}
+                    fullWidth
+                    inputProps={{ min: 0, step: 0.01 }}
+                  />
+                )}
+              </Box>
+              {invoiceTravelMode === 'mileage' && (
+                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                  <Typography sx={{ color: '#1E40AF', fontWeight: 900 }}>
+                    Mileage travel: {totalSessionMileage.toFixed(2)} mi x ${tierMileageRate.toFixed(2)} / mi = ${calculatedMileageTravelCharge.toFixed(2)}
+                  </Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, mt: 0.5 }}>
+                    Mileage is pulled from all saved technician work sessions for this service request.
+                  </Typography>
+                </Box>
+              )}
 
               <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
                 <FormControlLabel
@@ -1653,7 +1717,7 @@ const ServiceRequestDetail = () => {
               />
               {[
                 ['Labor Fees', Number(invoiceLaborFees || 0)],
-                ['Travel Charges', Number(invoiceTravelCharges || 0)],
+                [invoiceTravelMode === 'mileage' ? 'Travel Charges (Mileage)' : 'Travel Charges', invoiceTravelAmount],
                 ['Included quotations', selectedQuotationTotal],
                 ['Tax', Number(invoiceTaxAmount || 0)],
                 ['Discount', -Number(invoiceDiscountAmount || 0)],

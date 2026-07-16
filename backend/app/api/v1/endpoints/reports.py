@@ -63,6 +63,7 @@ def _service_session_entries(sr: ServiceRequest) -> list[dict[str, Any]]:
             "end_time": changes.get("end_time") or changes.get("clocked_out_at"),
             "break_minutes": changes.get("break_minutes"),
             "duration_hours": changes.get("duration_hours"),
+            "total_mileage": changes.get("total_mileage"),
             "diagnosis": changes.get("diagnosis"),
             "work_done": changes.get("work_done"),
             "notes": changes.get("notes"),

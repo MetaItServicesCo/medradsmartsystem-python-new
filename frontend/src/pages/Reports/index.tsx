@@ -148,6 +148,7 @@ const printServiceReport = (report: ServiceReport) => {
         <div class="box"><small>Start</small><strong>${escapeHtml(formatDateTime(session.start_time))}</strong></div>
         <div class="box"><small>End</small><strong>${escapeHtml(formatDateTime(session.end_time || session.timestamp))}</strong></div>
         <div class="box"><small>Break</small><strong>${escapeHtml(session.break_minutes ?? 0)} min</strong></div>
+        <div class="box"><small>Mileage</small><strong>${escapeHtml(Number(session.total_mileage || 0).toFixed(2))} mi</strong></div>
         <div class="box"><small>By</small><strong>${escapeHtml(session.user || report.technician_name || '-')}</strong></div>
       </div>
       <h4>Diagnosis</h4><p>${escapeHtml(session.diagnosis || '-')}</p>
@@ -170,6 +171,7 @@ const printServiceReport = (report: ServiceReport) => {
         <h2>Completion Summary</h2>
         <p>${escapeHtml(report.resolution_description || 'No final resolution summary was added.')}</p>
         <span class="pill">Total Hours: ${escapeHtml(report.time_spent_hours.toFixed(2))}</span>
+        <span class="pill">Total Mileage: ${escapeHtml(report.sessions.reduce((sum, session) => sum + Number(session.total_mileage || 0), 0).toFixed(2))} mi</span>
         <span class="pill">Total Cost: ${escapeHtml(money(report.total_cost))}</span>
         <span class="pill">Invoice: ${escapeHtml(report.invoice?.invoice_number || '-')}</span>
       </section>

@@ -137,6 +137,7 @@ def _enrich(sr: ServiceRequest) -> dict:
     data["tier_id"] = tier.id if tier else None
     data["tier_name"] = tier.name if tier else None
     data["tier_labor_rate_per_hour"] = tier.labor_rate_per_hour if tier else None
+    data["tier_mileage_rate"] = tier.mileage_rate if tier else None
     data["calculated_service_cost"] = _calculate_service_cost(sr)
     data["requester_name"] = sr.requester.full_name if sr.requester else None
     data["technician_name"] = sr.assigned_technician.full_name if sr.assigned_technician else None
@@ -1098,6 +1099,9 @@ def create_manual_work_session(
     manual_total_hours = Decimal(str(session.total_work_hours)) if session.total_work_hours is not None else None
     if manual_total_hours is not None and manual_total_hours < 0:
         raise HTTPException(status_code=400, detail="Total work hours cannot be negative")
+    total_mileage = Decimal(str(session.total_mileage)) if session.total_mileage is not None else Decimal("0")
+    if total_mileage < 0:
+        raise HTTPException(status_code=400, detail="Total mileage cannot be negative")
 
     start_time = session.start_time
     end_time = session.end_time
@@ -1146,6 +1150,7 @@ def create_manual_work_session(
         "break_minutes": float(break_minutes),
         "duration_hours": float(duration_hours),
         "total_work_hours": float(duration_hours),
+        "total_mileage": float(total_mileage.quantize(Decimal("0.01"))),
         "duration_source": duration_source,
         "total_hours": float(db_sr.time_spent_hours or 0),
         "diagnosis": diagnosis,
@@ -1253,6 +1258,9 @@ def clock_out_service_request(
     work_done = (clock_out.work_done or "").strip()
     notes = (clock_out.notes or "").strip()
     test_equipment_ids = list(dict.fromkeys(clock_out.test_equipment_ids or []))
+    total_mileage = Decimal(str(clock_out.total_mileage)) if clock_out.total_mileage is not None else Decimal("0")
+    if total_mileage < 0:
+        raise HTTPException(status_code=400, detail="Total mileage cannot be negative")
     if not diagnosis and not work_done and not notes and not test_equipment_ids:
         raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, or test equipment before clocking out")
 
@@ -1300,6 +1308,7 @@ def clock_out_service_request(
         "clocked_in_at": clocked_in_at.isoformat(),
         "clocked_out_at": now.isoformat(),
         "duration_hours": float(rounded_hours),
+        "total_mileage": float(total_mileage.quantize(Decimal("0.01"))),
         "total_hours": float(db_sr.time_spent_hours or 0),
         "diagnosis": diagnosis,
         "work_done": work_done,

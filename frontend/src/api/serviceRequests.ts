@@ -234,6 +234,7 @@ export interface ServiceRequest {
   tier_id: number | null
   tier_name: string | null
   tier_labor_rate_per_hour: number | null
+  tier_mileage_rate: number | null
   calculated_service_cost: number | null
   assigned_at: string | null
   started_at: string | null
@@ -365,6 +366,7 @@ export interface ServiceRequestClockOutPayload {
   work_done?: string
   notes?: string
   test_equipment_ids?: number[]
+  total_mileage?: number
 }
 
 export interface ServiceRequestWorkSessionPayload extends ServiceRequestClockOutPayload {
@@ -372,6 +374,7 @@ export interface ServiceRequestWorkSessionPayload extends ServiceRequestClockOut
   end_time?: string
   break_minutes?: number
   total_work_hours?: number
+  total_mileage?: number
 }
 
 export const clockOutServiceRequest = async (id: number, data: ServiceRequestClockOutPayload): Promise<ServiceRequest> => {

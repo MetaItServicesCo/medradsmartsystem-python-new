@@ -137,6 +137,7 @@ class ServiceRequestClockOutCreate(BaseModel):
     work_done: Optional[str] = None
     notes: Optional[str] = None
     test_equipment_ids: Optional[List[int]] = None
+    total_mileage: Optional[Decimal] = None
 
 
 class ServiceRequestWorkSessionCreate(BaseModel):
@@ -144,6 +145,7 @@ class ServiceRequestWorkSessionCreate(BaseModel):
     end_time: Optional[datetime] = None
     break_minutes: Decimal = Decimal("0")
     total_work_hours: Optional[Decimal] = None
+    total_mileage: Optional[Decimal] = None
     diagnosis: Optional[str] = None
     work_done: Optional[str] = None
     notes: Optional[str] = None
@@ -187,6 +189,7 @@ class ServiceRequestResponse(BaseModel):
     tier_id: Optional[int] = None
     tier_name: Optional[str] = None
     tier_labor_rate_per_hour: Optional[Decimal] = None
+    tier_mileage_rate: Optional[Decimal] = None
     calculated_service_cost: Optional[Decimal] = None
     requester_name: Optional[str] = None
     technician_name: Optional[str] = None

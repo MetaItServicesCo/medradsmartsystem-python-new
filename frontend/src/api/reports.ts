@@ -16,6 +16,7 @@ export interface ServiceReportSession {
   end_time?: string | null
   break_minutes?: number | null
   duration_hours?: number | null
+  total_mileage?: number | null
   diagnosis?: string | null
   work_done?: string | null
   notes?: string | null

@@ -67,6 +67,7 @@ export const buildServiceReportSheet = (sr: any): string => {
             <div><b>Start Time</b><br>${esc(fmtDateTime(s.start_time || s.clocked_in_at))}</div>
             <div><b>End Time</b><br>${esc(fmtDateTime(s.end_time || s.clocked_out_at || s.timestamp))}</div>
             ${s.break_minutes !== undefined ? `<div><b>Break Time</b><br>${esc(String(s.break_minutes))} min</div>` : ''}
+            ${s.total_mileage !== undefined ? `<div><b>Total Mileage</b><br>${esc(Number(s.total_mileage || 0).toFixed(2))} mi</div>` : ''}
           </div>
           <div class="report-h4">Diagnosis</div><p>${esc(s.diagnosis || '-')}</p>
           <div class="report-h4">Work Done</div><p>${esc(s.work_done || '-')}</p>
@@ -107,6 +108,7 @@ export const buildServiceReportSheet = (sr: any): string => {
           <p>${esc(sr.resolution_description || 'No final resolution summary was added.')}</p>
           <div class="report-summary">
             <span class="report-pill">Total Hours: ${esc(Number(sr.time_spent_hours || 0).toFixed(2))}</span>
+            <span class="report-pill">Total Mileage: ${esc(sessions.reduce((sum: number, s: any) => sum + Number(s.total_mileage || 0), 0).toFixed(2))} mi</span>
             <span class="report-pill">Total Cost: ${esc(fmtMoney(sr.total_cost))}</span>
             <span class="report-pill">Billing: ${esc((sr.billing_status || 'pending').replace(/_/g, ' '))}</span>
           </div>
