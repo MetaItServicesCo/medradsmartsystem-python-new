@@ -17,6 +17,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { buildInspectionReportDocumentHtml, printInspectionReportSheet } from '@/utils/inspectionReportHtml'
 import {
   fetchInspectionReports,
   fetchReportsSummary,
@@ -177,36 +178,7 @@ const printServiceReport = (report: ServiceReport) => {
 }
 
 const printInspectionReport = (report: InspectionReport) => {
-  const diagnostics = report.form_data?.diagnostics || {}
-  printHtml(`${report.inspection_number} Inspection Report`, `
-    <section class="hero"><h1>Inspection Report</h1><div class="sub">${escapeHtml(report.inspection_number)} - ${escapeHtml(report.facility_name || '-')}</div></section>
-    <section class="content">
-      <div class="grid">
-        <div class="box"><small>Facility</small><strong>${escapeHtml(report.facility_name || '-')}</strong></div>
-        <div class="box"><small>Asset</small><strong>${escapeHtml(report.asset_name || '-')}</strong></div>
-        <div class="box"><small>Technician</small><strong>${escapeHtml(report.technician_name || '-')}</strong></div>
-        <div class="box"><small>Result</small><strong>${escapeHtml(report.result || '-')}</strong></div>
-      </div>
-      <section class="section">
-        <h2>Inspection Details</h2>
-        <p><b>Form:</b> ${escapeHtml(report.form_template_name || '-')}</p>
-        <p><b>Completed:</b> ${escapeHtml(formatDateTime(report.completed_at))}</p>
-        <p><b>Requirement:</b> ${escapeHtml(report.compliance_requirement || '-')}</p>
-      </section>
-      <section class="section">
-        <h2>Report Activity</h2>
-        <h4>Reported Problem</h4><p>${escapeHtml(diagnostics.reported_problem || '-')}</p>
-        <h4>Problem Found</h4><p>${escapeHtml(diagnostics.problem_found || '-')}</p>
-        <h4>Corrective Action</h4><p>${escapeHtml(report.corrective_actions || diagnostics.corrective_action_taken || '-')}</p>
-        <h4>Summary</h4><p>${escapeHtml(diagnostics.summary || '-')}</p>
-      </section>
-      <section class="section">
-        <h2>Billing</h2>
-        <span class="pill">Invoice: ${escapeHtml(report.invoice?.invoice_number || '-')}</span>
-        <span class="pill">Total: ${escapeHtml(money(report.invoice?.total_amount))}</span>
-      </section>
-    </section>
-  `)
+  printInspectionReportSheet(report)
 }
 
 const historyActionLabel = (action?: string) =>
@@ -569,7 +541,6 @@ const ServiceReportDialog = ({ report, onClose }: { report: ServiceReport | null
 )
 
 const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport | null; onClose: () => void }) => {
-  const diagnostics = report?.form_data?.diagnostics || {}
   return (
     <Dialog open={Boolean(report)} onClose={onClose} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
       <DialogTitle sx={{ p: 0 }}>
@@ -578,19 +549,20 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{report?.inspection_number} - {report?.facility_name || 'Facility'}</Typography>
         </Box>
       </DialogTitle>
-      <DialogContent sx={{ bgcolor: '#F8FAFC', p: 3 }}>
+      <DialogContent sx={{ bgcolor: '#E5E7EB', p: 0 }}>
         {report && (
-          <Box sx={{ display: 'grid', gap: 2.5 }}>
-            <DetailGrid items={[
-              ['Facility', report.facility_name || '-'],
-              ['Asset', report.asset_name || '-'],
-              ['Technician', report.technician_name || 'Unassigned'],
-              ['Result', report.result || '-'],
-            ]} />
-            <DetailCard title="Inspection Details" value={`Form: ${report.form_template_name || '-'}\nCompleted: ${formatDateTime(report.completed_at)}\nRequirement: ${report.compliance_requirement || '-'}`} />
-            <DetailCard title="Report Activity" value={`Reported Problem: ${diagnostics.reported_problem || '-'}\nProblem Found: ${diagnostics.problem_found || '-'}\nCorrective Action: ${report.corrective_actions || diagnostics.corrective_action_taken || '-'}\nSummary: ${diagnostics.summary || '-'}`} />
-            <DetailCard title="Billing" value={`Invoice: ${report.invoice?.invoice_number || '-'}\nTotal: ${money(report.invoice?.total_amount)}`} />
-          </Box>
+          <Box
+            component="iframe"
+            title={`${report.inspection_number} inspection report preview`}
+            srcDoc={buildInspectionReportDocumentHtml(report)}
+            sx={{
+              display: 'block',
+              width: '100%',
+              height: { xs: '70vh', md: '76vh' },
+              border: 0,
+              bgcolor: '#E5E7EB',
+            }}
+          />
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>

@@ -121,6 +121,15 @@ def _inspection_report_row(inspection: Inspection, invoice: Optional[Invoice] = 
     )
     make = inspection.inventory_part.make if inspection.inventory_part else inspection.equipment.make if inspection.equipment else None
     model = inspection.inventory_part.model if inspection.inventory_part else inspection.equipment.model if inspection.equipment else None
+    tier_name = (
+        inspection.inventory_part.tier.name
+        if inspection.inventory_part and inspection.inventory_part.tier
+        else inspection.equipment.tier.name
+        if inspection.equipment and inspection.equipment.tier
+        else inspection.facility.tier.name
+        if inspection.facility and inspection.facility.tier
+        else None
+    )
     return {
         "id": inspection.id,
         "inspection_number": inspection.inspection_number,
@@ -129,10 +138,14 @@ def _inspection_report_row(inspection: Inspection, invoice: Optional[Invoice] = 
         "facility_id": inspection.facility_id,
         "facility_name": inspection.facility.name if inspection.facility else None,
         "asset_name": asset_name or "Inspection asset",
+        "equipment_name": _equipment_name(inspection.equipment) if inspection.equipment else None,
+        "inventory_part_name": _part_name(inspection.inventory_part) if inspection.inventory_part else None,
         "asset_tag": inspection.equipment.asset_tag if inspection.equipment else inspection.inventory_part.part_number if inspection.inventory_part else None,
+        "part_number": inspection.inventory_part.part_number if inspection.inventory_part else None,
         "serial_number": serial_number,
         "make": make,
         "model": model,
+        "tier_name": tier_name,
         "technician_id": inspection.inspector_id,
         "technician_name": inspection.inspector.full_name if inspection.inspector else None,
         "status": _value(inspection.status),
@@ -315,9 +328,9 @@ def get_inspection_reports(
     query = (
         _scope_inspection_query(db.query(Inspection), db, current_user)
         .options(
-            joinedload(Inspection.facility),
-            joinedload(Inspection.equipment),
-            joinedload(Inspection.inventory_part),
+            joinedload(Inspection.facility).joinedload(Facility.tier),
+            joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
             joinedload(Inspection.inspector),
             joinedload(Inspection.form_template),
             joinedload(Inspection.batch),

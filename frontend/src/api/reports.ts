@@ -59,10 +59,14 @@ export interface InspectionReport {
   facility_id: number
   facility_name: string | null
   asset_name: string | null
+  equipment_name?: string | null
+  inventory_part_name?: string | null
   asset_tag: string | null
+  part_number?: string | null
   serial_number: string | null
   make: string | null
   model: string | null
+  tier_name?: string | null
   technician_id: number | null
   technician_name: string | null
   status: string
