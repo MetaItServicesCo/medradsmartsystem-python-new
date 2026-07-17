@@ -716,6 +716,7 @@ const Billing = () => {
         notes: data.notes || undefined,
         line_items: data.line_items,
         labels: data.labels,
+        summary_rows: data.summary_rows,
       }
 
       if (item.source === 'sales') {
@@ -840,6 +841,7 @@ const Billing = () => {
       payment_method: item.paymentMethod,
       notes: item.description,
       labels: (item.raw as any).labels || null,
+      summary_rows: (item.raw as any).summary_rows || [],
     }
     if (item.source === 'service' && item.billingKind === 'service_invoice') {
       const invoice = item.raw as ServiceInvoice
@@ -880,6 +882,7 @@ const Billing = () => {
       condition: line.condition || line.item_type || null,
       total_amount: Number(line.total_amount ?? line.total ?? 0),
       unitLabel: line.unitLabel,
+      custom_cells: Array.isArray(line.custom_cells) ? line.custom_cells : [],
     }))
   )
 
@@ -898,6 +901,7 @@ const Billing = () => {
           condition: line.condition,
           total_amount: Number(line.total_amount || 0),
           unitLabel: serviceLineUnitLabel(line.description, line.condition),
+          custom_cells: Array.isArray((line as any).custom_cells) ? (line as any).custom_cells : [],
         }))
       }
     }

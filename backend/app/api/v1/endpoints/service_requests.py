@@ -35,7 +35,7 @@ from app.schemas.service_request import (
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
-from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, parse_invoice_edit_metadata, strip_invoice_edit_metadata
+from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 
 router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
@@ -104,6 +104,7 @@ class ServiceInvoiceUpdate(BaseModel):
     notes: Optional[str] = None
     line_items: Optional[list[dict[str, Any]]] = None
     labels: Optional[dict[str, Any]] = None
+    summary_rows: Optional[list[dict[str, Any]]] = None
 
 
 def _money(value: Any) -> Decimal:
@@ -429,6 +430,7 @@ def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
         "transactions": [transaction_response(item) for item in invoice.transactions or []],
         "line_items": _service_invoice_line_items(invoice),
         "labels": editable_labels(invoice.notes),
+        "summary_rows": editable_summary_rows(invoice.notes),
         "paid_quotations": _service_invoice_paid_quotations(invoice),
     }
 
@@ -592,6 +594,8 @@ def update_service_invoice(
         existing_metadata["line_items"] = update_data.pop("line_items") or []
     if "labels" in update_data:
         existing_metadata["labels"] = update_data.pop("labels") or {}
+    if "summary_rows" in update_data:
+        existing_metadata["summary_rows"] = update_data.pop("summary_rows") or []
 
     for field in [
         "customer_name", "customer_email", "customer_phone", "customer_address",

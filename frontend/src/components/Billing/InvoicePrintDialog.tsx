@@ -18,6 +18,7 @@ import {
 import PrintIcon from '@mui/icons-material/Print'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 export type PrintDocumentType = 'invoice' | 'packing_slip' | 'ledger'
@@ -93,6 +94,19 @@ export interface PrintableInvoice {
   travel_charges?: number | null
   service_charges?: number | null
   labels?: PrintableInvoiceLabels | null
+  summary_rows?: PrintableInvoiceSummaryRow[] | null
+}
+
+export interface PrintableInvoiceCustomCell {
+  id: string
+  label: string
+  value: string
+}
+
+export interface PrintableInvoiceSummaryRow {
+  id: string
+  label: string
+  value: number
 }
 
 export interface PrintableLineItem {
@@ -106,6 +120,7 @@ export interface PrintableLineItem {
   total_amount: number
   /** Per-row unit label (e.g. 'Hours', 'Miles', 'Qty'). When set, overrides the column-level quantityLabel for this row. */
   unitLabel?: string
+  custom_cells?: PrintableInvoiceCustomCell[]
 }
 
 export interface PrintableLedgerTransaction {
@@ -157,6 +172,7 @@ export interface PrintableInvoiceEditPayload {
   notes?: string | null
   line_items?: PrintableLineItem[]
   labels?: PrintableInvoiceLabels
+  summary_rows?: PrintableInvoiceSummaryRow[]
 }
 
 interface InvoicePrintDialogProps {
@@ -225,6 +241,29 @@ const mergeInvoiceLabels = (labels?: PrintableInvoiceLabels | null): Required<Pr
   ...DEFAULT_INVOICE_LABELS,
   ...(labels || {}),
 })
+
+type LineItemValueKey = 'item_number' | 'description' | 'quantity' | 'unit_price' | 'shipping_fee' | 'setup_fee' | 'total_amount' | 'condition'
+type SummaryValueKey = 'subtotal' | 'tax_amount' | 'discount_amount' | 'total_amount' | 'amount_paid' | 'balance_due'
+
+const LINE_ITEM_CELLS: Array<{ valueKey: LineItemValueKey; labelKey: keyof PrintableInvoiceLabels; numeric?: boolean }> = [
+  { valueKey: 'item_number', labelKey: 'itemNumber' },
+  { valueKey: 'description', labelKey: 'description' },
+  { valueKey: 'quantity', labelKey: 'quantity', numeric: true },
+  { valueKey: 'unit_price', labelKey: 'unitPrice', numeric: true },
+  { valueKey: 'shipping_fee', labelKey: 'shipping', numeric: true },
+  { valueKey: 'setup_fee', labelKey: 'setup', numeric: true },
+  { valueKey: 'total_amount', labelKey: 'lineTotal', numeric: true },
+  { valueKey: 'condition', labelKey: 'condition' },
+]
+
+const SUMMARY_CELLS: Array<{ valueKey: SummaryValueKey; labelKey: keyof PrintableInvoiceLabels; readOnly?: boolean }> = [
+  { valueKey: 'subtotal', labelKey: 'subtotal' },
+  { valueKey: 'tax_amount', labelKey: 'tax' },
+  { valueKey: 'discount_amount', labelKey: 'discount' },
+  { valueKey: 'total_amount', labelKey: 'total' },
+  { valueKey: 'amount_paid', labelKey: 'paid' },
+  { valueKey: 'balance_due', labelKey: 'balanceDue', readOnly: true },
+]
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
@@ -351,6 +390,9 @@ const printStyles = `
   tr:last-child td { border-bottom: 0; }
   .item-number { color: var(--accent); font-weight: 800; }
   .item-condition { display: inline-block; margin-top: 5px; color: #64748B; font-size: 11px; }
+  .custom-cell-row td { padding-top: 6px; background: #F8FAFC; }
+  .custom-cell-list { display: flex; gap: 8px; flex-wrap: wrap; }
+  .custom-cell-list span { display: inline-flex; gap: 6px; padding: 6px 9px; border: 1px solid #E2E8F0; border-radius: 8px; background: #fff; color: #475569; }
   .right { text-align: right; }
   .amount { color: #047857; font-weight: 800; }
   .totals { margin-left: auto; margin-top: 22px; width: 310px; border: 1px solid #E5E7EB; border-radius: 14px; overflow: hidden; background: #fff; }
@@ -410,6 +452,10 @@ const buildPrintableHtml = (
     const qtyCell = item.unitLabel
       ? `${escapeHtml(item.quantity)} ${escapeHtml(item.unitLabel)}`
       : escapeHtml(item.quantity)
+    const customCells = (item.custom_cells || []).filter(cell => cell.label || cell.value)
+    const customCellRow = customCells.length
+      ? `<tr class="custom-cell-row"><td colspan="${type === 'packing_slip' ? 3 : 7}"><div class="custom-cell-list">${customCells.map(cell => `<span><strong>${escapeHtml(cell.label || 'Additional')}</strong>${escapeHtml(cell.value || '-')}</span>`).join('')}</div></td></tr>`
+      : ''
     return `
     <tr>
       <td><span class="item-number">${escapeHtml(item.item_number)}</span><br><span class="item-condition">${escapeHtml(item.condition || '')}</span></td>
@@ -417,6 +463,7 @@ const buildPrintableHtml = (
       <td class="right">${qtyCell}</td>
       ${type === 'packing_slip' ? '' : `<td class="right">${escapeHtml(money(item.unit_price))}</td><td class="right">${escapeHtml(money(item.shipping_fee))}</td><td class="right">${escapeHtml(money(item.setup_fee))}</td><td class="right amount">${escapeHtml(money(item.total_amount))}</td>`}
     </tr>
+    ${customCellRow}
   `}).join('') : '<tr><td colspan="7">No line items available.</td></tr>'
 
   const ledgerRows = ledgerTransactions.length ? ledgerTransactions.map(item => `
@@ -446,6 +493,11 @@ const buildPrintableHtml = (
     </tr>
   `
   }).join('') : ''
+
+  const customSummaryRows = (invoice.summary_rows || [])
+    .filter(row => row.label || Number(row.value || 0))
+    .map(row => `<div><span>${escapeHtml(row.label || 'Additional charge')}</span><strong>${escapeHtml(money(row.value))}</strong></div>`)
+    .join('')
 
   return `
     <main class="sheet" style="--accent:${escapeHtml(accent)}; --accent-soft:${escapeHtml(accentSoft)}">
@@ -522,6 +574,7 @@ const buildPrintableHtml = (
           ${invoice.shipping_fee_extra ? `<div><span>${escapeHtml(labels.shippingFeeExtra)}</span><strong>${escapeHtml(money(invoice.shipping_fee_extra))}</strong></div>` : ''}
           ${invoice.application_fee_extra ? `<div><span>${escapeHtml(labels.applicationFeeExtra)}</span><strong>${escapeHtml(money(invoice.application_fee_extra))}</strong></div>` : ''}
           ${invoice.additional_service_fees ? `<div><span>${escapeHtml(labels.additionalServiceFees)}</span><strong>${escapeHtml(money(invoice.additional_service_fees))}</strong></div>` : ''}
+          ${customSummaryRows}
           <div><span>${escapeHtml(labels.subtotal)}</span><strong>${escapeHtml(money(invoice.subtotal))}</strong></div>
           <div><span>${escapeHtml(labels.tax)}</span><strong>${escapeHtml(money(invoice.tax_amount))}</strong></div>
           <div><span>${escapeHtml(labels.discount)}</span><strong>${escapeHtml(money(invoice.discount_amount))}</strong></div>
@@ -577,6 +630,10 @@ const InvoicePrintDialog = ({
   })
   const [editRows, setEditRows] = useState<PrintableLineItem[]>([])
   const [editLabels, setEditLabels] = useState<PrintableInvoiceLabels>(DEFAULT_INVOICE_LABELS)
+  const [editSummaryRows, setEditSummaryRows] = useState<PrintableInvoiceSummaryRow[]>([])
+  const [rowEditor, setRowEditor] = useState<{ index: number; row: PrintableLineItem; labels: PrintableInvoiceLabels } | null>(null)
+  const [summaryEditor, setSummaryEditor] = useState<{ valueKey: SummaryValueKey; labelKey: keyof PrintableInvoiceLabels; label: string; value: string; readOnly: boolean } | null>(null)
+  const [customSummaryEditor, setCustomSummaryEditor] = useState<{ index: number; row: PrintableInvoiceSummaryRow } | null>(null)
   const previewAccentSoft = softAccentFor(accent)
   const isEditMode = mode === 'edit'
   const isViewMode = mode === 'view'
@@ -601,8 +658,12 @@ const InvoicePrintDialog = ({
       amount_paid: String(Number(invoice.amount_paid || 0)),
       notes: invoice.notes || '',
     })
-    setEditRows(lineItems.map(item => ({ ...item })))
+    setEditRows(lineItems.map(item => ({ ...item, custom_cells: (item.custom_cells || []).map(cell => ({ ...cell })) })))
     setEditLabels(mergeInvoiceLabels(invoice.labels))
+    setEditSummaryRows((invoice.summary_rows || []).map(row => ({ ...row })))
+    setRowEditor(null)
+    setSummaryEditor(null)
+    setCustomSummaryEditor(null)
   }, [invoice, lineItems, open])
 
   const displayInvoice = useMemo<PrintableInvoice | null>(() => {
@@ -627,8 +688,9 @@ const InvoicePrintDialog = ({
       payment_method: editForm.payment_method || null,
       notes: editForm.notes || null,
       labels: editLabels,
+      summary_rows: editSummaryRows,
     }
-  }, [editForm, editLabels, invoice, isEditMode])
+  }, [editForm, editLabels, editSummaryRows, invoice, isEditMode])
 
   const displayLabels = mergeInvoiceLabels(displayInvoice?.labels)
 
@@ -639,6 +701,7 @@ const InvoicePrintDialog = ({
         second: item.invoice_number || displayInvoice?.invoice_number || '-',
         third: item.transaction_type.replace(/_/g, ' '),
         amount: money(item.amount),
+        customCells: [] as PrintableInvoiceCustomCell[],
       }))
     }
     const rows = isEditMode ? editRows : lineItems
@@ -647,6 +710,7 @@ const InvoicePrintDialog = ({
       second: item.description,
       third: item.unitLabel ? `${item.quantity} ${item.unitLabel}` : `${displayLabels.quantity || quantityLabel} ${item.quantity}`,
       amount: activeDocumentType === 'packing_slip' ? item.condition || '-' : money(item.total_amount),
+      customCells: item.custom_cells || [],
     }))
   }, [activeDocumentType, displayInvoice?.invoice_number, displayLabels.quantity, editRows, isEditMode, ledgerTransactions, lineItems, quantityLabel])
 
@@ -675,6 +739,7 @@ const InvoicePrintDialog = ({
       payment_method: editForm.payment_method || null,
       notes: editForm.notes || null,
       labels: editLabels,
+      summary_rows: editSummaryRows,
       line_items: editRows.map(row => ({
         ...row,
         quantity: Number(row.quantity || 0),
@@ -700,10 +765,8 @@ const InvoicePrintDialog = ({
   }
 
   const addEditRow = () => {
-    setEditRows(rows => [
-      ...rows,
-      {
-        item_number: `ITEM-${rows.length + 1}`,
+    const nextRow: PrintableLineItem = {
+        item_number: `ITEM-${editRows.length + 1}`,
         description: 'New item',
         quantity: 1,
         unit_price: 0,
@@ -711,50 +774,14 @@ const InvoicePrintDialog = ({
         setup_fee: 0,
         condition: null,
         total_amount: 0,
-      },
-    ])
+        custom_cells: [],
+    }
+    setRowEditor({ index: editRows.length, row: nextRow, labels: { ...editLabels } })
   }
 
   const updateEditLabel = (key: keyof PrintableInvoiceLabels, value: string) => {
     setEditLabels(prev => ({ ...prev, [key]: value }))
   }
-
-  const labelFields: Array<[keyof PrintableInvoiceLabels, string]> = [
-    ['billTo', 'Bill-to section'],
-    ['customerName', 'Customer name field'],
-    ['customerEmail', 'Customer email field'],
-    ['customerPhone', 'Customer phone field'],
-    ['customerAddress', 'Customer address field'],
-    ['reference', 'Reference label'],
-    ['issued', 'Issued label'],
-    ['due', 'Due label'],
-    ['payment', 'Payment label'],
-    ['status', 'Status label'],
-    ['itemNumber', 'Item column'],
-    ['description', 'Description column'],
-    ['quantity', 'Quantity column'],
-    ['unitPrice', 'Unit price column'],
-    ['shipping', 'Shipping column'],
-    ['setup', 'Setup column'],
-    ['lineTotal', 'Line total column'],
-    ['laborFees', 'Labor fee label'],
-    ['travelCharges', 'Travel charge label'],
-    ['serviceCharges', 'Service charge label'],
-    ['partsTotal', 'Parts/rental total label'],
-    ['workedHoursFee', 'Working hours fee label'],
-    ['setupFeeExtra', 'Setup fee label'],
-    ['serviceFeeExtra', 'Service fee label'],
-    ['shippingFeeExtra', 'Shipping/delivery fee label'],
-    ['applicationFeeExtra', 'Application/training fee label'],
-    ['additionalServiceFees', 'Additional service fee label'],
-    ['subtotal', 'Subtotal label'],
-    ['tax', 'Tax label'],
-    ['discount', 'Discount label'],
-    ['total', 'Total label'],
-    ['paid', 'Paid label'],
-    ['balanceDue', 'Balance due label'],
-    ['notes', 'Notes label'],
-  ]
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth={isEditMode ? 'lg' : 'md'} fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
@@ -822,28 +849,6 @@ const InvoicePrintDialog = ({
                   <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{displayInvoice.invoice_number}</Typography>
                 </Box>
               </Box>
-
-              {isEditMode && (
-                <Box sx={{ p: 2.5, borderBottom: '1px solid #E5E7EB', bgcolor: '#FBFAFF' }}>
-                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 0.5 }}>Printable labels</Typography>
-                  <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13, mb: 1.5 }}>
-                    Rename printed labels only. The invoice fields and calculations stay the same.
-                  </Typography>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }, gap: 1 }}>
-                    {labelFields.map(([key, helper]) => (
-                      <TextField
-                        key={key}
-                        size="small"
-                        label={helper}
-                        value={editLabels[key] ?? ''}
-                        placeholder={DEFAULT_INVOICE_LABELS[key]}
-                        onChange={event => updateEditLabel(key, event.target.value)}
-                        sx={{ bgcolor: '#fff' }}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )}
 
               <Box sx={{ p: 3 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, pb: 2 }}>
@@ -931,39 +936,78 @@ const InvoicePrintDialog = ({
                         </Button>
                       </Box>
                     </Box>
+                    <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: '1fr 2fr 0.8fr 1fr 1fr 1fr 1fr 76px', gap: 1, px: 1.8, color: '#64748B', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+                      <span>{displayLabels.itemNumber}</span>
+                      <span>{displayLabels.description}</span>
+                      <span>{displayLabels.quantity}</span>
+                      <span>{displayLabels.unitPrice}</span>
+                      <span>{displayLabels.shipping}</span>
+                      <span>{displayLabels.setup}</span>
+                      <span>{displayLabels.lineTotal}</span>
+                      <span>Actions</span>
+                    </Box>
                     {editRows.map((row, index) => (
-                      <Box key={`${row.item_number}-${index}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 0.8fr 1fr 1fr 1fr 1fr 44px' }, gap: 1, p: 1.4, borderRadius: '14px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
-                        <TextField size="small" label={displayLabels.itemNumber} value={row.item_number} onChange={event => updateEditRow(index, { item_number: event.target.value })} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label={displayLabels.description} value={row.description} onChange={event => updateEditRow(index, { description: event.target.value })} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label={displayLabels.quantity} type="number" value={row.quantity} onChange={event => updateEditRow(index, { quantity: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label={displayLabels.unitPrice} type="number" value={row.unit_price} onChange={event => updateEditRow(index, { unit_price: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label={displayLabels.shipping} type="number" value={row.shipping_fee || 0} onChange={event => updateEditRow(index, { shipping_fee: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label={displayLabels.setup} type="number" value={row.setup_fee || 0} onChange={event => updateEditRow(index, { setup_fee: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label={displayLabels.lineTotal} type="number" value={row.total_amount} onChange={event => updateEditRow(index, { total_amount: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <Tooltip title="Remove item">
-                          <span>
-                            <IconButton
-                              size="small"
-                              disabled={editRows.length <= 1}
-                              onClick={() => setEditRows(rows => rows.filter((_, rowIndex) => rowIndex !== index))}
-                              sx={{ mt: 0.5, color: '#DC2626', bgcolor: '#FEF2F2', '&:hover': { bgcolor: '#FEE2E2' } }}
-                            >
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                        <TextField size="small" label={displayLabels.condition} value={row.condition || ''} onChange={event => updateEditRow(index, { condition: event.target.value || null })} sx={{ bgcolor: '#fff', gridColumn: { xs: 'auto', md: '1 / span 2' } }} />
+                      <Box key={`${row.item_number}-${index}`} sx={{ p: 1.4, borderRadius: '14px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 0.8fr 1fr 1fr 1fr 1fr auto' }, gap: 1, alignItems: 'center' }}>
+                          <Typography sx={{ fontWeight: 900, color: accent }}>{row.item_number || '-'}</Typography>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.description || '-'}</Typography>
+                            {row.condition && <Typography sx={{ color: '#64748B', fontSize: 12 }}>{row.condition}</Typography>}
+                          </Box>
+                          <Typography>{row.quantity} {row.unitLabel || ''}</Typography>
+                          <Typography>{money(row.unit_price)}</Typography>
+                          <Typography>{money(row.shipping_fee)}</Typography>
+                          <Typography>{money(row.setup_fee)}</Typography>
+                          <Typography sx={{ fontWeight: 950, color: accent }}>{money(row.total_amount)}</Typography>
+                          <Box sx={{ display: 'flex', gap: 0.5 }}>
+                            <Tooltip title="Edit row and cells">
+                              <IconButton
+                                size="small"
+                                onClick={() => setRowEditor({ index, row: { ...row, custom_cells: (row.custom_cells || []).map(cell => ({ ...cell })) }, labels: { ...editLabels } })}
+                                sx={{ color: accent, bgcolor: `${accent}12`, '&:hover': { bgcolor: `${accent}22` } }}
+                              >
+                                <EditOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Remove row">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={editRows.length <= 1}
+                                  onClick={() => setEditRows(rows => rows.filter((_, rowIndex) => rowIndex !== index))}
+                                  sx={{ color: '#DC2626', bgcolor: '#FEF2F2', '&:hover': { bgcolor: '#FEE2E2' } }}
+                                >
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Box>
+                        </Box>
+                        {(row.custom_cells || []).length > 0 && (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1.2, pt: 1.2, borderTop: '1px solid #E5E7EB' }}>
+                            {(row.custom_cells || []).map(cell => (
+                              <Chip key={cell.id} size="small" label={`${cell.label || 'Additional'}: ${cell.value || '-'}`} sx={{ bgcolor: '#fff', border: '1px solid #E2E8F0', fontWeight: 750 }} />
+                            ))}
+                          </Box>
+                        )}
                       </Box>
                     ))}
                   </Box>
                 ) : previewRows.length === 0 ? (
                   <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No rows available for this document.</Typography>
                 ) : previewRows.map((row, index) => (
-                  <Box key={`${row.first}-${index}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 1fr 1fr' }, gap: 1, p: 1.4, borderRadius: '12px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
-                    <Typography sx={{ fontWeight: 900 }}>{row.first}</Typography>
-                    <Typography>{row.second}</Typography>
-                    <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>{row.third}</Typography>
-                    <Typography sx={{ textAlign: { md: 'right' }, fontWeight: 950, color: accent }}>{row.amount}</Typography>
+                  <Box key={`${row.first}-${index}`} sx={{ p: 1.4, borderRadius: '12px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 1fr 1fr' }, gap: 1 }}>
+                      <Typography sx={{ fontWeight: 900 }}>{row.first}</Typography>
+                      <Typography>{row.second}</Typography>
+                      <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>{row.third}</Typography>
+                      <Typography sx={{ textAlign: { md: 'right' }, fontWeight: 950, color: accent }}>{row.amount}</Typography>
+                    </Box>
+                    {row.customCells.length > 0 && (
+                      <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap', mt: 1 }}>
+                        {row.customCells.map(cell => <Chip key={cell.id} size="small" label={`${cell.label || 'Additional'}: ${cell.value || '-'}`} />)}
+                      </Box>
+                    )}
                   </Box>
                 ))}
               </Box>
@@ -987,43 +1031,58 @@ const InvoicePrintDialog = ({
               )}
 
               {activeDocumentType === 'invoice' && (
-                <Box sx={{ display: 'grid', gap: 0.8, maxWidth: 320, ml: 'auto', mt: 2 }}>
-                  {[
-                    [displayLabels.subtotal, 'subtotal', money(displayInvoice.subtotal)],
-                    [displayLabels.tax, 'tax_amount', money(displayInvoice.tax_amount)],
-                    [displayLabels.discount, 'discount_amount', money(displayInvoice.discount_amount)],
-                    [displayLabels.total, 'total_amount', money(displayInvoice.total_amount)],
-                    [displayLabels.paid, 'amount_paid', money(displayInvoice.amount_paid)],
-                    [displayLabels.balanceDue, 'balance_due', money(displayInvoice.balance_due)],
-                  ].map(([label, key, value]) => (
-                    <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, fontWeight: key === 'total_amount' ? 950 : 800 }}>
-                      <span>{label}</span>
-                      {isEditMode && key !== 'balance_due' ? (
-                        <TextField
-                          size="small"
-                          type="number"
-                          value={(editForm as any)[key]}
-                          onChange={event => {
-                            const nextValue = event.target.value
-                            setEditForm(prev => {
-                              const next = { ...prev, [key]: nextValue }
-                              if (['subtotal', 'tax_amount', 'discount_amount'].includes(String(key))) {
-                                const subtotal = Number(key === 'subtotal' ? nextValue : next.subtotal || 0)
-                                const tax = Number(key === 'tax_amount' ? nextValue : next.tax_amount || 0)
-                                const discount = Number(key === 'discount_amount' ? nextValue : next.discount_amount || 0)
-                                next.total_amount = String(Math.max(0, subtotal + tax - discount).toFixed(2))
-                              }
-                              return next
-                            })
-                          }}
-                          inputProps={{ min: 0, step: 0.01 }}
-                          sx={{ width: 150, bgcolor: '#fff' }}
-                        />
-                      ) : (
-                        <span>{value}</span>
+                <Box sx={{ display: 'grid', gap: 0.8, maxWidth: 390, ml: 'auto', mt: 2 }}>
+                  {SUMMARY_CELLS.map(config => {
+                    const value = config.valueKey === 'balance_due'
+                      ? displayInvoice.balance_due
+                      : Number((editForm as any)[config.valueKey] || 0)
+                    return (
+                      <Box key={config.valueKey} sx={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 1, minHeight: 38, px: 1.2, borderRadius: '10px', bgcolor: config.valueKey === 'total_amount' ? `${accent}0F` : 'transparent', fontWeight: config.valueKey === 'total_amount' ? 950 : 800 }}>
+                        <span>{displayLabels[config.labelKey]}</span>
+                        <span>{money(value)}</span>
+                        {isEditMode && (
+                          <Tooltip title="Edit row">
+                            <IconButton
+                              size="small"
+                              onClick={() => setSummaryEditor({
+                                valueKey: config.valueKey,
+                                labelKey: config.labelKey,
+                                label: editLabels[config.labelKey] || DEFAULT_INVOICE_LABELS[config.labelKey],
+                                value: String(value),
+                                readOnly: Boolean(config.readOnly),
+                              })}
+                              sx={{ color: accent, bgcolor: `${accent}10` }}
+                            >
+                              <EditOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Box>
+                    )
+                  })}
+                  {editSummaryRows.map((row, index) => (
+                    <Box key={row.id} sx={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 1, minHeight: 38, px: 1.2, borderRadius: '10px', bgcolor: '#F8FAFC', fontWeight: 800 }}>
+                      <span>{row.label || 'Additional charge'}</span>
+                      <span>{money(row.value)}</span>
+                      {isEditMode && (
+                        <Tooltip title="Edit added row">
+                          <IconButton size="small" onClick={() => setCustomSummaryEditor({ index, row: { ...row } })} sx={{ color: accent, bgcolor: `${accent}10` }}>
+                            <EditOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </Box>
                   ))}
+                  {isEditMode && (
+                    <Button
+                      size="small"
+                      startIcon={<AddIcon />}
+                      onClick={() => setCustomSummaryEditor({ index: -1, row: { id: `summary-${Date.now()}`, label: 'Shipping', value: 0 } })}
+                      sx={{ justifySelf: 'start', textTransform: 'none', fontWeight: 900, color: accent }}
+                    >
+                      Add summary row
+                    </Button>
+                  )}
                 </Box>
               )}
 
@@ -1056,6 +1115,194 @@ const InvoicePrintDialog = ({
           </Button>
         )}
       </DialogActions>
+
+      <Dialog open={Boolean(rowEditor)} onClose={() => setRowEditor(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
+        <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>
+          Edit invoice row
+          <Typography sx={{ mt: 0.4, color: '#64748B', fontSize: 13, fontWeight: 700 }}>
+            Edit a cell's name and value, or add an optional cell to this row.
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: '#F8FAFC' }}>
+          {rowEditor && (
+            <Box sx={{ display: 'grid', gap: 1.2 }}>
+              {LINE_ITEM_CELLS.map(config => (
+                <Box key={config.valueKey} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '0.9fr 1.4fr' }, gap: 1, p: 1.2, borderRadius: '12px', border: '1px solid #E2E8F0', bgcolor: '#fff' }}>
+                  <TextField
+                    size="small"
+                    label="Cell label"
+                    value={rowEditor.labels[config.labelKey] ?? ''}
+                    placeholder={DEFAULT_INVOICE_LABELS[config.labelKey]}
+                    onChange={event => setRowEditor(current => current ? { ...current, labels: { ...current.labels, [config.labelKey]: event.target.value } } : null)}
+                  />
+                  <TextField
+                    size="small"
+                    label="Cell value"
+                    type={config.numeric ? 'number' : 'text'}
+                    value={(rowEditor.row as any)[config.valueKey] ?? ''}
+                    onChange={event => {
+                      const value = config.numeric ? Number(event.target.value || 0) : event.target.value
+                      setRowEditor(current => current ? { ...current, row: { ...current.row, [config.valueKey]: value } } : null)
+                    }}
+                    inputProps={config.numeric ? { min: 0, step: 0.01 } : undefined}
+                  />
+                </Box>
+              ))}
+
+              <Divider sx={{ my: 0.5 }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                <Box>
+                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Optional cells</Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>These appear only on this invoice row and on the printed invoice.</Typography>
+                </Box>
+                <Button
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={() => setRowEditor(current => current ? {
+                    ...current,
+                    row: {
+                      ...current.row,
+                      custom_cells: [...(current.row.custom_cells || []), { id: `cell-${Date.now()}`, label: 'New cell', value: '' }],
+                    },
+                  } : null)}
+                  sx={{ textTransform: 'none', fontWeight: 900, color: accent }}
+                >
+                  Add cell
+                </Button>
+              </Box>
+              {(rowEditor.row.custom_cells || []).map((cell, cellIndex) => (
+                <Box key={cell.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '0.9fr 1.4fr auto' }, gap: 1, p: 1.2, borderRadius: '12px', border: '1px solid #DDD6FE', bgcolor: '#fff' }}>
+                  <TextField
+                    size="small"
+                    label="Cell label"
+                    value={cell.label}
+                    onChange={event => setRowEditor(current => current ? {
+                      ...current,
+                      row: { ...current.row, custom_cells: (current.row.custom_cells || []).map((item, index) => index === cellIndex ? { ...item, label: event.target.value } : item) },
+                    } : null)}
+                  />
+                  <TextField
+                    size="small"
+                    label="Cell value"
+                    value={cell.value}
+                    onChange={event => setRowEditor(current => current ? {
+                      ...current,
+                      row: { ...current.row, custom_cells: (current.row.custom_cells || []).map((item, index) => index === cellIndex ? { ...item, value: event.target.value } : item) },
+                    } : null)}
+                  />
+                  <Tooltip title="Remove cell">
+                    <IconButton
+                      size="small"
+                      onClick={() => setRowEditor(current => current ? { ...current, row: { ...current.row, custom_cells: (current.row.custom_cells || []).filter((_, index) => index !== cellIndex) } } : null)}
+                      sx={{ color: '#DC2626', bgcolor: '#FEF2F2' }}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRowEditor(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (!rowEditor) return
+              const quantity = Number(rowEditor.row.quantity || 0)
+              const unitPrice = Number(rowEditor.row.unit_price || 0)
+              const hasManualTotal = Number(rowEditor.row.total_amount || 0) !== 0
+              const nextRow = {
+                ...rowEditor.row,
+                total_amount: hasManualTotal
+                  ? Number(rowEditor.row.total_amount || 0)
+                  : Number((quantity * unitPrice + Number(rowEditor.row.shipping_fee || 0) + Number(rowEditor.row.setup_fee || 0)).toFixed(2)),
+              }
+              setEditRows(rows => rowEditor.index < rows.length
+                ? rows.map((row, index) => index === rowEditor.index ? nextRow : row)
+                : [...rows, nextRow])
+              setEditLabels(rowEditor.labels)
+              setRowEditor(null)
+            }}
+            sx={{ bgcolor: accent, fontWeight: 900, borderRadius: '10px', '&:hover': { bgcolor: accent } }}
+          >
+            Save row
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(summaryEditor)} onClose={() => setSummaryEditor(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
+        <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>Edit summary row</DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 1.5, bgcolor: '#F8FAFC' }}>
+          {summaryEditor && (
+            <>
+              <TextField label="Row label" value={summaryEditor.label} onChange={event => setSummaryEditor(current => current ? { ...current, label: event.target.value } : null)} sx={{ bgcolor: '#fff' }} />
+              <TextField label="Amount" type="number" value={summaryEditor.value} disabled={summaryEditor.readOnly} onChange={event => setSummaryEditor(current => current ? { ...current, value: event.target.value } : null)} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+              {summaryEditor.readOnly && <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>Balance is calculated from total minus paid. Its label remains editable.</Typography>}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setSummaryEditor(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (!summaryEditor) return
+              updateEditLabel(summaryEditor.labelKey, summaryEditor.label)
+              if (!summaryEditor.readOnly) {
+                setEditForm(prev => {
+                  const next = { ...prev, [summaryEditor.valueKey]: summaryEditor.value }
+                  if (['subtotal', 'tax_amount', 'discount_amount'].includes(summaryEditor.valueKey)) {
+                    next.total_amount = String(Math.max(0, Number(next.subtotal || 0) + Number(next.tax_amount || 0) - Number(next.discount_amount || 0)).toFixed(2))
+                  }
+                  return next
+                })
+              }
+              setSummaryEditor(null)
+            }}
+            sx={{ bgcolor: accent, fontWeight: 900, borderRadius: '10px', '&:hover': { bgcolor: accent } }}
+          >
+            Save row
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(customSummaryEditor)} onClose={() => setCustomSummaryEditor(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
+        <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>{customSummaryEditor?.index === -1 ? 'Add summary row' : 'Edit summary row'}</DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 1.5, bgcolor: '#F8FAFC' }}>
+          {customSummaryEditor && (
+            <>
+              <TextField label="Row label" value={customSummaryEditor.row.label} onChange={event => setCustomSummaryEditor(current => current ? { ...current, row: { ...current.row, label: event.target.value } } : null)} sx={{ bgcolor: '#fff' }} />
+              <TextField label="Amount" type="number" value={customSummaryEditor.row.value} onChange={event => setCustomSummaryEditor(current => current ? { ...current, row: { ...current.row, value: Number(event.target.value || 0) } } : null)} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+              <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>This row is printed as entered. Edit the Total row separately when this amount should change the invoice total.</Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, justifyContent: 'space-between' }}>
+          <Box>
+            {customSummaryEditor && customSummaryEditor.index >= 0 && (
+              <Button color="error" startIcon={<DeleteOutlineIcon />} onClick={() => { setEditSummaryRows(rows => rows.filter((_, index) => index !== customSummaryEditor.index)); setCustomSummaryEditor(null) }} sx={{ fontWeight: 900 }}>Remove</Button>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button onClick={() => setCustomSummaryEditor(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                if (!customSummaryEditor) return
+                setEditSummaryRows(rows => customSummaryEditor.index < 0
+                  ? [...rows, customSummaryEditor.row]
+                  : rows.map((row, index) => index === customSummaryEditor.index ? customSummaryEditor.row : row))
+                setCustomSummaryEditor(null)
+              }}
+              sx={{ bgcolor: accent, fontWeight: 900, borderRadius: '10px', '&:hover': { bgcolor: accent } }}
+            >
+              Save row
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   )
 }

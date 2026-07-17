@@ -146,6 +146,7 @@ export interface ServiceInvoice {
   transactions?: InvoiceTransaction[]
   line_items?: ServiceInvoiceLineItem[]
   labels?: Record<string, any> | null
+  summary_rows?: Array<{ id?: string; label: string; value: number }>
   paid_quotations?: ServiceInvoicePaidQuotation[]
 }
 
@@ -178,6 +179,7 @@ export interface ServiceInvoiceUpdatePayload {
   notes?: string
   line_items?: ServiceInvoiceLineItem[]
   labels?: Record<string, any>
+  summary_rows?: Array<{ id?: string; label: string; value: number }>
 }
 
 // ── Quotation ───────────────────────────────────────────────────────────────

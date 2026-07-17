@@ -21,7 +21,7 @@ from app.models.modality import Modality
 from app.models.tier import Tier
 from app.models.user import User, UserRole
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
-from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, parse_invoice_edit_metadata, strip_invoice_edit_metadata
+from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
@@ -185,6 +185,7 @@ class InspectionInvoiceUpdate(BaseModel):
     service_charges: Optional[Decimal] = None
     line_items: Optional[list[dict[str, Any]]] = None
     labels: Optional[dict[str, Any]] = None
+    summary_rows: Optional[list[dict[str, Any]]] = None
 
 
 class InspectionFormUpdate(BaseModel):
@@ -402,6 +403,7 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["batch_items"] = getattr(invoice, "_batch_items", [])
     data["line_items"] = editable_line_items(invoice.notes)
     data["labels"] = editable_labels(invoice.notes)
+    data["summary_rows"] = editable_summary_rows(invoice.notes)
     data["transactions"] = [transaction_response(item) for item in invoice.transactions or []]
     travel, service = _parse_inspection_fees(invoice.notes)
     data["travel_charges"] = travel
@@ -2113,6 +2115,8 @@ def update_inspection_invoice(
         existing_metadata["line_items"] = update_data.pop("line_items") or []
     if "labels" in update_data:
         existing_metadata["labels"] = update_data.pop("labels") or {}
+    if "summary_rows" in update_data:
+        existing_metadata["summary_rows"] = update_data.pop("summary_rows") or []
 
     for field in [
         "customer_name", "customer_email", "customer_phone", "customer_address",

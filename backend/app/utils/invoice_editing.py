@@ -66,6 +66,13 @@ def editable_labels(notes: Optional[str]) -> dict[str, str]:
     }
 
 
+def editable_summary_rows(notes: Optional[str]) -> list[dict[str, Any]]:
+    """Return invoice-only custom total/summary rows stored in edit metadata."""
+    metadata = parse_invoice_edit_metadata(notes)
+    rows = metadata.get("summary_rows")
+    return rows if isinstance(rows, list) else []
+
+
 def _json_default(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)

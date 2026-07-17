@@ -103,6 +103,7 @@ export interface RentalInvoice {
   transactions?: InvoiceTransaction[]
   line_items?: any[]
   labels?: Record<string, any> | null
+  summary_rows?: Array<{ id?: string; label: string; value: number }>
 }
 
 export interface InvoiceTransaction {
@@ -232,6 +233,7 @@ export const updateRentalInvoice = async (
     notes?: string | null
     line_items?: any[]
     labels?: Record<string, any>
+    summary_rows?: Array<{ id?: string; label: string; value: number }>
   }
 ): Promise<RentalInvoice> => {
   const res = await apiClient.put(`/rentals/invoices/${id}`, data)
