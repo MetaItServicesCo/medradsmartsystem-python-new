@@ -59,7 +59,7 @@ export interface Rental {
   status: RentalStatus
   initial_condition: string | null
   return_condition: string | null
-  initial_meter_reading: number | null
+  initial_meter_reading: string | null
   final_meter_reading: number | null
   terms_and_conditions: string | null
   converted_invoice_id: number | null
@@ -150,7 +150,7 @@ export interface RentalPayload {
   start_date: string
   end_date: string
   initial_condition?: string | null
-  initial_meter_reading?: number | null
+  initial_meter_reading?: string | null
   terms_and_conditions?: string | null
 }
 
@@ -166,7 +166,7 @@ export const fetchRentalParts = async (search?: string): Promise<{ items: Rental
 }
 
 export const fetchRentals = async (
-  params: { status?: string; search?: string } = {}
+  params: { status?: string; search?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: Rental[]; total: number }> => {
   const res = await apiClient.get('/rentals', { params })
   return res.data

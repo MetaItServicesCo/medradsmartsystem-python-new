@@ -5,7 +5,7 @@ import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
-  TextField, Typography,
+  TablePagination, TextField, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentIcon from '@mui/icons-material/Assignment'
@@ -50,7 +50,7 @@ import {
   type RentalStatus,
   type RentalInvoiceStatus,
 } from '@/api/rentals'
-import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
+import { digitsOnly, formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/rentals/agreements', '/rentals/invoices', '/rentals/products', '/rentals/history']
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)'
@@ -102,9 +102,32 @@ const formatDate = (value: string | null | undefined) => {
   return new Date(value).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
 }
 
-const parseIntegerInput = (value: string): number | null => {
-  const digits = value.replace(/\D/g, '')
-  return digits ? Number(digits) : null
+const normalizeDateInput = (value: string | null | undefined) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (match) {
+    const [, month, day, year] = match
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return raw
+  return parsed.toISOString().slice(0, 10)
+}
+
+const normalizeMoneyInput = (value: number | string | null | undefined) => Number(value || 0)
+
+const apiErrorMessage = (error: any, fallback: string) => {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => item?.msg || item?.message)
+      .filter(Boolean)
+      .join(', ') || fallback
+  }
+  return fallback
 }
 
 const emptyAgreement = (): RentalPayload => ({
@@ -123,7 +146,7 @@ const emptyAgreement = (): RentalPayload => ({
   start_date: new Date().toISOString().slice(0, 10),
   end_date: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().slice(0, 10),
   initial_condition: '',
-  initial_meter_reading: 0,
+  initial_meter_reading: '',
   terms_and_conditions: '',
 })
 
@@ -165,6 +188,8 @@ const Rentals = () => {
   const routeSearch = new URLSearchParams(location.search).get('search') || ''
   const [search, setSearch] = useState(routeSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
+  const [agreementPage, setAgreementPage] = useState(0)
+  const [agreementRowsPerPage, setAgreementRowsPerPage] = useState(25)
   const [agreementDialog, setAgreementDialog] = useState(false)
   const [editingAgreement, setEditingAgreement] = useState<Rental | null>(null)
   const [viewAgreement, setViewAgreement] = useState<Rental | null>(null)
@@ -209,6 +234,7 @@ const Rentals = () => {
   useEffect(() => {
     const handle = window.setTimeout(() => {
       setDebouncedSearch(search.trim())
+      setAgreementPage(0)
     }, 350)
 
     return () => window.clearTimeout(handle)
@@ -221,8 +247,17 @@ const Rentals = () => {
     placeholderData: previousData => previousData,
   })
   const rentalsQ = useQuery({
-    queryKey: ['rental-agreements', debouncedSearch],
-    queryFn: () => fetchRentals({ search: debouncedSearch || undefined }),
+    queryKey: ['rental-agreements', debouncedSearch, agreementPage, agreementRowsPerPage],
+    queryFn: () => fetchRentals({
+      search: debouncedSearch || undefined,
+      skip: agreementPage * agreementRowsPerPage,
+      limit: agreementRowsPerPage,
+    }),
+    placeholderData: previousData => previousData,
+  })
+  const activeRentalsCountQ = useQuery({
+    queryKey: ['rental-agreements', 'active-count', debouncedSearch],
+    queryFn: () => fetchRentals({ status: 'active', search: debouncedSearch || undefined, skip: 0, limit: 1 }),
     placeholderData: previousData => previousData,
   })
   const invoicesQ = useQuery({
@@ -235,9 +270,8 @@ const Rentals = () => {
   const facilities = facilitiesQ.data?.items || []
   const parts = partsQ.data?.items || []
   const rentals = rentalsQ.data?.items || []
+  const totalRentals = rentalsQ.data?.total || 0
   const invoices = invoicesQ.data?.items || []
-  const activeRentals = rentals.filter(r => r.status === 'active')
-  const completedRentals = rentals.filter(r => r.status === 'completed')
 
   const totalInvoiced = invoices.reduce((sum, invoice) => sum + Number(invoice.total_amount || 0), 0)
   const totalCollected = invoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0)
@@ -258,12 +292,12 @@ const Rentals = () => {
   }, [highlightAgreementId, rentals.length])
 
   const stats = useMemo(() => ({
-    agreements: rentals.length,
-    active: activeRentals.length,
+    agreements: totalRentals,
+    active: activeRentalsCountQ.data?.total || 0,
     invoiced: totalInvoiced,
     products: parts.length,
     history: historyQ.data?.total || 0,
-  }), [rentals.length, activeRentals.length, totalInvoiced, parts.length, historyQ.data?.total])
+  }), [totalRentals, activeRentalsCountQ.data?.total, totalInvoiced, parts.length, historyQ.data?.total])
 
   const invalidateRentals = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-agreements'] })
@@ -272,8 +306,38 @@ const Rentals = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-parts'] })
   }
 
+  const buildAgreementCreatePayload = (): RentalPayload => ({
+    part_id: Number(agreementForm.part_id || 0),
+    customer_name: agreementForm.customer_name.trim(),
+    customer_email: agreementForm.customer_email.trim(),
+    customer_phone: digitsOnly(agreementForm.customer_phone),
+    customer_address: agreementForm.customer_address.trim(),
+    billing_frequency: agreementForm.billing_frequency,
+    rental_rate: normalizeMoneyInput(agreementForm.rental_rate),
+    security_deposit: normalizeMoneyInput(agreementForm.security_deposit),
+    quantity: Math.max(1, Number(agreementForm.quantity || 1)),
+    shipping_fee: normalizeMoneyInput(agreementForm.shipping_fee),
+    setup_fee: normalizeMoneyInput(agreementForm.setup_fee),
+    item_condition: agreementForm.item_condition || null,
+    start_date: normalizeDateInput(agreementForm.start_date),
+    end_date: normalizeDateInput(agreementForm.end_date),
+    initial_condition: agreementForm.initial_condition?.trim() || null,
+    initial_meter_reading: agreementForm.initial_meter_reading?.trim() || null,
+    terms_and_conditions: agreementForm.terms_and_conditions?.trim() || null,
+  })
+
+  const buildAgreementUpdatePayload = () => {
+    const payload: Partial<RentalPayload> = { ...buildAgreementCreatePayload() }
+    delete payload.part_id
+    return payload
+  }
+
   const saveAgreementMut = useMutation({
-    mutationFn: () => editingAgreement ? updateRental(editingAgreement.id, agreementForm) : createRental(agreementForm),
+    mutationFn: () => (
+      editingAgreement
+        ? updateRental(editingAgreement.id, buildAgreementUpdatePayload())
+        : createRental(buildAgreementCreatePayload())
+    ),
     onSuccess: () => {
       toast.success(editingAgreement ? 'Rental agreement updated' : 'Rental agreement created')
       setAgreementDialog(false)
@@ -281,7 +345,7 @@ const Rentals = () => {
       setAgreementForm(emptyAgreement())
       invalidateRentals()
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save rental agreement'),
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not save rental agreement')),
   })
 
   const deleteAgreementMut = useMutation({
@@ -352,7 +416,7 @@ const Rentals = () => {
       start_date: rental.start_date || '',
       end_date: rental.end_date || '',
       initial_condition: rental.initial_condition || '',
-      initial_meter_reading: rental.initial_meter_reading || 0,
+      initial_meter_reading: rental.initial_meter_reading || '',
       terms_and_conditions: rental.terms_and_conditions || '',
     })
     setAgreementDialog(true)
@@ -473,7 +537,7 @@ const Rentals = () => {
     setReturnForm({
       actual_return_date: new Date().toISOString().slice(0, 10),
       return_condition: rental.initial_condition || '',
-      final_meter_reading: rental.initial_meter_reading || 0,
+      final_meter_reading: Number(rental.initial_meter_reading) || 0,
     })
   }
 
@@ -928,6 +992,18 @@ const Rentals = () => {
             </Box>
             <Box sx={{ p: 3 }}>
               {renderAgreementsTable(rentals, 'No rental agreements found.')}
+              <TablePagination
+                component="div"
+                count={totalRentals}
+                page={agreementPage}
+                onPageChange={(_, nextPage) => setAgreementPage(nextPage)}
+                rowsPerPage={agreementRowsPerPage}
+                onRowsPerPageChange={(event) => {
+                  setAgreementRowsPerPage(Number(event.target.value))
+                  setAgreementPage(0)
+                }}
+                rowsPerPageOptions={[10, 25, 50, 100]}
+              />
             </Box>
           </Box>
         )}
@@ -1181,9 +1257,8 @@ const Rentals = () => {
             <TextField
               label="Initial Reading"
               value={agreementForm.initial_meter_reading ?? ''}
-              onChange={e => setAgreementForm(prev => ({ ...prev, initial_meter_reading: parseIntegerInput(e.target.value) }))}
-              inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-              helperText="Numbers only"
+              onChange={e => setAgreementForm(prev => ({ ...prev, initial_meter_reading: e.target.value }))}
+              helperText="Optional reading or note"
             />
             
             <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions || ''} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
@@ -1505,7 +1580,7 @@ const Rentals = () => {
                 <Card sx={{ p: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Handover Information</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 800, color: '#4B5563' }}>Condition: {viewAgreement.initial_condition || 'N/A'}</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: '#4B5563', mt: 0.5 }}>Meter Reading: {viewAgreement.initial_meter_reading || 0}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: '#4B5563', mt: 0.5 }}>Initial Reading: {viewAgreement.initial_meter_reading || '-'}</Typography>
                 </Card>
                 <Card sx={{ p: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
                   <Typography sx={{ fontWeight: 900, color: '#047857', mb: 1 }}>Return Information</Typography>

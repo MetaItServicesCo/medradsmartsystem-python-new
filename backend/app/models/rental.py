@@ -41,7 +41,7 @@ class Rental(Base):
     status = Column(SQLEnum(RentalStatus), default=RentalStatus.ACTIVE)
     initial_condition = Column(Text, nullable=True)
     return_condition = Column(Text, nullable=True)
-    initial_meter_reading = Column(Integer, nullable=True)
+    initial_meter_reading = Column(Text, nullable=True)
     final_meter_reading = Column(Integer, nullable=True)
     terms_and_conditions = Column(Text, nullable=True)
     history = Column(JSON, nullable=True)

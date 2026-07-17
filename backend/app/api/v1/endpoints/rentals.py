@@ -40,7 +40,7 @@ class RentalCreate(BaseModel):
     start_date: date
     end_date: date
     initial_condition: Optional[str] = None
-    initial_meter_reading: Optional[int] = None
+    initial_meter_reading: Optional[str] = None
     terms_and_conditions: Optional[str] = None
 
 
@@ -60,7 +60,7 @@ class RentalUpdate(BaseModel):
     end_date: Optional[date] = None
     status: Optional[RentalStatus] = None
     initial_condition: Optional[str] = None
-    initial_meter_reading: Optional[int] = None
+    initial_meter_reading: Optional[str] = None
     terms_and_conditions: Optional[str] = None
 
 
@@ -277,6 +277,8 @@ def list_rentals(
     db: Session = Depends(get_db),
     status_filter: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=500),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
@@ -300,8 +302,9 @@ def list_rentals(
                 InventoryPart.description.ilike(f"%{search}%"),
             )
         )
-    rentals = query.order_by(Rental.created_at.desc()).all()
-    return {"items": [_rental_response(item) for item in rentals], "total": len(rentals)}
+    total = query.count()
+    rentals = query.order_by(Rental.created_at.desc()).offset(skip).limit(limit).all()
+    return {"items": [_rental_response(item) for item in rentals], "total": total, "skip": skip, "limit": limit}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
