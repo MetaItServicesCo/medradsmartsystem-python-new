@@ -13,6 +13,7 @@ import AddIcon from '@mui/icons-material/Add'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import BoltIcon from '@mui/icons-material/Bolt'
 import BuildIcon from '@mui/icons-material/Build'
+import CancelIcon from '@mui/icons-material/Cancel'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
@@ -2864,6 +2865,79 @@ const Inspections = () => {
     </TableContainer>
   )
 
+  // Overall live-report status: 'fail' if any pass/fail field is set to fail,
+  // 'pass' only when every pass/fail field is answered and none failed,
+  // 'pending' while pass/fail questions are still unanswered.
+  const computeLiveReportStatus = (): 'pass' | 'fail' | 'pending' | null => {
+    if (!report) return null
+    let hasFail = false
+    let hasPending = false
+
+    // options === undefined means the field is a known pass/fail field (checks, measurements).
+    // For option-based fields we only count them when a "Fail" choice exists.
+    const consider = (value: unknown, options?: string[]) => {
+      if (options && !options.some(opt => opt.trim().toLowerCase() === 'fail')) return
+      const v = String(value ?? '').trim().toLowerCase()
+      if (!v) { hasPending = true; return }
+      if (v === 'fail') hasFail = true
+    }
+
+    Object.values((report.checks || {}) as Record<string, string>).forEach(v => consider(v))
+    ;(report.measurements || []).forEach((m: any) => consider(m?.status))
+
+    const canvas = activeReportSchema?.canvas_form
+    if (canvas?.elements?.length) {
+      canvas.elements.forEach(el => {
+        if (el.type !== 'radio') return
+        consider(canvasFormValues[el.id], el.options?.length ? el.options : [])
+      })
+    } else {
+      const grid = activeReportSchema?.custom_grid || report?.custom_grid
+      if (grid && !activeReportSchema?.formio_form && !report?.formio_form) {
+        const values = report?.custom_grid_values || {}
+        grid.cells.flat().forEach((cell: GridCellSchema) => {
+          if (cell.hidden) return
+          if (cell.blocks?.length) {
+            cell.blocks.forEach((block: GridCellBlock) => {
+              if (block.type !== 'radio') return
+              consider(values[gridCellBlockValueKey(cell, block)], block.options?.length ? block.options : [])
+            })
+          } else if (cell.type === 'radio') {
+            consider(values[cell.id], cell.options?.length ? cell.options : [])
+          }
+        })
+      }
+    }
+
+    if (hasFail) return 'fail'
+    if (hasPending) return 'pending'
+    return 'pass'
+  }
+
+  const renderLiveReportStatusChip = () => {
+    const status = computeLiveReportStatus()
+    if (!status) return null
+    const config = status === 'fail'
+      ? { label: 'FAIL', bgcolor: '#DC2626', icon: <CancelIcon sx={{ fontSize: 18, color: '#fff !important' }} /> }
+      : status === 'pass'
+        ? { label: 'PASS', bgcolor: '#10B981', icon: <CheckCircleIcon sx={{ fontSize: 18, color: '#fff !important' }} /> }
+        : { label: 'IN PROGRESS', bgcolor: '#94A3B8', icon: undefined }
+    return (
+      <Chip
+        icon={config.icon}
+        label={config.label}
+        sx={{
+          bgcolor: config.bgcolor,
+          color: '#fff',
+          fontWeight: 900,
+          letterSpacing: '0.5px',
+          px: 0.5,
+          '& .MuiChip-icon': { color: '#fff' },
+        }}
+      />
+    )
+  }
+
   const renderFixedInspectionTable = () => {
     const leftChecks = ['physical_inspection', 'display', 'functional', 'electrical_safety', 'battery', 'pm_kit'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
     const rightChecks = ['cleaning', 'lubrication', 'calibration'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
@@ -3868,6 +3942,7 @@ const Inspections = () => {
         const previewSchema = schemaForForm(viewForm)
         const grid = previewSchema.custom_grid
         const formioForm = previewSchema.formio_form
+        const canvasForm = previewSchema.canvas_form?.elements?.length ? previewSchema.canvas_form : null
         const leftChecks = ['physical_inspection', 'display', 'functional', 'electrical_safety', 'battery', 'pm_kit'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
         const rightChecks = ['cleaning', 'lubrication', 'calibration'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
         return (
@@ -3922,8 +3997,12 @@ const Inspections = () => {
                 </Card>
 
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{formioForm?.title || grid?.title || 'Custom Form'}</Typography>
-                  {formioForm?.components ? (
+                  <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{canvasForm ? previewSchema.title : formioForm?.title || grid?.title || 'Custom Form'}</Typography>
+                  {canvasForm ? (
+                    <Box sx={{ overflowX: 'auto' }}>
+                      <CanvasFormViewer schema={canvasForm} readOnly />
+                    </Box>
+                  ) : formioForm?.components ? (
                     <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
                       This is a temporary Form.io form. Please edit/recreate it with the custom grid builder.
                     </Typography>
@@ -4743,11 +4822,14 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={Boolean(reportInspection)} onClose={() => setReportInspection(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-          Technician Inspection Report
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
-            {reportInspection?.batch_number || reportInspection?.inspection_number} - {reportInspection?.asset_name || reportInspection?.equipment_name}
-          </Typography>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Box>
+            Technician Inspection Report
+            <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+              {reportInspection?.batch_number || reportInspection?.inspection_number} - {reportInspection?.asset_name || reportInspection?.equipment_name}
+            </Typography>
+          </Box>
+          {renderLiveReportStatusChip()}
         </DialogTitle>
         <DialogContent dividers>
           {report && (
