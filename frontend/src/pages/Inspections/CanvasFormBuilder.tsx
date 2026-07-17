@@ -62,6 +62,8 @@ export interface CanvasElement {
   fontWeight?: 'normal' | 'bold'
   align?: 'left' | 'center' | 'right'
   zIndex?: number
+  description?: string
+  bgColor?: 'white' | 'grey'
 }
 
 export interface CanvasFormSchema {
@@ -371,15 +373,27 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
       overflow: 'hidden',
     }
 
+    const descLine = el.description ? (
+      <Typography sx={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic', userSelect: 'none' as const, mt: -0.25, lineHeight: 1.3 }}>
+        {el.description}
+      </Typography>
+    ) : null
+
     switch (el.type) {
       case 'heading':
       case 'label':
-        return <Typography sx={{ ...labelSx, whiteSpace: 'pre-wrap' }}>{el.label || 'Label'}</Typography>
+        return (
+          <Box sx={{ height: '100%', overflow: 'hidden' }}>
+            <Typography sx={{ ...labelSx, whiteSpace: 'pre-wrap' }}>{el.label || 'Label'}</Typography>
+            {descLine}
+          </Box>
+        )
 
       case 'input':
         return (
           <Box sx={wrapSx}>
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+            {descLine}
             <Box sx={fieldBoxSx}>
               <Typography sx={{ fontSize: 12, color: '#9CA3AF', userSelect: 'none' }}>{el.placeholder || ''}</Typography>
             </Box>
@@ -390,6 +404,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
         return (
           <Box sx={wrapSx}>
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+            {descLine}
             <Box sx={{ ...fieldBoxSx, alignItems: 'flex-start', pt: 0.75, pb: 0.5 }}>
               <Typography sx={{ fontSize: 12, color: '#9CA3AF', userSelect: 'none' }}>{el.placeholder || ''}</Typography>
             </Box>
@@ -400,6 +415,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
         return (
           <Box sx={wrapSx}>
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+            {descLine}
             <Box sx={fieldBoxSx}>
               <Typography sx={{ fontSize: 12, color: '#9CA3AF', userSelect: 'none' }}>0</Typography>
             </Box>
@@ -410,6 +426,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
         return (
           <Box sx={wrapSx}>
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+            {descLine}
             <Box sx={fieldBoxSx}>
               <Typography sx={{ fontSize: 12, color: '#9CA3AF', userSelect: 'none' }}>MM / DD / YYYY</Typography>
             </Box>
@@ -421,6 +438,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
         return (
           <Box sx={wrapSx}>
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+            {descLine}
             <Box sx={{ display: 'flex', flexDirection: el.optionLayout === 'vertical' ? 'column' : 'row', flexWrap: 'wrap', gap: 1, mt: 0.25 }}>
               {opts.map(opt => (
                 <Box key={opt} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -438,6 +456,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
         return (
           <Box sx={wrapSx}>
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+            {descLine}
             <Box sx={{ display: 'flex', flexDirection: el.optionLayout === 'vertical' ? 'column' : 'row', flexWrap: 'wrap', gap: 1, mt: 0.25 }}>
               {opts.map(opt => (
                 <Box key={opt} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -454,6 +473,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
         return (
           <Box sx={wrapSx}>
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+            {descLine}
             <Box sx={{
               flex: 1,
               border: '1px dashed #9CA3AF',
@@ -490,7 +510,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
           cursor: 'move',
           boxSizing: 'border-box',
           p: 1,
-          bgcolor: '#ffffff',
+          bgcolor: el.bgColor === 'grey' ? '#E5E7EB' : '#ffffff',
           border: isSelected ? '2px solid #7C3AED' : '1px solid transparent',
           borderRadius: '8px',
           outline: isSelected ? '3px solid rgba(124,58,237,0.12)' : 'none',
@@ -575,6 +595,50 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
             onChange={e => updateEl({ label: e.target.value })}
           />
         )}
+
+        {/* Description */}
+        <TextField
+          label="Description"
+          size="small"
+          fullWidth
+          multiline
+          minRows={2}
+          maxRows={4}
+          placeholder="Optional hint or instructions shown below the label"
+          value={selected.description ?? ''}
+          onChange={e => updateEl({ description: e.target.value })}
+          inputProps={{ sx: { fontSize: 12 } }}
+        />
+
+        {/* Cell color */}
+        <Box>
+          <Typography sx={{ fontSize: 11, color: '#64748B', mb: 0.5, fontWeight: 700 }}>Cell color</Typography>
+          <Box sx={{ display: 'flex', gap: 0.75 }}>
+            {([
+              { value: 'white' as const, color: '#ffffff', label: 'White' },
+              { value: 'grey'  as const, color: '#E5E7EB', label: 'Grey' },
+            ]).map(sw => {
+              const isActive = (selected.bgColor ?? 'white') === sw.value
+              return (
+                <Tooltip key={sw.value} title={sw.label}>
+                  <Box
+                    onClick={() => updateEl({ bgColor: sw.value })}
+                    sx={{
+                      width: 34,
+                      height: 26,
+                      borderRadius: '6px',
+                      bgcolor: sw.color,
+                      cursor: 'pointer',
+                      border: isActive ? '2px solid #7C3AED' : '1px solid #CBD5E1',
+                      outline: isActive ? '2px solid rgba(124,58,237,0.15)' : 'none',
+                      outlineOffset: 1,
+                    }}
+                  />
+                </Tooltip>
+              )
+            })}
+          </Box>
+        </Box>
 
         {/* Placeholder */}
         {(['input', 'textarea'] as CanvasElementType[]).includes(selected.type) && (
@@ -874,6 +938,8 @@ export function CanvasFormViewer({ schema, values = {}, onChange, readOnly = fal
               display: 'flex',
               flexDirection: 'column',
               gap: 0.4,
+              bgcolor: el.bgColor === 'grey' ? '#E5E7EB' : 'transparent',
+              borderRadius: el.bgColor === 'grey' ? '8px' : 0,
             }}
           >
             {renderViewerContent(el, val, (v) => set(el.id, v), readOnly)}
@@ -899,10 +965,21 @@ function renderViewerContent(
     mb: 0.25,
   } as const
 
+  const descLine = el.description ? (
+    <Typography sx={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic', lineHeight: 1.3, mb: 0.25 }}>
+      {el.description}
+    </Typography>
+  ) : null
+
   switch (el.type) {
     case 'heading':
     case 'label':
-      return <Typography sx={labelSx}>{el.label}</Typography>
+      return (
+        <Box>
+          <Typography sx={labelSx}>{el.label}</Typography>
+          {descLine}
+        </Box>
+      )
 
     case 'input':
     case 'number':
@@ -910,6 +987,7 @@ function renderViewerContent(
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4, height: '100%' }}>
           {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+          {descLine}
           <TextField
             size="small"
             type={el.type === 'number' ? 'number' : el.type === 'date' ? 'date' : 'text'}
@@ -927,6 +1005,7 @@ function renderViewerContent(
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4, height: '100%' }}>
           {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+          {descLine}
           <TextField
             size="small"
             multiline
@@ -945,6 +1024,7 @@ function renderViewerContent(
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4, height: '100%' }}>
           {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+          {descLine}
           <RadioGroup
             row={el.optionLayout !== 'vertical'}
             value={typeof val === 'string' ? val : ''}
@@ -971,6 +1051,7 @@ function renderViewerContent(
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4, height: '100%' }}>
           {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+          {descLine}
           <Box sx={{ display: 'flex', flexDirection: el.optionLayout === 'vertical' ? 'column' : 'row', flexWrap: 'wrap', gap: 0.25 }}>
             {opts.map(opt => (
               <FormControlLabel
@@ -1000,6 +1081,7 @@ function renderViewerContent(
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.4, height: '100%' }}>
           {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
+          {descLine}
           <Box sx={{
             flex: 1,
             border: '1px dashed #9CA3AF',
