@@ -648,18 +648,18 @@ const Billing = () => {
     return { outstanding, paid, total: items.reduce((sum, item) => sum + item.amount, 0), count: items.length }
   }, [items])
 
-  const invalidateBilling = () => {
-    queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] })
-    queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] })
-    queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
-    queryClient.invalidateQueries({ queryKey: ['billing-sales-invoices'] })
-    queryClient.invalidateQueries({ queryKey: ['billing-rental-invoices'] })
-    queryClient.invalidateQueries({ queryKey: ['billing-quotations'] })
-    queryClient.invalidateQueries({ queryKey: ['sales-invoices'] })
-    queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
-    queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] })
-    queryClient.invalidateQueries({ queryKey: ['service-invoices'] })
-  }
+  const invalidateBilling = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] }),
+    queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] }),
+    queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] }),
+    queryClient.invalidateQueries({ queryKey: ['billing-sales-invoices'] }),
+    queryClient.invalidateQueries({ queryKey: ['billing-rental-invoices'] }),
+    queryClient.invalidateQueries({ queryKey: ['billing-quotations'] }),
+    queryClient.invalidateQueries({ queryKey: ['sales-invoices'] }),
+    queryClient.invalidateQueries({ queryKey: ['rental-invoices'] }),
+    queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] }),
+    queryClient.invalidateQueries({ queryKey: ['service-invoices'] }),
+  ])
 
   const servicePayMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: QuotationPaymentCreate }) => createQuotationPayment(id, data),
@@ -730,10 +730,10 @@ const Billing = () => {
       }
       return updateInspectionInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null } as any)
     },
-    onSuccess: () => {
-      toast.success('Invoice updated')
+    onSuccess: async () => {
+      await invalidateBilling()
       setEditItem(null)
-      invalidateBilling()
+      toast.success('Invoice updated')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice'),
   })

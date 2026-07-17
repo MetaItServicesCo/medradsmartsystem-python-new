@@ -196,7 +196,7 @@ interface InvoicePrintDialogProps {
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 
-const statusOptions = ['draft', 'sent', 'approved', 'pending', 'partially_paid', 'paid', 'overdue', 'cancelled']
+const statusOptions = ['pending', 'partially_paid', 'paid', 'overdue', 'cancelled']
 const paymentOptions = ['credit_card', 'ach', 'mbmts_ach', 'cheque', 'bank_transfer', 'cash']
 
 const DEFAULT_INVOICE_LABELS: Required<PrintableInvoiceLabels> = {
