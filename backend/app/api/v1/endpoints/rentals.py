@@ -4,6 +4,7 @@ from typing import Any, Optional
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -132,7 +133,7 @@ def _history_entry(action: str, user: User, details: Optional[dict[str, Any]] = 
         "by": user.full_name or user.username,
         "user_id": user.id,
         "at": datetime.utcnow().isoformat(),
-        "details": details or {},
+        "details": jsonable_encoder(details or {}),
     }
 
 
