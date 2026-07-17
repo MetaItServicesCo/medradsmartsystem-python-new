@@ -715,6 +715,7 @@ const Billing = () => {
         status: data.status,
         notes: data.notes || undefined,
         line_items: data.line_items,
+        labels: data.labels,
       }
 
       if (item.source === 'sales') {
@@ -838,6 +839,7 @@ const Billing = () => {
       due_date: item.dueDate,
       payment_method: item.paymentMethod,
       notes: item.description,
+      labels: (item.raw as any).labels || null,
     }
     if (item.source === 'service' && item.billingKind === 'service_invoice') {
       const invoice = item.raw as ServiceInvoice

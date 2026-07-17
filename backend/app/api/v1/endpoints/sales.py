@@ -18,7 +18,7 @@ from app.models.sales import SalesQuotation, SalesQuotationLineItem
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
-from app.utils.invoice_editing import compose_invoice_edit_notes, editable_line_items, parse_invoice_edit_metadata, strip_invoice_edit_metadata
+from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notifications
@@ -82,6 +82,7 @@ class SalesInvoiceUpdate(BaseModel):
     payment_method: Optional[str] = None
     notes: Optional[str] = None
     line_items: Optional[list[dict[str, Any]]] = None
+    labels: Optional[dict[str, Any]] = None
 
 
 class SalesInvoiceCreate(BaseModel):
@@ -203,6 +204,7 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "updated_at": invoice.updated_at,
         "transactions": [transaction_response(item) for item in invoice.transactions or []],
         "line_items": editable_line_items(invoice.notes),
+        "labels": editable_labels(invoice.notes),
     }
 
 
@@ -712,6 +714,8 @@ def update_sales_invoice(
     existing_metadata = parse_invoice_edit_metadata(invoice.notes)
     if "line_items" in update_data:
         existing_metadata["line_items"] = update_data.pop("line_items") or []
+    if "labels" in update_data:
+        existing_metadata["labels"] = update_data.pop("labels") or {}
     for field in [
         "customer_name", "customer_email", "customer_phone", "customer_address",
         "subtotal", "tax_amount", "discount_amount", "total_amount",

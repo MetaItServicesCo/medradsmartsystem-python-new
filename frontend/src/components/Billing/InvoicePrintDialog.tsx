@@ -22,6 +22,44 @@ import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 export type PrintDocumentType = 'invoice' | 'packing_slip' | 'ledger'
 
+export interface PrintableInvoiceLabels {
+  billTo?: string
+  customerName?: string
+  customerEmail?: string
+  customerPhone?: string
+  customerAddress?: string
+  reference?: string
+  issued?: string
+  due?: string
+  payment?: string
+  status?: string
+  itemNumber?: string
+  description?: string
+  quantity?: string
+  unitPrice?: string
+  shipping?: string
+  setup?: string
+  lineTotal?: string
+  condition?: string
+  laborFees?: string
+  travelCharges?: string
+  serviceCharges?: string
+  partsTotal?: string
+  workedHoursFee?: string
+  setupFeeExtra?: string
+  serviceFeeExtra?: string
+  shippingFeeExtra?: string
+  applicationFeeExtra?: string
+  additionalServiceFees?: string
+  subtotal?: string
+  tax?: string
+  discount?: string
+  total?: string
+  paid?: string
+  balanceDue?: string
+  notes?: string
+}
+
 export interface PrintableInvoice {
   invoice_number: string
   invoice_type?: string | null
@@ -54,6 +92,7 @@ export interface PrintableInvoice {
   labor_fees?: number | null
   travel_charges?: number | null
   service_charges?: number | null
+  labels?: PrintableInvoiceLabels | null
 }
 
 export interface PrintableLineItem {
@@ -117,6 +156,7 @@ export interface PrintableInvoiceEditPayload {
   payment_method?: string | null
   notes?: string | null
   line_items?: PrintableLineItem[]
+  labels?: PrintableInvoiceLabels
 }
 
 interface InvoicePrintDialogProps {
@@ -142,6 +182,49 @@ const money = (value: number | string | null | undefined) => `$${Number(value ||
 
 const statusOptions = ['draft', 'sent', 'approved', 'pending', 'partially_paid', 'paid', 'overdue', 'cancelled']
 const paymentOptions = ['credit_card', 'ach', 'mbmts_ach', 'cheque', 'bank_transfer', 'cash']
+
+const DEFAULT_INVOICE_LABELS: Required<PrintableInvoiceLabels> = {
+  billTo: 'Bill To',
+  customerName: 'Customer name',
+  customerEmail: 'Customer email',
+  customerPhone: 'Customer phone',
+  customerAddress: 'Customer address',
+  reference: 'Reference',
+  issued: 'Issued',
+  due: 'Due',
+  payment: 'Payment',
+  status: 'Status',
+  itemNumber: 'Item',
+  description: 'Description',
+  quantity: 'Qty',
+  unitPrice: 'Price',
+  shipping: 'Shipping',
+  setup: 'Setup',
+  lineTotal: 'Total',
+  condition: 'Condition / Type',
+  laborFees: 'Labor Fees',
+  travelCharges: 'Travel Charges',
+  serviceCharges: 'Service Charges',
+  partsTotal: 'Parts / Rental Total',
+  workedHoursFee: 'Working Hours Fee',
+  setupFeeExtra: 'Setup Fee',
+  serviceFeeExtra: 'Service Fee',
+  shippingFeeExtra: 'Shipping / Delivery Fee',
+  applicationFeeExtra: 'Application / Training Fee',
+  additionalServiceFees: 'Additional Service Fees',
+  subtotal: 'Subtotal',
+  tax: 'Tax',
+  discount: 'Discount',
+  total: 'Total',
+  paid: 'Paid',
+  balanceDue: 'Balance Due',
+  notes: 'Invoice notes',
+}
+
+const mergeInvoiceLabels = (labels?: PrintableInvoiceLabels | null): Required<PrintableInvoiceLabels> => ({
+  ...DEFAULT_INVOICE_LABELS,
+  ...(labels || {}),
+})
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
@@ -319,9 +402,10 @@ const buildPrintableHtml = (
   paidQuotations: PrintablePaidQuotation[] = [],
 ) => {
   const title = documentLabel(type, primaryDocumentLabel)
+  const labels = mergeInvoiceLabels(invoice.labels)
   const accentSoft = softAccentFor(accent)
   const hasPerItemUnits = lineItems.some(i => i.unitLabel)
-  const qtyHeader = hasPerItemUnits ? 'Unit' : quantityLabel
+  const qtyHeader = hasPerItemUnits ? 'Unit' : labels.quantity || quantityLabel
   const itemRows = lineItems.length ? lineItems.map(item => {
     const qtyCell = item.unitLabel
       ? `${escapeHtml(item.quantity)} ${escapeHtml(item.unitLabel)}`
@@ -383,7 +467,7 @@ const buildPrintableHtml = (
       <section class="content">
       <section class="grid">
         <div class="box">
-          <h3>Bill To</h3>
+          <h3>${escapeHtml(labels.billTo)}</h3>
           <strong class="customer">${escapeHtml(invoice.customer_name)}</strong><br>
           ${invoice.customer_email ? `<span class="muted">${escapeHtml(invoice.customer_email)}</span><br>` : ''}
           ${invoice.customer_phone ? `<span class="muted">${escapeHtml(formatUSPhone(invoice.customer_phone))}</span><br>` : ''}
@@ -392,10 +476,10 @@ const buildPrintableHtml = (
         </div>
         <div class="box meta">
           <strong>${escapeHtml(primaryDocumentLabel)} #</strong><span>${escapeHtml(invoice.invoice_number)}</span>
-          <strong>Reference</strong><span>${escapeHtml(invoice.reference_number || '-')}</span>
-          <strong>Issued</strong><span>${escapeHtml(formatDate(invoice.issue_date))}</span>
-          <strong>Due</strong><span>${escapeHtml(formatDate(invoice.due_date))}</span>
-          <strong>Payment</strong><span>${escapeHtml(paymentMethodLabel(invoice.payment_method))}</span>
+          <strong>${escapeHtml(labels.reference)}</strong><span>${escapeHtml(invoice.reference_number || '-')}</span>
+          <strong>${escapeHtml(labels.issued)}</strong><span>${escapeHtml(formatDate(invoice.issue_date))}</span>
+          <strong>${escapeHtml(labels.due)}</strong><span>${escapeHtml(formatDate(invoice.due_date))}</span>
+          <strong>${escapeHtml(labels.payment)}</strong><span>${escapeHtml(paymentMethodLabel(invoice.payment_method))}</span>
         </div>
       </section>
 
@@ -408,8 +492,8 @@ const buildPrintableHtml = (
         <table>
           <thead>
             <tr>
-              <th>Item</th><th>Description</th><th class="right">${escapeHtml(qtyHeader)}</th>
-              ${type === 'packing_slip' ? '' : '<th class="right">Price</th><th class="right">Shipping</th><th class="right">Setup</th><th class="right">Total</th>'}
+              <th>${escapeHtml(labels.itemNumber)}</th><th>${escapeHtml(labels.description)}</th><th class="right">${escapeHtml(qtyHeader)}</th>
+              ${type === 'packing_slip' ? '' : `<th class="right">${escapeHtml(labels.unitPrice)}</th><th class="right">${escapeHtml(labels.shipping)}</th><th class="right">${escapeHtml(labels.setup)}</th><th class="right">${escapeHtml(labels.lineTotal)}</th>`}
             </tr>
           </thead>
           <tbody>${itemRows}</tbody>
@@ -428,26 +512,26 @@ const buildPrintableHtml = (
           </section>
         ` : ''}
         <section class="totals">
-          ${invoice.labor_fees ? `<div><span>Labor Fees</span><strong>${escapeHtml(money(invoice.labor_fees))}</strong></div>` : ''}
-          ${invoice.travel_charges ? `<div><span>Travel Charges</span><strong>${escapeHtml(money(invoice.travel_charges))}</strong></div>` : ''}
-          ${invoice.service_charges ? `<div><span>Service Charges</span><strong>${escapeHtml(money(invoice.service_charges))}</strong></div>` : ''}
-          ${invoice.parts_total != null ? `<div><span>Parts / Rental Total</span><strong>${escapeHtml(money(invoice.parts_total))}</strong></div>` : ''}
-          ${invoice.worked_hours_fee ? `<div><span>Working Hours Fee</span><strong>${escapeHtml(money(invoice.worked_hours_fee))}</strong></div>` : ''}
-          ${invoice.setup_fee_extra ? `<div><span>Setup Fee</span><strong>${escapeHtml(money(invoice.setup_fee_extra))}</strong></div>` : ''}
-          ${invoice.service_fee_extra ? `<div><span>Service Fee</span><strong>${escapeHtml(money(invoice.service_fee_extra))}</strong></div>` : ''}
-          ${invoice.shipping_fee_extra ? `<div><span>Shipping / Delivery Fee</span><strong>${escapeHtml(money(invoice.shipping_fee_extra))}</strong></div>` : ''}
-          ${invoice.application_fee_extra ? `<div><span>Application / Training Fee</span><strong>${escapeHtml(money(invoice.application_fee_extra))}</strong></div>` : ''}
-          ${invoice.additional_service_fees ? `<div><span>Additional Service Fees</span><strong>${escapeHtml(money(invoice.additional_service_fees))}</strong></div>` : ''}
-          <div><span>Subtotal</span><strong>${escapeHtml(money(invoice.subtotal))}</strong></div>
-          <div><span>Tax</span><strong>${escapeHtml(money(invoice.tax_amount))}</strong></div>
-          <div><span>Discount</span><strong>${escapeHtml(money(invoice.discount_amount))}</strong></div>
-          <div class="grand"><span>Total</span><span>${escapeHtml(money(invoice.total_amount))}</span></div>
-          <div><span>Paid</span><strong>${escapeHtml(money(invoice.amount_paid))}</strong></div>
-          <div><span>Balance Due</span><strong class="balance">${escapeHtml(money(invoice.balance_due))}</strong></div>
+          ${invoice.labor_fees ? `<div><span>${escapeHtml(labels.laborFees)}</span><strong>${escapeHtml(money(invoice.labor_fees))}</strong></div>` : ''}
+          ${invoice.travel_charges ? `<div><span>${escapeHtml(labels.travelCharges)}</span><strong>${escapeHtml(money(invoice.travel_charges))}</strong></div>` : ''}
+          ${invoice.service_charges ? `<div><span>${escapeHtml(labels.serviceCharges)}</span><strong>${escapeHtml(money(invoice.service_charges))}</strong></div>` : ''}
+          ${invoice.parts_total != null ? `<div><span>${escapeHtml(labels.partsTotal)}</span><strong>${escapeHtml(money(invoice.parts_total))}</strong></div>` : ''}
+          ${invoice.worked_hours_fee ? `<div><span>${escapeHtml(labels.workedHoursFee)}</span><strong>${escapeHtml(money(invoice.worked_hours_fee))}</strong></div>` : ''}
+          ${invoice.setup_fee_extra ? `<div><span>${escapeHtml(labels.setupFeeExtra)}</span><strong>${escapeHtml(money(invoice.setup_fee_extra))}</strong></div>` : ''}
+          ${invoice.service_fee_extra ? `<div><span>${escapeHtml(labels.serviceFeeExtra)}</span><strong>${escapeHtml(money(invoice.service_fee_extra))}</strong></div>` : ''}
+          ${invoice.shipping_fee_extra ? `<div><span>${escapeHtml(labels.shippingFeeExtra)}</span><strong>${escapeHtml(money(invoice.shipping_fee_extra))}</strong></div>` : ''}
+          ${invoice.application_fee_extra ? `<div><span>${escapeHtml(labels.applicationFeeExtra)}</span><strong>${escapeHtml(money(invoice.application_fee_extra))}</strong></div>` : ''}
+          ${invoice.additional_service_fees ? `<div><span>${escapeHtml(labels.additionalServiceFees)}</span><strong>${escapeHtml(money(invoice.additional_service_fees))}</strong></div>` : ''}
+          <div><span>${escapeHtml(labels.subtotal)}</span><strong>${escapeHtml(money(invoice.subtotal))}</strong></div>
+          <div><span>${escapeHtml(labels.tax)}</span><strong>${escapeHtml(money(invoice.tax_amount))}</strong></div>
+          <div><span>${escapeHtml(labels.discount)}</span><strong>${escapeHtml(money(invoice.discount_amount))}</strong></div>
+          <div class="grand"><span>${escapeHtml(labels.total)}</span><span>${escapeHtml(money(invoice.total_amount))}</span></div>
+          <div><span>${escapeHtml(labels.paid)}</span><strong>${escapeHtml(money(invoice.amount_paid))}</strong></div>
+          <div><span>${escapeHtml(labels.balanceDue)}</span><strong class="balance">${escapeHtml(money(invoice.balance_due))}</strong></div>
         </section>
       ` : ''}
 
-      ${invoice.notes ? `<section class="note"><strong>Notes:</strong><br>${escapeHtml(invoice.notes)}</section>` : ''}
+      ${invoice.notes ? `<section class="note"><strong>${escapeHtml(labels.notes)}:</strong><br>${escapeHtml(invoice.notes)}</section>` : ''}
       ${type === 'packing_slip' ? '<section class="signature"><div class="line">Packed By</div><div class="line">Received By</div></section>' : ''}
       <section class="footer">
         <span>Mr. BioMed Tech Services</span>
@@ -492,6 +576,7 @@ const InvoicePrintDialog = ({
     notes: '',
   })
   const [editRows, setEditRows] = useState<PrintableLineItem[]>([])
+  const [editLabels, setEditLabels] = useState<PrintableInvoiceLabels>(DEFAULT_INVOICE_LABELS)
   const previewAccentSoft = softAccentFor(accent)
   const isEditMode = mode === 'edit'
   const isViewMode = mode === 'view'
@@ -517,6 +602,7 @@ const InvoicePrintDialog = ({
       notes: invoice.notes || '',
     })
     setEditRows(lineItems.map(item => ({ ...item })))
+    setEditLabels(mergeInvoiceLabels(invoice.labels))
   }, [invoice, lineItems, open])
 
   const displayInvoice = useMemo<PrintableInvoice | null>(() => {
@@ -540,8 +626,11 @@ const InvoicePrintDialog = ({
       status: editForm.status || invoice.status,
       payment_method: editForm.payment_method || null,
       notes: editForm.notes || null,
+      labels: editLabels,
     }
-  }, [editForm, invoice, isEditMode])
+  }, [editForm, editLabels, invoice, isEditMode])
+
+  const displayLabels = mergeInvoiceLabels(displayInvoice?.labels)
 
   const previewRows = useMemo(() => {
     if (activeDocumentType === 'ledger') {
@@ -556,14 +645,15 @@ const InvoicePrintDialog = ({
     return rows.map(item => ({
       first: item.item_number,
       second: item.description,
-      third: item.unitLabel ? `${item.quantity} ${item.unitLabel}` : `${quantityLabel} ${item.quantity}`,
+      third: item.unitLabel ? `${item.quantity} ${item.unitLabel}` : `${displayLabels.quantity || quantityLabel} ${item.quantity}`,
       amount: activeDocumentType === 'packing_slip' ? item.condition || '-' : money(item.total_amount),
     }))
-  }, [activeDocumentType, displayInvoice?.invoice_number, editRows, isEditMode, ledgerTransactions, lineItems, quantityLabel])
+  }, [activeDocumentType, displayInvoice?.invoice_number, displayLabels.quantity, editRows, isEditMode, ledgerTransactions, lineItems, quantityLabel])
 
   const handlePrint = () => {
     if (!displayInvoice) return
-    const html = buildPrintableHtml(displayInvoice, activeDocumentType, lineItems, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations)
+    const printableRows = isEditMode ? editRows : lineItems
+    const html = buildPrintableHtml(displayInvoice, activeDocumentType, printableRows, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations)
     printHtml(`${displayInvoice.invoice_number} ${documentLabel(activeDocumentType, primaryDocumentLabel)}`, html + (appendHtml || ''))
   }
 
@@ -584,6 +674,7 @@ const InvoicePrintDialog = ({
       status: editForm.status || undefined,
       payment_method: editForm.payment_method || null,
       notes: editForm.notes || null,
+      labels: editLabels,
       line_items: editRows.map(row => ({
         ...row,
         quantity: Number(row.quantity || 0),
@@ -623,6 +714,47 @@ const InvoicePrintDialog = ({
       },
     ])
   }
+
+  const updateEditLabel = (key: keyof PrintableInvoiceLabels, value: string) => {
+    setEditLabels(prev => ({ ...prev, [key]: value }))
+  }
+
+  const labelFields: Array<[keyof PrintableInvoiceLabels, string]> = [
+    ['billTo', 'Bill-to section'],
+    ['customerName', 'Customer name field'],
+    ['customerEmail', 'Customer email field'],
+    ['customerPhone', 'Customer phone field'],
+    ['customerAddress', 'Customer address field'],
+    ['reference', 'Reference label'],
+    ['issued', 'Issued label'],
+    ['due', 'Due label'],
+    ['payment', 'Payment label'],
+    ['status', 'Status label'],
+    ['itemNumber', 'Item column'],
+    ['description', 'Description column'],
+    ['quantity', 'Quantity column'],
+    ['unitPrice', 'Unit price column'],
+    ['shipping', 'Shipping column'],
+    ['setup', 'Setup column'],
+    ['lineTotal', 'Line total column'],
+    ['laborFees', 'Labor fee label'],
+    ['travelCharges', 'Travel charge label'],
+    ['serviceCharges', 'Service charge label'],
+    ['partsTotal', 'Parts/rental total label'],
+    ['workedHoursFee', 'Working hours fee label'],
+    ['setupFeeExtra', 'Setup fee label'],
+    ['serviceFeeExtra', 'Service fee label'],
+    ['shippingFeeExtra', 'Shipping/delivery fee label'],
+    ['applicationFeeExtra', 'Application/training fee label'],
+    ['additionalServiceFees', 'Additional service fee label'],
+    ['subtotal', 'Subtotal label'],
+    ['tax', 'Tax label'],
+    ['discount', 'Discount label'],
+    ['total', 'Total label'],
+    ['paid', 'Paid label'],
+    ['balanceDue', 'Balance due label'],
+    ['notes', 'Notes label'],
+  ]
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth={isEditMode ? 'lg' : 'md'} fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
@@ -691,16 +823,38 @@ const InvoicePrintDialog = ({
                 </Box>
               </Box>
 
+              {isEditMode && (
+                <Box sx={{ p: 2.5, borderBottom: '1px solid #E5E7EB', bgcolor: '#FBFAFF' }}>
+                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 0.5 }}>Printable labels</Typography>
+                  <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13, mb: 1.5 }}>
+                    Rename printed labels only. The invoice fields and calculations stay the same.
+                  </Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }, gap: 1 }}>
+                    {labelFields.map(([key, helper]) => (
+                      <TextField
+                        key={key}
+                        size="small"
+                        label={helper}
+                        value={editLabels[key] ?? ''}
+                        placeholder={DEFAULT_INVOICE_LABELS[key]}
+                        onChange={event => updateEditLabel(key, event.target.value)}
+                        sx={{ bgcolor: '#fff' }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
               <Box sx={{ p: 3 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, pb: 2 }}>
                 <Box sx={{ p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Customer</Typography>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{displayLabels.billTo}</Typography>
                   {isEditMode ? (
                     <Box sx={{ display: 'grid', gap: 1, mt: 1 }}>
-                      <TextField size="small" label="Customer name" value={editForm.customer_name} onChange={event => setEditForm(prev => ({ ...prev, customer_name: event.target.value }))} sx={{ bgcolor: '#fff' }} />
-                      <TextField size="small" label="Customer email" value={editForm.customer_email} onChange={event => setEditForm(prev => ({ ...prev, customer_email: event.target.value }))} sx={{ bgcolor: '#fff' }} />
-                      <TextField size="small" label="Customer phone" value={editForm.customer_phone} onChange={event => setEditForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(event.target.value) }))} sx={{ bgcolor: '#fff' }} />
-                      <TextField size="small" label="Customer address" value={editForm.customer_address} onChange={event => setEditForm(prev => ({ ...prev, customer_address: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                      <TextField size="small" label={displayLabels.customerName} value={editForm.customer_name} onChange={event => setEditForm(prev => ({ ...prev, customer_name: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                      <TextField size="small" label={displayLabels.customerEmail} value={editForm.customer_email} onChange={event => setEditForm(prev => ({ ...prev, customer_email: event.target.value }))} sx={{ bgcolor: '#fff' }} />
+                      <TextField size="small" label={displayLabels.customerPhone} value={editForm.customer_phone} onChange={event => setEditForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(event.target.value) }))} sx={{ bgcolor: '#fff' }} />
+                      <TextField size="small" label={displayLabels.customerAddress} value={editForm.customer_address} onChange={event => setEditForm(prev => ({ ...prev, customer_address: event.target.value }))} sx={{ bgcolor: '#fff' }} />
                     </Box>
                   ) : (
                     <>
@@ -711,20 +865,20 @@ const InvoicePrintDialog = ({
                   )}
                 </Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: previewAccentSoft }}>
-                  <Typography sx={{ fontWeight: 900 }}>Reference</Typography><Typography>{displayInvoice.reference_number || '-'}</Typography>
-                  <Typography sx={{ fontWeight: 900 }}>Issued</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>{displayLabels.reference}</Typography><Typography>{displayInvoice.reference_number || '-'}</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>{displayLabels.issued}</Typography>
                   {isEditMode ? (
                     <TextField size="small" type="date" value={editForm.issue_date} onChange={event => setEditForm(prev => ({ ...prev, issue_date: event.target.value }))} sx={{ bgcolor: '#fff' }} />
                   ) : (
                     <Typography>{formatDate(displayInvoice.issue_date)}</Typography>
                   )}
-                  <Typography sx={{ fontWeight: 900 }}>Due</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>{displayLabels.due}</Typography>
                   {isEditMode ? (
                     <TextField size="small" type="date" value={editForm.due_date} onChange={event => setEditForm(prev => ({ ...prev, due_date: event.target.value }))} sx={{ bgcolor: '#fff' }} />
                   ) : (
                     <Typography>{formatDate(displayInvoice.due_date)}</Typography>
                   )}
-                  <Typography sx={{ fontWeight: 900 }}>Payment</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>{displayLabels.payment}</Typography>
                   {isEditMode ? (
                     <TextField select size="small" value={editForm.payment_method} onChange={event => setEditForm(prev => ({ ...prev, payment_method: event.target.value }))} sx={{ bgcolor: '#fff' }}>
                       <MenuItem value="">Not set</MenuItem>
@@ -735,7 +889,7 @@ const InvoicePrintDialog = ({
                   )}
                   {isEditMode && (
                     <>
-                      <Typography sx={{ fontWeight: 900 }}>Status</Typography>
+                      <Typography sx={{ fontWeight: 900 }}>{displayLabels.status}</Typography>
                       <TextField select size="small" value={editForm.status} onChange={event => setEditForm(prev => ({ ...prev, status: event.target.value }))} sx={{ bgcolor: '#fff' }}>
                         {statusOptions.map(option => <MenuItem key={option} value={option}>{option.replace(/_/g, ' ')}</MenuItem>)}
                       </TextField>
@@ -779,13 +933,13 @@ const InvoicePrintDialog = ({
                     </Box>
                     {editRows.map((row, index) => (
                       <Box key={`${row.item_number}-${index}`} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 0.8fr 1fr 1fr 1fr 1fr 44px' }, gap: 1, p: 1.4, borderRadius: '14px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
-                        <TextField size="small" label="Item #" value={row.item_number} onChange={event => updateEditRow(index, { item_number: event.target.value })} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label="Description" value={row.description} onChange={event => updateEditRow(index, { description: event.target.value })} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label="Qty" type="number" value={row.quantity} onChange={event => updateEditRow(index, { quantity: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label="Unit price" type="number" value={row.unit_price} onChange={event => updateEditRow(index, { unit_price: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label="Shipping" type="number" value={row.shipping_fee || 0} onChange={event => updateEditRow(index, { shipping_fee: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label="Setup" type="number" value={row.setup_fee || 0} onChange={event => updateEditRow(index, { setup_fee: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-                        <TextField size="small" label="Total" type="number" value={row.total_amount} onChange={event => updateEditRow(index, { total_amount: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label={displayLabels.itemNumber} value={row.item_number} onChange={event => updateEditRow(index, { item_number: event.target.value })} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label={displayLabels.description} value={row.description} onChange={event => updateEditRow(index, { description: event.target.value })} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label={displayLabels.quantity} type="number" value={row.quantity} onChange={event => updateEditRow(index, { quantity: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label={displayLabels.unitPrice} type="number" value={row.unit_price} onChange={event => updateEditRow(index, { unit_price: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label={displayLabels.shipping} type="number" value={row.shipping_fee || 0} onChange={event => updateEditRow(index, { shipping_fee: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label={displayLabels.setup} type="number" value={row.setup_fee || 0} onChange={event => updateEditRow(index, { setup_fee: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
+                        <TextField size="small" label={displayLabels.lineTotal} type="number" value={row.total_amount} onChange={event => updateEditRow(index, { total_amount: Number(event.target.value || 0) })} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
                         <Tooltip title="Remove item">
                           <span>
                             <IconButton
@@ -798,7 +952,7 @@ const InvoicePrintDialog = ({
                             </IconButton>
                           </span>
                         </Tooltip>
-                        <TextField size="small" label="Condition / Type" value={row.condition || ''} onChange={event => updateEditRow(index, { condition: event.target.value || null })} sx={{ bgcolor: '#fff', gridColumn: { xs: 'auto', md: '1 / span 2' } }} />
+                        <TextField size="small" label={displayLabels.condition} value={row.condition || ''} onChange={event => updateEditRow(index, { condition: event.target.value || null })} sx={{ bgcolor: '#fff', gridColumn: { xs: 'auto', md: '1 / span 2' } }} />
                       </Box>
                     ))}
                   </Box>
@@ -835,14 +989,14 @@ const InvoicePrintDialog = ({
               {activeDocumentType === 'invoice' && (
                 <Box sx={{ display: 'grid', gap: 0.8, maxWidth: 320, ml: 'auto', mt: 2 }}>
                   {[
-                    ['Subtotal', 'subtotal', money(displayInvoice.subtotal)],
-                    ['Tax', 'tax_amount', money(displayInvoice.tax_amount)],
-                    ['Discount', 'discount_amount', money(displayInvoice.discount_amount)],
-                    ['Total', 'total_amount', money(displayInvoice.total_amount)],
-                    ['Paid', 'amount_paid', money(displayInvoice.amount_paid)],
-                    ['Balance Due', 'balance_due', money(displayInvoice.balance_due)],
+                    [displayLabels.subtotal, 'subtotal', money(displayInvoice.subtotal)],
+                    [displayLabels.tax, 'tax_amount', money(displayInvoice.tax_amount)],
+                    [displayLabels.discount, 'discount_amount', money(displayInvoice.discount_amount)],
+                    [displayLabels.total, 'total_amount', money(displayInvoice.total_amount)],
+                    [displayLabels.paid, 'amount_paid', money(displayInvoice.amount_paid)],
+                    [displayLabels.balanceDue, 'balance_due', money(displayInvoice.balance_due)],
                   ].map(([label, key, value]) => (
-                    <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, fontWeight: label === 'Total' ? 950 : 800 }}>
+                    <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, fontWeight: key === 'total_amount' ? 950 : 800 }}>
                       <span>{label}</span>
                       {isEditMode && key !== 'balance_due' ? (
                         <TextField
@@ -875,7 +1029,8 @@ const InvoicePrintDialog = ({
 
               {isEditMode && (
                 <TextField
-                  label="Invoice notes"
+                  label={displayLabels.notes}
+                  placeholder={DEFAULT_INVOICE_LABELS.notes}
                   multiline
                   minRows={3}
                   fullWidth

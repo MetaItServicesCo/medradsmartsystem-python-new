@@ -83,6 +83,7 @@ export interface InspectionInvoice {
   travel_charges?: number | null
   service_charges?: number | null
   line_items?: any[]
+  labels?: Record<string, any> | null
 }
 
 export interface InspectionInvoiceBatchItem {
@@ -305,6 +306,7 @@ export interface InspectionInvoiceUpdatePayload {
   travel_charges?: number
   service_charges?: number
   line_items?: any[]
+  labels?: Record<string, any>
 }
 
 export const fetchInspectionFacilities = async (): Promise<InspectionFacility[]> => {

@@ -54,6 +54,18 @@ def editable_line_items(notes: Optional[str]) -> list[dict[str, Any]]:
     return items if isinstance(items, list) else []
 
 
+def editable_labels(notes: Optional[str]) -> dict[str, str]:
+    metadata = parse_invoice_edit_metadata(notes)
+    labels = metadata.get("labels")
+    if not isinstance(labels, dict):
+        return {}
+    return {
+        str(key): str(value)
+        for key, value in labels.items()
+        if value is not None and str(value).strip()
+    }
+
+
 def _json_default(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)

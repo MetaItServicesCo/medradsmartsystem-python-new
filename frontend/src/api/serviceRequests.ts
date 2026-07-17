@@ -145,6 +145,7 @@ export interface ServiceInvoice {
   updated_at: string
   transactions?: InvoiceTransaction[]
   line_items?: ServiceInvoiceLineItem[]
+  labels?: Record<string, any> | null
   paid_quotations?: ServiceInvoicePaidQuotation[]
 }
 
@@ -176,6 +177,7 @@ export interface ServiceInvoiceUpdatePayload {
   payment_method?: string | null
   notes?: string
   line_items?: ServiceInvoiceLineItem[]
+  labels?: Record<string, any>
 }
 
 // ── Quotation ───────────────────────────────────────────────────────────────
