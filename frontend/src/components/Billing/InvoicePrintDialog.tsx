@@ -664,7 +664,10 @@ const InvoicePrintDialog = ({
     setRowEditor(null)
     setSummaryEditor(null)
     setCustomSummaryEditor(null)
-  }, [invoice, lineItems, open])
+  // Initialize only when the editor opens or switches invoices. Parent query/mutation
+  // rerenders create new line-item array references and must not overwrite active edits.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, invoice?.invoice_number])
 
   const displayInvoice = useMemo<PrintableInvoice | null>(() => {
     if (!invoice || !isEditMode) return invoice
@@ -751,18 +754,29 @@ const InvoicePrintDialog = ({
     })
   }
 
-  const updateEditRow = (index: number, patch: Partial<PrintableLineItem>) => {
-    setEditRows(rows => rows.map((row, rowIndex) => {
-      if (rowIndex !== index) return row
-      const next = { ...row, ...patch }
-      if ('quantity' in patch || 'unit_price' in patch || 'shipping_fee' in patch || 'setup_fee' in patch) {
-        const quantity = Number(next.quantity || 0)
-        const unitPrice = Number(next.unit_price || 0)
-        next.total_amount = Number((quantity * unitPrice + Number(next.shipping_fee || 0) + Number(next.setup_fee || 0)).toFixed(2))
-      }
-      return next
+  const lineItemsSubtotal = (rows: PrintableLineItem[]) => Number(rows
+    .reduce((sum, row) => sum + Number(row.total_amount || 0), 0)
+    .toFixed(2))
+
+  const additionalSummaryTotal = (rows: PrintableInvoiceSummaryRow[]) => Number(rows
+    .reduce((sum, row) => sum + Number(row.value || 0), 0)
+    .toFixed(2))
+
+  const synchronizeInvoiceTotals = (rows: PrintableLineItem[], summaryRows: PrintableInvoiceSummaryRow[]) => {
+    const subtotal = lineItemsSubtotal(rows)
+    const additional = additionalSummaryTotal(summaryRows)
+    setEditForm(prev => ({
+      ...prev,
+      subtotal: subtotal.toFixed(2),
+      total_amount: Math.max(0, subtotal + additional + Number(prev.tax_amount || 0) - Number(prev.discount_amount || 0)).toFixed(2),
     }))
   }
+
+  const calculatedLineTotal = (row: PrintableLineItem) => Number((
+    Number(row.quantity || 0) * Number(row.unit_price || 0)
+    + Number(row.shipping_fee || 0)
+    + Number(row.setup_fee || 0)
+  ).toFixed(2))
 
   const addEditRow = () => {
     const nextRow: PrintableLineItem = {
@@ -912,19 +926,10 @@ const InvoicePrintDialog = ({
                       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                         <Button
                           size="small"
-                          onClick={() => {
-                            const subtotal = editRows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0)
-                            const tax = Number(editForm.tax_amount || 0)
-                            const discount = Number(editForm.discount_amount || 0)
-                            setEditForm(prev => ({
-                              ...prev,
-                              subtotal: subtotal.toFixed(2),
-                              total_amount: Math.max(0, subtotal + tax - discount).toFixed(2),
-                            }))
-                          }}
+                          onClick={() => synchronizeInvoiceTotals(editRows, editSummaryRows)}
                           sx={{ borderRadius: '10px', fontWeight: 900, textTransform: 'none' }}
                         >
-                          Use Row Totals
+                          Recalculate Totals
                         </Button>
                         <Button
                           size="small"
@@ -974,7 +979,11 @@ const InvoicePrintDialog = ({
                                 <IconButton
                                   size="small"
                                   disabled={editRows.length <= 1}
-                                  onClick={() => setEditRows(rows => rows.filter((_, rowIndex) => rowIndex !== index))}
+                                  onClick={() => setEditRows(rows => {
+                                    const nextRows = rows.filter((_, rowIndex) => rowIndex !== index)
+                                    synchronizeInvoiceTotals(nextRows, editSummaryRows)
+                                    return nextRows
+                                  })}
                                   sx={{ color: '#DC2626', bgcolor: '#FEF2F2', '&:hover': { bgcolor: '#FEE2E2' } }}
                                 >
                                   <DeleteOutlineIcon fontSize="small" />
@@ -1142,7 +1151,14 @@ const InvoicePrintDialog = ({
                     value={(rowEditor.row as any)[config.valueKey] ?? ''}
                     onChange={event => {
                       const value = config.numeric ? Number(event.target.value || 0) : event.target.value
-                      setRowEditor(current => current ? { ...current, row: { ...current.row, [config.valueKey]: value } } : null)
+                      setRowEditor(current => {
+                        if (!current) return null
+                        const nextRow = { ...current.row, [config.valueKey]: value }
+                        if (['quantity', 'unit_price', 'shipping_fee', 'setup_fee'].includes(config.valueKey)) {
+                          nextRow.total_amount = calculatedLineTotal(nextRow)
+                        }
+                        return { ...current, row: nextRow }
+                      })
                     }}
                     inputProps={config.numeric ? { min: 0, step: 0.01 } : undefined}
                   />
@@ -1210,18 +1226,14 @@ const InvoicePrintDialog = ({
             variant="contained"
             onClick={() => {
               if (!rowEditor) return
-              const quantity = Number(rowEditor.row.quantity || 0)
-              const unitPrice = Number(rowEditor.row.unit_price || 0)
-              const hasManualTotal = Number(rowEditor.row.total_amount || 0) !== 0
-              const nextRow = {
-                ...rowEditor.row,
-                total_amount: hasManualTotal
-                  ? Number(rowEditor.row.total_amount || 0)
-                  : Number((quantity * unitPrice + Number(rowEditor.row.shipping_fee || 0) + Number(rowEditor.row.setup_fee || 0)).toFixed(2)),
-              }
-              setEditRows(rows => rowEditor.index < rows.length
-                ? rows.map((row, index) => index === rowEditor.index ? nextRow : row)
-                : [...rows, nextRow])
+              const nextRow = { ...rowEditor.row, total_amount: Number(rowEditor.row.total_amount || 0) }
+              setEditRows(rows => {
+                const nextRows = rowEditor.index < rows.length
+                  ? rows.map((row, index) => index === rowEditor.index ? nextRow : row)
+                  : [...rows, nextRow]
+                synchronizeInvoiceTotals(nextRows, editSummaryRows)
+                return nextRows
+              })
               setEditLabels(rowEditor.labels)
               setRowEditor(null)
             }}
@@ -1254,7 +1266,13 @@ const InvoicePrintDialog = ({
                 setEditForm(prev => {
                   const next = { ...prev, [summaryEditor.valueKey]: summaryEditor.value }
                   if (['subtotal', 'tax_amount', 'discount_amount'].includes(summaryEditor.valueKey)) {
-                    next.total_amount = String(Math.max(0, Number(next.subtotal || 0) + Number(next.tax_amount || 0) - Number(next.discount_amount || 0)).toFixed(2))
+                    next.total_amount = String(Math.max(
+                      0,
+                      Number(next.subtotal || 0)
+                      + additionalSummaryTotal(editSummaryRows)
+                      + Number(next.tax_amount || 0)
+                      - Number(next.discount_amount || 0),
+                    ).toFixed(2))
                   }
                   return next
                 })
@@ -1282,7 +1300,21 @@ const InvoicePrintDialog = ({
         <DialogActions sx={{ px: 3, py: 2, justifyContent: 'space-between' }}>
           <Box>
             {customSummaryEditor && customSummaryEditor.index >= 0 && (
-              <Button color="error" startIcon={<DeleteOutlineIcon />} onClick={() => { setEditSummaryRows(rows => rows.filter((_, index) => index !== customSummaryEditor.index)); setCustomSummaryEditor(null) }} sx={{ fontWeight: 900 }}>Remove</Button>
+              <Button
+                color="error"
+                startIcon={<DeleteOutlineIcon />}
+                onClick={() => {
+                  setEditSummaryRows(rows => {
+                    const nextRows = rows.filter((_, index) => index !== customSummaryEditor.index)
+                    synchronizeInvoiceTotals(editRows, nextRows)
+                    return nextRows
+                  })
+                  setCustomSummaryEditor(null)
+                }}
+                sx={{ fontWeight: 900 }}
+              >
+                Remove
+              </Button>
             )}
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
@@ -1291,9 +1323,13 @@ const InvoicePrintDialog = ({
               variant="contained"
               onClick={() => {
                 if (!customSummaryEditor) return
-                setEditSummaryRows(rows => customSummaryEditor.index < 0
-                  ? [...rows, customSummaryEditor.row]
-                  : rows.map((row, index) => index === customSummaryEditor.index ? customSummaryEditor.row : row))
+                setEditSummaryRows(rows => {
+                  const nextRows = customSummaryEditor.index < 0
+                    ? [...rows, customSummaryEditor.row]
+                    : rows.map((row, index) => index === customSummaryEditor.index ? customSummaryEditor.row : row)
+                  synchronizeInvoiceTotals(editRows, nextRows)
+                  return nextRows
+                })
                 setCustomSummaryEditor(null)
               }}
               sx={{ bgcolor: accent, fontWeight: 900, borderRadius: '10px', '&:hover': { bgcolor: accent } }}

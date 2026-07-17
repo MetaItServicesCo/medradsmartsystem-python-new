@@ -2095,7 +2095,7 @@ def update_inspection_invoice(
             "customer_name", "customer_email", "customer_phone", "customer_address",
             "subtotal", "tax_amount", "discount_amount", "total_amount",
             "amount_paid", "issue_date", "due_date", "payment_terms", "payment_method",
-            "status", "notes", "line_items", "labels",
+            "status", "notes", "line_items", "labels", "summary_rows",
         }
         disallowed_fields = set(update_data) - billing_only_fields
         if disallowed_fields:
