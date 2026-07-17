@@ -102,6 +102,11 @@ const formatDate = (value: string | null | undefined) => {
   return new Date(value).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
 }
 
+const parseIntegerInput = (value: string): number | null => {
+  const digits = value.replace(/\D/g, '')
+  return digits ? Number(digits) : null
+}
+
 const emptyAgreement = (): RentalPayload => ({
   part_id: 0,
   customer_name: '',
@@ -1173,7 +1178,13 @@ const Rentals = () => {
             <TextField label="Customer Address" value={agreementForm.customer_address} onChange={e => setAgreementForm(prev => ({ ...prev, customer_address: e.target.value }))} sx={{ gridColumn: '1 / -1' }} />
             
             <TextField label="Initial Condition" value={agreementForm.initial_condition || ''} onChange={e => setAgreementForm(prev => ({ ...prev, initial_condition: e.target.value }))} />
-            <TextField label="Initial Meter Reading" type="number" value={agreementForm.initial_meter_reading || 0} onChange={e => setAgreementForm(prev => ({ ...prev, initial_meter_reading: Number(e.target.value) }))} />
+            <TextField
+              label="Initial Reading"
+              value={agreementForm.initial_meter_reading ?? ''}
+              onChange={e => setAgreementForm(prev => ({ ...prev, initial_meter_reading: parseIntegerInput(e.target.value) }))}
+              inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+              helperText="Numbers only"
+            />
             
             <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions || ''} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
           </Box>

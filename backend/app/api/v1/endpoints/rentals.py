@@ -46,7 +46,7 @@ class RentalCreate(BaseModel):
 
 class RentalUpdate(BaseModel):
     customer_name: Optional[str] = None
-    customer_email: Optional[EmailStr] = None
+    customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
     customer_address: Optional[str] = None
     billing_frequency: Optional[BillingFrequency] = None
@@ -60,6 +60,7 @@ class RentalUpdate(BaseModel):
     end_date: Optional[date] = None
     status: Optional[RentalStatus] = None
     initial_condition: Optional[str] = None
+    initial_meter_reading: Optional[int] = None
     terms_and_conditions: Optional[str] = None
 
 
