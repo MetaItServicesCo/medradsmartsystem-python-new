@@ -1100,6 +1100,22 @@ def create_manual_work_session(
     """Save one manual technician work-session ledger entry."""
     db_sr = _load_service_request_for_work(db, request_id, current_user)
 
+    requested_status: Optional[ServiceRequestStatus] = None
+    if session.status:
+        try:
+            requested_status = ServiceRequestStatus(session.status)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="Invalid service request status") from error
+
+        if requested_status != db_sr.status and requested_status not in VALID_TRANSITIONS.get(db_sr.status, []):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot transition from '{db_sr.status.value}' to '{requested_status.value}'. "
+                    f"Allowed: {[item.value for item in VALID_TRANSITIONS.get(db_sr.status, [])]}"
+                ),
+            )
+
     break_minutes = Decimal(str(session.break_minutes or 0))
     if break_minutes < 0:
         raise HTTPException(status_code=400, detail="Break time cannot be negative")
@@ -1141,8 +1157,6 @@ def create_manual_work_session(
         raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, or test equipment before saving the session")
 
     now = datetime.utcnow()
-    if db_sr.status == ServiceRequestStatus.ASSIGNED:
-        db_sr.status = ServiceRequestStatus.IN_PROGRESS
     if db_sr.status == ServiceRequestStatus.NEW:
         raise HTTPException(status_code=400, detail="Assign a technician before saving work")
     if not db_sr.started_at:
@@ -1151,6 +1165,21 @@ def create_manual_work_session(
     existing_hours = Decimal(str(db_sr.time_spent_hours or 0))
     db_sr.time_spent_hours = existing_hours + duration_hours
     db_sr.total_cost = _calculate_service_cost(db_sr)
+
+    previous_status = db_sr.status
+    target_status = requested_status
+    if target_status is None and previous_status == ServiceRequestStatus.ASSIGNED:
+        target_status = ServiceRequestStatus.IN_PROGRESS
+
+    if target_status is not None and target_status != previous_status:
+        if target_status == ServiceRequestStatus.COMPLETED:
+            if _active_clock_session(db_sr):
+                raise HTTPException(status_code=400, detail="End the active work session before marking this service request complete")
+            db_sr.completed_at = now
+        elif target_status in SERVICE_WORKFLOW_STATUSES and not db_sr.started_at:
+            db_sr.started_at = now
+        db_sr.status = target_status
+        db_sr.total_cost = _calculate_service_cost(db_sr)
 
     history = list(db_sr.history or [])
     session_changes = {
@@ -1165,6 +1194,11 @@ def create_manual_work_session(
         "work_done": work_done,
         "notes": notes,
         "test_equipment": test_equipment_used,
+        "status": (
+            {"from": previous_status.value, "to": db_sr.status.value}
+            if previous_status != db_sr.status
+            else db_sr.status.value
+        ),
     }
     if start_time:
         session_changes["start_time"] = start_time.isoformat()
@@ -1177,6 +1211,18 @@ def create_manual_work_session(
         session_changes["raw_hours"] = float(raw_hours.quantize(Decimal("0.01")))
     history.append(_history_entry("technician_work_session", current_user, session_changes))
     db_sr.history = history
+
+    if previous_status != db_sr.status:
+        recipients = {db_sr.requester_id, db_sr.assigned_technician_id}
+        create_notifications(
+            db,
+            user_ids=[user_id for user_id in recipients if user_id and user_id != current_user.id],
+            title="Service request updated",
+            message=f"Service request {db_sr.request_number} is now {db_sr.status.value.replace('_', ' ')}.",
+            notification_type="service_request",
+            link_url=f"/service-requests/{db_sr.id}",
+            actor_id=current_user.id,
+        )
     db.commit()
     db.refresh(db_sr)
     return _enrich(

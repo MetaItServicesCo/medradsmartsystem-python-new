@@ -228,10 +228,11 @@ const ServiceRequestDetail = () => {
         work_done: sessionWorkDone.trim(),
         notes: sessionNotes.trim(),
         test_equipment_ids: selectedTestEquipmentIds,
+        status: serviceWorkflowStatus,
       })
     },
     onSuccess: () => {
-      toast.success('Work session saved')
+      toast.success('Work order updated')
       const now = new Date()
       setSessionStartTime(toDateTimeLocalValue(now))
       setSessionEndTime(toDateTimeLocalValue(now))
@@ -246,7 +247,7 @@ const ServiceRequestDetail = () => {
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.detail || 'Failed to save work session')
+      toast.error(err.response?.data?.detail || 'Failed to update work order')
     },
   })
 
@@ -331,7 +332,7 @@ const ServiceRequestDetail = () => {
     updateMutation.mutate(payload)
   }
 
-  const handleWorkflowStatusChange = () => {
+  const handleStatusOnlyWorkOrderUpdate = () => {
     if (!sr) return
     if (serviceWorkflowStatus === sr.status) {
       toast.info('Select a different status first')
@@ -346,7 +347,7 @@ const ServiceRequestDetail = () => {
     updateMutation.mutate({ status: serviceWorkflowStatus })
   }
 
-  const handleSaveManualSession = () => {
+  const handleUpdateWorkOrder = () => {
     const manualHoursProvided = sessionTotalWorkHours.trim() !== ''
     const manualHours = manualHoursProvided ? Number(sessionTotalWorkHours) : 0
     if (manualHoursProvided) {
@@ -378,7 +379,7 @@ const ServiceRequestDetail = () => {
       }
     }
     if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0) {
-      toast.info('Add diagnosis, work done, notes, or test equipment before saving the session')
+      toast.info('Add diagnosis, work done, notes, or test equipment before updating the work order')
       return
     }
     workSessionMutation.mutate()
@@ -1125,14 +1126,28 @@ const ServiceRequestDetail = () => {
                     <TextField {...params} label="Test Equipment Used" placeholder="Select equipment used in this session" />
                   )}
                 />
+                <FormControl fullWidth>
+                  <InputLabel>Service Status</InputLabel>
+                  <Select
+                    value={serviceWorkflowStatus}
+                    label="Service Status"
+                    onChange={(e) => setServiceWorkflowStatus(e.target.value as SRStatus)}
+                  >
+                    {SERVICE_WORKFLOW_STATUS_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
                 <Button
                   variant="contained"
                   startIcon={workSessionMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleIcon />}
-                  onClick={handleSaveManualSession}
+                  onClick={handleUpdateWorkOrder}
                   disabled={workSessionMutation.isPending}
                   sx={{ alignSelf: 'flex-start', borderRadius: '12px', fontWeight: 900, bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
                 >
-                  Save Work Session
+                  Update Work Order
                 </Button>
               </Box>
             </Card>
@@ -1142,7 +1157,7 @@ const ServiceRequestDetail = () => {
           {!isTerminal && (
             <Card sx={{ p: 3 }}>
               <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
-                Update Status
+                Work Order Actions
               </Typography>
 
               {/* Assign Technician (for new → assigned) */}
@@ -1166,7 +1181,7 @@ const ServiceRequestDetail = () => {
                 </FormControl>
               )}
 
-              {sr.status !== 'new' && (
+              {sr.status !== 'new' && !canLogWork && (
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Service Status</InputLabel>
                   <Select
@@ -1183,7 +1198,7 @@ const ServiceRequestDetail = () => {
                 </FormControl>
               )}
 
-              {sr.status !== 'new' && (
+              {sr.status !== 'new' && !canLogWork && (
                 <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', mb: 2 }}>
                   <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
                     Service workflow
@@ -1214,10 +1229,10 @@ const ServiceRequestDetail = () => {
                     Assign
                   </Button>
                 )}
-                {sr.status !== 'new' && (
+                {sr.status !== 'new' && !canLogWork && (
                   <Button
                     variant="contained"
-                    onClick={handleWorkflowStatusChange}
+                    onClick={handleStatusOnlyWorkOrderUpdate}
                     disabled={updateMutation.isPending || serviceWorkflowStatus === sr.status}
                     startIcon={updateMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleIcon />}
                     sx={{
@@ -1230,7 +1245,7 @@ const ServiceRequestDetail = () => {
                       },
                     }}
                   >
-                    Update Status
+                    Update Work Order
                   </Button>
                 )}
                 {sr.status !== 'new' && (

@@ -379,6 +379,7 @@ export interface ServiceRequestWorkSessionPayload extends ServiceRequestClockOut
   break_minutes?: number
   total_work_hours?: number
   total_mileage?: number
+  status?: ServiceRequestStatus
 }
 
 export const clockOutServiceRequest = async (id: number, data: ServiceRequestClockOutPayload): Promise<ServiceRequest> => {

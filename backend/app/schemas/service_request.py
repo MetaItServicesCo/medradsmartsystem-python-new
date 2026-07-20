@@ -150,6 +150,7 @@ class ServiceRequestWorkSessionCreate(BaseModel):
     work_done: Optional[str] = None
     notes: Optional[str] = None
     test_equipment_ids: Optional[List[int]] = None
+    status: Optional[str] = None
 
 
 class ServiceRequestResponse(BaseModel):
