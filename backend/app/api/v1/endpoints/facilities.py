@@ -7,7 +7,8 @@ import re
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_
+from sqlalchemy import func, or_, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import crud, schemas
@@ -90,6 +91,65 @@ def _normalize_facility_timezone(value: Optional[str]) -> str:
     if normalized in {"america/chicago", "central", "ct", "cst", "cdt", "utc", ""}:
         return "America/Chicago"
     return "America/Chicago"
+
+
+def _clean_facility_name(value: Optional[str]) -> str:
+    cleaned = re.sub(r"\s+", " ", (value or "").strip())
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="Facility name is required")
+    return cleaned
+
+
+def _facility_name_key(value: str) -> str:
+    return _clean_facility_name(value).lower()
+
+
+def _facility_name_expression():
+    return func.lower(func.regexp_replace(func.btrim(Facility.name), r"\s+", " ", "g"))
+
+
+def _lock_facility_name(db: Session, name_key: str) -> None:
+    """Serialize equal-name writes across all PostgreSQL application workers."""
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"facility-name:{name_key}"},
+        )
+
+
+def _facility_name_exists(db: Session, name: str, exclude_id: Optional[int] = None) -> bool:
+    query = db.query(Facility.id).filter(_facility_name_expression() == _facility_name_key(name))
+    if exclude_id is not None:
+        query = query.filter(Facility.id != exclude_id)
+    return query.first() is not None
+
+
+def _require_unique_facility_name(db: Session, name: str, exclude_id: Optional[int] = None) -> None:
+    if _facility_name_exists(db, name, exclude_id=exclude_id):
+        raise HTTPException(status_code=409, detail=f"A facility named '{name}' already exists")
+
+
+def _next_facility_copy_name(db: Session, requested_name: str) -> str:
+    cleaned = _clean_facility_name(requested_name)
+    base_name = re.sub(r"\s+\(copy(?:\s+\d+)?\)$", "", cleaned, flags=re.IGNORECASE).strip() or cleaned
+    _lock_facility_name(db, f"copy:{_facility_name_key(base_name)}")
+
+    copy_number = 1
+    while True:
+        suffix = " (Copy)" if copy_number == 1 else f" (Copy {copy_number})"
+        candidate = f"{base_name}{suffix}"
+        if not _facility_name_exists(db, candidate):
+            _lock_facility_name(db, _facility_name_key(candidate))
+            if not _facility_name_exists(db, candidate):
+                return candidate
+        copy_number += 1
+
+
+def _raise_facility_name_conflict(db: Session, error: IntegrityError) -> None:
+    db.rollback()
+    if "uq_facilities_name_canonical" in str(error.orig):
+        raise HTTPException(status_code=409, detail="A facility with that name already exists") from error
+    raise error
 
 
 def _safe_filename(value: str) -> str:
@@ -556,11 +616,19 @@ def create_facility(
     *,
     db: Session = Depends(get_db),
     facility_in: schemas.FacilityCreate,
+    auto_unique_name: bool = Query(False),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Create a new facility — admin/superadmin only."""
     tier_ids = facility_in.tier_ids
     data = facility_in.model_dump(exclude={"tier_ids"})
+    requested_name = _clean_facility_name(data.get("name"))
+    if auto_unique_name:
+        data["name"] = _next_facility_copy_name(db, requested_name)
+    else:
+        _lock_facility_name(db, _facility_name_key(requested_name))
+        _require_unique_facility_name(db, requested_name)
+        data["name"] = requested_name
     data["phone"] = _normalize_us_phone(data.get("phone"))
     data["timezone"] = _normalize_facility_timezone(data.get("timezone"))
     if tier_ids is None and data.get("tier_id"):
@@ -568,11 +636,16 @@ def create_facility(
     _validate_parent_facility(db, parent_facility_id=data.get("parent_facility_id"))
     facility = Facility(**data)
     db.add(facility)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as error:
+        _raise_facility_name_conflict(db, error)
     _sync_facility_tiers(db, facility, tier_ids)
     db.commit()
     db.refresh(facility)
-    log_activity(db, "facilities", facility.id, "CREATE", current_user, facility_in.model_dump())
+    audit_data = facility_in.model_dump()
+    audit_data["name"] = facility.name
+    log_activity(db, "facilities", facility.id, "CREATE", current_user, audit_data)
     return _facility_response(db, facility)
 
 
@@ -611,6 +684,11 @@ def update_facility(
     if tier_ids is None and facility_in.tier_id is not None:
         tier_ids = [facility_in.tier_id] if facility_in.tier_id else []
     update_data = facility_in.model_dump(exclude_unset=True)
+    if "name" in update_data:
+        cleaned_name = _clean_facility_name(update_data.get("name"))
+        _lock_facility_name(db, _facility_name_key(cleaned_name))
+        _require_unique_facility_name(db, cleaned_name, exclude_id=facility.id)
+        update_data["name"] = cleaned_name
     if "phone" in update_data:
         update_data["phone"] = _normalize_us_phone(update_data.get("phone"))
     if "timezone" in update_data:
@@ -618,7 +696,10 @@ def update_facility(
     if "parent_facility_id" in update_data:
         _validate_parent_facility(db, facility_id=facility.id, parent_facility_id=update_data.get("parent_facility_id"))
         _ensure_parent_can_become_child(db, facility, update_data.get("parent_facility_id"))
-    updated = crud.facility.update(db=db, db_obj=facility, obj_in=update_data)
+    try:
+        updated = crud.facility.update(db=db, db_obj=facility, obj_in=update_data)
+    except IntegrityError as error:
+        _raise_facility_name_conflict(db, error)
     _sync_facility_tiers(db, updated, tier_ids)
     if tier_ids is not None:
         db.commit()

@@ -155,7 +155,7 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
 
   const mutation = useMutation({
     mutationFn: (data: FacilityCreate) =>
-      isEdit ? updateFacility(facility!.id, data) : createFacility(data),
+      isEdit ? updateFacility(facility!.id, data) : createFacility(data, isDuplicate),
     onSuccess: () => {
       toast.success(isEdit ? 'Facility updated successfully!' : 'Facility created successfully!')
       queryClient.invalidateQueries({ queryKey: ['facilities'] })
@@ -244,7 +244,7 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
             {isEdit ? 'Edit Facility' : isDuplicate ? 'Duplicate Facility' : 'New Facility'}
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
-            {isEdit ? `Editing: ${facility?.name}` : isDuplicate ? `Duplicating: ${facility?.name?.replace(' (Copy)', '')}` : 'Fill out details to add a new facility'}
+            {isEdit ? `Editing: ${facility?.name}` : isDuplicate ? `Duplicating: ${facility?.name?.replace(/\s+\(Copy(?:\s+\d+)?\)$/i, '')}` : 'Fill out details to add a new facility'}
           </Typography>
         </Box>
         <IconButton onClick={onClose} sx={{ color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.1)' } }}>

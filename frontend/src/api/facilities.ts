@@ -153,8 +153,10 @@ export const fetchFacility = async (id: number): Promise<Facility> => {
   return res.data
 }
 
-export const createFacility = async (data: FacilityCreate): Promise<Facility> => {
-  const res = await apiClient.post('/facilities/', data)
+export const createFacility = async (data: FacilityCreate, autoUniqueName = false): Promise<Facility> => {
+  const res = await apiClient.post('/facilities/', data, {
+    params: autoUniqueName ? { auto_unique_name: true } : undefined,
+  })
   return res.data
 }
 
