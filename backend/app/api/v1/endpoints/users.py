@@ -224,17 +224,22 @@ def create_user(
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    facility_ids = list(dict.fromkeys(user_in.facility_ids or []))
+    for facility_id in facility_ids:
+        facility = db.query(Facility).filter(Facility.id == facility_id).first()
+        if not facility:
+            raise HTTPException(status_code=400, detail=f"Facility #{facility_id} not found")
+        require_facility_access(db, current_user, facility_id)
+
     db_user = crud_user.create(db, obj_in=user_in)
 
     # Assign facilities if provided
-    if user_in.facility_ids:
-        for fac_id in user_in.facility_ids:
-            fac = db.query(Facility).filter(Facility.id == fac_id).first()
-            if fac:
-                uf = UserFacility(user_id=db_user.id, facility_id=fac_id)
-                db.add(uf)
+    if facility_ids:
+        for fac_id in facility_ids:
+            uf = UserFacility(user_id=db_user.id, facility_id=fac_id)
+            db.add(uf)
         # Also set the first facility as primary
-        db_user.facility_id = user_in.facility_ids[0]
+        db_user.facility_id = facility_ids[0]
         db.commit()
         db.refresh(db_user)
 

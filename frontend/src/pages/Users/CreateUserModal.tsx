@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   TextField, Grid, FormControl, InputLabel, Select, MenuItem,
@@ -29,9 +29,10 @@ const FACILITY_ASSIGN_PAGE_SIZE = 50
 interface Props {
   open: boolean
   onClose: () => void
+  facilityContext?: Pick<Facility, 'id' | 'name'> | null
 }
 
-const CreateUserModal = ({ open, onClose }: Props) => {
+const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
   const queryClient = useQueryClient()
   const [showPassword, setShowPassword] = useState(false)
   const [facilitySearch, setFacilitySearch] = useState('')
@@ -65,7 +66,7 @@ const CreateUserModal = ({ open, onClose }: Props) => {
       const nextSkip = lastPage.skip + lastPage.items.length
       return nextSkip < lastPage.total ? nextSkip : undefined
     },
-    enabled: open,
+    enabled: open && !facilityContext,
   })
 
   const facilities = facilitiesData?.pages.flatMap((page) => page.items) || []
@@ -73,6 +74,14 @@ const CreateUserModal = ({ open, onClose }: Props) => {
     ...selectedFacilities,
     ...facilities.filter((facility) => !selectedFacilities.some((selected) => selected.id === facility.id)),
   ]
+
+  useEffect(() => {
+    if (!open || !facilityContext) return
+
+    setSelectedFacilities([facilityContext])
+    setFacilitySearch('')
+    setForm((current) => ({ ...current, facility_ids: [facilityContext.id] }))
+  }, [open, facilityContext?.id, facilityContext?.name])
 
   const mutation = useMutation({
     mutationFn: () => createUser({
@@ -83,7 +92,9 @@ const CreateUserModal = ({ open, onClose }: Props) => {
       phone: formatUSPhoneInput(form.phone) || undefined,
       role: form.role,
       user_type: form.user_type,
-      facility_ids: form.facility_ids.length > 0 ? form.facility_ids : undefined,
+      facility_ids: facilityContext
+        ? [facilityContext.id]
+        : (form.facility_ids.length > 0 ? form.facility_ids : undefined),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
@@ -219,52 +230,63 @@ const CreateUserModal = ({ open, onClose }: Props) => {
               </FormControl>
             </Grid>
             <Grid item xs={12}>
-              <Autocomplete
-                multiple
-                size="small"
-                options={facilityOptions}
-                inputValue={facilitySearch}
-                onInputChange={(_, value, reason) => {
-                  if (reason !== 'reset') setFacilitySearch(value)
-                }}
-                filterOptions={(options) => options}
-                loading={facilitiesLoading || isFetchingNextFacilityPage}
-                ListboxProps={{
-                  style: { maxHeight: 320, overflow: 'auto' },
-                  onScroll: (event) => {
-                    const listbox = event.currentTarget
-                    const nearBottom = listbox.scrollTop + listbox.clientHeight >= listbox.scrollHeight - 40
-                    if (nearBottom && hasNextFacilityPage && !isFetchingNextFacilityPage) {
-                      fetchNextFacilityPage()
-                    }
-                  },
-                }}
-                getOptionLabel={(option: any) => option.name}
-                isOptionEqualToValue={(option: any, value: any) => option.id === value.id}
-                value={selectedFacilities}
-                onChange={(_, val) => {
-                  setSelectedFacilities(val as typeof selectedFacilities)
-                  setForm({ ...form, facility_ids: val.map((v: any) => v.id) })
-                }}
-                renderOption={(props, option: any) => (
-                  <Box component="li" {...props}>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>{option.name}</Typography>
-                      {(option.city || option.state || option.country) && (
-                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
-                          {[option.city, option.state, option.country].filter(Boolean).join(', ')}
-                        </Typography>
-                      )}
+              {facilityContext ? (
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Assigned Facility"
+                  value={facilityContext.name}
+                  helperText="This user will be assigned to the facility you are currently managing."
+                  InputProps={{ readOnly: true }}
+                />
+              ) : (
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={facilityOptions}
+                  inputValue={facilitySearch}
+                  onInputChange={(_, value, reason) => {
+                    if (reason !== 'reset') setFacilitySearch(value)
+                  }}
+                  filterOptions={(options) => options}
+                  loading={facilitiesLoading || isFetchingNextFacilityPage}
+                  ListboxProps={{
+                    style: { maxHeight: 320, overflow: 'auto' },
+                    onScroll: (event) => {
+                      const listbox = event.currentTarget
+                      const nearBottom = listbox.scrollTop + listbox.clientHeight >= listbox.scrollHeight - 40
+                      if (nearBottom && hasNextFacilityPage && !isFetchingNextFacilityPage) {
+                        fetchNextFacilityPage()
+                      }
+                    },
+                  }}
+                  getOptionLabel={(option: any) => option.name}
+                  isOptionEqualToValue={(option: any, value: any) => option.id === value.id}
+                  value={selectedFacilities}
+                  onChange={(_, val) => {
+                    setSelectedFacilities(val as typeof selectedFacilities)
+                    setForm({ ...form, facility_ids: val.map((v: any) => v.id) })
+                  }}
+                  renderOption={(props, option: any) => (
+                    <Box component="li" {...props}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{option.name}</Typography>
+                        {(option.city || option.state || option.country) && (
+                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                            {[option.city, option.state, option.country].filter(Boolean).join(', ')}
+                          </Typography>
+                        )}
+                      </Box>
                     </Box>
-                  </Box>
-                )}
-                renderInput={(params) => <TextField {...params} label="Assign Facilities" />}
-                renderTags={(value, getTagProps) =>
-                  value.map((option: any, index) => (
-                    <Chip {...getTagProps({ index })} key={option.id} label={option.name} size="small" />
-                  ))
-                }
-              />
+                  )}
+                  renderInput={(params) => <TextField {...params} label="Assign Facilities" />}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option: any, index) => (
+                      <Chip {...getTagProps({ index })} key={option.id} label={option.name} size="small" />
+                    ))
+                  }
+                />
+              )}
             </Grid>
           </Grid>
         </DialogContent>

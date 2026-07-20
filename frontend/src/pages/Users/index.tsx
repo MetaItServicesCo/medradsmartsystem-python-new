@@ -277,6 +277,7 @@ const Users = () => {
             variant="contained"
             startIcon={<PersonAddIcon />}
             onClick={() => setCreateOpen(true)}
+            disabled={Boolean(facilityId) && !selectedFacility}
             sx={{
               background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
               boxShadow: '0 4px 14px rgba(124,58,237,0.3)',
@@ -484,6 +485,9 @@ const Users = () => {
       <CreateUserModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
+        facilityContext={facilityId && selectedFacility
+          ? { id: facilityId, name: selectedFacility.name }
+          : undefined}
       />
 
       {/* Edit User Modal */}
