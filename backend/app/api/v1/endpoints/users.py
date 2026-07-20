@@ -21,7 +21,7 @@ from app.schemas.user import (
 from app.core.security import create_access_token, get_password_hash
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notification
-from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user
+from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
 
 router = APIRouter()
 
@@ -261,9 +261,33 @@ def list_users(
     role: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
+    facility_id: Optional[int] = Query(None, ge=1),
 ) -> Any:
     """List all users with optional filters."""
-    if is_facility_scoped_user(current_user):
+    if facility_id is not None:
+        facility = db.query(Facility.id).filter(Facility.id == facility_id).first()
+        if not facility:
+            raise HTTPException(status_code=404, detail="Facility not found")
+
+        require_facility_access(db, current_user, facility_id)
+        secondary_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id == facility_id)
+        query = db.query(User).filter(
+            (User.facility_id == facility_id) | (User.id.in_(secondary_user_ids))
+        )
+        if role:
+            query = query.filter(User.role == role)
+        if is_active is not None:
+            query = query.filter(User.is_active == is_active)
+        if search:
+            like = f"%{search}%"
+            query = query.filter(
+                (User.full_name.ilike(like))
+                | (User.username.ilike(like))
+                | (User.email.ilike(like))
+            )
+        total = query.count()
+        items = query.order_by(User.created_at.desc(), User.id.desc()).offset(skip).limit(limit).all()
+    elif is_facility_scoped_user(current_user):
         allowed_facility_ids = get_user_facility_ids(db, current_user)
         secondary_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id.in_(allowed_facility_ids))
         query = db.query(User).filter(

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Box, Card, Typography, Button, Table, TableBody, TableCell,
@@ -51,7 +51,6 @@ import FacilityFormModal from './FacilityFormModal'
 import FacilityTierModal from './FacilityTierModal'
 import FacilityViewModal from './FacilityViewModal'
 import FacilityInventoryModal from './FacilityInventoryModal'
-import FacilityUsersModal from './FacilityUsersModal'
 import ModalitiesModal from './ModalitiesModal'
 import DepartmentsModal from './DepartmentsModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
@@ -170,9 +169,12 @@ const FACILITY_EXPORT_OPTIONS: FacilityExportOption[] = [
 
 const FacilityList = () => {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
   const isSuperAdmin = user?.role === 'superadmin'
+  const canEditFacilities = hasPermission(user, 'facilities', 'edit')
   const canDeleteFacilities = hasPermission(user, 'facilities', 'delete')
+  const canManageUsers = hasPermission(user, 'users', 'index') && hasPermission(user, 'users', 'view')
   const [searchParams, setSearchParams] = useSearchParams()
   const querySearch = searchParams.get('search') || ''
   
@@ -220,7 +222,6 @@ const FacilityList = () => {
   const [viewModalOpen, setViewModalOpen] = useState(false)
   const [invModalOpen, setInvModalOpen] = useState(false)
   const [invModalMode, setInvModalMode] = useState<'view' | 'add'>('view')
-  const [usersModalOpen, setUsersModalOpen] = useState(false)
   const [modalitiesModalOpen, setModalitiesModalOpen] = useState(false)
   const [deptsModalOpen, setDeptsModalOpen] = useState(false)
 
@@ -357,10 +358,14 @@ const FacilityList = () => {
   }
 
   const openFacilityUsers = (facility: Facility) => {
-    setMenuFacility(facility)
     setViewModalOpen(false)
-    setUsersModalOpen(true)
     handleActionsClose()
+    navigate(`/users?facility_id=${facility.id}`)
+  }
+
+  const editFacilityFromView = (facility: Facility) => {
+    setViewModalOpen(false)
+    handleEdit(facility)
   }
 
   const handleActionExport = () => {
@@ -922,10 +927,12 @@ const FacilityList = () => {
           <ListItemText primary="Export Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
         </MenuItem>
 
-        <MenuItem onClick={handleActionEdit} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
-          <ListItemIcon><EditOutlinedIcon sx={{ color: '#6D28D9', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="Edit Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
-        </MenuItem>
+        {canEditFacilities && (
+          <MenuItem onClick={handleActionEdit} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
+            <ListItemIcon><EditOutlinedIcon sx={{ color: '#6D28D9', fontSize: '1.2rem' }} /></ListItemIcon>
+            <ListItemText primary="Edit Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          </MenuItem>
+        )}
         
         <MenuItem onClick={handleActionDuplicate} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
           <ListItemIcon><ContentCopyOutlinedIcon sx={{ color: '#3B82F6', fontSize: '1.2rem' }} /></ListItemIcon>
@@ -937,10 +944,12 @@ const FacilityList = () => {
           <ListItemText primary="Facility Tier" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
         </MenuItem>
 
-        <MenuItem onClick={() => menuFacility && openFacilityUsers(menuFacility)} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
-          <ListItemIcon><PeopleOutlinedIcon sx={{ color: '#3B82F6', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="Facility Managers" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
-        </MenuItem>
+        {canManageUsers && (
+          <MenuItem onClick={() => menuFacility && openFacilityUsers(menuFacility)} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
+            <ListItemIcon><PeopleOutlinedIcon sx={{ color: '#3B82F6', fontSize: '1.2rem' }} /></ListItemIcon>
+            <ListItemText primary="Manage Users" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          </MenuItem>
+        )}
 
         <Box sx={{ mx: 2, my: 0.5 }}>
           <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
@@ -1006,9 +1015,14 @@ const FacilityList = () => {
       />
 
       {/* Core Modals */}
-      <FacilityViewModal open={viewModalOpen} onClose={() => setViewModalOpen(false)} facility={menuFacility} onManageUsers={openFacilityUsers} />
+      <FacilityViewModal
+        open={viewModalOpen}
+        onClose={() => setViewModalOpen(false)}
+        facility={menuFacility}
+        onEdit={canEditFacilities ? editFacilityFromView : undefined}
+        onManageUsers={canManageUsers ? openFacilityUsers : undefined}
+      />
       <FacilityInventoryModal open={invModalOpen} onClose={() => setInvModalOpen(false)} facility={menuFacility} mode={invModalMode} />
-      <FacilityUsersModal open={usersModalOpen} onClose={() => setUsersModalOpen(false)} facility={menuFacility} />
       <ModalitiesModal open={modalitiesModalOpen} onClose={() => setModalitiesModalOpen(false)} />
       <DepartmentsModal open={deptsModalOpen} onClose={() => setDeptsModalOpen(false)} />
 

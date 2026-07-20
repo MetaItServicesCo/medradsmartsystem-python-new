@@ -17,6 +17,7 @@ import PaymentsIcon from '@mui/icons-material/Payments'
 import SettingsIcon from '@mui/icons-material/Settings'
 import PersonIcon from '@mui/icons-material/Person'
 import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { type Facility, fetchFacilityDocuments, exportFacilityPdf, fetchFacility } from '@/api/facilities'
 import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
 
@@ -24,25 +25,29 @@ interface Props {
   open: boolean
   onClose: () => void
   facility: Facility | null
+  onEdit?: (facility: Facility) => void
   onManageUsers?: (facility: Facility) => void
 }
 
-const FacilityViewModal = ({ open, onClose, facility, onManageUsers }: Props) => {
-  if (!facility) return null
+const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: Props) => {
+  const facilityId = facility?.id
+  const parentFacilityId = facility?.parent_facility_id
 
   // Fetch documents
   const { data: docsData, isLoading: docsLoading } = useQuery({
-    queryKey: ['facilityDocuments', facility.id],
-    queryFn: () => fetchFacilityDocuments(facility.id),
-    enabled: open && facility.id !== 0,
+    queryKey: ['facilityDocuments', facilityId],
+    queryFn: () => fetchFacilityDocuments(facilityId!),
+    enabled: open && facilityId !== undefined && facilityId !== 0,
   })
 
   // Fetch parent name if needed
   const { data: parentFacility } = useQuery({
-    queryKey: ['facility', facility.parent_facility_id],
-    queryFn: () => fetchFacility(facility.parent_facility_id!),
-    enabled: open && !!facility.parent_facility_id,
+    queryKey: ['facility', parentFacilityId],
+    queryFn: () => fetchFacility(parentFacilityId!),
+    enabled: open && !!parentFacilityId,
   })
+
+  if (!facility) return null
 
   const handleExportPDF = () => {
     exportFacilityPdf(facility.id)
@@ -104,6 +109,22 @@ const FacilityViewModal = ({ open, onClose, facility, onManageUsers }: Props) =>
             Facility ID: #{facility.id}
           </Typography>
         </Box>
+        {onEdit && (
+          <IconButton
+            aria-label="Edit facility"
+            title="Edit facility"
+            onClick={() => onEdit(facility)}
+            sx={{
+              zIndex: 1,
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: '10px',
+              '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' },
+            }}
+          >
+            <EditOutlinedIcon />
+          </IconButton>
+        )}
         <Button size="small" variant="contained" startIcon={<PictureAsPdfIcon />} onClick={handleExportPDF}
           sx={{ zIndex: 1, backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', '&:hover': { backgroundColor: 'rgba(255,255,255,0.25)' }, border: '1px solid rgba(255,255,255,0.3)', borderRadius: '10px' }}>
           Export PDF
@@ -111,7 +132,7 @@ const FacilityViewModal = ({ open, onClose, facility, onManageUsers }: Props) =>
         {onManageUsers && (
           <Button size="small" variant="contained" startIcon={<PeopleOutlinedIcon />} onClick={() => onManageUsers(facility)}
             sx={{ zIndex: 1, backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', '&:hover': { backgroundColor: 'rgba(255,255,255,0.25)' }, border: '1px solid rgba(255,255,255,0.3)', borderRadius: '10px' }}>
-            Facility Managers
+            Manage Users
           </Button>
         )}
         <IconButton onClick={onClose} sx={{ color: '#fff', zIndex: 1, '&:hover': { background: 'rgba(255,255,255,0.12)' } }}>

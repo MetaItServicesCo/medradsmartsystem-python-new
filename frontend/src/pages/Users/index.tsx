@@ -16,6 +16,7 @@ import LoginIcon from '@mui/icons-material/Login'
 import DeleteIcon from '@mui/icons-material/Delete'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import SecurityIcon from '@mui/icons-material/Security'
+import BusinessIcon from '@mui/icons-material/Business'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
@@ -28,6 +29,7 @@ import CreateUserModal from './CreateUserModal'
 import EditUserModal from './EditUserModal'
 import PermissionEditorModal from './PermissionEditorModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { fetchFacility } from '@/api/facilities'
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All Roles' },
@@ -73,8 +75,13 @@ const Users = () => {
   const isSuperAdmin = currentUser?.role === 'superadmin'
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const login = useAuthStore((s) => s.login)
+  const facilityIdParam = searchParams.get('facility_id')
+  const parsedFacilityId = facilityIdParam ? Number(facilityIdParam) : undefined
+  const facilityId = parsedFacilityId && Number.isInteger(parsedFacilityId) && parsedFacilityId > 0
+    ? parsedFacilityId
+    : undefined
 
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('search') || '')
@@ -107,7 +114,13 @@ const Users = () => {
 
   useEffect(() => {
     setPage(0)
-  }, [roleFilter])
+  }, [roleFilter, facilityId])
+
+  const { data: selectedFacility, isLoading: isFacilityLoading, isError: isFacilityError } = useQuery({
+    queryKey: ['facility', facilityId],
+    queryFn: () => fetchFacility(facilityId!),
+    enabled: facilityId !== undefined,
+  })
 
   const openActions = (event: React.MouseEvent<HTMLElement>, user: UserData) => {
     setActionAnchor(event.currentTarget)
@@ -125,10 +138,11 @@ const Users = () => {
   }
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['users', debouncedSearch, roleFilter, page, rowsPerPage],
+    queryKey: ['users', debouncedSearch, roleFilter, facilityId, page, rowsPerPage],
     queryFn: () => fetchUsers({
       search: debouncedSearch || undefined,
       role: roleFilter || undefined,
+      facility_id: facilityId,
       skip: page * rowsPerPage,
       limit: rowsPerPage,
     }),
@@ -193,11 +207,38 @@ const Users = () => {
     return found ? found.label : role
   }
 
+  const clearFacilityFilter = () => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('facility_id')
+    setSearchParams(nextParams, { replace: true })
+  }
+
   return (
     <Box className="page-enter">
       <Typography variant="body2" sx={{ color: '#9CA3AF', mb: 3 }}>
         Manage system users, credentials, and role assignments.
       </Typography>
+
+      {facilityIdParam && !facilityId && (
+        <Alert severity="warning" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={clearFacilityFilter}>Clear</Button>}>
+          The facility filter is invalid.
+        </Alert>
+      )}
+
+      {facilityId && (
+        <Alert
+          severity={isFacilityError ? 'error' : 'info'}
+          icon={<BusinessIcon />}
+          sx={{ mb: 2, borderRadius: '14px', alignItems: 'center' }}
+          action={<Button color="inherit" size="small" onClick={clearFacilityFilter}>Show all users</Button>}
+        >
+          {isFacilityLoading
+            ? 'Loading facility users...'
+            : isFacilityError
+              ? `Facility #${facilityId} is unavailable or outside your access.`
+              : `Managing users assigned to ${selectedFacility?.name} (Facility #${facilityId}).`}
+        </Alert>
+      )}
 
       {/* Toolbar */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
