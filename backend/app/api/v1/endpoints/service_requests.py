@@ -757,8 +757,8 @@ def get_service_request(
             joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
-            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
-            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+            selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.line_items),
+            selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.payments),
             selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.authorizations),
             selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.ledger_entries),
         )

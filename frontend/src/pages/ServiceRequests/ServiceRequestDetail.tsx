@@ -183,7 +183,7 @@ const ServiceRequestDetail = () => {
   const canCreateQuotation = ['superadmin', 'admin', 'technician'].includes(user?.role || '')
   const canManageServiceBilling = ['superadmin', 'admin', 'facility_admin', 'facility_manager'].includes(user?.role || '')
 
-  const { data: sr, isLoading } = useQuery({
+  const { data: sr, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['service-request', id],
     queryFn: () => fetchServiceRequest(Number(id)),
     enabled: !!id,
@@ -199,7 +199,7 @@ const ServiceRequestDetail = () => {
   const { data: srInvoicesData } = useQuery({
     queryKey: ['service-invoices-for-sr', id],
     queryFn: () => fetchServiceInvoices({ service_request_id: Number(id) }),
-    enabled: !!id && !sr?.service_invoice,
+    enabled: !!id && !isError && !sr?.service_invoice,
     staleTime: 30_000,
   })
   const resolvedInvoice = sr?.service_invoice ?? (srInvoicesData?.items?.find(inv => inv.status !== 'cancelled') ?? null)
@@ -549,6 +549,28 @@ const ServiceRequestDetail = () => {
       <Box sx={{ p: 3 }}>
         <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 3, mb: 3 }} />
         <Skeleton variant="rectangular" height={400} sx={{ borderRadius: 3 }} />
+      </Box>
+    )
+  }
+
+  if (isError) {
+    const status = (error as any)?.response?.status
+    const apiDetail = (error as any)?.response?.data?.detail
+    const notFound = status === 404
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography variant="h6">
+          {notFound ? 'Service request not found' : 'Unable to load service request'}
+        </Typography>
+        <Typography sx={{ mt: 1, color: '#64748B' }}>
+          {notFound
+            ? 'This service request no longer exists or is unavailable.'
+            : (typeof apiDetail === 'string' ? apiDetail : 'The server could not load this request. Please retry.')}
+        </Typography>
+        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 1.5 }}>
+          {!notFound && <Button variant="contained" onClick={() => refetch()}>Retry</Button>}
+          <Button onClick={() => navigate('/service-requests')}>Back to List</Button>
+        </Box>
       </Box>
     )
   }
