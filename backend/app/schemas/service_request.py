@@ -41,6 +41,7 @@ class QuotationPaymentBase(BaseModel):
     mbmts_account_number: Optional[str] = None
     mbmts_bank_name: Optional[str] = None
     mbmts_bank_address: Optional[str] = None
+    payment_channel: Optional[str] = None
 
 class QuotationPaymentCreate(QuotationPaymentBase):
     pass
@@ -53,6 +54,62 @@ class QuotationPaymentResponse(QuotationPaymentBase):
     paid_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     created_by_id: int
+    authorization_id: Optional[int] = None
+    payer_role: Optional[str] = None
+    paid_by_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class QuotationAuthorizationRequestCreate(BaseModel):
+    notes: Optional[str] = None
+
+
+class QuotationAuthorizationDecisionCreate(BaseModel):
+    decision: str  # authorized / declined
+    channel: str  # self_service / phone
+    authorized_by_user_id: Optional[int] = None
+    notes: Optional[str] = None
+    confirmation_reference: Optional[str] = None
+
+
+class QuotationAuthorizationResponse(BaseModel):
+    id: int
+    quotation_id: int
+    status: str
+    authorized_amount: Decimal
+    channel: Optional[str] = None
+    requested_by_id: Optional[int] = None
+    requested_by_name: Optional[str] = None
+    authorized_by_id: Optional[int] = None
+    authorized_by_name: Optional[str] = None
+    authorized_by_role: Optional[str] = None
+    recorded_by_id: Optional[int] = None
+    recorded_by_name: Optional[str] = None
+    confirmation_reference: Optional[str] = None
+    notes: Optional[str] = None
+    requested_at: Optional[datetime] = None
+    decided_at: Optional[datetime] = None
+    invalidated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class QuotationLedgerEntryResponse(BaseModel):
+    id: int
+    quotation_id: int
+    event_type: str
+    actor_id: Optional[int] = None
+    actor_name: str
+    actor_role: str
+    channel: Optional[str] = None
+    amount: Optional[Decimal] = None
+    reference_number: Optional[str] = None
+    details: Optional[dict] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -83,6 +140,8 @@ class ServiceRequestQuotationResponse(ServiceRequestQuotationBase):
     line_items: List[LineItemResponse] = []
     payments: List[QuotationPaymentResponse] = []
     revision_history: Optional[list] = []
+    authorizations: List[QuotationAuthorizationResponse] = []
+    ledger_entries: List[QuotationLedgerEntryResponse] = []
 
     class Config:
         from_attributes = True
@@ -90,6 +149,7 @@ class ServiceRequestQuotationResponse(ServiceRequestQuotationBase):
 class ServiceRequestQuotationListResponse(ServiceRequestQuotationResponse):
     request_number: str
     facility_name: Optional[str] = None
+    facility_id: Optional[int] = None
 
 
 # ── Service Request ──────────────────────────────────────────────────────────

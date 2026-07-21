@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
-  FormControlLabel, FormLabel, IconButton, ListItemIcon, Menu, MenuItem, Radio, RadioGroup, Skeleton,
+  FormControlLabel, FormLabel, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Radio, RadioGroup, Select, Skeleton,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow,
   Tabs, TextField, Tooltip, Typography,
 } from '@mui/material'
@@ -27,6 +27,9 @@ import { fetchRentalInvoices, updateRentalInvoice, type RentalInvoice } from '@/
 import { fetchSalesInvoices, updateSalesInvoice, type SalesInvoice } from '@/api/sales'
 import {
   createQuotationPayment,
+  requestQuotationAuthorization,
+  decideQuotationAuthorization,
+  fetchQuotationAuthorizationCandidates,
   fetchAllQuotations,
   fetchAllServiceInvoices,
   fetchServiceRequest,
@@ -46,7 +49,7 @@ import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
 
 type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
-type BillingStatus = 'draft' | 'sent' | 'approved' | 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'rejected' | 'cancelled'
+type BillingStatus = 'draft' | 'sent' | 'authorization_requested' | 'authorized' | 'approved' | 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'rejected' | 'cancelled'
 type PayMethod = 'credit_card' | 'ach'
 type AchChoice = 'ach' | 'mbmts_ach'
 
@@ -95,6 +98,8 @@ const SOURCE_LABEL: Record<BillingSource, string> = {
 const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
   draft: { bg: '#FEF3C7', color: '#B45309' },
   sent: { bg: '#DBEAFE', color: '#1D4ED8' },
+  authorization_requested: { bg: '#FEF3C7', color: '#B45309' },
+  authorized: { bg: '#D1FAE5', color: '#047857' },
   approved: { bg: '#D1FAE5', color: '#047857' },
   pending: { bg: '#EEF2FF', color: '#4338CA' },
   partially_paid: { bg: '#FEF3C7', color: '#B45309' },
@@ -323,23 +328,45 @@ const invoiceTransactions = (invoice: SalesInvoice | RentalInvoice | InspectionI
   }))
 )
 
-const serviceTransactions = (quotation: ServiceRequestQuotationList): BillingTransaction[] => [
-  {
-    transaction_type: 'invoice_created',
-    amount: Number(quotation.amount || 0),
-    description: `Service quotation ${quotation.quotation_number || quotation.id} created`,
-    created_at: quotation.created_at,
-  },
-  ...((quotation.payments || []).map(payment => ({
-    id: payment.id,
-    transaction_type: 'payment',
-    amount: Number(payment.amount || 0),
-    payment_method: payment.payment_method,
-    reference_number: payment.reference_number,
-    description: payment.notes || 'Payment recorded',
-    created_at: payment.paid_at,
-  }))),
-]
+const serviceTransactions = (quotation: ServiceRequestQuotationList): BillingTransaction[] => {
+  if (quotation.ledger_entries?.length) {
+    return quotation.ledger_entries.map(entry => {
+      const details = entry.details || {}
+      const actor = `${entry.actor_name} (${entry.actor_role.replace(/_/g, ' ')})`
+      const authorizer = details.authorized_by_name
+        ? ` Authorized by ${details.authorized_by_name} (${String(details.authorized_by_role || '').replace(/_/g, ' ')}).`
+        : ''
+      return {
+        id: entry.id,
+        transaction_type: entry.event_type === 'payment_recorded' ? 'payment' : entry.event_type,
+        amount: Number(entry.amount || 0),
+        payment_method: details.payment_method || null,
+        reference_number: entry.reference_number,
+        description: `${entry.event_type.replace(/_/g, ' ')} by ${actor}${entry.channel ? ` via ${entry.channel.replace(/_/g, ' ')}` : ''}.${authorizer}`,
+        created_by_name: entry.actor_name,
+        created_at: entry.created_at,
+      }
+    })
+  }
+  return [
+    {
+      transaction_type: 'invoice_created',
+      amount: Number(quotation.amount || 0),
+      description: `Service quotation ${quotation.quotation_number || quotation.id} created`,
+      created_at: quotation.created_at,
+    },
+    ...((quotation.payments || []).map(payment => ({
+      id: payment.id,
+      transaction_type: 'payment',
+      amount: Number(payment.amount || 0),
+      payment_method: payment.payment_method,
+      reference_number: payment.reference_number,
+      description: `${payment.notes || 'Payment recorded'}${payment.paid_by_name ? ` by ${payment.paid_by_name} (${String(payment.payer_role || '').replace(/_/g, ' ')})` : ''}`,
+      created_by_name: payment.paid_by_name,
+      created_at: payment.paid_at,
+    }))),
+  ]
+}
 
 const sameAccount = (left: BillingItem, right: BillingItem) => {
   if (left.facilityId && right.facilityId) return left.facilityId === right.facilityId
@@ -370,7 +397,9 @@ const Billing = () => {
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
   // Billing payment is available to allowed payer roles when their Billing edit permission is enabled.
-  const canPay = ['superadmin', 'facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
+  const canPay = ['superadmin', 'admin', 'facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
+  const canManageQuotationAuthorization = ['superadmin', 'admin'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
+  const canSelfAuthorizeQuotation = ['facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
 
   const [sourceFilter, setSourceFilter] = useState<'all' | BillingSource>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -381,6 +410,11 @@ const Billing = () => {
   const [editItem, setEditItem] = useState<BillingItem | null>(null)
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionItem, setActionItem] = useState<BillingItem | null>(null)
+  const [authorizationItem, setAuthorizationItem] = useState<BillingItem | null>(null)
+  const [authorizationChannel, setAuthorizationChannel] = useState<'self_service' | 'phone'>('self_service')
+  const [authorizationDecision, setAuthorizationDecision] = useState<'authorized' | 'declined'>('authorized')
+  const [phoneAuthorizerId, setPhoneAuthorizerId] = useState<number | ''>('')
+  const [authorizationNotes, setAuthorizationNotes] = useState('')
   const [tab, setTab] = useState(0)
   const [page, setPage] = useState(0)
   const rowsPerPage = 25
@@ -436,6 +470,12 @@ const Billing = () => {
     enabled: shouldFetchService,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
+  })
+  const facilityAuthorizersQ = useQuery({
+    queryKey: ['quotation-authorization-candidates', authorizationItem?.id],
+    queryFn: () => fetchQuotationAuthorizationCandidates(Number(authorizationItem?.id)),
+    enabled: Boolean(authorizationItem && authorizationChannel === 'phone' && canManageQuotationAuthorization),
+    staleTime: 60_000,
   })
 
   // Fetch full SR data (with history) when printing a service invoice — needed to append the service report
@@ -671,6 +711,30 @@ const Billing = () => {
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to record payment'),
   })
 
+  const requestAuthorizationMut = useMutation({
+    mutationFn: ({ id }: { id: number }) => requestQuotationAuthorization(id),
+    onSuccess: async () => {
+      await invalidateBilling()
+      toast.success('Authorization request sent to the facility')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not request authorization'),
+  })
+
+  const decideAuthorizationMut = useMutation({
+    mutationFn: ({ id }: { id: number }) => decideQuotationAuthorization(id, {
+      decision: authorizationDecision,
+      channel: authorizationChannel,
+      authorized_by_user_id: authorizationChannel === 'phone' ? Number(phoneAuthorizerId) : undefined,
+      notes: authorizationNotes.trim() || undefined,
+    }),
+    onSuccess: async () => {
+      await invalidateBilling()
+      toast.success(authorizationDecision === 'authorized' ? 'Quotation authorized' : 'Authorization declined')
+      closeAuthorizationDialog()
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not save authorization decision'),
+  })
+
   const invoicePayMut = useMutation({
     mutationFn: async ({ item, amount, method, notes }: { item: BillingItem; amount: number; method: string; notes?: string }) => {
       const nextPaid = Math.min(item.amount, item.paid + amount)
@@ -770,6 +834,22 @@ const Billing = () => {
   const closeActions = () => {
     setActionAnchor(null)
     setActionItem(null)
+  }
+
+  const closeAuthorizationDialog = () => {
+    setAuthorizationItem(null)
+    setAuthorizationChannel('self_service')
+    setAuthorizationDecision('authorized')
+    setPhoneAuthorizerId('')
+    setAuthorizationNotes('')
+  }
+
+  const openAuthorizationDialog = (item: BillingItem, channel: 'self_service' | 'phone') => {
+    setAuthorizationItem(item)
+    setAuthorizationChannel(channel)
+    setAuthorizationDecision('authorized')
+    setPhoneAuthorizerId('')
+    setAuthorizationNotes('')
   }
 
   const viewBillingItem = (item: BillingItem) => {
@@ -1242,7 +1322,27 @@ const Billing = () => {
       </Card>
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
-        {actionItem && canPay && actionItem.balance > 0 && (
+        {actionItem && actionItem.source === 'service' && actionItem.billingKind === 'service_quotation' && canManageQuotationAuthorization
+          && !['authorization_requested', 'authorized', 'paid', 'included_in_invoice', 'cancelled'].includes(actionItem.status)
+          && !(actionItem.status === 'partially_paid' && (actionItem.raw as ServiceRequestQuotationList).authorizations?.some(item => ['requested', 'authorized'].includes(item.status))) && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { requestAuthorizationMut.mutate({ id: actionItem.id }); closeActions() }}>
+            <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#B45309' }} /></ListItemIcon>
+            Request Authorization
+          </MenuItem>
+        )}
+        {actionItem && actionItem.source === 'service' && actionItem.billingKind === 'service_quotation' && actionItem.status === 'authorization_requested' && canManageQuotationAuthorization && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openAuthorizationDialog(actionItem, 'phone'); closeActions() }}>
+            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            Record Phone Decision
+          </MenuItem>
+        )}
+        {actionItem && actionItem.source === 'service' && actionItem.billingKind === 'service_quotation' && actionItem.status === 'authorization_requested' && canSelfAuthorizeQuotation && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openAuthorizationDialog(actionItem, 'self_service'); closeActions() }}>
+            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            Review Authorization
+          </MenuItem>
+        )}
+        {actionItem && canPay && actionItem.balance > 0 && (!(actionItem.source === 'service' && actionItem.billingKind === 'service_quotation') || ['authorized', 'partially_paid'].includes(actionItem.status)) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openPayment(actionItem); closeActions() }}>
             <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
             Pay
@@ -1323,6 +1423,64 @@ const Billing = () => {
         }}
         saving={invoiceEditMut.isPending}
       />
+
+      <Dialog open={Boolean(authorizationItem)} onClose={closeAuthorizationDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          {authorizationChannel === 'phone' ? 'Record Phone Authorization' : 'Review Quotation Authorization'}
+        </DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
+          <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
+            <Typography sx={{ fontWeight: 900 }}>{authorizationItem?.number}</Typography>
+            <Typography sx={{ color: '#64748B', fontSize: 13 }}>{authorizationItem?.description}</Typography>
+            <Typography sx={{ color: '#047857', fontWeight: 950 }}>{money(authorizationItem?.amount)}</Typography>
+          </Box>
+          <FormControl fullWidth>
+            <InputLabel>Decision</InputLabel>
+            <Select value={authorizationDecision} label="Decision" onChange={event => setAuthorizationDecision(event.target.value as 'authorized' | 'declined')}>
+              <MenuItem value="authorized">Authorize payment</MenuItem>
+              <MenuItem value="declined">Decline authorization</MenuItem>
+            </Select>
+          </FormControl>
+          {authorizationChannel === 'phone' && (
+            <FormControl fullWidth>
+              <InputLabel>Facility Representative</InputLabel>
+              <Select
+                value={phoneAuthorizerId}
+                label="Facility Representative"
+                onChange={event => setPhoneAuthorizerId(Number(event.target.value))}
+                disabled={facilityAuthorizersQ.isLoading}
+              >
+                {(facilityAuthorizersQ.data || []).map(authorizer => (
+                  <MenuItem key={authorizer.id} value={authorizer.id}>
+                    {authorizer.full_name} · {authorizer.role.replace(/_/g, ' ')}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          <TextField
+            label={authorizationChannel === 'phone' ? 'Phone authorization notes' : 'Authorization notes'}
+            value={authorizationNotes}
+            onChange={event => setAuthorizationNotes(event.target.value)}
+            multiline
+            minRows={2}
+          />
+          <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
+            The authorizer, administrator, channel, amount and timestamp are saved permanently in the quotation ledger.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5 }}>
+          <Button onClick={closeAuthorizationDialog} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => authorizationItem && decideAuthorizationMut.mutate({ id: authorizationItem.id })}
+            disabled={decideAuthorizationMut.isPending || (authorizationChannel === 'phone' && !phoneAuthorizerId)}
+            sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+          >
+            {decideAuthorizationMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Save Decision'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={Boolean(payOpen)} onClose={closePayDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>

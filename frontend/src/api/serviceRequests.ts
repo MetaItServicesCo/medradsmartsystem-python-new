@@ -54,6 +54,10 @@ export interface QuotationPayment {
   paid_at: string | null
   created_at: string
   created_by_id: number
+  authorization_id?: number | null
+  payment_channel?: 'admin_assisted' | 'facility_self_service' | null
+  payer_role?: string | null
+  paid_by_name?: string | null
 }
 
 export interface QuotationPaymentCreate {
@@ -68,6 +72,56 @@ export interface QuotationPaymentCreate {
   mbmts_account_number?: string
   mbmts_bank_name?: string
   mbmts_bank_address?: string
+}
+
+export interface QuotationAuthorization {
+  id: number
+  quotation_id: number
+  status: 'requested' | 'authorized' | 'declined' | 'invalidated' | 'fulfilled_in_invoice' | string
+  authorized_amount: number
+  channel?: 'phone' | 'self_service' | null
+  requested_by_id?: number | null
+  requested_by_name?: string | null
+  authorized_by_id?: number | null
+  authorized_by_name?: string | null
+  authorized_by_role?: string | null
+  recorded_by_id?: number | null
+  recorded_by_name?: string | null
+  confirmation_reference?: string | null
+  notes?: string | null
+  requested_at?: string | null
+  decided_at?: string | null
+  invalidated_at?: string | null
+  created_at?: string | null
+}
+
+export interface QuotationLedgerEntry {
+  id: number
+  quotation_id: number
+  event_type: string
+  actor_id?: number | null
+  actor_name: string
+  actor_role: string
+  channel?: string | null
+  amount?: number | null
+  reference_number?: string | null
+  details?: Record<string, any> | null
+  created_at: string
+}
+
+export interface QuotationAuthorizationDecision {
+  decision: 'authorized' | 'declined'
+  channel: 'self_service' | 'phone'
+  authorized_by_user_id?: number
+  notes?: string
+  confirmation_reference?: string
+}
+
+export interface QuotationAuthorizationCandidate {
+  id: number
+  full_name: string
+  email: string
+  role: 'facility_admin' | 'facility_manager' | string
 }
 
 export interface InvoiceTransaction {
@@ -197,6 +251,8 @@ export interface ServiceRequestQuotation {
   line_items: LineItem[]
   payments: QuotationPayment[]
   revision_history?: { timestamp: string, user: string, old_amount: number, new_amount: number, difference: number }[]
+  authorizations?: QuotationAuthorization[]
+  ledger_entries?: QuotationLedgerEntry[]
 }
 
 export interface ServiceRequestQuotationCreate {
@@ -213,6 +269,7 @@ export interface ServiceRequestQuotationUpdate {
 export interface ServiceRequestQuotationList extends ServiceRequestQuotation {
   request_number: string
   facility_name: string | null
+  facility_id?: number | null
 }
 
 // ── Service Request ─────────────────────────────────────────────────────────
@@ -498,5 +555,28 @@ export const createQuotationPayment = async (
   data: QuotationPaymentCreate
 ): Promise<QuotationPayment> => {
   const res = await apiClient.post(`/service-requests/quotations/${quotationId}/payments`, data)
+  return res.data
+}
+
+export const requestQuotationAuthorization = async (
+  quotationId: number,
+  notes?: string,
+): Promise<QuotationAuthorization> => {
+  const res = await apiClient.post(`/service-requests/quotations/${quotationId}/authorization-requests`, { notes })
+  return res.data
+}
+
+export const fetchQuotationAuthorizationCandidates = async (
+  quotationId: number,
+): Promise<QuotationAuthorizationCandidate[]> => {
+  const res = await apiClient.get(`/service-requests/quotations/${quotationId}/authorization-candidates`)
+  return res.data
+}
+
+export const decideQuotationAuthorization = async (
+  quotationId: number,
+  data: QuotationAuthorizationDecision,
+): Promise<QuotationAuthorization> => {
+  const res = await apiClient.post(`/service-requests/quotations/${quotationId}/authorization-decisions`, data)
   return res.data
 }

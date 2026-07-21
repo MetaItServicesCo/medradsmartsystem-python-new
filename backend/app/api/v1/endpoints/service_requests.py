@@ -16,9 +16,11 @@ from app.utils.permission_deps import require_module_access
 from app.utils.permissions import has_module_permission
 from app.db.base import get_db
 from app.models.user import User, UserRole
+from app.models.user_facility import UserFacility
 from app.models.service_request import (
     ServiceRequest, ServiceRequestStatus, Priority,
     ServiceRequestQuotation, QuotationLineItem, QuotationPayment,
+    QuotationAuthorization, QuotationLedgerEntry,
 )
 from app.models.facility import Facility
 from app.models.equipment import Equipment
@@ -30,11 +32,13 @@ from app.schemas.service_request import (
     ServiceRequestQuotationCreate, ServiceRequestQuotationUpdate,
     ServiceRequestQuotationResponse, ServiceRequestQuotationListResponse,
     QuotationPaymentCreate, QuotationPaymentResponse,
+    QuotationAuthorizationRequestCreate, QuotationAuthorizationDecisionCreate,
+    QuotationAuthorizationResponse,
     LineItemCreate, ServiceRequestNoteCreate, ServiceRequestClockOutCreate,
     ServiceRequestWorkSessionCreate,
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
-from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.facility_access import get_user_facility_ids, require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 
@@ -123,7 +127,120 @@ def _calculate_service_cost(sr: ServiceRequest) -> Decimal:
     return (hours * _service_labor_rate(sr)).quantize(Decimal("0.01"))
 
 
-def _enrich(sr: ServiceRequest) -> dict:
+def _role_name(user: User) -> str:
+    return user.role.value if hasattr(user.role, "value") else str(user.role)
+
+
+def _authorization_dict(authorization: QuotationAuthorization) -> dict[str, Any]:
+    return {
+        **{column.name: getattr(authorization, column.name) for column in authorization.__table__.columns},
+        "requested_by_name": authorization.requested_by.full_name if authorization.requested_by else None,
+        "recorded_by_name": authorization.recorded_by.full_name if authorization.recorded_by else None,
+    }
+
+
+def _payment_dict(payment: QuotationPayment) -> dict[str, Any]:
+    return {
+        **{column.name: getattr(payment, column.name) for column in payment.__table__.columns},
+        "paid_by_name": payment.created_by.full_name if payment.created_by else None,
+    }
+
+
+def _ledger_dict(entry: QuotationLedgerEntry) -> dict[str, Any]:
+    return {column.name: getattr(entry, column.name) for column in entry.__table__.columns}
+
+
+def _quotation_dict(quotation: ServiceRequestQuotation, *, include_ledger: bool = True) -> dict[str, Any]:
+    data = {column.name: getattr(quotation, column.name) for column in quotation.__table__.columns}
+    data["line_items"] = [
+        {column.name: getattr(item, column.name) for column in item.__table__.columns}
+        for item in (quotation.line_items or [])
+    ]
+    data["payments"] = [_payment_dict(payment) for payment in (quotation.payments or [])]
+    data["authorizations"] = (
+        [_authorization_dict(authorization) for authorization in (quotation.authorizations or [])]
+        if include_ledger else []
+    )
+    data["ledger_entries"] = (
+        [_ledger_dict(entry) for entry in (quotation.ledger_entries or [])]
+        if include_ledger else []
+    )
+    return data
+
+
+def _append_quotation_ledger(
+    db: Session,
+    quotation: ServiceRequestQuotation,
+    event_type: str,
+    actor: User,
+    *,
+    channel: Optional[str] = None,
+    amount: Optional[Decimal] = None,
+    reference_number: Optional[str] = None,
+    details: Optional[dict[str, Any]] = None,
+) -> QuotationLedgerEntry:
+    clean_details = {
+        key: _history_value(value)
+        for key, value in (details or {}).items()
+    }
+    entry = QuotationLedgerEntry(
+        quotation_id=quotation.id,
+        event_type=event_type,
+        actor_id=actor.id,
+        actor_name=actor.full_name or actor.username,
+        actor_role=_role_name(actor),
+        channel=channel,
+        amount=amount,
+        reference_number=reference_number,
+        details=clean_details,
+    )
+    db.add(entry)
+
+    service_request = quotation.service_request
+    if service_request:
+        history = list(service_request.history or [])
+        history.append(_history_entry(f"quotation_{event_type}", actor, {
+            "quotation_id": quotation.id,
+            "quotation_number": quotation.quotation_number,
+            "channel": channel,
+            "amount": float(amount) if amount is not None else None,
+            "reference_number": reference_number,
+            **clean_details,
+        }))
+        service_request.history = history
+        flag_modified(service_request, "history")
+    return entry
+
+
+def _facility_authorizer_user_ids(db: Session, service_request: ServiceRequest) -> list[int]:
+    facility_ids = {service_request.facility_id}
+    if service_request.facility and service_request.facility.parent_facility_id:
+        facility_ids.add(service_request.facility.parent_facility_id)
+    secondary_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id.in_(facility_ids))
+    users = (
+        db.query(User.id)
+        .filter(
+            User.is_active.is_(True),
+            User.role.in_([UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER]),
+            or_(User.facility_id.in_(facility_ids), User.id.in_(secondary_ids)),
+        )
+        .all()
+    )
+    return [user_id for (user_id,) in users]
+
+
+def _latest_active_authorization(quotation: ServiceRequestQuotation) -> Optional[QuotationAuthorization]:
+    return next(
+        (
+            authorization
+            for authorization in (quotation.authorizations or [])
+            if authorization.status in {"requested", "authorized"}
+        ),
+        None,
+    )
+
+
+def _enrich(sr: ServiceRequest, *, include_quotation_ledger: bool = False) -> dict:
     """Convert ORM object to dict with denormalised display names."""
     data = {c.name: getattr(sr, c.name) for c in sr.__table__.columns}
     # Enums → plain strings
@@ -147,16 +264,7 @@ def _enrich(sr: ServiceRequest) -> dict:
     data["quotations"] = []
     if sr.quotations:
         for q in sr.quotations:
-            q_data = {c.name: getattr(q, c.name) for c in q.__table__.columns}
-            q_data["line_items"] = [
-                {c.name: getattr(li, c.name) for c in li.__table__.columns}
-                for li in (q.line_items or [])
-            ]
-            q_data["payments"] = [
-                {c.name: getattr(p, c.name) for c in p.__table__.columns}
-                for p in (q.payments or [])
-            ]
-            data["quotations"].append(q_data)
+            data["quotations"].append(_quotation_dict(q, include_ledger=include_quotation_ledger))
     return data
 
 
@@ -651,6 +759,8 @@ def get_service_request(
             joinedload(ServiceRequest.assigned_technician),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
             joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+            selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.authorizations),
+            selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.ledger_entries),
         )
         .filter(ServiceRequest.id == request_id)
         .first()
@@ -664,7 +774,7 @@ def get_service_request(
     # Employees can only view requests they submitted. Clients are facility-scoped.
     if current_user.role == UserRole.EMPLOYEE and sr.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only view service requests you submitted")
-    data = _enrich(sr)
+    data = _enrich(sr, include_quotation_ledger=True)
     active_invoice = (
         db.query(Invoice)
         .options(
@@ -965,12 +1075,12 @@ def generate_service_invoice(
     if payload.include_quotations:
         eligible = [
             quotation for quotation in (db_sr.quotations or [])
-            if quotation.status not in {"paid", "included_in_invoice", "cancelled", "rejected"}
+            if quotation.status not in {"paid", "partially_paid", "included_in_invoice", "cancelled", "rejected"}
         ]
         selected_ids = set(payload.quotation_ids or [])
         selected_quotations = [
             quotation for quotation in eligible
-            if not selected_ids or quotation.id in selected_ids
+            if payload.quotation_ids is None or quotation.id in selected_ids
         ]
 
     service_amount = (
@@ -1013,8 +1123,20 @@ def generate_service_invoice(
     record_invoice_created(db, invoice, current_user, f"Service invoice created for {db_sr.request_number}")
 
     for quotation in selected_quotations:
+        active_authorization = _latest_active_authorization(quotation)
+        if active_authorization:
+            active_authorization.status = "fulfilled_in_invoice"
+            active_authorization.invalidated_at = datetime.utcnow()
         quotation.status = "included_in_invoice"
         quotation.updated_at = datetime.utcnow()
+        _append_quotation_ledger(
+            db,
+            quotation,
+            "included_in_service_invoice",
+            current_user,
+            amount=quotation.amount,
+            details={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
+        )
 
     db_sr.billing_status = "approved"
     db_sr.invoice_deleted = False
@@ -1458,8 +1580,8 @@ def create_quotation(
     if current_user.role == UserRole.TECHNICIAN and db_sr.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only create quotations for service requests assigned to you")
 
-    if db_sr.status == ServiceRequestStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail="Cannot create quotation for a completed service request")
+    if db_sr.status in {ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED}:
+        raise HTTPException(status_code=400, detail="Cannot create quotation for a completed or cancelled service request")
 
     # Generate quotation number
     count = db.query(ServiceRequestQuotation).filter(
@@ -1473,7 +1595,7 @@ def create_quotation(
         total_amount = sum(li.total for li in quotation_in.line_items)
 
     db_quotation = ServiceRequestQuotation(
-        service_request_id=request_id,
+        service_request=db_sr,
         created_by_id=current_user.id,
         quotation_number=quotation_number,
         amount=total_amount,
@@ -1494,6 +1616,15 @@ def create_quotation(
                 total=li.total,
             )
             db.add(db_item)
+
+    _append_quotation_ledger(
+        db,
+        db_quotation,
+        "created",
+        current_user,
+        amount=total_amount,
+        details={"status": "draft"},
+    )
 
     db.commit()
     db.refresh(db_quotation)
@@ -1537,10 +1668,28 @@ def update_quotation(
     if current_user.role == UserRole.TECHNICIAN and db_quotation.service_request.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only edit quotations for service requests assigned to you")
 
-    if db_quotation.service_request.status == ServiceRequestStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail="Cannot edit quotation after service is completed")
+    if db_quotation.service_request.status in {ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED}:
+        raise HTTPException(status_code=400, detail="Cannot edit a quotation for a completed or cancelled service request")
+    if db_quotation.status in {"paid", "partially_paid", "included_in_invoice"} or db_quotation.payments:
+        raise HTTPException(status_code=400, detail="A billed or paid quotation cannot be edited")
 
     update_data = quotation_in.model_dump(exclude_unset=True)
+    protected_statuses = {
+        "authorization_requested",
+        "authorized",
+        "partially_paid",
+        "paid",
+        "included_in_invoice",
+    }
+    if update_data.get("status") in protected_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Authorization and payment statuses can only be changed through their dedicated workflow",
+        )
+    authorization_sensitive_change = any(
+        field in update_data for field in {"description", "line_items", "status"}
+    )
+    active_authorization = _latest_active_authorization(db_quotation)
 
     if "description" in update_data:
         db_quotation.description = update_data["description"]
@@ -1589,6 +1738,22 @@ def update_quotation(
 
         db_quotation.amount = total_amount
 
+    if authorization_sensitive_change and active_authorization:
+        active_authorization.status = "invalidated"
+        active_authorization.invalidated_at = datetime.utcnow()
+        db_quotation.status = "draft"
+        _append_quotation_ledger(
+            db,
+            db_quotation,
+            "authorization_invalidated",
+            current_user,
+            amount=db_quotation.amount,
+            details={
+                "authorization_id": active_authorization.id,
+                "reason": "Quotation details or amount changed",
+            },
+        )
+
     db_quotation.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(db_quotation)
@@ -1629,8 +1794,10 @@ def delete_quotation(
     if current_user.role == UserRole.TECHNICIAN and db_quotation.service_request.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only delete quotations for service requests assigned to you")
 
-    if db_quotation.service_request.status == ServiceRequestStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail="Cannot delete quotation after service is completed")
+    if db_quotation.service_request.status in {ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED}:
+        raise HTTPException(status_code=400, detail="Cannot delete a quotation for a completed or cancelled service request")
+    if db_quotation.status in {"paid", "partially_paid", "included_in_invoice"} or db_quotation.payments:
+        raise HTTPException(status_code=400, detail="A billed or paid quotation cannot be deleted")
 
     db.delete(db_quotation)
     db.commit()
@@ -1653,6 +1820,8 @@ def get_all_quotations(
             joinedload(ServiceRequestQuotation.service_request).joinedload(ServiceRequest.facility),
             selectinload(ServiceRequestQuotation.line_items),
             selectinload(ServiceRequestQuotation.payments),
+            selectinload(ServiceRequestQuotation.authorizations),
+            selectinload(ServiceRequestQuotation.ledger_entries),
         )
         .order_by(ServiceRequestQuotation.created_at.desc())
     )
@@ -1676,23 +1845,238 @@ def get_all_quotations(
 
     result = []
     for q in quotations:
-        q_dict = {c.name: getattr(q, c.name) for c in q.__table__.columns}
+        q_dict = _quotation_dict(q)
         q_dict["request_number"] = q.service_request.request_number if q.service_request else "Unknown"
         q_dict["facility_name"] = q.service_request.facility.name if q.service_request and q.service_request.facility else None
-        q_dict["line_items"] = [
-            {c.name: getattr(li, c.name) for c in li.__table__.columns}
-            for li in (q.line_items or [])
-        ]
-        q_dict["payments"] = [
-            {c.name: getattr(p, c.name) for c in p.__table__.columns}
-            for p in (q.payments or [])
-        ]
+        q_dict["facility_id"] = q.service_request.facility_id if q.service_request else None
         result.append(q_dict)
 
     return result
 
 
 # ── QUOTATION PAYMENT ENDPOINTS ─────────────────────────────────────────────
+
+@router.get("/quotations/{quotation_id}/authorization-candidates")
+def get_quotation_authorization_candidates(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    if current_user.role not in {UserRole.SUPERADMIN, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Only an admin or super admin can record phone authorization")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
+    quotation = (
+        db.query(ServiceRequestQuotation)
+        .options(joinedload(ServiceRequestQuotation.service_request).joinedload(ServiceRequest.facility))
+        .filter(ServiceRequestQuotation.id == quotation_id)
+        .first()
+    )
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    candidate_ids = _facility_authorizer_user_ids(db, quotation.service_request)
+    candidates = db.query(User).filter(User.id.in_(candidate_ids)).order_by(User.full_name.asc()).all() if candidate_ids else []
+    return [
+        {"id": candidate.id, "full_name": candidate.full_name, "email": candidate.email, "role": _role_name(candidate)}
+        for candidate in candidates
+    ]
+
+
+@router.post(
+    "/quotations/{quotation_id}/authorization-requests",
+    response_model=QuotationAuthorizationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def request_quotation_authorization(
+    quotation_id: int,
+    payload: QuotationAuthorizationRequestCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Request customer authorization for a service quotation."""
+    if current_user.role not in {UserRole.SUPERADMIN, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Only an admin or super admin can request authorization")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
+
+    quotation = (
+        db.query(ServiceRequestQuotation)
+        .options(
+            joinedload(ServiceRequestQuotation.service_request).joinedload(ServiceRequest.facility),
+            selectinload(ServiceRequestQuotation.authorizations),
+        )
+        .filter(ServiceRequestQuotation.id == quotation_id)
+        .with_for_update(of=ServiceRequestQuotation)
+        .first()
+    )
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    if quotation.service_request.status == ServiceRequestStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Cannot authorize a quotation for a cancelled service request")
+    if quotation.status in {"paid", "included_in_invoice", "cancelled"}:
+        raise HTTPException(status_code=400, detail="This quotation is no longer eligible for authorization")
+
+    active = _latest_active_authorization(quotation)
+    if active:
+        if active.status == "requested":
+            return _authorization_dict(active)
+        raise HTTPException(status_code=409, detail="This quotation is already authorized")
+
+    authorization = QuotationAuthorization(
+        quotation=quotation,
+        status="requested",
+        authorized_amount=quotation.amount,
+        requested_by_id=current_user.id,
+        notes=payload.notes,
+    )
+    db.add(authorization)
+    db.flush()
+    quotation.status = "authorization_requested"
+    quotation.updated_at = datetime.utcnow()
+    _append_quotation_ledger(
+        db,
+        quotation,
+        "authorization_requested",
+        current_user,
+        amount=quotation.amount,
+        details={"authorization_id": authorization.id, "notes": payload.notes},
+    )
+
+    create_notifications(
+        db,
+        user_ids=[
+            user_id for user_id in _facility_authorizer_user_ids(db, quotation.service_request)
+            if user_id != current_user.id
+        ],
+        title="Quotation authorization requested",
+        message=f"Authorization is required for {quotation.quotation_number} (${quotation.amount}).",
+        notification_type="billing",
+        link_url=f"/billing?search={quotation.quotation_number}",
+        actor_id=current_user.id,
+    )
+    db.commit()
+    db.refresh(authorization)
+    return _authorization_dict(authorization)
+
+
+@router.post(
+    "/quotations/{quotation_id}/authorization-decisions",
+    response_model=QuotationAuthorizationResponse,
+)
+def decide_quotation_authorization(
+    quotation_id: int,
+    payload: QuotationAuthorizationDecisionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Authorize/decline in self-service or record a customer's phone decision."""
+    decision = payload.decision.strip().lower()
+    channel = payload.channel.strip().lower()
+    if decision not in {"authorized", "declined"}:
+        raise HTTPException(status_code=400, detail="Decision must be authorized or declined")
+    if channel not in {"self_service", "phone"}:
+        raise HTTPException(status_code=400, detail="Authorization channel must be self_service or phone")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
+
+    quotation = (
+        db.query(ServiceRequestQuotation)
+        .options(
+            joinedload(ServiceRequestQuotation.service_request).joinedload(ServiceRequest.facility),
+            selectinload(ServiceRequestQuotation.authorizations),
+        )
+        .filter(ServiceRequestQuotation.id == quotation_id)
+        .with_for_update(of=ServiceRequestQuotation)
+        .first()
+    )
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    require_facility_access(db, current_user, quotation.service_request.facility_id)
+    if quotation.service_request.status == ServiceRequestStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Cannot authorize a quotation for a cancelled service request")
+
+    authorization = next(
+        (item for item in (quotation.authorizations or []) if item.status == "requested"),
+        None,
+    )
+    if not authorization:
+        raise HTTPException(status_code=409, detail="No pending authorization request exists for this quotation")
+    if _money(authorization.authorized_amount) != _money(quotation.amount):
+        raise HTTPException(status_code=409, detail="Quotation amount changed; request authorization again")
+
+    authorizer: User
+    recorded_by: Optional[User] = None
+    if channel == "self_service":
+        if current_user.role not in {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
+            raise HTTPException(status_code=403, detail="Self-service authorization is limited to facility billing users")
+        authorizer = current_user
+    else:
+        if current_user.role not in {UserRole.SUPERADMIN, UserRole.ADMIN}:
+            raise HTTPException(status_code=403, detail="Only an admin or super admin can record phone authorization")
+        if not payload.authorized_by_user_id:
+            raise HTTPException(status_code=400, detail="Select the facility representative who authorized by phone")
+        authorizer = db.query(User).filter(User.id == payload.authorized_by_user_id, User.is_active.is_(True)).first()
+        if not authorizer or authorizer.role not in {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER}:
+            raise HTTPException(status_code=400, detail="Phone authorizer must be an active facility admin or manager")
+        if quotation.service_request.facility_id not in get_user_facility_ids(db, authorizer):
+            raise HTTPException(status_code=403, detail="Selected authorizer does not manage this facility")
+        recorded_by = current_user
+
+    now = datetime.utcnow()
+    authorization.status = decision
+    authorization.channel = channel
+    authorization.authorized_by_id = authorizer.id
+    authorization.authorized_by_name = authorizer.full_name or authorizer.username
+    authorization.authorized_by_role = _role_name(authorizer)
+    authorization.recorded_by_id = recorded_by.id if recorded_by else None
+    authorization.notes = payload.notes or authorization.notes
+    authorization.decided_at = now
+    if decision == "authorized":
+        authorization.confirmation_reference = payload.confirmation_reference or f"AUTH-{quotation.quotation_number}-{authorization.id:04d}"
+        quotation.status = "authorized"
+    else:
+        authorization.confirmation_reference = payload.confirmation_reference
+        quotation.status = "rejected"
+    quotation.updated_at = now
+
+    ledger_actor = current_user if recorded_by else authorizer
+    _append_quotation_ledger(
+        db,
+        quotation,
+        f"authorization_{decision}",
+        ledger_actor,
+        channel=channel,
+        amount=authorization.authorized_amount,
+        reference_number=authorization.confirmation_reference,
+        details={
+            "authorization_id": authorization.id,
+            "authorized_by_id": authorizer.id,
+            "authorized_by_name": authorization.authorized_by_name,
+            "authorized_by_role": authorization.authorized_by_role,
+            "recorded_by_id": recorded_by.id if recorded_by else None,
+            "recorded_by_name": (recorded_by.full_name or recorded_by.username) if recorded_by else None,
+            "notes": payload.notes,
+        },
+    )
+
+    notify_ids = {
+        authorization.requested_by_id,
+        quotation.service_request.requester_id,
+        quotation.service_request.assigned_technician_id,
+    }
+    create_notifications(
+        db,
+        user_ids=[user_id for user_id in notify_ids if user_id and user_id != current_user.id],
+        title=f"Quotation authorization {decision}",
+        message=f"{quotation.quotation_number} was {decision} by {authorization.authorized_by_name}.",
+        notification_type="billing",
+        link_url=f"/billing?search={quotation.quotation_number}",
+        actor_id=current_user.id,
+    )
+    db.commit()
+    db.refresh(authorization)
+    return _authorization_dict(authorization)
+
 
 @router.post("/quotations/{quotation_id}/payments", response_model=QuotationPaymentResponse, status_code=status.HTTP_201_CREATED)
 def create_quotation_payment(
@@ -1704,16 +2088,24 @@ def create_quotation_payment(
     """Record a payment for a quotation via Credit Card, ACH, or MBMTS ACH."""
     if current_user.role not in [
         UserRole.SUPERADMIN,
+        UserRole.ADMIN,
         UserRole.FACILITY_ADMIN,
         UserRole.FACILITY_MANAGER,
         UserRole.CLIENT,
     ]:
         raise HTTPException(status_code=403, detail="Not enough permissions")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
 
     db_quotation = (
         db.query(ServiceRequestQuotation)
-        .options(joinedload(ServiceRequestQuotation.service_request))
+        .options(
+            joinedload(ServiceRequestQuotation.service_request),
+            selectinload(ServiceRequestQuotation.authorizations),
+            selectinload(ServiceRequestQuotation.payments),
+        )
         .filter(ServiceRequestQuotation.id == quotation_id)
+        .with_for_update(of=ServiceRequestQuotation)
         .first()
     )
     if not db_quotation:
@@ -1723,6 +2115,30 @@ def create_quotation_payment(
     valid_methods = ["credit_card", "ach", "mbmts_ach"]
     if payment_in.payment_method not in valid_methods:
         raise HTTPException(status_code=400, detail=f"Invalid payment method. Allowed: {valid_methods}")
+    if db_quotation.status not in {"authorized", "partially_paid"}:
+        raise HTTPException(status_code=409, detail="Only an authorized quotation can be paid")
+
+    authorization = next(
+        (item for item in (db_quotation.authorizations or []) if item.status == "authorized"),
+        None,
+    )
+    if not authorization:
+        raise HTTPException(status_code=409, detail="Quotation payment must be authorized first")
+    if _money(authorization.authorized_amount) != _money(db_quotation.amount):
+        raise HTTPException(status_code=409, detail="Authorization no longer matches the quotation amount")
+
+    payment_amount = _money(payment_in.amount).quantize(Decimal("0.01"))
+    if payment_amount <= Decimal("0"):
+        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
+    paid_to_date = sum(
+        (_money(payment.amount) for payment in (db_quotation.payments or []) if payment.status == "completed"),
+        Decimal("0"),
+    ).quantize(Decimal("0.01"))
+    remaining_balance = max((_money(db_quotation.amount) - paid_to_date).quantize(Decimal("0.01")), Decimal("0"))
+    if remaining_balance <= Decimal("0"):
+        raise HTTPException(status_code=409, detail="This quotation is already fully paid")
+    if payment_amount > remaining_balance:
+        raise HTTPException(status_code=400, detail=f"Payment cannot exceed the remaining balance of ${remaining_balance}")
 
     # Auto-generate reference number: PAY-{quotation_number}-{seq}
     existing_count = db.query(QuotationPayment).filter(
@@ -1735,12 +2151,19 @@ def create_quotation_payment(
     db_payment = QuotationPayment(
         quotation_id=quotation_id,
         payment_method=payment_in.payment_method,
-        amount=payment_in.amount,
+        amount=payment_amount,
         reference_number=reference_number,
         notes=payment_in.notes,
         status="completed",
         paid_at=datetime.utcnow(),
         created_by_id=current_user.id,
+        authorization_id=authorization.id,
+        payment_channel=(
+            "admin_assisted"
+            if current_user.role in {UserRole.SUPERADMIN, UserRole.ADMIN}
+            else "facility_self_service"
+        ),
+        payer_role=_role_name(current_user),
         # ACH fields
         bank_name=payment_in.bank_name,
         account_last_four=payment_in.account_last_four,
@@ -1754,9 +2177,35 @@ def create_quotation_payment(
     )
     db.add(db_payment)
 
-    # Update quotation status to paid
-    db_quotation.status = "paid"
+    new_paid_total = (paid_to_date + payment_amount).quantize(Decimal("0.01"))
+    new_balance = max((_money(db_quotation.amount) - new_paid_total).quantize(Decimal("0.01")), Decimal("0"))
+    db_quotation.status = "paid" if new_balance == Decimal("0") else "partially_paid"
     db_quotation.updated_at = datetime.utcnow()
+
+    _append_quotation_ledger(
+        db,
+        db_quotation,
+        "payment_recorded",
+        current_user,
+        channel=db_payment.payment_channel,
+        amount=payment_amount,
+        reference_number=reference_number,
+        details={
+            "authorization_id": authorization.id,
+            "authorization_reference": authorization.confirmation_reference,
+            "authorized_by_id": authorization.authorized_by_id,
+            "authorized_by_name": authorization.authorized_by_name,
+            "authorized_by_role": authorization.authorized_by_role,
+            "paid_by_id": current_user.id,
+            "paid_by_name": current_user.full_name or current_user.username,
+            "paid_by_role": _role_name(current_user),
+            "payment_channel": db_payment.payment_channel,
+            "payment_method": payment_in.payment_method,
+            "paid_total": new_paid_total,
+            "remaining_balance": new_balance,
+            "quotation_status": db_quotation.status,
+        },
+    )
 
     db.commit()
     db.refresh(db_payment)
@@ -1772,4 +2221,4 @@ def create_quotation_payment(
     )
     db.commit()
 
-    return db_payment
+    return _payment_dict(db_payment)

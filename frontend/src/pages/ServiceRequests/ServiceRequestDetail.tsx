@@ -113,15 +113,31 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   status: 'Status',
   assigned_technician_id: 'Assigned Technician',
   cc_auth_requested: 'CC Authorization',
+  quotation_number: 'Quotation',
+  authorized_by_name: 'Authorized By',
+  authorized_by_role: 'Authorizer Role',
+  recorded_by_name: 'Recorded By',
+  paid_by_name: 'Paid/Recorded By',
+  paid_by_role: 'Payer Role',
+  payment_channel: 'Payment Channel',
+  payment_method: 'Payment Method',
+  reference_number: 'Reference',
+  remaining_balance: 'Remaining Balance',
 }
 
 const HISTORY_DATE_FIELDS = new Set(['start_time', 'end_time', 'clocked_in_at', 'clocked_out_at'])
-const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'test_equipment', 'clocked_in_at', 'clocked_out_at', 'duration_source', 'raw_hours', 'total_work_hours'])
+const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'test_equipment', 'clocked_in_at', 'clocked_out_at', 'duration_source', 'raw_hours', 'total_work_hours', 'quotation_id', 'authorization_id', 'authorized_by_id', 'recorded_by_id', 'paid_by_id'])
 
 const historyActionLabel = (action?: string) => {
   if (action === 'technician_work_session' || action === 'technician_clock_out') return 'Technician Work Session'
   if (action === 'technician_clock_in') return 'Work Session Started'
   if (action === 'status_changed') return 'Status Changed'
+  if (action === 'quotation_authorization_requested') return 'Quotation Authorization Requested'
+  if (action === 'quotation_authorization_authorized') return 'Quotation Authorized'
+  if (action === 'quotation_authorization_declined') return 'Quotation Authorization Declined'
+  if (action === 'quotation_authorization_invalidated') return 'Quotation Authorization Invalidated'
+  if (action === 'quotation_payment_recorded') return 'Quotation Payment Recorded'
+  if (action === 'quotation_included_in_service_invoice') return 'Quotation Included in Service Invoice'
   return String(action || 'updated').replace(/_/g, ' ')
 }
 
@@ -164,7 +180,7 @@ const ServiceRequestDetail = () => {
 
 
   const user = useAuthStore(state => state.user)
-  const canCreateQuotation = ['superadmin', 'admin', 'technician', 'facility_admin', 'facility_manager'].includes(user?.role || '')
+  const canCreateQuotation = ['superadmin', 'admin', 'technician'].includes(user?.role || '')
   const canManageServiceBilling = ['superadmin', 'admin', 'facility_admin', 'facility_manager'].includes(user?.role || '')
 
   const { data: sr, isLoading } = useQuery({
@@ -416,7 +432,16 @@ const ServiceRequestDetail = () => {
   }
 
   const billableQuotations = useMemo(
-    () => (sr?.quotations || []).filter(q => !['paid', 'included_in_invoice', 'cancelled', 'rejected'].includes(String(q.status || '').toLowerCase())),
+    () => (sr?.quotations || []).filter(q => !['paid', 'partially_paid', 'included_in_invoice', 'cancelled', 'rejected'].includes(String(q.status || '').toLowerCase())),
+    [sr?.quotations]
+  )
+  const paidQuotations = useMemo(
+    () => (sr?.quotations || [])
+      .filter(q => String(q.status || '').toLowerCase() === 'paid')
+      .map(q => ({
+        ...q,
+        paidAmount: (q.payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+      })),
     [sr?.quotations]
   )
 
@@ -1030,6 +1055,26 @@ const ServiceRequestDetail = () => {
                     </Typography>
                   </Box>
                 </Box>
+                {paidQuotations.length > 0 && (
+                  <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid #D1FAE5' }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 950, color: '#047857', textTransform: 'uppercase', mb: 0.75 }}>
+                      Paid separately — excluded from final service total
+                    </Typography>
+                    <Box sx={{ display: 'grid', gap: 0.7 }}>
+                      {paidQuotations.map(quotation => (
+                        <Box key={quotation.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, p: 1, borderRadius: '10px', bgcolor: '#ECFDF5', border: '1px solid #A7F3D0' }}>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ color: '#065F46', fontWeight: 900, fontSize: 13 }}>{quotation.quotation_number}</Typography>
+                            <Typography noWrap title={quotation.description} sx={{ color: '#64748B', fontSize: 12 }}>{quotation.description}</Typography>
+                          </Box>
+                          <Typography sx={{ color: '#047857', fontWeight: 950, whiteSpace: 'nowrap' }}>
+                            ${quotation.paidAmount.toFixed(2)} Paid
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
               </Box>
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -1349,6 +1394,19 @@ const ServiceRequestDetail = () => {
                     </Typography>
                     <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
                       ${Number(sr.total_cost).toFixed(2)}
+                    </Typography>
+                  </Box>
+                )}
+                {paidQuotations.length > 0 && (
+                  <Box sx={{ minWidth: 220 }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>
+                      Paid Quotations · Separate
+                    </Typography>
+                    <Typography sx={{ fontWeight: 900, color: '#047857' }}>
+                      ${paidQuotations.reduce((sum, quotation) => sum + quotation.paidAmount, 0).toFixed(2)}
+                    </Typography>
+                    <Typography sx={{ color: '#64748B', fontSize: 11 }}>
+                      {paidQuotations.map(quotation => quotation.quotation_number).join(', ')} · not included in service total
                     </Typography>
                   </Box>
                 )}

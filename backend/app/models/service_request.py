@@ -10,8 +10,11 @@ from app.db.base import Base
 class QuotationStatus(str, enum.Enum):
     DRAFT = "draft"
     SENT = "sent"
+    AUTHORIZATION_REQUESTED = "authorization_requested"
+    AUTHORIZED = "authorized"
     APPROVED = "approved"
     REJECTED = "rejected"
+    PARTIALLY_PAID = "partially_paid"
     PAID = "paid"
 
 class PaymentMethod(str, enum.Enum):
@@ -65,10 +68,72 @@ class QuotationPayment(Base):
     paid_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    authorization_id = Column(Integer, ForeignKey("quotation_authorizations.id", ondelete="SET NULL"), nullable=True)
+    payment_channel = Column(String, nullable=True)  # admin_assisted / facility_self_service
+    payer_role = Column(String, nullable=True)
 
     # Relationships
     quotation = relationship("ServiceRequestQuotation", back_populates="payments")
     created_by = relationship("User", foreign_keys=[created_by_id])
+    authorization = relationship("QuotationAuthorization", back_populates="payments")
+
+    @property
+    def paid_by_name(self):
+        return self.created_by.full_name if self.created_by else None
+
+
+class QuotationAuthorization(Base):
+    __tablename__ = "quotation_authorizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    quotation_id = Column(Integer, ForeignKey("service_request_quotations.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String, nullable=False, default="requested")
+    authorized_amount = Column(Numeric(10, 2), nullable=False)
+    channel = Column(String, nullable=True)  # phone / self_service
+    requested_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    authorized_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    recorded_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    authorized_by_name = Column(String, nullable=True)
+    authorized_by_role = Column(String, nullable=True)
+    confirmation_reference = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    decided_at = Column(DateTime, nullable=True)
+    invalidated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    quotation = relationship("ServiceRequestQuotation", back_populates="authorizations")
+    requested_by = relationship("User", foreign_keys=[requested_by_id])
+    authorized_by = relationship("User", foreign_keys=[authorized_by_id])
+    recorded_by = relationship("User", foreign_keys=[recorded_by_id])
+    payments = relationship("QuotationPayment", back_populates="authorization")
+
+    @property
+    def requested_by_name(self):
+        return self.requested_by.full_name if self.requested_by else None
+
+    @property
+    def recorded_by_name(self):
+        return self.recorded_by.full_name if self.recorded_by else None
+
+
+class QuotationLedgerEntry(Base):
+    __tablename__ = "quotation_ledger_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    quotation_id = Column(Integer, ForeignKey("service_request_quotations.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = Column(String, nullable=False, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_name = Column(String, nullable=False)
+    actor_role = Column(String, nullable=False)
+    channel = Column(String, nullable=True)
+    amount = Column(Numeric(10, 2), nullable=True)
+    reference_number = Column(String, nullable=True)
+    details = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    quotation = relationship("ServiceRequestQuotation", back_populates="ledger_entries")
+    actor = relationship("User", foreign_keys=[actor_id])
 
 
 class ServiceRequestQuotation(Base):
@@ -90,6 +155,18 @@ class ServiceRequestQuotation(Base):
     created_by = relationship("User", foreign_keys=[created_by_id])
     line_items = relationship("QuotationLineItem", back_populates="quotation", cascade="all, delete-orphan", lazy="joined")
     payments = relationship("QuotationPayment", back_populates="quotation", cascade="all, delete-orphan", lazy="joined")
+    authorizations = relationship(
+        "QuotationAuthorization",
+        back_populates="quotation",
+        cascade="all, delete-orphan",
+        order_by="QuotationAuthorization.created_at.desc()",
+    )
+    ledger_entries = relationship(
+        "QuotationLedgerEntry",
+        back_populates="quotation",
+        cascade="all, delete-orphan",
+        order_by="QuotationLedgerEntry.created_at.desc()",
+    )
 
 
 # ── Service Request models ───────────────────────────────────────────────────

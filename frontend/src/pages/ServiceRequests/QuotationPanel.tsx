@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NumericField } from '../../components/NumericField'
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Box, Card, Typography, Button, TextField, IconButton, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, Divider,
@@ -26,11 +26,16 @@ import {
   updateServiceRequestQuotation,
   deleteServiceRequestQuotation,
   createQuotationPayment,
+  requestQuotationAuthorization,
+  decideQuotationAuthorization,
+  fetchQuotationAuthorizationCandidates,
   type ServiceRequestQuotation,
   type LineItemCreate,
   type QuotationPaymentCreate,
 } from '@/api/serviceRequests'
 import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
+import { useAuthStore } from '@/stores/authStore'
+import { hasPermission } from '@/config/permissions'
 
 interface Props {
   serviceRequestId: number
@@ -66,19 +71,28 @@ const ACTION_MENU_ITEM = {
 const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
   draft: { bg: '#FEF3C7', color: '#B45309' },
   sent: { bg: '#DBEAFE', color: '#1D4ED8' },
+  authorization_requested: { bg: '#FEF3C7', color: '#B45309' },
+  authorized: { bg: '#D1FAE5', color: '#047857' },
   approved: { bg: '#D1FAE5', color: '#047857' },
   rejected: { bg: '#FEE2E2', color: '#DC2626' },
   paid: { bg: '#E0E7FF', color: '#4338CA' },
+  partially_paid: { bg: '#FFEDD5', color: '#C2410C' },
 }
 
 const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled, canEdit, queryKey }: Props) => {
   const queryClient = useQueryClient()
+  const user = useAuthStore(state => state.user)
   const [createOpen, setCreateOpen] = useState(false)
   const [editQuotationId, setEditQuotationId] = useState<number | null>(null)
   const [payOpen, setPayOpen] = useState<number | null>(null)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionQuotation, setActionQuotation] = useState<ServiceRequestQuotation | null>(null)
+  const [authorizationQuotation, setAuthorizationQuotation] = useState<ServiceRequestQuotation | null>(null)
+  const [authorizationChannel, setAuthorizationChannel] = useState<'self_service' | 'phone'>('self_service')
+  const [authorizationDecision, setAuthorizationDecision] = useState<'authorized' | 'declined'>('authorized')
+  const [phoneAuthorizerId, setPhoneAuthorizerId] = useState<number | ''>('')
+  const [authorizationNotes, setAuthorizationNotes] = useState('')
 
   // Create/Edit form state
   const [description, setDescription] = useState('')
@@ -125,6 +139,15 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   })
 
   const inventoryPartOptions = inventoryPartsData?.pages.flatMap((page) => page.items) || []
+  const canManageAuthorization = ['superadmin', 'admin'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
+  const canSelfAuthorize = ['facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
+
+  const facilityAuthorizersQ = useQuery({
+    queryKey: ['quotation-authorization-candidates', authorizationQuotation?.id],
+    queryFn: () => fetchQuotationAuthorizationCandidates(Number(authorizationQuotation?.id)),
+    enabled: Boolean(authorizationQuotation && authorizationChannel === 'phone' && canManageAuthorization),
+    staleTime: 60_000,
+  })
 
   const createMut = useMutation({
     mutationFn: (data: { description: string; line_items: LineItemCreate[] }) =>
@@ -151,6 +174,32 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
   })
 
+  const requestAuthorizationMut = useMutation({
+    mutationFn: ({ id, notes }: { id: number; notes?: string }) => requestQuotationAuthorization(id, notes),
+    onSuccess: () => {
+      toast.success('Authorization request sent to the facility')
+      queryClient.invalidateQueries({ queryKey })
+      queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not request authorization'),
+  })
+
+  const decideAuthorizationMut = useMutation({
+    mutationFn: ({ id }: { id: number }) => decideQuotationAuthorization(id, {
+      decision: authorizationDecision,
+      channel: authorizationChannel,
+      authorized_by_user_id: authorizationChannel === 'phone' ? Number(phoneAuthorizerId) : undefined,
+      notes: authorizationNotes.trim() || undefined,
+    }),
+    onSuccess: () => {
+      toast.success(authorizationDecision === 'authorized' ? 'Quotation authorized' : 'Authorization declined')
+      queryClient.invalidateQueries({ queryKey })
+      queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] })
+      closeAuthorizationDialog()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save authorization decision'),
+  })
+
   const resetForm = () => {
     setCreateOpen(false); setEditQuotationId(null)
     setDescription(''); setLineItems([{ ...EMPTY_LINE_ITEM }])
@@ -163,6 +212,22 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     setPayBankName(''); setPayAcctLast4(''); setPayRoutingLast4('')
     setCcName(''); setCcNumber(''); setCcExpiry(''); setCcCvv('')
     setAchChoice('ach')
+  }
+
+  const closeAuthorizationDialog = () => {
+    setAuthorizationQuotation(null)
+    setAuthorizationChannel('self_service')
+    setAuthorizationDecision('authorized')
+    setPhoneAuthorizerId('')
+    setAuthorizationNotes('')
+  }
+
+  const openAuthorizationDialog = (quotation: ServiceRequestQuotation, channel: 'self_service' | 'phone') => {
+    setAuthorizationQuotation(quotation)
+    setAuthorizationChannel(channel)
+    setAuthorizationDecision('authorized')
+    setPhoneAuthorizerId('')
+    setAuthorizationNotes('')
   }
 
   const openActions = (event: React.MouseEvent<HTMLElement>, quotation: ServiceRequestQuotation) => {
@@ -291,8 +356,11 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     payMut.mutate({ id: quotationId, data })
   }
 
-  const canCreate = canEdit && !isCompleted
-  const canModify = canEdit && !isCompleted
+  const canCreate = canEdit && !isCompleted && !isCancelled
+  const canModify = canEdit && !isCompleted && !isCancelled
+  const canModifyQuotation = (quotation: ServiceRequestQuotation) => (
+    canModify && !['paid', 'partially_paid', 'included_in_invoice'].includes(quotation.status)
+  )
 
   const cardSx = { p: 3, border: '1px solid rgba(124,58,237,0.15)' }
 
@@ -323,6 +391,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       ) : quotations.map(q => {
         const sc = STATUS_CHIP[q.status] || STATUS_CHIP.draft
         const isExpanded = expandedId === q.id
+        const latestAuthorization = q.authorizations?.[0]
         return (
           <Card key={q.id} sx={cardSx}>
             {/* Quotation header row */}
@@ -353,6 +422,21 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                     label={`${p.payment_method.replace('_', ' ').toUpperCase()} - $${Number(p.amount).toFixed(2)}`}
                     sx={{ bgcolor: '#D1FAE5', color: '#047857', fontWeight: 600, fontSize: '0.7rem' }} />
                 ))}
+              </Box>
+            )}
+            {latestAuthorization && (
+              <Box sx={{ mt: 1, p: 1.25, borderRadius: '12px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                  Authorization: {latestAuthorization.status.replace(/_/g, ' ')}
+                </Typography>
+                <Typography sx={{ fontSize: '0.8rem', color: '#334155', fontWeight: 700 }}>
+                  {latestAuthorization.authorized_by_name
+                    ? `${latestAuthorization.authorized_by_name} (${String(latestAuthorization.authorized_by_role || '').replace(/_/g, ' ')}) via ${String(latestAuthorization.channel || '').replace(/_/g, ' ')}`
+                    : `Requested by ${latestAuthorization.requested_by_name || 'administrator'}`}
+                </Typography>
+                {latestAuthorization.confirmation_reference && (
+                  <Typography sx={{ fontSize: '0.72rem', color: '#64748B' }}>Reference: {latestAuthorization.confirmation_reference}</Typography>
+                )}
               </Box>
             )}
 
@@ -408,6 +492,27 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                   </Box>
                 </Box>
               )}
+              {q.ledger_entries && q.ledger_entries.length > 0 && (
+                <Box sx={{ mt: 2, p: 2, bgcolor: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#475569', mb: 1 }}>Authorization & Payment Ledger</Typography>
+                  <Box sx={{ display: 'grid', gap: 1 }}>
+                    {q.ledger_entries.slice(0, 12).map(entry => (
+                      <Box key={entry.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px 1fr auto' }, gap: 1, alignItems: 'center', py: 0.8, borderBottom: '1px solid #E2E8F0' }}>
+                        <Typography sx={{ fontSize: '0.72rem', color: '#64748B' }}>{new Date(entry.created_at).toLocaleString()}</Typography>
+                        <Box>
+                          <Typography sx={{ fontSize: '0.78rem', color: '#1E1B4B', fontWeight: 900 }}>{entry.event_type.replace(/_/g, ' ')}</Typography>
+                          <Typography sx={{ fontSize: '0.72rem', color: '#64748B' }}>
+                            {entry.actor_name} ({entry.actor_role.replace(/_/g, ' ')}){entry.channel ? ` · ${entry.channel.replace(/_/g, ' ')}` : ''}
+                          </Typography>
+                        </Box>
+                        <Typography sx={{ fontSize: '0.78rem', color: '#047857', fontWeight: 900 }}>
+                          {entry.amount != null ? `$${Number(entry.amount).toFixed(2)}` : ''}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
             </Collapse>
           </Card>
         )
@@ -423,13 +528,36 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             {expandedId === actionQuotation.id ? 'Hide Details' : 'View Details'}
           </MenuItem>
         )}
-        {canModify && actionQuotation && (
+        {actionQuotation && canManageAuthorization
+          && !['authorization_requested', 'authorized', 'paid', 'included_in_invoice', 'cancelled'].includes(actionQuotation.status)
+          && !(actionQuotation.status === 'partially_paid' && actionQuotation.authorizations?.some(item => ['requested', 'authorized'].includes(item.status))) && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
+            requestAuthorizationMut.mutate({ id: actionQuotation.id })
+            closeActions()
+          }}>
+            <ListItemIcon sx={{ minWidth: 34 }}><PaymentIcon fontSize="small" sx={{ color: '#B45309' }} /></ListItemIcon>
+            Request Authorization
+          </MenuItem>
+        )}
+        {actionQuotation?.status === 'authorization_requested' && canManageAuthorization && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openAuthorizationDialog(actionQuotation, 'phone'); closeActions() }}>
+            <ListItemIcon sx={{ minWidth: 34 }}><CheckCircleIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            Record Phone Decision
+          </MenuItem>
+        )}
+        {actionQuotation?.status === 'authorization_requested' && canSelfAuthorize && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openAuthorizationDialog(actionQuotation, 'self_service'); closeActions() }}>
+            <ListItemIcon sx={{ minWidth: 34 }}><CheckCircleIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            Review Authorization
+          </MenuItem>
+        )}
+        {actionQuotation && canModifyQuotation(actionQuotation) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openEdit(actionQuotation); closeActions() }}>
             <ListItemIcon sx={{ minWidth: 34 }}><EditIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
             Edit
           </MenuItem>
         )}
-        {canModify && actionQuotation && (
+        {actionQuotation && canModifyQuotation(actionQuotation) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
             if (window.confirm('Delete this quotation?')) deleteMut.mutate(actionQuotation.id)
             closeActions()
@@ -528,6 +656,65 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       </Dialog>
 
       {/* ── Payment Dialog ───────────────────────────────────────────── */}
+      <Dialog open={Boolean(authorizationQuotation)} onClose={closeAuthorizationDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 800, color: '#1E1B4B' }}>
+          {authorizationChannel === 'phone' ? 'Record Phone Authorization' : 'Review Quotation Authorization'}
+        </DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: '12px !important' }}>
+          <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
+            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{authorizationQuotation?.quotation_number}</Typography>
+            <Typography sx={{ color: '#64748B', fontSize: 13 }}>{authorizationQuotation?.description}</Typography>
+            <Typography sx={{ color: '#047857', fontWeight: 950, mt: 0.5 }}>${Number(authorizationQuotation?.amount || 0).toFixed(2)}</Typography>
+          </Box>
+          <FormControl fullWidth>
+            <InputLabel>Decision</InputLabel>
+            <Select value={authorizationDecision} label="Decision" onChange={event => setAuthorizationDecision(event.target.value as 'authorized' | 'declined')}>
+              <MenuItem value="authorized">Authorize payment</MenuItem>
+              <MenuItem value="declined">Decline authorization</MenuItem>
+            </Select>
+          </FormControl>
+          {authorizationChannel === 'phone' && (
+            <FormControl fullWidth>
+              <InputLabel>Facility Representative</InputLabel>
+              <Select
+                value={phoneAuthorizerId}
+                label="Facility Representative"
+                onChange={event => setPhoneAuthorizerId(Number(event.target.value))}
+                disabled={facilityAuthorizersQ.isLoading}
+              >
+                {(facilityAuthorizersQ.data || []).map(authorizer => (
+                  <MenuItem key={authorizer.id} value={authorizer.id}>
+                    {authorizer.full_name} · {authorizer.role.replace(/_/g, ' ')}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          <TextField
+            label={authorizationChannel === 'phone' ? 'Phone authorization notes' : 'Authorization notes'}
+            value={authorizationNotes}
+            onChange={event => setAuthorizationNotes(event.target.value)}
+            multiline
+            minRows={2}
+            fullWidth
+          />
+          <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
+            The decision, authorizer, channel, administrator and timestamp will be permanently recorded in the quotation ledger.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={closeAuthorizationDialog}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => authorizationQuotation && decideAuthorizationMut.mutate({ id: authorizationQuotation.id })}
+            disabled={decideAuthorizationMut.isPending || (authorizationChannel === 'phone' && !phoneAuthorizerId)}
+            sx={{ borderRadius: '10px', fontWeight: 800, background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)' }}
+          >
+            {decideAuthorizationMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Save Decision'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={payOpen !== null} onClose={() => { setPayOpen(null); resetPayForm() }} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
         <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>Record Payment</DialogTitle>
         <DialogContent>
