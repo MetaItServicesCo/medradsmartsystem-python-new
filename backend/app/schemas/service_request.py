@@ -1,7 +1,7 @@
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Line Items ───────────────────────────────────────────────────────────────
@@ -262,3 +262,4 @@ class ServiceRequestResponse(BaseModel):
 class ServiceRequestListResponse(BaseModel):
     items: List[ServiceRequestResponse]
     total: int
+    stats: dict[str, int] = Field(default_factory=dict)

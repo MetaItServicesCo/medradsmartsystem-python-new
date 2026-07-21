@@ -130,8 +130,10 @@ export interface ReportListParams {
 const cleanParams = (params: ReportListParams = {}) =>
   Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ''))
 
-export const fetchReportsSummary = async (): Promise<ReportsSummary> => {
-  const res = await apiClient.get('/reports/summary')
+export const fetchReportsSummary = async (
+  params: Pick<ReportListParams, 'date_from' | 'date_to'> = {},
+): Promise<ReportsSummary> => {
+  const res = await apiClient.get('/reports/summary', { params: cleanParams(params) })
   return res.data
 }
 

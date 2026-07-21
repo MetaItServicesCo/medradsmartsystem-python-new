@@ -999,9 +999,13 @@ def facility_equipment_for_inspection(
 
 @router.get("/summary")
 def inspection_summary(
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="From date cannot be later than To date")
     inspections = scope_query_to_user_facilities(
         db.query(Inspection), Inspection.facility_id, db, current_user
     )
@@ -1020,21 +1024,48 @@ def inspection_summary(
     invoices = scope_query_to_user_facilities(
         db.query(Invoice), Invoice.facility_id, db, current_user
     )
+    def date_scoped(query, column):
+        if date_from:
+            query = query.filter(column >= datetime.combine(date_from, time.min))
+        if date_to:
+            query = query.filter(column <= datetime.combine(date_to, time.max))
+        return query
+
+    upcoming = date_scoped(
+        inspections.filter(Inspection.status == InspectionStatus.UPCOMING),
+        Inspection.scheduled_date,
+    )
+    in_progress_batches = date_scoped(
+        batches.filter(InspectionBatch.status == InspectionStatus.IN_PROGRESS),
+        func.coalesce(InspectionBatch.started_at, InspectionBatch.scheduled_date),
+    )
+    in_progress_items = date_scoped(
+        inspections.filter(
+            Inspection.status == InspectionStatus.IN_PROGRESS,
+            Inspection.batch_id.is_(None),
+        ),
+        func.coalesce(Inspection.started_at, Inspection.scheduled_date),
+    )
+    completed_batches = date_scoped(
+        batches.filter(InspectionBatch.status == InspectionStatus.COMPLETED),
+        InspectionBatch.completed_at,
+    )
+    completed_items = date_scoped(
+        inspections.filter(
+            Inspection.status == InspectionStatus.COMPLETED,
+            Inspection.batch_id.is_(None),
+        ),
+        Inspection.completed_at,
+    )
     return {
-        "upcoming": inspections.filter(Inspection.status == InspectionStatus.UPCOMING).count(),
+        "upcoming": upcoming.count(),
         "in_progress": (
-            batches.filter(InspectionBatch.status == InspectionStatus.IN_PROGRESS).count()
-            + inspections.filter(
-                Inspection.status == InspectionStatus.IN_PROGRESS,
-                Inspection.batch_id.is_(None),
-            ).count()
+            in_progress_batches.count()
+            + in_progress_items.count()
         ),
         "completed": (
-            batches.filter(InspectionBatch.status == InspectionStatus.COMPLETED).count()
-            + inspections.filter(
-                Inspection.status == InspectionStatus.COMPLETED,
-                Inspection.batch_id.is_(None),
-            ).count()
+            completed_batches.count()
+            + completed_items.count()
         ),
         "assets": equipment.count(),
         "quotations": invoices.filter(Invoice.invoice_type == InvoiceType.INSPECTION).count(),
@@ -1071,10 +1102,17 @@ def list_inspections(
         query = query.filter(Inspection.facility_id == facility_id)
     if unbatched_only:
         query = query.filter(Inspection.batch_id.is_(None))
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="From date cannot be later than To date")
+    inspection_date_column = Inspection.scheduled_date
+    if status_filter == InspectionStatus.IN_PROGRESS:
+        inspection_date_column = func.coalesce(Inspection.started_at, Inspection.scheduled_date)
+    elif status_filter == InspectionStatus.COMPLETED:
+        inspection_date_column = Inspection.completed_at
     if date_from:
-        query = query.filter(Inspection.scheduled_date >= datetime.combine(date_from, time.min))
+        query = query.filter(inspection_date_column >= datetime.combine(date_from, time.min))
     if date_to:
-        query = query.filter(Inspection.scheduled_date <= datetime.combine(date_to, time.max))
+        query = query.filter(inspection_date_column <= datetime.combine(date_to, time.max))
     if search and search.strip():
         like = f"%{search.strip()}%"
         query = (
@@ -1138,10 +1176,14 @@ def list_inspection_batches(
     db: Session = Depends(get_db),
     status_filter: Optional[InspectionStatus] = Query(None, alias="status"),
     facility_id: Optional[int] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="From date cannot be later than To date")
     query = (
         scope_query_to_user_facilities(db.query(InspectionBatch), InspectionBatch.facility_id, db, current_user)
         .options(
@@ -1154,6 +1196,15 @@ def list_inspection_batches(
     if facility_id:
         require_facility_access(db, current_user, facility_id)
         query = query.filter(InspectionBatch.facility_id == facility_id)
+    batch_date_column = InspectionBatch.scheduled_date
+    if status_filter == InspectionStatus.IN_PROGRESS:
+        batch_date_column = func.coalesce(InspectionBatch.started_at, InspectionBatch.scheduled_date)
+    elif status_filter == InspectionStatus.COMPLETED:
+        batch_date_column = InspectionBatch.completed_at
+    if date_from:
+        query = query.filter(batch_date_column >= datetime.combine(date_from, time.min))
+    if date_to:
+        query = query.filter(batch_date_column <= datetime.combine(date_to, time.max))
     if current_user.role == UserRole.TECHNICIAN:
         query = query.filter(InspectionBatch.inspector_id == current_user.id)
     elif current_user.role == UserRole.EMPLOYEE:

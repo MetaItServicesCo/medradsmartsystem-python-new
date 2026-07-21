@@ -370,7 +370,7 @@ export const fetchInspections = async (
 }
 
 export const fetchInspectionBatches = async (
-  params: { status?: InspectionStatus; facility_id?: number; skip?: number; limit?: number } = {}
+  params: { status?: InspectionStatus; facility_id?: number; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<InspectionBatchListResponse> => {
   const res = await apiClient.get('/inspections/batches', { params })
   return res.data
@@ -465,8 +465,10 @@ export const updateInspectionTechnician = async (
   return res.data
 }
 
-export const fetchInspectionSummary = async (): Promise<InspectionSummary> => {
-  const res = await apiClient.get('/inspections/summary')
+export const fetchInspectionSummary = async (
+  params: { date_from?: string; date_to?: string } = {},
+): Promise<InspectionSummary> => {
+  const res = await apiClient.get('/inspections/summary', { params })
   return res.data
 }
 

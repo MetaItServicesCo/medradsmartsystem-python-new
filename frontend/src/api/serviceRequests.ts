@@ -366,6 +366,7 @@ export interface ServiceRequestHistoryEntry {
 export interface ServiceRequestListResponse {
   items: ServiceRequest[]
   total: number
+  stats?: Record<'total' | 'new' | 'in_progress' | 'completed', number>
 }
 
 export interface ServiceRequestListParams {
@@ -373,6 +374,9 @@ export interface ServiceRequestListParams {
   priority?: string
   facility_id?: number
   search?: string
+  status_group?: 'new_open' | 'active' | 'completed'
+  date_from?: string
+  date_to?: string
   skip?: number
   limit?: number
 }

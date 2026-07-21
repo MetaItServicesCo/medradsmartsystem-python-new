@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -261,16 +261,52 @@ def _apply_inspection_filters(query, search: Optional[str], facility_id: Optiona
 
 @router.get("/summary")
 def reports_summary(
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="From date cannot be later than To date")
     service_query = _scope_service_query(db.query(ServiceRequest), db, current_user).filter(ServiceRequest.status == ServiceRequestStatus.COMPLETED)
     inspection_query = _scope_inspection_query(db.query(Inspection), db, current_user).filter(Inspection.status == InspectionStatus.COMPLETED)
     history_query = _scope_service_query(db.query(ServiceRequest), db, current_user)
+    service_query = _apply_service_filters(service_query, None, None, None, date_from, date_to)
+    inspection_query = _apply_inspection_filters(inspection_query, None, None, None, None, date_from, date_to)
+
+    history_start = datetime.combine(date_from, time.min) if date_from else None
+    history_end = datetime.combine(date_to, time.max) if date_to else None
+    if not history_start and not history_end:
+        history_count = history_query.filter(ServiceRequest.history.isnot(None)).count()
+    else:
+        # Narrow candidates in SQL before inspecting the JSON ledger. A request
+        # cannot contain an event before it was created or after its last update.
+        if history_start:
+            history_query = history_query.filter(ServiceRequest.updated_at >= history_start)
+        if history_end:
+            history_query = history_query.filter(ServiceRequest.created_at <= history_end)
+        history_count = 0
+        for (entries,) in history_query.with_entities(ServiceRequest.history).filter(ServiceRequest.history.isnot(None)).yield_per(500):
+            if not entries:
+                continue
+            for entry in entries:
+                timestamp_raw = entry.get("timestamp") if isinstance(entry, dict) else None
+                if not timestamp_raw:
+                    continue
+                try:
+                    timestamp = datetime.fromisoformat(str(timestamp_raw).replace("Z", "+00:00")).replace(tzinfo=None)
+                except ValueError:
+                    continue
+                if history_start and timestamp < history_start:
+                    continue
+                if history_end and timestamp > history_end:
+                    continue
+                history_count += 1
+                break
     return {
         "service_reports": service_query.count(),
         "inspection_reports": inspection_query.count(),
-        "service_history": history_query.filter(ServiceRequest.history.isnot(None)).count(),
+        "service_history": history_count,
     }
 
 
@@ -286,6 +322,8 @@ def get_service_reports(
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="From date cannot be later than To date")
     query = (
         _scope_service_query(db.query(ServiceRequest), db, current_user)
         .options(
@@ -326,6 +364,8 @@ def get_inspection_reports(
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="From date cannot be later than To date")
     query = (
         _scope_inspection_query(db.query(Inspection), db, current_user)
         .options(
@@ -369,6 +409,8 @@ def get_service_request_history(
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="From date cannot be later than To date")
     query = (
         _scope_service_query(db.query(ServiceRequest), db, current_user)
         .options(
@@ -382,6 +424,10 @@ def get_service_request_history(
     rows: list[dict[str, Any]] = []
     start_dt = datetime.combine(date_from, time.min) if date_from else None
     end_dt = datetime.combine(date_to, time.max) if date_to else None
+    if start_dt:
+        query = query.filter(ServiceRequest.updated_at >= start_dt)
+    if end_dt:
+        query = query.filter(ServiceRequest.created_at <= end_dt)
     for sr in query.order_by(ServiceRequest.updated_at.desc()).all():
         for index, entry in enumerate(sr.history or []):
             entry_action = str(entry.get("action") or "updated")
@@ -394,6 +440,8 @@ def get_service_request_history(
                     timestamp = datetime.fromisoformat(str(timestamp_raw).replace("Z", "+00:00")).replace(tzinfo=None)
                 except ValueError:
                     timestamp = None
+            if (start_dt or end_dt) and timestamp is None:
+                continue
             if start_dt and timestamp and timestamp < start_dt:
                 continue
             if end_dt and timestamp and timestamp > end_dt:

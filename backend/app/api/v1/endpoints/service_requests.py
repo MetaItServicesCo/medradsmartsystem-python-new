@@ -2,11 +2,11 @@ import copy
 import os
 import uuid
 from typing import Any, Optional
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -566,47 +566,86 @@ def list_service_requests(
     priority: Optional[str] = Query(None),
     facility_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    status_group: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=2000),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """List service requests with filters."""
-    query = (
-        scope_query_to_user_facilities(db.query(ServiceRequest), ServiceRequest.facility_id, db, current_user)
-        .options(
-            joinedload(ServiceRequest.facility),
-            joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
-            joinedload(ServiceRequest.requester),
-            joinedload(ServiceRequest.assigned_technician),
-            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
-            joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
-        )
-    )
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="From date cannot be later than To date")
 
-    if status:
-        query = query.filter(ServiceRequest.status == status)
+    base_query = scope_query_to_user_facilities(
+        db.query(ServiceRequest), ServiceRequest.facility_id, db, current_user
+    )
     if priority:
-        query = query.filter(ServiceRequest.priority == priority)
+        base_query = base_query.filter(ServiceRequest.priority == priority)
     if facility_id:
-        query = query.filter(ServiceRequest.facility_id == facility_id)
+        base_query = base_query.filter(ServiceRequest.facility_id == facility_id)
     if search:
-        query = query.filter(
+        base_query = base_query.filter(
             ServiceRequest.request_number.ilike(f"%{search}%")
             | ServiceRequest.problem_description.ilike(f"%{search}%")
         )
+    if date_from:
+        base_query = base_query.filter(ServiceRequest.created_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        base_query = base_query.filter(ServiceRequest.created_at <= datetime.combine(date_to, time.max))
 
     # Technicians only see service requests they are assigned to
     if current_user.role == UserRole.TECHNICIAN:
-        query = query.filter(ServiceRequest.assigned_technician_id == current_user.id)
+        base_query = base_query.filter(ServiceRequest.assigned_technician_id == current_user.id)
 
     # Employees only see requests they submitted. Clients are facility-scoped
     # through scope_query_to_user_facilities when assigned to facilities.
     if current_user.role == UserRole.EMPLOYEE:
-        query = query.filter(ServiceRequest.requester_id == current_user.id)
+        base_query = base_query.filter(ServiceRequest.requester_id == current_user.id)
+
+    open_statuses = [ServiceRequestStatus.NEW, ServiceRequestStatus.ASSIGNED]
+    active_statuses = [
+        ServiceRequestStatus.IN_PROGRESS,
+        ServiceRequestStatus.WAITING_ON_PARTS,
+        ServiceRequestStatus.WAITING_FOR_APPROVAL,
+        ServiceRequestStatus.WAITING_FOR_DEPOT_REPAIR,
+        ServiceRequestStatus.WAITING_FOR_VENDOR_REPAIR,
+    ]
+    stats_row = base_query.with_entities(
+        func.count(ServiceRequest.id),
+        func.count(case((ServiceRequest.status.in_(open_statuses), 1))),
+        func.count(case((ServiceRequest.status.in_(active_statuses), 1))),
+        func.count(case((ServiceRequest.status == ServiceRequestStatus.COMPLETED, 1))),
+    ).one()
+    stats = {
+        "total": int(stats_row[0] or 0),
+        "new": int(stats_row[1] or 0),
+        "in_progress": int(stats_row[2] or 0),
+        "completed": int(stats_row[3] or 0),
+    }
+
+    query = base_query
+    if status:
+        query = query.filter(ServiceRequest.status == status)
+    elif status_group == "new_open":
+        query = query.filter(ServiceRequest.status.in_(open_statuses))
+    elif status_group == "active":
+        query = query.filter(ServiceRequest.status.in_(active_statuses))
+    elif status_group == "completed":
+        query = query.filter(ServiceRequest.status == ServiceRequestStatus.COMPLETED)
+
+    query = query.options(
+        joinedload(ServiceRequest.facility),
+        joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+        joinedload(ServiceRequest.requester),
+        joinedload(ServiceRequest.assigned_technician),
+        selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.line_items),
+        selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.payments),
+    )
 
     total = query.count()
     items = query.order_by(ServiceRequest.created_at.desc()).offset(skip).limit(limit).all()
-    return {"items": [_enrich(sr) for sr in items], "total": total}
+    return {"items": [_enrich(sr) for sr in items], "total": total, "stats": stats}
 
 
 # ── GET ONE ──────────────────────────────────────────────────────────────────

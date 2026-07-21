@@ -199,13 +199,15 @@ const formatChangeValue = (value: unknown): string => {
 }
 
 const Reports = () => {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const highlightedServiceRequestId = Number(params.get('serviceRequest') || 0)
-  const [tab, setTab] = useState<ReportTab>('service')
+  const requestedTab = params.get('tab') as ReportTab | null
+  const tab: ReportTab = requestedTab && TABS.includes(requestedTab) ? requestedTab : 'service'
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const dateFrom = params.get('date_from') || ''
+  const dateTo = params.get('date_to') || ''
+  const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
   const [result, setResult] = useState('')
   const [actionFilter, setActionFilter] = useState('')
   const [selectedService, setSelectedService] = useState<ServiceReport | null>(null)
@@ -213,6 +215,27 @@ const Reports = () => {
   const [selectedHistory, setSelectedHistory] = useState<ServiceHistoryReport | null>(null)
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionItem, setActionItem] = useState<ServiceReport | InspectionReport | ServiceHistoryReport | null>(null)
+
+  const selectTab = (nextTab: ReportTab) => {
+    const next = new URLSearchParams(params)
+    if (nextTab === 'service') next.delete('tab')
+    else next.set('tab', nextTab)
+    setParams(next, { replace: true })
+  }
+
+  const changeDateFilter = (key: 'date_from' | 'date_to', value: string) => {
+    const next = new URLSearchParams(params)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    setParams(next, { replace: true })
+  }
+
+  const clearDateFilters = () => {
+    const next = new URLSearchParams(params)
+    next.delete('date_from')
+    next.delete('date_to')
+    setParams(next, { replace: true })
+  }
 
   useEffect(() => {
     setPage(1)
@@ -226,30 +249,34 @@ const Reports = () => {
     limit: LIMIT,
   }), [dateFrom, dateTo, page, search])
 
-  const summaryQ = useQuery({ queryKey: ['reports-summary'], queryFn: fetchReportsSummary })
+  const summaryQ = useQuery({
+    queryKey: ['reports-summary', dateFrom, dateTo],
+    queryFn: () => fetchReportsSummary({ date_from: dateFrom || undefined, date_to: dateTo || undefined }),
+    enabled: !invalidDateRange,
+  })
   const serviceQ = useQuery({
     queryKey: ['reports', 'service', commonParams],
     queryFn: () => fetchServiceReports(commonParams),
-    enabled: tab === 'service',
+    enabled: tab === 'service' && !invalidDateRange,
   })
   const inspectionQ = useQuery({
     queryKey: ['reports', 'inspection', commonParams, result],
     queryFn: () => fetchInspectionReports({ ...commonParams, result: result || undefined }),
-    enabled: tab === 'inspection',
+    enabled: tab === 'inspection' && !invalidDateRange,
   })
   const historyQ = useQuery({
     queryKey: ['reports', 'history', commonParams, actionFilter],
     queryFn: () => fetchServiceHistoryReports({ ...commonParams, action: actionFilter || undefined }),
-    enabled: tab === 'history',
+    enabled: tab === 'history' && !invalidDateRange,
   })
 
   const activeData = tab === 'service' ? serviceQ.data : tab === 'inspection' ? inspectionQ.data : historyQ.data
   const isLoading = tab === 'service' ? serviceQ.isLoading : tab === 'inspection' ? inspectionQ.isLoading : historyQ.isLoading
   const totalPages = Math.max(1, Math.ceil((activeData?.total || 0) / LIMIT))
   const kpis = [
-    { label: 'Service Reports', value: summaryQ.data?.service_reports ?? '-', icon: <BuildIcon />, color: '#7C3AED' },
-    { label: 'Inspection Reports', value: summaryQ.data?.inspection_reports ?? '-', icon: <ChecklistIcon />, color: '#3B82F6' },
-    { label: 'Service History', value: summaryQ.data?.service_history ?? '-', icon: <HistoryIcon />, color: '#10B981' },
+    { label: 'Service Reports', value: summaryQ.data?.service_reports ?? '-', icon: <BuildIcon />, color: '#7C3AED', tab: 'service' as ReportTab },
+    { label: 'Inspection Reports', value: summaryQ.data?.inspection_reports ?? '-', icon: <ChecklistIcon />, color: '#3B82F6', tab: 'inspection' as ReportTab },
+    { label: 'Service History', value: summaryQ.data?.service_history ?? '-', icon: <HistoryIcon />, color: '#10B981', tab: 'history' as ReportTab },
   ]
 
   useEffect(() => {
@@ -311,7 +338,30 @@ const Reports = () => {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
         {kpis.map((item) => (
-          <Card key={item.label} sx={{ p: 2.5, borderRadius: '22px', border: '1px solid #EEF2F7' }}>
+          <Card
+            key={item.label}
+            role="button"
+            tabIndex={0}
+            aria-pressed={tab === item.tab}
+            onClick={() => selectTab(item.tab)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                selectTab(item.tab)
+              }
+            }}
+            sx={{
+              p: 2.5,
+              borderRadius: '22px',
+              border: tab === item.tab ? `2px solid ${item.color}` : '1px solid #EEF2F7',
+              boxShadow: tab === item.tab ? `0 18px 42px ${item.color}24` : 'none',
+              cursor: 'pointer',
+              transform: tab === item.tab ? 'translateY(-2px)' : 'none',
+              transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 18px 42px ${item.color}20` },
+              '&:focus-visible': { outline: `3px solid ${item.color}35`, outlineOffset: 2 },
+            }}
+          >
             <Avatar sx={{ bgcolor: `${item.color}18`, color: item.color, borderRadius: '16px', mb: 1.5 }}>{item.icon}</Avatar>
             <Typography sx={{ color: '#64748B', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>{item.label}</Typography>
             <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 30 }}>{item.value}</Typography>
@@ -320,21 +370,49 @@ const Reports = () => {
       </Box>
 
       <Card sx={{ borderRadius: '24px', border: '1px solid #EEF2F7', boxShadow: '0 18px 45px rgba(49,46,129,0.08)', overflow: 'hidden' }}>
-        <Tabs value={TABS.indexOf(tab)} onChange={(_, value) => setTab(TABS[value] || 'service')} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF2F7' }}>
+        <Tabs value={TABS.indexOf(tab)} onChange={(_, value) => selectTab(TABS[value] || 'service')} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF2F7' }}>
           <Tab icon={<BuildIcon />} iconPosition="start" label="Service Reports" />
           <Tab icon={<ChecklistIcon />} iconPosition="start" label="Inspection Reports" />
           <Tab icon={<HistoryIcon />} iconPosition="start" label="Service Request History" />
         </Tabs>
 
-        <Box sx={{ p: 2.5, display: 'grid', gridTemplateColumns: { xs: '1fr', md: tab === 'service' ? '1fr 180px 180px auto' : '1fr 180px 180px 180px auto' }, gap: 1.5, alignItems: 'center' }}>
+        <Box sx={{
+          p: 2.5,
+          display: 'grid',
+          gridTemplateColumns: {
+            xs: '1fr',
+            md: tab === 'service'
+              ? `minmax(240px, 1fr) 180px 180px auto${dateFrom || dateTo ? ' auto' : ''}`
+              : `minmax(240px, 1fr) 180px 180px 180px auto${dateFrom || dateTo ? ' auto' : ''}`,
+          },
+          gap: 1.5,
+          alignItems: 'center',
+        }}>
           <TextField
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search reports by number, facility, asset, technician..."
             InputProps={{ startAdornment: <SearchIcon sx={{ color: '#94A3B8', mr: 1 }} /> }}
           />
-          <TextField label="From" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} InputLabelProps={{ shrink: true }} />
-          <TextField label="To" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} InputLabelProps={{ shrink: true }} />
+          <TextField
+            label="From"
+            type="date"
+            value={dateFrom}
+            onChange={(event) => changeDateFilter('date_from', event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ max: dateTo || undefined }}
+            error={invalidDateRange}
+          />
+          <TextField
+            label="To"
+            type="date"
+            value={dateTo}
+            onChange={(event) => changeDateFilter('date_to', event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: dateFrom || undefined }}
+            error={invalidDateRange}
+            helperText={invalidDateRange ? 'Invalid range' : undefined}
+          />
           {tab === 'inspection' && (
             <TextField select label="Result" value={result} onChange={(event) => setResult(event.target.value)}>
               <MenuItem value="">All Results</MenuItem>
@@ -355,6 +433,11 @@ const Reports = () => {
           <Button startIcon={<DownloadIcon />} onClick={exportCurrentCsv} variant="outlined" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
             Export CSV
           </Button>
+          {(dateFrom || dateTo) && (
+            <Button onClick={clearDateFilters} variant="text" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+              Clear Dates
+            </Button>
+          )}
         </Box>
 
         {tab === 'service' && (

@@ -1,5 +1,5 @@
 import { type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { NumericField } from '../../components/NumericField'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -1044,12 +1044,18 @@ const Inspections = () => {
   const pageSize = 10
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const currentUser = useAuthStore((state) => state.user)
   const canAddInspections = hasPermission(currentUser, 'inspections', 'add')
   const canEditInspections = hasPermission(currentUser, 'inspections', 'edit')
   const canDeleteInspections = hasPermission(currentUser, 'inspections', 'delete')
   const canInitiateInspections = canAddInspections && canEditInspections
-  const [tab, setTab] = useState(0)
+  const requestedTab = Number(searchParams.get('tab') || 0)
+  const queryTab = Number.isInteger(requestedTab) && requestedTab >= 0 && requestedTab <= 4 ? requestedTab : 0
+  const dateFrom = searchParams.get('date_from') || ''
+  const dateTo = searchParams.get('date_to') || ''
+  const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
+  const [tab, setTab] = useState(queryTab)
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [selectedInstantEquipmentIds, setSelectedInstantEquipmentIds] = useState<number[]>([])
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([])
@@ -1110,6 +1116,28 @@ const Inspections = () => {
   const [legacyInProgressPage, setLegacyInProgressPage] = useState(0)
   const [legacyCompletedPage, setLegacyCompletedPage] = useState(0)
 
+  const selectTab = (nextTab: number) => {
+    setTab(nextTab)
+    const next = new URLSearchParams(searchParams)
+    if (nextTab === 0) next.delete('tab')
+    else next.set('tab', String(nextTab))
+    setSearchParams(next, { replace: true })
+  }
+
+  const changeDateFilter = (key: 'date_from' | 'date_to', value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    setSearchParams(next, { replace: true })
+  }
+
+  const clearDateFilters = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('date_from')
+    next.delete('date_to')
+    setSearchParams(next, { replace: true })
+  }
+
   const openFacilityFromInspection = (facilityName?: string | null) => {
     if (!facilityName || facilityName === '-') return
     navigate(`/facilities?search=${encodeURIComponent(facilityName)}`)
@@ -1147,6 +1175,18 @@ const Inspections = () => {
   }, [upcomingSearch, upcomingRange])
 
   useEffect(() => {
+    setTab(queryTab)
+  }, [queryTab])
+
+  useEffect(() => {
+    setUpcomingPage(0)
+    setInProgressBatchPage(0)
+    setCompletedBatchPage(0)
+    setLegacyInProgressPage(0)
+    setLegacyCompletedPage(0)
+  }, [dateFrom, dateTo])
+
+  useEffect(() => {
     if (addExistingAssetOpen) return
     setExistingAssetSearch('')
     setSelectedExistingEquipmentIds([])
@@ -1158,7 +1198,11 @@ const Inspections = () => {
     setTestEquipmentSearch('')
   }, [reportInspection])
 
-  const summaryQ = useQuery({ queryKey: ['inspection-summary'], queryFn: fetchInspectionSummary })
+  const summaryQ = useQuery({
+    queryKey: ['inspection-summary', dateFrom, dateTo],
+    queryFn: () => fetchInspectionSummary({ date_from: dateFrom || undefined, date_to: dateTo || undefined }),
+    enabled: !invalidDateRange,
+  })
   const facilitiesQ = useQuery({
     queryKey: ['inspection-facilities'],
     queryFn: fetchInspectionFacilities,
@@ -1170,32 +1214,37 @@ const Inspections = () => {
     enabled: Boolean(facilityId),
   })
   const upcomingWindow = useMemo(() => getUpcomingDateWindow(upcomingRange), [upcomingRange])
+  const effectiveUpcomingWindow = useMemo(() => (
+    dateFrom || dateTo
+      ? { date_from: dateFrom || undefined, date_to: dateTo || undefined }
+      : upcomingWindow
+  ), [dateFrom, dateTo, upcomingWindow])
   const upcomingQ = useQuery({
-    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize, upcomingSearch, upcomingRange],
+    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize, upcomingSearch, upcomingRange, dateFrom, dateTo],
     queryFn: () => fetchInspections({
       status: 'upcoming',
       search: upcomingSearch.trim() || undefined,
-      date_from: upcomingWindow.date_from,
-      date_to: upcomingWindow.date_to,
+      date_from: effectiveUpcomingWindow.date_from,
+      date_to: effectiveUpcomingWindow.date_to,
       skip: upcomingPage * pageSize,
       limit: pageSize,
     }),
-    enabled: tab === 0,
+    enabled: tab === 0 && !invalidDateRange,
   })
   const inProgressQ = useQuery({
-    queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize],
-    queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, skip: legacyInProgressPage * pageSize, limit: pageSize }),
-    enabled: tab === 2,
+    queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize, dateFrom, dateTo],
+    queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyInProgressPage * pageSize, limit: pageSize }),
+    enabled: tab === 2 && !invalidDateRange,
   })
   const inProgressBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'in_progress', inProgressBatchPage, pageSize],
-    queryFn: () => fetchInspectionBatches({ status: 'in_progress', skip: inProgressBatchPage * pageSize, limit: pageSize }),
-    enabled: tab === 2,
+    queryKey: ['inspection-batches', 'in_progress', inProgressBatchPage, pageSize, dateFrom, dateTo],
+    queryFn: () => fetchInspectionBatches({ status: 'in_progress', date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: inProgressBatchPage * pageSize, limit: pageSize }),
+    enabled: tab === 2 && !invalidDateRange,
   })
   const completedBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'completed', completedBatchPage, pageSize],
-    queryFn: () => fetchInspectionBatches({ status: 'completed', skip: completedBatchPage * pageSize, limit: pageSize }),
-    enabled: tab === 3,
+    queryKey: ['inspection-batches', 'completed', completedBatchPage, pageSize, dateFrom, dateTo],
+    queryFn: () => fetchInspectionBatches({ status: 'completed', date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: completedBatchPage * pageSize, limit: pageSize }),
+    enabled: tab === 3 && !invalidDateRange,
   })
   const batchDetailQ = useQuery({
     queryKey: ['inspection-batches', selectedBatchId],
@@ -1208,9 +1257,9 @@ const Inspections = () => {
     enabled: addExistingAssetOpen && Boolean(batchDetailQ.data?.facility_id),
   })
   const completedQ = useQuery({
-    queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize],
-    queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, skip: legacyCompletedPage * pageSize, limit: pageSize }),
-    enabled: tab === 3,
+    queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize, dateFrom, dateTo],
+    queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyCompletedPage * pageSize, limit: pageSize }),
+    enabled: tab === 3 && !invalidDateRange,
   })
   const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 4 || Boolean(reportInspection) })
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen })
@@ -1263,7 +1312,7 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
-      setTab(2)
+      selectTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
   })
@@ -1277,7 +1326,7 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
-      setTab(0)
+      selectTab(0)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not schedule inspections'),
   })
@@ -1300,7 +1349,7 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
-      setTab(2)
+      selectTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
   })
@@ -2647,8 +2696,30 @@ const Inspections = () => {
     printInspectionReport(asset)
   }
 
-  const renderKpi = (label: string, value: number, icon: JSX.Element, color: string) => (
-    <Card sx={{ p: 2.2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(49,46,129,0.07)' }}>
+  const renderKpi = (label: string, value: number, icon: JSX.Element, color: string, targetTab: number) => (
+    <Card
+      role="button"
+      tabIndex={0}
+      aria-pressed={tab === targetTab}
+      onClick={() => selectTab(targetTab)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          selectTab(targetTab)
+        }
+      }}
+      sx={{
+        p: 2.2,
+        borderRadius: '18px',
+        border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
+        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(49,46,129,0.07)',
+        cursor: 'pointer',
+        transform: tab === targetTab ? 'translateY(-2px)' : 'none',
+        transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
+        '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 18px 40px ${color}20` },
+        '&:focus-visible': { outline: `3px solid ${color}35`, outlineOffset: 2 },
+      }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
         <Avatar sx={{ bgcolor: `${color}18`, color, borderRadius: '14px' }}>{icon}</Avatar>
         <Box>
@@ -3292,15 +3363,51 @@ const Inspections = () => {
         </Box>
       </Card>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 2, mb: 3 }}>
-        {renderKpi('Upcoming', stats.upcoming, <EventAvailableIcon />, '#2563EB')}
-        {renderKpi('Assets', stats.instantItems, <BoltIcon />, '#7C3AED')}
-        {renderKpi('In Progress', stats.inProgress, <BuildIcon />, '#F59E0B')}
-        {renderKpi('Completed', stats.completed, <CheckCircleIcon />, '#059669')}
+      <Card sx={{ p: 2, mb: 2.5, borderRadius: '20px', border: '1px solid #EEF0F6', boxShadow: '0 12px 30px rgba(49,46,129,0.06)' }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flexWrap: 'wrap' }}>
+          <TextField
+            size="small"
+            label="From"
+            type="date"
+            value={dateFrom}
+            onChange={(event) => changeDateFilter('date_from', event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ max: dateTo || undefined }}
+            error={invalidDateRange}
+            sx={{ width: { xs: '100%', sm: 180 }, '& .MuiOutlinedInput-root': { borderRadius: '14px' } }}
+          />
+          <TextField
+            size="small"
+            label="To"
+            type="date"
+            value={dateTo}
+            onChange={(event) => changeDateFilter('date_to', event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: dateFrom || undefined }}
+            error={invalidDateRange}
+            helperText={invalidDateRange ? 'To date must be on or after From date.' : undefined}
+            sx={{ width: { xs: '100%', sm: 220 }, '& .MuiOutlinedInput-root': { borderRadius: '14px' } }}
+          />
+          {(dateFrom || dateTo) && (
+            <Button onClick={clearDateFilters} variant="text" sx={{ minHeight: 40, borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+              Clear Dates
+            </Button>
+          )}
+          <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, alignSelf: 'center', ml: { md: 'auto' } }}>
+            Dates filter inspection totals and the active inspection list without changing asset scheduling.
+          </Typography>
+        </Box>
+      </Card>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2, mb: 3 }}>
+        {renderKpi('Upcoming', stats.upcoming, <EventAvailableIcon />, '#2563EB', 0)}
+        {renderKpi('Assets', stats.instantItems, <BoltIcon />, '#7C3AED', 1)}
+        {renderKpi('In Progress', stats.inProgress, <BuildIcon />, '#F59E0B', 2)}
+        {renderKpi('Completed', stats.completed, <CheckCircleIcon />, '#059669', 3)}
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
+        <Tabs value={tab} onChange={(_, v) => selectTab(v)} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
           <Tab icon={<EventAvailableIcon />} iconPosition="start" label="Upcoming" />
           <Tab icon={<BoltIcon />} iconPosition="start" label="Instant Inspection" />
           <Tab icon={<BuildIcon />} iconPosition="start" label="In Progress" />
@@ -3395,6 +3502,7 @@ const Inspections = () => {
                   label="Due within"
                   value={upcomingRange}
                   onChange={e => setUpcomingRange(e.target.value as UpcomingDateRange)}
+                  disabled={Boolean(dateFrom || dateTo)}
                 >
                   {UPCOMING_DATE_RANGES.map(option => (
                     <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
@@ -3402,7 +3510,9 @@ const Inspections = () => {
                 </TextField>
               </Box>
               <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, mt: 1 }}>
-                Showing inspections scheduled from {formatDate(upcomingWindow.date_from)} to {formatDate(upcomingWindow.date_to)}.
+                {dateFrom || dateTo
+                  ? `Showing inspections${dateFrom ? ` from ${formatDate(dateFrom)}` : ''}${dateTo ? ` through ${formatDate(dateTo)}` : ''}. Clear the module dates to use Due within.`
+                  : `Showing inspections scheduled from ${formatDate(upcomingWindow.date_from)} to ${formatDate(upcomingWindow.date_to)}.`}
               </Typography>
             </Card>
             {renderUpcomingRows()}

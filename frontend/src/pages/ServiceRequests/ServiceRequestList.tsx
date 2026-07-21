@@ -109,6 +109,10 @@ const ServiceRequestList = () => {
   const querySearch = searchParams.get('search') || ''
   const queryStatus = searchParams.get('status') || ''
   const queryPriority = searchParams.get('priority') || ''
+  const queryStatusGroup = searchParams.get('status_group') || ''
+  const queryDateFrom = searchParams.get('date_from') || ''
+  const queryDateTo = searchParams.get('date_to') || ''
+  const invalidDateRange = Boolean(queryDateFrom && queryDateTo && queryDateFrom > queryDateTo)
 
   const [searchInput, setSearchInput] = useState(querySearch)
   const [page, setPage] = useState(1)
@@ -139,15 +143,19 @@ const ServiceRequestList = () => {
   const skip = (page - 1) * limit
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['service-requests', querySearch, queryStatus, queryPriority, skip, limit],
+    queryKey: ['service-requests', querySearch, queryStatus, queryStatusGroup, queryPriority, queryDateFrom, queryDateTo, skip, limit],
     queryFn: () =>
       fetchServiceRequests({
         search: querySearch || undefined,
         status: queryStatus || undefined,
+        status_group: (queryStatusGroup || undefined) as 'new_open' | 'active' | 'completed' | undefined,
         priority: queryPriority || undefined,
+        date_from: queryDateFrom || undefined,
+        date_to: queryDateTo || undefined,
         skip,
         limit,
       }),
+    enabled: !invalidDateRange,
     placeholderData: previousData => previousData,
   })
 
@@ -168,20 +176,46 @@ const ServiceRequestList = () => {
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / limit)
 
-  // Stats
-  const countByStatus = (s: string) => items.filter((r) => r.status === s).length
   const statsValues: Record<string, number> = {
-    total,
-    new: countByStatus('new') + countByStatus('assigned'),
-    in_progress: WORKFLOW_OPEN_STATUSES.reduce((sum, status) => sum + countByStatus(status), 0),
-    completed: countByStatus('completed'),
+    total: data?.stats?.total ?? total,
+    new: data?.stats?.new ?? items.filter((request) => ['new', 'assigned'].includes(request.status)).length,
+    in_progress: data?.stats?.in_progress ?? items.filter((request) => WORKFLOW_OPEN_STATUSES.includes(request.status)).length,
+    completed: data?.stats?.completed ?? items.filter((request) => request.status === 'completed').length,
   }
 
-  const handleFilterChange = (key: string) => (e: SelectChangeEvent<string> | React.ChangeEvent<HTMLInputElement>) => {
+  const activeCardKey = queryStatus
+    ? null
+    : queryStatusGroup === 'new_open'
+      ? 'new'
+      : queryStatusGroup === 'active'
+        ? 'in_progress'
+        : queryStatusGroup === 'completed'
+          ? 'completed'
+          : 'total'
+
+  const handleFilterChange = (key: string) => (e: SelectChangeEvent<string> | React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const next = new URLSearchParams(searchParams)
     if (e.target.value) next.set(key, e.target.value)
     else next.delete(key)
+    if (key === 'status') next.delete('status_group')
     setSearchParams(next, { replace: true })
+    setPage(1)
+  }
+
+  const handleCardClick = (cardKey: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('status')
+    if (cardKey === 'new') next.set('status_group', 'new_open')
+    else if (cardKey === 'in_progress') next.set('status_group', 'active')
+    else if (cardKey === 'completed') next.set('status_group', 'completed')
+    else next.delete('status_group')
+    setSearchParams(next, { replace: true })
+    setPage(1)
+  }
+
+  const clearFilters = () => {
+    setSearchInput('')
+    setSearchParams(new URLSearchParams(), { replace: true })
     setPage(1)
   }
 
@@ -217,12 +251,27 @@ const ServiceRequestList = () => {
         {STAT_CARDS.map((card) => (
           <Card
             key={card.key}
+            role="button"
+            tabIndex={0}
+            aria-pressed={activeCardKey === card.key}
+            onClick={() => handleCardClick(card.key)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleCardClick(card.key)
+              }
+            }}
             sx={{
               p: 2.3,
               minHeight: 150,
               borderRadius: '22px',
-              border: '1px solid #EEF0F6',
-              boxShadow: '0 18px 40px rgba(49,46,129,0.08)',
+              border: activeCardKey === card.key ? `2px solid ${card.color}` : '1px solid #EEF0F6',
+              boxShadow: activeCardKey === card.key ? `0 18px 42px ${card.color}24` : '0 18px 40px rgba(49,46,129,0.08)',
+              cursor: 'pointer',
+              transform: activeCardKey === card.key ? 'translateY(-2px)' : 'none',
+              transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 20px 44px ${card.color}20` },
+              '&:focus-visible': { outline: `3px solid ${card.color}35`, outlineOffset: 2 },
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -304,6 +353,36 @@ const ServiceRequestList = () => {
               <MenuItem value="cancelled">Cancelled</MenuItem>
             </Select>
           </FormControl>
+
+          <TextField
+            size="small"
+            label="From"
+            type="date"
+            value={queryDateFrom}
+            onChange={handleFilterChange('date_from')}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ max: queryDateTo || undefined }}
+            error={invalidDateRange}
+            sx={{ width: 155, '& .MuiOutlinedInput-root': { borderRadius: '16px' } }}
+          />
+          <TextField
+            size="small"
+            label="To"
+            type="date"
+            value={queryDateTo}
+            onChange={handleFilterChange('date_to')}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: queryDateFrom || undefined }}
+            error={invalidDateRange}
+            helperText={invalidDateRange ? 'Invalid range' : undefined}
+            sx={{ width: 155, '& .MuiOutlinedInput-root': { borderRadius: '16px' } }}
+          />
+
+          {(querySearch || queryStatus || queryStatusGroup || queryPriority || queryDateFrom || queryDateTo) && (
+            <Button onClick={clearFilters} startIcon={<ClearIcon />} sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none' }}>
+              Clear Filters
+            </Button>
+          )}
 
           {/* Priority Filter */}
           <FormControl size="small" sx={{ minWidth: 140 }}>
