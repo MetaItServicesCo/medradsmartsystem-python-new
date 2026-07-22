@@ -154,6 +154,14 @@ const printServiceReport = (report: ServiceReport) => {
       <h4>Diagnosis</h4><p>${escapeHtml(session.diagnosis || '-')}</p>
       <h4>Work Done</h4><p>${escapeHtml(session.work_done || '-')}</p>
       ${session.notes ? `<h4>Notes</h4><p>${escapeHtml(session.notes)}</p>` : ''}
+      ${(session.test_equipment || []).length ? `
+        <h4>Test Equipment Used</h4>
+        ${(session.test_equipment || []).map((item: any) => `<span class="pill">${escapeHtml(item.tem || item.description || 'Test Equipment')}</span>`).join('')}
+      ` : ''}
+      ${(session.parts || []).length ? `
+        <h4>Parts Used</h4>
+        ${(session.parts || []).map((item: any) => `<span class="pill">${escapeHtml(item.part_number || 'Part')} · Qty ${escapeHtml(Number(item.quantity_used || 0))}</span>`).join('')}
+      ` : ''}
     </section>
   `).join('') : '<section class="section"><p class="muted">No technician sessions were recorded.</p></section>'
   printHtml(`${report.request_number} Service Report`, `
@@ -605,6 +613,29 @@ const ServiceReportDialog = ({ report, onClose }: { report: ServiceReport | null
                     <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, textTransform: 'uppercase' }}>Work Done</Typography>
                     <Typography sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>{session.work_done || '-'}</Typography>
                     {session.notes && <Typography sx={{ whiteSpace: 'pre-wrap', color: '#475569' }}>{session.notes}</Typography>}
+                    {(session.test_equipment || []).length > 0 && (
+                      <Box sx={{ mt: 1.5 }}>
+                        <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', mb: 0.75 }}>Test Equipment Used</Typography>
+                        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                          {(session.test_equipment || []).map((item: any, itemIndex: number) => (
+                            <Chip key={`${item.id || item.serial_number || itemIndex}`} size="small" label={item.tem || item.description || 'Test Equipment'} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 900 }} />
+                          ))}
+                        </Box>
+                      </Box>
+                    )}
+                    {(session.parts || []).length > 0 && (
+                      <Box sx={{ mt: 1.5 }}>
+                        <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', mb: 0.75 }}>Parts Used</Typography>
+                        <Box sx={{ display: 'grid', gap: 0.75 }}>
+                          {(session.parts || []).map((item: any, itemIndex: number) => (
+                            <Box key={`${item.id || item.part_number || itemIndex}`} sx={{ p: 1, borderRadius: '10px', bgcolor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                              <Typography sx={{ color: '#14532D', fontWeight: 900, fontSize: 13 }}>{item.part_number || 'Inventory Part'} - {item.description || 'No description'}</Typography>
+                              <Typography sx={{ color: '#166534', fontSize: 12 }}>Quantity used: {Number(item.quantity_used || 0)} · Stock remaining: {Number(item.balance_after || 0)}</Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Box>
+                    )}
                   </Box>
                 ))}
               </Box>

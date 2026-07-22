@@ -21,6 +21,7 @@ export interface ServiceReportSession {
   work_done?: string | null
   notes?: string | null
   test_equipment?: any[]
+  parts?: any[]
 }
 
 export interface ServiceReport {

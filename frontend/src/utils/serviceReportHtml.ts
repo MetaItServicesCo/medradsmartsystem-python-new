@@ -30,6 +30,8 @@ export const SERVICE_REPORT_EXTRA_CSS = `
   .report-equipment-list { display: grid; gap: 8px; margin-top: 8px; }
   .report-equipment-item { border: 1px solid #EDE9FE; border-radius: 10px; padding: 8px 10px; background: #FAF5FF; color: #312E81; }
   .report-equipment-item b { color: #1E1B4B; }
+  .report-part-item { border: 1px solid #BBF7D0; border-radius: 10px; padding: 8px 10px; background: #F0FDF4; color: #166534; }
+  .report-part-item b { color: #14532D; }
   .report-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
   .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
 `
@@ -44,6 +46,21 @@ const buildSessionEquipmentHtml = (session: any) => {
         <div class="report-equipment-item">
           <b>${esc(item.tem || item.description || 'Test Equipment')}</b>
           <br>${esc([item.mrf, item.model, item.serial_number].filter(Boolean).join(' / ') || item.asset || '-')}
+        </div>
+      `).join('')}
+    </div>`
+}
+
+const buildSessionPartsHtml = (session: any) => {
+  const parts = Array.isArray(session?.parts) ? session.parts : []
+  if (!parts.length) return ''
+  return `
+    <div class="report-h4">Parts Used</div>
+    <div class="report-equipment-list">
+      ${parts.map((item: any) => `
+        <div class="report-part-item">
+          <b>${esc(item.part_number || 'Inventory Part')} - ${esc(item.description || 'No description')}</b>
+          <br>Quantity used: ${esc(Number(item.quantity_used || 0))} · Stock remaining: ${esc(Number(item.balance_after || 0))}
         </div>
       `).join('')}
     </div>`
@@ -73,6 +90,7 @@ export const buildServiceReportSheet = (sr: any): string => {
           <div class="report-h4">Work Done</div><p>${esc(s.work_done || '-')}</p>
           ${s.notes ? `<div class="report-h4">Notes</div><p>${esc(s.notes)}</p>` : ''}
           ${buildSessionEquipmentHtml(s)}
+          ${buildSessionPartsHtml(s)}
         </div>`).join('')
     : '<p class="muted">No technician sessions recorded.</p>'
 

@@ -192,15 +192,22 @@ class ServiceRequestNoteCreate(BaseModel):
     note: str
 
 
+class ServiceRequestPartUsage(BaseModel):
+    part_id: int = Field(gt=0)
+    quantity: int = Field(gt=0)
+
+
 class ServiceRequestClockOutCreate(BaseModel):
     diagnosis: Optional[str] = None
     work_done: Optional[str] = None
     notes: Optional[str] = None
     test_equipment_ids: Optional[List[int]] = None
+    part_usages: List[ServiceRequestPartUsage] = Field(default_factory=list)
     total_mileage: Optional[Decimal] = None
 
 
 class ServiceRequestWorkSessionCreate(BaseModel):
+    session_id: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     break_minutes: Decimal = Decimal("0")
@@ -210,6 +217,7 @@ class ServiceRequestWorkSessionCreate(BaseModel):
     work_done: Optional[str] = None
     notes: Optional[str] = None
     test_equipment_ids: Optional[List[int]] = None
+    part_usages: List[ServiceRequestPartUsage] = Field(default_factory=list)
     status: Optional[str] = None
 
 

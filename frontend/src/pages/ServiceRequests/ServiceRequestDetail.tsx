@@ -32,6 +32,7 @@ import { toast } from 'react-toastify'
 
 import {
   createServiceRequestWorkSession,
+  fetchServiceRequestParts,
   fetchServiceRequest,
   fetchServiceInvoices,
   generateServiceInvoice,
@@ -40,6 +41,7 @@ import {
   type ServiceRequest,
   type ServiceRequestUpdate,
   type ServiceRequestStatus as SRStatus,
+  type ServiceRequestPartOption,
 } from '@/api/serviceRequests'
 import QuotationPanel from './QuotationPanel'
 import { fetchUsers, type UserData } from '@/api/users'
@@ -99,6 +101,13 @@ const toDateTimeLocalValue = (date = new Date()) => {
   return local.toISOString().slice(0, 16)
 }
 
+const createWorkSessionId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
+}
+
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   start_time: 'Start Time',
   end_time: 'End Time',
@@ -126,7 +135,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 }
 
 const HISTORY_DATE_FIELDS = new Set(['start_time', 'end_time', 'clocked_in_at', 'clocked_out_at'])
-const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'test_equipment', 'clocked_in_at', 'clocked_out_at', 'duration_source', 'raw_hours', 'total_work_hours', 'quotation_id', 'authorization_id', 'authorized_by_id', 'recorded_by_id', 'paid_by_id'])
+const HISTORY_HIDDEN_FIELDS = new Set(['session_id', 'test_equipment', 'parts', 'clocked_in_at', 'clocked_out_at', 'duration_source', 'raw_hours', 'total_work_hours', 'quotation_id', 'authorization_id', 'authorized_by_id', 'recorded_by_id', 'paid_by_id'])
 
 const historyActionLabel = (action?: string) => {
   if (action === 'technician_work_session' || action === 'technician_clock_out') return 'Technician Work Session'
@@ -156,6 +165,11 @@ const ServiceRequestDetail = () => {
   const [sessionTotalWorkHours, setSessionTotalWorkHours] = useState('')
   const [sessionTotalMileage, setSessionTotalMileage] = useState('')
   const [selectedTestEquipmentIds, setSelectedTestEquipmentIds] = useState<number[]>([])
+  const [workSessionId, setWorkSessionId] = useState(createWorkSessionId)
+  const [partSearchInput, setPartSearchInput] = useState('')
+  const [partSearch, setPartSearch] = useState('')
+  const [selectedServiceParts, setSelectedServiceParts] = useState<ServiceRequestPartOption[]>([])
+  const [partQuantities, setPartQuantities] = useState<Record<number, string>>({})
   const [serviceWorkflowStatus, setServiceWorkflowStatus] = useState<SRStatus>('in_progress')
   const [cancelOpen, setCancelOpen] = useState(false)
   const [changeTechOpen, setChangeTechOpen] = useState(false)
@@ -217,6 +231,34 @@ const ServiceRequestDetail = () => {
   })
   const testEquipmentOptions = testEquipmentData?.items || []
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPartSearch(partSearchInput.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [partSearchInput])
+
+  const canFetchServiceParts = Boolean(
+    sr
+    && !['completed', 'cancelled'].includes(sr.status)
+    && sr.assigned_technician_id
+    && (user?.role === 'superadmin' || user?.role === 'admin' || user?.id === sr.assigned_technician_id),
+  )
+  const servicePartsQ = useQuery({
+    queryKey: ['service-request-parts', id, partSearch],
+    queryFn: () => fetchServiceRequestParts(Number(id), { search: partSearch || undefined, limit: 50 }),
+    enabled: Boolean(id) && canFetchServiceParts,
+    staleTime: 15_000,
+  })
+  const servicePartOptions = useMemo(() => {
+    const byId = new Map<number, ServiceRequestPartOption>()
+    selectedServiceParts.forEach((part) => byId.set(part.id, part))
+    ;(servicePartsQ.data?.items || []).forEach((part) => byId.set(part.id, part))
+    return Array.from(byId.values())
+  }, [selectedServiceParts, servicePartsQ.data?.items])
+  const selectedServicePartValues = useMemo(() => {
+    const currentById = new Map(servicePartOptions.map((part) => [part.id, part]))
+    return selectedServiceParts.map((part) => currentById.get(part.id) || part)
+  }, [selectedServiceParts, servicePartOptions])
+
   const updateMutation = useMutation({
     mutationFn: (data: ServiceRequestUpdate) =>
       updateServiceRequest(Number(id), data),
@@ -235,6 +277,7 @@ const ServiceRequestDetail = () => {
     mutationFn: () => {
       const totalWorkHours = sessionTotalWorkHours.trim() ? Number(sessionTotalWorkHours) : null
       return createServiceRequestWorkSession(Number(id), {
+        session_id: workSessionId,
         start_time: totalWorkHours && totalWorkHours > 0 ? undefined : new Date(sessionStartTime).toISOString(),
         end_time: totalWorkHours && totalWorkHours > 0 ? undefined : new Date(sessionEndTime).toISOString(),
         break_minutes: Number(sessionBreakMinutes || 0),
@@ -244,6 +287,10 @@ const ServiceRequestDetail = () => {
         work_done: sessionWorkDone.trim(),
         notes: sessionNotes.trim(),
         test_equipment_ids: selectedTestEquipmentIds,
+        part_usages: selectedServicePartValues.map((part) => ({
+          part_id: part.id,
+          quantity: Number(partQuantities[part.id] ?? '1'),
+        })),
         status: serviceWorkflowStatus,
       })
     },
@@ -259,11 +306,22 @@ const ServiceRequestDetail = () => {
       setSessionWorkDone('')
       setSessionNotes('')
       setSelectedTestEquipmentIds([])
+      setWorkSessionId(createWorkSessionId())
+      setPartSearchInput('')
+      setPartSearch('')
+      setSelectedServiceParts([])
+      setPartQuantities({})
       queryClient.invalidateQueries({ queryKey: ['service-request', id] })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['service-request-parts', id] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Failed to update work order')
+      if (err.response?.status === 409) {
+        queryClient.invalidateQueries({ queryKey: ['service-request-parts', id] })
+      }
     },
   })
 
@@ -394,8 +452,19 @@ const ServiceRequestDetail = () => {
         return
       }
     }
-    if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0) {
-      toast.info('Add diagnosis, work done, notes, or test equipment before updating the work order')
+    for (const part of selectedServicePartValues) {
+      const quantity = Number(partQuantities[part.id] ?? '1')
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        toast.error(`Enter a whole quantity greater than zero for ${part.part_number}`)
+        return
+      }
+      if (quantity > part.quantity_on_hand) {
+        toast.error(`${part.part_number} only has ${part.quantity_on_hand} unit${part.quantity_on_hand === 1 ? '' : 's'} available`)
+        return
+      }
+    }
+    if (!sessionDiagnosis.trim() && !sessionWorkDone.trim() && !sessionNotes.trim() && selectedTestEquipmentIds.length === 0 && selectedServiceParts.length === 0) {
+      toast.info('Add diagnosis, work done, notes, test equipment, or parts before updating the work order')
       return
     }
     workSessionMutation.mutate()
@@ -519,6 +588,42 @@ const ServiceRequestDetail = () => {
                 </Typography>
                 <Typography sx={{ color: '#64748B', fontSize: '0.72rem' }}>
                   {[raw?.mrf, raw?.model, raw?.serial_number].filter(Boolean).join(' / ') || raw?.asset || 'No details'}
+                </Typography>
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    )
+  }
+
+  const renderPartsHistory = (value: unknown) => {
+    const items = Array.isArray(value) ? value : []
+    if (!items.length) return null
+    return (
+      <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+        <Typography sx={{ color: '#475569', fontSize: '0.75rem', fontWeight: 900 }}>
+          Parts Used
+        </Typography>
+        <Box sx={{ display: 'grid', gap: 0.75 }}>
+          {items.map((raw: any, itemIndex: number) => (
+            <Box
+              key={`${raw?.id || raw?.part_number || 'part'}-${itemIndex}`}
+              sx={{ display: 'flex', gap: 1, alignItems: 'center', p: 1, borderRadius: '10px', bgcolor: '#F0FDF4', border: '1px solid #BBF7D0' }}
+            >
+              <Avatar
+                src={resolveUploadUrl(raw?.default_picture_url)}
+                variant="rounded"
+                sx={{ width: 38, height: 38, bgcolor: '#DCFCE7', color: '#059669', borderRadius: '9px' }}
+              >
+                <BuildIcon fontSize="small" />
+              </Avatar>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography sx={{ color: '#1E1B4B', fontSize: '0.78rem', fontWeight: 900 }}>
+                  {raw?.part_number || 'Inventory Part'} - {raw?.description || 'No description'}
+                </Typography>
+                <Typography sx={{ color: '#64748B', fontSize: '0.72rem' }}>
+                  Quantity used: {Number(raw?.quantity_used || 0)} · Stock remaining: {Number(raw?.balance_after || 0)}
                 </Typography>
               </Box>
             </Box>
@@ -899,7 +1004,7 @@ const ServiceRequestDetail = () => {
                         <Typography sx={{ color: '#64748B', fontSize: '0.78rem' }}>
                           {entry.user || 'System'} - {formatDateTime(entry.timestamp)}
                         </Typography>
-                        {(visibleChanges.length > 0 || Array.isArray(changes.test_equipment)) && (
+                        {(visibleChanges.length > 0 || Array.isArray(changes.test_equipment) || Array.isArray(changes.parts)) && (
                           <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
                             {visibleChanges.map(([field, change]) => (
                               <Typography key={field} sx={{ color: '#475569', fontSize: '0.75rem' }}>
@@ -907,6 +1012,7 @@ const ServiceRequestDetail = () => {
                               </Typography>
                             ))}
                             {renderTestEquipmentHistory(changes.test_equipment)}
+                            {renderPartsHistory(changes.parts)}
                           </Box>
                         )}
                       </Box>
@@ -1193,6 +1299,96 @@ const ServiceRequestDetail = () => {
                     <TextField {...params} label="Test Equipment Used" placeholder="Select equipment used in this session" />
                   )}
                 />
+                <Autocomplete
+                  multiple
+                  options={servicePartOptions}
+                  value={selectedServicePartValues}
+                  loading={servicePartsQ.isLoading || servicePartsQ.isFetching}
+                  filterOptions={(options) => options}
+                  onInputChange={(_, value, reason) => {
+                    if (reason === 'input' || reason === 'clear') setPartSearchInput(value)
+                  }}
+                  onChange={(_, value) => {
+                    setSelectedServiceParts(value)
+                    setPartQuantities((previous) => {
+                      const next: Record<number, string> = {}
+                      value.forEach((part) => { next[part.id] = previous[part.id] || '1' })
+                      return next
+                    })
+                  }}
+                  getOptionLabel={(option) => `${option.part_number} - ${option.description}`}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  noOptionsText={partSearch ? 'No in-stock parts match this search' : 'No in-stock parts available for this facility'}
+                  renderOption={(props, option) => (
+                    <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" sx={{ width: 36, height: 36, bgcolor: '#ECFDF5', color: '#059669' }}>
+                        <BuildIcon fontSize="small" />
+                      </Avatar>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography sx={{ fontWeight: 900 }}>{option.part_number} - {option.description}</Typography>
+                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                          {[option.make, option.model, option.serial_number].filter(Boolean).join(' / ') || option.part_type} · {option.quantity_on_hand} in stock
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Parts Used"
+                      placeholder="Search and select facility inventory parts"
+                      helperText="Stock is deducted only when this work session is successfully saved."
+                    />
+                  )}
+                />
+                {selectedServicePartValues.length > 0 && (
+                  <Box sx={{ display: 'grid', gap: 1 }}>
+                    {selectedServicePartValues.map((part) => (
+                      <Card
+                        key={part.id}
+                        variant="outlined"
+                        sx={{ p: 1.25, display: 'grid', gridTemplateColumns: { xs: '1fr auto', sm: 'minmax(0, 1fr) 140px auto' }, gap: 1.25, alignItems: 'center', borderRadius: '14px', borderColor: '#BBF7D0', bgcolor: '#F8FFFB' }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+                          <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" sx={{ width: 42, height: 42, bgcolor: '#DCFCE7', color: '#059669' }}>
+                            <BuildIcon fontSize="small" />
+                          </Avatar>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography noWrap sx={{ color: '#1E1B4B', fontWeight: 900 }}>{part.part_number}</Typography>
+                            <Typography noWrap sx={{ color: '#64748B', fontSize: 12 }}>{part.description}</Typography>
+                            <Typography sx={{ color: part.quantity_on_hand <= part.reorder_level ? '#DC2626' : '#059669', fontSize: 11, fontWeight: 900 }}>
+                              {part.quantity_on_hand} available
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <TextField
+                          size="small"
+                          type="number"
+                          label="Quantity used"
+                          value={partQuantities[part.id] ?? '1'}
+                          onChange={(event) => setPartQuantities((previous) => ({ ...previous, [part.id]: event.target.value }))}
+                          inputProps={{ min: 1, max: part.quantity_on_hand, step: 1 }}
+                          error={Number(partQuantities[part.id] ?? '1') > part.quantity_on_hand || Number(partQuantities[part.id] ?? '1') <= 0}
+                          sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
+                        />
+                        <IconButton
+                          aria-label={`Remove ${part.part_number}`}
+                          onClick={() => {
+                            setSelectedServiceParts((previous) => previous.filter((item) => item.id !== part.id))
+                            setPartQuantities((previous) => {
+                              const next = { ...previous }
+                              delete next[part.id]
+                              return next
+                            })
+                          }}
+                          sx={{ color: '#DC2626' }}
+                        >
+                          <DeleteOutlineIcon />
+                        </IconButton>
+                      </Card>
+                    ))}
+                  </Box>
+                )}
                 <FormControl fullWidth>
                   <InputLabel>Service Status</InputLabel>
                   <Select

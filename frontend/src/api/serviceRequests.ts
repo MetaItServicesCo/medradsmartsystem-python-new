@@ -431,16 +431,48 @@ export interface ServiceRequestClockOutPayload {
   work_done?: string
   notes?: string
   test_equipment_ids?: number[]
+  part_usages?: ServiceRequestPartUsage[]
   total_mileage?: number
 }
 
+export interface ServiceRequestPartUsage {
+  part_id: number
+  quantity: number
+}
+
+export interface ServiceRequestPartOption {
+  id: number
+  facility_id: number
+  part_number: string
+  description: string
+  part_type: string
+  make: string | null
+  model: string | null
+  serial_number: string | null
+  batch_number: string | null
+  default_picture_url: string | null
+  unit_price: number
+  quantity_on_hand: number
+  reorder_level: number
+  status: string
+}
+
 export interface ServiceRequestWorkSessionPayload extends ServiceRequestClockOutPayload {
+  session_id?: string
   start_time?: string
   end_time?: string
   break_minutes?: number
   total_work_hours?: number
   total_mileage?: number
   status?: ServiceRequestStatus
+}
+
+export const fetchServiceRequestParts = async (
+  id: number,
+  params: { search?: string; skip?: number; limit?: number } = {},
+): Promise<{ items: ServiceRequestPartOption[]; total: number }> => {
+  const res = await apiClient.get(`/service-requests/${id}/available-parts`, { params })
+  return res.data
 }
 
 export const clockOutServiceRequest = async (id: number, data: ServiceRequestClockOutPayload): Promise<ServiceRequest> => {

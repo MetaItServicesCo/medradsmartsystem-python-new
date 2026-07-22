@@ -25,6 +25,7 @@ from app.models.service_request import (
 from app.models.facility import Facility
 from app.models.equipment import Equipment
 from app.models.test_equipment import TestEquipment
+from app.models.inventory import InventoryPart, InventoryTransaction
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.schemas.service_request import (
     ServiceRequestCreate, ServiceRequestUpdate,
@@ -329,6 +330,105 @@ def _test_equipment_history_items(db: Session, test_equipment_ids: list[int]) ->
     ]
 
 
+def _service_part_option(part: InventoryPart) -> dict[str, Any]:
+    return {
+        "id": part.id,
+        "facility_id": part.facility_id,
+        "part_number": part.part_number,
+        "description": part.description,
+        "part_type": part.part_type,
+        "make": part.make,
+        "model": part.model,
+        "serial_number": part.serial_number,
+        "batch_number": part.batch_number,
+        "default_picture_url": part.default_picture_url,
+        "unit_price": float(part.unit_price or 0),
+        "quantity_on_hand": int(part.quantity_on_hand or 0),
+        "reorder_level": int(part.reorder_level or 0),
+        "status": part.status,
+    }
+
+
+def _consume_service_parts(
+    db: Session,
+    service_request: ServiceRequest,
+    usages: list[Any],
+    current_user: User,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    """Atomically issue facility stock and return immutable history snapshots."""
+    quantities: dict[int, int] = {}
+    for usage in usages or []:
+        part_id = int(usage.part_id)
+        quantities[part_id] = quantities.get(part_id, 0) + int(usage.quantity)
+    if not quantities:
+        return []
+
+    part_ids = sorted(quantities)
+    parts = (
+        db.query(InventoryPart)
+        .filter(InventoryPart.id.in_(part_ids))
+        .order_by(InventoryPart.id.asc())
+        .with_for_update()
+        .all()
+    )
+    parts_by_id = {part.id: part for part in parts}
+    missing_ids = [part_id for part_id in part_ids if part_id not in parts_by_id]
+    if missing_ids:
+        raise HTTPException(status_code=404, detail=f"Inventory parts not found: {', '.join(map(str, missing_ids))}")
+
+    snapshots: list[dict[str, Any]] = []
+    for part_id in part_ids:
+        part = parts_by_id[part_id]
+        quantity = quantities[part_id]
+        if part.facility_id != service_request.facility_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Part {part.part_number} does not belong to the service request facility",
+            )
+        if str(part.status or "").lower() != "active":
+            raise HTTPException(status_code=400, detail=f"Part {part.part_number} is not active")
+        available = int(part.quantity_on_hand or 0)
+        if available < quantity:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Insufficient stock for {part.part_number}. Available: {available}, requested: {quantity}",
+            )
+
+        part.quantity_on_hand = available - quantity
+        transaction = InventoryTransaction(
+            part_id=part.id,
+            facility_id=part.facility_id,
+            transaction_type="issuance",
+            quantity=quantity,
+            unit_cost=part.unit_price,
+            balance_after=part.quantity_on_hand,
+            authorization_reference=service_request.request_number,
+            authorization_details=f"Service work session {session_id}",
+            notes=f"Used during service request {service_request.request_number}",
+            created_by_id=current_user.id,
+        )
+        db.add(transaction)
+        db.flush()
+        snapshots.append({
+            **_service_part_option(part),
+            "quantity_used": quantity,
+            "balance_after": int(part.quantity_on_hand or 0),
+            "inventory_transaction_id": transaction.id,
+        })
+
+        if part.quantity_on_hand <= part.reorder_level:
+            notify_admins(
+                db,
+                title="Low stock alert",
+                message=f"{part.part_number} is at or below reorder level after use on {service_request.request_number}.",
+                notification_type="inventory",
+                link_url="/inventory",
+                actor_id=current_user.id,
+            )
+    return snapshots
+
+
 def _next_service_invoice_number(db: Session) -> str:
     last = db.query(Invoice).order_by(Invoice.id.desc()).first()
     next_num = (last.id + 1) if last else 1
@@ -543,13 +643,31 @@ def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
     }
 
 
-def _load_service_request_for_work(db: Session, request_id: int, current_user: User) -> ServiceRequest:
-    db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
+def _load_service_request_for_work(
+    db: Session,
+    request_id: int,
+    current_user: User,
+    existing_session_id: Optional[str] = None,
+) -> ServiceRequest:
+    # Serialize work-session writes so duration, history, and stock issuance
+    # remain consistent under concurrent submissions or client retries.
+    db_sr = (
+        db.query(ServiceRequest)
+        .filter(ServiceRequest.id == request_id)
+        .with_for_update()
+        .first()
+    )
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
     require_facility_access(db, current_user, db_sr.facility_id)
     if not _can_work_on_service(current_user, db_sr):
         raise HTTPException(status_code=403, detail="Only the assigned technician or an admin can update service work")
+    if existing_session_id and any(
+        entry.get("action") in {"technician_work_session", "technician_clock_out"}
+        and (entry.get("changes") or {}).get("session_id") == existing_session_id
+        for entry in (db_sr.history or [])
+    ):
+        return db_sr
     if db_sr.status in [ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED]:
         raise HTTPException(status_code=400, detail="Completed or cancelled service requests cannot be updated")
     if not db_sr.assigned_technician_id:
@@ -780,6 +898,45 @@ def update_service_invoice(
     db.commit()
     db.refresh(invoice)
     return _service_invoice_response(invoice)
+
+
+@router.get("/{request_id}/available-parts")
+def list_service_request_parts(
+    request_id: int,
+    search: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """List in-stock parts belonging to the service request's facility."""
+    service_request = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
+    if not service_request:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    require_facility_access(db, current_user, service_request.facility_id)
+    if current_user.role == UserRole.TECHNICIAN and service_request.assigned_technician_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only view parts for service requests assigned to you")
+    if current_user.role == UserRole.EMPLOYEE and service_request.requester_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only view parts for service requests you submitted")
+
+    query = db.query(InventoryPart).filter(
+        InventoryPart.facility_id == service_request.facility_id,
+        InventoryPart.status == "active",
+        InventoryPart.quantity_on_hand > 0,
+    )
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        query = query.filter(or_(
+            InventoryPart.part_number.ilike(like),
+            InventoryPart.description.ilike(like),
+            InventoryPart.make.ilike(like),
+            InventoryPart.model.ilike(like),
+            InventoryPart.serial_number.ilike(like),
+            InventoryPart.batch_number.ilike(like),
+        ))
+    total = query.count()
+    parts = query.order_by(InventoryPart.updated_at.desc(), InventoryPart.id.desc()).offset(skip).limit(limit).all()
+    return {"items": [_service_part_option(part) for part in parts], "total": total}
 
 
 @router.get("/{request_id}", response_model=ServiceRequestResponse)
@@ -1259,7 +1416,16 @@ def create_manual_work_session(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Save one manual technician work-session ledger entry."""
-    db_sr = _load_service_request_for_work(db, request_id, current_user)
+    db_sr = _load_service_request_for_work(db, request_id, current_user, session.session_id)
+    session_id = session.session_id or uuid.uuid4().hex
+    if session.session_id and any(
+        entry.get("action") in {"technician_work_session", "technician_clock_out"}
+        and (entry.get("changes") or {}).get("session_id") == session_id
+        for entry in (db_sr.history or [])
+    ):
+        # Idempotent retry: the session, stock issuance, and ledger entry were
+        # already committed together in the original request.
+        return get_service_request(request_id, db, current_user)
 
     requested_status: Optional[ServiceRequestStatus] = None
     if session.status:
@@ -1312,10 +1478,11 @@ def create_manual_work_session(
     work_done = (session.work_done or "").strip()
     notes = (session.notes or "").strip()
     test_equipment_used = _test_equipment_history_items(db, list(session.test_equipment_ids or []))
+    part_usages = list(session.part_usages or [])
     if duration_hours <= 0:
         raise HTTPException(status_code=400, detail="Work-session duration must be greater than zero after break time")
-    if not diagnosis and not work_done and not notes and not test_equipment_used:
-        raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, or test equipment before saving the session")
+    if not diagnosis and not work_done and not notes and not test_equipment_used and not part_usages:
+        raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, test equipment, or parts before saving the session")
 
     now = datetime.utcnow()
     if db_sr.status == ServiceRequestStatus.NEW:
@@ -1342,9 +1509,10 @@ def create_manual_work_session(
         db_sr.status = target_status
         db_sr.total_cost = _calculate_service_cost(db_sr)
 
+    parts_used = _consume_service_parts(db, db_sr, part_usages, current_user, session_id)
     history = list(db_sr.history or [])
     session_changes = {
-        "session_id": uuid.uuid4().hex,
+        "session_id": session_id,
         "break_minutes": float(break_minutes),
         "duration_hours": float(duration_hours),
         "total_work_hours": float(duration_hours),
@@ -1355,6 +1523,7 @@ def create_manual_work_session(
         "work_done": work_done,
         "notes": notes,
         "test_equipment": test_equipment_used,
+        "parts": parts_used,
         "status": (
             {"from": previous_status.value, "to": db_sr.status.value}
             if previous_status != db_sr.status
@@ -1473,11 +1642,12 @@ def clock_out_service_request(
     work_done = (clock_out.work_done or "").strip()
     notes = (clock_out.notes or "").strip()
     test_equipment_ids = list(dict.fromkeys(clock_out.test_equipment_ids or []))
+    part_usages = list(clock_out.part_usages or [])
     total_mileage = Decimal(str(clock_out.total_mileage)) if clock_out.total_mileage is not None else Decimal("0")
     if total_mileage < 0:
         raise HTTPException(status_code=400, detail="Total mileage cannot be negative")
-    if not diagnosis and not work_done and not notes and not test_equipment_ids:
-        raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, or test equipment before clocking out")
+    if not diagnosis and not work_done and not notes and not test_equipment_ids and not part_usages:
+        raise HTTPException(status_code=400, detail="Add diagnosis, work done, notes, test equipment, or parts before clocking out")
 
     test_equipment_used = []
     if test_equipment_ids:
@@ -1517,9 +1687,11 @@ def clock_out_service_request(
     db_sr.time_spent_hours = existing_hours + rounded_hours
     db_sr.total_cost = _calculate_service_cost(db_sr)
 
+    session_id = changes.get("session_id") or uuid.uuid4().hex
+    parts_used = _consume_service_parts(db, db_sr, part_usages, current_user, session_id)
     history = list(db_sr.history or [])
     history.append(_history_entry("technician_clock_out", current_user, {
-        "session_id": changes.get("session_id"),
+        "session_id": session_id,
         "clocked_in_at": clocked_in_at.isoformat(),
         "clocked_out_at": now.isoformat(),
         "duration_hours": float(rounded_hours),
@@ -1529,6 +1701,7 @@ def clock_out_service_request(
         "work_done": work_done,
         "notes": notes,
         "test_equipment": test_equipment_used,
+        "parts": parts_used,
     }))
     db_sr.history = history
     db.commit()

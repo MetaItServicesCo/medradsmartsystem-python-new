@@ -68,6 +68,7 @@ def _service_session_entries(sr: ServiceRequest) -> list[dict[str, Any]]:
             "work_done": changes.get("work_done"),
             "notes": changes.get("notes"),
             "test_equipment": changes.get("test_equipment") or [],
+            "parts": changes.get("parts") or [],
         })
     return rows
 
