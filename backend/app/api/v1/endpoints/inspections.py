@@ -143,6 +143,19 @@ class InspectionTechnicianUpdate(BaseModel):
     inspector_id: Optional[int] = None
 
 
+class InspectionDetailsUpdate(BaseModel):
+    scheduled_date: Optional[datetime] = None
+    inspection_frequency: Optional[str] = None
+    compliance_requirement: Optional[str] = None
+    criticality: Optional[str] = None
+    inspector_id: Optional[int] = None
+    form_template_id: Optional[int] = None
+
+
+class InspectionReopen(BaseModel):
+    scheduled_date: Optional[datetime] = None
+
+
 class BatchAssetCreate(BaseModel):
     asset_tag: str
     make: str
@@ -504,6 +517,9 @@ def _batch_response(
     in_progress_count = counts["in_progress"] if counts is not None else sum(
         1 for item in inspections if item.status == InspectionStatus.IN_PROGRESS
     )
+    closed_count = counts.get("closed", 0) if counts is not None else sum(
+        1 for item in inspections if item.status == InspectionStatus.CLOSED
+    )
     asset_count = counts["total"] if counts is not None else len(inspections)
     data = {c.name: getattr(batch, c.name) for c in batch.__table__.columns}
     data["status"] = _value(data.get("status"))
@@ -512,7 +528,8 @@ def _batch_response(
     data["asset_count"] = asset_count
     data["completed_count"] = completed_count
     data["in_progress_count"] = in_progress_count
-    data["pending_count"] = max(asset_count - completed_count, 0)
+    data["closed_count"] = closed_count
+    data["pending_count"] = max(asset_count - completed_count - closed_count, 0)
     data["batch_invoice"] = _invoice_response(getattr(batch, "_batch_invoice", None))
     if include_assets:
         data["assets"] = [_inspection_response(item) for item in inspections]
@@ -528,6 +545,7 @@ def _batch_counts(db: Session, batch_ids: list[int]) -> dict[int, dict[str, int]
             func.count(Inspection.id),
             func.sum(case((Inspection.status == InspectionStatus.COMPLETED, 1), else_=0)),
             func.sum(case((Inspection.status == InspectionStatus.IN_PROGRESS, 1), else_=0)),
+            func.sum(case((Inspection.status == InspectionStatus.CLOSED, 1), else_=0)),
         )
         .filter(Inspection.batch_id.in_(batch_ids))
         .group_by(Inspection.batch_id)
@@ -538,8 +556,9 @@ def _batch_counts(db: Session, batch_ids: list[int]) -> dict[int, dict[str, int]
             "total": int(total or 0),
             "completed": int(completed or 0),
             "in_progress": int(in_progress or 0),
+            "closed": int(closed or 0),
         }
-        for batch_id, total, completed, in_progress in rows
+        for batch_id, total, completed, in_progress, closed in rows
         if batch_id is not None
     }
 
@@ -558,10 +577,23 @@ def _sync_batch_status(batch: Optional[InspectionBatch]) -> None:
         batch.completed_at = None
         if not batch.started_at:
             batch.started_at = datetime.utcnow()
+    elif all(item.status in {InspectionStatus.COMPLETED, InspectionStatus.CLOSED} for item in inspections):
+        # A batch containing a closed asset is intentionally not considered a
+        # fully completed/billable inspection batch.
+        batch.status = InspectionStatus.CLOSED
+        batch.completed_at = None
     else:
         batch.status = InspectionStatus.UPCOMING
         batch.completed_at = None
     batch.updated_at = datetime.utcnow()
+
+
+def _require_upcoming_inspection(inspection: Inspection, action: str) -> None:
+    if inspection.status != InspectionStatus.UPCOMING:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only upcoming inspections can be {action}",
+        )
 
 
 def _inspection_invoice_amounts(
@@ -1715,6 +1747,195 @@ def start_scheduled_inspection(
     inspection.updated_at = datetime.utcnow()
     _sync_batch_status(inspection.batch)
     log_activity(db, "inspections", inspection.id, "START", current_user, {"status": "in_progress"})
+    db.commit()
+    db.refresh(inspection)
+    return _inspection_response(inspection)
+
+
+@router.patch("/{inspection_id}")
+def update_upcoming_inspection(
+    inspection_id: int,
+    payload: InspectionDetailsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Edit scheduling metadata without changing inspection identity or reports."""
+    require_module_permission(current_user, "inspections", "edit")
+
+    inspection = (
+        db.query(Inspection)
+        .options(
+            joinedload(Inspection.facility).joinedload(Facility.tier),
+            joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(Inspection.inspector),
+            joinedload(Inspection.form_template),
+            joinedload(Inspection.batch),
+        )
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    require_facility_access(db, current_user, inspection.facility_id)
+    _require_upcoming_inspection(inspection, "edited")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No inspection changes were submitted")
+    if "scheduled_date" in update_data and update_data["scheduled_date"] is None:
+        raise HTTPException(status_code=400, detail="Scheduled date is required")
+    if "inspection_frequency" in update_data:
+        frequency = str(update_data["inspection_frequency"] or "").strip()
+        if not frequency:
+            raise HTTPException(status_code=400, detail="Inspection frequency is required")
+        update_data["inspection_frequency"] = frequency
+    if "form_template_id" in update_data:
+        form_template_id = update_data["form_template_id"]
+        if form_template_id is None:
+            raise HTTPException(status_code=400, detail="Inspection form is required")
+        if not db.query(InspectionForm.id).filter(InspectionForm.id == form_template_id).first():
+            raise HTTPException(status_code=404, detail="Inspection form not found")
+    if "inspector_id" in update_data and update_data["inspector_id"] is not None:
+        technician = (
+            db.query(User)
+            .filter(User.id == update_data["inspector_id"], User.is_active.is_(True))
+            .first()
+        )
+        if not technician:
+            raise HTTPException(status_code=404, detail="Technician not found")
+
+    tracked_fields = [
+        "scheduled_date",
+        "inspection_frequency",
+        "compliance_requirement",
+        "criticality",
+        "inspector_id",
+        "form_template_id",
+    ]
+    before = {field: getattr(inspection, field) for field in tracked_fields if field in update_data}
+    for field, value in update_data.items():
+        setattr(inspection, field, value)
+    inspection.updated_at = datetime.utcnow()
+    after = {field: getattr(inspection, field) for field in tracked_fields if field in update_data}
+    action = "RESCHEDULE" if set(update_data) == {"scheduled_date"} else "UPDATE_DETAILS"
+    log_activity(
+        db,
+        "inspections",
+        inspection.id,
+        action,
+        current_user,
+        {"before": before, "after": after},
+    )
+    db.commit()
+    db.refresh(inspection)
+    return _inspection_response(inspection)
+
+
+@router.put("/{inspection_id}/close")
+def close_upcoming_inspection(
+    inspection_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Close an upcoming inspection without completing or deleting it."""
+    require_module_permission(current_user, "inspections", "edit")
+
+    inspection = (
+        db.query(Inspection)
+        .options(
+            joinedload(Inspection.facility).joinedload(Facility.tier),
+            joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(Inspection.inspector),
+            joinedload(Inspection.form_template),
+            joinedload(Inspection.batch).joinedload(InspectionBatch.inspections),
+        )
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    require_facility_access(db, current_user, inspection.facility_id)
+    _require_upcoming_inspection(inspection, "closed")
+
+    previous_status = _value(inspection.status)
+    inspection.status = InspectionStatus.CLOSED
+    inspection.started_at = None
+    inspection.completed_at = None
+    inspection.updated_at = datetime.utcnow()
+    _sync_batch_status(inspection.batch)
+    log_activity(
+        db,
+        "inspections",
+        inspection.id,
+        "CLOSE",
+        current_user,
+        {
+            "previous_status": previous_status,
+            "status": InspectionStatus.CLOSED.value,
+            "scheduled_date": inspection.scheduled_date,
+            "batch_id": inspection.batch_id,
+        },
+    )
+    db.commit()
+    db.refresh(inspection)
+    return _inspection_response(inspection)
+
+
+@router.put("/{inspection_id}/reopen")
+def reopen_closed_inspection(
+    inspection_id: int,
+    payload: InspectionReopen,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return a closed inspection to Upcoming, optionally with a new schedule."""
+    require_module_permission(current_user, "inspections", "edit")
+
+    inspection = (
+        db.query(Inspection)
+        .options(
+            joinedload(Inspection.facility).joinedload(Facility.tier),
+            joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(Inspection.inspector),
+            joinedload(Inspection.form_template),
+            joinedload(Inspection.batch).joinedload(InspectionBatch.inspections),
+        )
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    require_facility_access(db, current_user, inspection.facility_id)
+    if inspection.status != InspectionStatus.CLOSED:
+        raise HTTPException(status_code=409, detail="Only closed inspections can be reopened")
+
+    previous_schedule = inspection.scheduled_date
+    if payload.scheduled_date is not None:
+        inspection.scheduled_date = payload.scheduled_date
+    inspection.status = InspectionStatus.UPCOMING
+    inspection.result = InspectionResult.PENDING
+    inspection.started_at = None
+    inspection.completed_at = None
+    inspection.updated_at = datetime.utcnow()
+    _sync_batch_status(inspection.batch)
+    action = "RESCHEDULE_REOPEN" if payload.scheduled_date is not None else "REOPEN"
+    log_activity(
+        db,
+        "inspections",
+        inspection.id,
+        action,
+        current_user,
+        {
+            "previous_status": InspectionStatus.CLOSED.value,
+            "status": InspectionStatus.UPCOMING.value,
+            "previous_scheduled_date": previous_schedule,
+            "scheduled_date": inspection.scheduled_date,
+            "batch_id": inspection.batch_id,
+        },
+    )
     db.commit()
     db.refresh(inspection)
     return _inspection_response(inspection)

@@ -1,6 +1,6 @@
 import apiClient from './client'
 
-export type InspectionStatus = 'upcoming' | 'in_progress' | 'completed' | 'overdue'
+export type InspectionStatus = 'upcoming' | 'in_progress' | 'completed' | 'overdue' | 'closed'
 export type InspectionResult = 'pass' | 'fail' | 'pending'
 export type InvoiceStatus = 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled'
 export type InspectionFrequency = 'instant' | 'quarterly' | 'semi_annual' | 'annual'
@@ -185,6 +185,7 @@ export interface InspectionBatch {
   asset_count: number
   completed_count: number
   in_progress_count: number
+  closed_count?: number
   pending_count: number
   batch_invoice?: InspectionInvoice | null
   assets?: Inspection[]
@@ -246,6 +247,15 @@ export interface InspectionSchedulePayload {
   compliance_requirement?: string
   criticality?: string
   notes?: string
+}
+
+export interface InspectionDetailsUpdatePayload {
+  scheduled_date?: string
+  inspection_frequency?: string
+  compliance_requirement?: string | null
+  criticality?: string | null
+  inspector_id?: number | null
+  form_template_id?: number
 }
 
 export interface InspectionCompletePayload {
@@ -404,6 +414,29 @@ export const generateUpcomingInspections = async (
 
 export const startInspection = async (id: number): Promise<Inspection> => {
   const res = await apiClient.put(`/inspections/${id}/start`)
+  return res.data
+}
+
+export const updateInspectionDetails = async (
+  id: number,
+  data: InspectionDetailsUpdatePayload,
+): Promise<Inspection> => {
+  const res = await apiClient.patch(`/inspections/${id}`, data)
+  return res.data
+}
+
+export const closeInspection = async (id: number): Promise<Inspection> => {
+  const res = await apiClient.put(`/inspections/${id}/close`)
+  return res.data
+}
+
+export const reopenInspection = async (
+  id: number,
+  scheduledDate?: string,
+): Promise<Inspection> => {
+  const res = await apiClient.put(`/inspections/${id}/reopen`, {
+    scheduled_date: scheduledDate || null,
+  })
   return res.data
 }
 

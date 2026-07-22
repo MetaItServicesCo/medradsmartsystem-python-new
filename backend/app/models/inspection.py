@@ -9,6 +9,7 @@ class InspectionStatus(str, enum.Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     OVERDUE = "overdue"
+    CLOSED = "closed"
 
 class InspectionResult(str, enum.Enum):
     PASS = "pass"

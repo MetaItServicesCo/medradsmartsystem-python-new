@@ -38,6 +38,7 @@ import { CanvasFormBuilder, CanvasFormViewer, type CanvasFormSchema, type Canvas
 import {
   addInspectionBatchAsset,
   addInspectionBatchExistingAssets,
+  closeInspection as closeScheduledInspection,
   createInspectionForm,
   createInstantInspection,
   fetchInspectionBatch,
@@ -51,9 +52,11 @@ import {
   generateInspectionInvoice,
   generateUpcomingInspections,
   removeInspectionBatchAsset,
+  reopenInspection,
   scheduleInspections,
   saveInspectionReport,
   startInspection as startScheduledInspection,
+  updateInspectionDetails,
   updateInspectionForm,
   updateInspectionTechnician,
   type BatchAssetCreatePayload,
@@ -63,6 +66,7 @@ import {
   type InspectionInvoice,
   type InspectionFrequency,
   type InspectionFormOption,
+  type InspectionDetailsUpdatePayload,
 } from '@/api/inspections'
 import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 import { fetchModalities, type Modality } from '@/api/modalities'
@@ -93,6 +97,15 @@ type GridHorizontalAlign = 'left' | 'center' | 'right'
 type GridVerticalAlign = 'top' | 'middle' | 'bottom'
 type GridOptionLayout = 'vertical' | 'horizontal' | 'wrap'
 type UpcomingDateRange = '1m' | '3m' | '6m' | '1y'
+
+type InspectionDetailsDraft = {
+  scheduledDate: string
+  frequency: string
+  complianceRequirement: string
+  criticality: string
+  inspectorId: number | ''
+  formTemplateId: number | ''
+}
 
 type GridCellBlock = {
   id: string
@@ -570,8 +583,10 @@ const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFor
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
+    upcoming: { bg: '#E0E7FF', color: '#4338CA' },
     in_progress: { bg: '#FEF3C7', color: '#B45309' },
     completed: { bg: '#D1FAE5', color: '#047857' },
+    closed: { bg: '#F1F5F9', color: '#475569' },
     pass: { bg: '#D1FAE5', color: '#047857' },
     fail: { bg: '#FEE2E2', color: '#DC2626' },
     pending: { bg: '#E0E7FF', color: '#4338CA' },
@@ -590,6 +605,23 @@ const formatDate = (date: string | null | undefined) => {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+const toDateTimeLocalValue = (value: string | null | undefined) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+const inspectionDetailsDraft = (inspection: Inspection): InspectionDetailsDraft => ({
+  scheduledDate: toDateTimeLocalValue(inspection.scheduled_date),
+  frequency: inspection.inspection_frequency || 'annual',
+  complianceRequirement: inspection.compliance_requirement || '',
+  criticality: inspection.criticality || '',
+  inspectorId: inspection.inspector_id || '',
+  formTemplateId: inspection.form_template_id || '',
+})
 
 const toLocalDateParam = (date: Date) => {
   const year = date.getFullYear()
@@ -1051,7 +1083,7 @@ const Inspections = () => {
   const canDeleteInspections = hasPermission(currentUser, 'inspections', 'delete')
   const canInitiateInspections = canAddInspections && canEditInspections
   const requestedTab = Number(searchParams.get('tab') || 0)
-  const queryTab = Number.isInteger(requestedTab) && requestedTab >= 0 && requestedTab <= 4 ? requestedTab : 0
+  const queryTab = Number.isInteger(requestedTab) && requestedTab >= 0 && requestedTab <= 5 ? requestedTab : 0
   const dateFrom = searchParams.get('date_from') || ''
   const dateTo = searchParams.get('date_to') || ''
   const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
@@ -1064,6 +1096,19 @@ const Inspections = () => {
   const [reportInspection, setReportInspection] = useState<Inspection | null>(null)
   const [viewReport, setViewReport] = useState<Inspection | null>(null)
   const [infoInspection, setInfoInspection] = useState<Inspection | null>(null)
+  const [infoEditing, setInfoEditing] = useState(false)
+  const [infoDraft, setInfoDraft] = useState<InspectionDetailsDraft | null>(null)
+  const [upcomingActionAnchor, setUpcomingActionAnchor] = useState<HTMLElement | null>(null)
+  const [upcomingActionItem, setUpcomingActionItem] = useState<Inspection | null>(null)
+  const [rescheduleInspection, setRescheduleInspection] = useState<Inspection | null>(null)
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [closeInspectionTarget, setCloseInspectionTarget] = useState<Inspection | null>(null)
+  const [reopenInspectionTarget, setReopenInspectionTarget] = useState<Inspection | null>(null)
+  const [closedActionAnchor, setClosedActionAnchor] = useState<HTMLElement | null>(null)
+  const [closedActionItem, setClosedActionItem] = useState<Inspection | null>(null)
+  const [closedSearch, setClosedSearch] = useState('')
+  const [closedFacilityId, setClosedFacilityId] = useState<number | ''>('')
+  const [closedPage, setClosedPage] = useState(0)
   const [viewForm, setViewForm] = useState<InspectionFormOption | null>(null)
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [report, setReport] = useState<any>(null)
@@ -1155,6 +1200,28 @@ const Inspections = () => {
 
   const openInspectionInfo = (inspection: Inspection) => {
     setInfoInspection(inspection)
+    setInfoDraft(inspectionDetailsDraft(inspection))
+    setInfoEditing(false)
+  }
+
+  const closeUpcomingActions = () => {
+    setUpcomingActionAnchor(null)
+    setUpcomingActionItem(null)
+  }
+
+  const openUpcomingActions = (event: MouseEvent<HTMLElement>, inspection: Inspection) => {
+    setUpcomingActionAnchor(event.currentTarget)
+    setUpcomingActionItem(inspection)
+  }
+
+  const closeClosedActions = () => {
+    setClosedActionAnchor(null)
+    setClosedActionItem(null)
+  }
+
+  const openClosedActions = (event: MouseEvent<HTMLElement>, inspection: Inspection) => {
+    setClosedActionAnchor(event.currentTarget)
+    setClosedActionItem(inspection)
   }
 
   useEffect(() => {
@@ -1173,6 +1240,10 @@ const Inspections = () => {
   useEffect(() => {
     setUpcomingPage(0)
   }, [upcomingSearch, upcomingRange])
+
+  useEffect(() => {
+    setClosedPage(0)
+  }, [closedSearch, closedFacilityId, dateFrom, dateTo])
 
   useEffect(() => {
     setTab(queryTab)
@@ -1206,7 +1277,7 @@ const Inspections = () => {
   const facilitiesQ = useQuery({
     queryKey: ['inspection-facilities'],
     queryFn: fetchInspectionFacilities,
-    enabled: tab === 0 || tab === 1,
+    enabled: tab === 0 || tab === 1 || tab === 5,
   })
   const equipmentQ = useQuery({
     queryKey: ['inspection-equipment', facilityId],
@@ -1261,9 +1332,22 @@ const Inspections = () => {
     queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyCompletedPage * pageSize, limit: pageSize }),
     enabled: tab === 3 && !invalidDateRange,
   })
-  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 4 || Boolean(reportInspection) })
+  const closedQ = useQuery({
+    queryKey: ['inspections', 'closed', closedPage, pageSize, closedSearch, closedFacilityId, dateFrom, dateTo],
+    queryFn: () => fetchInspections({
+      status: 'closed',
+      facility_id: closedFacilityId ? Number(closedFacilityId) : undefined,
+      search: closedSearch.trim() || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+      skip: closedPage * pageSize,
+      limit: pageSize,
+    }),
+    enabled: tab === 5 && !invalidDateRange,
+  })
+  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 4 || Boolean(reportInspection) || Boolean(infoInspection) })
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen })
-  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) })
+  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection) })
   const testEquipmentQ = useQuery({
     queryKey: ['test-equipment', 'inspection-active-options', testEquipmentSearch],
     queryFn: () => fetchActiveTestEquipment({ search: testEquipmentSearch || undefined, limit: 500 }),
@@ -1302,6 +1386,12 @@ const Inspections = () => {
     () => flattenModalities(modalitiesQ.data?.items || []),
     [modalitiesQ.data?.items],
   )
+
+  const refreshInspectionQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['inspections'] })
+    queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
+    queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+  }
 
   const createMut = useMutation({
     mutationFn: createInstantInspection,
@@ -1352,6 +1442,57 @@ const Inspections = () => {
       selectTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
+  })
+
+  const rescheduleMut = useMutation({
+    mutationFn: ({ id, scheduledDate, reopen }: { id: number; scheduledDate: string; reopen: boolean }) =>
+      reopen
+        ? reopenInspection(id, scheduledDate)
+        : updateInspectionDetails(id, { scheduled_date: scheduledDate }),
+    onSuccess: (updated, variables) => {
+      toast.success(variables.reopen ? 'Inspection reopened with the new schedule' : 'Inspection rescheduled')
+      setRescheduleInspection(null)
+      setRescheduleDate('')
+      setInfoInspection(previous => previous?.id === updated.id ? (variables.reopen ? null : updated) : previous)
+      setInfoDraft(previous => infoInspection?.id === updated.id ? (variables.reopen ? null : inspectionDetailsDraft(updated)) : previous)
+      refreshInspectionQueries()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not reschedule inspection'),
+  })
+
+  const updateDetailsMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: InspectionDetailsUpdatePayload }) =>
+      updateInspectionDetails(id, data),
+    onSuccess: (updated) => {
+      toast.success('Inspection details updated')
+      setInfoInspection(updated)
+      setInfoDraft(inspectionDetailsDraft(updated))
+      setInfoEditing(false)
+      refreshInspectionQueries()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update inspection'),
+  })
+
+  const closeInspectionMut = useMutation({
+    mutationFn: closeScheduledInspection,
+    onSuccess: (closed) => {
+      toast.success('Inspection closed')
+      setCloseInspectionTarget(null)
+      setInfoInspection(previous => previous?.id === closed.id ? null : previous)
+      refreshInspectionQueries()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not close inspection'),
+  })
+
+  const reopenInspectionMut = useMutation({
+    mutationFn: (inspectionId: number) => reopenInspection(inspectionId),
+    onSuccess: (reopened) => {
+      toast.success('Inspection returned to Upcoming')
+      setReopenInspectionTarget(null)
+      setInfoInspection(previous => previous?.id === reopened.id ? null : previous)
+      refreshInspectionQueries()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not reopen inspection'),
   })
 
   const reportMut = useMutation({
@@ -1575,6 +1716,18 @@ const Inspections = () => {
     )
   }, [selectedBatch?.facility_id, usersQ.data?.items])
 
+  const infoTechnicians = useMemo(() => {
+    if (!infoInspection) return []
+    return (usersQ.data?.items || []).filter((user: UserData) => {
+      const isCurrentInspector = user.id === infoInspection.inspector_id
+      if (user.role !== 'technician' && !isCurrentInspector) return false
+      return isCurrentInspector
+        || user.facility_id === infoInspection.facility_id
+        || (user.facilities || []).some(facility => facility.id === infoInspection.facility_id)
+        || ['superadmin', 'admin'].includes(user.role)
+    })
+  }, [infoInspection, usersQ.data?.items])
+
   const toggleInstantEquipment = (id: number) => {
     setSelectedInstantEquipmentIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
   }
@@ -1629,6 +1782,55 @@ const Inspections = () => {
       frequency: frequency === 'instant' ? 'annual' : frequency,
       scheduled_date: new Date(scheduleDate).toISOString(),
     })
+  }
+
+  const openRescheduleDialog = (inspection: Inspection) => {
+    closeUpcomingActions()
+    setRescheduleInspection(inspection)
+    setRescheduleDate(toDateTimeLocalValue(inspection.scheduled_date))
+  }
+
+  const submitReschedule = () => {
+    if (!rescheduleInspection || !rescheduleDate) return toast.error('Select a scheduled date and time')
+    const parsed = new Date(rescheduleDate)
+    if (Number.isNaN(parsed.getTime())) return toast.error('Enter a valid scheduled date and time')
+    rescheduleMut.mutate({
+      id: rescheduleInspection.id,
+      scheduledDate: parsed.toISOString(),
+      reopen: rescheduleInspection.status === 'closed',
+    })
+  }
+
+  const submitInspectionDetails = () => {
+    if (!infoInspection || !infoDraft) return
+    if (!infoDraft.scheduledDate) return toast.error('Scheduled date and time is required')
+    const parsed = new Date(infoDraft.scheduledDate)
+    if (Number.isNaN(parsed.getTime())) return toast.error('Enter a valid scheduled date and time')
+    if (!infoDraft.frequency.trim()) return toast.error('Inspection frequency is required')
+    if (!infoDraft.formTemplateId) return toast.error('Select an inspection form')
+    updateDetailsMut.mutate({
+      id: infoInspection.id,
+      data: {
+        scheduled_date: parsed.toISOString(),
+        inspection_frequency: infoDraft.frequency.trim(),
+        compliance_requirement: infoDraft.complianceRequirement.trim() || null,
+        criticality: infoDraft.criticality.trim() || null,
+        inspector_id: infoDraft.inspectorId === '' ? null : Number(infoDraft.inspectorId),
+        form_template_id: Number(infoDraft.formTemplateId),
+      },
+    })
+  }
+
+  const closeInspectionInfo = () => {
+    if (updateDetailsMut.isPending) return
+    setInfoInspection(null)
+    setInfoDraft(null)
+    setInfoEditing(false)
+  }
+
+  const cancelInspectionDetailsEdit = () => {
+    if (infoInspection) setInfoDraft(inspectionDetailsDraft(infoInspection))
+    setInfoEditing(false)
   }
 
   const updateReport = (section: string, key: string, value: any) => {
@@ -2877,6 +3079,7 @@ const Inspections = () => {
   )
 
   const renderUpcomingRows = () => (
+    <>
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader sx={{ width: 1360, minWidth: 1360, tableLayout: 'fixed' }}>
         <colgroup>
@@ -2922,8 +3125,13 @@ const Inspections = () => {
               <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(item.scheduled_date)}</TableCell>
               <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                 {canEditInspections ? (
-                  <Button startIcon={<PlayArrowIcon />} variant="contained" onClick={() => startMut.mutate(item.id)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                    Start
+                  <Button
+                    endIcon={<KeyboardArrowDownIcon />}
+                    variant="outlined"
+                    onClick={(event) => openUpcomingActions(event, item)}
+                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, minWidth: 112 }}
+                  >
+                    Actions
                   </Button>
                 ) : (
                   <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
@@ -2934,6 +3142,146 @@ const Inspections = () => {
         </TableBody>
       </Table>
     </TableContainer>
+    <Menu
+      anchorEl={upcomingActionAnchor}
+      open={Boolean(upcomingActionAnchor && upcomingActionItem)}
+      onClose={closeUpcomingActions}
+      PaperProps={{ sx: { borderRadius: '14px', minWidth: 190, boxShadow: '0 18px 45px rgba(30,27,75,0.16)' } }}
+    >
+      <MenuItem
+        onClick={() => {
+          const inspection = upcomingActionItem
+          closeUpcomingActions()
+          if (inspection) startMut.mutate(inspection.id)
+        }}
+        disabled={startMut.isPending}
+        sx={{ gap: 1.25, fontWeight: 800 }}
+      >
+        <PlayArrowIcon fontSize="small" sx={{ color: '#7C3AED' }} />
+        Start
+      </MenuItem>
+      <MenuItem
+        onClick={() => upcomingActionItem && openRescheduleDialog(upcomingActionItem)}
+        sx={{ gap: 1.25, fontWeight: 800 }}
+      >
+        <EventAvailableIcon fontSize="small" sx={{ color: '#2563EB' }} />
+        Reschedule
+      </MenuItem>
+      <Divider sx={{ my: 0.5 }} />
+      <MenuItem
+        onClick={() => {
+          const inspection = upcomingActionItem
+          closeUpcomingActions()
+          if (inspection) setCloseInspectionTarget(inspection)
+        }}
+        sx={{ gap: 1.25, fontWeight: 800, color: '#DC2626' }}
+      >
+        <CancelIcon fontSize="small" />
+        Close inspection
+      </MenuItem>
+    </Menu>
+    </>
+  )
+
+  const renderClosedRows = () => (
+    <>
+      <TableContainer className="list-scroll-panel">
+        <Table stickyHeader sx={{ minWidth: 1180, tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: 155 }} />
+            <col style={{ width: 220 }} />
+            <col style={{ width: 280 }} />
+            <col style={{ width: 150 }} />
+            <col style={{ width: 170 }} />
+            <col style={{ width: 170 }} />
+            <col style={{ width: 120 }} />
+          </colgroup>
+          <TableHead>
+            <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+              <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Scheduled</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Closed</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {closedQ.isLoading ? Array.from({ length: 4 }).map((_, index) => (
+              <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
+            )) : (closedQ.data?.items || []).length === 0 ? (
+              <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No closed inspections match these filters.</TableCell></TableRow>
+            ) : closedQ.data!.items.map(item => (
+              <TableRow key={item.id} hover>
+                <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
+                <TableCell>
+                  <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />
+                  <ClippedTooltipText value={item.serial_number || '-'} variant="caption" color="#8B95A7" fontWeight={500} onClick={() => openInspectionInfo(item)} />
+                </TableCell>
+                <TableCell><Chip size="small" label="Closed" sx={{ fontWeight: 900, bgcolor: statusChip('closed').bg, color: statusChip('closed').color }} /></TableCell>
+                <TableCell>{formatDate(item.scheduled_date)}</TableCell>
+                <TableCell>{formatDate(item.updated_at)}</TableCell>
+                <TableCell align="right">
+                  {canEditInspections ? (
+                    <IconButton
+                      size="small"
+                      onClick={event => openClosedActions(event, item)}
+                      sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                    >
+                      <MoreVertIcon fontSize="small" />
+                    </IconButton>
+                  ) : (
+                    <Button size="small" onClick={() => openInspectionInfo(item)} sx={{ fontWeight: 900, textTransform: 'none' }}>View</Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Menu
+        anchorEl={closedActionAnchor}
+        open={Boolean(closedActionAnchor && closedActionItem)}
+        onClose={closeClosedActions}
+        PaperProps={{ sx: { borderRadius: '14px', minWidth: 190, boxShadow: '0 18px 45px rgba(30,27,75,0.16)' } }}
+      >
+        <MenuItem
+          onClick={() => {
+            const inspection = closedActionItem
+            closeClosedActions()
+            if (inspection) openInspectionInfo(inspection)
+          }}
+          sx={{ gap: 1.25, fontWeight: 800 }}
+        >
+          <VisibilityOutlinedIcon fontSize="small" sx={{ color: '#2563EB' }} />
+          View
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            const inspection = closedActionItem
+            closeClosedActions()
+            if (inspection) setReopenInspectionTarget(inspection)
+          }}
+          sx={{ gap: 1.25, fontWeight: 800 }}
+        >
+          <EventAvailableIcon fontSize="small" sx={{ color: '#059669' }} />
+          Reopen
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            const inspection = closedActionItem
+            closeClosedActions()
+            if (inspection) openRescheduleDialog(inspection)
+          }}
+          sx={{ gap: 1.25, fontWeight: 800 }}
+        >
+          <EditIcon fontSize="small" sx={{ color: '#7C3AED' }} />
+          Reschedule & reopen
+        </MenuItem>
+      </Menu>
+    </>
   )
 
   // Overall live-report status: 'fail' if any pass/fail field is set to fail,
@@ -3408,11 +3756,12 @@ const Inspections = () => {
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
         <Tabs value={tab} onChange={(_, v) => selectTab(v)} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
-          <Tab icon={<EventAvailableIcon />} iconPosition="start" label="Upcoming" />
-          <Tab icon={<BoltIcon />} iconPosition="start" label="Instant Inspection" />
-          <Tab icon={<BuildIcon />} iconPosition="start" label="In Progress" />
-          <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Completed" />
-          <Tab icon={<AssignmentTurnedInIcon />} iconPosition="start" label="Inspection Forms" />
+          <Tab value={0} icon={<EventAvailableIcon />} iconPosition="start" label="Upcoming" />
+          <Tab value={1} icon={<BoltIcon />} iconPosition="start" label="Instant Inspection" />
+          <Tab value={2} icon={<BuildIcon />} iconPosition="start" label="In Progress" />
+          <Tab value={3} icon={<CheckCircleIcon />} iconPosition="start" label="Completed" />
+          <Tab value={5} icon={<CancelIcon />} iconPosition="start" label="Closed" />
+          <Tab value={4} icon={<AssignmentTurnedInIcon />} iconPosition="start" label="Inspection Forms" />
         </Tabs>
 
         {tab === 0 && (
@@ -3624,6 +3973,40 @@ const Inspections = () => {
                 {renderPagination(completedQ.data?.total || 0, legacyCompletedPage, setLegacyCompletedPage)}
               </Box>
             )}
+          </Box>
+        )}
+
+        {tab === 5 && (
+          <Box sx={{ p: 3 }}>
+            <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 320px' }, gap: 2 }}>
+                <TextField
+                  label="Search closed inspections"
+                  placeholder="Search inspection #, facility, asset, serial, batch, or requirement..."
+                  value={closedSearch}
+                  onChange={event => setClosedSearch(event.target.value)}
+                  fullWidth
+                />
+                <FormControl fullWidth>
+                  <InputLabel>Facility</InputLabel>
+                  <Select
+                    label="Facility"
+                    value={closedFacilityId}
+                    onChange={event => setClosedFacilityId(event.target.value === '' ? '' : Number(event.target.value))}
+                  >
+                    <MenuItem value="">All facilities</MenuItem>
+                    {(facilitiesQ.data || []).map(facility => (
+                      <MenuItem key={facility.id} value={facility.id}>{facility.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, mt: 1 }}>
+                Module From/To dates also filter this list by its scheduled date. Reopening preserves the existing schedule; rescheduling assigns a new date and reopens it.
+              </Typography>
+            </Card>
+            {renderClosedRows()}
+            {renderPagination(closedQ.data?.total || 0, closedPage, setClosedPage)}
           </Box>
         )}
 
@@ -5197,16 +5580,179 @@ const Inspections = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(infoInspection)} onClose={() => setInfoInspection(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+      <Dialog open={Boolean(rescheduleInspection)} onClose={() => !rescheduleMut.isPending && setRescheduleInspection(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-          Inspection Details
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
-            View-only inspection information
+          {rescheduleInspection?.status === 'closed' ? 'Reschedule & Reopen Inspection' : 'Reschedule Inspection'}
+          <Typography sx={{ mt: 0.5, color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            {rescheduleInspection?.inspection_number}
           </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            fullWidth
+            type="datetime-local"
+            label="Scheduled date and time"
+            value={rescheduleDate}
+            onChange={event => setRescheduleDate(event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            helperText={rescheduleInspection?.status === 'closed'
+              ? 'Saving will return this inspection to Upcoming. Past dates are allowed.'
+              : 'Past dates are allowed when correcting or backdating the schedule.'}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRescheduleInspection(null)} disabled={rescheduleMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={submitReschedule}
+            disabled={!rescheduleDate || rescheduleMut.isPending}
+            startIcon={rescheduleMut.isPending ? <CircularProgress size={18} color="inherit" /> : <EventAvailableIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            {rescheduleInspection?.status === 'closed' ? 'Reopen with Schedule' : 'Save Schedule'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(closeInspectionTarget)} onClose={() => !closeInspectionMut.isPending && setCloseInspectionTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Close Inspection?</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: '#475569', fontWeight: 650, lineHeight: 1.65 }}>
+            {closeInspectionTarget?.inspection_number} will be removed from Upcoming without being completed or deleted. Its audit record will remain available.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setCloseInspectionTarget(null)} disabled={closeInspectionMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => closeInspectionTarget && closeInspectionMut.mutate(closeInspectionTarget.id)}
+            disabled={closeInspectionMut.isPending}
+            startIcon={closeInspectionMut.isPending ? <CircularProgress size={18} color="inherit" /> : <CancelIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Close Inspection
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(reopenInspectionTarget)} onClose={() => !reopenInspectionMut.isPending && setReopenInspectionTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Reopen Inspection?</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: '#475569', fontWeight: 650, lineHeight: 1.65 }}>
+            {reopenInspectionTarget?.inspection_number} will return to Upcoming using its existing scheduled date of {formatDate(reopenInspectionTarget?.scheduled_date)}.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setReopenInspectionTarget(null)} disabled={reopenInspectionMut.isPending} sx={{ fontWeight: 800 }}>Cancel</Button>
+          <Button
+            color="success"
+            variant="contained"
+            onClick={() => reopenInspectionTarget && reopenInspectionMut.mutate(reopenInspectionTarget.id)}
+            disabled={reopenInspectionMut.isPending}
+            startIcon={reopenInspectionMut.isPending ? <CircularProgress size={18} color="inherit" /> : <EventAvailableIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Reopen Inspection
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(infoInspection)} onClose={closeInspectionInfo} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ color: '#1E1B4B' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <Box>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: '1.15rem' }}>Inspection Details</Typography>
+              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+                {infoEditing ? 'Edit upcoming inspection information' : 'Inspection information'}
+              </Typography>
+            </Box>
+            {canEditInspections && infoInspection?.status === 'upcoming' && !infoEditing && (
+              <Tooltip title="Edit inspection details">
+                <IconButton
+                  onClick={() => setInfoEditing(true)}
+                  sx={{ bgcolor: '#F3E8FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                >
+                  <EditIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
         </DialogTitle>
         <DialogContent dividers>
           {infoInspection && (
             <Box sx={{ display: 'grid', gap: 2 }}>
+              {infoEditing && infoDraft && (
+                <Card sx={{ p: 2.25, borderRadius: '16px', border: '1px solid #DDD6FE', bgcolor: '#FAFAFF' }}>
+                  <Typography sx={{ mb: 2, color: '#1E1B4B', fontWeight: 900 }}>Editable scheduling information</Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+                    <TextField
+                      type="datetime-local"
+                      label="Scheduled date and time"
+                      value={infoDraft.scheduledDate}
+                      onChange={event => setInfoDraft(previous => previous ? { ...previous, scheduledDate: event.target.value } : previous)}
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Past dates are allowed when correcting or backdating the schedule."
+                      required
+                    />
+                    <TextField
+                      select
+                      label="Frequency"
+                      value={infoDraft.frequency}
+                      onChange={event => setInfoDraft(previous => previous ? { ...previous, frequency: event.target.value } : previous)}
+                      required
+                    >
+                      {!['instant', 'quarterly', 'semi_annual', 'annual'].includes(infoDraft.frequency) && (
+                        <MenuItem value={infoDraft.frequency}>{infoDraft.frequency.replace(/_/g, ' ')}</MenuItem>
+                      )}
+                      <MenuItem value="instant">Instant</MenuItem>
+                      <MenuItem value="quarterly">Quarterly</MenuItem>
+                      <MenuItem value="semi_annual">Semi-Annual</MenuItem>
+                      <MenuItem value="annual">Annual</MenuItem>
+                    </TextField>
+                    <TextField
+                      label="Criticality"
+                      value={infoDraft.criticality}
+                      onChange={event => setInfoDraft(previous => previous ? { ...previous, criticality: event.target.value } : previous)}
+                      placeholder="For example: High"
+                    />
+                    <TextField
+                      select
+                      label="Assigned technician"
+                      value={infoDraft.inspectorId}
+                      onChange={event => setInfoDraft(previous => previous ? { ...previous, inspectorId: event.target.value === '' ? '' : Number(event.target.value) } : previous)}
+                    >
+                      <MenuItem value="">Unassigned</MenuItem>
+                      {infoTechnicians.map((user: UserData) => (
+                        <MenuItem key={user.id} value={user.id}>{user.full_name || user.username}</MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      select
+                      label="Inspection form"
+                      value={infoDraft.formTemplateId}
+                      onChange={event => setInfoDraft(previous => previous ? { ...previous, formTemplateId: Number(event.target.value) } : previous)}
+                      disabled={formsQ.isLoading}
+                      required
+                    >
+                      {inspectionForms.map(form => (
+                        <MenuItem key={form.id} value={form.id}>{form.name}</MenuItem>
+                      ))}
+                    </TextField>
+                    <TextField
+                      label="Compliance requirement"
+                      value={infoDraft.complianceRequirement}
+                      onChange={event => setInfoDraft(previous => previous ? { ...previous, complianceRequirement: event.target.value } : previous)}
+                      multiline
+                      minRows={3}
+                      sx={{ gridColumn: { md: '1 / -1' } }}
+                    />
+                  </Box>
+                  <Typography sx={{ mt: 1.5, color: '#64748B', fontSize: 12.5, fontWeight: 700 }}>
+                    Facility, equipment, asset tag, serial number, and batch identity stay read-only to protect inspection history.
+                  </Typography>
+                </Card>
+              )}
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
                 <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
                   <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Inspection #</Typography>
@@ -5261,7 +5807,53 @@ const Inspections = () => {
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setInfoInspection(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Close</Button>
+          {infoEditing ? (
+            <>
+              <Button onClick={cancelInspectionDetailsEdit} disabled={updateDetailsMut.isPending} sx={{ fontWeight: 900, textTransform: 'none' }}>Cancel</Button>
+              <Button
+                onClick={submitInspectionDetails}
+                disabled={!infoDraft?.scheduledDate || !infoDraft?.formTemplateId || updateDetailsMut.isPending}
+                startIcon={updateDetailsMut.isPending ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
+                variant="contained"
+                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+              >
+                Save Changes
+              </Button>
+            </>
+          ) : (
+            <>
+              {infoInspection?.status === 'closed' && canEditInspections && (
+                <>
+                  <Button
+                    onClick={() => {
+                      const inspection = infoInspection
+                      closeInspectionInfo()
+                      if (inspection) openRescheduleDialog(inspection)
+                    }}
+                    variant="outlined"
+                    startIcon={<EditIcon />}
+                    sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+                  >
+                    Reschedule & Reopen
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      const inspection = infoInspection
+                      closeInspectionInfo()
+                      setReopenInspectionTarget(inspection)
+                    }}
+                    color="success"
+                    variant="outlined"
+                    startIcon={<EventAvailableIcon />}
+                    sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+                  >
+                    Reopen
+                  </Button>
+                </>
+              )}
+              <Button onClick={closeInspectionInfo} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Done</Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
 
