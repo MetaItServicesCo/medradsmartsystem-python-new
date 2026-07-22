@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class FacilityUserResponse(BaseModel):
@@ -25,7 +25,7 @@ class FacilityUserUpdate(BaseModel):
 
 class FacilityUserBulkAssign(BaseModel):
     facility_id: int
-    user_ids: List[int]
+    user_ids: List[int] = Field(min_length=1)
 
 
 class FacilityManagerRoleUpdate(BaseModel):

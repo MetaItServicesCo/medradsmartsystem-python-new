@@ -12,6 +12,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import BlockIcon from '@mui/icons-material/Block'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
+import GroupAddOutlinedIcon from '@mui/icons-material/GroupAddOutlined'
 import LoginIcon from '@mui/icons-material/Login'
 import DeleteIcon from '@mui/icons-material/Delete'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
@@ -28,8 +29,10 @@ import { useAuthStore } from '@/stores/authStore'
 import CreateUserModal from './CreateUserModal'
 import EditUserModal from './EditUserModal'
 import PermissionEditorModal from './PermissionEditorModal'
+import AddExistingUserModal from './AddExistingUserModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import { fetchFacility } from '@/api/facilities'
+import { hasPermission } from '@/config/permissions'
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All Roles' },
@@ -73,6 +76,7 @@ const ACTION_MENU_ITEM = {
 const Users = () => {
   const currentUser = useAuthStore((s) => s.user)
   const isSuperAdmin = currentUser?.role === 'superadmin'
+  const canAddUsers = hasPermission(currentUser, 'users', 'add')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -89,6 +93,7 @@ const Users = () => {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
   const [createOpen, setCreateOpen] = useState(false)
+  const [addExistingOpen, setAddExistingOpen] = useState(false)
   const [editUser, setEditUser] = useState<UserData | null>(null)
   const [roleEditUser, setRoleEditUser] = useState<UserData | null>(null)
   const [permissionUser, setPermissionUser] = useState<UserData | null>(null)
@@ -271,6 +276,16 @@ const Users = () => {
         <Box sx={{ flex: 1 }} />
         {isFetching && !isLoading && (
           <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+        )}
+        {facilityId && selectedFacility && canAddUsers && (
+          <Button
+            variant="outlined"
+            startIcon={<GroupAddOutlinedIcon />}
+            onClick={() => setAddExistingOpen(true)}
+            sx={{ borderRadius: '12px', fontWeight: 900 }}
+          >
+            Add Existing User
+          </Button>
         )}
         {isSuperAdmin && (
           <Button
@@ -489,6 +504,14 @@ const Users = () => {
           ? { id: facilityId, name: selectedFacility.name }
           : undefined}
       />
+
+      {facilityId && selectedFacility && (
+        <AddExistingUserModal
+          open={addExistingOpen}
+          onClose={() => setAddExistingOpen(false)}
+          facility={{ id: facilityId, name: selectedFacility.name }}
+        />
+      )}
 
       {/* Edit User Modal */}
       {editUser && (

@@ -43,6 +43,20 @@ export const fetchFacilityManagerCandidates = async (
   return res.data
 }
 
+export const fetchFacilityAssignmentCandidates = async (
+  facilityId: number,
+  search?: string,
+): Promise<FacilityUserListResponse> => {
+  const res = await apiClient.get('/facility-users/assignment-candidates', {
+    params: {
+      facility_id: facilityId,
+      ...(search?.trim() ? { search: search.trim() } : {}),
+      limit: 50,
+    },
+  })
+  return res.data
+}
+
 export const assignFacilityManagerRole = async (
   facilityId: number,
   userId: number,
@@ -61,7 +75,7 @@ export const removeUserFromFacility = async (userId: number): Promise<FacilityUs
   const res = await apiClient.delete(`/facility-users/${userId}/facility`)
   return res.data
 }
-export const bulkAssignUsersToFacility = async (facilityId: number, userIds: number[]): Promise<{ detail: string }> => {
+export const bulkAssignUsersToFacility = async (facilityId: number, userIds: number[]): Promise<{ detail: string; assigned: number; already_assigned: number }> => {
   const res = await apiClient.post('/facility-users/bulk-assign', { facility_id: facilityId, user_ids: userIds })
   return res.data
 }

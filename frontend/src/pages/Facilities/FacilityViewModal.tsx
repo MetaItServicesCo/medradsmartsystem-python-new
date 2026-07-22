@@ -109,22 +109,6 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
             Facility ID: #{facility.id}
           </Typography>
         </Box>
-        {onEdit && (
-          <IconButton
-            aria-label="Edit facility"
-            title="Edit facility"
-            onClick={() => onEdit(facility)}
-            sx={{
-              zIndex: 1,
-              color: '#fff',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: '10px',
-              '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' },
-            }}
-          >
-            <EditOutlinedIcon />
-          </IconButton>
-        )}
         <Button size="small" variant="contained" startIcon={<PictureAsPdfIcon />} onClick={handleExportPDF}
           sx={{ zIndex: 1, backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', '&:hover': { backgroundColor: 'rgba(255,255,255,0.25)' }, border: '1px solid rgba(255,255,255,0.3)', borderRadius: '10px' }}>
           Export PDF
@@ -156,7 +140,29 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
         <Divider sx={{ mb: 3, borderColor: 'rgba(124,58,237,0.08)' }} />
 
         {/* General Info */}
-        <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>General Information</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 2 }}>
+          {onEdit && (
+            <IconButton
+              size="small"
+              aria-label="Edit general information"
+              title="Edit general information"
+              onClick={() => onEdit(facility)}
+              sx={{
+                width: 30,
+                height: 30,
+                color: '#7C3AED',
+                bgcolor: '#F5F3FF',
+                border: '1px solid #DDD6FE',
+                '&:hover': { bgcolor: '#EDE9FE' },
+              }}
+            >
+              <EditOutlinedIcon sx={{ fontSize: 17 }} />
+            </IconButton>
+          )}
+          <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em' }}>
+            General Information
+          </Typography>
+        </Box>
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <InfoItem icon={<LocationOnIcon />} label="Address" value={`${facility.address} ${facility.suite ? `Ste ${facility.suite}` : ''}`} />
           <InfoItem icon={<LocationOnIcon />} label="City / State" value={`${facility.city}, ${facility.state}`} />
