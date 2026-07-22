@@ -3125,14 +3125,14 @@ const Inspections = () => {
               <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(item.scheduled_date)}</TableCell>
               <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                 {canEditInspections ? (
-                  <Button
-                    endIcon={<KeyboardArrowDownIcon />}
-                    variant="outlined"
+                  <IconButton
+                    size="small"
+                    aria-label={`Actions for ${item.inspection_number}`}
                     onClick={(event) => openUpcomingActions(event, item)}
-                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, minWidth: 112 }}
+                    sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
                   >
-                    Actions
-                  </Button>
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
                 ) : (
                   <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
                 )}
