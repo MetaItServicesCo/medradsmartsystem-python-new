@@ -381,11 +381,6 @@ def _consume_service_parts(
     for part_id in part_ids:
         part = parts_by_id[part_id]
         quantity = quantities[part_id]
-        if part.facility_id != service_request.facility_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Part {part.part_number} does not belong to the service request facility",
-            )
         if str(part.status or "").lower() != "active":
             raise HTTPException(status_code=400, detail=f"Part {part.part_number} is not active")
         available = int(part.quantity_on_hand or 0)
@@ -398,7 +393,9 @@ def _consume_service_parts(
         part.quantity_on_hand = available - quantity
         transaction = InventoryTransaction(
             part_id=part.id,
-            facility_id=part.facility_id,
+            # Parts are global inventory. Record where they were consumed while
+            # deducting stock from the single global part record.
+            facility_id=service_request.facility_id,
             transaction_type="issuance",
             quantity=quantity,
             unit_cost=part.unit_price,
@@ -909,7 +906,7 @@ def list_service_request_parts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """List in-stock parts belonging to the service request's facility."""
+    """List active in-stock parts from the global inventory catalog."""
     service_request = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not service_request:
         raise HTTPException(status_code=404, detail="Service request not found")
@@ -920,7 +917,6 @@ def list_service_request_parts(
         raise HTTPException(status_code=403, detail="You can only view parts for service requests you submitted")
 
     query = db.query(InventoryPart).filter(
-        InventoryPart.facility_id == service_request.facility_id,
         InventoryPart.status == "active",
         InventoryPart.quantity_on_hand > 0,
     )

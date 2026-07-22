@@ -1318,7 +1318,7 @@ const ServiceRequestDetail = () => {
                   }}
                   getOptionLabel={(option) => `${option.part_number} - ${option.description}`}
                   isOptionEqualToValue={(option, value) => option.id === value.id}
-                  noOptionsText={partSearch ? 'No in-stock parts match this search' : 'No in-stock parts available for this facility'}
+                  noOptionsText={partSearch ? 'No in-stock parts match this search' : 'No in-stock parts available'}
                   renderOption={(props, option) => (
                     <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" sx={{ width: 36, height: 36, bgcolor: '#ECFDF5', color: '#059669' }}>
@@ -1336,7 +1336,7 @@ const ServiceRequestDetail = () => {
                     <TextField
                       {...params}
                       label="Parts Used"
-                      placeholder="Search and select facility inventory parts"
+                      placeholder="Search and select inventory parts"
                       helperText="Stock is deducted only when this work session is successfully saved."
                     />
                   )}
