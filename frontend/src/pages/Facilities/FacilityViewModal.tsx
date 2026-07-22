@@ -141,6 +141,9 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
 
         {/* General Info */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 2 }}>
+          <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em' }}>
+            General Information
+          </Typography>
           {onEdit && (
             <IconButton
               size="small"
@@ -150,6 +153,7 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
               sx={{
                 width: 30,
                 height: 30,
+                ml: 'auto',
                 color: '#7C3AED',
                 bgcolor: '#F5F3FF',
                 border: '1px solid #DDD6FE',
@@ -159,9 +163,6 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
               <EditOutlinedIcon sx={{ fontSize: 17 }} />
             </IconButton>
           )}
-          <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em' }}>
-            General Information
-          </Typography>
         </Box>
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <InfoItem icon={<LocationOnIcon />} label="Address" value={`${facility.address} ${facility.suite ? `Ste ${facility.suite}` : ''}`} />
