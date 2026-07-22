@@ -48,6 +48,7 @@ import { fetchUsers, type UserData } from '@/api/users'
 import { resolveUploadUrl } from '@/api/users'
 import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
 import { useAuthStore } from '@/stores/authStore'
+import { hasPermission } from '@/config/permissions'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
@@ -194,14 +195,30 @@ const ServiceRequestDetail = () => {
 
 
   const user = useAuthStore(state => state.user)
-  const canCreateQuotation = ['superadmin', 'admin', 'technician'].includes(user?.role || '')
-  const canManageServiceBilling = ['superadmin', 'admin', 'facility_admin', 'facility_manager'].includes(user?.role || '')
+  const role = user?.role || ''
+  const isInternalServiceUser = ['superadmin', 'admin'].includes(role)
+  const isFacilityCustomerView = ['facility_admin', 'facility_manager', 'client', 'employee'].includes(role)
+  const canAddServiceRequests = hasPermission(user, 'service-requests', 'add')
+  const canEditServiceRequests = hasPermission(user, 'service-requests', 'edit')
+  const canAssignTechnician = isInternalServiceUser && canEditServiceRequests
+  const canManageOperationalStatus = isInternalServiceUser && canEditServiceRequests
+  const canCreateQuotation = ['superadmin', 'admin', 'technician'].includes(role) && canAddServiceRequests
+  const canManageServiceBilling = isInternalServiceUser && hasPermission(user, 'billing', 'edit')
+  const canViewServiceBilling = hasPermission(user, 'billing', 'view')
+  const canViewServiceReports = hasPermission(user, 'reports', 'view')
 
   const { data: sr, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['service-request', id],
     queryFn: () => fetchServiceRequest(Number(id)),
     enabled: !!id,
   })
+  const canLogWorkForRequest = Boolean(
+    sr
+    && !['completed', 'cancelled'].includes(sr.status)
+    && sr.assigned_technician_id
+    && canAddServiceRequests
+    && (isInternalServiceUser || user?.id === sr.assigned_technician_id),
+  )
 
   useEffect(() => {
     if (sr?.status && SERVICE_WORKFLOW_STATUS_OPTIONS.some(option => option.value === sr.status)) {
@@ -213,7 +230,7 @@ const ServiceRequestDetail = () => {
   const { data: srInvoicesData } = useQuery({
     queryKey: ['service-invoices-for-sr', id],
     queryFn: () => fetchServiceInvoices({ service_request_id: Number(id) }),
-    enabled: !!id && !isError && !sr?.service_invoice,
+    enabled: !!id && !isError && canViewServiceBilling && !sr?.service_invoice,
     staleTime: 30_000,
   })
   const resolvedInvoice = sr?.service_invoice ?? (srInvoicesData?.items?.find(inv => inv.status !== 'cancelled') ?? null)
@@ -222,12 +239,14 @@ const ServiceRequestDetail = () => {
   const { data: usersData } = useQuery({
     queryKey: ['users-technicians'],
     queryFn: () => fetchUsers({ role: 'technician', limit: 200 }),
+    enabled: canAssignTechnician,
   })
   const technicians: UserData[] = usersData?.items ?? []
 
   const { data: testEquipmentData } = useQuery({
     queryKey: ['test-equipment', 'active-options'],
     queryFn: () => fetchActiveTestEquipment({ limit: 500 }),
+    enabled: canLogWorkForRequest,
   })
   const testEquipmentOptions = testEquipmentData?.items || []
 
@@ -700,7 +719,8 @@ const ServiceRequestDetail = () => {
   const isTerminal = sr.status === 'completed' || sr.status === 'cancelled'
   const nextStatus = NEXT_STATUS[sr.status]
   const requestImageUrl = resolveUploadUrl(sr.request_image_url) || sr.request_image_url || ''
-  const canLogWork = !isTerminal && !!sr.assigned_technician_id && (user?.role === 'superadmin' || user?.role === 'admin' || user?.id === sr.assigned_technician_id)
+  const canLogWork = canLogWorkForRequest
+  const canCustomerCancelRequest = isFacilityCustomerView && canEditServiceRequests && sr.status === 'new' && sr.requester_id === user?.id
   const timeSpentHours = Number(sr.time_spent_hours || 0)
   const tierLaborRate = Number(sr.tier_labor_rate_per_hour || 0)
   const tierMileageRate = Number(sr.tier_mileage_rate || 0)
@@ -778,6 +798,17 @@ const ServiceRequestDetail = () => {
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 1.5 }}>
+              {isFacilityCustomerView && (
+                <Chip
+                  label="Facility Portal"
+                  sx={{
+                    backgroundColor: 'rgba(255,255,255,0.16)',
+                    color: '#fff',
+                    fontWeight: 800,
+                    backdropFilter: 'blur(10px)',
+                  }}
+                />
+              )}
               <Chip
                 label={sr.priority.charAt(0).toUpperCase() + sr.priority.slice(1)}
                 sx={{
@@ -1417,7 +1448,7 @@ const ServiceRequestDetail = () => {
           )}
 
           {/* Status Actions */}
-          {!isTerminal && (
+          {!isTerminal && canManageOperationalStatus && (
             <Card sx={{ p: 3 }}>
               <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
                 Work Order Actions
@@ -1548,6 +1579,46 @@ const ServiceRequestDetail = () => {
                   Cancel
                 </Button>
               </Box>
+            </Card>
+          )}
+
+          {!isTerminal && isFacilityCustomerView && (
+            <Card sx={{ p: 3, border: '1px solid #DDD6FE', background: 'linear-gradient(145deg, #FFFFFF 0%, #FAF8FF 100%)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                <Avatar sx={{ bgcolor: '#EDE9FE', color: '#7C3AED' }}>
+                  <HistoryIcon />
+                </Avatar>
+                <Box>
+                  <Typography sx={{ fontWeight: 850, color: '#1E1B4B', fontSize: '1rem' }}>
+                    Request Progress
+                  </Typography>
+                  <Typography sx={{ color: '#64748B', fontWeight: 650, fontSize: '0.82rem' }}>
+                    Track the service team without changing operational work-order data.
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ p: 2, borderRadius: '14px', bgcolor: sColor.bg, border: `1px solid ${sColor.color}22` }}>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: sColor.color, textTransform: 'uppercase' }}>
+                  Current Status
+                </Typography>
+                <Typography sx={{ mt: 0.35, fontWeight: 900, color: '#1E1B4B' }}>
+                  {STATUS_LABELS[sr.status] || sr.status.replace(/_/g, ' ')}
+                </Typography>
+                <Typography sx={{ mt: 0.75, color: '#64748B', fontSize: '0.82rem', lineHeight: 1.6 }}>
+                  Assignment, technician work sessions, service status, and invoice preparation are managed by the service team. Quotations requiring your action remain available below.
+                </Typography>
+              </Box>
+              {canCustomerCancelRequest && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<CancelIcon />}
+                  onClick={() => setCancelOpen(true)}
+                  sx={{ mt: 2, borderRadius: '12px', fontWeight: 750 }}
+                >
+                  Cancel Submitted Request
+                </Button>
+              )}
             </Card>
           )}
 
@@ -1719,6 +1790,42 @@ const ServiceRequestDetail = () => {
                 >
                   {sr.invoice_deleted ? 'Invoice Deleted' : 'Delete Invoice'}
                 </Button>
+              </Box>
+            </Card>
+          )}
+
+          {sr.status === 'completed' && isFacilityCustomerView && (
+            <Card sx={{ p: 3, border: '1px solid #D1FAE5', background: 'linear-gradient(145deg, #FFFFFF 0%, #F7FFFB 100%)' }}>
+              <Typography sx={{ fontWeight: 800, color: '#1E1B4B', mb: 0.75, fontSize: '1rem' }}>
+                Service Documents
+              </Typography>
+              <Typography sx={{ color: '#64748B', fontSize: '0.84rem', lineHeight: 1.6, mb: 2 }}>
+                The service work is complete. View the documents available to your account without changing operational or invoice records.
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap' }}>
+                {canViewServiceReports && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<AssessmentIcon />}
+                    onClick={() => navigate(`/reports?serviceRequest=${sr.id}`)}
+                    sx={{ borderRadius: '12px', fontWeight: 700 }}
+                  >
+                    View Service Report
+                  </Button>
+                )}
+                {resolvedInvoice && canViewServiceBilling && (
+                  <Button
+                    variant="contained"
+                    startIcon={<ReceiptLongIcon />}
+                    onClick={() => navigate(`/billing?search=${encodeURIComponent(resolvedInvoice.invoice_number)}`)}
+                    sx={{ borderRadius: '12px', fontWeight: 800, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+                  >
+                    View Invoice in Billing
+                  </Button>
+                )}
+                {!resolvedInvoice && (
+                  <Chip label="Invoice preparation pending" sx={{ bgcolor: '#F1F5F9', color: '#475569', fontWeight: 750 }} />
+                )}
               </Box>
             </Card>
           )}

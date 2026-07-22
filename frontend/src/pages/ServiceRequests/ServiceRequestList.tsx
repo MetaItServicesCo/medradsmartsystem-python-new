@@ -30,6 +30,8 @@ import {
 } from '@/api/serviceRequests'
 import CreateServiceRequestModal from './CreateServiceRequestModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { useAuthStore } from '@/stores/authStore'
+import { hasPermission } from '@/config/permissions'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
@@ -105,6 +107,10 @@ const ServiceRequestList = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const user = useAuthStore(state => state.user)
+  const canCreateServiceRequests = hasPermission(user, 'service-requests', 'add')
+  const canDeleteServiceRequests = ['superadmin', 'admin'].includes(user?.role || '')
+    && hasPermission(user, 'service-requests', 'delete')
 
   const querySearch = searchParams.get('search') || ''
   const queryStatus = searchParams.get('status') || ''
@@ -406,21 +412,23 @@ const ServiceRequestList = () => {
             <CircularProgress size={18} thickness={5} sx={{ color: '#7161D8' }} />
           )}
 
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setCreateOpen(true)}
-            sx={{
-              background: 'linear-gradient(135deg, #7161D8 0%, #F05D92 100%)',
-              boxShadow: '0 12px 28px rgba(113,97,216,0.22)',
-              px: 3,
-              borderRadius: '16px',
-              fontWeight: 800,
-              textTransform: 'none',
-            }}
-          >
-            New Request
-          </Button>
+          {canCreateServiceRequests && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateOpen(true)}
+              sx={{
+                background: 'linear-gradient(135deg, #7161D8 0%, #F05D92 100%)',
+                boxShadow: '0 12px 28px rgba(113,97,216,0.22)',
+                px: 3,
+                borderRadius: '16px',
+                fontWeight: 800,
+                textTransform: 'none',
+              }}
+            >
+              New Request
+            </Button>
+          )}
         </Box>
 
         {/* Table */}
@@ -461,7 +469,7 @@ const ServiceRequestList = () => {
                               ? `No results for "${querySearch}". Try different keywords.`
                               : 'Get started by creating your first service request.'}
                           </Typography>
-                          {!querySearch && (
+                          {!querySearch && canCreateServiceRequests && (
                             <Button
                               variant="contained"
                               onClick={() => setCreateOpen(true)}
@@ -639,23 +647,27 @@ const ServiceRequestList = () => {
           <ListItemText primary="View Details" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
         </MenuItem>
 
-        <Box sx={{ mx: 2, my: 0.5 }}>
-          <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
-        </Box>
+        {canDeleteServiceRequests && (
+          <>
+            <Box sx={{ mx: 2, my: 0.5 }}>
+              <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
+            </Box>
 
-        <MenuItem
-          onClick={() => {
-            if (menuItem) setDeleteTarget(menuItem)
-            handleActionsClose()
-          }}
-          sx={{
-            py: 1.2, px: 2, mx: 0.75, borderRadius: '10px',
-            '&:hover': { backgroundColor: '#FEF2F2' },
-          }}
-        >
-          <ListItemIcon><DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#EF4444' }} />
-        </MenuItem>
+            <MenuItem
+              onClick={() => {
+                if (menuItem) setDeleteTarget(menuItem)
+                handleActionsClose()
+              }}
+              sx={{
+                py: 1.2, px: 2, mx: 0.75, borderRadius: '10px',
+                '&:hover': { backgroundColor: '#FEF2F2' },
+              }}
+            >
+              <ListItemIcon><DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.2rem' }} /></ListItemIcon>
+              <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#EF4444' }} />
+            </MenuItem>
+          </>
+        )}
       </Menu>
 
       {/* Create Modal */}

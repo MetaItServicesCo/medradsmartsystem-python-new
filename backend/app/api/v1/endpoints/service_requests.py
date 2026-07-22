@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app import crud
-from app.core.deps import get_current_user, get_admin_user
+from app.core.deps import get_current_user
 from app.utils.permission_deps import require_module_access
 from app.utils.permissions import has_module_permission
 from app.db.base import get_db
@@ -130,6 +130,77 @@ def _calculate_service_cost(sr: ServiceRequest) -> Decimal:
 
 def _role_name(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
+
+
+INTERNAL_SERVICE_ROLES = {UserRole.SUPERADMIN, UserRole.ADMIN}
+SERVICE_CUSTOMER_ROLES = {
+    UserRole.FACILITY_ADMIN,
+    UserRole.FACILITY_MANAGER,
+    UserRole.CLIENT,
+    UserRole.EMPLOYEE,
+}
+CUSTOMER_EDITABLE_REQUEST_FIELDS = {
+    "priority",
+    "problem_description",
+    "service_required",
+    "preferred_datetime",
+    "requested_by_name",
+    "reference_number",
+    "request_image_url",
+}
+CUSTOMER_PAYMENT_FIELDS = {"amount_paid", "status", "payment_method", "notes"}
+
+
+def _is_internal_service_user(user: User) -> bool:
+    return user.role in INTERNAL_SERVICE_ROLES
+
+
+def _authorize_service_request_update(
+    user: User,
+    service_request: ServiceRequest,
+    update_data: dict[str, Any],
+) -> None:
+    """Enforce field-level service-request ownership and workflow boundaries."""
+    if _is_internal_service_user(user):
+        return
+
+    if user.role == UserRole.TECHNICIAN:
+        raise HTTPException(
+            status_code=403,
+            detail="Technicians must update service progress through a work session",
+        )
+
+    if user.role not in SERVICE_CUSTOMER_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized to update this service request")
+
+    if service_request.requester_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the requester can change a submitted service request",
+        )
+
+    if service_request.status != ServiceRequestStatus.NEW:
+        raise HTTPException(
+            status_code=409,
+            detail="This request is already being processed; contact the service team for changes",
+        )
+
+    submitted_fields = set(update_data)
+    requested_status = update_data.get("status")
+    if requested_status is not None:
+        if requested_status != ServiceRequestStatus.CANCELLED.value:
+            raise HTTPException(
+                status_code=403,
+                detail="Facility users cannot update operational service status",
+            )
+        submitted_fields.remove("status")
+
+    disallowed_fields = submitted_fields - CUSTOMER_EDITABLE_REQUEST_FIELDS
+    if disallowed_fields:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Facility users cannot update: {', '.join(sorted(disallowed_fields))}",
+        )
 
 
 def _authorization_dict(authorization: QuotationAuthorization) -> dict[str, Any]:
@@ -778,6 +849,8 @@ def list_service_invoices(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """List generated service invoices for billing."""
+    if not has_module_permission(current_user, "billing", "view"):
+        raise HTTPException(status_code=403, detail="Billing view permission is required")
     query = (
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
         .options(
@@ -851,6 +924,24 @@ def update_service_invoice(
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
+    if not _is_internal_service_user(current_user):
+        if current_user.role not in SERVICE_CUSTOMER_ROLES:
+            raise HTTPException(status_code=403, detail="Not authorized to update this invoice")
+        disallowed_fields = set(update_data) - CUSTOMER_PAYMENT_FIELDS
+        if disallowed_fields:
+            raise HTTPException(
+                status_code=403,
+                detail="Facility users can pay invoices but cannot edit invoice contents",
+            )
+        requested_paid = _money(update_data.get("amount_paid", invoice.amount_paid))
+        if requested_paid < _money(invoice.amount_paid):
+            raise HTTPException(status_code=400, detail="Recorded payments cannot be reduced")
+        if requested_paid > _money(invoice.total_amount):
+            raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice total")
+        # Status is derived from the resulting balance; clients cannot select
+        # an administrative invoice state such as cancelled.
+        update_data.pop("status", None)
+
     existing_metadata = parse_invoice_edit_metadata(invoice.notes)
     if "line_items" in update_data:
         existing_metadata["line_items"] = update_data.pop("line_items") or []
@@ -876,6 +967,8 @@ def update_service_invoice(
         invoice.status = InvoiceStatus.PAID
     elif _money(invoice.amount_paid) > 0 and invoice.status != InvoiceStatus.CANCELLED:
         invoice.status = InvoiceStatus.PARTIALLY_PAID
+    elif not _is_internal_service_user(current_user):
+        invoice.status = InvoiceStatus.PENDING
     invoice.updated_at = datetime.utcnow()
 
     if invoice.service_request:
@@ -911,10 +1004,8 @@ def list_service_request_parts(
     if not service_request:
         raise HTTPException(status_code=404, detail="Service request not found")
     require_facility_access(db, current_user, service_request.facility_id)
-    if current_user.role == UserRole.TECHNICIAN and service_request.assigned_technician_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only view parts for service requests assigned to you")
-    if current_user.role == UserRole.EMPLOYEE and service_request.requester_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only view parts for service requests you submitted")
+    if not _can_work_on_service(current_user, service_request):
+        raise HTTPException(status_code=403, detail="Only the assigned technician or an admin can select service parts")
 
     query = db.query(InventoryPart).filter(
         InventoryPart.status == "active",
@@ -967,22 +1058,24 @@ def get_service_request(
     if current_user.role == UserRole.EMPLOYEE and sr.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only view service requests you submitted")
     data = _enrich(sr, include_quotation_ledger=True)
-    active_invoice = (
-        db.query(Invoice)
-        .options(
-            joinedload(Invoice.facility),
-            joinedload(Invoice.transactions),
-            joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
-            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
-            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+    active_invoice = None
+    if has_module_permission(current_user, "billing", "view"):
+        active_invoice = (
+            db.query(Invoice)
+            .options(
+                joinedload(Invoice.facility),
+                joinedload(Invoice.transactions),
+                joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
+                joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
+                joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+            )
+            .filter(
+                Invoice.service_request_id == sr.id,
+                Invoice.invoice_type == InvoiceType.SERVICE,
+                Invoice.status != InvoiceStatus.CANCELLED,
+            )
+            .first()
         )
-        .filter(
-            Invoice.service_request_id == sr.id,
-            Invoice.invoice_type == InvoiceType.SERVICE,
-            Invoice.status != InvoiceStatus.CANCELLED,
-        )
-        .first()
-    )
     data["service_invoice"] = _service_invoice_response(active_invoice) if active_invoice else None
     return data
 
@@ -1119,6 +1212,7 @@ def update_service_request(
     require_facility_access(db, current_user, db_sr.facility_id)
 
     update_data = sr_in.model_dump(exclude_unset=True)
+    _authorize_service_request_update(current_user, db_sr, update_data)
     changes = {}
 
     # Enforce ordered status transitions
@@ -1218,14 +1312,10 @@ def generate_service_invoice(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Generate a service invoice from completed work, optionally bundling service quotations."""
-    if current_user.role not in [
-        UserRole.SUPERADMIN,
-        UserRole.ADMIN,
-        UserRole.FACILITY_ADMIN,
-        UserRole.FACILITY_MANAGER,
-        UserRole.TECHNICIAN,
-    ]:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    if not _is_internal_service_user(current_user):
+        raise HTTPException(status_code=403, detail="Only an administrator can generate a service invoice")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
 
     db_sr = (
         db.query(ServiceRequest)
@@ -1574,10 +1664,7 @@ def adjust_active_session(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Admin-only: adjust the effective start time of the active clock session."""
-    if current_user.role not in [
-        UserRole.SUPERADMIN, UserRole.ADMIN,
-        UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER,
-    ]:
+    if not _is_internal_service_user(current_user):
         raise HTTPException(status_code=403, detail="Not authorized")
 
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
@@ -1756,6 +1843,8 @@ def delete_service_request(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Delete a service request (admin only)."""
+    if not _is_internal_service_user(current_user):
+        raise HTTPException(status_code=403, detail="Only an administrator can delete a service request")
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")

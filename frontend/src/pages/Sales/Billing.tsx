@@ -398,6 +398,7 @@ const Billing = () => {
   const user = useAuthStore(s => s.user)
   // Billing payment is available to allowed payer roles when their Billing edit permission is enabled.
   const canPay = ['superadmin', 'admin', 'facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
+  const canEditInvoices = ['superadmin', 'admin'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
   const canManageQuotationAuthorization = ['superadmin', 'admin'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
   const canSelfAuthorizeQuotation = ['facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
 
@@ -1348,7 +1349,7 @@ const Billing = () => {
             Pay
           </MenuItem>
         )}
-        {actionItem && canPay && !(actionItem.source === 'service' && actionItem.billingKind !== 'service_invoice') && (
+        {actionItem && canEditInvoices && !(actionItem.source === 'service' && actionItem.billingKind !== 'service_invoice') && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setEditItem(actionItem); closeActions() }}>
             <ListItemIcon><EditOutlinedIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
             Edit Invoice
