@@ -31,6 +31,7 @@ const modulePath: Record<Module, string> = {
   inspections: '/inspections',
   sales: '/sales',
   rentals: '/rentals',
+  'facility-inventory': '/facilities',
   inventory: '/inventory',
   'test-equipment': '/test-equipment',
   reports: '/reports',

@@ -175,6 +175,8 @@ const FacilityList = () => {
   const canEditFacilities = hasPermission(user, 'facilities', 'edit')
   const canDeleteFacilities = hasPermission(user, 'facilities', 'delete')
   const canManageUsers = hasPermission(user, 'users', 'index') && hasPermission(user, 'users', 'view')
+  const canViewFacilityInventory = hasPermission(user, 'facility-inventory', 'view')
+  const canAddFacilityInventory = hasPermission(user, 'facility-inventory', 'add')
   const [searchParams, setSearchParams] = useSearchParams()
   const querySearch = searchParams.get('search') || ''
   
@@ -951,19 +953,25 @@ const FacilityList = () => {
           </MenuItem>
         )}
 
-        <Box sx={{ mx: 2, my: 0.5 }}>
-          <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
-        </Box>
+        {(canAddFacilityInventory || canViewFacilityInventory) && (
+          <Box sx={{ mx: 2, my: 0.5 }}>
+            <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
+          </Box>
+        )}
 
-        <MenuItem onClick={() => handleActionInventory('add')} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F0FDF4' } }}>
-          <ListItemIcon><AddBoxOutlinedIcon sx={{ color: '#10B981', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="Add Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
-        </MenuItem>
+        {canAddFacilityInventory && (
+          <MenuItem onClick={() => handleActionInventory('add')} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F0FDF4' } }}>
+            <ListItemIcon><AddBoxOutlinedIcon sx={{ color: '#10B981', fontSize: '1.2rem' }} /></ListItemIcon>
+            <ListItemText primary="Add Facility Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          </MenuItem>
+        )}
 
-        <MenuItem onClick={() => handleActionInventory('view')} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F0FDF4' } }}>
-          <ListItemIcon><InventoryIcon sx={{ color: '#10B981', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="View Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
-        </MenuItem>
+        {canViewFacilityInventory && (
+          <MenuItem onClick={() => handleActionInventory('view')} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F0FDF4' } }}>
+            <ListItemIcon><InventoryIcon sx={{ color: '#10B981', fontSize: '1.2rem' }} /></ListItemIcon>
+            <ListItemText primary="View Facility Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          </MenuItem>
+        )}
 
         {canDeleteFacilities && (
           <>

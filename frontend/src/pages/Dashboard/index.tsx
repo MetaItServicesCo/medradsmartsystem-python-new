@@ -215,7 +215,7 @@ const Dashboard = () => {
     },
     {
       key: 'equipment',
-      module: 'equipment' as Module,
+      module: 'facility-inventory' as Module,
       label: 'Equipment',
       value: summary?.equipment.total ?? 0,
       detail: `${summary?.equipment.in_maintenance ?? 0} in maintenance`,
@@ -223,7 +223,7 @@ const Dashboard = () => {
       icon: <PrecisionManufacturingIcon />,
       color: '#13A77B',
       soft: '#EAFBF5',
-      path: '/equipment',
+      path: '/facilities',
     },
     {
       key: 'invoices',
@@ -284,7 +284,7 @@ const Dashboard = () => {
 
   const chartData = [
     { name: 'Facilities', value: summary?.facilities.total ?? 0, module: 'facilities' as Module },
-    { name: 'Equipment', value: summary?.equipment.total ?? 0, module: 'equipment' as Module },
+    { name: 'Equipment', value: summary?.equipment.total ?? 0, module: 'facility-inventory' as Module },
     { name: 'Requests', value: summary?.service_requests.total ?? 0, module: 'service-requests' as Module },
     { name: 'Inspections', value: summary?.inspections.total ?? 0, module: 'inspections' as Module },
     { name: 'Assignments', value: summary?.user_assignments.total ?? 0, module: 'users' as Module },
@@ -346,8 +346,8 @@ const Dashboard = () => {
 
   const quickActions = [
     { label: 'New Request', detail: 'Create service work', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests' as Module },
-    { label: 'Equipment', detail: 'Track assets', icon: <PrecisionManufacturingIcon />, path: '/equipment', module: 'equipment' as Module },
-    { label: 'Inventory', detail: 'Review stock health', icon: <Inventory2Icon />, path: '/inventory', module: 'inventory' as Module },
+    { label: 'Facility Inventory', detail: 'Track facility assets', icon: <PrecisionManufacturingIcon />, path: '/facilities', module: 'facility-inventory' as Module },
+    { label: 'Parts Inventory', detail: 'Review parts stock health', icon: <Inventory2Icon />, path: '/inventory', module: 'inventory' as Module },
     { label: 'Sales Invoices', detail: 'Check invoices', icon: <ReceiptIcon />, path: '/sales/invoices', module: 'sales' as Module },
     { label: 'Reports', detail: 'Open analytics', icon: <AssessmentIcon />, path: '/reports', module: 'reports' as Module },
     { label: 'My Timesheets', detail: 'Log working hours', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets' as Module },
@@ -358,7 +358,7 @@ const Dashboard = () => {
 
   const overviewMetrics = [
     { label: 'Open Requests', value: summary?.service_requests.open ?? 0, module: 'service-requests' as Module },
-    { label: 'Active Equipment', value: summary?.equipment.active ?? 0, module: 'equipment' as Module },
+    { label: 'Active Equipment', value: summary?.equipment.active ?? 0, module: 'facility-inventory' as Module },
     { label: 'Low Stock', value: summary?.inventory.low_stock_parts ?? 0, module: 'inventory' as Module },
   ]
 

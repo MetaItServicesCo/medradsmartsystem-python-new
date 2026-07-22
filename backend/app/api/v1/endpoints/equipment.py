@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app import crud
-from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
+from app.core.deps import get_current_user, get_superadmin_user
 from app.db.base import get_db
 from app.models.user import User
 from app.models.equipment import Equipment
@@ -18,8 +18,9 @@ from app.schemas.equipment import (
 )
 from app.utils.inspection_schedule import next_inspection_date
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.permission_deps import require_module_access
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_module_access("facility-inventory"))])
 
 
 @router.get("/", response_model=EquipmentListResponse)
@@ -124,7 +125,7 @@ def get_equipment(
 def create_equipment(
     equip_in: EquipmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """Create a new equipment/inventory item."""
     # Validate facility exists
@@ -145,7 +146,7 @@ def update_equipment(
     id: int,
     equip_in: EquipmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """Update an equipment item."""
     item = crud.equipment.get(db=db, id=id)
@@ -153,6 +154,12 @@ def update_equipment(
         raise HTTPException(status_code=404, detail="Equipment not found")
     require_facility_access(db, current_user, item.facility_id)
     update_data = equip_in.model_dump(exclude_unset=True)
+    target_facility_id = update_data.get("facility_id")
+    if target_facility_id is not None and target_facility_id != item.facility_id:
+        facility = db.query(Facility.id).filter(Facility.id == target_facility_id).first()
+        if not facility:
+            raise HTTPException(status_code=404, detail="Target facility not found")
+        require_facility_access(db, current_user, target_facility_id)
     if "last_pm_date" in update_data or "pm_scheduling" in update_data:
         last_inspection_date = update_data.get("last_pm_date", item.last_pm_date)
         schedule = update_data.get("pm_scheduling", item.pm_scheduling)
@@ -164,7 +171,7 @@ def update_equipment(
 def delete_equipment(
     id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
     """Delete an equipment item."""
     item = crud.equipment.get(db=db, id=id)

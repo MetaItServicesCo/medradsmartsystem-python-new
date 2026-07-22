@@ -24,6 +24,8 @@ import { type Facility } from '@/api/facilities'
 import CreateServiceRequestModal from '@/pages/ServiceRequests/CreateServiceRequestModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import { formatUSPhoneInput } from '@/utils/formatters'
+import { useAuthStore } from '@/stores/authStore'
+import { hasPermission } from '@/config/permissions'
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   active: { bg: '#F0FDF4', color: '#10B981' },
@@ -66,7 +68,11 @@ interface Props {
 
 const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const queryClient = useQueryClient()
-  const [showForm, setShowForm] = useState(mode === 'add')
+  const user = useAuthStore((state) => state.user)
+  const canAddInventory = hasPermission(user, 'facility-inventory', 'add')
+  const canEditInventory = hasPermission(user, 'facility-inventory', 'edit')
+  const canDeleteInventory = hasPermission(user, 'facility-inventory', 'delete')
+  const [showForm, setShowForm] = useState(mode === 'add' && canAddInventory)
   const defaultForm: Partial<EquipmentCreate> = {
     asset_tag: '',
     make: '',
@@ -91,8 +97,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const deferredSearch = useDeferredValue(search.trim())
 
   useEffect(() => {
-    if (open) setShowForm(mode === 'add')
-  }, [open, mode])
+    if (open) setShowForm(mode === 'add' && canAddInventory)
+  }, [canAddInventory, open, mode])
 
   const { data, isLoading } = useQuery({
     queryKey: ['equipment', facility?.id, deferredSearch],
@@ -116,7 +122,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const createMut = useMutation({
     mutationFn: (d: EquipmentCreate) => createEquipment(d),
     onSuccess: () => {
-      toast.success('Inventory item added!')
+      toast.success('Facility inventory item added')
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', facility?.id] })
       setShowForm(false)
@@ -128,7 +134,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number, data: Partial<EquipmentCreate> }) => updateEquipment(id, data),
     onSuccess: () => {
-      toast.success('Inventory item updated!')
+      toast.success('Facility inventory item updated')
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', facility?.id] })
       setShowForm(false)
@@ -201,6 +207,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   }
 
   const handleEditClick = (item: EquipmentItem) => {
+    if (!canEditInventory) return
     setForm({
       asset_tag: item.asset_tag,
       make: item.make,
@@ -275,7 +282,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   }
 
   const handleToggleActive = () => {
-    if (!actionItem) return
+    if (!actionItem || !canEditInventory) return
     updateMut.mutate({
       id: actionItem.id,
       data: { status: actionItem.status === 'active' ? 'inactive' : 'active' },
@@ -284,6 +291,10 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
   }
 
   const handleSubmit = () => {
+    if (editItemId ? !canEditInventory : !canAddInventory) {
+      toast.error(`You do not have permission to ${editItemId ? 'edit' : 'add'} facility inventory`)
+      return
+    }
     // Determine the final modality_id. If sub-modalities exist, the user must select one.
     let finalModalityId = selectedParentMod
     if (subModalities.length > 0) {
@@ -321,16 +332,18 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
         </Box>
         <Box sx={{ flex: 1 }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-            {mode === 'add' ? 'Add Inventory' : 'View Inventory'}
+            {mode === 'add' ? 'Add Facility Inventory' : 'View Facility Inventory'}
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
             {facility?.name || 'Facility'}
           </Typography>
         </Box>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => setShowForm(!showForm)}
-          sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', border: '1px solid', borderRadius: '10px', fontSize: '0.75rem' }}>
-          {showForm ? 'View List' : 'Add Item'}
-        </Button>
+        {canAddInventory && (
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setShowForm(!showForm)}
+            sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', border: '1px solid', borderRadius: '10px', fontSize: '0.75rem' }}>
+            {showForm ? 'View List' : 'Add Item'}
+          </Button>
+        )}
         <IconButton onClick={onClose} sx={{ color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.12)' } }}>
           <CloseIcon />
         </IconButton>
@@ -562,24 +575,30 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
           <ListItemIcon><VisibilityOutlinedIcon fontSize="small" /></ListItemIcon>
           <ListItemText primary="View" />
         </MenuItem>
-        <MenuItem onClick={() => { if (actionItem) handleEditClick(actionItem); closeActionMenu() }}>
-          <ListItemIcon><EditOutlinedIcon fontSize="small" /></ListItemIcon>
-          <ListItemText primary="Edit" />
-        </MenuItem>
+        {canEditInventory && (
+          <MenuItem onClick={() => { if (actionItem) handleEditClick(actionItem); closeActionMenu() }}>
+            <ListItemIcon><EditOutlinedIcon fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Edit" />
+          </MenuItem>
+        )}
         <MenuItem onClick={() => { if (actionItem) setServiceRequestItem(actionItem); closeActionMenu() }}>
           <ListItemIcon><BuildOutlinedIcon fontSize="small" /></ListItemIcon>
           <ListItemText primary="Service Request" />
         </MenuItem>
-        <MenuItem onClick={handleToggleActive}>
-          <ListItemIcon>
-            {actionItem?.status === 'active' ? <ToggleOffOutlinedIcon fontSize="small" /> : <ToggleOnOutlinedIcon fontSize="small" />}
-          </ListItemIcon>
-          <ListItemText primary={actionItem?.status === 'active' ? 'Mark Inactive' : 'Mark Active'} />
-        </MenuItem>
-        <MenuItem onClick={() => { if (actionItem) deleteMut.mutate(actionItem.id); closeActionMenu() }}>
-          <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
-          <ListItemText primary="Delete" primaryTypographyProps={{ color: '#EF4444' }} />
-        </MenuItem>
+        {canEditInventory && (
+          <MenuItem onClick={handleToggleActive}>
+            <ListItemIcon>
+              {actionItem?.status === 'active' ? <ToggleOffOutlinedIcon fontSize="small" /> : <ToggleOnOutlinedIcon fontSize="small" />}
+            </ListItemIcon>
+            <ListItemText primary={actionItem?.status === 'active' ? 'Mark Inactive' : 'Mark Active'} />
+          </MenuItem>
+        )}
+        {canDeleteInventory && (
+          <MenuItem onClick={() => { if (actionItem) deleteMut.mutate(actionItem.id); closeActionMenu() }}>
+            <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            <ListItemText primary="Delete" primaryTypographyProps={{ color: '#EF4444' }} />
+          </MenuItem>
+        )}
       </Menu>
 
       <Dialog open={Boolean(viewItem)} onClose={() => setViewItem(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>

@@ -17,7 +17,7 @@ const pageTitles: Record<string, string> = {
   '/sales/history': 'Sales History',
   '/sales': 'Sales',
   '/rentals': 'Rentals',
-  '/inventory': 'Inventory',
+  '/inventory': 'Parts Inventory',
   '/reports': 'Reports',
   '/billing': 'Billing & Payments',
   '/attendance': 'Smart Attendance',

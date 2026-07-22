@@ -58,7 +58,7 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
       { text: 'History', path: '/rentals/history' },
     ]
   },
-  { text: 'Inventory', icon: <InventoryIcon />, path: '/inventory', module: 'inventory' },
+  { text: 'Parts Inventory', icon: <InventoryIcon />, path: '/inventory', module: 'inventory' },
   { text: 'Test Equipment', icon: <ScienceIcon />, path: '/test-equipment', module: 'test-equipment' },
   { text: 'HR', icon: <GroupsIcon />, path: '/hr', module: 'hr' },
   { text: 'My Timesheets', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets' },

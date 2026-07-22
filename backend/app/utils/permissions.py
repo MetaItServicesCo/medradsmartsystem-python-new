@@ -23,7 +23,8 @@ PermissionAction = str
 MODULE_ALIASES: dict[str, str] = {
     "service_requests":      "service-requests",
     "test_equipment":        "test-equipment",
-    "facility_inventory":    "inventory",
+    "facility_inventory":    "facility-inventory",
+    "equipment":             "facility-inventory",
     "inventory_parts":       "inventory",
     "inventory_tiers":       "inventory",
     "inspection_quotations": "inspections",
@@ -32,7 +33,7 @@ MODULE_ALIASES: dict[str, str] = {
 
 ALL_MODULES: list[str] = [
     "dashboard", "facilities", "users", "service-requests", "inspections",
-    "sales", "rentals", "inventory", "test-equipment", "reports", "billing", "hr",
+    "sales", "rentals", "facility-inventory", "inventory", "test-equipment", "reports", "billing", "hr",
     "my-timesheets", "my-leave", "chat", "attendance", "calendar",
 ]
 
@@ -61,6 +62,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "inspections":      _F,
         "sales":            _F,
         "rentals":          _F,
+        "facility-inventory": _F,
         "inventory":        _F,
         "test-equipment":   _F,
         "reports":          _F,
@@ -93,6 +95,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "service-requests": _W,
         "sales":            _W,
         "rentals":          _W,
+        "facility-inventory": _W,
         "inventory":        _W,
         "test-equipment":   _W,
         "billing":          _W,
@@ -109,6 +112,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "service-requests": _W,
         "sales":            _W,
         "rentals":          _W,
+        "facility-inventory": _W,
         "inventory":        _W,
         "test-equipment":   _W,
         "billing":          _W,
@@ -125,6 +129,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "facilities":       _V,   # needed for inspection / service-request routing
         "service-requests": _W,
         "inspections":      _W,
+        "facility-inventory": _V,
         "inventory":        _W,
         "test-equipment":   _V,
         "my-timesheets":    _W,
@@ -137,6 +142,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "dashboard":        _V,
         "facilities":       _V,
         "service-requests": _W,   # can raise and track own requests
+        "facility-inventory": _V,
         "my-timesheets":    _W,
         "my-leave":         _W,
         "chat":             _W,
@@ -148,6 +154,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "facilities":       _V,   # sees their own facility
         "service-requests": _W,
         "inspections":      _V,
+        "facility-inventory": _V,
         "billing":          _W,
         "calendar":         _V,   # appointment visibility
     },

@@ -19,6 +19,7 @@ export type Module =
   | 'inspections'
   | 'sales'
   | 'rentals'
+  | 'facility-inventory'
   | 'inventory'
   | 'test-equipment'
   | 'reports'
@@ -56,7 +57,8 @@ export const MODULES: Array<{ key: Module; label: string }> = [
   { key: 'inspections', label: 'Inspections' },
   { key: 'sales', label: 'Sales' },
   { key: 'rentals', label: 'Rentals' },
-  { key: 'inventory', label: 'Inventory' },
+  { key: 'facility-inventory', label: 'Facility Inventory' },
+  { key: 'inventory', label: 'Parts Inventory' },
   { key: 'test-equipment', label: 'Test Equipment' },
   { key: 'reports', label: 'Reports' },
   { key: 'billing', label: 'Billing' },
@@ -91,6 +93,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     inspections:        _F,
     sales:              _F,
     rentals:            _F,
+    'facility-inventory': _F,
     inventory:          _F,
     'test-equipment':   _F,
     reports:            _F,
@@ -121,6 +124,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'service-requests': _W,
     sales:              _W,
     rentals:            _W,
+    'facility-inventory': _W,
     inventory:          _W,
     'test-equipment':   _W,
     billing:            _W,
@@ -137,6 +141,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'service-requests': _W,
     sales:              _W,
     rentals:            _W,
+    'facility-inventory': _W,
     inventory:          _W,
     'test-equipment':   _W,
     billing:            _W,
@@ -152,6 +157,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     facilities:         _V,
     'service-requests': _W,
     inspections:        _W,
+    'facility-inventory': _V,
     inventory:          _W,
     'test-equipment':   _V,
     'my-timesheets':    _W,
@@ -164,6 +170,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     dashboard:          _V,
     facilities:         _V,
     'service-requests': _W,
+    'facility-inventory': _V,
     'my-timesheets':    _W,
     'my-leave':         _W,
     chat:               _W,
@@ -175,6 +182,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     facilities:         _V,
     'service-requests': _W,
     inspections:        _V,
+    'facility-inventory': _V,
     billing:            _W,
     calendar:           _V,
   },
@@ -204,7 +212,8 @@ export const ROLE_SCOPE: Record<string, string> = {
 const MODULE_ALIASES: Record<string, Module> = {
   service_requests:      'service-requests',
   test_equipment:        'test-equipment',
-  facility_inventory:    'inventory',
+  facility_inventory:    'facility-inventory',
+  equipment:             'facility-inventory',
   inventory_parts:       'inventory',
   inventory_tiers:       'inventory',
   inspection_quotations: 'inspections',
