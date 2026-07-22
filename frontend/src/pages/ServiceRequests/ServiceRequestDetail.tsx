@@ -49,6 +49,7 @@ import { resolveUploadUrl } from '@/api/users'
 import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
+import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
@@ -196,13 +197,13 @@ const ServiceRequestDetail = () => {
 
   const user = useAuthStore(state => state.user)
   const role = user?.role || ''
-  const isInternalServiceUser = ['superadmin', 'admin'].includes(role)
-  const isFacilityCustomerView = ['facility_admin', 'facility_manager', 'client', 'employee'].includes(role)
+  const isInternalServiceUser = isInternalServiceAdmin(user)
+  const isFacilityCustomerView = isFacilityServiceUser(user)
   const canAddServiceRequests = hasPermission(user, 'service-requests', 'add')
   const canEditServiceRequests = hasPermission(user, 'service-requests', 'edit')
   const canAssignTechnician = isInternalServiceUser && canEditServiceRequests
   const canManageOperationalStatus = isInternalServiceUser && canEditServiceRequests
-  const canCreateQuotation = ['superadmin', 'admin', 'technician'].includes(role) && canAddServiceRequests
+  const canCreateQuotation = (isInternalServiceUser || role === 'technician') && canAddServiceRequests
   const canManageServiceBilling = isInternalServiceUser && hasPermission(user, 'billing', 'edit')
   const canViewServiceBilling = hasPermission(user, 'billing', 'view')
   const canViewServiceReports = hasPermission(user, 'reports', 'view')
@@ -259,7 +260,7 @@ const ServiceRequestDetail = () => {
     sr
     && !['completed', 'cancelled'].includes(sr.status)
     && sr.assigned_technician_id
-    && (user?.role === 'superadmin' || user?.role === 'admin' || user?.id === sr.assigned_technician_id),
+    && (isInternalServiceUser || user?.id === sr.assigned_technician_id),
   )
   const servicePartsQ = useQuery({
     queryKey: ['service-request-parts', id, partSearch],

@@ -32,6 +32,7 @@ import CreateServiceRequestModal from './CreateServiceRequestModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
+import { isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
@@ -109,7 +110,7 @@ const ServiceRequestList = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const user = useAuthStore(state => state.user)
   const canCreateServiceRequests = hasPermission(user, 'service-requests', 'add')
-  const canDeleteServiceRequests = ['superadmin', 'admin'].includes(user?.role || '')
+  const canDeleteServiceRequests = isInternalServiceAdmin(user)
     && hasPermission(user, 'service-requests', 'delete')
 
   const querySearch = searchParams.get('search') || ''

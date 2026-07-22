@@ -36,6 +36,7 @@ import {
 import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
+import { isFacilityServiceBillingUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 
 interface Props {
   serviceRequestId: number
@@ -139,8 +140,8 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   })
 
   const inventoryPartOptions = inventoryPartsData?.pages.flatMap((page) => page.items) || []
-  const canManageAuthorization = ['superadmin', 'admin'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
-  const canSelfAuthorize = ['facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
+  const canManageAuthorization = isInternalServiceAdmin(user) && hasPermission(user, 'billing', 'edit')
+  const canSelfAuthorize = isFacilityServiceBillingUser(user) && hasPermission(user, 'billing', 'edit')
 
   const facilityAuthorizersQ = useQuery({
     queryKey: ['quotation-authorization-candidates', authorizationQuotation?.id],

@@ -132,7 +132,6 @@ def _role_name(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
 
 
-INTERNAL_SERVICE_ROLES = {UserRole.SUPERADMIN, UserRole.ADMIN}
 SERVICE_CUSTOMER_ROLES = {
     UserRole.FACILITY_ADMIN,
     UserRole.FACILITY_MANAGER,
@@ -152,7 +151,46 @@ CUSTOMER_PAYMENT_FIELDS = {"amount_paid", "status", "payment_method", "notes"}
 
 
 def _is_internal_service_user(user: User) -> bool:
-    return user.role in INTERNAL_SERVICE_ROLES
+    if user.role == UserRole.SUPERADMIN:
+        return True
+    # Migrated installations can contain legacy `admin` records that are
+    # explicitly facility-bound. Those accounts are facility portal users;
+    # only an unscoped admin is a global service operator.
+    return user.role == UserRole.ADMIN and user.facility_id is None
+
+
+def _is_service_customer_user(user: User) -> bool:
+    return (
+        user.role in SERVICE_CUSTOMER_ROLES
+        or (user.role == UserRole.ADMIN and user.facility_id is not None)
+    )
+
+
+def _can_self_authorize_quotation(user: User) -> bool:
+    return user.role in {
+        UserRole.FACILITY_ADMIN,
+        UserRole.FACILITY_MANAGER,
+        UserRole.CLIENT,
+    } or (user.role == UserRole.ADMIN and user.facility_id is not None)
+
+
+def _require_service_facility_access(
+    db: Session,
+    user: User,
+    facility_id: Optional[int],
+) -> None:
+    """Apply canonical and migrated facility-account scope to service data."""
+    if _is_service_customer_user(user):
+        if facility_id is None or facility_id not in get_user_facility_ids(db, user):
+            raise HTTPException(status_code=403, detail="You do not have access to this facility")
+        return
+    require_facility_access(db, user, facility_id)
+
+
+def _scope_service_query(query, facility_column, db: Session, user: User):
+    if _is_service_customer_user(user):
+        return query.filter(facility_column.in_(get_user_facility_ids(db, user)))
+    return scope_query_to_user_facilities(query, facility_column, db, user)
 
 
 def _authorize_service_request_update(
@@ -170,7 +208,7 @@ def _authorize_service_request_update(
             detail="Technicians must update service progress through a work session",
         )
 
-    if user.role not in SERVICE_CUSTOMER_ROLES:
+    if not _is_service_customer_user(user):
         raise HTTPException(status_code=403, detail="Not authorized to update this service request")
 
     if service_request.requester_id != user.id:
@@ -361,7 +399,7 @@ def _history_entry(action: str, user: User, changes: Optional[dict] = None) -> d
 
 
 def _can_work_on_service(user: User, sr: ServiceRequest) -> bool:
-    if user.role in [UserRole.SUPERADMIN, UserRole.ADMIN]:
+    if _is_internal_service_user(user):
         return True
     return sr.assigned_technician_id == user.id
 
@@ -727,7 +765,7 @@ def _load_service_request_for_work(
     )
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
-    require_facility_access(db, current_user, db_sr.facility_id)
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
     if not _can_work_on_service(current_user, db_sr):
         raise HTTPException(status_code=403, detail="Only the assigned technician or an admin can update service work")
     if existing_session_id and any(
@@ -763,7 +801,7 @@ def list_service_requests(
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=400, detail="From date cannot be later than To date")
 
-    base_query = scope_query_to_user_facilities(
+    base_query = _scope_service_query(
         db.query(ServiceRequest), ServiceRequest.facility_id, db, current_user
     )
     if priority:
@@ -852,7 +890,7 @@ def list_service_invoices(
     if not has_module_permission(current_user, "billing", "view"):
         raise HTTPException(status_code=403, detail="Billing view permission is required")
     query = (
-        scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
+        _scope_service_query(db.query(Invoice), Invoice.facility_id, db, current_user)
         .options(
             joinedload(Invoice.facility),
             joinedload(Invoice.transactions),
@@ -917,7 +955,7 @@ def update_service_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail="Service invoice not found")
     if invoice.facility_id is not None:
-        require_facility_access(db, current_user, invoice.facility_id)
+        _require_service_facility_access(db, current_user, invoice.facility_id)
     if not has_module_permission(current_user, "billing", "edit"):
         raise HTTPException(status_code=403, detail="Not enough permissions to update payment")
 
@@ -925,7 +963,7 @@ def update_service_invoice(
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
     if not _is_internal_service_user(current_user):
-        if current_user.role not in SERVICE_CUSTOMER_ROLES:
+        if not _is_service_customer_user(current_user):
             raise HTTPException(status_code=403, detail="Not authorized to update this invoice")
         disallowed_fields = set(update_data) - CUSTOMER_PAYMENT_FIELDS
         if disallowed_fields:
@@ -1003,7 +1041,7 @@ def list_service_request_parts(
     service_request = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not service_request:
         raise HTTPException(status_code=404, detail="Service request not found")
-    require_facility_access(db, current_user, service_request.facility_id)
+    _require_service_facility_access(db, current_user, service_request.facility_id)
     if not _can_work_on_service(current_user, service_request):
         raise HTTPException(status_code=403, detail="Only the assigned technician or an admin can select service parts")
 
@@ -1050,7 +1088,7 @@ def get_service_request(
     )
     if not sr:
         raise HTTPException(status_code=404, detail="Service request not found")
-    require_facility_access(db, current_user, sr.facility_id)
+    _require_service_facility_access(db, current_user, sr.facility_id)
     # Technicians can only view service requests assigned to them
     if current_user.role == UserRole.TECHNICIAN and sr.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only view service requests assigned to you")
@@ -1123,7 +1161,7 @@ def create_service_request(
     # Validate facility
     if not db.query(Facility).filter(Facility.id == sr_in.facility_id).first():
         raise HTTPException(status_code=404, detail="Facility not found")
-    require_facility_access(db, current_user, sr_in.facility_id)
+    _require_service_facility_access(db, current_user, sr_in.facility_id)
     # Validate equipment
     equipment = db.query(Equipment).filter(Equipment.id == sr_in.equipment_id).first()
     if not equipment:
@@ -1209,7 +1247,7 @@ def update_service_request(
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
-    require_facility_access(db, current_user, db_sr.facility_id)
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
 
     update_data = sr_in.model_dump(exclude_unset=True)
     _authorize_service_request_update(current_user, db_sr, update_data)
@@ -1330,7 +1368,7 @@ def generate_service_invoice(
     )
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
-    require_facility_access(db, current_user, db_sr.facility_id)
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
     if db_sr.status != ServiceRequestStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Complete the service request before generating an invoice")
 
@@ -1848,7 +1886,7 @@ def delete_service_request(
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
-    require_facility_access(db, current_user, db_sr.facility_id)
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
     db.delete(db_sr)
     db.commit()
     return {"detail": "Service request deleted"}
@@ -1867,13 +1905,13 @@ def create_quotation(
 ) -> Any:
     """Create a new quotation for a service request. Multiple quotations allowed.
     Quotation can only be created if the service is NOT completed."""
-    if current_user.role not in [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.TECHNICIAN]:
+    if not (_is_internal_service_user(current_user) or current_user.role == UserRole.TECHNICIAN):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
-    require_facility_access(db, current_user, db_sr.facility_id)
+    _require_service_facility_access(db, current_user, db_sr.facility_id)
     if current_user.role == UserRole.TECHNICIAN and db_sr.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only create quotations for service requests assigned to you")
 
@@ -1947,7 +1985,7 @@ def update_quotation(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Update a quotation. Editable until the service request is completed."""
-    if current_user.role not in [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.TECHNICIAN]:
+    if not (_is_internal_service_user(current_user) or current_user.role == UserRole.TECHNICIAN):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db_quotation = (
@@ -1961,7 +1999,7 @@ def update_quotation(
     )
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
-    require_facility_access(db, current_user, db_quotation.service_request.facility_id)
+    _require_service_facility_access(db, current_user, db_quotation.service_request.facility_id)
     if current_user.role == UserRole.TECHNICIAN and db_quotation.service_request.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only edit quotations for service requests assigned to you")
 
@@ -2076,7 +2114,7 @@ def delete_quotation(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Delete a quotation."""
-    if current_user.role not in [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.TECHNICIAN]:
+    if not (_is_internal_service_user(current_user) or current_user.role == UserRole.TECHNICIAN):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db_quotation = (
@@ -2087,7 +2125,7 @@ def delete_quotation(
     )
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
-    require_facility_access(db, current_user, db_quotation.service_request.facility_id)
+    _require_service_facility_access(db, current_user, db_quotation.service_request.facility_id)
     if current_user.role == UserRole.TECHNICIAN and db_quotation.service_request.assigned_technician_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only delete quotations for service requests assigned to you")
 
@@ -2134,7 +2172,7 @@ def get_all_quotations(
             )
         )
     quotations = (
-        scope_query_to_user_facilities(quotations, ServiceRequest.facility_id, db, current_user)
+        _scope_service_query(quotations, ServiceRequest.facility_id, db, current_user)
         .offset(skip)
         .limit(limit)
         .all()
@@ -2159,7 +2197,7 @@ def get_quotation_authorization_candidates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    if current_user.role not in {UserRole.SUPERADMIN, UserRole.ADMIN}:
+    if not _is_internal_service_user(current_user):
         raise HTTPException(status_code=403, detail="Only an admin or super admin can record phone authorization")
     if not has_module_permission(current_user, "billing", "edit"):
         raise HTTPException(status_code=403, detail="Billing edit permission is required")
@@ -2191,7 +2229,7 @@ def request_quotation_authorization(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Request customer authorization for a service quotation."""
-    if current_user.role not in {UserRole.SUPERADMIN, UserRole.ADMIN}:
+    if not _is_internal_service_user(current_user):
         raise HTTPException(status_code=403, detail="Only an admin or super admin can request authorization")
     if not has_module_permission(current_user, "billing", "edit"):
         raise HTTPException(status_code=403, detail="Billing edit permission is required")
@@ -2288,7 +2326,7 @@ def decide_quotation_authorization(
     )
     if not quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
-    require_facility_access(db, current_user, quotation.service_request.facility_id)
+    _require_service_facility_access(db, current_user, quotation.service_request.facility_id)
     if quotation.service_request.status == ServiceRequestStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="Cannot authorize a quotation for a cancelled service request")
 
@@ -2304,11 +2342,11 @@ def decide_quotation_authorization(
     authorizer: User
     recorded_by: Optional[User] = None
     if channel == "self_service":
-        if current_user.role not in {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
+        if not _can_self_authorize_quotation(current_user):
             raise HTTPException(status_code=403, detail="Self-service authorization is limited to facility billing users")
         authorizer = current_user
     else:
-        if current_user.role not in {UserRole.SUPERADMIN, UserRole.ADMIN}:
+        if not _is_internal_service_user(current_user):
             raise HTTPException(status_code=403, detail="Only an admin or super admin can record phone authorization")
         if not payload.authorized_by_user_id:
             raise HTTPException(status_code=400, detail="Select the facility representative who authorized by phone")
@@ -2407,7 +2445,7 @@ def create_quotation_payment(
     )
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
-    require_facility_access(db, current_user, db_quotation.service_request.facility_id)
+    _require_service_facility_access(db, current_user, db_quotation.service_request.facility_id)
 
     valid_methods = ["credit_card", "ach", "mbmts_ach"]
     if payment_in.payment_method not in valid_methods:
@@ -2457,7 +2495,7 @@ def create_quotation_payment(
         authorization_id=authorization.id,
         payment_channel=(
             "admin_assisted"
-            if current_user.role in {UserRole.SUPERADMIN, UserRole.ADMIN}
+            if _is_internal_service_user(current_user)
             else "facility_self_service"
         ),
         payer_role=_role_name(current_user),

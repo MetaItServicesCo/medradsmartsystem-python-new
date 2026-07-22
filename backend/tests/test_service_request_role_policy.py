@@ -3,13 +3,17 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.endpoints.service_requests import _authorize_service_request_update
+from app.api.v1.endpoints.service_requests import (
+    _authorize_service_request_update,
+    _is_internal_service_user,
+    _is_service_customer_user,
+)
 from app.models.service_request import ServiceRequestStatus
 from app.models.user import UserRole
 
 
-def _user(role: UserRole, user_id: int = 10):
-    return SimpleNamespace(role=role, id=user_id)
+def _user(role: UserRole, user_id: int = 10, facility_id=None):
+    return SimpleNamespace(role=role, id=user_id, facility_id=facility_id)
 
 
 def _request(
@@ -90,3 +94,23 @@ def test_internal_admin_retains_operational_control():
         _request(status=ServiceRequestStatus.IN_PROGRESS),
         {"assigned_technician_id": 22, "billing_status": "approved"},
     )
+
+
+def test_legacy_facility_bound_admin_uses_customer_policy():
+    user = _user(UserRole.ADMIN, facility_id=77)
+    assert not _is_internal_service_user(user)
+    assert _is_service_customer_user(user)
+
+    with pytest.raises(HTTPException) as error:
+        _authorize_service_request_update(
+            user,
+            _request(status=ServiceRequestStatus.ASSIGNED),
+            {"assigned_technician_id": 22},
+        )
+    assert error.value.status_code == 409
+
+
+def test_unscoped_admin_remains_internal_service_operator():
+    user = _user(UserRole.ADMIN)
+    assert _is_internal_service_user(user)
+    assert not _is_service_customer_user(user)
