@@ -19,6 +19,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PaymentIcon from '@mui/icons-material/Payment'
 import PrintIcon from '@mui/icons-material/Print'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
 
@@ -47,6 +48,7 @@ import InvoicePrintDialog, {
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
+import { approveInvoiceForBilling, recordInvoicePayment } from '@/api/billing'
 
 type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
 type BillingStatus = 'draft' | 'sent' | 'authorization_requested' | 'authorized' | 'approved' | 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'rejected' | 'cancelled'
@@ -72,6 +74,9 @@ interface BillingItem {
   date: string | null
   dueDate?: string | null
   paymentMethod?: string | null
+  billingApprovalStatus?: 'pending' | 'approved'
+  approvedForBillingByName?: string | null
+  approvedForBillingAt?: string | null
   transactions?: BillingTransaction[]
   raw: ServiceRequestQuotationList | ServiceInvoice | InspectionInvoice | SalesInvoice | RentalInvoice
 }
@@ -308,12 +313,6 @@ const EntityValueBox = ({
   )
 }
 
-const invoiceStatusForPayment = (total: number, paid: number): 'pending' | 'partially_paid' | 'paid' => {
-  if (paid <= 0) return 'pending'
-  if (paid >= total) return 'paid'
-  return 'partially_paid'
-}
-
 const invoiceTransactions = (invoice: SalesInvoice | RentalInvoice | InspectionInvoice | ServiceInvoice): BillingTransaction[] => (
   (invoice.transactions || []).map(transaction => ({
     id: transaction.id,
@@ -396,10 +395,14 @@ const Billing = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
+  const isInternalBillingAdmin = user?.role === 'superadmin' || (user?.role === 'admin' && !user.facility_id)
+  const isFacilityBillingUser = ['facility_admin', 'facility_manager', 'client'].includes(user?.role || '')
+    || (user?.role === 'admin' && Boolean(user.facility_id))
   // Billing payment is available to allowed payer roles when their Billing edit permission is enabled.
-  const canPay = ['superadmin', 'admin', 'facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
-  const canEditInvoices = ['superadmin', 'admin'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
-  const canManageQuotationAuthorization = ['superadmin', 'admin'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
+  const canPay = (user?.role === 'superadmin' || isFacilityBillingUser) && hasPermission(user, 'billing', 'edit')
+  const canEditInvoices = isInternalBillingAdmin && hasPermission(user, 'billing', 'edit')
+  const canApproveBilling = isInternalBillingAdmin && hasPermission(user, 'billing', 'edit')
+  const canManageQuotationAuthorization = isInternalBillingAdmin && hasPermission(user, 'billing', 'edit')
   const canSelfAuthorizeQuotation = ['facility_admin', 'facility_manager', 'client'].includes(user?.role || '') && hasPermission(user, 'billing', 'edit')
 
   const [sourceFilter, setSourceFilter] = useState<'all' | BillingSource>('all')
@@ -541,6 +544,9 @@ const Billing = () => {
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
       paymentMethod: invoice.payment_method,
+      billingApprovalStatus: invoice.billing_approval_status,
+      approvedForBillingByName: invoice.approved_for_billing_by_name,
+      approvedForBillingAt: invoice.approved_for_billing_at,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
     })) : []
@@ -592,6 +598,9 @@ const Billing = () => {
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
       paymentMethod: invoice.payment_method,
+      billingApprovalStatus: invoice.billing_approval_status,
+      approvedForBillingByName: invoice.approved_for_billing_by_name,
+      approvedForBillingAt: invoice.approved_for_billing_at,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
     })) : []
@@ -614,6 +623,9 @@ const Billing = () => {
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
       paymentMethod: invoice.payment_method,
+      billingApprovalStatus: invoice.billing_approval_status,
+      approvedForBillingByName: invoice.approved_for_billing_by_name,
+      approvedForBillingAt: invoice.approved_for_billing_at,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
     })) : []
@@ -636,6 +648,9 @@ const Billing = () => {
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
       paymentMethod: invoice.payment_method,
+      billingApprovalStatus: invoice.billing_approval_status,
+      approvedForBillingByName: invoice.approved_for_billing_by_name,
+      approvedForBillingAt: invoice.approved_for_billing_at,
       transactions: invoiceTransactions(invoice),
       raw: invoice,
     })) : []
@@ -672,7 +687,8 @@ const Billing = () => {
       if (!haystack.includes(normalizedSearch)) return false
     }
     if (sourceFilter !== 'all' && item.source !== sourceFilter) return false
-    if (statusFilter !== 'all' && item.status !== statusFilter) return false
+    if (statusFilter === 'billing_pending' && item.billingApprovalStatus !== 'pending') return false
+    if (statusFilter !== 'all' && statusFilter !== 'billing_pending' && item.status !== statusFilter) return false
     if (tab === 1) return item.balance > 0 && item.status !== 'cancelled' && item.status !== 'rejected'
     if (tab === 2) return item.status === 'paid' || item.balance <= 0
     return true
@@ -700,6 +716,7 @@ const Billing = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-invoices'] }),
     queryClient.invalidateQueries({ queryKey: ['inspection-quotations'] }),
     queryClient.invalidateQueries({ queryKey: ['service-invoices'] }),
+    queryClient.invalidateQueries({ queryKey: ['service-request'] }),
   ])
 
   const servicePayMut = useMutation({
@@ -738,21 +755,11 @@ const Billing = () => {
 
   const invoicePayMut = useMutation({
     mutationFn: async ({ item, amount, method, notes }: { item: BillingItem; amount: number; method: string; notes?: string }) => {
-      const nextPaid = Math.min(item.amount, item.paid + amount)
-      const status = invoiceStatusForPayment(item.amount, nextPaid)
-      const existingNotes = 'notes' in item.raw ? item.raw.notes : null
-      const commonNotes = [existingNotes, notes, `Payment method: ${methodLabel(method)}`].filter(Boolean).join('\n')
-
-      if (item.source === 'sales') {
-        return updateSalesInvoice(item.id, { amount_paid: nextPaid, status, payment_method: method, notes: commonNotes })
-      }
-      if (item.source === 'rental') {
-        return updateRentalInvoice(item.id, { amount_paid: nextPaid, status, payment_method: method, notes: commonNotes })
-      }
-      if (item.source === 'service' && item.billingKind === 'service_invoice') {
-        return updateServiceInvoice(item.id, { amount_paid: nextPaid, status, payment_method: method, notes: commonNotes })
-      }
-      return updateInspectionInvoice(item.id, { amount_paid: nextPaid, status, notes: commonNotes })
+      return recordInvoicePayment(item.id, {
+        amount,
+        payment_method: method,
+        notes,
+      })
     },
     onSuccess: () => {
       toast.success('Invoice payment updated')
@@ -760,6 +767,15 @@ const Billing = () => {
       invalidateBilling()
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice payment'),
+  })
+
+  const approveBillingMut = useMutation({
+    mutationFn: (invoiceId: number) => approveInvoiceForBilling(invoiceId),
+    onSuccess: async approval => {
+      await invalidateBilling()
+      toast.success(`${approval.invoice_number} is approved and available for payment`)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not approve invoice for billing'),
   })
 
   const invoiceEditMut = useMutation({
@@ -795,10 +811,14 @@ const Billing = () => {
       }
       return updateInspectionInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null } as any)
     },
-    onSuccess: async () => {
+    onSuccess: async updatedInvoice => {
       await invalidateBilling()
       setEditItem(null)
-      toast.success('Invoice updated')
+      toast.success(
+        updatedInvoice.billing_approval_status === 'pending'
+          ? 'Invoice updated; billing approval is required'
+          : 'Invoice updated',
+      )
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice'),
   })
@@ -823,6 +843,10 @@ const Billing = () => {
   }
 
   const openPayment = (item: BillingItem) => {
+    if (item.billingKind !== 'service_quotation' && item.billingApprovalStatus !== 'approved') {
+      toast.info('Approve this invoice for billing before recording payment')
+      return
+    }
     setPayOpen(item)
     setPayAmount(String(Math.max(0, item.balance || item.amount).toFixed(2)))
   }
@@ -1167,10 +1191,18 @@ const Billing = () => {
         ))}
         <Divider flexItem orientation="vertical" sx={{ mx: 1 }} />
         <Typography sx={{ fontWeight: 700, color: '#374151', fontSize: '0.9rem' }}>Status:</Typography>
-        {['all', 'pending', 'partially_paid', 'paid', 'overdue', 'approved'].map(status => (
+        {[
+          'all',
+          ...(canApproveBilling ? ['billing_pending'] : []),
+          'pending',
+          'partially_paid',
+          'paid',
+          'overdue',
+          'approved',
+        ].map(status => (
           <Chip
             key={status}
-            label={status === 'all' ? 'All' : methodLabel(status)}
+            label={status === 'all' ? 'All' : status === 'billing_pending' ? 'Pending Approval' : methodLabel(status)}
             onClick={() => setStatusFilter(status)}
             sx={{ fontWeight: 700, cursor: 'pointer', bgcolor: statusFilter === status ? '#EC4899' : '#F3F4F6', color: statusFilter === status ? '#fff' : '#374151' }}
           />
@@ -1256,7 +1288,18 @@ const Billing = () => {
                       <TableCell align="right" sx={{ fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>{money(item.paid)}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, color: item.balance > 0 ? '#DC2626' : '#059669', whiteSpace: 'nowrap' }}>{money(item.balance)}</TableCell>
                       <TableCell>
-                        <Tooltip title={methodLabel(item.status)} arrow placement="top">
+                        <Tooltip
+                          title={
+                            item.billingApprovalStatus === 'pending'
+                              ? 'Pending billing approval'
+                              : item.billingApprovalStatus === 'approved'
+                                ? `Approved for billing${item.approvedForBillingByName ? ` by ${item.approvedForBillingByName}` : ''}${item.approvedForBillingAt ? ` on ${formatDate(item.approvedForBillingAt)}` : ''}`
+                                : methodLabel(item.status)
+                          }
+                          arrow
+                          placement="top"
+                        >
+                          <Box sx={{ display: 'grid', gap: 0.5, justifyItems: 'start' }}>
                           <Chip
                             label={methodLabel(item.status)}
                             sx={{
@@ -1271,6 +1314,21 @@ const Billing = () => {
                               },
                             }}
                           />
+                          {item.billingApprovalStatus && (
+                            <Typography
+                              component="span"
+                              sx={{
+                                color: item.billingApprovalStatus === 'approved' ? '#047857' : '#B45309',
+                                fontSize: 10.5,
+                                lineHeight: 1.1,
+                                fontWeight: 800,
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {item.billingApprovalStatus === 'approved' ? 'Billing approved' : 'Approval required'}
+                            </Typography>
+                          )}
+                          </Box>
                         </Tooltip>
                       </TableCell>
                       <TableCell sx={{ pl: 3, pr: 2, overflow: 'hidden' }}>
@@ -1323,6 +1381,19 @@ const Billing = () => {
       </Card>
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
+        {actionItem && canApproveBilling && actionItem.billingKind !== 'service_quotation' && actionItem.billingApprovalStatus !== 'approved' && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            disabled={approveBillingMut.isPending}
+            onClick={() => {
+              approveBillingMut.mutate(actionItem.id)
+              closeActions()
+            }}
+          >
+            <ListItemIcon><TaskAltIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            Approve for Billing
+          </MenuItem>
+        )}
         {actionItem && actionItem.source === 'service' && actionItem.billingKind === 'service_quotation' && canManageQuotationAuthorization
           && !['authorization_requested', 'authorized', 'paid', 'included_in_invoice', 'cancelled'].includes(actionItem.status)
           && !(actionItem.status === 'partially_paid' && (actionItem.raw as ServiceRequestQuotationList).authorizations?.some(item => ['requested', 'authorized'].includes(item.status))) && (
@@ -1343,7 +1414,9 @@ const Billing = () => {
             Review Authorization
           </MenuItem>
         )}
-        {actionItem && canPay && actionItem.balance > 0 && (!(actionItem.source === 'service' && actionItem.billingKind === 'service_quotation') || ['authorized', 'partially_paid'].includes(actionItem.status)) && (
+        {actionItem && canPay && actionItem.balance > 0
+          && (actionItem.billingKind === 'service_quotation' || actionItem.billingApprovalStatus === 'approved')
+          && (!(actionItem.source === 'service' && actionItem.billingKind === 'service_quotation') || ['authorized', 'partially_paid'].includes(actionItem.status)) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openPayment(actionItem); closeActions() }}>
             <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
             Pay

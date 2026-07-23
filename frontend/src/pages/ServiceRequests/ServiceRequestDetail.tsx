@@ -357,7 +357,7 @@ const ServiceRequestDetail = () => {
       labor_fee_override: invoiceLaborFees.trim() === '' ? undefined : Number(invoiceLaborFees || 0),
     }),
     onSuccess: (invoice) => {
-      toast.success(`Invoice ${invoice.invoice_number} is ready in Billing`)
+      toast.success(`Invoice ${invoice.invoice_number} was generated and is pending billing approval`)
       setInvoiceOpen(false)
       // Immediately stamp the invoice into cached SR so the button switches without a round-trip
       queryClient.setQueryData(['service-request', id], (old: any) =>
@@ -1754,10 +1754,14 @@ const ServiceRequestDetail = () => {
                   color={sr.billing_status === 'approved' ? 'success' : 'primary'}
                   startIcon={<ThumbUpIcon />}
                   onClick={() => handleUpdateFlag({ billing_status: 'approved' })}
-                  disabled={updateMutation.isPending || sr.billing_status === 'approved'}
+                  disabled={updateMutation.isPending || sr.billing_status === 'approved' || !resolvedInvoice}
                   sx={{ borderRadius: '12px', fontWeight: 600 }}
                 >
-                  {sr.billing_status === 'approved' ? 'Approved for Billing' : 'Approve for Billing'}
+                  {sr.billing_status === 'approved'
+                    ? 'Approved for Billing'
+                    : resolvedInvoice
+                      ? 'Approve for Billing'
+                      : 'Generate Invoice First'}
                 </Button>
 
                 <Button

@@ -17,6 +17,7 @@ from app.models.service_request import Priority, ServiceRequest, ServiceRequestS
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user
+from app.utils.invoice_approval import scope_invoice_approval_visibility
 
 router = APIRouter(dependencies=[Depends(require_module_access("dashboard"))])
 
@@ -89,8 +90,12 @@ def read_dashboard_summary(
         primary_user_query = primary_user_query.filter(User.facility_id.in_(allowed_facility_ids))
     assigned_users = assigned_user_query.count()
     users_with_primary_facility = primary_user_query.count()
-    pending_invoices = facility_scope(db.query(Invoice), Invoice).filter(Invoice.status == InvoiceStatus.PENDING).count()
-    overdue_invoices = facility_scope(db.query(Invoice), Invoice).filter(Invoice.status == InvoiceStatus.OVERDUE).count()
+    visible_invoices = scope_invoice_approval_visibility(
+        facility_scope(db.query(Invoice), Invoice),
+        current_user,
+    )
+    pending_invoices = visible_invoices.filter(Invoice.status == InvoiceStatus.PENDING).count()
+    overdue_invoices = visible_invoices.filter(Invoice.status == InvoiceStatus.OVERDUE).count()
     low_stock_parts = facility_scope(db.query(InventoryPart), InventoryPart).filter(InventoryPart.quantity_on_hand <= InventoryPart.reorder_level).count()
     expiring_parts = facility_scope(db.query(InventoryPart), InventoryPart).filter(
         InventoryPart.expiry_date.isnot(None),

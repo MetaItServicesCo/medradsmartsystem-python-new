@@ -42,6 +42,19 @@ from app.utils.notifications import create_notification, create_notifications, n
 from app.utils.facility_access import get_user_facility_ids, require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_approval import (
+    approval_response,
+    approve_invoice_for_billing,
+    ensure_financial_edit_allowed,
+    has_financial_edits,
+    invalidate_invoice_approval,
+    is_facility_billing_user,
+    is_invoice_approver,
+    require_invoice_approved,
+    require_invoice_payer,
+    scope_invoice_approval_visibility,
+    validate_requested_payment_status,
+)
 
 router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
 
@@ -746,6 +759,7 @@ def _service_invoice_response(invoice: Invoice) -> dict[str, Any]:
         "labels": editable_labels(invoice.notes),
         "summary_rows": editable_summary_rows(invoice.notes),
         "paid_quotations": _service_invoice_paid_quotations(invoice),
+        **approval_response(invoice),
     }
 
 
@@ -893,6 +907,7 @@ def list_service_invoices(
         _scope_service_query(db.query(Invoice), Invoice.facility_id, db, current_user)
         .options(
             joinedload(Invoice.facility),
+            joinedload(Invoice.approved_for_billing_by),
             joinedload(Invoice.transactions),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
@@ -900,6 +915,7 @@ def list_service_invoices(
         )
         .filter(Invoice.invoice_type == InvoiceType.SERVICE)
     )
+    query = scope_invoice_approval_visibility(query, current_user)
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
     if service_request_id:
@@ -944,12 +960,14 @@ def update_service_invoice(
         db.query(Invoice)
         .options(
             joinedload(Invoice.facility),
+            joinedload(Invoice.approved_for_billing_by),
             joinedload(Invoice.transactions),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
         )
         .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.SERVICE)
+        .with_for_update(of=Invoice)
         .first()
     )
     if not invoice:
@@ -962,6 +980,17 @@ def update_service_invoice(
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
+    ensure_financial_edit_allowed(invoice, update_data)
+    financial_edit = has_financial_edits(invoice, update_data)
+
+    requested_paid = _money(update_data.get("amount_paid", invoice.amount_paid))
+    validate_requested_payment_status(invoice, update_data, requested_paid)
+    if requested_paid != _money(invoice.amount_paid):
+        require_invoice_approved(invoice)
+        require_invoice_payer(current_user)
+
+    if is_facility_billing_user(current_user):
+        require_invoice_approved(invoice)
     if not _is_internal_service_user(current_user):
         if not _is_service_customer_user(current_user):
             raise HTTPException(status_code=403, detail="Not authorized to update this invoice")
@@ -971,7 +1000,6 @@ def update_service_invoice(
                 status_code=403,
                 detail="Facility users can pay invoices but cannot edit invoice contents",
             )
-        requested_paid = _money(update_data.get("amount_paid", invoice.amount_paid))
         if requested_paid < _money(invoice.amount_paid):
             raise HTTPException(status_code=400, detail="Recorded payments cannot be reduced")
         if requested_paid > _money(invoice.total_amount):
@@ -1000,6 +1028,11 @@ def update_service_invoice(
         invoice.notes = compose_invoice_edit_notes(invoice.notes, update_data.get("notes"), existing_metadata)
     if "total_amount" not in update_data and any(field in update_data for field in ["subtotal", "tax_amount", "discount_amount"]):
         invoice.total_amount = _money(invoice.subtotal) + _money(invoice.tax_amount) - _money(invoice.discount_amount)
+    approval_invalidated = (
+        invalidate_invoice_approval(db, invoice, current_user)
+        if financial_edit
+        else False
+    )
     invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
     if invoice.balance_due <= 0:
         invoice.status = InvoiceStatus.PAID
@@ -1010,7 +1043,8 @@ def update_service_invoice(
     invoice.updated_at = datetime.utcnow()
 
     if invoice.service_request:
-        invoice.service_request.billing_status = "approved"
+        if approval_invalidated:
+            invoice.service_request.billing_status = "pending"
         history = list(invoice.service_request.history or [])
         history.append(_history_entry("service_invoice_updated", current_user, {
             "invoice_id": invoice.id,
@@ -1099,9 +1133,10 @@ def get_service_request(
     active_invoice = None
     if has_module_permission(current_user, "billing", "view"):
         active_invoice = (
-            db.query(Invoice)
+            scope_invoice_approval_visibility(db.query(Invoice), current_user)
             .options(
                 joinedload(Invoice.facility),
+                joinedload(Invoice.approved_for_billing_by),
                 joinedload(Invoice.transactions),
                 joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
                 joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
@@ -1252,6 +1287,46 @@ def update_service_request(
     update_data = sr_in.model_dump(exclude_unset=True)
     _authorize_service_request_update(current_user, db_sr, update_data)
     changes = {}
+
+    requested_billing_status = update_data.get("billing_status")
+    if requested_billing_status is not None:
+        if (
+            not is_invoice_approver(current_user)
+            or not has_module_permission(current_user, "billing", "edit")
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Only a super admin or admin with Billing edit permission can change billing approval",
+            )
+        active_invoice = (
+            db.query(Invoice)
+            .filter(
+                Invoice.service_request_id == db_sr.id,
+                Invoice.invoice_type == InvoiceType.SERVICE,
+                Invoice.status != InvoiceStatus.CANCELLED,
+            )
+            .with_for_update()
+            .first()
+        )
+        if requested_billing_status == "approved":
+            if not active_invoice:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Generate the service invoice before approving it for billing",
+                )
+            approve_invoice_for_billing(db, active_invoice, current_user)
+        elif requested_billing_status in {"pending", "not_approved"} and active_invoice:
+            if _money(active_invoice.amount_paid) > 0 or active_invoice.status == InvoiceStatus.PAID:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Billing approval cannot be withdrawn after payment has been recorded",
+                )
+            invalidate_invoice_approval(
+                db,
+                active_invoice,
+                current_user,
+                reason=f"Service invoice marked {requested_billing_status.replace('_', ' ')}",
+            )
 
     # Enforce ordered status transitions
     if "status" in update_data and update_data["status"]:
@@ -1458,7 +1533,7 @@ def generate_service_invoice(
             details={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
         )
 
-    db_sr.billing_status = "approved"
+    db_sr.billing_status = "pending"
     db_sr.invoice_deleted = False
     history = list(db_sr.history or [])
     history.append(_history_entry("service_invoice_generated", current_user, {

@@ -45,6 +45,11 @@ class Invoice(Base):
     payment_terms = Column(String, nullable=True)
     payment_method = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    billing_approval_status = Column(String, nullable=False, default="pending", index=True)
+    approved_for_billing_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_for_billing_at = Column(DateTime, nullable=True)
+    approved_total_amount = Column(Numeric(10, 2), nullable=True)
+    approval_invalidated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -55,6 +60,7 @@ class Invoice(Base):
     inspection_batch = relationship("InspectionBatch")
     rental = relationship("Rental", foreign_keys=[rental_id])
     sales_quotation = relationship("SalesQuotation", foreign_keys=[sales_quotation_id])
+    approved_for_billing_by = relationship("User", foreign_keys=[approved_for_billing_by_id])
     transactions = relationship("InvoiceTransaction", back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceTransaction.created_at.desc()")
 
 

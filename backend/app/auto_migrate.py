@@ -47,6 +47,53 @@ def run_migration():
                 conn.rollback()
                 pass  # safely ignore if column already exists
 
+        invoice_approval_columns = [
+            "billing_approval_status VARCHAR",
+            "approved_for_billing_by_id INTEGER",
+            "approved_for_billing_at TIMESTAMP",
+            "approved_total_amount NUMERIC(10, 2)",
+            "approval_invalidated_at TIMESTAMP",
+        ]
+        for col in invoice_approval_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE invoices ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+        try:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_invoices_billing_approval_status "
+                "ON invoices (billing_approval_status)"
+            ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            conn.execute(text("""
+                UPDATE invoices
+                SET billing_approval_status = 'approved',
+                    approved_for_billing_at = COALESCE(updated_at, created_at),
+                    approved_total_amount = total_amount
+                WHERE billing_approval_status IS NULL
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            conn.execute(text(
+                "ALTER TABLE invoices ALTER COLUMN billing_approval_status "
+                "SET DEFAULT 'pending'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE invoices ALTER COLUMN billing_approval_status SET NOT NULL"
+            ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Chat columns migration
         friend_request_columns = [
             "message TEXT",

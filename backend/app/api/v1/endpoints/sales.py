@@ -20,8 +20,21 @@ from app.models.user_facility import UserFacility
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_approval import (
+    approval_response,
+    ensure_financial_edit_allowed,
+    has_financial_edits,
+    invalidate_invoice_approval,
+    is_facility_billing_user,
+    is_invoice_approver,
+    require_invoice_approved,
+    require_invoice_payer,
+    scope_invoice_approval_visibility,
+    validate_requested_payment_status,
+)
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notifications
+from app.utils.permissions import has_module_permission
 
 router = APIRouter(dependencies=[Depends(require_module_access("sales"))])
 
@@ -207,6 +220,7 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "line_items": editable_line_items(invoice.notes),
         "labels": editable_labels(invoice.notes),
         "summary_rows": editable_summary_rows(invoice.notes),
+        **approval_response(invoice),
     }
 
 
@@ -663,9 +677,15 @@ def list_sales_invoices(
 ) -> Any:
     query = (
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
-        .options(joinedload(Invoice.facility), joinedload(Invoice.sales_quotation), joinedload(Invoice.transactions))
+        .options(
+            joinedload(Invoice.facility),
+            joinedload(Invoice.sales_quotation),
+            joinedload(Invoice.approved_for_billing_by),
+            joinedload(Invoice.transactions),
+        )
         .filter(Invoice.invoice_type == InvoiceType.SALES)
     )
+    query = scope_invoice_approval_visibility(query, current_user)
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
     if search and search.strip():
@@ -699,20 +719,52 @@ def update_sales_invoice(
 ) -> Any:
     invoice = (
         db.query(Invoice)
-        .options(joinedload(Invoice.sales_quotation), joinedload(Invoice.facility), joinedload(Invoice.transactions))
+        .options(
+            joinedload(Invoice.sales_quotation),
+            joinedload(Invoice.facility),
+            joinedload(Invoice.approved_for_billing_by),
+            joinedload(Invoice.transactions),
+        )
         .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.SALES)
+        .with_for_update(of=Invoice)
         .first()
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Sales invoice not found")
     if invoice.facility_id is not None:
         require_facility_access(db, current_user, invoice.facility_id)
-    if current_user.role not in {UserRole.SUPERADMIN, UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
-        raise HTTPException(status_code=403, detail="Not enough permissions to update payment")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
 
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
+    internal_editor = is_invoice_approver(current_user)
+    facility_payer = is_facility_billing_user(current_user)
+    if not (internal_editor or facility_payer):
+        raise HTTPException(status_code=403, detail="Not authorized to update this invoice")
+
+    ensure_financial_edit_allowed(invoice, update_data)
+    financial_edit = has_financial_edits(invoice, update_data)
+    requested_paid = _money(update_data.get("amount_paid", invoice.amount_paid))
+    validate_requested_payment_status(invoice, update_data, requested_paid)
+    if requested_paid != _money(invoice.amount_paid):
+        require_invoice_approved(invoice)
+        require_invoice_payer(current_user)
+    if facility_payer:
+        require_invoice_approved(invoice)
+        customer_fields = {"amount_paid", "status", "payment_method", "notes"}
+        if set(update_data) - customer_fields:
+            raise HTTPException(
+                status_code=403,
+                detail="Facility users can pay invoices but cannot edit invoice contents",
+            )
+        if requested_paid < _money(invoice.amount_paid):
+            raise HTTPException(status_code=400, detail="Recorded payments cannot be reduced")
+        if requested_paid > _money(invoice.total_amount):
+            raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice total")
+        update_data.pop("status", None)
+
     existing_metadata = parse_invoice_edit_metadata(invoice.notes)
     if "line_items" in update_data:
         existing_metadata["line_items"] = update_data.pop("line_items") or []
@@ -731,6 +783,8 @@ def update_sales_invoice(
         invoice.notes = compose_invoice_edit_notes(invoice.notes, update_data.get("notes"), existing_metadata)
     if "total_amount" not in update_data and any(field in update_data for field in ["subtotal", "tax_amount", "discount_amount"]):
         invoice.total_amount = _money(invoice.subtotal) + _money(invoice.tax_amount) - _money(invoice.discount_amount)
+    if financial_edit:
+        invalidate_invoice_approval(db, invoice, current_user)
     invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
     if invoice.balance_due <= 0:
         invoice.status = InvoiceStatus.PAID

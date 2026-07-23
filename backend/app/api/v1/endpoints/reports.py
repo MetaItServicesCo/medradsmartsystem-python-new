@@ -19,6 +19,7 @@ from app.models.service_request import ServiceRequest, ServiceRequestStatus
 from app.models.user import User, UserRole
 from app.utils.facility_access import scope_query_to_user_facilities
 from app.utils.permission_deps import require_module_access
+from app.utils.invoice_approval import scope_invoice_approval_visibility
 
 router = APIRouter(dependencies=[Depends(require_module_access("reports"))])
 
@@ -339,7 +340,7 @@ def get_service_reports(
     items = query.order_by(ServiceRequest.completed_at.desc().nullslast(), ServiceRequest.id.desc()).offset(skip).limit(limit).all()
     invoice_map = {
         invoice.service_request_id: invoice
-        for invoice in db.query(Invoice)
+        for invoice in scope_invoice_approval_visibility(db.query(Invoice), current_user)
         .filter(Invoice.invoice_type == InvoiceType.SERVICE, Invoice.service_request_id.in_([item.id for item in items]))
         .all()
         if invoice.service_request_id
@@ -384,7 +385,7 @@ def get_inspection_reports(
     items = query.order_by(Inspection.completed_at.desc().nullslast(), Inspection.id.desc()).offset(skip).limit(limit).all()
     invoice_map = {
         invoice.inspection_id: invoice
-        for invoice in db.query(Invoice)
+        for invoice in scope_invoice_approval_visibility(db.query(Invoice), current_user)
         .filter(Invoice.invoice_type == InvoiceType.INSPECTION, Invoice.inspection_id.in_([item.id for item in items]))
         .all()
         if invoice.inspection_id

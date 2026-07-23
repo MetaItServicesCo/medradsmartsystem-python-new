@@ -104,6 +104,12 @@ export interface RentalInvoice {
   line_items?: any[]
   labels?: Record<string, any> | null
   summary_rows?: Array<{ id?: string; label: string; value: number }>
+  billing_approval_status: 'pending' | 'approved'
+  approved_for_billing_by_id?: number | null
+  approved_for_billing_by_name?: string | null
+  approved_for_billing_at?: string | null
+  approved_total_amount?: number | null
+  approval_invalidated_at?: string | null
 }
 
 export interface InvoiceTransaction {

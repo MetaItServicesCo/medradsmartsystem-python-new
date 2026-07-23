@@ -23,6 +23,18 @@ from app.models.user import User, UserRole
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_approval import (
+    approval_response,
+    ensure_financial_edit_allowed,
+    has_financial_edits,
+    invalidate_invoice_approval,
+    is_facility_billing_user,
+    is_invoice_approver,
+    require_invoice_approved,
+    require_invoice_payer,
+    scope_invoice_approval_visibility,
+    validate_requested_payment_status,
+)
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
@@ -422,6 +434,7 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["travel_charges"] = travel
     data["service_charges"] = service
     data["notes"] = _strip_inspection_fee_prefix(invoice.notes)
+    data.update(approval_response(invoice))
     return data
 
 
@@ -639,6 +652,13 @@ def _create_inspection_invoice(
 
     existing = db.query(Invoice).filter(Invoice.inspection_id == inspection.id).first()
     if existing:
+        financial_update = {
+            "subtotal": subtotal,
+            "tax_amount": tax_amount,
+            "discount_amount": discount_amount,
+            "total_amount": total,
+        }
+        ensure_financial_edit_allowed(existing, financial_update)
         existing.customer_name = facility.billing_name or facility.name
         existing.customer_email = facility.billing_email or facility.email
         existing.customer_phone = facility.phone
@@ -652,6 +672,13 @@ def _create_inspection_invoice(
             existing.status = InvoiceStatus.PENDING
         existing.notes = invoice_notes
         existing.updated_at = datetime.utcnow()
+        if current_user:
+            invalidate_invoice_approval(
+                db,
+                existing,
+                current_user,
+                reason="Inspection invoice was regenerated with updated financial details",
+            )
         db.flush()
         inspection.quotation_notes = existing.notes
         return existing
@@ -1056,6 +1083,7 @@ def inspection_summary(
     invoices = scope_query_to_user_facilities(
         db.query(Invoice), Invoice.facility_id, db, current_user
     )
+    invoices = scope_invoice_approval_visibility(invoices, current_user)
     def date_scoped(query, column):
         if date_from:
             query = query.filter(column >= datetime.combine(date_from, time.min))
@@ -1184,8 +1212,12 @@ def list_inspections(
     invoice_map = {
         invoice.inspection_id: invoice
         for invoice in (
-            db.query(Invoice)
-            .options(joinedload(Invoice.facility), joinedload(Invoice.transactions))
+            scope_invoice_approval_visibility(db.query(Invoice), current_user)
+            .options(
+                joinedload(Invoice.facility),
+                joinedload(Invoice.approved_for_billing_by),
+                joinedload(Invoice.transactions),
+            )
             .filter(Invoice.inspection_id.in_(inspection_ids))
             .all()
             if inspection_ids
@@ -1285,13 +1317,15 @@ def get_inspection_batch(
 
     invoice_map = {
         invoice.inspection_id: invoice
-        for invoice in db.query(Invoice).filter(Invoice.inspection_id.in_([item.id for item in batch.inspections])).all()
+        for invoice in scope_invoice_approval_visibility(
+            db.query(Invoice), current_user
+        ).filter(Invoice.inspection_id.in_([item.id for item in batch.inspections])).all()
         if invoice.inspection_id
     }
     for inspection in batch.inspections:
         inspection._inspection_invoice = invoice_map.get(inspection.id)
     batch._batch_invoice = (
-        db.query(Invoice)
+        scope_invoice_approval_visibility(db.query(Invoice), current_user)
         .options(joinedload(Invoice.facility), joinedload(Invoice.inspection_batch), joinedload(Invoice.transactions))
         .filter(
             Invoice.invoice_type == InvoiceType.INSPECTION,
@@ -2272,6 +2306,7 @@ def list_inspection_quotations(
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
         .options(
             joinedload(Invoice.facility),
+            joinedload(Invoice.approved_for_billing_by),
             joinedload(Invoice.transactions),
             joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
             joinedload(Invoice.inspection).joinedload(Inspection.equipment),
@@ -2281,6 +2316,7 @@ def list_inspection_quotations(
         )
         .filter(Invoice.invoice_type == InvoiceType.INSPECTION)
     )
+    query = scope_invoice_approval_visibility(query, current_user)
     if invoice_id is not None:
         query = query.filter(Invoice.id == invoice_id)
     if search and search.strip():
@@ -2348,20 +2384,49 @@ def update_inspection_invoice(
 
     invoice = (
         db.query(Invoice)
-        .options(joinedload(Invoice.facility), joinedload(Invoice.inspection), joinedload(Invoice.transactions))
+        .options(
+            joinedload(Invoice.facility),
+            joinedload(Invoice.inspection),
+            joinedload(Invoice.approved_for_billing_by),
+            joinedload(Invoice.transactions),
+        )
         .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.INSPECTION)
+        .with_for_update(of=Invoice)
         .first()
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Inspection invoice not found")
     require_facility_access(db, current_user, invoice.facility_id)
-    if current_user.role not in {UserRole.SUPERADMIN, UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}:
-        raise HTTPException(status_code=403, detail="Not enough permissions to update payment")
 
     before = {c.name: getattr(invoice, c.name) for c in invoice.__table__.columns}
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
+    internal_editor = is_invoice_approver(current_user)
+    facility_payer = is_facility_billing_user(current_user)
+    if not (internal_editor or facility_payer):
+        raise HTTPException(status_code=403, detail="Not authorized to update this invoice")
+
+    ensure_financial_edit_allowed(invoice, update_data)
+    financial_edit = has_financial_edits(invoice, update_data)
+    requested_paid = _money(update_data.get("amount_paid", invoice.amount_paid))
+    validate_requested_payment_status(invoice, update_data, requested_paid)
+    if requested_paid != _money(invoice.amount_paid):
+        require_invoice_approved(invoice)
+        require_invoice_payer(current_user)
+    if facility_payer:
+        require_invoice_approved(invoice)
+        customer_fields = {"amount_paid", "status", "payment_method", "notes"}
+        if set(update_data) - customer_fields:
+            raise HTTPException(
+                status_code=403,
+                detail="Facility users can pay invoices but cannot edit invoice contents",
+            )
+        if requested_paid < _money(invoice.amount_paid):
+            raise HTTPException(status_code=400, detail="Recorded payments cannot be reduced")
+        if requested_paid > _money(invoice.total_amount):
+            raise HTTPException(status_code=400, detail="Payment cannot exceed the invoice total")
+        update_data.pop("status", None)
     if not can_edit_inspection_invoice:
         billing_only_fields = {
             "customer_name", "customer_email", "customer_phone", "customer_address",
@@ -2416,8 +2481,16 @@ def update_inspection_invoice(
             _money(invoice.subtotal) + travel_charges + service_charges
             + _money(invoice.tax_amount) - _money(invoice.discount_amount)
         )
+    if financial_edit:
+        invalidate_invoice_approval(db, invoice, current_user)
 
     invoice.balance_due = _money(invoice.total_amount) - _money(invoice.amount_paid)
+    if invoice.balance_due <= 0:
+        invoice.status = InvoiceStatus.PAID
+    elif _money(invoice.amount_paid) > 0 and invoice.status != InvoiceStatus.CANCELLED:
+        invoice.status = InvoiceStatus.PARTIALLY_PAID
+    elif facility_payer:
+        invoice.status = InvoiceStatus.PENDING
     invoice.updated_at = datetime.utcnow()
     record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
     record_status_change(db, invoice, previous_status, current_user)
