@@ -1505,6 +1505,7 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save inspection report'),
   })
@@ -1536,26 +1537,33 @@ const Inspections = () => {
 
   const addBatchAssetMut = useMutation({
     mutationFn: ({ batchId, data }: { batchId: number; data: BatchAssetCreatePayload }) => addInspectionBatchAsset(batchId, data),
-    onSuccess: () => {
-      toast.success('Asset added to inspection batch')
+    onSuccess: (batch) => {
+      toast.success('Asset added; the inspection batch is now in progress')
       setAddAssetOpen(false)
       setBatchAssetForm(emptyBatchAssetForm())
+      queryClient.setQueryData(['inspection-batches', batch.id], batch)
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-equipment'] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
+      selectTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not add asset to batch'),
   })
 
   const addBatchExistingAssetsMut = useMutation({
     mutationFn: ({ batchId, equipmentIds }: { batchId: number; equipmentIds: number[] }) => addInspectionBatchExistingAssets(batchId, { equipment_ids: equipmentIds }),
-    onSuccess: (_batch, variables) => {
-      toast.success(`${variables.equipmentIds.length} existing asset${variables.equipmentIds.length === 1 ? '' : 's'} added to inspection batch`)
+    onSuccess: (batch, variables) => {
+      toast.success(`${variables.equipmentIds.length} existing asset${variables.equipmentIds.length === 1 ? '' : 's'} added; the batch is now in progress`)
       setAddExistingAssetOpen(false)
       setSelectedExistingEquipmentIds([])
       setExistingAssetSearch('')
+      queryClient.setQueryData(['inspection-batches', batch.id], batch)
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
+      selectTab(2)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not add existing assets to batch'),
   })
@@ -1686,6 +1694,8 @@ const Inspections = () => {
   }
 
   const selectedBatch = batchDetailQ.data
+  const selectedBatchBillingApproved = selectedBatch?.batch_invoice?.billing_approval_status === 'approved'
+  const canAddAssetsToSelectedBatch = canInitiateInspections && !selectedBatchBillingApproved
   const batchEquipmentIds = useMemo(
     () => new Set((selectedBatch?.assets || []).map(asset => asset.equipment_id).filter((id): id is number => Boolean(id))),
     [selectedBatch?.assets],
@@ -2876,6 +2886,7 @@ const Inspections = () => {
   const submitBatchAsset = () => {
     if (!canInitiateInspections) return toast.error('You do not have permission to add assets to inspection batches')
     if (!selectedBatch) return
+    if (selectedBatchBillingApproved) return toast.error('Assets cannot be added after the batch invoice is approved for billing')
     if (!batchAssetForm.asset_tag || !batchAssetForm.make || !batchAssetForm.model || !batchAssetForm.serial_number || !batchAssetForm.modality_id) {
       toast.error('Asset #, make, model, serial, and modality are required')
       return
@@ -2886,6 +2897,7 @@ const Inspections = () => {
   const submitExistingBatchAssets = () => {
     if (!canInitiateInspections) return toast.error('You do not have permission to add assets to inspection batches')
     if (!selectedBatch) return
+    if (selectedBatchBillingApproved) return toast.error('Assets cannot be added after the batch invoice is approved for billing')
     if (!selectedExistingEquipmentIds.length) {
       toast.error('Select at least one existing asset')
       return
@@ -4078,26 +4090,54 @@ const Inspections = () => {
               {selectedBatch?.batch_number || 'Loading'} - {selectedBatch?.facility_name || ''}
             </Typography>
           </Box>
-          {selectedBatch?.status !== 'completed' && canInitiateInspections && (
+          {selectedBatch && canInitiateInspections && (
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={() => setAddExistingAssetOpen(true)}
-                sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+              {selectedBatchBillingApproved && (
+                <Chip
+                  size="small"
+                  label="Billing approved · batch locked"
+                  sx={{ alignSelf: 'center', bgcolor: '#ECFDF5', color: '#047857', fontWeight: 900 }}
+                />
+              )}
+              {selectedBatch.batch_invoice && !selectedBatchBillingApproved && (
+                <Chip
+                  size="small"
+                  label={`${selectedBatch.batch_invoice.invoice_number} will be updated`}
+                  sx={{ alignSelf: 'center', bgcolor: '#F5F3FF', color: '#6D28D9', fontWeight: 900 }}
+                />
+              )}
+              <Tooltip
+                title={selectedBatchBillingApproved ? 'The approved batch invoice protects this inspection scope from further asset additions.' : ''}
               >
-                Add Existing Inventory
-              </Button>
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setAddAssetOpen(true)}
-                sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: '#10B981' }}
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() => setAddExistingAssetOpen(true)}
+                    disabled={!canAddAssetsToSelectedBatch}
+                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+                  >
+                    Add Existing Inventory
+                  </Button>
+                </span>
+              </Tooltip>
+              <Tooltip
+                title={selectedBatchBillingApproved ? 'The approved batch invoice protects this inspection scope from further asset additions.' : ''}
               >
-                Add New Inventory
-              </Button>
+                <span>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => setAddAssetOpen(true)}
+                    disabled={!canAddAssetsToSelectedBatch}
+                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: '#10B981' }}
+                  >
+                    Add New Inventory
+                  </Button>
+                </span>
+              </Tooltip>
             </Box>
           )}
         </DialogTitle>
@@ -4382,7 +4422,7 @@ const Inspections = () => {
           <Button
             startIcon={addBatchExistingAssetsMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />}
             onClick={submitExistingBatchAssets}
-            disabled={!canInitiateInspections || addBatchExistingAssetsMut.isPending || selectedExistingEquipmentIds.length === 0}
+            disabled={!canAddAssetsToSelectedBatch || addBatchExistingAssetsMut.isPending || selectedExistingEquipmentIds.length === 0}
             variant="contained"
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
           >
@@ -4425,7 +4465,7 @@ const Inspections = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setAddAssetOpen(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={addBatchAssetMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitBatchAsset} disabled={!canInitiateInspections || addBatchAssetMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: '#10B981' }}>
+          <Button startIcon={addBatchAssetMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitBatchAsset} disabled={!canAddAssetsToSelectedBatch || addBatchAssetMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: '#10B981' }}>
             Add Asset
           </Button>
         </DialogActions>

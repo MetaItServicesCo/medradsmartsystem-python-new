@@ -9,6 +9,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user
 from app.db.base import get_db
+from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
@@ -137,6 +138,27 @@ def approve_invoice(
     )
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if invoice.inspection_batch_id:
+        batch_status = (
+            db.query(InspectionBatch.status)
+            .filter(InspectionBatch.id == invoice.inspection_batch_id)
+            .scalar()
+        )
+        has_incomplete_asset = (
+            db.query(Inspection.id)
+            .filter(
+                Inspection.batch_id == invoice.inspection_batch_id,
+                Inspection.status != InspectionStatus.COMPLETED,
+            )
+            .first()
+            is not None
+        )
+        if batch_status != InspectionStatus.COMPLETED or has_incomplete_asset:
+            raise HTTPException(
+                status_code=409,
+                detail="Complete every inspection in the batch before approving its invoice for billing",
+            )
 
     already_approved = invoice.billing_approval_status == "approved"
     approve_invoice_for_billing(db, invoice, current_user)

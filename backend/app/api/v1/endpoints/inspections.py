@@ -22,8 +22,9 @@ from app.models.tier import Tier
 from app.models.user import User, UserRole
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
+    BILLING_APPROVAL_APPROVED,
     approval_response,
     ensure_financial_edit_allowed,
     has_financial_edits,
@@ -601,6 +602,46 @@ def _sync_batch_status(batch: Optional[InspectionBatch]) -> None:
     batch.updated_at = datetime.utcnow()
 
 
+def _require_batch_invoice_mutable(
+    invoice: Optional[Invoice],
+    *,
+    action: str,
+) -> None:
+    """Protect an approved or paid batch invoice from scope/financial changes."""
+    if not invoice:
+        return
+    if invoice.billing_approval_status == BILLING_APPROVAL_APPROVED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{action} after the batch invoice is approved for billing",
+        )
+    if _money(invoice.amount_paid) > 0 or invoice.status == InvoiceStatus.PAID:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{action} after a payment has been recorded for the batch invoice",
+        )
+
+
+def _require_batch_invoice_allows_asset_changes(invoice: Optional[Invoice]) -> None:
+    _require_batch_invoice_mutable(invoice, action="Assets cannot be added")
+
+
+def _lock_active_batch_invoice(
+    db: Session,
+    batch_id: int,
+) -> Optional[Invoice]:
+    return (
+        db.query(Invoice)
+        .filter(
+            Invoice.invoice_type == InvoiceType.INSPECTION,
+            Invoice.inspection_batch_id == batch_id,
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .with_for_update(of=Invoice)
+        .first()
+    )
+
+
 def _require_upcoming_inspection(inspection: Inspection, action: str) -> None:
     if inspection.status != InspectionStatus.UPCOMING:
         raise HTTPException(
@@ -742,16 +783,60 @@ def _create_inspection_batch_invoice(
     if any(not item.form_data for item in inspections):
         raise HTTPException(status_code=400, detail="Every inspection in the batch must have report data before generating a batch invoice")
 
-    existing_batch_invoice = (
-        db.query(Invoice)
-        .filter(
-            Invoice.invoice_type == InvoiceType.INSPECTION,
-            Invoice.inspection_batch_id == batch.id,
-            Invoice.status != InvoiceStatus.CANCELLED,
-        )
-        .first()
+    existing_batch_invoice = _lock_active_batch_invoice(db, batch.id)
+    line_items = _batch_invoice_line_items(batch)
+    subtotal = sum(_money(item["subtotal"]) for item in line_items)
+    tax = sum(_money(item["tax_amount"]) for item in line_items)
+    discount = sum(_money(item["discount_amount"]) for item in line_items)
+    total = subtotal + tax - discount
+    facility = batch.facility
+    notes = (
+        f"Inspection batch invoice for {batch.batch_number}. "
+        f"Includes {len(inspections)} completed asset inspection(s)."
     )
+
     if existing_batch_invoice:
+        if existing_batch_invoice.billing_approval_status == BILLING_APPROVAL_APPROVED:
+            existing_batch_invoice._batch_items = line_items
+            return existing_batch_invoice
+        _require_batch_invoice_allows_asset_changes(existing_batch_invoice)
+        previous_total = _money(existing_batch_invoice.total_amount)
+        previous_notes = strip_invoice_edit_metadata(existing_batch_invoice.notes) or ""
+        needs_refresh = previous_total != total or previous_notes != notes
+
+        existing_batch_invoice.customer_name = facility.billing_name or facility.name
+        existing_batch_invoice.customer_email = facility.billing_email or facility.email
+        existing_batch_invoice.customer_phone = facility.phone
+        existing_batch_invoice.customer_address = _customer_address(facility)
+        existing_batch_invoice.subtotal = subtotal
+        existing_batch_invoice.tax_amount = tax
+        existing_batch_invoice.discount_amount = discount
+        existing_batch_invoice.total_amount = total
+        existing_batch_invoice.balance_due = total - _money(existing_batch_invoice.amount_paid)
+        existing_batch_invoice.status = (
+            InvoiceStatus.PAID
+            if existing_batch_invoice.balance_due <= 0
+            else InvoiceStatus.PARTIALLY_PAID
+            if _money(existing_batch_invoice.amount_paid) > 0
+            else InvoiceStatus.PENDING
+        )
+        existing_batch_invoice.notes = notes
+        existing_batch_invoice.updated_at = datetime.utcnow()
+        existing_batch_invoice._batch_items = line_items
+        if needs_refresh:
+            add_invoice_transaction(
+                db,
+                existing_batch_invoice,
+                "invoice_recalculated",
+                total,
+                description=(
+                    f"Batch invoice recalculated after inspection scope changed "
+                    f"from {previous_total:.2f} to {total:.2f}"
+                ),
+                user=current_user,
+                reference_prefix="CALC",
+            )
+        db.flush()
         return existing_batch_invoice
 
     existing_individual = (
@@ -769,17 +854,6 @@ def _create_inspection_batch_invoice(
             detail="One or more assets in this batch already have an individual invoice. Cancel those in Billing before generating a batch invoice.",
         )
 
-    line_items = _batch_invoice_line_items(batch)
-    subtotal = sum(_money(item["subtotal"]) for item in line_items)
-    tax = sum(_money(item["tax_amount"]) for item in line_items)
-    discount = sum(_money(item["discount_amount"]) for item in line_items)
-
-    total = subtotal + tax - discount
-    facility = batch.facility
-    notes = (
-        f"Inspection batch invoice for {batch.batch_number}. "
-        f"Includes {len(inspections)} completed asset inspection(s)."
-    )
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
         invoice_type=InvoiceType.INSPECTION,
@@ -806,6 +880,29 @@ def _create_inspection_batch_invoice(
     invoice._batch_items = line_items
     record_invoice_created(db, invoice, current_user, f"Inspection batch invoice created from {batch.batch_number}")
     return invoice
+
+
+def _refresh_existing_batch_invoice_if_complete(
+    db: Session,
+    batch: Optional[InspectionBatch],
+    current_user: User,
+) -> Optional[Invoice]:
+    """Recalculate an existing unapproved batch invoice without replacing it."""
+    if not batch or batch.status != InspectionStatus.COMPLETED:
+        return None
+    existing = _lock_active_batch_invoice(db, batch.id)
+    if not existing:
+        return None
+    if existing.billing_approval_status == BILLING_APPROVAL_APPROVED:
+        raise HTTPException(
+            status_code=409,
+            detail="An approved batch invoice cannot be recalculated",
+        )
+    _require_batch_invoice_mutable(
+        existing,
+        action="The batch invoice cannot be recalculated",
+    )
+    return _create_inspection_batch_invoice(db, batch, current_user)
 
 
 def _batch_invoice_line_items(batch: InspectionBatch) -> list[dict[str, Any]]:
@@ -1326,10 +1423,16 @@ def get_inspection_batch(
         inspection._inspection_invoice = invoice_map.get(inspection.id)
     batch._batch_invoice = (
         scope_invoice_approval_visibility(db.query(Invoice), current_user)
-        .options(joinedload(Invoice.facility), joinedload(Invoice.inspection_batch), joinedload(Invoice.transactions))
+        .options(
+            joinedload(Invoice.facility),
+            joinedload(Invoice.inspection_batch),
+            joinedload(Invoice.approved_for_billing_by),
+            joinedload(Invoice.transactions),
+        )
         .filter(
             Invoice.invoice_type == InvoiceType.INSPECTION,
             Invoice.inspection_batch_id == batch.id,
+            Invoice.status != InvoiceStatus.CANCELLED,
         )
         .first()
     )
@@ -1349,11 +1452,15 @@ def add_asset_to_inspection_batch(
         db.query(InspectionBatch)
         .options(joinedload(InspectionBatch.facility), joinedload(InspectionBatch.inspections))
         .filter(InspectionBatch.id == batch_id)
+        .with_for_update(of=InspectionBatch)
         .first()
     )
     if not batch:
         raise HTTPException(status_code=404, detail="Inspection batch not found")
     require_facility_access(db, current_user, batch.facility_id)
+    batch_invoice = _lock_active_batch_invoice(db, batch.id)
+    _require_batch_invoice_allows_asset_changes(batch_invoice)
+    reopening_completed_batch = batch.status == InspectionStatus.COMPLETED
 
     if not db.query(Modality.id).filter(Modality.id == payload.modality_id).first():
         raise HTTPException(status_code=404, detail="Modality not found")
@@ -1422,6 +1529,20 @@ def add_asset_to_inspection_batch(
         batch.status = InspectionStatus.IN_PROGRESS
         batch.completed_at = None
     _sync_batch_status(batch)
+    if batch_invoice and reopening_completed_batch:
+        batch_invoice.updated_at = datetime.utcnow()
+        add_invoice_transaction(
+            db,
+            batch_invoice,
+            "batch_scope_changed",
+            batch_invoice.total_amount,
+            description=(
+                f"{equipment.asset_tag} was added to {batch.batch_number}; "
+                "the existing invoice will be recalculated when the batch is completed"
+            ),
+            user=current_user,
+            reference_prefix="SCOPE",
+        )
     log_activity(db, "inspections", inspection.id, "ADD_BATCH_ASSET", current_user, {"batch_id": batch.id, "equipment_id": equipment.id})
     db.commit()
     db.refresh(batch)
@@ -1447,11 +1568,15 @@ def add_existing_assets_to_inspection_batch(
         db.query(InspectionBatch)
         .options(joinedload(InspectionBatch.facility), joinedload(InspectionBatch.inspections))
         .filter(InspectionBatch.id == batch_id)
+        .with_for_update(of=InspectionBatch)
         .first()
     )
     if not batch:
         raise HTTPException(status_code=404, detail="Inspection batch not found")
     require_facility_access(db, current_user, batch.facility_id)
+    batch_invoice = _lock_active_batch_invoice(db, batch.id)
+    _require_batch_invoice_allows_asset_changes(batch_invoice)
+    reopening_completed_batch = batch.status == InspectionStatus.COMPLETED
 
     equipment_items = (
         db.query(Equipment)
@@ -1521,6 +1646,20 @@ def add_existing_assets_to_inspection_batch(
         batch.completed_at = None
     db.expire(batch, ["inspections"])
     _sync_batch_status(batch)
+    if batch_invoice and reopening_completed_batch:
+        batch_invoice.updated_at = datetime.utcnow()
+        add_invoice_transaction(
+            db,
+            batch_invoice,
+            "batch_scope_changed",
+            batch_invoice.total_amount,
+            description=(
+                f"{len(equipment_ids)} existing asset(s) were added to {batch.batch_number}; "
+                "the existing invoice will be recalculated when the batch is completed"
+            ),
+            user=current_user,
+            reference_prefix="SCOPE",
+        )
     db.commit()
     db.refresh(batch)
     return get_inspection_batch(batch.id, db, current_user)
@@ -2086,6 +2225,11 @@ def complete_inspection(
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
     require_facility_access(db, current_user, inspection.facility_id)
+    if inspection.batch_id:
+        _require_batch_invoice_mutable(
+            _lock_active_batch_invoice(db, inspection.batch_id),
+            action="Inspection reports cannot be changed",
+        )
     if payload.form_template_id is not None:
         if not db.query(InspectionForm.id).filter(InspectionForm.id == payload.form_template_id).first():
             raise HTTPException(status_code=404, detail="Inspection form not found")
@@ -2106,6 +2250,7 @@ def complete_inspection(
             inspection.equipment.pm_scheduling,
         )
     _sync_batch_status(inspection.batch)
+    _refresh_existing_batch_invoice_if_complete(db, inspection.batch, current_user)
 
     log_activity(
         db,
@@ -2153,6 +2298,11 @@ def save_inspection_report(
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
     require_facility_access(db, current_user, inspection.facility_id)
+    if inspection.batch_id:
+        _require_batch_invoice_mutable(
+            _lock_active_batch_invoice(db, inspection.batch_id),
+            action="Inspection reports cannot be changed",
+        )
     if payload.form_template_id is not None:
         if not db.query(InspectionForm.id).filter(InspectionForm.id == payload.form_template_id).first():
             raise HTTPException(status_code=404, detail="Inspection form not found")
@@ -2174,11 +2324,6 @@ def save_inspection_report(
         if existing_invoice:
             existing_invoice.status = InvoiceStatus.CANCELLED
             existing_invoice.updated_at = datetime.utcnow()
-        if inspection.batch_id:
-            existing_batch_invoice = db.query(Invoice).filter(Invoice.inspection_batch_id == inspection.batch_id).first()
-            if existing_batch_invoice:
-                existing_batch_invoice.status = InvoiceStatus.CANCELLED
-                existing_batch_invoice.updated_at = datetime.utcnow()
         log_payload = {"status": "in_progress", "previous_result": _value(inspection.result)}
     elif payload.status == InspectionStatus.COMPLETED:
         inspection.status = InspectionStatus.COMPLETED
@@ -2195,6 +2340,8 @@ def save_inspection_report(
         raise HTTPException(status_code=400, detail="Report can only be saved as completed or in progress")
 
     _sync_batch_status(inspection.batch)
+    if payload.status == InspectionStatus.COMPLETED:
+        _refresh_existing_batch_invoice_if_complete(db, inspection.batch, current_user)
     log_activity(db, "inspections", inspection.id, "SAVE_REPORT", current_user, log_payload)
     db.commit()
     db.refresh(inspection)
