@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import Request
 from jose import JWTError
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask, BackgroundTasks
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
@@ -35,8 +36,7 @@ def _get_bearer_token(request: Request) -> Optional[str]:
     return token
 
 
-def _get_user_from_request(db: Session, request: Request) -> Optional[User]:
-    token = _get_bearer_token(request)
+def _get_user_from_token(db: Session, token: Optional[str]) -> Optional[User]:
     if not token:
         return None
 
@@ -50,6 +50,24 @@ def _get_user_from_request(db: Session, request: Request) -> Optional[User]:
         return None
 
     return db.query(User).filter(User.username == username).first()
+
+
+def _write_audit_log(token: Optional[str], module: str, record_id: int, action: str, metadata: dict) -> None:
+    """Persist request auditing after the response has been sent to the client."""
+    db = SessionLocal()
+    try:
+        user = _get_user_from_token(db, token)
+        if not user:
+            return
+
+        metadata["user_id"] = user.id
+        metadata["user_role"] = user.role.value if hasattr(user.role, "value") else str(user.role)
+        log_activity(db, f"{module.replace('-', '_')}_activity", record_id, action, user, metadata)
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _api_parts(path: str) -> list[str]:
@@ -102,33 +120,28 @@ class ActivityAuditMiddleware(BaseHTTPMiddleware):
         if not parts or parts[0] in SKIPPED_MODULES:
             return response
 
-        db = SessionLocal()
-        try:
-            user = _get_user_from_request(db, request)
-            if not user:
-                return response
+        token = _get_bearer_token(request)
+        if not token:
+            return response
 
-            record_id = _record_id(parts)
-            module = parts[0]
-            action = _action_for(request.method, record_id, response.status_code)
-            metadata = {
-                "activity_type": "api_request",
-                "module": module,
-                "method": request.method,
-                "path": request.url.path,
-                "query": _safe_query_params(request),
-                "status_code": response.status_code,
-                "record_id": record_id or None,
-                "user_id": user.id,
-                "user_role": user.role.value if hasattr(user.role, "value") else str(user.role),
-                "ip_address": request.client.host if request.client else None,
-                "user_agent": request.headers.get("user-agent"),
-            }
-            log_activity(db, f"{module.replace('-', '_')}_activity", record_id, action, user, metadata)
-            db.commit()
-        except Exception:
-            db.rollback()
-        finally:
-            db.close()
+        record_id = _record_id(parts)
+        module = parts[0]
+        action = _action_for(request.method, record_id, response.status_code)
+        metadata = {
+            "activity_type": "api_request",
+            "module": module,
+            "method": request.method,
+            "path": request.url.path,
+            "query": _safe_query_params(request),
+            "status_code": response.status_code,
+            "record_id": record_id or None,
+            "ip_address": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        }
+        audit_task = BackgroundTask(_write_audit_log, token, module, record_id, action, metadata)
+        if response.background is None:
+            response.background = audit_task
+        else:
+            response.background = BackgroundTasks(tasks=[response.background, audit_task])
 
         return response

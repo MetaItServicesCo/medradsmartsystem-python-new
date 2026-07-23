@@ -1,27 +1,54 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import Layout from './components/Layout'
-import Landing from './pages/Landing'
-import Login from './pages/Auth/Login'
-import Dashboard from './pages/Dashboard'
-import Facilities from './pages/Facilities'
-import ServiceRequests from './pages/ServiceRequests'
-import Inspections from './pages/Inspections'
-import Sales from './pages/Sales'
-import Rentals from './pages/Rentals'
-import Inventory from './pages/Inventory'
-import TestEquipment from './pages/TestEquipment'
-import HR from './pages/HR'
-import Reports from './pages/Reports'
-import Users from './pages/Users'
-import Chat from './pages/Chat'
-import Calendar from './pages/Calendar'
-import Profile from './pages/Profile'
-import Attendance from './pages/Attendance'
-import Billing from './pages/Sales/Billing'
-import MyTimesheets from './pages/MyTimesheets'
-import MyLeave from './pages/MyLeave'
 import { canAccessModule, getVisibleModules, type Module } from './config/permissions'
+
+const Landing = lazy(() => import('./pages/Landing'))
+const Login = lazy(() => import('./pages/Auth/Login'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Facilities = lazy(() => import('./pages/Facilities'))
+const ServiceRequests = lazy(() => import('./pages/ServiceRequests'))
+const Inspections = lazy(() => import('./pages/Inspections'))
+const Sales = lazy(() => import('./pages/Sales'))
+const Rentals = lazy(() => import('./pages/Rentals'))
+const Inventory = lazy(() => import('./pages/Inventory'))
+const TestEquipment = lazy(() => import('./pages/TestEquipment'))
+const HR = lazy(() => import('./pages/HR'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Users = lazy(() => import('./pages/Users'))
+const Chat = lazy(() => import('./pages/Chat'))
+const Calendar = lazy(() => import('./pages/Calendar'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Attendance = lazy(() => import('./pages/Attendance'))
+const Billing = lazy(() => import('./pages/Sales/Billing'))
+const MyTimesheets = lazy(() => import('./pages/MyTimesheets'))
+const MyLeave = lazy(() => import('./pages/MyLeave'))
+
+const RouteFallback = () => (
+  <div
+    role="status"
+    aria-label="Loading page"
+    style={{
+      minHeight: 'calc(100vh - 96px)',
+      display: 'grid',
+      placeItems: 'center',
+      background: '#F7F8FC',
+    }}
+  >
+    <div
+      style={{
+        width: 38,
+        height: 38,
+        border: '4px solid #E9E4FF',
+        borderTopColor: '#7C3AED',
+        borderRadius: '50%',
+        animation: 'medrad-route-spin 0.8s linear infinite',
+      }}
+    />
+    <style>{'@keyframes medrad-route-spin { to { transform: rotate(360deg); } }'}</style>
+  </div>
+)
 
 const modulePath: Record<Module, string> = {
   dashboard: '/dashboard',
@@ -61,37 +88,39 @@ function App() {
   const { isAuthenticated } = useAuthStore()
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/landing" element={<Landing />} />
-      <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/landing" element={<Landing />} />
+        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
 
-      <Route
-        path="/"
-        element={
-          isAuthenticated ? <Layout key={useAuthStore.getState().user?.id} /> : <Navigate to="/login" replace />
-        }
-      >
-        <Route path="dashboard" element={<ProtectedPage module="dashboard"><Dashboard /></ProtectedPage>} />
-        <Route path="facilities/*" element={<ProtectedPage module="facilities"><Facilities /></ProtectedPage>} />
-        <Route path="users/*" element={<ProtectedPage module="users"><Users /></ProtectedPage>} />
-        <Route path="chat/*" element={<ProtectedPage module="chat"><Chat /></ProtectedPage>} />
-        <Route path="calendar" element={<ProtectedPage module="calendar"><Calendar /></ProtectedPage>} />
-        <Route path="profile" element={<Profile />} />
-        <Route path="service-requests/*" element={<ProtectedPage module="service-requests"><ServiceRequests /></ProtectedPage>} />
-        <Route path="inspections/*" element={<ProtectedPage module="inspections"><Inspections /></ProtectedPage>} />
-        <Route path="sales/*" element={<ProtectedPage module="sales"><Sales /></ProtectedPage>} />
-        <Route path="rentals/*" element={<ProtectedPage module="rentals"><Rentals /></ProtectedPage>} />
-        <Route path="inventory/*" element={<ProtectedPage module="inventory"><Inventory /></ProtectedPage>} />
-        <Route path="test-equipment/*" element={<ProtectedPage module="test-equipment"><TestEquipment /></ProtectedPage>} />
-        <Route path="hr/*" element={<ProtectedPage module="hr"><HR /></ProtectedPage>} />
-        <Route path="reports/*" element={<ProtectedPage module="reports"><Reports /></ProtectedPage>} />
-        <Route path="attendance/*" element={<ProtectedPage module="attendance"><Attendance /></ProtectedPage>} />
-        <Route path="my-timesheets" element={<ProtectedPage module="my-timesheets"><MyTimesheets /></ProtectedPage>} />
-        <Route path="my-leave" element={<ProtectedPage module="my-leave"><MyLeave /></ProtectedPage>} />
-        <Route path="billing/*" element={<ProtectedPage module="billing"><Billing /></ProtectedPage>} />
-      </Route>
-    </Routes>
+        <Route
+          path="/"
+          element={
+            isAuthenticated ? <Layout key={useAuthStore.getState().user?.id} /> : <Navigate to="/login" replace />
+          }
+        >
+          <Route path="dashboard" element={<ProtectedPage module="dashboard"><Dashboard /></ProtectedPage>} />
+          <Route path="facilities/*" element={<ProtectedPage module="facilities"><Facilities /></ProtectedPage>} />
+          <Route path="users/*" element={<ProtectedPage module="users"><Users /></ProtectedPage>} />
+          <Route path="chat/*" element={<ProtectedPage module="chat"><Chat /></ProtectedPage>} />
+          <Route path="calendar" element={<ProtectedPage module="calendar"><Calendar /></ProtectedPage>} />
+          <Route path="profile" element={<Profile />} />
+          <Route path="service-requests/*" element={<ProtectedPage module="service-requests"><ServiceRequests /></ProtectedPage>} />
+          <Route path="inspections/*" element={<ProtectedPage module="inspections"><Inspections /></ProtectedPage>} />
+          <Route path="sales/*" element={<ProtectedPage module="sales"><Sales /></ProtectedPage>} />
+          <Route path="rentals/*" element={<ProtectedPage module="rentals"><Rentals /></ProtectedPage>} />
+          <Route path="inventory/*" element={<ProtectedPage module="inventory"><Inventory /></ProtectedPage>} />
+          <Route path="test-equipment/*" element={<ProtectedPage module="test-equipment"><TestEquipment /></ProtectedPage>} />
+          <Route path="hr/*" element={<ProtectedPage module="hr"><HR /></ProtectedPage>} />
+          <Route path="reports/*" element={<ProtectedPage module="reports"><Reports /></ProtectedPage>} />
+          <Route path="attendance/*" element={<ProtectedPage module="attendance"><Attendance /></ProtectedPage>} />
+          <Route path="my-timesheets" element={<ProtectedPage module="my-timesheets"><MyTimesheets /></ProtectedPage>} />
+          <Route path="my-leave" element={<ProtectedPage module="my-leave"><MyLeave /></ProtectedPage>} />
+          <Route path="billing/*" element={<ProtectedPage module="billing"><Billing /></ProtectedPage>} />
+        </Route>
+      </Routes>
+    </Suspense>
   )
 }
 
