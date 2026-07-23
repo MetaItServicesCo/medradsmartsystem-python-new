@@ -1158,6 +1158,10 @@ const Inspections = () => {
   const [upcomingSearch, setUpcomingSearch] = useState('')
   const [debouncedUpcomingSearch, setDebouncedUpcomingSearch] = useState('')
   const [debouncedClosedSearch, setDebouncedClosedSearch] = useState('')
+  const [inProgressSearch, setInProgressSearch] = useState('')
+  const [debouncedInProgressSearch, setDebouncedInProgressSearch] = useState('')
+  const [completedSearch, setCompletedSearch] = useState('')
+  const [debouncedCompletedSearch, setDebouncedCompletedSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
   const [inProgressBatchPage, setInProgressBatchPage] = useState(0)
@@ -1262,6 +1266,16 @@ const Inspections = () => {
   }, [dateFrom, dateTo])
 
   useEffect(() => {
+    setInProgressBatchPage(0)
+    setLegacyInProgressPage(0)
+  }, [debouncedInProgressSearch])
+
+  useEffect(() => {
+    setCompletedBatchPage(0)
+    setLegacyCompletedPage(0)
+  }, [debouncedCompletedSearch])
+
+  useEffect(() => {
     if (addExistingAssetOpen) return
     setExistingAssetSearch('')
     setSelectedExistingEquipmentIds([])
@@ -1282,6 +1296,16 @@ const Inspections = () => {
     const timeout = window.setTimeout(() => setDebouncedClosedSearch(closedSearch.trim()), 300)
     return () => window.clearTimeout(timeout)
   }, [closedSearch])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedInProgressSearch(inProgressSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [inProgressSearch])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedCompletedSearch(completedSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [completedSearch])
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedPartSearch(partSearch.trim()), 300)
@@ -1333,24 +1357,24 @@ const Inspections = () => {
     retry: 1,
   })
   const inProgressQ = useQuery({
-    queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize, dateFrom, dateTo],
-    queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyInProgressPage * pageSize, limit: pageSize }),
+    queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize, debouncedInProgressSearch, dateFrom, dateTo],
+    queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, search: debouncedInProgressSearch || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyInProgressPage * pageSize, limit: pageSize }),
     enabled: tab === 2 && !invalidDateRange,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
     retry: 1,
   })
   const inProgressBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'in_progress', inProgressBatchPage, pageSize, dateFrom, dateTo],
-    queryFn: () => fetchInspectionBatches({ status: 'in_progress', date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: inProgressBatchPage * pageSize, limit: pageSize }),
+    queryKey: ['inspection-batches', 'in_progress', inProgressBatchPage, pageSize, debouncedInProgressSearch, dateFrom, dateTo],
+    queryFn: () => fetchInspectionBatches({ status: 'in_progress', search: debouncedInProgressSearch || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: inProgressBatchPage * pageSize, limit: pageSize }),
     enabled: tab === 2 && !invalidDateRange,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
     retry: 1,
   })
   const completedBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'completed', completedBatchPage, pageSize, dateFrom, dateTo],
-    queryFn: () => fetchInspectionBatches({ status: 'completed', date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: completedBatchPage * pageSize, limit: pageSize }),
+    queryKey: ['inspection-batches', 'completed', completedBatchPage, pageSize, debouncedCompletedSearch, dateFrom, dateTo],
+    queryFn: () => fetchInspectionBatches({ status: 'completed', search: debouncedCompletedSearch || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: completedBatchPage * pageSize, limit: pageSize }),
     enabled: tab === 3 && !invalidDateRange,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
@@ -4011,6 +4035,15 @@ const Inspections = () => {
 
         {tab === 2 && (
           <Box>
+            <Box sx={{ p: 3, pb: 0 }}>
+              <TextField
+                label="Search in-progress inspections"
+                placeholder="Search batch #, facility, technician, asset tag, serial, inspection #..."
+                value={inProgressSearch}
+                onChange={event => setInProgressSearch(event.target.value)}
+                fullWidth
+              />
+            </Box>
             {renderBatchRows(inProgressBatchesQ.data?.items || [], inProgressBatchesQ.isLoading)}
             {renderPagination(inProgressBatchesQ.data?.total || 0, inProgressBatchPage, setInProgressBatchPage)}
             {(inProgressQ.data?.total || 0) > 0 && (
@@ -4026,6 +4059,15 @@ const Inspections = () => {
         )}
         {tab === 3 && (
           <Box>
+            <Box sx={{ p: 3, pb: 0 }}>
+              <TextField
+                label="Search completed inspections"
+                placeholder="Search batch #, facility, technician, asset tag, serial, inspection #..."
+                value={completedSearch}
+                onChange={event => setCompletedSearch(event.target.value)}
+                fullWidth
+              />
+            </Box>
             {renderBatchRows(completedBatchesQ.data?.items || [], completedBatchesQ.isLoading, 'completed')}
             {renderPagination(completedBatchesQ.data?.total || 0, completedBatchPage, setCompletedBatchPage)}
             {(completedQ.data?.total || 0) > 0 && (

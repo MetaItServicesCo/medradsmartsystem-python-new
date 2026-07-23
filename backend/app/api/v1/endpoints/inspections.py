@@ -1432,6 +1432,7 @@ def list_inspection_batches(
     db: Session = Depends(get_db),
     status_filter: Optional[InspectionStatus] = Query(None, alias="status"),
     facility_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
@@ -1452,6 +1453,42 @@ def list_inspection_batches(
     if facility_id:
         require_facility_access(db, current_user, facility_id)
         query = query.filter(InspectionBatch.facility_id == facility_id)
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        asset_match = (
+            db.query(Inspection.id)
+            .outerjoin(Equipment, Inspection.equipment_id == Equipment.id)
+            .outerjoin(InventoryPart, Inspection.inventory_part_id == InventoryPart.id)
+            .filter(
+                Inspection.batch_id == InspectionBatch.id,
+                or_(
+                    Inspection.inspection_number.ilike(like),
+                    Equipment.asset_tag.ilike(like),
+                    Equipment.make.ilike(like),
+                    Equipment.model.ilike(like),
+                    Equipment.serial_number.ilike(like),
+                    InventoryPart.part_number.ilike(like),
+                    InventoryPart.description.ilike(like),
+                    InventoryPart.make.ilike(like),
+                    InventoryPart.model.ilike(like),
+                    InventoryPart.serial_number.ilike(like),
+                ),
+            )
+            .exists()
+        )
+        query = (
+            query
+            .outerjoin(Facility, InspectionBatch.facility_id == Facility.id)
+            .outerjoin(User, InspectionBatch.inspector_id == User.id)
+            .filter(
+                or_(
+                    InspectionBatch.batch_number.ilike(like),
+                    Facility.name.ilike(like),
+                    User.full_name.ilike(like),
+                    asset_match,
+                )
+            )
+        )
     batch_date_column = InspectionBatch.scheduled_date
     if status_filter == InspectionStatus.IN_PROGRESS:
         batch_date_column = func.coalesce(InspectionBatch.started_at, InspectionBatch.scheduled_date)
