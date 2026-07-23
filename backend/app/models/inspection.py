@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Boolean, Index, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -19,6 +19,10 @@ class InspectionResult(str, enum.Enum):
 
 class InspectionBatch(Base):
     __tablename__ = "inspection_batches"
+    __table_args__ = (
+        Index("ix_inspection_batches_facility_status_created", "facility_id", "status", "created_at"),
+        Index("ix_inspection_batches_status_scheduled_created", "status", "scheduled_date", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     batch_number = Column(String, unique=True, nullable=False, index=True)
@@ -44,6 +48,11 @@ class InspectionBatch(Base):
 
 class Inspection(Base):
     __tablename__ = "inspections"
+    __table_args__ = (
+        Index("ix_inspections_facility_status_created", "facility_id", "status", "created_at"),
+        Index("ix_inspections_status_scheduled_created", "status", "scheduled_date", "created_at"),
+        Index("ix_inspections_inspector_status_created", "inspector_id", "status", "created_at"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     inspection_number = Column(String, unique=True, nullable=False, index=True)

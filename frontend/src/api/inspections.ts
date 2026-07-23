@@ -209,6 +209,12 @@ export interface InspectionInvoiceListResponse {
   total: number
   skip: number
   limit: number
+  summary?: {
+    outstanding: number
+    paid: number
+    total: number
+    count: number
+  }
 }
 
 export interface InspectionSummary {
@@ -512,7 +518,14 @@ export const fetchInspectionSummary = async (
 }
 
 export const fetchInspectionQuotations = async (
-  params: { invoice_id?: number; search?: string; skip?: number; limit?: number } = {}
+  params: {
+    invoice_id?: number
+    search?: string
+    status_filter?: string
+    balance_filter?: 'outstanding' | 'paid'
+    skip?: number
+    limit?: number
+  } = {}
 ): Promise<InspectionInvoiceListResponse> => {
   const res = await apiClient.get('/inspections/quotations', { params })
   return res.data

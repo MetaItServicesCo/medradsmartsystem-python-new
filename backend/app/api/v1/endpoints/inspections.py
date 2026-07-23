@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import case, func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.deps import get_admin_user, get_current_user
@@ -1088,10 +1088,7 @@ def inspection_facilities(
 ) -> Any:
     facilities = (
         scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
-        .options(
-            joinedload(Facility.tier),
-            joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
-        )
+        .options(joinedload(Facility.tier))
         .order_by(Facility.name.asc())
         .all()
     )
@@ -1227,49 +1224,99 @@ def inspection_summary(
         db.query(Invoice), Invoice.facility_id, db, current_user
     )
     invoices = scope_invoice_approval_visibility(invoices, current_user)
-    def date_scoped(query, column):
+    def date_conditions(column) -> list[Any]:
+        conditions: list[Any] = []
         if date_from:
-            query = query.filter(column >= datetime.combine(date_from, time.min))
+            conditions.append(column >= datetime.combine(date_from, time.min))
         if date_to:
-            query = query.filter(column <= datetime.combine(date_to, time.max))
-        return query
+            conditions.append(column <= datetime.combine(date_to, time.max))
+        return conditions
 
-    upcoming = date_scoped(
-        inspections.filter(Inspection.status == InspectionStatus.UPCOMING),
-        Inspection.scheduled_date,
-    )
-    in_progress_batches = date_scoped(
-        batches.filter(InspectionBatch.status == InspectionStatus.IN_PROGRESS),
-        func.coalesce(InspectionBatch.started_at, InspectionBatch.scheduled_date),
-    )
-    in_progress_items = date_scoped(
-        inspections.filter(
-            Inspection.status == InspectionStatus.IN_PROGRESS,
-            Inspection.batch_id.is_(None),
+    inspection_counts = inspections.with_entities(
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            Inspection.status == InspectionStatus.UPCOMING,
+                            *date_conditions(Inspection.scheduled_date),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
         ),
-        func.coalesce(Inspection.started_at, Inspection.scheduled_date),
-    )
-    completed_batches = date_scoped(
-        batches.filter(InspectionBatch.status == InspectionStatus.COMPLETED),
-        InspectionBatch.completed_at,
-    )
-    completed_items = date_scoped(
-        inspections.filter(
-            Inspection.status == InspectionStatus.COMPLETED,
-            Inspection.batch_id.is_(None),
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            Inspection.status == InspectionStatus.IN_PROGRESS,
+                            Inspection.batch_id.is_(None),
+                            *date_conditions(func.coalesce(Inspection.started_at, Inspection.scheduled_date)),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
         ),
-        Inspection.completed_at,
-    )
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            Inspection.status == InspectionStatus.COMPLETED,
+                            Inspection.batch_id.is_(None),
+                            *date_conditions(Inspection.completed_at),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
+        ),
+    ).one()
+    batch_counts = batches.with_entities(
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            InspectionBatch.status == InspectionStatus.IN_PROGRESS,
+                            *date_conditions(func.coalesce(InspectionBatch.started_at, InspectionBatch.scheduled_date)),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
+        ),
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            InspectionBatch.status == InspectionStatus.COMPLETED,
+                            *date_conditions(InspectionBatch.completed_at),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
+        ),
+    ).one()
     return {
-        "upcoming": upcoming.count(),
-        "in_progress": (
-            in_progress_batches.count()
-            + in_progress_items.count()
-        ),
-        "completed": (
-            completed_batches.count()
-            + completed_items.count()
-        ),
+        "upcoming": int(inspection_counts[0] or 0),
+        "in_progress": int(inspection_counts[1] or 0) + int(batch_counts[0] or 0),
+        "completed": int(inspection_counts[2] or 0) + int(batch_counts[1] or 0),
         "assets": equipment.count(),
         "quotations": invoices.filter(Invoice.invoice_type == InvoiceType.INSPECTION).count(),
     }
@@ -1292,11 +1339,13 @@ def list_inspections(
         scope_query_to_user_facilities(db.query(Inspection), Inspection.facility_id, db, current_user)
         .options(
             joinedload(Inspection.facility).joinedload(Facility.tier),
-            joinedload(Inspection.facility).joinedload(Facility.facility_tiers).joinedload(FacilityTier.tier),
             joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            joinedload(Inspection.inventory_part).joinedload(InventoryPart.inspection_form),
             joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            joinedload(Inspection.equipment).joinedload(Equipment.inspection_form),
             joinedload(Inspection.inspector),
             joinedload(Inspection.batch),
+            joinedload(Inspection.form_template),
         )
     )
     if status_filter:
@@ -1445,11 +1494,14 @@ def get_inspection_batch(
         .options(
             joinedload(InspectionBatch.facility),
             joinedload(InspectionBatch.inspector),
-            joinedload(InspectionBatch.inspections).joinedload(Inspection.facility).joinedload(Facility.tier),
-            joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.tier),
-            joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.modality),
-            joinedload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
-            joinedload(InspectionBatch.inspections).joinedload(Inspection.inspector),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.facility).joinedload(Facility.tier),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.tier),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.modality),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.equipment).joinedload(Equipment.inspection_form),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.tier),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.inventory_part).joinedload(InventoryPart.inspection_form),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.inspector),
+            selectinload(InspectionBatch.inspections).joinedload(Inspection.form_template),
         )
         .filter(InspectionBatch.id == batch_id)
         .first()
@@ -2491,32 +2543,14 @@ def list_inspection_quotations(
     db: Session = Depends(get_db),
     invoice_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None),
+    balance_filter: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
-        .options(
-            joinedload(Invoice.facility),
-            joinedload(Invoice.approved_for_billing_by),
-            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
-            joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
-            joinedload(Invoice.inspection).joinedload(Inspection.equipment),
-            joinedload(Invoice.inspection).joinedload(Inspection.inspector),
-            selectinload(Invoice.inspection_batch)
-            .selectinload(InspectionBatch.inspections)
-            .joinedload(Inspection.inventory_part)
-            .joinedload(InventoryPart.tier),
-            selectinload(Invoice.inspection_batch)
-            .selectinload(InspectionBatch.inspections)
-            .joinedload(Inspection.equipment)
-            .joinedload(Equipment.tier),
-            selectinload(Invoice.inspection_batch)
-            .selectinload(InspectionBatch.inspections)
-            .joinedload(Inspection.facility)
-            .joinedload(Facility.tier),
-        )
         .filter(Invoice.invoice_type == InvoiceType.INSPECTION)
     )
     query = scope_invoice_approval_visibility(query, current_user)
@@ -2541,8 +2575,75 @@ def list_inspection_quotations(
                 )
             )
         )
+
+    # Keep the KPI summary consistent with the existing UI: it reflects the
+    # selected source/search, while status and balance controls only narrow the
+    # table below it.
+    summary_row = (
+        query.with_entities(
+            func.coalesce(func.sum(Invoice.balance_due), 0),
+            func.coalesce(func.sum(Invoice.amount_paid), 0),
+            func.coalesce(func.sum(Invoice.total_amount), 0),
+            func.count(Invoice.id),
+        )
+        .order_by(None)
+        .one()
+    )
+
+    normalized_status = (status_filter or "").strip().lower()
+    if normalized_status == "billing_pending":
+        query = query.filter(Invoice.billing_approval_status == "pending")
+    elif normalized_status == "approved":
+        query = query.filter(Invoice.billing_approval_status == BILLING_APPROVAL_APPROVED)
+    elif normalized_status:
+        try:
+            query = query.filter(Invoice.status == InvoiceStatus(normalized_status))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Unsupported invoice status filter") from exc
+
+    normalized_balance = (balance_filter or "").strip().lower()
+    if normalized_balance == "outstanding":
+        query = query.filter(
+            Invoice.balance_due > 0,
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+    elif normalized_balance == "paid":
+        query = query.filter(
+            or_(
+                Invoice.status == InvoiceStatus.PAID,
+                Invoice.balance_due <= 0,
+            )
+        )
+    elif normalized_balance:
+        raise HTTPException(status_code=422, detail="Unsupported invoice balance filter")
+
     total = query.count()
-    invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
+    invoices = (
+        query.options(
+            joinedload(Invoice.facility),
+            joinedload(Invoice.approved_for_billing_by),
+            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
+            joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
+            joinedload(Invoice.inspection).joinedload(Inspection.equipment),
+            joinedload(Invoice.inspection).joinedload(Inspection.inspector),
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.inventory_part)
+            .joinedload(InventoryPart.tier),
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.equipment)
+            .joinedload(Equipment.tier),
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.facility)
+            .joinedload(Facility.tier),
+        )
+        .order_by(Invoice.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return {
         "items": [
             {
@@ -2567,6 +2668,12 @@ def list_inspection_quotations(
         "total": total,
         "skip": skip,
         "limit": limit,
+        "summary": {
+            "outstanding": float(summary_row[0] or 0),
+            "paid": float(summary_row[1] or 0),
+            "total": float(summary_row[2] or 0),
+            "count": int(summary_row[3] or 0),
+        },
     }
 
 

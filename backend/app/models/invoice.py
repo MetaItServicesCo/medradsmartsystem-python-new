@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Date
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Date, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -19,6 +19,12 @@ class InvoiceType(str, enum.Enum):
 
 class Invoice(Base):
     __tablename__ = "invoices"
+    __table_args__ = (
+        Index("ix_invoices_type_created", "invoice_type", "created_at"),
+        Index("ix_invoices_facility_type_created", "facility_id", "invoice_type", "created_at"),
+        Index("ix_invoices_type_approval_created", "invoice_type", "billing_approval_status", "created_at"),
+        Index("ix_invoices_type_status_created", "invoice_type", "status", "created_at"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     invoice_number = Column(String, unique=True, nullable=False, index=True)

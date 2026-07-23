@@ -6,14 +6,14 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
 from app.core.deps import get_current_user
 from app.utils.permission_deps import require_module_access
 from app.models.facility import Facility
 from app.models.inventory import InventoryPart
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.sales import SalesQuotation, SalesQuotationLineItem
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
@@ -681,7 +681,7 @@ def list_sales_invoices(
             joinedload(Invoice.facility),
             joinedload(Invoice.sales_quotation),
             joinedload(Invoice.approved_for_billing_by),
-            joinedload(Invoice.transactions),
+            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
         )
         .filter(Invoice.invoice_type == InvoiceType.SALES)
     )

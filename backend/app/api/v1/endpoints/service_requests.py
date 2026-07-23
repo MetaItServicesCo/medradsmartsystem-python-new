@@ -26,7 +26,7 @@ from app.models.facility import Facility
 from app.models.equipment import Equipment
 from app.models.test_equipment import TestEquipment
 from app.models.inventory import InventoryPart, InventoryTransaction
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.schemas.service_request import (
     ServiceRequestCreate, ServiceRequestUpdate,
     ServiceRequestResponse, ServiceRequestListResponse,
@@ -908,10 +908,14 @@ def list_service_invoices(
         .options(
             joinedload(Invoice.facility),
             joinedload(Invoice.approved_for_billing_by),
-            joinedload(Invoice.transactions),
+            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
             joinedload(Invoice.service_request).joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
-            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.line_items),
-            joinedload(Invoice.service_request).joinedload(ServiceRequest.quotations).joinedload(ServiceRequestQuotation.payments),
+            joinedload(Invoice.service_request)
+            .selectinload(ServiceRequest.quotations)
+            .selectinload(ServiceRequestQuotation.line_items),
+            joinedload(Invoice.service_request)
+            .selectinload(ServiceRequest.quotations)
+            .selectinload(ServiceRequestQuotation.payments),
         )
         .filter(Invoice.invoice_type == InvoiceType.SERVICE)
     )

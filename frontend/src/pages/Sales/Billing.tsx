@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
+  Alert, Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
   FormControlLabel, FormLabel, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Radio, RadioGroup, Select, Skeleton,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow,
@@ -23,7 +23,7 @@ import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
 
-import { fetchAllInspectionQuotations, updateInspectionInvoice, type InspectionInvoice } from '@/api/inspections'
+import { fetchAllInspectionQuotations, fetchInspectionQuotations, updateInspectionInvoice, type InspectionInvoice } from '@/api/inspections'
 import { fetchRentalInvoices, updateRentalInvoice, type RentalInvoice } from '@/api/rentals'
 import { fetchSalesInvoices, updateSalesInvoice, type SalesInvoice } from '@/api/sales'
 import {
@@ -430,6 +430,7 @@ const Billing = () => {
   const shouldFetchInspection = sourceFilter === 'all' || sourceFilter === 'inspection'
   const shouldFetchSales = sourceFilter === 'all' || sourceFilter === 'sales'
   const shouldFetchRental = sourceFilter === 'all' || sourceFilter === 'rental'
+  const inspectionServerPage = sourceFilter === 'inspection'
 
   const [payMethod, setPayMethod] = useState<PayMethod>('credit_card')
   const [achChoice, setAchChoice] = useState<AchChoice>('ach')
@@ -493,11 +494,26 @@ const Billing = () => {
     staleTime: 60_000,
   })
   const inspectionQ = useQuery({
-    queryKey: ['billing-inspection-invoices', querySearch],
-    queryFn: () => fetchAllInspectionQuotations(querySearch),
+    queryKey: [
+      'billing-inspection-invoices',
+      querySearch,
+      inspectionServerPage ? page : 'all',
+      inspectionServerPage ? statusFilter : 'all',
+      inspectionServerPage ? tab : 0,
+    ],
+    queryFn: () => inspectionServerPage
+      ? fetchInspectionQuotations({
+          search: querySearch,
+          status_filter: statusFilter === 'all' ? undefined : statusFilter,
+          balance_filter: tab === 1 ? 'outstanding' : tab === 2 ? 'paid' : undefined,
+          skip: page * rowsPerPage,
+          limit: rowsPerPage,
+        })
+      : fetchAllInspectionQuotations(querySearch),
     enabled: shouldFetchInspection,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
+    retry: 1,
   })
   const salesQ = useQuery({
     queryKey: ['billing-sales-invoices', querySearch],
@@ -670,8 +686,9 @@ const Billing = () => {
   ])
 
   const isInitialLoading = allBillingSourcesLoading && items.length === 0
+  const inspectionLoadFailed = sourceFilter === 'inspection' && inspectionQ.isError && items.length === 0
 
-  const filteredItems = items.filter(item => {
+  const filteredItems = inspectionServerPage ? items : items.filter(item => {
     const normalizedSearch = search.trim().toLowerCase()
     if (normalizedSearch) {
       const haystack = [
@@ -693,17 +710,25 @@ const Billing = () => {
     if (tab === 2) return item.status === 'paid' || item.balance <= 0
     return true
   })
-  const pagedItems = filteredItems.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
+  const pagedItems = inspectionServerPage
+    ? filteredItems
+    : filteredItems.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
+  const paginationCount = inspectionServerPage
+    ? Number(inspectionQ.data?.total || 0)
+    : filteredItems.length
 
   useEffect(() => {
     setPage(0)
   }, [sourceFilter, statusFilter, tab, search])
 
   const totals = useMemo(() => {
+    if (inspectionServerPage && inspectionQ.data?.summary) {
+      return inspectionQ.data.summary
+    }
     const outstanding = items.filter(item => item.balance > 0).reduce((sum, item) => sum + item.balance, 0)
     const paid = items.reduce((sum, item) => sum + item.paid, 0)
     return { outstanding, paid, total: items.reduce((sum, item) => sum + item.amount, 0), count: items.length }
-  }, [items])
+  }, [inspectionQ.data?.summary, inspectionServerPage, items])
 
   const invalidateBilling = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] }),
@@ -1246,7 +1271,19 @@ const Billing = () => {
             <TableBody>
               {isInitialLoading ? Array.from({ length: 5 }).map((_, index) => (
                 <TableRow key={index}>{Array.from({ length: 10 }).map((__, cell) => <TableCell key={cell}><Skeleton /></TableCell>)}</TableRow>
-              )) : filteredItems.length === 0 ? (
+              )) : inspectionLoadFailed ? (
+                <TableRow>
+                  <TableCell colSpan={10} sx={{ py: 4 }}>
+                    <Alert
+                      severity="error"
+                      action={<Button color="inherit" size="small" onClick={() => inspectionQ.refetch()}>Retry</Button>}
+                      sx={{ borderRadius: '14px', alignItems: 'center' }}
+                    >
+                      Inspection invoices could not be loaded. Retry the request or contact support if it continues.
+                    </Alert>
+                  </TableCell>
+                </TableRow>
+              ) : filteredItems.length === 0 ? (
                 <TableRow><TableCell colSpan={10} align="center" sx={{ py: 6, color: '#6B7280', fontWeight: 800 }}>No billing records found.</TableCell></TableRow>
               ) : pagedItems.map(item => {
                 const expanded = expandedKey === item.key
@@ -1371,7 +1408,7 @@ const Billing = () => {
         </TableContainer>
         <TablePagination
           component="div"
-          count={filteredItems.length}
+          count={paginationCount}
           page={page}
           onPageChange={(_, nextPage) => setPage(nextPage)}
           rowsPerPage={rowsPerPage}

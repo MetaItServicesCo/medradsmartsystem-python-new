@@ -1114,6 +1114,8 @@ const Inspections = () => {
   const [report, setReport] = useState<any>(null)
   const [partSearch, setPartSearch] = useState('')
   const [testEquipmentSearch, setTestEquipmentSearch] = useState('')
+  const [debouncedPartSearch, setDebouncedPartSearch] = useState('')
+  const [debouncedTestEquipmentSearch, setDebouncedTestEquipmentSearch] = useState('')
   const [reportStatus, setReportStatus] = useState<'completed' | 'in_progress'>('completed')
   const [reportFormSource, setReportFormSource] = useState<ReportFormSource>('default')
   const [selectedReportFormId, setSelectedReportFormId] = useState<number | null>(null)
@@ -1154,6 +1156,8 @@ const Inspections = () => {
   const [formActionAnchor, setFormActionAnchor] = useState<HTMLElement | null>(null)
   const [formActionItem, setFormActionItem] = useState<InspectionFormOption | null>(null)
   const [upcomingSearch, setUpcomingSearch] = useState('')
+  const [debouncedUpcomingSearch, setDebouncedUpcomingSearch] = useState('')
+  const [debouncedClosedSearch, setDebouncedClosedSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
   const [inProgressBatchPage, setInProgressBatchPage] = useState(0)
@@ -1269,20 +1273,43 @@ const Inspections = () => {
     setTestEquipmentSearch('')
   }, [reportInspection])
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedUpcomingSearch(upcomingSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [upcomingSearch])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedClosedSearch(closedSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [closedSearch])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedPartSearch(partSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [partSearch])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedTestEquipmentSearch(testEquipmentSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [testEquipmentSearch])
+
   const summaryQ = useQuery({
     queryKey: ['inspection-summary', dateFrom, dateTo],
     queryFn: () => fetchInspectionSummary({ date_from: dateFrom || undefined, date_to: dateTo || undefined }),
     enabled: !invalidDateRange,
+    staleTime: 30_000,
   })
   const facilitiesQ = useQuery({
     queryKey: ['inspection-facilities'],
     queryFn: fetchInspectionFacilities,
     enabled: tab === 0 || tab === 1 || tab === 5,
+    staleTime: 5 * 60_000,
   })
   const equipmentQ = useQuery({
     queryKey: ['inspection-equipment', facilityId],
     queryFn: () => fetchInspectionFacilityEquipment(Number(facilityId)),
     enabled: Boolean(facilityId),
+    staleTime: 60_000,
   })
   const upcomingWindow = useMemo(() => getUpcomingDateWindow(upcomingRange), [upcomingRange])
   const effectiveUpcomingWindow = useMemo(() => (
@@ -1291,72 +1318,97 @@ const Inspections = () => {
       : upcomingWindow
   ), [dateFrom, dateTo, upcomingWindow])
   const upcomingQ = useQuery({
-    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize, upcomingSearch, upcomingRange, dateFrom, dateTo],
+    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize, debouncedUpcomingSearch, upcomingRange, dateFrom, dateTo],
     queryFn: () => fetchInspections({
       status: 'upcoming',
-      search: upcomingSearch.trim() || undefined,
+      search: debouncedUpcomingSearch || undefined,
       date_from: effectiveUpcomingWindow.date_from,
       date_to: effectiveUpcomingWindow.date_to,
       skip: upcomingPage * pageSize,
       limit: pageSize,
     }),
     enabled: tab === 0 && !invalidDateRange,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+    retry: 1,
   })
   const inProgressQ = useQuery({
     queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize, dateFrom, dateTo],
     queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyInProgressPage * pageSize, limit: pageSize }),
     enabled: tab === 2 && !invalidDateRange,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+    retry: 1,
   })
   const inProgressBatchesQ = useQuery({
     queryKey: ['inspection-batches', 'in_progress', inProgressBatchPage, pageSize, dateFrom, dateTo],
     queryFn: () => fetchInspectionBatches({ status: 'in_progress', date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: inProgressBatchPage * pageSize, limit: pageSize }),
     enabled: tab === 2 && !invalidDateRange,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+    retry: 1,
   })
   const completedBatchesQ = useQuery({
     queryKey: ['inspection-batches', 'completed', completedBatchPage, pageSize, dateFrom, dateTo],
     queryFn: () => fetchInspectionBatches({ status: 'completed', date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: completedBatchPage * pageSize, limit: pageSize }),
     enabled: tab === 3 && !invalidDateRange,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+    retry: 1,
   })
   const batchDetailQ = useQuery({
     queryKey: ['inspection-batches', selectedBatchId],
     queryFn: () => fetchInspectionBatch(Number(selectedBatchId)),
     enabled: Boolean(selectedBatchId),
+    staleTime: 30_000,
+    retry: 1,
   })
   const batchEquipmentQ = useQuery({
     queryKey: ['inspection-equipment', 'batch-existing-options', batchDetailQ.data?.facility_id],
     queryFn: () => fetchInspectionFacilityEquipment(Number(batchDetailQ.data?.facility_id)),
     enabled: addExistingAssetOpen && Boolean(batchDetailQ.data?.facility_id),
+    staleTime: 60_000,
   })
   const completedQ = useQuery({
     queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize, dateFrom, dateTo],
     queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyCompletedPage * pageSize, limit: pageSize }),
     enabled: tab === 3 && !invalidDateRange,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+    retry: 1,
   })
   const closedQ = useQuery({
-    queryKey: ['inspections', 'closed', closedPage, pageSize, closedSearch, closedFacilityId, dateFrom, dateTo],
+    queryKey: ['inspections', 'closed', closedPage, pageSize, debouncedClosedSearch, closedFacilityId, dateFrom, dateTo],
     queryFn: () => fetchInspections({
       status: 'closed',
       facility_id: closedFacilityId ? Number(closedFacilityId) : undefined,
-      search: closedSearch.trim() || undefined,
+      search: debouncedClosedSearch || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       skip: closedPage * pageSize,
       limit: pageSize,
     }),
     enabled: tab === 5 && !invalidDateRange,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+    retry: 1,
   })
-  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 4 || Boolean(reportInspection) || Boolean(infoInspection) })
-  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen })
-  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection) })
+  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 4 || Boolean(reportInspection) || Boolean(infoInspection), staleTime: 5 * 60_000 })
+  const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen, staleTime: 5 * 60_000 })
+  const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection), staleTime: 60_000 })
   const testEquipmentQ = useQuery({
-    queryKey: ['test-equipment', 'inspection-active-options', testEquipmentSearch],
-    queryFn: () => fetchActiveTestEquipment({ search: testEquipmentSearch || undefined, limit: 500 }),
+    queryKey: ['test-equipment', 'inspection-active-options', debouncedTestEquipmentSearch],
+    queryFn: () => fetchActiveTestEquipment({ search: debouncedTestEquipmentSearch || undefined, limit: 50 }),
     enabled: Boolean(reportInspection),
+    staleTime: 60_000,
+    placeholderData: previousData => previousData,
   })
   const reportPartsQ = useQuery({
-    queryKey: ['inventory-parts', 'inspection-report-options', partSearch],
-    queryFn: () => fetchInventoryParts({ search: partSearch || undefined, limit: 500 }),
+    queryKey: ['inventory-parts', 'inspection-report-options', debouncedPartSearch],
+    queryFn: () => fetchInventoryParts({ search: debouncedPartSearch || undefined, limit: 50 }),
     enabled: Boolean(reportInspection),
+    staleTime: 60_000,
+    placeholderData: previousData => previousData,
   })
 
   const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)

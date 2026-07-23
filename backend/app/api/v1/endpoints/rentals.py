@@ -7,14 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
 from app.core.deps import get_current_user
 from app.utils.permission_deps import require_module_access
 from app.models.facility import Facility
 from app.models.inventory import InventoryPart
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.rental import Rental, RentalStatus, BillingFrequency
 from app.models.user import User, UserRole
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
@@ -643,7 +643,7 @@ def list_rental_invoices(
             joinedload(Invoice.facility),
             joinedload(Invoice.rental),
             joinedload(Invoice.approved_for_billing_by),
-            joinedload(Invoice.transactions),
+            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
         )
         .filter(Invoice.invoice_type == InvoiceType.RENTAL)
     )
