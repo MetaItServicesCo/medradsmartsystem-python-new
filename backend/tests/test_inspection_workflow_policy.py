@@ -9,9 +9,12 @@ from app.api.v1.endpoints import inspections as inspections_endpoint
 from app.api.v1.endpoints.inspections import (
     InspectionDetailsUpdate,
     InspectionReopen,
+    _batch_invoice_line_items,
+    _batch_invoice_notes,
     _create_inspection_batch_invoice,
     _require_batch_invoice_allows_asset_changes,
     _require_upcoming_inspection,
+    _stored_batch_invoice_items,
     _sync_batch_status,
 )
 from app.models.invoice import InvoiceStatus
@@ -177,3 +180,60 @@ def test_batch_invoice_recalculation_preserves_the_same_invoice_record(monkeypat
     assert updated.total_amount == Decimal("150")
     assert updated.balance_due == Decimal("150")
     assert transactions == ["invoice_recalculated"]
+
+
+def test_batch_invoice_list_rows_skip_incomplete_reopened_assets(monkeypatch):
+    completed = SimpleNamespace(
+        id=1,
+        inspection_number="INSP-001",
+        status=InspectionStatus.COMPLETED,
+        form_data={"billing": {}},
+        inventory_part=None,
+        equipment=None,
+    )
+    in_progress = SimpleNamespace(
+        id=2,
+        inspection_number="INSP-002",
+        status=InspectionStatus.IN_PROGRESS,
+        form_data=None,
+        inventory_part=None,
+        equipment=None,
+    )
+    batch = SimpleNamespace(inspections=[completed, in_progress])
+    monkeypatch.setattr(inspections_endpoint, "_invoice_payload_from_completed_inspection", lambda *_args: object())
+    monkeypatch.setattr(
+        inspections_endpoint,
+        "_inspection_invoice_amounts",
+        lambda *_args: (
+            Decimal("100"),
+            Decimal("0"),
+            Decimal("0"),
+            Decimal("100"),
+            "notes",
+        ),
+    )
+
+    rows = _batch_invoice_line_items(batch, strict=False)
+
+    assert len(rows) == 1
+    assert rows[0]["inspection_number"] == "INSP-001"
+    with pytest.raises(HTTPException):
+        _batch_invoice_line_items(batch)
+
+
+def test_batch_invoice_breakdown_is_persisted_in_invoice_metadata():
+    line_items = [
+        {
+            "inspection_id": 1,
+            "inspection_number": "INSP-001",
+            "asset_name": "Asset A",
+            "subtotal": 100,
+            "tax_amount": 0,
+            "discount_amount": 0,
+            "total_amount": 100,
+        }
+    ]
+
+    notes = _batch_invoice_notes(None, "Batch invoice", line_items)
+
+    assert _stored_batch_invoice_items(notes) == line_items

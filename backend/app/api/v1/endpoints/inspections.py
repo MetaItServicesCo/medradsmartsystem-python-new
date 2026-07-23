@@ -5,7 +5,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import case, func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.deps import get_admin_user, get_current_user
 from app.utils.permission_deps import require_module_access
@@ -16,7 +16,7 @@ from app.models.equipment import Equipment, EquipmentStatus
 from app.models.inspection import Inspection, InspectionBatch, InspectionResult, InspectionStatus
 from app.models.inspection_form import InspectionForm
 from app.models.inventory import InventoryPart
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.modality import Modality
 from app.models.tier import Tier
 from app.models.user import User, UserRole
@@ -426,7 +426,7 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["facility_name"] = invoice.facility.name if invoice.facility else None
     data["inspection_batch_number"] = invoice.inspection_batch.batch_number if getattr(invoice, "inspection_batch", None) else None
     data["batch_asset_count"] = len(invoice.inspection_batch.inspections or []) if getattr(invoice, "inspection_batch", None) else None
-    data["batch_items"] = getattr(invoice, "_batch_items", [])
+    data["batch_items"] = getattr(invoice, "_batch_items", _stored_batch_invoice_items(invoice.notes))
     data["line_items"] = editable_line_items(invoice.notes)
     data["labels"] = editable_labels(invoice.notes)
     data["summary_rows"] = editable_summary_rows(invoice.notes)
@@ -437,6 +437,36 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["notes"] = _strip_inspection_fee_prefix(invoice.notes)
     data.update(approval_response(invoice))
     return data
+
+
+def _stored_batch_invoice_items(notes: Optional[str]) -> list[dict[str, Any]]:
+    items = parse_invoice_edit_metadata(notes).get("batch_items")
+    return items if isinstance(items, list) else []
+
+
+def _batch_invoice_items_for_listing(invoice: Invoice) -> list[dict[str, Any]]:
+    """Return a stable snapshot and safely support invoices created before snapshots."""
+    stored_items = _stored_batch_invoice_items(invoice.notes)
+    if stored_items or not invoice.inspection_batch:
+        return stored_items
+    try:
+        return _batch_invoice_line_items(invoice.inspection_batch, strict=False)
+    except (HTTPException, ArithmeticError, TypeError, ValueError):
+        # A malformed legacy report must not make the entire Billing list unavailable.
+        return []
+
+
+def _batch_invoice_notes(
+    current_notes: Optional[str],
+    visible_notes: str,
+    line_items: list[dict[str, Any]],
+) -> Optional[str]:
+    """Persist the generated batch breakdown so list requests stay lightweight."""
+    return compose_invoice_edit_notes(
+        current_notes,
+        visible_notes,
+        {"batch_items": line_items},
+    )
 
 
 def _inspection_invoice_line_item(inspection: Inspection, invoice: Optional[Invoice]) -> dict[str, Any]:
@@ -790,7 +820,7 @@ def _create_inspection_batch_invoice(
     discount = sum(_money(item["discount_amount"]) for item in line_items)
     total = subtotal + tax - discount
     facility = batch.facility
-    notes = (
+    visible_notes = (
         f"Inspection batch invoice for {batch.batch_number}. "
         f"Includes {len(inspections)} completed asset inspection(s)."
     )
@@ -802,7 +832,7 @@ def _create_inspection_batch_invoice(
         _require_batch_invoice_allows_asset_changes(existing_batch_invoice)
         previous_total = _money(existing_batch_invoice.total_amount)
         previous_notes = strip_invoice_edit_metadata(existing_batch_invoice.notes) or ""
-        needs_refresh = previous_total != total or previous_notes != notes
+        needs_refresh = previous_total != total or previous_notes != visible_notes
 
         existing_batch_invoice.customer_name = facility.billing_name or facility.name
         existing_batch_invoice.customer_email = facility.billing_email or facility.email
@@ -820,7 +850,11 @@ def _create_inspection_batch_invoice(
             if _money(existing_batch_invoice.amount_paid) > 0
             else InvoiceStatus.PENDING
         )
-        existing_batch_invoice.notes = notes
+        existing_batch_invoice.notes = _batch_invoice_notes(
+            existing_batch_invoice.notes,
+            visible_notes,
+            line_items,
+        )
         existing_batch_invoice.updated_at = datetime.utcnow()
         existing_batch_invoice._batch_items = line_items
         if needs_refresh:
@@ -873,7 +907,7 @@ def _create_inspection_batch_invoice(
         issue_date=date.today(),
         due_date=date.today() + timedelta(days=30),
         payment_terms="Net 30",
-        notes=notes,
+        notes=_batch_invoice_notes(None, visible_notes, line_items),
     )
     db.add(invoice)
     db.flush()
@@ -905,10 +939,22 @@ def _refresh_existing_batch_invoice_if_complete(
     return _create_inspection_batch_invoice(db, batch, current_user)
 
 
-def _batch_invoice_line_items(batch: InspectionBatch) -> list[dict[str, Any]]:
+def _batch_invoice_line_items(
+    batch: InspectionBatch,
+    *,
+    strict: bool = True,
+) -> list[dict[str, Any]]:
+    """Build billable rows without letting an incomplete reopened batch break lists."""
     line_items: list[dict[str, Any]] = []
     inspections = list(batch.inspections or [])
     for inspection in inspections:
+        if inspection.status != InspectionStatus.COMPLETED or not inspection.form_data:
+            if strict:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Every inspection in the batch must be completed with report data before invoicing",
+                )
+            continue
         payload = _invoice_payload_from_completed_inspection(inspection)
         line_subtotal, line_tax, line_discount, line_total, _notes = _inspection_invoice_amounts(inspection, payload)
         line_items.append({
@@ -2454,12 +2500,22 @@ def list_inspection_quotations(
         .options(
             joinedload(Invoice.facility),
             joinedload(Invoice.approved_for_billing_by),
-            joinedload(Invoice.transactions),
+            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
             joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
             joinedload(Invoice.inspection).joinedload(Inspection.equipment),
             joinedload(Invoice.inspection).joinedload(Inspection.inspector),
-            joinedload(Invoice.inspection_batch).joinedload(InspectionBatch.inspections).joinedload(Inspection.inventory_part),
-            joinedload(Invoice.inspection_batch).joinedload(InspectionBatch.inspections).joinedload(Inspection.equipment),
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.inventory_part)
+            .joinedload(InventoryPart.tier),
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.equipment)
+            .joinedload(Equipment.tier),
+            selectinload(Invoice.inspection_batch)
+            .selectinload(InspectionBatch.inspections)
+            .joinedload(Inspection.facility)
+            .joinedload(Facility.tier),
         )
         .filter(Invoice.invoice_type == InvoiceType.INSPECTION)
     )
@@ -2494,7 +2550,7 @@ def list_inspection_quotations(
                 "inspection_number": invoice.inspection.inspection_number if invoice.inspection else None,
                 "inspection_batch_number": invoice.inspection_batch.batch_number if invoice.inspection_batch else None,
                 "batch_asset_count": len(invoice.inspection_batch.inspections or []) if invoice.inspection_batch else None,
-                "batch_items": _batch_invoice_line_items(invoice.inspection_batch) if invoice.inspection_batch else [],
+                "batch_items": _batch_invoice_items_for_listing(invoice),
                 "inventory_part_name": (
                     _part_name(invoice.inspection.inventory_part)
                     if invoice.inspection and invoice.inspection.inventory_part
