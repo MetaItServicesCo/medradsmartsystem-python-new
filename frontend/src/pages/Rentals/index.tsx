@@ -2,7 +2,7 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Autocomplete, Avatar, Box, Button, Card, Chip, CircularProgress, createFilterOptions, Dialog, DialogActions, DialogContent,
+  Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, ListItemIcon, Menu, MenuItem,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TablePagination, TextField, Typography,
@@ -29,6 +29,7 @@ import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import {
   fetchRentalParts,
   fetchRentals,
@@ -97,15 +98,6 @@ const statusChip = (value: string) => {
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 
-// Cap the rental-product picker to a bounded number of rendered options. The parts
-// list can hold up to 2000 rows, each with an image avatar; rendering them all in a
-// plain Select froze the tab. Autocomplete + this limited filter keeps only a handful
-// of options in the DOM at once and lets the user type to narrow down.
-const rentalPartFilterOptions = createFilterOptions<RentalPart>({
-  limit: 50,
-  stringify: option =>
-    `${option.part_number} ${option.description} ${option.make ?? ''} ${option.model ?? ''} ${option.serial_number ?? ''}`,
-})
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
@@ -204,6 +196,7 @@ const Rentals = () => {
   const [editingAgreement, setEditingAgreement] = useState<Rental | null>(null)
   const [viewAgreement, setViewAgreement] = useState<Rental | null>(null)
   const [agreementForm, setAgreementForm] = useState<RentalPayload>(emptyAgreement())
+  const [selectedRentalPart, setSelectedRentalPart] = useState<RentalPart | null>(null)
 
   const [returnDialog, setReturnDialog] = useState<Rental | null>(null)
   const [returnForm, setReturnForm] = useState<RentalReturnPayload>({
@@ -403,6 +396,7 @@ const Rentals = () => {
 
   const openCreate = () => {
     setEditingAgreement(null)
+    setSelectedRentalPart(null)
     setAgreementForm(emptyAgreement())
     setAgreementDialog(true)
   }
@@ -432,31 +426,33 @@ const Rentals = () => {
     setAgreementDialog(true)
   }
 
-  const handlePartChange = (partId: number) => {
-    const part = parts.find(p => p.id === partId)
-    if (part) {
-      setAgreementForm(prev => ({
-        ...prev,
-        part_id: partId,
-        rental_rate: Number(part.unit_price || 0),
-        item_condition: part.condition || prev.item_condition || 'New',
-      }))
-      if (part.facility_id) {
-        const fac = facilities.find(f => f.id === part.facility_id)
-        if (fac) {
-          setAgreementForm(prev => ({
-            ...prev,
-            customer_name: fac.billing_name || fac.name || prev.customer_name,
-            customer_email: fac.billing_email || fac.email || prev.customer_email,
-            customer_phone: fac.phone ? formatUSPhoneInput(fac.phone) : prev.customer_phone,
-            customer_address: [
-              fac.billing_street || fac.address,
-              fac.billing_city || fac.city,
-              fac.billing_state || fac.state,
-              fac.billing_zip_code || fac.zip_code
-            ].filter(Boolean).join(', '),
-          }))
-        }
+  const handlePartSelect = (part: RentalPart | null) => {
+    setSelectedRentalPart(part)
+    if (!part) {
+      setAgreementForm(prev => ({ ...prev, part_id: 0 }))
+      return
+    }
+    setAgreementForm(prev => ({
+      ...prev,
+      part_id: part.id,
+      rental_rate: Number(part.unit_price || 0),
+      item_condition: part.condition || prev.item_condition || 'New',
+    }))
+    if (part.facility_id) {
+      const fac = facilities.find(f => f.id === part.facility_id)
+      if (fac) {
+        setAgreementForm(prev => ({
+          ...prev,
+          customer_name: fac.billing_name || fac.name || prev.customer_name,
+          customer_email: fac.billing_email || fac.email || prev.customer_email,
+          customer_phone: fac.phone ? formatUSPhoneInput(fac.phone) : prev.customer_phone,
+          customer_address: [
+            fac.billing_street || fac.address,
+            fac.billing_city || fac.city,
+            fac.billing_state || fac.state,
+            fac.billing_zip_code || fac.zip_code
+          ].filter(Boolean).join(', '),
+        }))
       }
     }
   }
@@ -1208,23 +1204,17 @@ const Rentals = () => {
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2, pt: 1 }}>
             {!editingAgreement ? (
               <FormControl sx={{ gridColumn: '1 / -1' }}>
-                <Autocomplete<RentalPart>
-                  options={parts}
-                  value={parts.find((p: RentalPart) => p.id === agreementForm.part_id) ?? null}
-                  onChange={(_, value) => handlePartChange(value ? value.id : 0)}
-                  isOptionEqualToValue={(option, value) => option.id === value.id}
-                  getOptionLabel={option => `${option.part_number} - ${option.description}`}
+                <PartSearchAutocomplete<RentalPart>
+                  label="Select Rental Product *"
+                  required
+                  value={selectedRentalPart}
+                  onChange={handlePartSelect}
+                  fetchParts={fetchRentalParts}
+                  queryKey="rental-parts-picker"
+                  icon={<LocalShippingIcon fontSize="small" />}
+                  avatarBg="#EFF6FF"
+                  avatarColor="#2563EB"
                   getOptionDisabled={option => option.quantity_on_hand <= 0}
-                  filterOptions={rentalPartFilterOptions}
-                  renderOption={(props, option) => (
-                    <Box component="li" {...props} key={option.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                      <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 32, height: 32, bgcolor: '#EFF6FF', color: '#2563EB' }}>
-                        <LocalShippingIcon fontSize="small" />
-                      </Avatar>
-                      <span>{option.part_number} - {option.description} (Stock: {option.quantity_on_hand}, Rate: {money(option.unit_price)})</span>
-                    </Box>
-                  )}
-                  renderInput={params => <TextField {...params} label="Select Rental Product *" placeholder="Search part number, description, make, model, serial..." />}
                 />
               </FormControl>
             ) : (

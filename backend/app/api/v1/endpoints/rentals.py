@@ -274,6 +274,7 @@ def _rental_part_query(db: Session, current_user: User):
 def list_rental_parts(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
+    limit: int = Query(500, ge=1, le=500),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = _rental_part_query(db, current_user)
@@ -287,7 +288,7 @@ def list_rental_parts(
                 InventoryPart.serial_number.ilike(f"%{search}%"),
             )
         )
-    parts = query.order_by(InventoryPart.updated_at.desc()).limit(500).all()
+    parts = query.order_by(InventoryPart.updated_at.desc()).limit(limit).all()
     return {"items": [_part_response(part) for part in parts], "total": len(parts)}
 
 

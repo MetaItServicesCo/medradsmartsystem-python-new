@@ -168,8 +168,8 @@ export interface RentalReturnPayload {
   final_meter_reading?: number | null
 }
 
-export const fetchRentalParts = async (search?: string): Promise<{ items: RentalPart[]; total: number }> => {
-  const res = await apiClient.get('/rentals/parts', { params: { search } })
+export const fetchRentalParts = async (search?: string, limit?: number): Promise<{ items: RentalPart[]; total: number }> => {
+  const res = await apiClient.get('/rentals/parts', { params: { search, limit } })
   return res.data
 }
 

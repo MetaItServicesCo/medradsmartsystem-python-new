@@ -178,8 +178,8 @@ export interface SalesQuotationPayload {
   }>
 }
 
-export const fetchSalesParts = async (search?: string): Promise<{ items: SalesPart[]; total: number }> => {
-  const res = await apiClient.get('/sales/parts', { params: { search } })
+export const fetchSalesParts = async (search?: string, limit?: number): Promise<{ items: SalesPart[]; total: number }> => {
+  const res = await apiClient.get('/sales/parts', { params: { search, limit } })
   return res.data
 }
 
