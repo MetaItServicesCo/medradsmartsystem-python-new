@@ -2,7 +2,7 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  Autocomplete, Avatar, Box, Button, Card, Chip, CircularProgress, createFilterOptions, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Typography,
@@ -100,6 +100,16 @@ const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
 }
+
+// Cap the parts picker to a bounded number of rendered options. The sales parts
+// list can hold up to 2000 rows, each with an image avatar; rendering them all in
+// a plain Select froze the tab. Autocomplete + this limited filter keeps only a
+// handful of options in the DOM at once and lets the user type to narrow down.
+const partFilterOptions = createFilterOptions<SalesPart>({
+  limit: 50,
+  stringify: option =>
+    `${option.part_number} ${option.description} ${option.make ?? ''} ${option.model ?? ''} ${option.serial_number ?? ''}`,
+})
 
 const emptyQuotation = (): SalesQuotationPayload => ({
   facility_id: null,
@@ -1113,18 +1123,23 @@ const Sales = () => {
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Sales Parts</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 110px 130px 130px 150px auto' }, gap: 2, mb: 2 }}>
-            <TextField select label="Part assigned for sale" value={selectedPartId} onChange={e => setSelectedPartId(Number(e.target.value))}>
-              {parts.map((part: SalesPart) => (
-                <MenuItem key={part.id} value={part.id}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                    <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" sx={{ width: 32, height: 32, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
-                      <Inventory2Icon fontSize="small" />
-                    </Avatar>
-                    <span>{part.part_number} - {part.description} ({part.quantity_on_hand} available, {money(part.unit_price)})</span>
-                  </Box>
-                </MenuItem>
-              ))}
-            </TextField>
+            <Autocomplete<SalesPart>
+              options={parts}
+              value={parts.find((part: SalesPart) => part.id === selectedPartId) ?? null}
+              onChange={(_, value) => setSelectedPartId(value ? value.id : '')}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              getOptionLabel={option => `${option.part_number} - ${option.description}`}
+              filterOptions={partFilterOptions}
+              renderOption={(props, option) => (
+                <Box component="li" {...props} key={option.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                  <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 32, height: 32, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
+                    <Inventory2Icon fontSize="small" />
+                  </Avatar>
+                  <span>{option.part_number} - {option.description} ({option.quantity_on_hand} available, {money(option.unit_price)})</span>
+                </Box>
+              )}
+              renderInput={params => <TextField {...params} label="Part assigned for sale" placeholder="Search part number, description, make, model, serial..." />}
+            />
             <TextField label="Qty" type="number" value={selectedPartQty} onChange={e => setSelectedPartQty(Number(e.target.value))} />
             <TextField label="Shipping Fee" type="number" value={selectedPartShipping} onChange={e => setSelectedPartShipping(Number(e.target.value))} />
             <TextField label="Setup Fee" type="number" value={selectedPartSetup} onChange={e => setSelectedPartSetup(Number(e.target.value))} />

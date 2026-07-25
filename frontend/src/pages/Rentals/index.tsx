@@ -2,8 +2,8 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
+  Autocomplete, Avatar, Box, Button, Card, Chip, CircularProgress, createFilterOptions, Dialog, DialogActions, DialogContent,
+  DialogTitle, Divider, FormControl, IconButton, ListItemIcon, Menu, MenuItem,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TablePagination, TextField, Typography,
 } from '@mui/material'
@@ -96,6 +96,16 @@ const statusChip = (value: string) => {
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
+
+// Cap the rental-product picker to a bounded number of rendered options. The parts
+// list can hold up to 2000 rows, each with an image avatar; rendering them all in a
+// plain Select froze the tab. Autocomplete + this limited filter keeps only a handful
+// of options in the DOM at once and lets the user type to narrow down.
+const rentalPartFilterOptions = createFilterOptions<RentalPart>({
+  limit: 50,
+  stringify: option =>
+    `${option.part_number} ${option.description} ${option.make ?? ''} ${option.model ?? ''} ${option.serial_number ?? ''}`,
+})
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
@@ -892,7 +902,7 @@ const Rentals = () => {
           ) : parts.map(part => (
             <TableRow key={part.id} hover>
               <TableCell>
-                <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" sx={{ width: 46, height: 46, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '12px' }}>
+                <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 46, height: 46, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '12px' }}>
                   <LocalShippingIcon fontSize="small" />
                 </Avatar>
               </TableCell>
@@ -1198,23 +1208,24 @@ const Rentals = () => {
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2, pt: 1 }}>
             {!editingAgreement ? (
               <FormControl sx={{ gridColumn: '1 / -1' }}>
-                <InputLabel>Select Rental Product *</InputLabel>
-                <Select
-                  label="Select Rental Product *"
-                  value={agreementForm.part_id || ''}
-                  onChange={e => handlePartChange(Number(e.target.value))}
-                >
-                  {parts.map((p: RentalPart) => (
-                    <MenuItem key={p.id} value={p.id} disabled={p.quantity_on_hand <= 0}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                        <Avatar src={resolveUploadUrl(p.default_picture_url)} variant="rounded" sx={{ width: 32, height: 32, bgcolor: '#EFF6FF', color: '#2563EB' }}>
-                          <LocalShippingIcon fontSize="small" />
-                        </Avatar>
-                        <span>{p.part_number} - {p.description} (Stock: {p.quantity_on_hand}, Rate: {money(p.unit_price)})</span>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
+                <Autocomplete<RentalPart>
+                  options={parts}
+                  value={parts.find((p: RentalPart) => p.id === agreementForm.part_id) ?? null}
+                  onChange={(_, value) => handlePartChange(value ? value.id : 0)}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  getOptionLabel={option => `${option.part_number} - ${option.description}`}
+                  getOptionDisabled={option => option.quantity_on_hand <= 0}
+                  filterOptions={rentalPartFilterOptions}
+                  renderOption={(props, option) => (
+                    <Box component="li" {...props} key={option.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                      <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 32, height: 32, bgcolor: '#EFF6FF', color: '#2563EB' }}>
+                        <LocalShippingIcon fontSize="small" />
+                      </Avatar>
+                      <span>{option.part_number} - {option.description} (Stock: {option.quantity_on_hand}, Rate: {money(option.unit_price)})</span>
+                    </Box>
+                  )}
+                  renderInput={params => <TextField {...params} label="Select Rental Product *" placeholder="Search part number, description, make, model, serial..." />}
+                />
               </FormControl>
             ) : (
               <TextField
