@@ -184,9 +184,23 @@ export const fetchSalesParts = async (search?: string, limit?: number): Promise<
 }
 
 export const fetchSalesQuotations = async (
-  params: { status?: string; search?: string } = {}
+  params: { status?: string; view?: 'quotations' | 'in_progress' | 'completed'; search?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: SalesQuotation[]; total: number }> => {
   const res = await apiClient.get('/sales/quotations', { params })
+  return res.data
+}
+
+export const fetchSalesSummary = async (): Promise<{
+  quotations: number
+  invoices: number
+  in_progress: number
+  completed: number
+  history: number
+  in_progress_total: number
+  in_progress_paid: number
+  completed_total: number
+}> => {
+  const res = await apiClient.get('/sales/summary')
   return res.data
 }
 
@@ -226,7 +240,7 @@ export const completeSalesQuotation = async (id: number): Promise<SalesQuotation
 }
 
 export const fetchSalesInvoices = async (
-  params: { status?: SalesInvoiceStatus; search?: string } = {}
+  params: { status?: SalesInvoiceStatus; search?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: SalesInvoice[]; total: number }> => {
   const res = await apiClient.get('/sales/invoices', { params })
   return res.data
@@ -258,7 +272,9 @@ export const updateSalesInvoice = async (
   return res.data
 }
 
-export const fetchSalesHistory = async (): Promise<{ items: SalesHistoryItem[]; total: number }> => {
-  const res = await apiClient.get('/sales/history')
+export const fetchSalesHistory = async (
+  params: { skip?: number; limit?: number } = {}
+): Promise<{ items: SalesHistoryItem[]; total: number }> => {
+  const res = await apiClient.get('/sales/history', { params })
   return res.data
 }

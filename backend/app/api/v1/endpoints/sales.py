@@ -5,8 +5,8 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, joinedload, load_only, selectinload
 
 from app.db.base import get_db
 from app.core.deps import get_current_user
@@ -341,11 +341,18 @@ def list_sales_parts(
     return {"items": [_part_response(part) for part in parts], "total": len(parts)}
 
 
+IN_PROGRESS_QUOTATION_STATUSES = ("in_progress",)
+COMPLETED_QUOTATION_STATUSES = ("completed",)
+
+
 @router.get("/quotations")
 def list_quotations(
     db: Session = Depends(get_db),
     status_filter: Optional[str] = Query(None, alias="status"),
+    view: Optional[str] = Query(None, description="quotations | in_progress | completed"),
     search: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
@@ -359,8 +366,16 @@ def list_quotations(
     )
     if status_filter:
         query = query.filter(SalesQuotation.status == status_filter)
-    if search:
+    if view == "in_progress":
+        query = query.filter(SalesQuotation.status.in_(IN_PROGRESS_QUOTATION_STATUSES))
+    elif view == "completed":
+        query = query.filter(SalesQuotation.status.in_(COMPLETED_QUOTATION_STATUSES))
+    elif view == "quotations":
         query = query.filter(
+            SalesQuotation.status.notin_(IN_PROGRESS_QUOTATION_STATUSES + COMPLETED_QUOTATION_STATUSES)
+        )
+    if search:
+        query = query.outerjoin(Facility).filter(
             or_(
                 SalesQuotation.quotation_number.ilike(f"%{search}%"),
                 SalesQuotation.work_order.ilike(f"%{search}%"),
@@ -368,9 +383,15 @@ def list_quotations(
                 SalesQuotation.quotation_type.ilike(f"%{search}%"),
                 Facility.name.ilike(f"%{search}%"),
             )
-        ).outerjoin(Facility)
-    quotations = query.order_by(SalesQuotation.created_at.desc()).all()
-    return {"items": [_quotation_response(item) for item in quotations], "total": len(quotations)}
+        )
+    total = query.count()
+    quotations = query.order_by(SalesQuotation.created_at.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [_quotation_response(item) for item in quotations],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.post("/quotations", status_code=status.HTTP_201_CREATED)
@@ -674,6 +695,8 @@ def list_sales_invoices(
     db: Session = Depends(get_db),
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
@@ -707,8 +730,14 @@ def list_sales_invoices(
                 )
             )
         )
-    invoices = query.order_by(Invoice.created_at.desc()).all()
-    return {"items": [_invoice_response(invoice) for invoice in invoices], "total": len(invoices)}
+    total = query.count()
+    invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [_invoice_response(invoice) for invoice in invoices],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.put("/invoices/{invoice_id}")
@@ -809,6 +838,8 @@ def update_sales_invoice(
 @router.get("/history")
 def list_sales_history(
     db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     quotations = (
@@ -831,4 +862,51 @@ def list_sales_history(
                 }
             )
     rows.sort(key=lambda item: item.get("at") or "", reverse=True)
-    return {"items": rows, "total": len(rows)}
+    return {"items": rows[skip:skip + limit], "total": len(rows), "skip": skip, "limit": limit}
+
+
+@router.get("/summary")
+def sales_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Counts for the Sales KPI cards, independent of tab pagination."""
+    base = scope_query_to_user_facilities(db.query(SalesQuotation), SalesQuotation.facility_id, db, current_user)
+    in_progress = base.filter(SalesQuotation.status.in_(IN_PROGRESS_QUOTATION_STATUSES)).count()
+    completed = base.filter(SalesQuotation.status.in_(COMPLETED_QUOTATION_STATUSES)).count()
+    quotations = base.filter(
+        SalesQuotation.status.notin_(IN_PROGRESS_QUOTATION_STATUSES + COMPLETED_QUOTATION_STATUSES)
+    ).count()
+    invoices = scope_invoice_approval_visibility(
+        scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
+        .filter(Invoice.invoice_type == InvoiceType.SALES),
+        current_user,
+    ).count()
+    history = sum(
+        len(q.history or [])
+        for q in scope_query_to_user_facilities(db.query(SalesQuotation), SalesQuotation.facility_id, db, current_user)
+        .options(load_only(SalesQuotation.history))
+        .all()
+    )
+    in_progress_total = base.filter(SalesQuotation.status.in_(IN_PROGRESS_QUOTATION_STATUSES)).with_entities(
+        func.coalesce(func.sum(SalesQuotation.total_amount), 0)
+    ).scalar()
+    completed_total = base.filter(SalesQuotation.status.in_(COMPLETED_QUOTATION_STATUSES)).with_entities(
+        func.coalesce(func.sum(SalesQuotation.total_amount), 0)
+    ).scalar()
+    in_progress_paid = (
+        base.filter(SalesQuotation.status.in_(IN_PROGRESS_QUOTATION_STATUSES))
+        .join(Invoice, SalesQuotation.converted_invoice_id == Invoice.id)
+        .with_entities(func.coalesce(func.sum(Invoice.amount_paid), 0))
+        .scalar()
+    )
+    return {
+        "quotations": quotations,
+        "invoices": invoices,
+        "in_progress": in_progress,
+        "completed": completed,
+        "history": history,
+        "in_progress_total": float(in_progress_total or 0),
+        "in_progress_paid": float(in_progress_paid or 0),
+        "completed_total": float(completed_total or 0),
+    }

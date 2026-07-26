@@ -214,9 +214,14 @@ export const convertRentalToInvoice = async (
 }
 
 export const fetchRentalInvoices = async (
-  params: { status?: RentalInvoiceStatus; search?: string } = {}
+  params: { status?: RentalInvoiceStatus; search?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: RentalInvoice[]; total: number }> => {
   const res = await apiClient.get('/rentals/invoices', { params })
+  return res.data
+}
+
+export const fetchRentalSummary = async (): Promise<{ total_invoiced: number; total_collected: number }> => {
+  const res = await apiClient.get('/rentals/summary')
   return res.data
 }
 
@@ -246,7 +251,9 @@ export const updateRentalInvoice = async (
   return res.data
 }
 
-export const fetchRentalHistory = async (): Promise<{ items: RentalHistoryItem[]; total: number }> => {
-  const res = await apiClient.get('/rentals/history')
+export const fetchRentalHistory = async (
+  params: { skip?: number; limit?: number } = {}
+): Promise<{ items: RentalHistoryItem[]; total: number }> => {
+  const res = await apiClient.get('/rentals/history', { params })
   return res.data
 }

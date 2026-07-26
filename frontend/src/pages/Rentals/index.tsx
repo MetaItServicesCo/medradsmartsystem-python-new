@@ -39,6 +39,7 @@ import {
   returnRental,
   convertRentalToInvoice,
   fetchRentalInvoices,
+  fetchRentalSummary,
   updateRentalInvoice,
   fetchRentalHistory,
   type Rental,
@@ -54,6 +55,7 @@ import {
 import { digitsOnly, formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/rentals/agreements', '/rentals/invoices', '/rentals/products', '/rentals/history']
+const PAGE_SIZE = 20
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)'
 const SYSTEM_PANEL_BORDER = '#BFDBFE'
 const SYSTEM_PANEL_BG = '#F0F9FF'
@@ -192,6 +194,8 @@ const Rentals = () => {
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [agreementPage, setAgreementPage] = useState(0)
   const [agreementRowsPerPage, setAgreementRowsPerPage] = useState(25)
+  const [invoicesPage, setInvoicesPage] = useState(0)
+  const [historyPage, setHistoryPage] = useState(0)
   const [agreementDialog, setAgreementDialog] = useState(false)
   const [editingAgreement, setEditingAgreement] = useState<Rental | null>(null)
   const [viewAgreement, setViewAgreement] = useState<Rental | null>(null)
@@ -238,6 +242,8 @@ const Rentals = () => {
     const handle = window.setTimeout(() => {
       setDebouncedSearch(search.trim())
       setAgreementPage(0)
+      setInvoicesPage(0)
+      setHistoryPage(0)
     }, 350)
 
     return () => window.clearTimeout(handle)
@@ -264,11 +270,18 @@ const Rentals = () => {
     placeholderData: previousData => previousData,
   })
   const invoicesQ = useQuery({
-    queryKey: ['rental-invoices', debouncedSearch],
-    queryFn: () => fetchRentalInvoices({ search: debouncedSearch || undefined }),
+    queryKey: ['rental-invoices', debouncedSearch, invoicesPage],
+    queryFn: () => fetchRentalInvoices({ search: debouncedSearch || undefined, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 1,
     placeholderData: previousData => previousData,
   })
-  const historyQ = useQuery({ queryKey: ['rental-history'], queryFn: fetchRentalHistory })
+  const historyQ = useQuery({
+    queryKey: ['rental-history', historyPage],
+    queryFn: () => fetchRentalHistory({ skip: historyPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 3,
+    placeholderData: previousData => previousData,
+  })
+  const summaryQ = useQuery({ queryKey: ['rental-summary'], queryFn: fetchRentalSummary, placeholderData: previousData => previousData })
 
   const facilities = facilitiesQ.data?.items || []
   const parts = partsQ.data?.items || []
@@ -276,8 +289,8 @@ const Rentals = () => {
   const totalRentals = rentalsQ.data?.total || 0
   const invoices = invoicesQ.data?.items || []
 
-  const totalInvoiced = invoices.reduce((sum, invoice) => sum + Number(invoice.total_amount || 0), 0)
-  const totalCollected = invoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0)
+  const totalInvoiced = summaryQ.data?.total_invoiced || 0
+  const totalCollected = summaryQ.data?.total_collected || 0
   const collectionPercent = totalInvoiced > 0 ? Math.min(100, Math.round((totalCollected / totalInvoiced) * 100)) : 0
 
   useEffect(() => {
@@ -306,6 +319,7 @@ const Rentals = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-agreements'] })
     queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
     queryClient.invalidateQueries({ queryKey: ['rental-history'] })
+    queryClient.invalidateQueries({ queryKey: ['rental-summary'] })
     queryClient.invalidateQueries({ queryKey: ['rental-parts'] })
   }
 
@@ -809,6 +823,20 @@ const Rentals = () => {
     </TableContainer>
   )
 
+  const renderPagination = (total: number, page: number, setPage: (next: number) => void) => (
+    total > PAGE_SIZE ? (
+      <TablePagination
+        component="div"
+        count={total}
+        page={page}
+        onPageChange={(_, next) => setPage(next)}
+        rowsPerPage={PAGE_SIZE}
+        rowsPerPageOptions={[PAGE_SIZE]}
+        sx={{ borderTop: '1px solid #EEF0F6' }}
+      />
+    ) : null
+  )
+
   const renderInvoices = () => (
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader>
@@ -980,7 +1008,7 @@ const Rentals = () => {
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
-        <Tabs value={tab} onChange={(_, value) => navigate(ROUTE_TABS[value])} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
+        <Tabs value={tab} onChange={(_, value) => navigate(ROUTE_TABS[value])} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Agreements" />
           <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Invoices" />
           <Tab icon={<InfoIcon />} iconPosition="start" label="Rental Products" />
@@ -1029,6 +1057,7 @@ const Rentals = () => {
               </Card>
             </Box>
             {renderInvoices()}
+            {renderPagination(invoicesQ.data?.total || 0, invoicesPage, setInvoicesPage)}
           </Box>
         )}
 
@@ -1047,7 +1076,12 @@ const Rentals = () => {
           </Box>
         )}
 
-        {tab === 3 && renderHistory()}
+        {tab === 3 && (
+          <Box>
+            {renderHistory()}
+            {renderPagination(historyQ.data?.total || 0, historyPage, setHistoryPage)}
+          </Box>
+        )}
       </Card>
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>

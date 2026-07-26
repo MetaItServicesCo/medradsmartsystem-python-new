@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
-  LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
+  LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
   TextField, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -36,6 +36,7 @@ import {
   deleteSalesQuotation,
   fetchSalesHistory,
   fetchSalesInvoices,
+  fetchSalesSummary,
   fetchSalesParts,
   fetchSalesQuotations,
   requestSalesCardAuthorization,
@@ -51,6 +52,7 @@ import {
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed', '/sales/history']
+const PAGE_SIZE = 20
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)'
 const SYSTEM_PANEL_BORDER = '#E9D5FF'
 const SYSTEM_PANEL_BG = '#F8FAFF'
@@ -176,6 +178,11 @@ const Sales = () => {
   const [convertQuotation, setConvertQuotation] = useState<SalesQuotation | null>(null)
   const [invoiceDetails, setInvoiceDetails] = useState<SalesInvoiceCreatePayload>(emptyInvoiceDetails())
   const [partInfo, setPartInfo] = useState<SalesPartInfo | null>(null)
+  const [quotationsPage, setQuotationsPage] = useState(0)
+  const [invoicesPage, setInvoicesPage] = useState(0)
+  const [inProgressPage, setInProgressPage] = useState(0)
+  const [completedPage, setCompletedPage] = useState(0)
+  const [historyPage, setHistoryPage] = useState(0)
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
@@ -205,28 +212,54 @@ const Sales = () => {
     queryFn: () => fetchSalesParts(debouncedSearch || undefined),
     placeholderData: previousData => previousData,
   })
+  const summaryQ = useQuery({ queryKey: ['sales-summary'], queryFn: fetchSalesSummary, placeholderData: previousData => previousData })
   const quotationsQ = useQuery({
-    queryKey: ['sales-quotations', debouncedSearch],
-    queryFn: () => fetchSalesQuotations({ search: debouncedSearch || undefined }),
+    queryKey: ['sales-quotations', 'quotations', debouncedSearch, quotationsPage],
+    queryFn: () => fetchSalesQuotations({ view: 'quotations', search: debouncedSearch || undefined, skip: quotationsPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 0,
+    placeholderData: previousData => previousData,
+  })
+  const inProgressQ = useQuery({
+    queryKey: ['sales-quotations', 'in_progress', debouncedSearch, inProgressPage],
+    queryFn: () => fetchSalesQuotations({ view: 'in_progress', search: debouncedSearch || undefined, skip: inProgressPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 2,
+    placeholderData: previousData => previousData,
+  })
+  const completedQ = useQuery({
+    queryKey: ['sales-quotations', 'completed', debouncedSearch, completedPage],
+    queryFn: () => fetchSalesQuotations({ view: 'completed', search: debouncedSearch || undefined, skip: completedPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 3,
     placeholderData: previousData => previousData,
   })
   const invoicesQ = useQuery({
-    queryKey: ['sales-invoices', debouncedSearch],
-    queryFn: () => fetchSalesInvoices({ search: debouncedSearch || undefined }),
+    queryKey: ['sales-invoices', debouncedSearch, invoicesPage],
+    queryFn: () => fetchSalesInvoices({ search: debouncedSearch || undefined, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 1,
     placeholderData: previousData => previousData,
   })
-  const historyQ = useQuery({ queryKey: ['sales-history'], queryFn: fetchSalesHistory })
+  const historyQ = useQuery({
+    queryKey: ['sales-history', historyPage],
+    queryFn: () => fetchSalesHistory({ skip: historyPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 4,
+    placeholderData: previousData => previousData,
+  })
 
   const facilities = facilitiesQ.data?.items || []
   const parts = partsQ.data?.items || []
-  const quotations = quotationsQ.data?.items || []
+  const summary = summaryQ.data
+  const pendingQuotations = quotationsQ.data?.items || []
+  const inProgressQuotations = inProgressQ.data?.items || []
+  const completedQuotations = completedQ.data?.items || []
   const invoices = invoicesQ.data?.items || []
-  const pendingQuotations = quotations.filter(q => !['in_progress', 'completed'].includes(String(q.status)))
-  const inProgressQuotations = quotations.filter(q => q.status === 'in_progress')
-  const completedQuotations = quotations.filter(q => q.status === 'completed')
-  const inProgressTotal = inProgressQuotations.reduce((sum, quotation) => sum + Number(quotation.total_amount || 0), 0)
-  const completedTotal = completedQuotations.reduce((sum, quotation) => sum + Number(quotation.total_amount || 0), 0)
-  const inProgressPaid = inProgressQuotations.reduce((sum, quotation) => sum + Number(quotation.converted_invoice_amount_paid || 0), 0)
+  // Flattened set of currently-loaded quotation pages, used for id lookups
+  // (opening a linked quotation from an invoice/history row, print, card auth).
+  const quotations = useMemo(
+    () => [...pendingQuotations, ...inProgressQuotations, ...completedQuotations],
+    [pendingQuotations, inProgressQuotations, completedQuotations],
+  )
+  const inProgressTotal = summary?.in_progress_total || 0
+  const completedTotal = summary?.completed_total || 0
+  const inProgressPaid = summary?.in_progress_paid || 0
   const inProgressPaymentPercent = inProgressTotal > 0 ? Math.min(100, Math.round((inProgressPaid / inProgressTotal) * 100)) : 0
 
   useEffect(() => {
@@ -237,24 +270,34 @@ const Sales = () => {
   }, [highlightInvoiceId, invoices.length])
 
   useEffect(() => {
-    if (!highlightQuotationId || quotations.length === 0) return
+    if (!highlightQuotationId || pendingQuotations.length === 0) return
     window.setTimeout(() => {
       document.getElementById(`sales-quotation-${highlightQuotationId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 150)
-  }, [highlightQuotationId, quotations.length])
+  }, [highlightQuotationId, pendingQuotations.length])
+
+  // Reset every tab to its first page whenever the search term changes.
+  useEffect(() => {
+    setQuotationsPage(0)
+    setInvoicesPage(0)
+    setInProgressPage(0)
+    setCompletedPage(0)
+    setHistoryPage(0)
+  }, [debouncedSearch])
 
   const stats = useMemo(() => ({
-    quotations: pendingQuotations.length,
-    invoices: invoices.length,
-    inProgress: inProgressQuotations.length,
-    completed: completedQuotations.length,
-    history: historyQ.data?.total || 0,
-  }), [pendingQuotations.length, invoices.length, inProgressQuotations.length, completedQuotations.length, historyQ.data?.total])
+    quotations: summary?.quotations || 0,
+    invoices: summary?.invoices || 0,
+    inProgress: summary?.in_progress || 0,
+    completed: summary?.completed || 0,
+    history: summary?.history || 0,
+  }), [summary])
 
   const invalidateSales = () => {
     queryClient.invalidateQueries({ queryKey: ['sales-quotations'] })
     queryClient.invalidateQueries({ queryKey: ['sales-invoices'] })
     queryClient.invalidateQueries({ queryKey: ['sales-history'] })
+    queryClient.invalidateQueries({ queryKey: ['sales-summary'] })
     queryClient.invalidateQueries({ queryKey: ['sales-parts'] })
   }
 
@@ -669,6 +712,20 @@ const Sales = () => {
     return total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0
   }
 
+  const renderPagination = (total: number, page: number, setPage: (next: number) => void) => (
+    total > PAGE_SIZE ? (
+      <TablePagination
+        component="div"
+        count={total}
+        page={page}
+        onPageChange={(_, next) => setPage(next)}
+        rowsPerPage={PAGE_SIZE}
+        rowsPerPageOptions={[PAGE_SIZE]}
+        sx={{ borderTop: '1px solid #EEF0F6' }}
+      />
+    ) : null
+  )
+
   const renderQuotationTable = (items: SalesQuotation[], emptyText: string) => (
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader>
@@ -838,7 +895,7 @@ const Sales = () => {
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        <Tabs value={tab} onChange={(_, value) => navigate(ROUTE_TABS[value])} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
+        <Tabs value={tab} onChange={(_, value) => navigate(ROUTE_TABS[value])} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Quotations" />
           <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Invoice" />
           <Tab icon={<ShoppingCartIcon />} iconPosition="start" label="In Progress" />
@@ -860,10 +917,16 @@ const Sales = () => {
                 {['None', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')].map(letter => <Typography key={letter} sx={{ fontWeight: 900, fontSize: 14 }}>{letter}</Typography>)}
               </Box>
               {renderQuotationTable(pendingQuotations, 'No pending sales quotations found.')}
+              {renderPagination(quotationsQ.data?.total || 0, quotationsPage, setQuotationsPage)}
             </Box>
           </Box>
         )}
-        {tab === 1 && renderInvoices()}
+        {tab === 1 && (
+          <Box>
+            {renderInvoices()}
+            {renderPagination(invoicesQ.data?.total || 0, invoicesPage, setInvoicesPage)}
+          </Box>
+        )}
         {tab === 2 && (
           <Box sx={{ p: 3 }}>
             <Card sx={{ p: 2.5, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', bgcolor: '#F8FAFF' }}>
@@ -881,6 +944,7 @@ const Sales = () => {
               <Typography sx={{ mt: 1, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>{inProgressPaymentPercent}% collected across active sales.</Typography>
             </Card>
               {renderQuotationTable(inProgressQuotations, 'No sales orders in progress.')}
+              {renderPagination(inProgressQ.data?.total || 0, inProgressPage, setInProgressPage)}
           </Box>
         )}
         {tab === 3 && (
@@ -899,9 +963,11 @@ const Sales = () => {
               </Box>
             </Card>
             {renderQuotationTable(completedQuotations, 'No completed sales orders yet.')}
+            {renderPagination(completedQ.data?.total || 0, completedPage, setCompletedPage)}
           </Box>
         )}
         {tab === 4 && (
+          <Box>
           <TableContainer className="list-scroll-panel">
             <Table stickyHeader>
               <TableHead>
@@ -940,6 +1006,8 @@ const Sales = () => {
               </TableBody>
             </Table>
           </TableContainer>
+          {renderPagination(historyQ.data?.total || 0, historyPage, setHistoryPage)}
+          </Box>
         )}
       </Card>
 

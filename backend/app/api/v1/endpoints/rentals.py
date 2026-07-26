@@ -6,7 +6,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
@@ -636,6 +636,8 @@ def list_rental_invoices(
     db: Session = Depends(get_db),
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = (
@@ -668,8 +670,14 @@ def list_rental_invoices(
                 )
             )
         )
-    invoices = query.order_by(Invoice.created_at.desc()).all()
-    return {"items": [_invoice_response(invoice) for invoice in invoices], "total": len(invoices)}
+    total = query.count()
+    invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [_invoice_response(invoice) for invoice in invoices],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.put("/invoices/{invoice_id}")
@@ -773,6 +781,8 @@ def update_rental_invoice(
 @router.get("/history")
 def list_rental_history(
     db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     rentals = (
@@ -798,4 +808,23 @@ def list_rental_history(
                 }
             )
     rows.sort(key=lambda item: item.get("at") or "", reverse=True)
-    return {"items": rows, "total": len(rows)}
+    return {"items": rows[skip:skip + limit], "total": len(rows), "skip": skip, "limit": limit}
+
+
+@router.get("/summary")
+def rental_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Totals for the Rentals KPI cards, independent of tab pagination."""
+    invoice_query = scope_invoice_approval_visibility(
+        scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
+        .filter(Invoice.invoice_type == InvoiceType.RENTAL),
+        current_user,
+    )
+    total_invoiced = invoice_query.with_entities(func.coalesce(func.sum(Invoice.total_amount), 0)).scalar()
+    total_collected = invoice_query.with_entities(func.coalesce(func.sum(Invoice.amount_paid), 0)).scalar()
+    return {
+        "total_invoiced": float(total_invoiced or 0),
+        "total_collected": float(total_collected or 0),
+    }
