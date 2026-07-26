@@ -220,7 +220,7 @@ export const fetchRentalInvoices = async (
   return res.data
 }
 
-export const fetchRentalSummary = async (): Promise<{ total_invoiced: number; total_collected: number }> => {
+export const fetchRentalSummary = async (): Promise<{ total_invoiced: number; total_collected: number; products: number }> => {
   const res = await apiClient.get('/rentals/summary')
   return res.data
 }

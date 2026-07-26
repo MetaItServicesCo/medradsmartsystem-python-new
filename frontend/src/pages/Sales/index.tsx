@@ -210,10 +210,21 @@ const Sales = () => {
     return () => window.clearTimeout(handle)
   }, [search])
 
-  const facilitiesQ = useQuery({ queryKey: ['sales-facilities'], queryFn: () => fetchFacilities({ limit: 500 }) })
+  // Facilities and the full parts list are only needed inside the quotation /
+  // convert dialogs (facility picker, line-item avatars). Loading them eagerly
+  // on every page view fetched 500 + 771 rows for nothing — defer until a dialog
+  // that needs them is open so the list page loads fast.
+  const partsAndFacilitiesNeeded = quotationDialog || Boolean(convertQuotation)
+  const facilitiesQ = useQuery({
+    queryKey: ['sales-facilities'],
+    queryFn: () => fetchFacilities({ limit: 500 }),
+    enabled: partsAndFacilitiesNeeded,
+    staleTime: 5 * 60_000,
+  })
   const partsQ = useQuery({
     queryKey: ['sales-parts', debouncedSearch],
     queryFn: () => fetchSalesParts(debouncedSearch || undefined),
+    enabled: partsAndFacilitiesNeeded,
     placeholderData: previousData => previousData,
   })
   const summaryQ = useQuery({ queryKey: ['sales-summary'], queryFn: fetchSalesSummary, placeholderData: previousData => previousData })
@@ -939,7 +950,7 @@ const Sales = () => {
             <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation Parts List</Typography>
-                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>{parts.length} sales part{parts.length === 1 ? '' : 's'} available from inventory.</Typography>
+                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>{summary?.parts ?? 0} sales part{(summary?.parts ?? 0) === 1 ? '' : 's'} available from inventory.</Typography>
               </Box>
               <TextField size="small" label="Search Facility or Work Order..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
             </Box>

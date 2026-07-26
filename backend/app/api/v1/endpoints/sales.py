@@ -924,12 +924,14 @@ def sales_summary(
         .with_entities(func.coalesce(func.sum(Invoice.amount_paid), 0))
         .scalar()
     )
+    parts = _sales_part_query(db, current_user).count()
     return {
         "quotations": quotations,
         "invoices": invoices,
         "in_progress": in_progress,
         "completed": completed,
         "history": history,
+        "parts": parts,
         "in_progress_total": float(in_progress_total or 0),
         "in_progress_paid": float(in_progress_paid or 0),
         "completed_total": float(completed_total or 0),

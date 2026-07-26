@@ -824,7 +824,9 @@ def rental_summary(
     )
     total_invoiced = invoice_query.with_entities(func.coalesce(func.sum(Invoice.total_amount), 0)).scalar()
     total_collected = invoice_query.with_entities(func.coalesce(func.sum(Invoice.amount_paid), 0)).scalar()
+    products = _rental_part_query(db, current_user).count()
     return {
         "total_invoiced": float(total_invoiced or 0),
         "total_collected": float(total_collected or 0),
+        "products": products,
     }

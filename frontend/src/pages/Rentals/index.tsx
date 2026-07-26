@@ -251,10 +251,19 @@ const Rentals = () => {
     return () => window.clearTimeout(handle)
   }, [search])
 
-  const facilitiesQ = useQuery({ queryKey: ['rental-facilities'], queryFn: () => fetchFacilities({ limit: 500 }) })
+  // Facilities are only needed inside the agreement dialog; the full parts
+  // catalog is only needed on the Products tab or when creating an agreement.
+  // Defer both so the default (Agreements) view loads without pulling ~1000 rows.
+  const facilitiesQ = useQuery({
+    queryKey: ['rental-facilities'],
+    queryFn: () => fetchFacilities({ limit: 500 }),
+    enabled: agreementDialog,
+    staleTime: 5 * 60_000,
+  })
   const partsQ = useQuery({
     queryKey: ['rental-parts', debouncedSearch],
     queryFn: () => fetchRentalParts(debouncedSearch || undefined),
+    enabled: tab === 2 || agreementDialog,
     placeholderData: previousData => previousData,
   })
   const rentalsQ = useQuery({
@@ -313,9 +322,9 @@ const Rentals = () => {
     agreements: totalRentals,
     active: activeRentalsCountQ.data?.total || 0,
     invoiced: totalInvoiced,
-    products: parts.length,
+    products: summaryQ.data?.products ?? parts.length,
     history: historyQ.data?.total || 0,
-  }), [totalRentals, activeRentalsCountQ.data?.total, totalInvoiced, parts.length, historyQ.data?.total])
+  }), [totalRentals, activeRentalsCountQ.data?.total, totalInvoiced, summaryQ.data?.products, parts.length, historyQ.data?.total])
 
   const invalidateRentals = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-agreements'] })

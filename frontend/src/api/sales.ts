@@ -196,6 +196,7 @@ export const fetchSalesSummary = async (): Promise<{
   in_progress: number
   completed: number
   history: number
+  parts: number
   in_progress_total: number
   in_progress_paid: number
   completed_total: number
