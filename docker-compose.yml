@@ -49,7 +49,10 @@ services:
       dockerfile: Dockerfile
     container_name: medrad_backend
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-2} --proxy-headers --forwarded-allow-ips=*
+    # Keep a single worker on the current 2 GB host — a second worker roughly
+    # doubles the backend's base memory and this box is already swapping. Raise
+    # BACKEND_WORKERS only after the host has more RAM.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-1} --proxy-headers --forwarded-allow-ips=*
     volumes:
       - ./backend:/app
     ports:
