@@ -1,7 +1,38 @@
+import { useEffect } from 'react'
 import { Box } from '@mui/material'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
+
+// Safety net for a known class of MUI bug: a Menu/Select/Popover whose anchor or
+// parent re-renders while it is open can be left "orphaned" — its component still
+// thinks it is open, so an invisible full-screen MuiModal-backdrop stays in the
+// DOM and silently swallows every click/scroll, freezing the whole page. This
+// clears any such lingering overlay on first paint and on every route change.
+function useDismissOrphanedOverlays(pathname: string) {
+  useEffect(() => {
+    const dismiss = () => {
+      // A stuck menu/select/popover closes on Escape via MUI's own handler.
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      // Belt-and-suspenders: click the invisible backdrop of any lingering
+      // menu/popover/select, which fires MUI's own onClose so React unmounts it
+      // cleanly. Never touch real dialogs, and never rip nodes out of the DOM
+      // directly (that would crash React's later cleanup with removeChild).
+      document.querySelectorAll<HTMLElement>('.MuiBackdrop-root.MuiModal-backdrop').forEach(backdrop => {
+        const modal = backdrop.closest<HTMLElement>('.MuiModal-root')
+        if (modal && modal.querySelector('.MuiPopover-paper, .MuiMenu-paper') && !modal.querySelector('.MuiDialog-paper')) {
+          backdrop.click()
+        }
+      })
+    }
+    const raf = window.requestAnimationFrame(dismiss)
+    const timer = window.setTimeout(dismiss, 200)
+    return () => {
+      window.cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+    }
+  }, [pathname])
+}
 
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
@@ -26,6 +57,7 @@ const pageTitles: Record<string, string> = {
 
 const Layout = () => {
   const location = useLocation()
+  useDismissOrphanedOverlays(location.pathname)
   const title = Object.entries(pageTitles).find(([path]) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
   )?.[1] ?? 'Medrad'
