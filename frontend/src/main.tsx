@@ -9,6 +9,23 @@ import App from './App'
 import theme from './theme'
 import './theme/global.css'
 import ErrorBoundary from './components/ErrorBoundary'
+import { isChunkLoadError, reloadOnceForChunkError } from './utils/lazyWithReload'
+
+// Vite fires this when a dynamically-imported chunk fails to load — almost always
+// a stale-deploy hash mismatch. Recover by reloading once to fetch fresh assets.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault()
+  reloadOnceForChunkError()
+})
+
+// Catch chunk failures that surface as unhandled promise rejections (e.g. a
+// dynamic import awaited outside a lazy boundary) and self-heal the same way.
+window.addEventListener('unhandledrejection', (event) => {
+  if (isChunkLoadError(event.reason)) {
+    event.preventDefault()
+    reloadOnceForChunkError()
+  }
+})
 
 // Select-all on focus so the leading zero doesn't stick when the user starts typing
 document.addEventListener('focusin', (e) => {

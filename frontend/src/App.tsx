@@ -1,29 +1,30 @@
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import Layout from './components/Layout'
 import { canAccessModule, getVisibleModules, type Module } from './config/permissions'
+import { lazyWithReload } from './utils/lazyWithReload'
 
-const Landing = lazy(() => import('./pages/Landing'))
-const Login = lazy(() => import('./pages/Auth/Login'))
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Facilities = lazy(() => import('./pages/Facilities'))
-const ServiceRequests = lazy(() => import('./pages/ServiceRequests'))
-const Inspections = lazy(() => import('./pages/Inspections'))
-const Sales = lazy(() => import('./pages/Sales'))
-const Rentals = lazy(() => import('./pages/Rentals'))
-const Inventory = lazy(() => import('./pages/Inventory'))
-const TestEquipment = lazy(() => import('./pages/TestEquipment'))
-const HR = lazy(() => import('./pages/HR'))
-const Reports = lazy(() => import('./pages/Reports'))
-const Users = lazy(() => import('./pages/Users'))
-const Chat = lazy(() => import('./pages/Chat'))
-const Calendar = lazy(() => import('./pages/Calendar'))
-const Profile = lazy(() => import('./pages/Profile'))
-const Attendance = lazy(() => import('./pages/Attendance'))
-const Billing = lazy(() => import('./pages/Sales/Billing'))
-const MyTimesheets = lazy(() => import('./pages/MyTimesheets'))
-const MyLeave = lazy(() => import('./pages/MyLeave'))
+const Landing = lazyWithReload(() => import('./pages/Landing'))
+const Login = lazyWithReload(() => import('./pages/Auth/Login'))
+const Dashboard = lazyWithReload(() => import('./pages/Dashboard'))
+const Facilities = lazyWithReload(() => import('./pages/Facilities'))
+const ServiceRequests = lazyWithReload(() => import('./pages/ServiceRequests'))
+const Inspections = lazyWithReload(() => import('./pages/Inspections'))
+const Sales = lazyWithReload(() => import('./pages/Sales'))
+const Rentals = lazyWithReload(() => import('./pages/Rentals'))
+const Inventory = lazyWithReload(() => import('./pages/Inventory'))
+const TestEquipment = lazyWithReload(() => import('./pages/TestEquipment'))
+const HR = lazyWithReload(() => import('./pages/HR'))
+const Reports = lazyWithReload(() => import('./pages/Reports'))
+const Users = lazyWithReload(() => import('./pages/Users'))
+const Chat = lazyWithReload(() => import('./pages/Chat'))
+const Calendar = lazyWithReload(() => import('./pages/Calendar'))
+const Profile = lazyWithReload(() => import('./pages/Profile'))
+const Attendance = lazyWithReload(() => import('./pages/Attendance'))
+const Billing = lazyWithReload(() => import('./pages/Sales/Billing'))
+const MyTimesheets = lazyWithReload(() => import('./pages/MyTimesheets'))
+const MyLeave = lazyWithReload(() => import('./pages/MyLeave'))
 
 const RouteFallback = () => (
   <div
