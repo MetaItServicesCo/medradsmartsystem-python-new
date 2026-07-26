@@ -36,6 +36,7 @@ import {
   deleteSalesQuotation,
   fetchSalesHistory,
   fetchSalesInvoices,
+  fetchSalesQuotation,
   fetchSalesSummary,
   fetchSalesParts,
   fetchSalesQuotations,
@@ -183,6 +184,9 @@ const Sales = () => {
   const [inProgressPage, setInProgressPage] = useState(0)
   const [completedPage, setCompletedPage] = useState(0)
   const [historyPage, setHistoryPage] = useState(0)
+  // Quotations fetched on demand for id-lookups (a quotation linked from an
+  // invoice/history row may not be on the currently loaded page).
+  const [linkedQuotations, setLinkedQuotations] = useState<SalesQuotation[]>([])
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
@@ -254,9 +258,29 @@ const Sales = () => {
   // Flattened set of currently-loaded quotation pages, used for id lookups
   // (opening a linked quotation from an invoice/history row, print, card auth).
   const quotations = useMemo(
-    () => [...pendingQuotations, ...inProgressQuotations, ...completedQuotations],
-    [pendingQuotations, inProgressQuotations, completedQuotations],
+    () => [...pendingQuotations, ...inProgressQuotations, ...completedQuotations, ...linkedQuotations],
+    [pendingQuotations, inProgressQuotations, completedQuotations, linkedQuotations],
   )
+
+  // Ensure a quotation is available for lookups; fetches + caches it if it is not
+  // on a currently-loaded page. Returns the quotation (or null if unavailable).
+  const ensureQuotation = async (id?: number | null): Promise<SalesQuotation | null> => {
+    if (!id) return null
+    const existing = quotations.find(item => item.id === id)
+    if (existing) return existing
+    try {
+      const fetched = await fetchSalesQuotation(id)
+      setLinkedQuotations(prev => (prev.some(item => item.id === fetched.id) ? prev : [...prev, fetched]))
+      return fetched
+    } catch {
+      return null
+    }
+  }
+
+  const openLinkedQuotation = async (id?: number | null) => {
+    const quotation = await ensureQuotation(id)
+    if (quotation) setViewQuotation(quotation)
+  }
   const inProgressTotal = summary?.in_progress_total || 0
   const completedTotal = summary?.completed_total || 0
   const inProgressPaid = summary?.in_progress_paid || 0
@@ -284,6 +308,16 @@ const Sales = () => {
     setCompletedPage(0)
     setHistoryPage(0)
   }, [debouncedSearch])
+
+  // Prefetch the linked quotation for dialogs whose content is built from it,
+  // so their details resolve even when that quotation is not on a loaded page.
+  useEffect(() => {
+    if (printInvoice?.sales_quotation_id) ensureQuotation(printInvoice.sales_quotation_id)
+  }, [printInvoice]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (cardAuthDialog?.invoice?.sales_quotation_id) ensureQuotation(cardAuthDialog.invoice.sales_quotation_id)
+  }, [cardAuthDialog]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => ({
     quotations: summary?.quotations || 0,
@@ -842,10 +876,7 @@ const Sales = () => {
                 } : undefined}
               >
                 <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#7161D8" fontWeight={900} onClick={() => setViewInvoice(invoice)} /></TableCell>
-                <TableCell><ClippedTooltipText value={invoice.work_order || '-'} monospace fontWeight={800} onClick={() => {
-                  const quotation = quotations.find(item => item.id === invoice.sales_quotation_id)
-                  if (quotation) setViewQuotation(quotation)
-                }} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.work_order || '-'} monospace fontWeight={800} onClick={() => openLinkedQuotation(invoice.sales_quotation_id)} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} onClick={invoice.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(invoice.facility_name!)}`) : undefined} /></TableCell>
                 <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
@@ -989,14 +1020,8 @@ const Sales = () => {
                 ) : historyQ.data!.items.map((item, index) => (
                   <TableRow key={`${item.quotation_id}-${item.action}-${index}`} hover>
                     <TableCell>{formatDate(item.at)}</TableCell>
-                    <TableCell><ClippedTooltipText value={item.work_order} monospace fontWeight={900} onClick={() => {
-                      const quotation = quotations.find(q => q.id === item.quotation_id)
-                      if (quotation) setViewQuotation(quotation)
-                    }} /></TableCell>
-                    <TableCell><ClippedTooltipText value={item.quotation_number} monospace color="#7161D8" fontWeight={900} onClick={() => {
-                      const quotation = quotations.find(q => q.id === item.quotation_id)
-                      if (quotation) setViewQuotation(quotation)
-                    }} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.work_order} monospace fontWeight={900} onClick={() => openLinkedQuotation(item.quotation_id)} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.quotation_number} monospace color="#7161D8" fontWeight={900} onClick={() => openLinkedQuotation(item.quotation_id)} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.customer_name} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
                     <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>

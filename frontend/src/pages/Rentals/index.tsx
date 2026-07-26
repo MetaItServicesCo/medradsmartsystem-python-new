@@ -196,6 +196,7 @@ const Rentals = () => {
   const [agreementRowsPerPage, setAgreementRowsPerPage] = useState(25)
   const [invoicesPage, setInvoicesPage] = useState(0)
   const [historyPage, setHistoryPage] = useState(0)
+  const [productsPage, setProductsPage] = useState(0)
   const [agreementDialog, setAgreementDialog] = useState(false)
   const [editingAgreement, setEditingAgreement] = useState<Rental | null>(null)
   const [viewAgreement, setViewAgreement] = useState<Rental | null>(null)
@@ -244,6 +245,7 @@ const Rentals = () => {
       setAgreementPage(0)
       setInvoicesPage(0)
       setHistoryPage(0)
+      setProductsPage(0)
     }, 350)
 
     return () => window.clearTimeout(handle)
@@ -923,7 +925,7 @@ const Rentals = () => {
             <TableRow key={index}><TableCell colSpan={9}><Skeleton /></TableCell></TableRow>
           )) : parts.length === 0 ? (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
-          ) : parts.map(part => (
+          ) : parts.slice(productsPage * PAGE_SIZE, productsPage * PAGE_SIZE + PAGE_SIZE).map(part => (
             <TableRow key={part.id} hover>
               <TableCell>
                 <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 46, height: 46, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '12px' }}>
@@ -1072,6 +1074,7 @@ const Rentals = () => {
             </Box>
             <Box sx={{ p: 3 }}>
               {renderProducts()}
+              {renderPagination(parts.length, productsPage, setProductsPage)}
             </Box>
           </Box>
         )}

@@ -394,6 +394,30 @@ def list_quotations(
     }
 
 
+@router.get("/quotations/{quotation_id}")
+def get_quotation(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Fetch a single quotation by id (used to open a quotation linked from an
+    invoice or history row that is not on the currently loaded page)."""
+    quotation = (
+        scope_query_to_user_facilities(db.query(SalesQuotation), SalesQuotation.facility_id, db, current_user)
+        .options(
+            joinedload(SalesQuotation.facility),
+            joinedload(SalesQuotation.created_by),
+            joinedload(SalesQuotation.converted_invoice),
+            joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
+        )
+        .filter(SalesQuotation.id == quotation_id)
+        .first()
+    )
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Sales quotation not found")
+    return _quotation_response(quotation)
+
+
 @router.post("/quotations", status_code=status.HTTP_201_CREATED)
 def create_quotation(
     payload: SalesQuotationCreate,

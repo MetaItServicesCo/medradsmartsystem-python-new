@@ -204,6 +204,11 @@ export const fetchSalesSummary = async (): Promise<{
   return res.data
 }
 
+export const fetchSalesQuotation = async (id: number): Promise<SalesQuotation> => {
+  const res = await apiClient.get(`/sales/quotations/${id}`)
+  return res.data
+}
+
 export const createSalesQuotation = async (data: SalesQuotationPayload): Promise<SalesQuotation> => {
   const res = await apiClient.post('/sales/quotations', data)
   return res.data
