@@ -11,54 +11,25 @@ import Header from './Header'
 // clears any such lingering overlay on first paint and on every route change.
 function useDismissOrphanedOverlays(pathname: string) {
   useEffect(() => {
-    // A menu/popover (never a real dialog) that has no live React handlers left.
-    const orphanedOverlays = () =>
-      Array.from(document.querySelectorAll<HTMLElement>('.MuiModal-root')).filter(
-        modal =>
-          modal.querySelector('.MuiPopover-paper, .MuiMenu-paper') &&
-          !modal.querySelector('.MuiDialog-paper'),
-      )
-
-    // First, try the clean path: click each backdrop so a still-live MUI menu
-    // closes itself and React unmounts it.
+    // On navigation, close any still-live menu/popover the clean way (Escape +
+    // clicking its backdrop fires MUI's own onClose). We never remove DOM nodes
+    // directly — that can crash React's reconciler and blank the page. Any node
+    // that is genuinely orphaned (no live handlers) is neutralised purely via CSS
+    // (see .MuiPopover-root[aria-hidden="true"] in global.css), so it can't show
+    // a floating box or block clicks.
     const closeCleanly = () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-      orphanedOverlays().forEach(modal => {
-        const backdrop = modal.querySelector<HTMLElement>('.MuiBackdrop-root')
-        backdrop?.click()
-      })
-    }
-
-    // Anything still present a beat later is genuinely orphaned (React lost it),
-    // so clicking did nothing — remove it directly. Because React is no longer
-    // tracking these detached nodes, removing them cannot trigger a removeChild
-    // crash. Then clear any body scroll-lock MUI may have left behind.
-    const removeStragglers = () => {
-      orphanedOverlays().forEach(modal => {
-        // Only force-remove overlays MUI has backgrounded (aria-hidden="true") —
-        // that is the exact orphan signature; a genuinely-open, live menu never
-        // carries aria-hidden on its own root, so this can't nuke a real menu.
-        if (modal.getAttribute('aria-hidden') === 'true') {
-          try {
-            modal.remove()
-          } catch {
-            /* ignore */
-          }
+      document.querySelectorAll<HTMLElement>('.MuiModal-root').forEach(modal => {
+        if (modal.querySelector('.MuiPopover-paper, .MuiMenu-paper') && !modal.querySelector('.MuiDialog-paper')) {
+          modal.querySelector<HTMLElement>('.MuiBackdrop-root')?.click()
         }
       })
-      if (!document.querySelector('.MuiModal-root')) {
-        document.body.style.overflow = ''
-        document.body.style.paddingRight = ''
-      }
     }
-
     const raf = window.requestAnimationFrame(closeCleanly)
-    const t1 = window.setTimeout(closeCleanly, 60)
-    const t2 = window.setTimeout(removeStragglers, 300)
+    const timer = window.setTimeout(closeCleanly, 80)
     return () => {
       window.cancelAnimationFrame(raf)
-      window.clearTimeout(t1)
-      window.clearTimeout(t2)
+      window.clearTimeout(timer)
     }
   }, [pathname])
 }

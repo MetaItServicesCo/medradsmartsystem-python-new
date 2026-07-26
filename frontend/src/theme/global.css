@@ -249,6 +249,17 @@ input[type='number'] {
   }
 }
 
+/* Neutralise a stranded / orphaned MUI menu or popover. When such an overlay is
+   left behind (its React handlers are gone), MUI marks its own root with
+   aria-hidden="true"; a genuinely-open, live menu never carries aria-hidden on
+   itself. Hiding these keeps a leftover overlay from showing a floating box or,
+   via its invisible backdrop, swallowing clicks — done purely in CSS so nothing
+   touches the DOM from JS (which could crash React). Real dialogs are
+   MuiDialog-root, never MuiPopover-root, so they are unaffected. */
+.MuiPopover-root[aria-hidden="true"] {
+  display: none !important;
+}
+
 @media print {
   body {
     overflow: visible;
