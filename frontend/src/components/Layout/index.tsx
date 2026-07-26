@@ -11,25 +11,54 @@ import Header from './Header'
 // clears any such lingering overlay on first paint and on every route change.
 function useDismissOrphanedOverlays(pathname: string) {
   useEffect(() => {
-    const dismiss = () => {
-      // A stuck menu/select/popover closes on Escape via MUI's own handler.
+    // A menu/popover (never a real dialog) that has no live React handlers left.
+    const orphanedOverlays = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('.MuiModal-root')).filter(
+        modal =>
+          modal.querySelector('.MuiPopover-paper, .MuiMenu-paper') &&
+          !modal.querySelector('.MuiDialog-paper'),
+      )
+
+    // First, try the clean path: click each backdrop so a still-live MUI menu
+    // closes itself and React unmounts it.
+    const closeCleanly = () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-      // Belt-and-suspenders: click the invisible backdrop of any lingering
-      // menu/popover/select, which fires MUI's own onClose so React unmounts it
-      // cleanly. Never touch real dialogs, and never rip nodes out of the DOM
-      // directly (that would crash React's later cleanup with removeChild).
-      document.querySelectorAll<HTMLElement>('.MuiBackdrop-root.MuiModal-backdrop').forEach(backdrop => {
-        const modal = backdrop.closest<HTMLElement>('.MuiModal-root')
-        if (modal && modal.querySelector('.MuiPopover-paper, .MuiMenu-paper') && !modal.querySelector('.MuiDialog-paper')) {
-          backdrop.click()
-        }
+      orphanedOverlays().forEach(modal => {
+        const backdrop = modal.querySelector<HTMLElement>('.MuiBackdrop-root')
+        backdrop?.click()
       })
     }
-    const raf = window.requestAnimationFrame(dismiss)
-    const timer = window.setTimeout(dismiss, 200)
+
+    // Anything still present a beat later is genuinely orphaned (React lost it),
+    // so clicking did nothing — remove it directly. Because React is no longer
+    // tracking these detached nodes, removing them cannot trigger a removeChild
+    // crash. Then clear any body scroll-lock MUI may have left behind.
+    const removeStragglers = () => {
+      orphanedOverlays().forEach(modal => {
+        // Only force-remove overlays MUI has backgrounded (aria-hidden="true") —
+        // that is the exact orphan signature; a genuinely-open, live menu never
+        // carries aria-hidden on its own root, so this can't nuke a real menu.
+        if (modal.getAttribute('aria-hidden') === 'true') {
+          try {
+            modal.remove()
+          } catch {
+            /* ignore */
+          }
+        }
+      })
+      if (!document.querySelector('.MuiModal-root')) {
+        document.body.style.overflow = ''
+        document.body.style.paddingRight = ''
+      }
+    }
+
+    const raf = window.requestAnimationFrame(closeCleanly)
+    const t1 = window.setTimeout(closeCleanly, 60)
+    const t2 = window.setTimeout(removeStragglers, 300)
     return () => {
       window.cancelAnimationFrame(raf)
-      window.clearTimeout(timer)
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
     }
   }, [pathname])
 }
