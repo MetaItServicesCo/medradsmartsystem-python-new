@@ -331,6 +331,16 @@ const theme = createTheme({
       },
     },
     MuiTooltip: {
+      defaultProps: {
+        // Prevent tooltips from lingering/"sticking" when their anchor unmounts
+        // during a data refetch or navigation: dismiss the moment the pointer
+        // leaves the anchor, and drop the fade transition that can strand a
+        // half-shown tooltip on screen.
+        disableInteractive: true,
+        enterDelay: 300,
+        enterNextDelay: 300,
+        TransitionProps: { timeout: 0 },
+      },
       styleOverrides: {
         tooltip: {
           borderRadius: 8,

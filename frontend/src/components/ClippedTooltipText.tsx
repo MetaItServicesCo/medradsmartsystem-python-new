@@ -1,5 +1,5 @@
 import { type MouseEventHandler, type ReactNode } from 'react'
-import { Box, Tooltip, Typography, type SxProps, type Theme } from '@mui/material'
+import { Box, Typography, type SxProps, type Theme } from '@mui/material'
 
 type Props = {
   value: ReactNode
@@ -43,67 +43,70 @@ const ClippedTooltipText = ({
   const displayValue = renderValue(value, fallback)
   const title = tooltipTitle(value, fallback)
   const clickable = Boolean(onClick)
+  // Native title attribute instead of a MUI Tooltip: a browser tooltip cannot
+  // linger/stick on screen when this element unmounts during a refetch or page
+  // change, so it can never leave a floating "arrow" box behind.
+  const nativeTitle = title && title !== fallback ? title : undefined
 
   return (
-    <Tooltip title={title} arrow placement="top" disableHoverListener={!title || title === fallback}>
-      <Box
-        onClick={onClick}
-        role={clickable ? 'button' : undefined}
-        tabIndex={clickable ? 0 : undefined}
-        onKeyDown={clickable ? (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            onClick?.(event as any)
-          }
-        } : undefined}
+    <Box
+      title={nativeTitle}
+      onClick={onClick}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onClick?.(event as any)
+        }
+      } : undefined}
+      sx={{
+        minWidth: 0,
+        maxWidth,
+        width: '100%',
+        overflow: 'hidden',
+        cursor: clickable ? 'pointer' : undefined,
+        transition: clickable ? 'all 0.15s ease' : undefined,
+        '&:hover .MuiTypography-root': clickable ? {
+          color: '#7C3AED',
+          textDecoration: 'underline',
+          textUnderlineOffset: '3px',
+        } : undefined,
+        ...(field ? {
+          border: '1px solid #E5E7EB',
+          bgcolor: '#F8FAFC',
+          borderRadius: '12px',
+          px: 1.4,
+          py: 0.9,
+          height: 40,
+          display: 'flex',
+          alignItems: 'center',
+          '&:hover': clickable ? {
+            borderColor: '#A78BFA',
+            bgcolor: '#F5F3FF',
+          } : undefined,
+        } : {}),
+        ...sx,
+      }}
+    >
+      <Typography
+        variant={variant}
+        noWrap
         sx={{
           minWidth: 0,
-          maxWidth,
           width: '100%',
+          color,
+          fontWeight,
+          fontFamily: monospace ? 'monospace' : undefined,
           overflow: 'hidden',
-          cursor: clickable ? 'pointer' : undefined,
-          transition: clickable ? 'all 0.15s ease' : undefined,
-          '&:hover .MuiTypography-root': clickable ? {
-            color: '#7C3AED',
-            textDecoration: 'underline',
-            textUnderlineOffset: '3px',
-          } : undefined,
-          ...(field ? {
-            border: '1px solid #E5E7EB',
-            bgcolor: '#F8FAFC',
-            borderRadius: '12px',
-            px: 1.4,
-            py: 0.9,
-            height: 40,
-            display: 'flex',
-            alignItems: 'center',
-            '&:hover': clickable ? {
-              borderColor: '#A78BFA',
-              bgcolor: '#F5F3FF',
-            } : undefined,
-          } : {}),
-          ...sx,
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          ...textSx,
         }}
       >
-        <Typography
-          variant={variant}
-          noWrap
-          sx={{
-            minWidth: 0,
-            width: '100%',
-            color,
-            fontWeight,
-            fontFamily: monospace ? 'monospace' : undefined,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            ...textSx,
-          }}
-        >
-          {displayValue}
-        </Typography>
-      </Box>
-    </Tooltip>
+        {displayValue}
+      </Typography>
+    </Box>
   )
 }
 
