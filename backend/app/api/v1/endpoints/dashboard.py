@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
@@ -60,29 +61,55 @@ def read_dashboard_summary(
         ServiceRequestStatus.WAITING_FOR_DEPOT_REPAIR,
         ServiceRequestStatus.WAITING_FOR_VENDOR_REPAIR,
     ]
+    # Each table's several counts are collapsed into ONE query using Postgres
+    # aggregate FILTER (count(*) FILTER (WHERE ...)). This turns ~18 sequential
+    # round-trips into ~9, which materially speeds up the dashboard landing page.
     facility_query = db.query(Facility)
     if allowed_facility_ids is not None:
         facility_query = facility_query.filter(Facility.id.in_(allowed_facility_ids))
-    active_facilities = facility_query.filter(Facility.status == "active").count()
-    total_facilities = facility_query.count()
-    total_service_requests = service_scope(db.query(ServiceRequest)).count()
-    open_service_requests = service_scope(db.query(ServiceRequest)).filter(ServiceRequest.status.in_(open_service_statuses)).count()
-    critical_service_requests = service_scope(db.query(ServiceRequest)).filter(
-        ServiceRequest.priority == Priority.CRITICAL,
-        ServiceRequest.status.in_(open_service_statuses),
-    ).count()
-    total_inspections = inspection_scope(db.query(Inspection)).count()
-    overdue_inspections = inspection_scope(db.query(Inspection)).filter(Inspection.status == InspectionStatus.OVERDUE).count()
-    upcoming_inspections = inspection_scope(db.query(Inspection)).filter(Inspection.status == InspectionStatus.UPCOMING).count()
+    facility_counts = facility_query.with_entities(
+        func.count().label("total"),
+        func.count().filter(Facility.status == "active").label("active"),
+    ).one()
+    total_facilities = facility_counts.total
+    active_facilities = facility_counts.active
+
+    service_counts = service_scope(db.query(ServiceRequest)).with_entities(
+        func.count().label("total"),
+        func.count().filter(ServiceRequest.status.in_(open_service_statuses)).label("open"),
+        func.count().filter(
+            and_(ServiceRequest.priority == Priority.CRITICAL, ServiceRequest.status.in_(open_service_statuses))
+        ).label("critical"),
+    ).one()
+    total_service_requests = service_counts.total
+    open_service_requests = service_counts.open
+    critical_service_requests = service_counts.critical
+
+    inspection_counts = inspection_scope(db.query(Inspection)).with_entities(
+        func.count().label("total"),
+        func.count().filter(Inspection.status == InspectionStatus.OVERDUE).label("overdue"),
+        func.count().filter(Inspection.status == InspectionStatus.UPCOMING).label("upcoming"),
+    ).one()
+    total_inspections = inspection_counts.total
+    overdue_inspections = inspection_counts.overdue
+    upcoming_inspections = inspection_counts.upcoming
+
     rental_query = db.query(Rental)
     if allowed_facility_ids is not None:
         rental_query = rental_query.join(Equipment, Equipment.id == Rental.equipment_id).filter(
             Equipment.facility_id.in_(allowed_facility_ids)
         )
     active_rentals = rental_query.filter(Rental.status == RentalStatus.ACTIVE).count()
-    total_equipment = facility_scope(db.query(Equipment), Equipment).count()
-    active_equipment = facility_scope(db.query(Equipment), Equipment).filter(Equipment.status == EquipmentStatus.ACTIVE).count()
-    maintenance_equipment = facility_scope(db.query(Equipment), Equipment).filter(Equipment.status == EquipmentStatus.IN_MAINTENANCE).count()
+
+    equipment_counts = facility_scope(db.query(Equipment), Equipment).with_entities(
+        func.count().label("total"),
+        func.count().filter(Equipment.status == EquipmentStatus.ACTIVE).label("active"),
+        func.count().filter(Equipment.status == EquipmentStatus.IN_MAINTENANCE).label("in_maintenance"),
+    ).one()
+    total_equipment = equipment_counts.total
+    active_equipment = equipment_counts.active
+    maintenance_equipment = equipment_counts.in_maintenance
+
     assigned_user_query = db.query(UserFacility)
     primary_user_query = db.query(User).filter(User.facility_id.isnot(None))
     if allowed_facility_ids is not None:
@@ -90,17 +117,26 @@ def read_dashboard_summary(
         primary_user_query = primary_user_query.filter(User.facility_id.in_(allowed_facility_ids))
     assigned_users = assigned_user_query.count()
     users_with_primary_facility = primary_user_query.count()
+
     visible_invoices = scope_invoice_approval_visibility(
         facility_scope(db.query(Invoice), Invoice),
         current_user,
     )
-    pending_invoices = visible_invoices.filter(Invoice.status == InvoiceStatus.PENDING).count()
-    overdue_invoices = visible_invoices.filter(Invoice.status == InvoiceStatus.OVERDUE).count()
-    low_stock_parts = facility_scope(db.query(InventoryPart), InventoryPart).filter(InventoryPart.quantity_on_hand <= InventoryPart.reorder_level).count()
-    expiring_parts = facility_scope(db.query(InventoryPart), InventoryPart).filter(
-        InventoryPart.expiry_date.isnot(None),
-        InventoryPart.expiry_date <= date.today() + timedelta(days=30),
-    ).count()
+    invoice_counts = visible_invoices.with_entities(
+        func.count().filter(Invoice.status == InvoiceStatus.PENDING).label("pending"),
+        func.count().filter(Invoice.status == InvoiceStatus.OVERDUE).label("overdue"),
+    ).one()
+    pending_invoices = invoice_counts.pending
+    overdue_invoices = invoice_counts.overdue
+
+    part_counts = facility_scope(db.query(InventoryPart), InventoryPart).with_entities(
+        func.count().filter(InventoryPart.quantity_on_hand <= InventoryPart.reorder_level).label("low_stock"),
+        func.count().filter(
+            and_(InventoryPart.expiry_date.isnot(None), InventoryPart.expiry_date <= date.today() + timedelta(days=30))
+        ).label("expiring"),
+    ).one()
+    low_stock_parts = part_counts.low_stock
+    expiring_parts = part_counts.expiring
 
     return {
         "facilities": {
