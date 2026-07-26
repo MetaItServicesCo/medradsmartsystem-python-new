@@ -11,12 +11,19 @@ const RELOAD_KEY = 'medrad:chunk-reloaded'
 export function isChunkLoadError(error: unknown): boolean {
   const message = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase()
   return (
+    // Chunk failed to download (old hash 404s after a redeploy)
     message.includes('dynamically imported module') ||
     message.includes('failed to fetch dynamically') ||
     message.includes('loading chunk') ||
     message.includes('importing a module script failed') ||
     message.includes('failed to load module script') ||
-    message.includes('error loading dynamically imported module')
+    message.includes('error loading dynamically imported module') ||
+    // Chunk downloaded but resolved to undefined / wrong version (mismatched
+    // build): React.lazy then throws reading `.default` off `undefined`.
+    message.includes("reading 'default'") ||
+    message.includes('evaluating \'module.default\'') ||
+    message.includes('module is undefined') ||
+    message.includes("undefined is not an object (evaluating 'module")
   )
 }
 
@@ -49,6 +56,14 @@ export function lazyWithReload<T extends ComponentType<any>>(
   return lazy(async () => {
     try {
       const module = await factory()
+      // A mismatched build can resolve the import to undefined / a module with no
+      // default export. Treat that like a chunk error and reload once.
+      if (!module || typeof (module as { default?: unknown }).default === 'undefined') {
+        if (reloadOnceForChunkError()) {
+          return new Promise<{ default: T }>(() => {})
+        }
+        throw new Error('Failed to load module: undefined default export')
+      }
       clearChunkReloadGuard()
       return module
     } catch (error) {
