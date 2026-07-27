@@ -31,9 +31,29 @@ import {
 import { resolveUploadUrl } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import SearchFieldSelect from '@/components/SearchFieldSelect'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const PAGE_SIZE = 25
+const INVENTORY_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'part_number', label: 'Part #' },
+  { value: 'asset_tag', label: 'Asset tag' },
+  { value: 'description', label: 'Description' },
+  { value: 'make_model', label: 'Make / model' },
+  { value: 'serial', label: 'Batch / serial' },
+  { value: 'type', label: 'Part type' },
+  { value: 'supplier', label: 'Supplier' },
+  { value: 'location', label: 'Location' },
+  { value: 'condition', label: 'Condition' },
+  { value: 'stock', label: 'Stock' },
+  { value: 'price', label: 'Price' },
+  { value: 'expiry', label: 'Expiry / inventory date' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'tier', label: 'Tier' },
+  { value: 'modality', label: 'Modality' },
+  { value: 'status', label: 'Status' },
+]
 const ACTION_MENU_PAPER = {
   sx: {
     borderRadius: '16px',
@@ -90,11 +110,12 @@ const transactionLabels: Record<InventoryTransactionType, string> = {
 
 const Inventory = () => {
   const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const user = useAuthStore((state) => state.user)
   const isSuperAdmin = user?.role === 'superadmin'
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('search') || '')
+  const searchField = searchParams.get('search_field') || 'all'
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [tierId, setTierId] = useState<number | ''>('')
   const [lowStock, setLowStock] = useState(false)
@@ -137,12 +158,13 @@ const Inventory = () => {
   const { data: tiersData } = useQuery({ queryKey: ['tiers', 'inventory-options'], queryFn: () => fetchTiers({ limit: 500 }) })
   const inventoryFilters = {
     search: debouncedSearch || undefined,
+    search_field: searchField === 'all' ? undefined : searchField,
     facility_id: facilityId || undefined,
     tier_id: tierId || undefined,
     low_stock: lowStock || undefined,
   }
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['inventory-parts', debouncedSearch, facilityId, tierId, lowStock, page],
+    queryKey: ['inventory-parts', debouncedSearch, searchField, facilityId, tierId, lowStock, page],
     queryFn: () => fetchInventoryParts({
       ...inventoryFilters,
       skip: page * PAGE_SIZE,
@@ -151,7 +173,7 @@ const Inventory = () => {
     placeholderData: previousData => previousData,
   })
   const { data: summaryData } = useQuery({
-    queryKey: ['inventory-summary', debouncedSearch, facilityId, tierId, lowStock],
+    queryKey: ['inventory-summary', debouncedSearch, searchField, facilityId, tierId, lowStock],
     queryFn: () => fetchInventorySummary(inventoryFilters),
     placeholderData: previousData => previousData,
   })
@@ -162,7 +184,15 @@ const Inventory = () => {
 
   useEffect(() => {
     setPage(0)
-  }, [debouncedSearch, facilityId, tierId, lowStock])
+  }, [debouncedSearch, searchField, facilityId, tierId, lowStock])
+
+  const handleSearchFieldChange = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'all') next.delete('search_field')
+    else next.set('search_field', value)
+    setSearchParams(next, { replace: true })
+    setPage(0)
+  }
 
   const stats = {
     totalUnits: summaryData ? Number(summaryData.total_units) : parts.reduce((sum, p) => sum + p.quantity_on_hand, 0),
@@ -383,7 +413,13 @@ const Inventory = () => {
           </Typography>
         </Box>
         <Box sx={{ p: 2.5, display: 'flex', gap: 2, borderBottom: '1px solid #E5E7EB', alignItems: 'center', flexWrap: 'wrap' }}>
-          <TextField size="small" placeholder="Search part #, asset tag, description, make, model, serial, facility, quantity, price, or status..." value={search} onChange={(e) => setSearch(e.target.value)}
+          <SearchFieldSelect
+            value={searchField}
+            options={INVENTORY_SEARCH_FIELDS}
+            onChange={handleSearchFieldChange}
+            ariaLabel="Inventory search field"
+          />
+          <TextField size="small" placeholder={`Search ${INVENTORY_SEARCH_FIELDS.find((field) => field.value === searchField)?.label.toLowerCase() || 'inventory'}...`} value={search} onChange={(e) => setSearch(e.target.value)}
             sx={{ minWidth: 300 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#9CA3AF' }} /></InputAdornment> }}
           />

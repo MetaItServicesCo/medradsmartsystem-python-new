@@ -38,6 +38,7 @@ from app.utils.list_search import (
     contains_ci,
     normalize_list_search,
     parsed_date_value,
+    predicates_for_field,
     value_contains_ci,
 )
 
@@ -280,6 +281,7 @@ def _rental_part_query(db: Session, current_user: User):
 def list_rental_parts(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -295,21 +297,24 @@ def list_rental_parts(
             )
             .exists()
         )
-        query = query.filter(
-            or_(
+        search_by_field = {
+            "part_number": [
                 contains_ci(InventoryPart.part_number, search_term),
                 contains_ci(InventoryPart.asset_tag, search_term),
-                contains_ci(InventoryPart.description, search_term),
+            ],
+            "description": [contains_ci(InventoryPart.description, search_term)],
+            "make_model": [
                 contains_ci(InventoryPart.make, search_term),
                 contains_ci(InventoryPart.model, search_term),
-                contains_ci(InventoryPart.serial_number, search_term),
-                contains_ci(InventoryPart.condition, search_term),
-                contains_ci(InventoryPart.status, search_term),
-                value_contains_ci(InventoryPart.unit_price, search_term),
-                value_contains_ci(InventoryPart.quantity_on_hand, search_term),
-                facility_match,
-            )
-        )
+            ],
+            "serial": [contains_ci(InventoryPart.serial_number, search_term)],
+            "condition": [contains_ci(InventoryPart.condition, search_term)],
+            "status": [contains_ci(InventoryPart.status, search_term)],
+            "price": [value_contains_ci(InventoryPart.unit_price, search_term)],
+            "stock": [value_contains_ci(InventoryPart.quantity_on_hand, search_term)],
+            "facility": [facility_match],
+        }
+        query = query.filter(or_(*predicates_for_field(search_field, search_by_field)))
     total = query.count()
     parts = (
         query.order_by(InventoryPart.updated_at.desc(), InventoryPart.id.desc())
@@ -325,6 +330,7 @@ def list_rentals(
     db: Session = Depends(get_db),
     status_filter: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=500),
     current_user: User = Depends(get_current_user),
@@ -345,39 +351,49 @@ def list_rentals(
     if search_term:
         normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
         searched_date = parsed_date_value(search_term)
-        search_predicates = [
-            value_contains_ci(Rental.id, search_term.lstrip("#")),
-            contains_ci(Rental.rental_number, search_term),
-            contains_ci(Rental.customer_name, search_term),
-            contains_ci(Rental.customer_email, search_term),
-            contains_ci(Rental.customer_phone, search_term),
-            contains_ci(InventoryPart.part_number, search_term),
-            contains_ci(InventoryPart.description, search_term),
-            contains_ci(InventoryPart.make, search_term),
-            contains_ci(InventoryPart.model, search_term),
-            contains_ci(InventoryPart.serial_number, search_term),
-            contains_ci(Facility.name, search_term),
-            contains_ci(User.full_name, search_term),
-            value_contains_ci(Rental.billing_frequency, normalized_value),
-            value_contains_ci(Rental.status, normalized_value),
-            value_contains_ci(Rental.rental_rate, search_term),
-            value_contains_ci(Rental.quantity, search_term),
-            value_contains_ci(Rental.security_deposit, search_term),
-            value_contains_ci(Rental.shipping_fee, search_term),
-            value_contains_ci(Rental.setup_fee, search_term),
-            contains_ci(Rental.item_condition, search_term),
-            value_contains_ci(Rental.start_date, search_term),
-            value_contains_ci(Rental.end_date, search_term),
-        ]
+        search_by_field = {
+            "agreement": [
+                value_contains_ci(Rental.id, search_term.lstrip("#")),
+                contains_ci(Rental.rental_number, search_term),
+            ],
+            "customer": [
+                contains_ci(Rental.customer_name, search_term),
+                contains_ci(Rental.customer_email, search_term),
+                contains_ci(Rental.customer_phone, search_term),
+            ],
+            "product": [
+                contains_ci(InventoryPart.part_number, search_term),
+                contains_ci(InventoryPart.description, search_term),
+                contains_ci(InventoryPart.make, search_term),
+                contains_ci(InventoryPart.model, search_term),
+                contains_ci(InventoryPart.serial_number, search_term),
+            ],
+            "facility": [contains_ci(Facility.name, search_term)],
+            "created_by": [contains_ci(User.full_name, search_term)],
+            "billing": [
+                value_contains_ci(Rental.billing_frequency, normalized_value),
+                value_contains_ci(Rental.rental_rate, search_term),
+                value_contains_ci(Rental.quantity, search_term),
+                value_contains_ci(Rental.security_deposit, search_term),
+                value_contains_ci(Rental.shipping_fee, search_term),
+                value_contains_ci(Rental.setup_fee, search_term),
+            ],
+            "status": [value_contains_ci(Rental.status, normalized_value)],
+            "condition": [contains_ci(Rental.item_condition, search_term)],
+            "date": [
+                value_contains_ci(Rental.start_date, search_term),
+                value_contains_ci(Rental.end_date, search_term),
+            ],
+        }
         if searched_date:
-            search_predicates.extend(
+            search_by_field["date"].extend(
                 [Rental.start_date == searched_date, Rental.end_date == searched_date]
             )
         query = (
             query
             .outerjoin(Facility, InventoryPart.facility_id == Facility.id)
             .outerjoin(User, Rental.created_by_id == User.id)
-            .filter(or_(*search_predicates))
+            .filter(or_(*predicates_for_field(search_field, search_by_field)))
         )
     total = query.count()
     rentals = query.order_by(Rental.created_at.desc()).offset(skip).limit(limit).all()
@@ -693,6 +709,7 @@ def list_rental_invoices(
     db: Session = Depends(get_db),
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -714,30 +731,47 @@ def list_rental_invoices(
     if search_term:
         normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
         searched_date = parsed_date_value(search_term)
-        search_predicates = [
-            contains_ci(Invoice.invoice_number, search_term),
-            contains_ci(Invoice.customer_name, search_term),
-            contains_ci(Invoice.customer_email, search_term),
-            contains_ci(Invoice.notes, search_term),
-            contains_ci(Invoice.payment_method, normalized_value),
-            value_contains_ci(Invoice.status, normalized_value),
-            value_contains_ci(Invoice.total_amount, search_term),
-            value_contains_ci(Invoice.amount_paid, search_term),
-            value_contains_ci(Invoice.balance_due, search_term),
-            value_contains_ci(Invoice.issue_date, search_term),
-            value_contains_ci(Invoice.due_date, search_term),
-            contains_ci(Facility.name, search_term),
-            contains_ci(Rental.rental_number, search_term),
-        ]
+        search_by_field = {
+            "invoice": [contains_ci(Invoice.invoice_number, search_term)],
+            "billing_number": [contains_ci(Invoice.invoice_number, search_term)],
+            "customer": [
+                contains_ci(Invoice.customer_name, search_term),
+                contains_ci(Invoice.customer_email, search_term),
+            ],
+            "facility_customer": [
+                contains_ci(Facility.name, search_term),
+                contains_ci(Invoice.customer_name, search_term),
+                contains_ci(Invoice.customer_email, search_term),
+            ],
+            "notes": [contains_ci(Invoice.notes, search_term)],
+            "payment_method": [contains_ci(Invoice.payment_method, normalized_value)],
+            "status": [value_contains_ci(Invoice.status, normalized_value)],
+            "amount": [
+                value_contains_ci(Invoice.total_amount, search_term),
+                value_contains_ci(Invoice.amount_paid, search_term),
+                value_contains_ci(Invoice.balance_due, search_term),
+            ],
+            "total": [value_contains_ci(Invoice.total_amount, search_term)],
+            "paid": [value_contains_ci(Invoice.amount_paid, search_term)],
+            "balance": [value_contains_ci(Invoice.balance_due, search_term)],
+            "date": [
+                value_contains_ci(Invoice.issue_date, search_term),
+                value_contains_ci(Invoice.due_date, search_term),
+            ],
+            "due": [value_contains_ci(Invoice.due_date, search_term)],
+            "facility": [contains_ci(Facility.name, search_term)],
+            "agreement": [contains_ci(Rental.rental_number, search_term)],
+            "related_number": [contains_ci(Rental.rental_number, search_term)],
+        }
         if searched_date:
-            search_predicates.extend(
+            search_by_field["date"].extend(
                 [Invoice.issue_date == searched_date, Invoice.due_date == searched_date]
             )
         query = (
             query
             .outerjoin(Facility, Invoice.facility_id == Facility.id)
             .outerjoin(Rental, Invoice.rental_id == Rental.id)
-            .filter(or_(*search_predicates))
+            .filter(or_(*predicates_for_field(search_field, search_by_field)))
         )
     total = query.count()
     invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
@@ -851,6 +885,7 @@ def update_rental_invoice(
 def list_rental_history(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -864,21 +899,25 @@ def list_rental_history(
     search_term = normalize_list_search(search)
     searched_date = parsed_date_value(search_term) if search_term else None
     if search_term:
+        history_search_by_field = {
+            "agreement": [contains_ci(Rental.rental_number, search_term)],
+            "customer": [contains_ci(Rental.customer_name, search_term)],
+            "product": [
+                contains_ci(InventoryPart.part_number, search_term),
+                contains_ci(InventoryPart.description, search_term),
+            ],
+            "facility": [contains_ci(Facility.name, search_term)],
+            "activity": [value_contains_ci(Rental.history, search_term)],
+            "date": [value_contains_ci(Rental.history, search_term)],
+        }
+        if searched_date:
+            history_search_by_field["date"].append(
+                value_contains_ci(Rental.history, searched_date.isoformat())
+            )
         rentals_query = rentals_query.outerjoin(
             Facility, InventoryPart.facility_id == Facility.id
         ).filter(
-            or_(
-                contains_ci(Rental.rental_number, search_term),
-                contains_ci(Rental.customer_name, search_term),
-                contains_ci(InventoryPart.part_number, search_term),
-                contains_ci(InventoryPart.description, search_term),
-                contains_ci(Facility.name, search_term),
-                value_contains_ci(Rental.history, search_term),
-                *(
-                    [value_contains_ci(Rental.history, searched_date.isoformat())]
-                    if searched_date else []
-                ),
-            )
+            or_(*predicates_for_field(search_field, history_search_by_field))
         )
     rentals = rentals_query.order_by(Rental.updated_at.desc()).all()
     rows: list[dict[str, Any]] = []
@@ -898,18 +937,25 @@ def list_rental_history(
     rows.sort(key=lambda item: item.get("at") or "", reverse=True)
     if search_term:
         normalized = search_term.casefold()
+        row_fields = {
+            "agreement": ("rental_number",),
+            "customer": ("customer_name",),
+            "product": ("part_number", "part_description"),
+            "facility": ("facility_name",),
+            "activity": ("action", "by"),
+            "date": ("at",),
+        }
+        selected_keys = row_fields.get(
+            (search_field or "all").strip().lower(),
+            tuple(key for keys in row_fields.values() for key in keys),
+        )
         rows = [
             row for row in rows
             if (
-                normalized in " ".join(
-                    str(row.get(key) or "")
-                    for key in (
-                        "at", "rental_number", "customer_name", "facility_name",
-                        "part_number", "part_description", "action", "by",
-                    )
-                ).casefold()
+                normalized in " ".join(str(row.get(key) or "") for key in selected_keys).casefold()
                 or (
-                    searched_date is not None
+                    "at" in selected_keys
+                    and searched_date is not None
                     and str(row.get("at") or "").startswith(searched_date.isoformat())
                 )
             )

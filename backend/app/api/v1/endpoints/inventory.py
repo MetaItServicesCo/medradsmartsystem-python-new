@@ -33,6 +33,7 @@ from app.utils.list_search import (
     contains_ci,
     normalize_list_search,
     parsed_date_value,
+    predicates_for_field,
     value_contains_ci,
 )
 
@@ -66,6 +67,7 @@ def _apply_inventory_filters(
     tier_id: Optional[int] = None,
     part_type: Optional[str] = None,
     search: Optional[str] = None,
+    search_field: Optional[str] = None,
     low_stock: bool = False,
     expiring_days: Optional[int] = None,
 ):
@@ -106,42 +108,48 @@ def _apply_inventory_filters(
             )
             .exists()
         )
-        search_predicates = [
-            value_contains_ci(InventoryPart.id, identifier_term),
-            contains_ci(InventoryPart.part_number, search_term),
-            contains_ci(InventoryPart.asset_tag, search_term),
-            contains_ci(InventoryPart.part_type, search_term),
-            contains_ci(InventoryPart.description, search_term),
-            contains_ci(InventoryPart.make, search_term),
-            contains_ci(InventoryPart.model, search_term),
-            contains_ci(InventoryPart.serial_number, search_term),
-            contains_ci(InventoryPart.batch_number, search_term),
-            contains_ci(InventoryPart.supplier_name, search_term),
-            contains_ci(InventoryPart.supplier_contact, search_term),
-            contains_ci(InventoryPart.supplier_email, search_term),
-            contains_ci(InventoryPart.supplier_phone, search_term),
-            contains_ci(InventoryPart.location, search_term),
-            contains_ci(InventoryPart.condition, search_term),
-            contains_ci(InventoryPart.status, search_term),
-            value_contains_ci(InventoryPart.quantity_on_hand, search_term),
-            value_contains_ci(InventoryPart.reorder_level, search_term),
-            value_contains_ci(InventoryPart.unit_price, search_term),
-            value_contains_ci(InventoryPart.expiry_date, search_term),
-            facility_match,
-            tier_match,
-            modality_match,
-        ]
+        search_by_field = {
+            "id": [value_contains_ci(InventoryPart.id, identifier_term)],
+            "part_number": [contains_ci(InventoryPart.part_number, search_term)],
+            "asset_tag": [contains_ci(InventoryPart.asset_tag, search_term)],
+            "type": [contains_ci(InventoryPart.part_type, search_term)],
+            "description": [contains_ci(InventoryPart.description, search_term)],
+            "make_model": [
+                contains_ci(InventoryPart.make, search_term),
+                contains_ci(InventoryPart.model, search_term),
+            ],
+            "serial": [
+                contains_ci(InventoryPart.serial_number, search_term),
+                contains_ci(InventoryPart.batch_number, search_term),
+            ],
+            "supplier": [
+                contains_ci(InventoryPart.supplier_name, search_term),
+                contains_ci(InventoryPart.supplier_contact, search_term),
+                contains_ci(InventoryPart.supplier_email, search_term),
+                contains_ci(InventoryPart.supplier_phone, search_term),
+            ],
+            "location": [contains_ci(InventoryPart.location, search_term)],
+            "condition": [contains_ci(InventoryPart.condition, search_term)],
+            "status": [contains_ci(InventoryPart.status, search_term)],
+            "stock": [
+                value_contains_ci(InventoryPart.quantity_on_hand, search_term),
+                value_contains_ci(InventoryPart.reorder_level, search_term),
+            ],
+            "price": [value_contains_ci(InventoryPart.unit_price, search_term)],
+            "expiry": [value_contains_ci(InventoryPart.expiry_date, search_term)],
+            "facility": [facility_match],
+            "tier": [tier_match],
+            "modality": [modality_match],
+        }
         searched_date = parsed_date_value(search_term)
         if searched_date:
-            search_predicates.extend(
+            search_by_field["expiry"].extend(
                 [
                     InventoryPart.expiry_date == searched_date,
                     InventoryPart.inventory_date == searched_date,
                 ]
             )
-        query = query.filter(
-            or_(*search_predicates)
-        )
+        query = query.filter(or_(*predicates_for_field(search_field, search_by_field)))
     return query
 
 
@@ -169,6 +177,7 @@ def list_inventory_parts(
     tier_id: Optional[int] = Query(None),
     part_type: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     low_stock: bool = Query(False),
     expiring_days: Optional[int] = Query(None, ge=1, le=3650),
     skip: int = Query(0, ge=0),
@@ -181,6 +190,7 @@ def list_inventory_parts(
         tier_id=tier_id,
         part_type=part_type,
         search=search,
+        search_field=search_field,
         low_stock=low_stock,
         expiring_days=expiring_days,
     )
@@ -207,6 +217,7 @@ def get_inventory_summary(
     tier_id: Optional[int] = Query(None),
     part_type: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     low_stock: bool = Query(False),
     expiring_days: Optional[int] = Query(None, ge=1, le=3650),
     current_user: User = Depends(get_current_user),
@@ -217,6 +228,7 @@ def get_inventory_summary(
         tier_id=tier_id,
         part_type=part_type,
         search=search,
+        search_field=search_field,
         low_stock=low_stock,
         expiring_days=expiring_days,
     )

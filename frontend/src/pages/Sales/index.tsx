@@ -29,6 +29,7 @@ import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditC
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
+import SearchFieldSelect from '@/components/SearchFieldSelect'
 import {
   completeSalesQuotation,
   convertSalesQuotationToInvoice,
@@ -54,6 +55,38 @@ import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed', '/sales/history']
 const PAGE_SIZE = 20
+const SALES_ORDER_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'quotation', label: 'Quotation #' },
+  { value: 'work_order', label: 'Work order' },
+  { value: 'customer', label: 'Customer' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'type', label: 'Type' },
+  { value: 'status', label: 'Status' },
+  { value: 'created_by', label: 'Created by' },
+  { value: 'date', label: 'Date' },
+]
+const SALES_INVOICE_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'invoice', label: 'Invoice #' },
+  { value: 'quotation', label: 'Quotation / work order' },
+  { value: 'customer', label: 'Customer' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'status', label: 'Status' },
+  { value: 'amount', label: 'Amount' },
+  { value: 'payment_method', label: 'Payment method' },
+  { value: 'date', label: 'Date' },
+  { value: 'notes', label: 'Notes' },
+]
+const SALES_HISTORY_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'work_order', label: 'Work order' },
+  { value: 'quotation', label: 'Quotation #' },
+  { value: 'customer', label: 'Customer' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'activity', label: 'Activity / user' },
+  { value: 'date', label: 'Date' },
+]
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)'
 const SYSTEM_PANEL_BORDER = '#E9D5FF'
 const SYSTEM_PANEL_BG = '#F8FAFF'
@@ -155,6 +188,7 @@ const Sales = () => {
   const queryClient = useQueryClient()
 
   const routeSearch = new URLSearchParams(location.search).get('search') || ''
+  const searchField = new URLSearchParams(location.search).get('search_field') || 'all'
   const [search, setSearch] = useState(routeSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [quotationDialog, setQuotationDialog] = useState(false)
@@ -234,33 +268,34 @@ const Sales = () => {
   })
   const summaryQ = useQuery({ queryKey: ['sales-summary'], queryFn: fetchSalesSummary, placeholderData: previousData => previousData })
   const quotationsQ = useQuery({
-    queryKey: ['sales-quotations', 'quotations', debouncedSearch, quotationsPage],
-    queryFn: () => fetchSalesQuotations({ view: 'quotations', search: debouncedSearch || undefined, skip: quotationsPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    queryKey: ['sales-quotations', 'quotations', debouncedSearch, searchField, quotationsPage],
+    queryFn: () => fetchSalesQuotations({ view: 'quotations', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: quotationsPage * PAGE_SIZE, limit: PAGE_SIZE }),
     enabled: tab === 0,
     placeholderData: previousData => previousData,
   })
   const inProgressQ = useQuery({
-    queryKey: ['sales-quotations', 'in_progress', debouncedSearch, inProgressPage],
-    queryFn: () => fetchSalesQuotations({ view: 'in_progress', search: debouncedSearch || undefined, skip: inProgressPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    queryKey: ['sales-quotations', 'in_progress', debouncedSearch, searchField, inProgressPage],
+    queryFn: () => fetchSalesQuotations({ view: 'in_progress', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: inProgressPage * PAGE_SIZE, limit: PAGE_SIZE }),
     enabled: tab === 2,
     placeholderData: previousData => previousData,
   })
   const completedQ = useQuery({
-    queryKey: ['sales-quotations', 'completed', debouncedSearch, completedPage],
-    queryFn: () => fetchSalesQuotations({ view: 'completed', search: debouncedSearch || undefined, skip: completedPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    queryKey: ['sales-quotations', 'completed', debouncedSearch, searchField, completedPage],
+    queryFn: () => fetchSalesQuotations({ view: 'completed', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: completedPage * PAGE_SIZE, limit: PAGE_SIZE }),
     enabled: tab === 3,
     placeholderData: previousData => previousData,
   })
   const invoicesQ = useQuery({
-    queryKey: ['sales-invoices', debouncedSearch, invoicesPage],
-    queryFn: () => fetchSalesInvoices({ search: debouncedSearch || undefined, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    queryKey: ['sales-invoices', debouncedSearch, searchField, invoicesPage],
+    queryFn: () => fetchSalesInvoices({ search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
     enabled: tab === 1,
     placeholderData: previousData => previousData,
   })
   const historyQ = useQuery({
-    queryKey: ['sales-history', debouncedSearch, historyPage],
+    queryKey: ['sales-history', debouncedSearch, searchField, historyPage],
     queryFn: () => fetchSalesHistory({
       search: debouncedSearch || undefined,
+      search_field: searchField === 'all' ? undefined : searchField,
       skip: historyPage * PAGE_SIZE,
       limit: PAGE_SIZE,
     }),
@@ -327,7 +362,7 @@ const Sales = () => {
     setInProgressPage(0)
     setCompletedPage(0)
     setHistoryPage(0)
-  }, [debouncedSearch])
+  }, [debouncedSearch, searchField])
 
   // Prefetch the linked quotation for dialogs whose content is built from it,
   // so their details resolve even when that quotation is not on a loaded page.
@@ -923,6 +958,38 @@ const Sales = () => {
     </TableContainer>
   )
 
+  const activeSearchFields = tab === 1
+    ? SALES_INVOICE_SEARCH_FIELDS
+    : tab === 4
+      ? SALES_HISTORY_SEARCH_FIELDS
+      : SALES_ORDER_SEARCH_FIELDS
+
+  const handleSearchFieldChange = (value: string) => {
+    const params = new URLSearchParams(location.search)
+    if (value === 'all') params.delete('search_field')
+    else params.set('search_field', value)
+    navigate(`${location.pathname}${params.size ? `?${params.toString()}` : ''}`, { replace: true })
+  }
+
+  const renderSearchControl = (label: string) => (
+    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap' }}>
+      <SearchFieldSelect
+        value={searchField}
+        options={activeSearchFields}
+        onChange={handleSearchFieldChange}
+        ariaLabel="Sales search field"
+      />
+      <TextField
+        size="small"
+        label={label}
+        placeholder={`Search ${activeSearchFields.find((field) => field.value === searchField)?.label.toLowerCase() || 'sales'}...`}
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        sx={{ minWidth: 280, bgcolor: '#fff' }}
+      />
+    </Box>
+  )
+
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
       <Card sx={{ p: 3, mb: 3, borderRadius: '24px', border: '1px solid #E6E8F2', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
@@ -961,7 +1028,7 @@ const Sales = () => {
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation Parts List</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>{summary?.parts ?? 0} sales part{(summary?.parts ?? 0) === 1 ? '' : 's'} available from inventory.</Typography>
               </Box>
-              <TextField size="small" label="Search Facility or Work Order..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+              {renderSearchControl('Search quotations')}
             </Box>
             <Box sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', gap: 2, mb: 2, color: '#2434B6', fontWeight: 900, flexWrap: 'wrap' }}>
@@ -979,7 +1046,7 @@ const Sales = () => {
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Invoices</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by invoice, customer, facility, quotation, status, amount, or date.</Typography>
               </Box>
-              <TextField size="small" label="Search invoices..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+              {renderSearchControl('Search invoices')}
             </Box>
             {renderInvoices()}
             {renderPagination(invoicesQ.data?.total || 0, invoicesPage, setInvoicesPage)}
@@ -997,7 +1064,7 @@ const Sales = () => {
                   <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Payment Collected</Typography>
                   <Typography sx={{ color: '#059669', fontSize: 24, fontWeight: 900 }}>{money(inProgressPaid)}</Typography>
                 </Box>
-                <TextField size="small" label="Search in-progress sales..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280, bgcolor: '#fff' }} />
+                {renderSearchControl('Search in-progress sales')}
               </Box>
               <LinearProgress variant="determinate" value={inProgressPaymentPercent} sx={{ height: 10, borderRadius: 10, bgcolor: '#E0E7FF', '& .MuiLinearProgress-bar': { borderRadius: 10, bgcolor: '#7C3AED' } }} />
               <Typography sx={{ mt: 1, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>{inProgressPaymentPercent}% collected across active sales.</Typography>
@@ -1014,7 +1081,7 @@ const Sales = () => {
                   <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Total Completed Sales</Typography>
                   <Typography sx={{ color: '#059669', fontSize: 30, fontWeight: 900 }}>{money(completedTotal)}</Typography>
                 </Box>
-                <TextField size="small" label="Search completed sales..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280, bgcolor: '#fff' }} />
+                {renderSearchControl('Search completed sales')}
               </Box>
               <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
                 {['credit_card', 'cheque', 'bank_transfer'].map(method => (
@@ -1037,7 +1104,7 @@ const Sales = () => {
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales History</Typography>
               <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by work order, quotation, customer, facility, activity, user, or date.</Typography>
             </Box>
-            <TextField size="small" label="Search history..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+            {renderSearchControl('Search history')}
           </Box>
           <TableContainer className="list-scroll-panel">
             <Table stickyHeader>

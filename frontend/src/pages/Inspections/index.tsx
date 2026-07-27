@@ -75,6 +75,7 @@ import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipmen
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import SearchFieldSelect from '@/components/SearchFieldSelect'
 import { formatUSPhone } from '@/utils/formatters'
 
 const CHECK_FIELDS = [
@@ -217,6 +218,41 @@ const UPCOMING_DATE_RANGES: { value: UpcomingDateRange; label: string; months?: 
   { value: '3m', label: '3 Months', months: 3 },
   { value: '6m', label: '6 Months', months: 6 },
   { value: '1y', label: '1 Year', years: 1 },
+]
+
+const INSPECTION_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'inspection_number', label: 'Inspection #' },
+  { value: 'batch', label: 'Batch #' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'asset', label: 'Asset / equipment' },
+  { value: 'serial', label: 'Serial #' },
+  { value: 'technician', label: 'Technician' },
+  { value: 'frequency', label: 'Frequency' },
+  { value: 'criticality', label: 'Criticality' },
+  { value: 'requirement', label: 'Requirement' },
+  { value: 'status', label: 'Status / result' },
+  { value: 'date', label: 'Scheduled / activity date' },
+  { value: 'tier', label: 'Tier' },
+  { value: 'modality', label: 'Modality' },
+]
+
+const INSPECTION_ASSET_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'asset_tag', label: 'Asset tag' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'serial', label: 'Serial #' },
+  { value: 'modality', label: 'Modality' },
+  { value: 'tier', label: 'Tier' },
+  { value: 'status', label: 'Status' },
+]
+
+const INSPECTION_FORM_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'name', label: 'Form name' },
+  { value: 'description', label: 'Description' },
+  { value: 'modality', label: 'Modality' },
+  { value: 'content', label: 'Form content' },
 ]
 
 const CHECK_FIELD_LABELS = CHECK_FIELDS.reduce((acc, [key, label]) => ({ ...acc, [key]: label }), {} as Record<string, string>)
@@ -1107,6 +1143,7 @@ const Inspections = () => {
   const [closedActionAnchor, setClosedActionAnchor] = useState<HTMLElement | null>(null)
   const [closedActionItem, setClosedActionItem] = useState<Inspection | null>(null)
   const [closedSearch, setClosedSearch] = useState('')
+  const [closedSearchField, setClosedSearchField] = useState('all')
   const [closedFacilityId, setClosedFacilityId] = useState<number | ''>('')
   const [closedPage, setClosedPage] = useState(0)
   const [viewForm, setViewForm] = useState<InspectionFormOption | null>(null)
@@ -1156,17 +1193,23 @@ const Inspections = () => {
   const [formActionAnchor, setFormActionAnchor] = useState<HTMLElement | null>(null)
   const [formActionItem, setFormActionItem] = useState<InspectionFormOption | null>(null)
   const [upcomingSearch, setUpcomingSearch] = useState('')
+  const [upcomingSearchField, setUpcomingSearchField] = useState('all')
   const [debouncedUpcomingSearch, setDebouncedUpcomingSearch] = useState('')
   const [debouncedClosedSearch, setDebouncedClosedSearch] = useState('')
   const [inProgressSearch, setInProgressSearch] = useState('')
+  const [inProgressSearchField, setInProgressSearchField] = useState('all')
   const [debouncedInProgressSearch, setDebouncedInProgressSearch] = useState('')
   const [completedSearch, setCompletedSearch] = useState('')
+  const [completedSearchField, setCompletedSearchField] = useState('all')
   const [debouncedCompletedSearch, setDebouncedCompletedSearch] = useState('')
   const [scheduleAssetSearch, setScheduleAssetSearch] = useState('')
+  const [scheduleAssetSearchField, setScheduleAssetSearchField] = useState('all')
   const [debouncedScheduleAssetSearch, setDebouncedScheduleAssetSearch] = useState('')
   const [instantAssetSearch, setInstantAssetSearch] = useState('')
+  const [instantAssetSearchField, setInstantAssetSearchField] = useState('all')
   const [debouncedInstantAssetSearch, setDebouncedInstantAssetSearch] = useState('')
   const [formSearch, setFormSearch] = useState('')
+  const [formSearchField, setFormSearchField] = useState('all')
   const [debouncedFormSearch, setDebouncedFormSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
@@ -1253,11 +1296,11 @@ const Inspections = () => {
   }, [builderDrag])
   useEffect(() => {
     setUpcomingPage(0)
-  }, [upcomingSearch, upcomingRange])
+  }, [upcomingSearch, upcomingSearchField, upcomingRange])
 
   useEffect(() => {
     setClosedPage(0)
-  }, [closedSearch, closedFacilityId, dateFrom, dateTo])
+  }, [closedSearch, closedSearchField, closedFacilityId, dateFrom, dateTo])
 
   useEffect(() => {
     setTab(queryTab)
@@ -1274,12 +1317,12 @@ const Inspections = () => {
   useEffect(() => {
     setInProgressBatchPage(0)
     setLegacyInProgressPage(0)
-  }, [debouncedInProgressSearch])
+  }, [debouncedInProgressSearch, inProgressSearchField])
 
   useEffect(() => {
     setCompletedBatchPage(0)
     setLegacyCompletedPage(0)
-  }, [debouncedCompletedSearch])
+  }, [debouncedCompletedSearch, completedSearchField])
 
   useEffect(() => {
     if (addExistingAssetOpen) return
@@ -1353,11 +1396,15 @@ const Inspections = () => {
   const activeFacilityAssetSearch = tab === 1
     ? debouncedInstantAssetSearch
     : debouncedScheduleAssetSearch
+  const activeFacilityAssetSearchField = tab === 1
+    ? instantAssetSearchField
+    : scheduleAssetSearchField
   const equipmentQ = useQuery({
-    queryKey: ['inspection-equipment', facilityId, activeFacilityAssetSearch],
+    queryKey: ['inspection-equipment', facilityId, activeFacilityAssetSearch, activeFacilityAssetSearchField],
     queryFn: () => fetchInspectionFacilityEquipment(
       Number(facilityId),
       activeFacilityAssetSearch || undefined,
+      activeFacilityAssetSearchField === 'all' ? undefined : activeFacilityAssetSearchField,
     ),
     enabled: Boolean(facilityId),
     staleTime: 60_000,
@@ -1369,10 +1416,11 @@ const Inspections = () => {
       : upcomingWindow
   ), [dateFrom, dateTo, upcomingWindow])
   const upcomingQ = useQuery({
-    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize, debouncedUpcomingSearch, upcomingRange, dateFrom, dateTo],
+    queryKey: ['inspections', 'upcoming', upcomingPage, pageSize, debouncedUpcomingSearch, upcomingSearchField, upcomingRange, dateFrom, dateTo],
     queryFn: () => fetchInspections({
       status: 'upcoming',
       search: debouncedUpcomingSearch || undefined,
+      search_field: upcomingSearchField === 'all' ? undefined : upcomingSearchField,
       date_from: effectiveUpcomingWindow.date_from,
       date_to: effectiveUpcomingWindow.date_to,
       skip: upcomingPage * pageSize,
@@ -1384,24 +1432,24 @@ const Inspections = () => {
     retry: 1,
   })
   const inProgressQ = useQuery({
-    queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize, debouncedInProgressSearch, dateFrom, dateTo],
-    queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, search: debouncedInProgressSearch || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyInProgressPage * pageSize, limit: pageSize }),
+    queryKey: ['inspections', 'in_progress', 'unbatched', legacyInProgressPage, pageSize, debouncedInProgressSearch, inProgressSearchField, dateFrom, dateTo],
+    queryFn: () => fetchInspections({ status: 'in_progress', unbatched_only: true, search: debouncedInProgressSearch || undefined, search_field: inProgressSearchField === 'all' ? undefined : inProgressSearchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyInProgressPage * pageSize, limit: pageSize }),
     enabled: tab === 2 && !invalidDateRange,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
     retry: 1,
   })
   const inProgressBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'in_progress', inProgressBatchPage, pageSize, debouncedInProgressSearch, dateFrom, dateTo],
-    queryFn: () => fetchInspectionBatches({ status: 'in_progress', search: debouncedInProgressSearch || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: inProgressBatchPage * pageSize, limit: pageSize }),
+    queryKey: ['inspection-batches', 'in_progress', inProgressBatchPage, pageSize, debouncedInProgressSearch, inProgressSearchField, dateFrom, dateTo],
+    queryFn: () => fetchInspectionBatches({ status: 'in_progress', search: debouncedInProgressSearch || undefined, search_field: inProgressSearchField === 'all' ? undefined : inProgressSearchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: inProgressBatchPage * pageSize, limit: pageSize }),
     enabled: tab === 2 && !invalidDateRange,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
     retry: 1,
   })
   const completedBatchesQ = useQuery({
-    queryKey: ['inspection-batches', 'completed', completedBatchPage, pageSize, debouncedCompletedSearch, dateFrom, dateTo],
-    queryFn: () => fetchInspectionBatches({ status: 'completed', search: debouncedCompletedSearch || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: completedBatchPage * pageSize, limit: pageSize }),
+    queryKey: ['inspection-batches', 'completed', completedBatchPage, pageSize, debouncedCompletedSearch, completedSearchField, dateFrom, dateTo],
+    queryFn: () => fetchInspectionBatches({ status: 'completed', search: debouncedCompletedSearch || undefined, search_field: completedSearchField === 'all' ? undefined : completedSearchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: completedBatchPage * pageSize, limit: pageSize }),
     enabled: tab === 3 && !invalidDateRange,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
@@ -1421,19 +1469,20 @@ const Inspections = () => {
     staleTime: 60_000,
   })
   const completedQ = useQuery({
-    queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize, debouncedCompletedSearch, dateFrom, dateTo],
-    queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, search: debouncedCompletedSearch || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyCompletedPage * pageSize, limit: pageSize }),
+    queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize, debouncedCompletedSearch, completedSearchField, dateFrom, dateTo],
+    queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, search: debouncedCompletedSearch || undefined, search_field: completedSearchField === 'all' ? undefined : completedSearchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyCompletedPage * pageSize, limit: pageSize }),
     enabled: tab === 3 && !invalidDateRange,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
     retry: 1,
   })
   const closedQ = useQuery({
-    queryKey: ['inspections', 'closed', closedPage, pageSize, debouncedClosedSearch, closedFacilityId, dateFrom, dateTo],
+    queryKey: ['inspections', 'closed', closedPage, pageSize, debouncedClosedSearch, closedSearchField, closedFacilityId, dateFrom, dateTo],
     queryFn: () => fetchInspections({
       status: 'closed',
       facility_id: closedFacilityId ? Number(closedFacilityId) : undefined,
       search: debouncedClosedSearch || undefined,
+      search_field: closedSearchField === 'all' ? undefined : closedSearchField,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       skip: closedPage * pageSize,
@@ -1448,8 +1497,8 @@ const Inspections = () => {
     ? debouncedFormSearch
     : ''
   const formsQ = useQuery({
-    queryKey: ['inspection-forms', formListSearch],
-    queryFn: () => fetchInspectionForms(undefined, formListSearch || undefined),
+    queryKey: ['inspection-forms', formListSearch, formSearchField],
+    queryFn: () => fetchInspectionForms(undefined, formListSearch || undefined, formSearchField === 'all' ? undefined : formSearchField),
     enabled: tab === 4 || Boolean(reportInspection) || Boolean(infoInspection),
     staleTime: 5 * 60_000,
     placeholderData: previousData => previousData,
@@ -3923,14 +3972,21 @@ const Inspections = () => {
             </Box>
             {facilityId && (
               <Box sx={{ mb: 3 }}>
-                <TextField
-                  label="Search assets to schedule"
-                  placeholder="Search asset tag, equipment, modality, serial, tier, or status..."
-                  value={scheduleAssetSearch}
-                  onChange={event => setScheduleAssetSearch(event.target.value)}
-                  fullWidth
-                  sx={{ mb: 1.5 }}
-                />
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '190px minmax(0, 1fr)' }, gap: 1.5, mb: 1.5 }}>
+                  <SearchFieldSelect
+                    value={scheduleAssetSearchField}
+                    options={INSPECTION_ASSET_SEARCH_FIELDS}
+                    onChange={setScheduleAssetSearchField}
+                    ariaLabel="Scheduled asset search field"
+                  />
+                  <TextField
+                    label="Search assets to schedule"
+                    placeholder={`Search ${INSPECTION_ASSET_SEARCH_FIELDS.find((field) => field.value === scheduleAssetSearchField)?.label.toLowerCase() || 'assets'}...`}
+                    value={scheduleAssetSearch}
+                    onChange={event => setScheduleAssetSearch(event.target.value)}
+                    fullWidth
+                  />
+                </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
                   <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
                     {selectedEquipmentIds.length} of {equipment.length} asset{equipment.length === 1 ? '' : 's'} selected for scheduling.
@@ -3976,10 +4032,16 @@ const Inspections = () => {
               </Box>
             )}
             <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px' }, gap: 2, alignItems: 'center' }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) 220px' }, gap: 2, alignItems: 'center' }}>
+                <SearchFieldSelect
+                  value={upcomingSearchField}
+                  options={INSPECTION_SEARCH_FIELDS}
+                  onChange={setUpcomingSearchField}
+                  ariaLabel="Upcoming inspection search field"
+                />
                 <TextField
                   label="Search upcoming inspections"
-                  placeholder="Search inspection #, facility, asset, serial, requirement..."
+                  placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === upcomingSearchField)?.label.toLowerCase() || 'inspections'}...`}
                   value={upcomingSearch}
                   onChange={e => setUpcomingSearch(e.target.value)}
                   fullWidth
@@ -4042,14 +4104,21 @@ const Inspections = () => {
             </Box>
             {selectedFacility && (
               <Box sx={{ mb: 2 }}>
-                <TextField
-                  label="Search facility assets"
-                  placeholder="Search asset tag, equipment, modality, serial, tier, or status..."
-                  value={instantAssetSearch}
-                  onChange={event => setInstantAssetSearch(event.target.value)}
-                  fullWidth
-                  sx={{ mb: 1.5 }}
-                />
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '190px minmax(0, 1fr)' }, gap: 1.5, mb: 1.5 }}>
+                  <SearchFieldSelect
+                    value={instantAssetSearchField}
+                    options={INSPECTION_ASSET_SEARCH_FIELDS}
+                    onChange={setInstantAssetSearchField}
+                    ariaLabel="Instant inspection asset search field"
+                  />
+                  <TextField
+                    label="Search facility assets"
+                    placeholder={`Search ${INSPECTION_ASSET_SEARCH_FIELDS.find((field) => field.value === instantAssetSearchField)?.label.toLowerCase() || 'assets'}...`}
+                    value={instantAssetSearch}
+                    onChange={event => setInstantAssetSearch(event.target.value)}
+                    fullWidth
+                  />
+                </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                   <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
                     {selectedFacility.name}: {selectedInstantEquipmentIds.length} selected; {equipment.length} matching asset{equipment.length === 1 ? '' : 's'} shown.
@@ -4102,13 +4171,21 @@ const Inspections = () => {
         {tab === 2 && (
           <Box>
             <Box sx={{ p: 3, pb: 0 }}>
-              <TextField
-                label="Search in-progress inspections"
-                placeholder="Search batch #, facility, technician, asset tag, serial, inspection #..."
-                value={inProgressSearch}
-                onChange={event => setInProgressSearch(event.target.value)}
-                fullWidth
-              />
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '190px minmax(0, 1fr)' }, gap: 1.5 }}>
+                <SearchFieldSelect
+                  value={inProgressSearchField}
+                  options={INSPECTION_SEARCH_FIELDS}
+                  onChange={setInProgressSearchField}
+                  ariaLabel="In-progress inspection search field"
+                />
+                <TextField
+                  label="Search in-progress inspections"
+                  placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === inProgressSearchField)?.label.toLowerCase() || 'inspections'}...`}
+                  value={inProgressSearch}
+                  onChange={event => setInProgressSearch(event.target.value)}
+                  fullWidth
+                />
+              </Box>
             </Box>
             {renderBatchRows(inProgressBatchesQ.data?.items || [], inProgressBatchesQ.isLoading)}
             {renderPagination(inProgressBatchesQ.data?.total || 0, inProgressBatchPage, setInProgressBatchPage)}
@@ -4126,13 +4203,21 @@ const Inspections = () => {
         {tab === 3 && (
           <Box>
             <Box sx={{ p: 3, pb: 0 }}>
-              <TextField
-                label="Search completed inspections"
-                placeholder="Search batch #, facility, technician, asset tag, serial, inspection #..."
-                value={completedSearch}
-                onChange={event => setCompletedSearch(event.target.value)}
-                fullWidth
-              />
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '190px minmax(0, 1fr)' }, gap: 1.5 }}>
+                <SearchFieldSelect
+                  value={completedSearchField}
+                  options={INSPECTION_SEARCH_FIELDS}
+                  onChange={setCompletedSearchField}
+                  ariaLabel="Completed inspection search field"
+                />
+                <TextField
+                  label="Search completed inspections"
+                  placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === completedSearchField)?.label.toLowerCase() || 'inspections'}...`}
+                  value={completedSearch}
+                  onChange={event => setCompletedSearch(event.target.value)}
+                  fullWidth
+                />
+              </Box>
             </Box>
             {renderBatchRows(completedBatchesQ.data?.items || [], completedBatchesQ.isLoading, 'completed')}
             {renderPagination(completedBatchesQ.data?.total || 0, completedBatchPage, setCompletedBatchPage)}
@@ -4151,10 +4236,16 @@ const Inspections = () => {
         {tab === 5 && (
           <Box sx={{ p: 3 }}>
             <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 320px' }, gap: 2 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) 320px' }, gap: 2 }}>
+                <SearchFieldSelect
+                  value={closedSearchField}
+                  options={INSPECTION_SEARCH_FIELDS}
+                  onChange={setClosedSearchField}
+                  ariaLabel="Closed inspection search field"
+                />
                 <TextField
                   label="Search closed inspections"
-                  placeholder="Search inspection #, facility, asset, serial, batch, or requirement..."
+                  placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === closedSearchField)?.label.toLowerCase() || 'inspections'}...`}
                   value={closedSearch}
                   onChange={event => setClosedSearch(event.target.value)}
                   fullWidth
@@ -4185,13 +4276,21 @@ const Inspections = () => {
         {tab === 4 && (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
-              <TextField
-                label="Search inspection forms"
-                placeholder="Search form name, description, or modality..."
-                value={formSearch}
-                onChange={event => setFormSearch(event.target.value)}
-                sx={{ minWidth: { xs: '100%', sm: 360 } }}
-              />
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+                <SearchFieldSelect
+                  value={formSearchField}
+                  options={INSPECTION_FORM_SEARCH_FIELDS}
+                  onChange={setFormSearchField}
+                  ariaLabel="Inspection form search field"
+                />
+                <TextField
+                  label="Search inspection forms"
+                  placeholder={`Search ${INSPECTION_FORM_SEARCH_FIELDS.find((field) => field.value === formSearchField)?.label.toLowerCase() || 'forms'}...`}
+                  value={formSearch}
+                  onChange={event => setFormSearch(event.target.value)}
+                  sx={{ minWidth: { xs: '100%', sm: 360 }, flex: 1 }}
+                />
+              </Box>
               <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateFormBuilder} disabled={!canAddInspections} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                 New Form
               </Button>

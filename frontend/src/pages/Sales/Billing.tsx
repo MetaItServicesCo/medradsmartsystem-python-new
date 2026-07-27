@@ -45,6 +45,7 @@ import InvoicePrintDialog, {
   type PrintableLineItem,
   type PrintablePaidQuotation,
 } from '@/components/Billing/InvoicePrintDialog'
+import SearchFieldSelect from '@/components/SearchFieldSelect'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
@@ -54,6 +55,18 @@ type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
 type BillingStatus = 'draft' | 'sent' | 'authorization_requested' | 'authorized' | 'approved' | 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'rejected' | 'cancelled'
 type PayMethod = 'credit_card' | 'ach'
 type AchChoice = 'ach' | 'mbmts_ach'
+
+const BILLING_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'billing_number', label: 'Billing #' },
+  { value: 'related_number', label: 'Related #' },
+  { value: 'facility_customer', label: 'Facility / Customer' },
+  { value: 'total', label: 'Total' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'balance', label: 'Balance' },
+  { value: 'status', label: 'Status' },
+  { value: 'due', label: 'Due date' },
+]
 
 interface BillingItem {
   key: string
@@ -423,9 +436,11 @@ const Billing = () => {
   const [page, setPage] = useState(0)
   const rowsPerPage = 25
   const search = searchParams.get('search') || ''
+  const searchField = searchParams.get('search_field') || 'all'
   const [searchInput, setSearchInput] = useState(search)
   const activeSearch = search.trim()
   const querySearch = activeSearch || undefined
+  const querySearchField = searchField === 'all' ? undefined : searchField
   const shouldFetchService = sourceFilter === 'all' || sourceFilter === 'service'
   const shouldFetchInspection = sourceFilter === 'all' || sourceFilter === 'inspection'
   const shouldFetchSales = sourceFilter === 'all' || sourceFilter === 'sales'
@@ -463,15 +478,15 @@ const Billing = () => {
   }, [searchInput, search, searchParams, setSearchParams])
 
   const serviceQ = useQuery({
-    queryKey: ['billing-service-quotations', querySearch],
-    queryFn: () => fetchAllQuotations(querySearch),
+    queryKey: ['billing-service-quotations', querySearch, querySearchField],
+    queryFn: () => fetchAllQuotations(querySearch, querySearchField),
     enabled: shouldFetchService,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
   })
   const serviceInvoicesQ = useQuery({
-    queryKey: ['billing-service-invoices', querySearch],
-    queryFn: () => fetchAllServiceInvoices(querySearch),
+    queryKey: ['billing-service-invoices', querySearch, querySearchField],
+    queryFn: () => fetchAllServiceInvoices(querySearch, querySearchField),
     enabled: shouldFetchService,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
@@ -497,6 +512,7 @@ const Billing = () => {
     queryKey: [
       'billing-inspection-invoices',
       querySearch,
+      querySearchField,
       inspectionServerPage ? page : 'all',
       inspectionServerPage ? statusFilter : 'all',
       inspectionServerPage ? tab : 0,
@@ -504,27 +520,28 @@ const Billing = () => {
     queryFn: () => inspectionServerPage
       ? fetchInspectionQuotations({
           search: querySearch,
+          search_field: querySearchField,
           status_filter: statusFilter === 'all' ? undefined : statusFilter,
           balance_filter: tab === 1 ? 'outstanding' : tab === 2 ? 'paid' : undefined,
           skip: page * rowsPerPage,
           limit: rowsPerPage,
         })
-      : fetchAllInspectionQuotations(querySearch),
+      : fetchAllInspectionQuotations(querySearch, querySearchField),
     enabled: shouldFetchInspection,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
     retry: 1,
   })
   const salesQ = useQuery({
-    queryKey: ['billing-sales-invoices', querySearch],
-    queryFn: () => fetchSalesInvoices({ search: querySearch }),
+    queryKey: ['billing-sales-invoices', querySearch, querySearchField],
+    queryFn: () => fetchSalesInvoices({ search: querySearch, search_field: querySearchField }),
     enabled: shouldFetchSales,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
   })
   const rentalsQ = useQuery({
-    queryKey: ['billing-rental-invoices', querySearch],
-    queryFn: () => fetchRentalInvoices({ search: querySearch }),
+    queryKey: ['billing-rental-invoices', querySearch, querySearchField],
+    queryFn: () => fetchRentalInvoices({ search: querySearch, search_field: querySearchField }),
     enabled: shouldFetchRental,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
@@ -689,20 +706,6 @@ const Billing = () => {
   const inspectionLoadFailed = sourceFilter === 'inspection' && inspectionQ.isError && items.length === 0
 
   const filteredItems = inspectionServerPage ? items : items.filter(item => {
-    const normalizedSearch = search.trim().toLowerCase()
-    if (normalizedSearch) {
-      const haystack = [
-        item.number,
-        item.relatedNumber,
-        item.facility,
-        item.customer,
-        item.customerEmail,
-        item.description,
-        item.status,
-        billingTypeLabel(item),
-      ].filter(Boolean).join(' ').toLowerCase()
-      if (!haystack.includes(normalizedSearch)) return false
-    }
     if (sourceFilter !== 'all' && item.source !== sourceFilter) return false
     if (statusFilter === 'billing_pending' && item.billingApprovalStatus !== 'pending') return false
     if (statusFilter !== 'all' && statusFilter !== 'billing_pending' && item.status !== statusFilter) return false
@@ -719,7 +722,15 @@ const Billing = () => {
 
   useEffect(() => {
     setPage(0)
-  }, [sourceFilter, statusFilter, tab, search])
+  }, [sourceFilter, statusFilter, tab, search, searchField])
+
+  const handleSearchFieldChange = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'all') next.delete('search_field')
+    else next.set('search_field', value)
+    setPage(0)
+    setSearchParams(next, { replace: true })
+  }
 
   const totals = useMemo(() => {
     if (inspectionServerPage && inspectionQ.data?.summary) {
@@ -1235,9 +1246,16 @@ const Billing = () => {
 
       <Card sx={{ mb: 3, p: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(49,46,129,0.07)' }}>
         <FilterListIcon sx={{ color: '#6B7280' }} />
+        <SearchFieldSelect
+          value={searchField}
+          options={BILLING_SEARCH_FIELDS}
+          onChange={handleSearchFieldChange}
+          ariaLabel="Billing search field"
+          sx={{ minWidth: 175 }}
+        />
         <TextField
           size="small"
-          placeholder="Search billing..."
+          placeholder={`Search ${BILLING_SEARCH_FIELDS.find((field) => field.value === searchField)?.label.toLowerCase() || 'billing'}...`}
           value={searchInput}
           onChange={event => setSearchInput(event.target.value)}
           sx={{ minWidth: 260 }}

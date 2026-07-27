@@ -26,7 +26,7 @@ from app.models.audit_log import AuditLog
 from app.utils.logging import log_activity
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.permissions import require_module_permission
-from app.utils.list_search import contains_ci, normalize_list_search, value_contains_ci
+from app.utils.list_search import contains_ci, normalize_list_search, predicates_for_field, value_contains_ci
 
 router = APIRouter(dependencies=[Depends(require_module_access("facilities"))])
 
@@ -387,6 +387,7 @@ def read_facilities(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Retrieve facilities (all authenticated users)."""
@@ -436,26 +437,34 @@ def read_facilities(
             timezone_predicates.append(Facility.timezone == "America/New_York")
         if "central".startswith(normalized_timezone) or normalized_timezone in {"cst", "cdt"}:
             timezone_predicates.append(Facility.timezone == "America/Chicago")
-        query = query.filter(
-            or_(
-                value_contains_ci(Facility.id, identifier_term),
-                contains_ci(Facility.name, search_term),
+        search_by_field = {
+            "id": [value_contains_ci(Facility.id, identifier_term)],
+            "facility": [contains_ci(Facility.name, search_term)],
+            "location": [
                 contains_ci(Facility.address, search_term),
                 contains_ci(Facility.suite, search_term),
                 contains_ci(Facility.city, search_term),
                 contains_ci(Facility.state, search_term),
                 contains_ci(Facility.zip_code, search_term),
                 contains_ci(Facility.country, search_term),
+            ],
+            "contact": [
                 contains_ci(Facility.email, search_term),
                 contains_ci(Facility.phone, search_term),
                 contains_ci(Facility.contact_person, search_term),
+            ],
+            "timezone": [
                 contains_ci(Facility.timezone, search_term),
                 contains_ci(Facility.operating_hours, search_term),
-                contains_ci(Facility.status, search_term),
-                tier_match,
-                primary_user_match,
-                secondary_user_match,
                 *timezone_predicates,
+            ],
+            "manager": [primary_user_match, secondary_user_match],
+            "tier": [tier_match],
+            "status": [contains_ci(Facility.status, search_term)],
+        }
+        query = query.filter(
+            or_(
+                *predicates_for_field(search_field, search_by_field),
             )
         )
     total = query.count()

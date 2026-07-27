@@ -45,6 +45,7 @@ from app.utils.list_search import (
     normalize_list_search,
     parsed_date_bounds,
     parsed_date_value,
+    predicates_for_field,
     value_contains_ci,
 )
 
@@ -995,6 +996,7 @@ def get_report_template(current_user: User = Depends(get_current_user)) -> Any:
 def list_inspection_forms(
     modality_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -1021,13 +1023,14 @@ def list_inspection_forms(
 
     search_term = normalize_list_search(search)
     if search_term:
+        search_by_field = {
+            "name": [contains_ci(InspectionForm.name, search_term)],
+            "description": [contains_ci(InspectionForm.description, search_term)],
+            "modality": [contains_ci(Modality.name, search_term)],
+            "content": [value_contains_ci(InspectionForm.schema, search_term)],
+        }
         query = query.outerjoin(Modality, InspectionForm.modality_id == Modality.id).filter(
-            or_(
-                contains_ci(InspectionForm.name, search_term),
-                contains_ci(InspectionForm.description, search_term),
-                contains_ci(Modality.name, search_term),
-                value_contains_ci(InspectionForm.schema, search_term),
-            )
+            or_(*predicates_for_field(search_field, search_by_field))
         )
 
     forms = query.order_by(InspectionForm.name.asc()).all()
@@ -1149,6 +1152,7 @@ def facility_inventory_for_inspection(
     facility_id: int,
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     require_facility_access(db, current_user, facility_id)
@@ -1157,16 +1161,18 @@ def facility_inventory_for_inspection(
         .options(joinedload(InventoryPart.facility), joinedload(InventoryPart.tier))
         .filter(InventoryPart.facility_id == facility_id)
     )
-    if search:
-        query = query.filter(
-            or_(
-                InventoryPart.part_number.ilike(f"%{search}%"),
-                InventoryPart.description.ilike(f"%{search}%"),
-                InventoryPart.make.ilike(f"%{search}%"),
-                InventoryPart.model.ilike(f"%{search}%"),
-                InventoryPart.serial_number.ilike(f"%{search}%"),
-            )
-        )
+    search_term = normalize_list_search(search)
+    if search_term:
+        search_by_field = {
+            "part_number": [contains_ci(InventoryPart.part_number, search_term)],
+            "description": [contains_ci(InventoryPart.description, search_term)],
+            "make_model": [
+                contains_ci(InventoryPart.make, search_term),
+                contains_ci(InventoryPart.model, search_term),
+            ],
+            "serial": [contains_ci(InventoryPart.serial_number, search_term)],
+        }
+        query = query.filter(or_(*predicates_for_field(search_field, search_by_field)))
     parts = query.order_by(InventoryPart.updated_at.desc(), InventoryPart.id.desc()).all()
     return [
         {
@@ -1195,6 +1201,7 @@ def facility_inventory_for_inspection(
 def facility_equipment_for_inspection(
     facility_id: int,
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -1222,17 +1229,18 @@ def facility_equipment_for_inspection(
             )
             .exists()
         )
-        query = query.filter(
-            or_(
-                contains_ci(Equipment.asset_tag, search_term),
+        search_by_field = {
+            "asset_tag": [contains_ci(Equipment.asset_tag, search_term)],
+            "equipment": [
                 contains_ci(Equipment.make, search_term),
                 contains_ci(Equipment.model, search_term),
-                contains_ci(Equipment.serial_number, search_term),
-                value_contains_ci(Equipment.status, search_term),
-                tier_match,
-                modality_match,
-            )
-        )
+            ],
+            "serial": [contains_ci(Equipment.serial_number, search_term)],
+            "status": [value_contains_ci(Equipment.status, search_term)],
+            "tier": [tier_match],
+            "modality": [modality_match],
+        }
+        query = query.filter(or_(*predicates_for_field(search_field, search_by_field)))
     equipment = query.order_by(Equipment.created_at.desc(), Equipment.id.desc()).all()
     return [
         {
@@ -1385,6 +1393,7 @@ def list_inspections(
     facility_id: Optional[int] = Query(None),
     unbatched_only: bool = Query(False),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
@@ -1440,34 +1449,42 @@ def list_inspections(
             )
             .exists()
         )
-        search_predicates = [
-            contains_ci(Inspection.inspection_number, search_term),
-            contains_ci(Inspection.inspection_frequency, normalized_value),
-            contains_ci(Inspection.compliance_requirement, search_term),
-            contains_ci(Inspection.criticality, search_term),
-            value_contains_ci(Inspection.status, normalized_value),
-            value_contains_ci(Inspection.result, normalized_value),
-            value_contains_ci(Inspection.scheduled_date, search_term),
-            value_contains_ci(Inspection.started_at, search_term),
-            value_contains_ci(Inspection.completed_at, search_term),
-            contains_ci(InspectionBatch.batch_number, search_term),
-            contains_ci(Facility.name, search_term),
-            contains_ci(Equipment.asset_tag, search_term),
-            contains_ci(Equipment.make, search_term),
-            contains_ci(Equipment.model, search_term),
-            contains_ci(Equipment.serial_number, search_term),
-            contains_ci(InventoryPart.part_number, search_term),
-            contains_ci(InventoryPart.description, search_term),
-            contains_ci(InventoryPart.make, search_term),
-            contains_ci(InventoryPart.model, search_term),
-            contains_ci(InventoryPart.serial_number, search_term),
-            contains_ci(User.full_name, search_term),
-            tier_match,
-            modality_match,
-        ]
+        search_by_field = {
+            "inspection_number": [contains_ci(Inspection.inspection_number, search_term)],
+            "frequency": [contains_ci(Inspection.inspection_frequency, normalized_value)],
+            "requirement": [contains_ci(Inspection.compliance_requirement, search_term)],
+            "criticality": [contains_ci(Inspection.criticality, search_term)],
+            "status": [
+                value_contains_ci(Inspection.status, normalized_value),
+                value_contains_ci(Inspection.result, normalized_value),
+            ],
+            "date": [
+                value_contains_ci(Inspection.scheduled_date, search_term),
+                value_contains_ci(Inspection.started_at, search_term),
+                value_contains_ci(Inspection.completed_at, search_term),
+            ],
+            "batch": [contains_ci(InspectionBatch.batch_number, search_term)],
+            "facility": [contains_ci(Facility.name, search_term)],
+            "asset": [
+                contains_ci(Equipment.asset_tag, search_term),
+                contains_ci(Equipment.make, search_term),
+                contains_ci(Equipment.model, search_term),
+                contains_ci(InventoryPart.part_number, search_term),
+                contains_ci(InventoryPart.description, search_term),
+                contains_ci(InventoryPart.make, search_term),
+                contains_ci(InventoryPart.model, search_term),
+            ],
+            "serial": [
+                contains_ci(Equipment.serial_number, search_term),
+                contains_ci(InventoryPart.serial_number, search_term),
+            ],
+            "technician": [contains_ci(User.full_name, search_term)],
+            "tier": [tier_match],
+            "modality": [modality_match],
+        }
         searched_date = parsed_date_bounds(search_term)
         if searched_date:
-            search_predicates.append(
+            search_by_field["date"].append(
                 and_(
                     inspection_date_column >= searched_date[0],
                     inspection_date_column < searched_date[1],
@@ -1480,7 +1497,7 @@ def list_inspections(
             .outerjoin(InventoryPart, Inspection.inventory_part_id == InventoryPart.id)
             .outerjoin(InspectionBatch, Inspection.batch_id == InspectionBatch.id)
             .outerjoin(User, Inspection.inspector_id == User.id)
-            .filter(or_(*search_predicates))
+            .filter(or_(*predicates_for_field(search_field, search_by_field)))
         )
     if current_user.role == UserRole.TECHNICIAN:
         query = query.filter(Inspection.inspector_id == current_user.id)
@@ -1522,6 +1539,7 @@ def list_inspection_batches(
     status_filter: Optional[InspectionStatus] = Query(None, alias="status"),
     facility_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
@@ -1566,23 +1584,25 @@ def list_inspection_batches(
             )
             .exists()
         )
+        search_by_field = {
+            "inspection_number": [asset_match],
+            "batch": [contains_ci(InspectionBatch.batch_number, search_term)],
+            "facility": [contains_ci(Facility.name, search_term)],
+            "technician": [contains_ci(User.full_name, search_term)],
+            "frequency": [contains_ci(InspectionBatch.inspection_frequency, normalized_value)],
+            "status": [value_contains_ci(InspectionBatch.status, normalized_value)],
+            "date": [
+                value_contains_ci(InspectionBatch.scheduled_date, search_term),
+                value_contains_ci(InspectionBatch.started_at, search_term),
+                value_contains_ci(InspectionBatch.completed_at, search_term),
+            ],
+            "asset": [asset_match],
+        }
         query = (
             query
             .outerjoin(Facility, InspectionBatch.facility_id == Facility.id)
             .outerjoin(User, InspectionBatch.inspector_id == User.id)
-            .filter(
-                or_(
-                    contains_ci(InspectionBatch.batch_number, search_term),
-                    contains_ci(Facility.name, search_term),
-                    contains_ci(User.full_name, search_term),
-                    contains_ci(InspectionBatch.inspection_frequency, normalized_value),
-                    value_contains_ci(InspectionBatch.status, normalized_value),
-                    value_contains_ci(InspectionBatch.scheduled_date, search_term),
-                    value_contains_ci(InspectionBatch.started_at, search_term),
-                    value_contains_ci(InspectionBatch.completed_at, search_term),
-                    asset_match,
-                )
-            )
+            .filter(or_(*predicates_for_field(search_field, search_by_field)))
         )
     batch_date_column = InspectionBatch.scheduled_date
     if status_filter == InspectionStatus.IN_PROGRESS:
@@ -2675,6 +2695,7 @@ def list_inspection_quotations(
     db: Session = Depends(get_db),
     invoice_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None),
     balance_filter: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
@@ -2692,24 +2713,32 @@ def list_inspection_quotations(
     if search_term:
         normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
         searched_date = parsed_date_value(search_term)
-        search_predicates = [
-            contains_ci(Invoice.invoice_number, search_term),
-            contains_ci(Invoice.customer_name, search_term),
-            contains_ci(Invoice.customer_email, search_term),
-            contains_ci(Invoice.notes, search_term),
-            contains_ci(Invoice.payment_method, normalized_value),
-            value_contains_ci(Invoice.status, normalized_value),
-            value_contains_ci(Invoice.total_amount, search_term),
-            value_contains_ci(Invoice.amount_paid, search_term),
-            value_contains_ci(Invoice.balance_due, search_term),
-            value_contains_ci(Invoice.issue_date, search_term),
-            value_contains_ci(Invoice.due_date, search_term),
-            contains_ci(Facility.name, search_term),
-            contains_ci(Inspection.inspection_number, search_term),
-            contains_ci(InspectionBatch.batch_number, search_term),
-        ]
+        search_by_field = {
+            "billing_number": [contains_ci(Invoice.invoice_number, search_term)],
+            "related_number": [
+                contains_ci(Inspection.inspection_number, search_term),
+                contains_ci(InspectionBatch.batch_number, search_term),
+            ],
+            "facility_customer": [
+                contains_ci(Facility.name, search_term),
+                contains_ci(Invoice.customer_name, search_term),
+                contains_ci(Invoice.customer_email, search_term),
+            ],
+            "total": [value_contains_ci(Invoice.total_amount, search_term)],
+            "paid": [value_contains_ci(Invoice.amount_paid, search_term)],
+            "balance": [value_contains_ci(Invoice.balance_due, search_term)],
+            "status": [value_contains_ci(Invoice.status, normalized_value)],
+            "due": [
+                value_contains_ci(Invoice.issue_date, search_term),
+                value_contains_ci(Invoice.due_date, search_term),
+            ],
+            "description": [
+                contains_ci(Invoice.notes, search_term),
+                contains_ci(Invoice.payment_method, normalized_value),
+            ],
+        }
         if searched_date:
-            search_predicates.extend(
+            search_by_field["due"].extend(
                 [Invoice.issue_date == searched_date, Invoice.due_date == searched_date]
             )
         query = (
@@ -2717,7 +2746,7 @@ def list_inspection_quotations(
             .outerjoin(Facility, Invoice.facility_id == Facility.id)
             .outerjoin(Inspection, Invoice.inspection_id == Inspection.id)
             .outerjoin(InspectionBatch, Invoice.inspection_batch_id == InspectionBatch.id)
-            .filter(or_(*search_predicates))
+            .filter(or_(*predicates_for_field(search_field, search_by_field)))
         )
 
     # Keep the KPI summary consistent with the existing UI: it reflects the

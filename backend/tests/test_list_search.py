@@ -8,6 +8,7 @@ from app.utils.list_search import (
     normalize_list_search,
     parsed_date_bounds,
     parsed_date_value,
+    predicates_for_field,
 )
 
 
@@ -35,3 +36,24 @@ def test_displayed_us_and_iso_dates_are_parsed_as_exact_days():
 
 def test_invalid_date_is_not_treated_as_a_date():
     assert parsed_date_bounds("facility 205") is None
+
+
+def test_field_search_selects_only_the_requested_whitelisted_predicates():
+    predicates = {
+        "facility": ["facility-name", "facility-id"],
+        "status": ["status"],
+    }
+
+    assert predicates_for_field("facility", predicates) == ["facility-name", "facility-id"]
+    assert predicates_for_field("status", predicates) == ["status"]
+
+
+def test_field_search_defaults_unknown_and_legacy_requests_to_all_fields():
+    predicates = {
+        "facility": ["facility-name"],
+        "status": ["status"],
+    }
+
+    assert predicates_for_field(None, predicates) == ["facility-name", "status"]
+    assert predicates_for_field("all", predicates) == ["facility-name", "status"]
+    assert predicates_for_field("old-bookmark-value", predicates) == ["facility-name", "status"]

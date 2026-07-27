@@ -54,6 +54,7 @@ import FacilityInventoryModal from './FacilityInventoryModal'
 import ModalitiesModal from './ModalitiesModal'
 import DepartmentsModal from './DepartmentsModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import SearchFieldSelect from '@/components/SearchFieldSelect'
 import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
 
 const STAT_CARDS = [
@@ -89,6 +90,18 @@ const STAT_CARDS = [
     caption: 'Visible tiered records',
     bg: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
   },
+]
+
+const FACILITY_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'id', label: 'Facility ID' },
+  { value: 'facility', label: 'Facility name' },
+  { value: 'location', label: 'Location' },
+  { value: 'contact', label: 'Contact' },
+  { value: 'timezone', label: 'Timezone / hours' },
+  { value: 'manager', label: 'Manager / admin' },
+  { value: 'tier', label: 'Tier' },
+  { value: 'status', label: 'Status' },
 ]
 
 type FacilityExportOption = {
@@ -179,6 +192,7 @@ const FacilityList = () => {
   const canAddFacilityInventory = hasPermission(user, 'facility-inventory', 'add')
   const [searchParams, setSearchParams] = useSearchParams()
   const querySearch = searchParams.get('search') || ''
+  const querySearchField = searchParams.get('search_field') || 'all'
   
   const [search, setSearch] = useState(querySearch)
   const [searchInput, setSearchInput] = useState(querySearch)
@@ -211,9 +225,13 @@ const FacilityList = () => {
       
       if (trimmed !== currentParam) {
         if (trimmed) {
-          setSearchParams({ search: trimmed }, { replace: true })
+          const next = new URLSearchParams(searchParams)
+          next.set('search', trimmed)
+          setSearchParams(next, { replace: true })
         } else {
-          setSearchParams({}, { replace: true })
+          const next = new URLSearchParams(searchParams)
+          next.delete('search')
+          setSearchParams(next, { replace: true })
         }
       }
     }, 400)
@@ -237,8 +255,13 @@ const FacilityList = () => {
   const skip = (page - 1) * limit
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['facilities', search, skip, limit],
-    queryFn: () => fetchFacilities({ search, skip, limit }),
+    queryKey: ['facilities', search, querySearchField, skip, limit],
+    queryFn: () => fetchFacilities({
+      search,
+      search_field: querySearchField === 'all' ? undefined : querySearchField,
+      skip,
+      limit,
+    }),
     placeholderData: previousData => previousData,
   })
 
@@ -298,12 +321,22 @@ const FacilityList = () => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
+    const next = new URLSearchParams(searchParams)
     if (searchInput.trim()) {
-      setSearchParams({ search: searchInput.trim() })
+      next.set('search', searchInput.trim())
     } else {
-      setSearchParams({})
+      next.delete('search')
     }
+    setSearchParams(next)
     setSearch(searchInput.trim())
+    setPage(1)
+  }
+
+  const handleSearchFieldChange = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'all') next.delete('search_field')
+    else next.set('search_field', value)
+    setSearchParams(next, { replace: true })
     setPage(1)
   }
 
@@ -507,6 +540,12 @@ const FacilityList = () => {
       <Card sx={{ overflow: 'hidden' }}>
         {/* Toolbar */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2.5, borderBottom: '1px solid rgba(124,58,237,0.08)', flexWrap: 'wrap' }}>
+          <SearchFieldSelect
+            value={querySearchField}
+            options={FACILITY_SEARCH_FIELDS}
+            onChange={handleSearchFieldChange}
+            ariaLabel="Facility search field"
+          />
           <Box component="form" onSubmit={handleSearch} sx={{
             display: 'flex', alignItems: 'center', gap: 1,
             backgroundColor: '#F5F3FF', borderRadius: '12px', px: 2, py: 1,
@@ -518,13 +557,18 @@ const FacilityList = () => {
               <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
             </IconButton>
             <InputBase
-              placeholder="Search facility, location, contact, manager, tier, status, or ID..."
+              placeholder={`Search ${FACILITY_SEARCH_FIELDS.find((field) => field.value === querySearchField)?.label.toLowerCase() || 'facilities'}...`}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}
             />
             {searchInput && (
-              <IconButton size="small" onClick={() => { setSearchInput(''); setSearchParams({}, { replace: true }) }} sx={{ p: '2px' }}>
+              <IconButton size="small" onClick={() => {
+                setSearchInput('')
+                const next = new URLSearchParams(searchParams)
+                next.delete('search')
+                setSearchParams(next, { replace: true })
+              }} sx={{ p: '2px' }}>
                 <ClearIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
               </IconButton>
             )}

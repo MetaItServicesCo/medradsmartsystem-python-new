@@ -59,6 +59,7 @@ from app.utils.list_search import (
     contains_ci,
     normalize_list_search,
     parsed_date_bounds,
+    predicates_for_field,
     value_contains_ci,
 )
 
@@ -815,6 +816,7 @@ def list_service_requests(
     priority: Optional[str] = Query(None),
     facility_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     status_group: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
@@ -837,27 +839,32 @@ def list_service_requests(
     if search_term:
         requester = aliased(User)
         normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
-        search_predicates = [
-            contains_ci(ServiceRequest.request_number, search_term),
-            contains_ci(Facility.name, search_term),
-            contains_ci(Equipment.asset_tag, search_term),
-            contains_ci(Equipment.make, search_term),
-            contains_ci(Equipment.model, search_term),
-            contains_ci(Equipment.serial_number, search_term),
-            contains_ci(requester.full_name, search_term),
-            contains_ci(requester.username, search_term),
-            contains_ci(requester.email, search_term),
-            contains_ci(ServiceRequest.requested_by_name, search_term),
-            value_contains_ci(ServiceRequest.priority, normalized_value),
-            value_contains_ci(ServiceRequest.status, normalized_value),
-            value_contains_ci(ServiceRequest.created_at, search_term),
-        ]
+        search_by_field = {
+            "request_number": [contains_ci(ServiceRequest.request_number, search_term)],
+            "facility": [contains_ci(Facility.name, search_term)],
+            "equipment": [
+                contains_ci(Equipment.asset_tag, search_term),
+                contains_ci(Equipment.make, search_term),
+                contains_ci(Equipment.model, search_term),
+                contains_ci(Equipment.serial_number, search_term),
+            ],
+            "priority": [value_contains_ci(ServiceRequest.priority, normalized_value)],
+            "status": [value_contains_ci(ServiceRequest.status, normalized_value)],
+            "requester": [
+                contains_ci(requester.full_name, search_term),
+                contains_ci(requester.username, search_term),
+                contains_ci(requester.email, search_term),
+                contains_ci(ServiceRequest.requested_by_name, search_term),
+            ],
+            "created": [value_contains_ci(ServiceRequest.created_at, search_term)],
+        }
         created_bounds = parsed_date_bounds(search_term)
         if created_bounds:
-            search_predicates.append(and_(
+            search_by_field["created"].append(and_(
                 ServiceRequest.created_at >= created_bounds[0],
                 ServiceRequest.created_at < created_bounds[1],
             ))
+        search_predicates = predicates_for_field(search_field, search_by_field)
         base_query = (
             base_query
             .outerjoin(Facility, ServiceRequest.facility_id == Facility.id)
@@ -936,6 +943,7 @@ def list_service_invoices(
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
     service_request_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -964,23 +972,37 @@ def list_service_invoices(
         query = query.filter(Invoice.status == status_filter)
     if service_request_id:
         query = query.filter(Invoice.service_request_id == service_request_id)
-    if search and search.strip():
-        like = f"%{search.strip()}%"
+    search_term = normalize_list_search(search)
+    if search_term:
+        normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        date_bounds = parsed_date_bounds(search_term)
+        search_by_field = {
+            "billing_number": [contains_ci(Invoice.invoice_number, search_term)],
+            "related_number": [contains_ci(ServiceRequest.request_number, search_term)],
+            "facility_customer": [
+                contains_ci(Facility.name, search_term),
+                contains_ci(Invoice.customer_name, search_term),
+                contains_ci(Invoice.customer_email, search_term),
+            ],
+            "total": [value_contains_ci(Invoice.total_amount, search_term)],
+            "paid": [value_contains_ci(Invoice.amount_paid, search_term)],
+            "balance": [value_contains_ci(Invoice.balance_due, search_term)],
+            "status": [value_contains_ci(Invoice.status, normalized_value)],
+            "due": [value_contains_ci(Invoice.due_date, search_term)],
+            "description": [
+                contains_ci(Invoice.notes, search_term),
+                contains_ci(ServiceRequest.problem_description, search_term),
+            ],
+        }
+        if date_bounds:
+            search_by_field["due"].append(
+                and_(Invoice.due_date >= date_bounds[0].date(), Invoice.due_date < date_bounds[1].date())
+            )
         query = (
             query
             .outerjoin(ServiceRequest, Invoice.service_request_id == ServiceRequest.id)
             .outerjoin(Facility, Invoice.facility_id == Facility.id)
-            .filter(
-                or_(
-                    Invoice.invoice_number.ilike(like),
-                    Invoice.customer_name.ilike(like),
-                    Invoice.customer_email.ilike(like),
-                    Invoice.notes.ilike(like),
-                    ServiceRequest.request_number.ilike(like),
-                    ServiceRequest.problem_description.ilike(like),
-                    Facility.name.ilike(like),
-                )
-            )
+            .filter(or_(*predicates_for_field(search_field, search_by_field)))
         )
     total = query.count()
     invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
@@ -2262,6 +2284,7 @@ def delete_quotation(
 def get_all_quotations(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     current_user: User = Depends(get_current_user),
@@ -2279,16 +2302,29 @@ def get_all_quotations(
         )
         .order_by(ServiceRequestQuotation.created_at.desc())
     )
-    if search and search.strip():
-        like = f"%{search.strip()}%"
+    search_term = normalize_list_search(search)
+    if search_term:
+        normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        search_by_field = {
+            "billing_number": [contains_ci(ServiceRequestQuotation.quotation_number, search_term)],
+            "related_number": [contains_ci(ServiceRequest.request_number, search_term)],
+            "facility_customer": [contains_ci(Facility.name, search_term)],
+            "total": [value_contains_ci(ServiceRequestQuotation.amount, search_term)],
+            "paid": [
+                ServiceRequestQuotation.payments.any(
+                    value_contains_ci(QuotationPayment.amount, search_term)
+                )
+            ],
+            "balance": [value_contains_ci(ServiceRequestQuotation.amount, search_term)],
+            "status": [contains_ci(ServiceRequestQuotation.status, normalized_value)],
+            "due": [value_contains_ci(ServiceRequestQuotation.created_at, search_term)],
+            "description": [
+                contains_ci(ServiceRequestQuotation.description, search_term),
+                contains_ci(ServiceRequest.problem_description, search_term),
+            ],
+        }
         quotations = quotations.outerjoin(Facility, ServiceRequest.facility_id == Facility.id).filter(
-            or_(
-                ServiceRequestQuotation.quotation_number.ilike(like),
-                ServiceRequestQuotation.description.ilike(like),
-                ServiceRequest.request_number.ilike(like),
-                ServiceRequest.problem_description.ilike(like),
-                Facility.name.ilike(like),
-            )
+            or_(*predicates_for_field(search_field, search_by_field))
         )
     quotations = (
         _scope_service_query(quotations, ServiceRequest.facility_id, db, current_user)

@@ -161,6 +161,7 @@ export interface InventoryListParams {
   tier_id?: number
   part_type?: string
   search?: string
+  search_field?: string
   low_stock?: boolean
   expiring_days?: number
   skip?: number

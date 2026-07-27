@@ -22,7 +22,7 @@ from app.core.security import create_access_token, get_password_hash
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notification
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
-from app.utils.list_search import contains_ci, normalize_list_search, value_contains_ci
+from app.utils.list_search import contains_ci, normalize_list_search, predicates_for_field, value_contains_ci
 
 router = APIRouter()
 
@@ -106,7 +106,11 @@ def _build_user_response(
     )
 
 
-def _apply_user_list_search(query, search: Optional[str]):
+def _apply_user_list_search(
+    query,
+    search: Optional[str],
+    search_field: Optional[str] = None,
+):
     search_term = normalize_list_search(search)
     if not search_term:
         return query
@@ -134,20 +138,22 @@ def _apply_user_list_search(query, search: Optional[str]):
     if "inactive".startswith(search_term.lower()) or "disabled".startswith(search_term.lower()):
         status_predicates.append(User.is_active.is_(False))
 
-    return query.filter(
-        or_(
-            value_contains_ci(User.id, identifier_term),
+    search_by_field = {
+        "id": [value_contains_ci(User.id, identifier_term)],
+        "user": [
             contains_ci(User.full_name, search_term),
-            contains_ci(User.username, search_term),
             contains_ci(User.email, search_term),
             contains_ci(User.phone, search_term),
-            value_contains_ci(User.role, normalized_value),
-            value_contains_ci(User.user_type, normalized_value),
-            primary_facility_exists,
-            secondary_facility_exists,
-            *status_predicates,
-        )
-    )
+        ],
+        "username": [contains_ci(User.username, search_term)],
+        "email": [contains_ci(User.email, search_term)],
+        "phone": [contains_ci(User.phone, search_term)],
+        "role": [value_contains_ci(User.role, normalized_value)],
+        "type": [value_contains_ci(User.user_type, normalized_value)],
+        "facility": [primary_facility_exists, secondary_facility_exists],
+        "status": status_predicates,
+    }
+    return query.filter(or_(*predicates_for_field(search_field, search_by_field)))
 
 
 @router.get("/me", response_model=UserResponse)
@@ -315,6 +321,7 @@ def list_users(
     role: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
+    search_field: Optional[str] = Query(None),
     facility_id: Optional[int] = Query(None, ge=1),
 ) -> Any:
     """List all users with optional filters."""
@@ -332,7 +339,7 @@ def list_users(
             query = query.filter(User.role == role)
         if is_active is not None:
             query = query.filter(User.is_active == is_active)
-        query = _apply_user_list_search(query, search)
+        query = _apply_user_list_search(query, search, search_field)
         total = query.count()
         items = query.order_by(User.created_at.desc(), User.id.desc()).offset(skip).limit(limit).all()
     elif is_facility_scoped_user(current_user):
@@ -345,7 +352,7 @@ def list_users(
             query = query.filter(User.role == role)
         if is_active is not None:
             query = query.filter(User.is_active == is_active)
-        query = _apply_user_list_search(query, search)
+        query = _apply_user_list_search(query, search, search_field)
         total = query.count()
         items = query.order_by(User.created_at.desc(), User.id.desc()).offset(skip).limit(limit).all()
     else:
@@ -354,7 +361,7 @@ def list_users(
             query = query.filter(User.role == role)
         if is_active is not None:
             query = query.filter(User.is_active == is_active)
-        query = _apply_user_list_search(query, search)
+        query = _apply_user_list_search(query, search, search_field)
         total = query.count()
         items = query.order_by(User.created_at.desc(), User.id.desc()).offset(skip).limit(limit).all()
 

@@ -8,7 +8,7 @@ case-insensitive predicates so every list has the same search semantics.
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
-from typing import Any, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from sqlalchemy import String, cast
 
@@ -59,3 +59,23 @@ def parsed_date_bounds(term: str) -> Optional[tuple[datetime, datetime]]:
 def parsed_date_value(term: str) -> Optional[date]:
     bounds = parsed_date_bounds(term)
     return bounds[0].date() if bounds else None
+
+
+def predicates_for_field(
+    search_field: Optional[str],
+    predicates: Mapping[str, Sequence[Any]],
+) -> list[Any]:
+    """Return predicates for one UI-selected list field or every field.
+
+    Unknown values intentionally fall back to ``all`` so older bookmarked URLs
+    and clients remain backward compatible. Endpoint-specific mappings keep
+    field names explicit and prevent clients from selecting arbitrary columns.
+    """
+    normalized = search_field.strip().lower() if isinstance(search_field, str) else "all"
+    if normalized != "all" and normalized in predicates:
+        return list(predicates[normalized])
+
+    selected: list[Any] = []
+    for field_predicates in predicates.values():
+        selected.extend(field_predicates)
+    return selected

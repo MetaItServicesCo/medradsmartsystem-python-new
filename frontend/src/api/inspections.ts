@@ -341,11 +341,13 @@ export const fetchInspectionFacilities = async (): Promise<InspectionFacility[]>
 export const fetchInspectionForms = async (
   modalityId?: number,
   search?: string,
+  searchField?: string,
 ): Promise<{ items: InspectionFormOption[]; total: number }> => {
   const res = await apiClient.get('/inspections/forms', {
     params: {
       modality_id: modalityId,
       search,
+      search_field: searchField,
     },
   })
   return res.data
@@ -366,18 +368,20 @@ export const createInspectionForm = async (data: InspectionFormPayload): Promise
 
 export const fetchInspectionFacilityInventory = async (
   facilityId: number,
-  search?: string
+  search?: string,
+  searchField?: string,
 ): Promise<InspectionInventoryItem[]> => {
-  const res = await apiClient.get(`/inspections/facilities/${facilityId}/inventory`, { params: { search } })
+  const res = await apiClient.get(`/inspections/facilities/${facilityId}/inventory`, { params: { search, search_field: searchField } })
   return res.data
 }
 
 export const fetchInspectionFacilityEquipment = async (
   facilityId: number,
   search?: string,
+  searchField?: string,
 ): Promise<InspectionEquipmentItem[]> => {
   const res = await apiClient.get(`/inspections/facilities/${facilityId}/equipment`, {
-    params: { search },
+    params: { search, search_field: searchField },
   })
   return res.data
 }
@@ -388,6 +392,7 @@ export const fetchInspections = async (
     facility_id?: number
     unbatched_only?: boolean
     search?: string
+    search_field?: string
     date_from?: string
     date_to?: string
     skip?: number
@@ -399,7 +404,7 @@ export const fetchInspections = async (
 }
 
 export const fetchInspectionBatches = async (
-  params: { status?: InspectionStatus; facility_id?: number; search?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
+  params: { status?: InspectionStatus; facility_id?: number; search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<InspectionBatchListResponse> => {
   const res = await apiClient.get('/inspections/batches', { params })
   return res.data
@@ -528,6 +533,7 @@ export const fetchInspectionQuotations = async (
   params: {
     invoice_id?: number
     search?: string
+    search_field?: string
     status_filter?: string
     balance_filter?: 'outstanding' | 'paid'
     skip?: number
@@ -538,13 +544,16 @@ export const fetchInspectionQuotations = async (
   return res.data
 }
 
-export const fetchAllInspectionQuotations = async (search?: string): Promise<InspectionInvoiceListResponse> => {
+export const fetchAllInspectionQuotations = async (
+  search?: string,
+  searchField?: string,
+): Promise<InspectionInvoiceListResponse> => {
   const limit = 100
   let skip = 0
   let total = 0
   const items: InspectionInvoice[] = []
   do {
-    const page = await fetchInspectionQuotations({ search, skip, limit })
+    const page = await fetchInspectionQuotations({ search, search_field: searchField, skip, limit })
     if (page.items.length === 0) break
     items.push(...page.items)
     total = page.total

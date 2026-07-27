@@ -31,6 +31,7 @@ import EditUserModal from './EditUserModal'
 import PermissionEditorModal from './PermissionEditorModal'
 import AddExistingUserModal from './AddExistingUserModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import SearchFieldSelect from '@/components/SearchFieldSelect'
 import { fetchFacility } from '@/api/facilities'
 import { hasPermission } from '@/config/permissions'
 
@@ -44,6 +45,19 @@ const ROLE_OPTIONS = [
   { value: 'facility_manager', label: 'Facility Manager' },
   { value: 'employee', label: 'Employee' },
   { value: 'client', label: 'Client' },
+]
+
+const USER_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'id', label: 'User ID' },
+  { value: 'user', label: 'Name / contact' },
+  { value: 'username', label: 'Username' },
+  { value: 'email', label: 'Email' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'role', label: 'Role' },
+  { value: 'type', label: 'User type' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'status', label: 'Status' },
 ]
 
 const ROLE_COLORS: Record<string, string> = {
@@ -82,6 +96,7 @@ const Users = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const login = useAuthStore((s) => s.login)
   const facilityIdParam = searchParams.get('facility_id')
+  const searchField = searchParams.get('search_field') || 'all'
   const parsedFacilityId = facilityIdParam ? Number(facilityIdParam) : undefined
   const facilityId = parsedFacilityId && Number.isInteger(parsedFacilityId) && parsedFacilityId > 0
     ? parsedFacilityId
@@ -143,9 +158,10 @@ const Users = () => {
   }
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['users', debouncedSearch, roleFilter, facilityId, page, rowsPerPage],
+    queryKey: ['users', debouncedSearch, searchField, roleFilter, facilityId, page, rowsPerPage],
     queryFn: () => fetchUsers({
       search: debouncedSearch || undefined,
+      search_field: searchField === 'all' ? undefined : searchField,
       role: roleFilter || undefined,
       facility_id: facilityId,
       skip: page * rowsPerPage,
@@ -218,6 +234,14 @@ const Users = () => {
     setSearchParams(nextParams, { replace: true })
   }
 
+  const handleSearchFieldChange = (value: string) => {
+    const nextParams = new URLSearchParams(searchParams)
+    if (value === 'all') nextParams.delete('search_field')
+    else nextParams.set('search_field', value)
+    setSearchParams(nextParams, { replace: true })
+    setPage(0)
+  }
+
   return (
     <Box className="page-enter">
       <Typography variant="body2" sx={{ color: '#9CA3AF', mb: 3 }}>
@@ -247,9 +271,15 @@ const Users = () => {
 
       {/* Toolbar */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+        <SearchFieldSelect
+          value={searchField}
+          options={USER_SEARCH_FIELDS}
+          onChange={handleSearchFieldChange}
+          ariaLabel="User search field"
+        />
         <TextField
           size="small"
-          placeholder="Search user, role, type, facility, status, or ID..."
+          placeholder={`Search ${USER_SEARCH_FIELDS.find((field) => field.value === searchField)?.label.toLowerCase() || 'users'}...`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           sx={{ width: 280 }}

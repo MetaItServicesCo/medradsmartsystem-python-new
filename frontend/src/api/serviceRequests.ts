@@ -380,6 +380,7 @@ export interface ServiceRequestListParams {
   priority?: string
   facility_id?: number
   search?: string
+  search_field?: string
   status_group?: 'new_open' | 'active' | 'completed'
   date_from?: string
   date_to?: string
@@ -502,19 +503,22 @@ export const addServiceRequestNote = async (id: number, note: string): Promise<S
 }
 
 export const fetchServiceInvoices = async (
-  params: { status?: string; service_request_id?: number; search?: string; skip?: number; limit?: number } = {}
+  params: { status?: string; service_request_id?: number; search?: string; search_field?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: ServiceInvoice[]; total: number; skip: number; limit: number }> => {
   const res = await apiClient.get('/service-requests/invoices', { params })
   return res.data
 }
 
-export const fetchAllServiceInvoices = async (search?: string): Promise<{ items: ServiceInvoice[]; total: number }> => {
+export const fetchAllServiceInvoices = async (
+  search?: string,
+  searchField?: string,
+): Promise<{ items: ServiceInvoice[]; total: number }> => {
   const limit = 100
   let skip = 0
   let total = 0
   const items: ServiceInvoice[] = []
   do {
-    const page = await fetchServiceInvoices({ search, skip, limit })
+    const page = await fetchServiceInvoices({ search, search_field: searchField, skip, limit })
     if (page.items.length === 0) break
     items.push(...page.items)
     total = page.total
@@ -568,20 +572,28 @@ export const deleteServiceRequestQuotation = async (
 }
 
 const fetchServiceQuotationsPage = async (
-  params: { search?: string; skip?: number; limit?: number } = {}
+  params: { search?: string; search_field?: string; skip?: number; limit?: number } = {}
 ): Promise<ServiceRequestQuotationList[]> => {
   const res = await apiClient.get('/service-requests/quotations/all', { params })
   return res.data
 }
 
-export const fetchAllQuotations = async (search?: unknown): Promise<ServiceRequestQuotationList[]> => {
+export const fetchAllQuotations = async (
+  search?: unknown,
+  searchField?: string,
+): Promise<ServiceRequestQuotationList[]> => {
   const normalizedSearch = typeof search === 'string' ? search : undefined
   const limit = 100
   let skip = 0
   const quotations: ServiceRequestQuotationList[] = []
 
   while (true) {
-    const page = await fetchServiceQuotationsPage({ search: normalizedSearch, skip, limit })
+    const page = await fetchServiceQuotationsPage({
+      search: normalizedSearch,
+      search_field: searchField,
+      skip,
+      limit,
+    })
     quotations.push(...page)
     if (page.length < limit) break
     skip += page.length

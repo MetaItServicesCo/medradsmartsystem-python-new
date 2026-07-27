@@ -112,6 +112,7 @@ export interface FacilityListParams {
   skip?: number
   limit?: number
   search?: string
+  search_field?: string
 }
 
 export interface FacilityDocument {

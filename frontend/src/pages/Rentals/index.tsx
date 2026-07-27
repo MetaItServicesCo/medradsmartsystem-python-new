@@ -30,6 +30,7 @@ import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditC
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
+import SearchFieldSelect from '@/components/SearchFieldSelect'
 import {
   fetchRentalParts,
   fetchRentals,
@@ -56,6 +57,51 @@ import { digitsOnly, formatUSPhone, formatUSPhoneInput } from '@/utils/formatter
 
 const ROUTE_TABS = ['/rentals/agreements', '/rentals/invoices', '/rentals/products', '/rentals/history']
 const PAGE_SIZE = 20
+const RENTAL_AGREEMENT_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'agreement', label: 'Agreement #' },
+  { value: 'customer', label: 'Customer' },
+  { value: 'product', label: 'Product' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'created_by', label: 'Created by' },
+  { value: 'billing', label: 'Billing / amount' },
+  { value: 'status', label: 'Status' },
+  { value: 'condition', label: 'Condition' },
+  { value: 'date', label: 'Date' },
+]
+const RENTAL_INVOICE_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'invoice', label: 'Invoice #' },
+  { value: 'agreement', label: 'Agreement #' },
+  { value: 'customer', label: 'Customer' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'status', label: 'Status' },
+  { value: 'amount', label: 'Amount' },
+  { value: 'payment_method', label: 'Payment method' },
+  { value: 'date', label: 'Date' },
+  { value: 'notes', label: 'Notes' },
+]
+const RENTAL_PRODUCT_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'part_number', label: 'Part #' },
+  { value: 'description', label: 'Description' },
+  { value: 'make_model', label: 'Make / model' },
+  { value: 'serial', label: 'Serial #' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'condition', label: 'Condition' },
+  { value: 'price', label: 'Price' },
+  { value: 'stock', label: 'Stock' },
+  { value: 'status', label: 'Status' },
+]
+const RENTAL_HISTORY_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'agreement', label: 'Agreement #' },
+  { value: 'customer', label: 'Customer' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'product', label: 'Product / part' },
+  { value: 'activity', label: 'Activity / user' },
+  { value: 'date', label: 'Date' },
+]
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)'
 const SYSTEM_PANEL_BORDER = '#BFDBFE'
 const SYSTEM_PANEL_BG = '#F0F9FF'
@@ -190,6 +236,7 @@ const Rentals = () => {
   const queryClient = useQueryClient()
 
   const routeSearch = new URLSearchParams(location.search).get('search') || ''
+  const searchField = new URLSearchParams(location.search).get('search_field') || 'all'
   const [search, setSearch] = useState(routeSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [agreementPage, setAgreementPage] = useState(0)
@@ -260,39 +307,42 @@ const Rentals = () => {
     staleTime: 5 * 60_000,
   })
   const partsQ = useQuery({
-    queryKey: ['rental-parts', debouncedSearch, productsPage],
+    queryKey: ['rental-parts', debouncedSearch, searchField, productsPage],
     queryFn: () => fetchRentalParts(
       debouncedSearch || undefined,
       PAGE_SIZE,
       productsPage * PAGE_SIZE,
+      searchField === 'all' ? undefined : searchField,
     ),
     enabled: tab === 2,
     placeholderData: previousData => previousData,
   })
   const rentalsQ = useQuery({
-    queryKey: ['rental-agreements', debouncedSearch, agreementPage, agreementRowsPerPage],
+    queryKey: ['rental-agreements', debouncedSearch, searchField, agreementPage, agreementRowsPerPage],
     queryFn: () => fetchRentals({
       search: debouncedSearch || undefined,
+      search_field: searchField === 'all' ? undefined : searchField,
       skip: agreementPage * agreementRowsPerPage,
       limit: agreementRowsPerPage,
     }),
     placeholderData: previousData => previousData,
   })
   const activeRentalsCountQ = useQuery({
-    queryKey: ['rental-agreements', 'active-count', debouncedSearch],
-    queryFn: () => fetchRentals({ status: 'active', search: debouncedSearch || undefined, skip: 0, limit: 1 }),
+    queryKey: ['rental-agreements', 'active-count', debouncedSearch, searchField],
+    queryFn: () => fetchRentals({ status: 'active', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: 0, limit: 1 }),
     placeholderData: previousData => previousData,
   })
   const invoicesQ = useQuery({
-    queryKey: ['rental-invoices', debouncedSearch, invoicesPage],
-    queryFn: () => fetchRentalInvoices({ search: debouncedSearch || undefined, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    queryKey: ['rental-invoices', debouncedSearch, searchField, invoicesPage],
+    queryFn: () => fetchRentalInvoices({ search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
     enabled: tab === 1,
     placeholderData: previousData => previousData,
   })
   const historyQ = useQuery({
-    queryKey: ['rental-history', debouncedSearch, historyPage],
+    queryKey: ['rental-history', debouncedSearch, searchField, historyPage],
     queryFn: () => fetchRentalHistory({
       search: debouncedSearch || undefined,
+      search_field: searchField === 'all' ? undefined : searchField,
       skip: historyPage * PAGE_SIZE,
       limit: PAGE_SIZE,
     }),
@@ -1003,6 +1053,44 @@ const Rentals = () => {
     </TableContainer>
   )
 
+  const activeSearchFields = tab === 1
+    ? RENTAL_INVOICE_SEARCH_FIELDS
+    : tab === 2
+      ? RENTAL_PRODUCT_SEARCH_FIELDS
+      : tab === 3
+        ? RENTAL_HISTORY_SEARCH_FIELDS
+        : RENTAL_AGREEMENT_SEARCH_FIELDS
+
+  const handleSearchFieldChange = (value: string) => {
+    const params = new URLSearchParams(location.search)
+    if (value === 'all') params.delete('search_field')
+    else params.set('search_field', value)
+    navigate(`${location.pathname}${params.size ? `?${params.toString()}` : ''}`, { replace: true })
+    setAgreementPage(0)
+    setInvoicesPage(0)
+    setHistoryPage(0)
+    setProductsPage(0)
+  }
+
+  const renderSearchControl = (label: string) => (
+    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap' }}>
+      <SearchFieldSelect
+        value={searchField}
+        options={activeSearchFields}
+        onChange={handleSearchFieldChange}
+        ariaLabel="Rental search field"
+      />
+      <TextField
+        size="small"
+        label={label}
+        placeholder={`Search ${activeSearchFields.find((field) => field.value === searchField)?.label.toLowerCase() || 'rentals'}...`}
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        sx={{ minWidth: 280, bgcolor: '#fff' }}
+      />
+    </Box>
+  )
+
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
       <Card sx={{ p: 3, mb: 3, borderRadius: '24px', border: '1px solid #BFDBFE', background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
@@ -1040,7 +1128,7 @@ const Rentals = () => {
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Agreements List</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Track your active agreements and return schedules.</Typography>
               </Box>
-              <TextField size="small" label="Search Agreements..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+              {renderSearchControl('Search agreements')}
             </Box>
             <Box sx={{ p: 3 }}>
               {renderAgreementsTable(rentals, 'No rental agreements found.')}
@@ -1068,7 +1156,7 @@ const Rentals = () => {
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Periodic invoices generated from rental durations.</Typography>
               </Box>
               <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-                <TextField size="small" label="Search invoices..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+                {renderSearchControl('Search invoices')}
                 <Card sx={{ px: 2, py: 0.8, display: 'flex', alignItems: 'center', gap: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
                   <Typography sx={{ fontWeight: 850, fontSize: 12, color: '#4B5563' }}>Collections Progress: {collectionPercent}%</Typography>
                   <Box sx={{ width: 100 }}>
@@ -1089,7 +1177,7 @@ const Rentals = () => {
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental Products catalog</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Inventory parts marked as rental products.</Typography>
               </Box>
-              <TextField size="small" label="Search Products..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+              {renderSearchControl('Search products')}
             </Box>
             <Box sx={{ p: 3 }}>
               {renderProducts()}
@@ -1105,7 +1193,7 @@ const Rentals = () => {
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental History</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by agreement, customer, facility, product, activity, user, or date.</Typography>
               </Box>
-              <TextField size="small" label="Search history..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+              {renderSearchControl('Search history')}
             </Box>
             {renderHistory()}
             {renderPagination(historyQ.data?.total || 0, historyPage, setHistoryPage)}

@@ -104,6 +104,7 @@ export const fetchUsers = async (params?: {
   role?: string
   is_active?: boolean
   search?: string
+  search_field?: string
   facility_id?: number
 }): Promise<UserListResponse> => {
   const res = await apiClient.get('/users/', { params })

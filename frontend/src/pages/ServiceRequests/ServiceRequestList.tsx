@@ -30,6 +30,7 @@ import {
 } from '@/api/serviceRequests'
 import CreateServiceRequestModal from './CreateServiceRequestModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import SearchFieldSelect from '@/components/SearchFieldSelect'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
@@ -73,6 +74,17 @@ const WORKFLOW_OPEN_STATUSES = [
   'waiting_for_vendor_repair',
 ]
 
+const SERVICE_SEARCH_FIELDS = [
+  { value: 'all', label: 'All fields' },
+  { value: 'request_number', label: 'Request #' },
+  { value: 'facility', label: 'Facility' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'priority', label: 'Priority' },
+  { value: 'status', label: 'Status' },
+  { value: 'requester', label: 'Requester' },
+  { value: 'created', label: 'Created' },
+]
+
 const STAT_CARDS = [
   {
     label: 'Total Requests',
@@ -114,6 +126,7 @@ const ServiceRequestList = () => {
     && hasPermission(user, 'service-requests', 'delete')
 
   const querySearch = searchParams.get('search') || ''
+  const querySearchField = searchParams.get('search_field') || 'all'
   const queryStatus = searchParams.get('status') || ''
   const queryPriority = searchParams.get('priority') || ''
   const queryStatusGroup = searchParams.get('status_group') || ''
@@ -150,10 +163,11 @@ const ServiceRequestList = () => {
   const skip = (page - 1) * limit
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['service-requests', querySearch, queryStatus, queryStatusGroup, queryPriority, queryDateFrom, queryDateTo, skip, limit],
+    queryKey: ['service-requests', querySearch, querySearchField, queryStatus, queryStatusGroup, queryPriority, queryDateFrom, queryDateTo, skip, limit],
     queryFn: () =>
       fetchServiceRequests({
         search: querySearch || undefined,
+        search_field: querySearchField === 'all' ? undefined : querySearchField,
         status: queryStatus || undefined,
         status_group: (queryStatusGroup || undefined) as 'new_open' | 'active' | 'completed' | undefined,
         priority: queryPriority || undefined,
@@ -231,6 +245,14 @@ const ServiceRequestList = () => {
     const next = new URLSearchParams(searchParams)
     next.delete('search')
     setSearchParams(next, { replace: true })
+  }
+
+  const handleSearchFieldChange = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'all') next.delete('search_field')
+    else next.set('search_field', value)
+    setSearchParams(next, { replace: true })
+    setPage(1)
   }
 
   const handleActionsOpen = (e: React.MouseEvent<HTMLElement>, sr: ServiceRequest) => {
@@ -312,6 +334,13 @@ const ServiceRequestList = () => {
             backgroundColor: '#fff',
           }}
         >
+          <SearchFieldSelect
+            value={querySearchField}
+            options={SERVICE_SEARCH_FIELDS}
+            onChange={handleSearchFieldChange}
+            ariaLabel="Service request search field"
+          />
+
           {/* Search */}
           <Box
             component="form"
@@ -327,7 +356,7 @@ const ServiceRequestList = () => {
           >
             <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
             <InputBase
-              placeholder="Search request #, facility, equipment, priority, status, requester, or created date..."
+              placeholder={`Search ${SERVICE_SEARCH_FIELDS.find((field) => field.value === querySearchField)?.label.toLowerCase() || 'service requests'}...`}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}
