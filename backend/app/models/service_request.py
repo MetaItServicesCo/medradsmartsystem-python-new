@@ -198,7 +198,7 @@ class ServiceRequest(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     request_number = Column(String, unique=True, nullable=False, index=True)
-    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False, index=True)
     equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=False)
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     assigned_technician_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -216,7 +216,7 @@ class ServiceRequest(Base):
     assigned_at = Column(DateTime, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # New flags

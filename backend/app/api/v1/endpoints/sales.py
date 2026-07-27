@@ -35,6 +35,12 @@ from app.utils.invoice_approval import (
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notifications
 from app.utils.permissions import has_module_permission
+from app.utils.list_search import (
+    contains_ci,
+    normalize_list_search,
+    parsed_date_value,
+    value_contains_ci,
+)
 
 router = APIRouter(dependencies=[Depends(require_module_access("sales"))])
 
@@ -323,22 +329,44 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
 def list_sales_parts(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
-    limit: int = Query(2000, ge=1, le=2000),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = _sales_part_query(db, current_user)
-    if search:
+    search_term = normalize_list_search(search)
+    if search_term:
+        facility_match = (
+            db.query(Facility.id)
+            .filter(
+                Facility.id == InventoryPart.facility_id,
+                contains_ci(Facility.name, search_term),
+            )
+            .exists()
+        )
         query = query.filter(
             or_(
-                InventoryPart.part_number.ilike(f"%{search}%"),
-                InventoryPart.description.ilike(f"%{search}%"),
-                InventoryPart.make.ilike(f"%{search}%"),
-                InventoryPart.model.ilike(f"%{search}%"),
-                InventoryPart.serial_number.ilike(f"%{search}%"),
+                contains_ci(InventoryPart.part_number, search_term),
+                contains_ci(InventoryPart.asset_tag, search_term),
+                contains_ci(InventoryPart.description, search_term),
+                contains_ci(InventoryPart.make, search_term),
+                contains_ci(InventoryPart.model, search_term),
+                contains_ci(InventoryPart.serial_number, search_term),
+                contains_ci(InventoryPart.condition, search_term),
+                contains_ci(InventoryPart.status, search_term),
+                value_contains_ci(InventoryPart.unit_price, search_term),
+                value_contains_ci(InventoryPart.quantity_on_hand, search_term),
+                facility_match,
             )
         )
-    parts = query.order_by(InventoryPart.updated_at.desc()).limit(limit).all()
-    return {"items": [_part_response(part) for part in parts], "total": len(parts)}
+    total = query.count()
+    parts = (
+        query.order_by(InventoryPart.updated_at.desc(), InventoryPart.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return {"items": [_part_response(part) for part in parts], "total": total, "skip": skip, "limit": limit}
 
 
 IN_PROGRESS_QUOTATION_STATUSES = ("in_progress",)
@@ -374,15 +402,29 @@ def list_quotations(
         query = query.filter(
             SalesQuotation.status.notin_(IN_PROGRESS_QUOTATION_STATUSES + COMPLETED_QUOTATION_STATUSES)
         )
-    if search:
-        query = query.outerjoin(Facility).filter(
-            or_(
-                SalesQuotation.quotation_number.ilike(f"%{search}%"),
-                SalesQuotation.work_order.ilike(f"%{search}%"),
-                SalesQuotation.customer_name.ilike(f"%{search}%"),
-                SalesQuotation.quotation_type.ilike(f"%{search}%"),
-                Facility.name.ilike(f"%{search}%"),
-            )
+    search_term = normalize_list_search(search)
+    if search_term:
+        normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        requested_date = parsed_date_value(search_term)
+        search_predicates = [
+            value_contains_ci(SalesQuotation.id, search_term.lstrip("#")),
+            contains_ci(SalesQuotation.quotation_number, search_term),
+            contains_ci(SalesQuotation.work_order, search_term),
+            contains_ci(SalesQuotation.customer_name, search_term),
+            contains_ci(SalesQuotation.quotation_type, normalized_value),
+            contains_ci(SalesQuotation.status, normalized_value),
+            contains_ci(SalesQuotation.paid_status, normalized_value),
+            contains_ci(Facility.name, search_term),
+            contains_ci(User.full_name, search_term),
+            value_contains_ci(SalesQuotation.requested_date, search_term),
+        ]
+        if requested_date:
+            search_predicates.append(SalesQuotation.requested_date == requested_date)
+        query = (
+            query
+            .outerjoin(Facility, SalesQuotation.facility_id == Facility.id)
+            .outerjoin(User, SalesQuotation.created_by_id == User.id)
+            .filter(or_(*search_predicates))
         )
     total = query.count()
     quotations = query.order_by(SalesQuotation.created_at.desc()).offset(skip).limit(limit).all()
@@ -736,23 +778,35 @@ def list_sales_invoices(
     query = scope_invoice_approval_visibility(query, current_user)
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
-    if search and search.strip():
-        like = f"%{search.strip()}%"
+    search_term = normalize_list_search(search)
+    if search_term:
+        normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        searched_date = parsed_date_value(search_term)
+        search_predicates = [
+            contains_ci(Invoice.invoice_number, search_term),
+            contains_ci(Invoice.customer_name, search_term),
+            contains_ci(Invoice.customer_email, search_term),
+            contains_ci(Invoice.notes, search_term),
+            contains_ci(Invoice.payment_method, normalized_value),
+            value_contains_ci(Invoice.status, normalized_value),
+            value_contains_ci(Invoice.total_amount, search_term),
+            value_contains_ci(Invoice.amount_paid, search_term),
+            value_contains_ci(Invoice.balance_due, search_term),
+            value_contains_ci(Invoice.issue_date, search_term),
+            value_contains_ci(Invoice.due_date, search_term),
+            contains_ci(Facility.name, search_term),
+            contains_ci(SalesQuotation.quotation_number, search_term),
+            contains_ci(SalesQuotation.work_order, search_term),
+        ]
+        if searched_date:
+            search_predicates.extend(
+                [Invoice.issue_date == searched_date, Invoice.due_date == searched_date]
+            )
         query = (
             query
             .outerjoin(Facility, Invoice.facility_id == Facility.id)
             .outerjoin(SalesQuotation, Invoice.sales_quotation_id == SalesQuotation.id)
-            .filter(
-                or_(
-                    Invoice.invoice_number.ilike(like),
-                    Invoice.customer_name.ilike(like),
-                    Invoice.customer_email.ilike(like),
-                    Invoice.notes.ilike(like),
-                    Facility.name.ilike(like),
-                    SalesQuotation.quotation_number.ilike(like),
-                    SalesQuotation.work_order.ilike(like),
-                )
-            )
+            .filter(or_(*search_predicates))
         )
     total = query.count()
     invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
@@ -862,16 +916,34 @@ def update_sales_invoice(
 @router.get("/history")
 def list_sales_history(
     db: Session = Depends(get_db),
+    search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    quotations = (
+    quotations_query = (
         scope_query_to_user_facilities(db.query(SalesQuotation), SalesQuotation.facility_id, db, current_user)
         .options(joinedload(SalesQuotation.facility))
-        .order_by(SalesQuotation.updated_at.desc())
-        .all()
     )
+    search_term = normalize_list_search(search)
+    searched_date = parsed_date_value(search_term) if search_term else None
+    if search_term:
+        quotations_query = quotations_query.outerjoin(
+            Facility, SalesQuotation.facility_id == Facility.id
+        ).filter(
+            or_(
+                contains_ci(SalesQuotation.quotation_number, search_term),
+                contains_ci(SalesQuotation.work_order, search_term),
+                contains_ci(SalesQuotation.customer_name, search_term),
+                contains_ci(Facility.name, search_term),
+                value_contains_ci(SalesQuotation.history, search_term),
+                *(
+                    [value_contains_ci(SalesQuotation.history, searched_date.isoformat())]
+                    if searched_date else []
+                ),
+            )
+        )
+    quotations = quotations_query.order_by(SalesQuotation.updated_at.desc()).all()
     rows: list[dict[str, Any]] = []
     for quotation in quotations:
         for item in quotation.history or []:
@@ -886,6 +958,24 @@ def list_sales_history(
                 }
             )
     rows.sort(key=lambda item: item.get("at") or "", reverse=True)
+    if search_term:
+        normalized = search_term.casefold()
+        rows = [
+            row for row in rows
+            if (
+                normalized in " ".join(
+                    str(row.get(key) or "")
+                    for key in (
+                        "at", "work_order", "quotation_number", "customer_name",
+                        "facility_name", "action", "by",
+                    )
+                ).casefold()
+                or (
+                    searched_date is not None
+                    and str(row.get("at") or "").startswith(searched_date.isoformat())
+                )
+            )
+        ]
     return {"items": rows[skip:skip + limit], "total": len(rows), "skip": skip, "limit": limit}
 
 

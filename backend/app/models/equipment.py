@@ -20,7 +20,7 @@ class Equipment(Base):
     model = Column(String, nullable=False)
     serial_number = Column(String, nullable=False, index=True)
     modality_id = Column(Integer, ForeignKey("modalities.id"), nullable=False)
-    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False)
+    facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False, index=True)
     tier_id = Column(Integer, ForeignKey("tiers.id"), nullable=True)
     inspection_form_id = Column(Integer, ForeignKey("inspection_forms.id"), nullable=True)
     default_picture_url = Column(Text, nullable=True)

@@ -251,9 +251,8 @@ const Rentals = () => {
     return () => window.clearTimeout(handle)
   }, [search])
 
-  // Facilities are only needed inside the agreement dialog; the full parts
-  // catalog is only needed on the Products tab or when creating an agreement.
-  // Defer both so the default (Agreements) view loads without pulling ~1000 rows.
+  // Facilities are only needed inside the agreement dialog. The products tab
+  // uses bounded server pages and the picker searches remotely on demand.
   const facilitiesQ = useQuery({
     queryKey: ['rental-facilities'],
     queryFn: () => fetchFacilities({ limit: 500 }),
@@ -261,9 +260,13 @@ const Rentals = () => {
     staleTime: 5 * 60_000,
   })
   const partsQ = useQuery({
-    queryKey: ['rental-parts', debouncedSearch],
-    queryFn: () => fetchRentalParts(debouncedSearch || undefined),
-    enabled: tab === 2 || agreementDialog,
+    queryKey: ['rental-parts', debouncedSearch, productsPage],
+    queryFn: () => fetchRentalParts(
+      debouncedSearch || undefined,
+      PAGE_SIZE,
+      productsPage * PAGE_SIZE,
+    ),
+    enabled: tab === 2,
     placeholderData: previousData => previousData,
   })
   const rentalsQ = useQuery({
@@ -287,8 +290,12 @@ const Rentals = () => {
     placeholderData: previousData => previousData,
   })
   const historyQ = useQuery({
-    queryKey: ['rental-history', historyPage],
-    queryFn: () => fetchRentalHistory({ skip: historyPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    queryKey: ['rental-history', debouncedSearch, historyPage],
+    queryFn: () => fetchRentalHistory({
+      search: debouncedSearch || undefined,
+      skip: historyPage * PAGE_SIZE,
+      limit: PAGE_SIZE,
+    }),
     enabled: tab === 3,
     placeholderData: previousData => previousData,
   })
@@ -934,7 +941,7 @@ const Rentals = () => {
             <TableRow key={index}><TableCell colSpan={9}><Skeleton /></TableCell></TableRow>
           )) : parts.length === 0 ? (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
-          ) : parts.slice(productsPage * PAGE_SIZE, productsPage * PAGE_SIZE + PAGE_SIZE).map(part => (
+          ) : parts.map(part => (
             <TableRow key={part.id} hover>
               <TableCell>
                 <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 46, height: 46, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '12px' }}>
@@ -1055,17 +1062,20 @@ const Rentals = () => {
 
         {tab === 1 && (
           <Box>
-            <Box sx={{ px: 3, py: 2.5, display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: 3, py: 2.5, display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', borderBottom: '1px solid #EEF0F6' }}>
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental Invoices</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Periodic invoices generated from rental durations.</Typography>
               </Box>
-              <Card sx={{ px: 2, py: 0.8, display: 'flex', alignItems: 'center', gap: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
-                <Typography sx={{ fontWeight: 850, fontSize: 12, color: '#4B5563' }}>Collections Progress: {collectionPercent}%</Typography>
-                <Box sx={{ width: 100 }}>
-                  <LinearProgress variant="determinate" value={collectionPercent} sx={{ height: 6, borderRadius: 3 }} />
-                </Box>
-              </Card>
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                <TextField size="small" label="Search invoices..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+                <Card sx={{ px: 2, py: 0.8, display: 'flex', alignItems: 'center', gap: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
+                  <Typography sx={{ fontWeight: 850, fontSize: 12, color: '#4B5563' }}>Collections Progress: {collectionPercent}%</Typography>
+                  <Box sx={{ width: 100 }}>
+                    <LinearProgress variant="determinate" value={collectionPercent} sx={{ height: 6, borderRadius: 3 }} />
+                  </Box>
+                </Card>
+              </Box>
             </Box>
             {renderInvoices()}
             {renderPagination(invoicesQ.data?.total || 0, invoicesPage, setInvoicesPage)}
@@ -1083,13 +1093,20 @@ const Rentals = () => {
             </Box>
             <Box sx={{ p: 3 }}>
               {renderProducts()}
-              {renderPagination(parts.length, productsPage, setProductsPage)}
+              {renderPagination(partsQ.data?.total || 0, productsPage, setProductsPage)}
             </Box>
           </Box>
         )}
 
         {tab === 3 && (
           <Box>
+            <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
+              <Box>
+                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental History</Typography>
+                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by agreement, customer, facility, product, activity, user, or date.</Typography>
+              </Box>
+              <TextField size="small" label="Search history..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+            </Box>
             {renderHistory()}
             {renderPagination(historyQ.data?.total || 0, historyPage, setHistoryPage)}
           </Box>

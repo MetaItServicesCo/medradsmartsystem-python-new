@@ -1162,6 +1162,12 @@ const Inspections = () => {
   const [debouncedInProgressSearch, setDebouncedInProgressSearch] = useState('')
   const [completedSearch, setCompletedSearch] = useState('')
   const [debouncedCompletedSearch, setDebouncedCompletedSearch] = useState('')
+  const [scheduleAssetSearch, setScheduleAssetSearch] = useState('')
+  const [debouncedScheduleAssetSearch, setDebouncedScheduleAssetSearch] = useState('')
+  const [instantAssetSearch, setInstantAssetSearch] = useState('')
+  const [debouncedInstantAssetSearch, setDebouncedInstantAssetSearch] = useState('')
+  const [formSearch, setFormSearch] = useState('')
+  const [debouncedFormSearch, setDebouncedFormSearch] = useState('')
   const [upcomingRange, setUpcomingRange] = useState<UpcomingDateRange>('1m')
   const [upcomingPage, setUpcomingPage] = useState(0)
   const [inProgressBatchPage, setInProgressBatchPage] = useState(0)
@@ -1308,6 +1314,21 @@ const Inspections = () => {
   }, [completedSearch])
 
   useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedScheduleAssetSearch(scheduleAssetSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [scheduleAssetSearch])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedInstantAssetSearch(instantAssetSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [instantAssetSearch])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedFormSearch(formSearch.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [formSearch])
+
+  useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedPartSearch(partSearch.trim()), 300)
     return () => window.clearTimeout(timeout)
   }, [partSearch])
@@ -1329,9 +1350,15 @@ const Inspections = () => {
     enabled: tab === 0 || tab === 1 || tab === 5,
     staleTime: 5 * 60_000,
   })
+  const activeFacilityAssetSearch = tab === 1
+    ? debouncedInstantAssetSearch
+    : debouncedScheduleAssetSearch
   const equipmentQ = useQuery({
-    queryKey: ['inspection-equipment', facilityId],
-    queryFn: () => fetchInspectionFacilityEquipment(Number(facilityId)),
+    queryKey: ['inspection-equipment', facilityId, activeFacilityAssetSearch],
+    queryFn: () => fetchInspectionFacilityEquipment(
+      Number(facilityId),
+      activeFacilityAssetSearch || undefined,
+    ),
     enabled: Boolean(facilityId),
     staleTime: 60_000,
   })
@@ -1394,8 +1421,8 @@ const Inspections = () => {
     staleTime: 60_000,
   })
   const completedQ = useQuery({
-    queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize, dateFrom, dateTo],
-    queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyCompletedPage * pageSize, limit: pageSize }),
+    queryKey: ['inspections', 'completed', 'unbatched', legacyCompletedPage, pageSize, debouncedCompletedSearch, dateFrom, dateTo],
+    queryFn: () => fetchInspections({ status: 'completed', unbatched_only: true, search: debouncedCompletedSearch || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: legacyCompletedPage * pageSize, limit: pageSize }),
     enabled: tab === 3 && !invalidDateRange,
     staleTime: 30_000,
     placeholderData: previousData => previousData,
@@ -1417,7 +1444,16 @@ const Inspections = () => {
     placeholderData: previousData => previousData,
     retry: 1,
   })
-  const formsQ = useQuery({ queryKey: ['inspection-forms'], queryFn: () => fetchInspectionForms(), enabled: tab === 4 || Boolean(reportInspection) || Boolean(infoInspection), staleTime: 5 * 60_000 })
+  const formListSearch = tab === 4 && !reportInspection && !infoInspection
+    ? debouncedFormSearch
+    : ''
+  const formsQ = useQuery({
+    queryKey: ['inspection-forms', formListSearch],
+    queryFn: () => fetchInspectionForms(undefined, formListSearch || undefined),
+    enabled: tab === 4 || Boolean(reportInspection) || Boolean(infoInspection),
+    staleTime: 5 * 60_000,
+    placeholderData: previousData => previousData,
+  })
   const modalitiesQ = useQuery({ queryKey: ['modalities'], queryFn: () => fetchModalities(), enabled: tab === 1 || addAssetOpen, staleTime: 5 * 60_000 })
   const usersQ = useQuery({ queryKey: ['users', 'inspection-technicians'], queryFn: () => fetchUsers({ is_active: true, limit: 500 }), enabled: tab === 2 || Boolean(selectedBatchId) || Boolean(infoInspection), staleTime: 60_000 })
   const testEquipmentQ = useQuery({
@@ -3857,7 +3893,13 @@ const Inspections = () => {
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 180px auto auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
               <FormControl fullWidth>
                 <InputLabel>Facility</InputLabel>
-                <Select label="Facility" value={facilityId} onChange={(e) => { setFacilityId(e.target.value as number); setSelectedInstantEquipmentIds([]); setSelectedEquipmentIds([]) }}>
+                <Select label="Facility" value={facilityId} onChange={(e) => {
+                  setFacilityId(e.target.value as number)
+                  setSelectedInstantEquipmentIds([])
+                  setSelectedEquipmentIds([])
+                  setScheduleAssetSearch('')
+                  setDebouncedScheduleAssetSearch('')
+                }}>
                   {(facilitiesQ.data || []).map(f => (
                     <MenuItem key={f.id} value={f.id}>{f.name} - {f.tier_name || 'No tier'}</MenuItem>
                   ))}
@@ -3881,6 +3923,14 @@ const Inspections = () => {
             </Box>
             {facilityId && (
               <Box sx={{ mb: 3 }}>
+                <TextField
+                  label="Search assets to schedule"
+                  placeholder="Search asset tag, equipment, modality, serial, tier, or status..."
+                  value={scheduleAssetSearch}
+                  onChange={event => setScheduleAssetSearch(event.target.value)}
+                  fullWidth
+                  sx={{ mb: 1.5 }}
+                />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
                   <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
                     {selectedEquipmentIds.length} of {equipment.length} asset{equipment.length === 1 ? '' : 's'} selected for scheduling.
@@ -3962,7 +4012,13 @@ const Inspections = () => {
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
               <FormControl fullWidth>
                 <InputLabel>Facility</InputLabel>
-                <Select label="Facility" value={facilityId} onChange={(e) => { setFacilityId(e.target.value as number); setSelectedInstantEquipmentIds([]); setSelectedEquipmentIds([]) }}>
+                <Select label="Facility" value={facilityId} onChange={(e) => {
+                  setFacilityId(e.target.value as number)
+                  setSelectedInstantEquipmentIds([])
+                  setSelectedEquipmentIds([])
+                  setInstantAssetSearch('')
+                  setDebouncedInstantAssetSearch('')
+                }}>
                   {(facilitiesQ.data || []).map(f => (
                     <MenuItem key={f.id} value={f.id}>{f.name} - {f.tier_name || 'No tier'} - {f.inventory_count} asset(s)</MenuItem>
                   ))}
@@ -3985,19 +4041,29 @@ const Inspections = () => {
               </Button>
             </Box>
             {selectedFacility && (
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
-                <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
-                  {selectedFacility.name}: {selectedInstantEquipmentIds.length} of {equipment.length} asset{equipment.length === 1 ? '' : 's'} selected.
-                </Typography>
-                <Button
-                  size="small"
-                  variant={allInstantEquipmentSelected ? 'outlined' : 'contained'}
-                  onClick={toggleAllInstantEquipment}
-                  disabled={equipmentQ.isLoading || equipment.length === 0}
-                  sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
-                >
-                  {allInstantEquipmentSelected ? 'Clear Selection' : 'Select All Assets'}
-                </Button>
+              <Box sx={{ mb: 2 }}>
+                <TextField
+                  label="Search facility assets"
+                  placeholder="Search asset tag, equipment, modality, serial, tier, or status..."
+                  value={instantAssetSearch}
+                  onChange={event => setInstantAssetSearch(event.target.value)}
+                  fullWidth
+                  sx={{ mb: 1.5 }}
+                />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+                    {selectedFacility.name}: {selectedInstantEquipmentIds.length} selected; {equipment.length} matching asset{equipment.length === 1 ? '' : 's'} shown.
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant={allInstantEquipmentSelected ? 'outlined' : 'contained'}
+                    onClick={toggleAllInstantEquipment}
+                    disabled={equipmentQ.isLoading || equipment.length === 0}
+                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}
+                  >
+                    {allInstantEquipmentSelected ? 'Clear Shown Selection' : 'Select All Shown Assets'}
+                  </Button>
+                </Box>
               </Box>
             )}
             <TableContainer className="list-scroll-panel">
@@ -4118,7 +4184,14 @@ const Inspections = () => {
 
         {tab === 4 && (
           <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
+              <TextField
+                label="Search inspection forms"
+                placeholder="Search form name, description, or modality..."
+                value={formSearch}
+                onChange={event => setFormSearch(event.target.value)}
+                sx={{ minWidth: { xs: '100%', sm: 360 } }}
+              />
               <Button startIcon={<AddIcon />} variant="contained" onClick={openCreateFormBuilder} disabled={!canAddInspections} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
                 New Form
               </Button>

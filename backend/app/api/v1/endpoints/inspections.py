@@ -40,6 +40,13 @@ from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.permissions import has_module_permission, require_module_permission
+from app.utils.list_search import (
+    contains_ci,
+    normalize_list_search,
+    parsed_date_bounds,
+    parsed_date_value,
+    value_contains_ci,
+)
 
 router = APIRouter(dependencies=[Depends(require_module_access("inspections"))])
 
@@ -425,7 +432,15 @@ def _invoice_response(invoice: Optional[Invoice]) -> Optional[dict[str, Any]]:
     data["status"] = _value(data.get("status"))
     data["facility_name"] = invoice.facility.name if invoice.facility else None
     data["inspection_batch_number"] = invoice.inspection_batch.batch_number if getattr(invoice, "inspection_batch", None) else None
-    data["batch_asset_count"] = len(invoice.inspection_batch.inspections or []) if getattr(invoice, "inspection_batch", None) else None
+    batch = getattr(invoice, "inspection_batch", None)
+    batch_count = getattr(invoice, "_batch_asset_count", None)
+    data["batch_asset_count"] = (
+        batch_count
+        if batch_count is not None
+        else len(batch.inspections or [])
+        if batch
+        else None
+    )
     data["batch_items"] = getattr(invoice, "_batch_items", _stored_batch_invoice_items(invoice.notes))
     data["line_items"] = editable_line_items(invoice.notes)
     data["labels"] = editable_labels(invoice.notes)
@@ -979,6 +994,7 @@ def get_report_template(current_user: User = Depends(get_current_user)) -> Any:
 @router.get("/forms")
 def list_inspection_forms(
     modality_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -1003,8 +1019,19 @@ def list_inspection_forms(
             )
         )
 
+    search_term = normalize_list_search(search)
+    if search_term:
+        query = query.outerjoin(Modality, InspectionForm.modality_id == Modality.id).filter(
+            or_(
+                contains_ci(InspectionForm.name, search_term),
+                contains_ci(InspectionForm.description, search_term),
+                contains_ci(Modality.name, search_term),
+                value_contains_ci(InspectionForm.schema, search_term),
+            )
+        )
+
     forms = query.order_by(InspectionForm.name.asc()).all()
-    if form not in forms:
+    if form not in forms and not search_term:
         forms.append(form)
     return {
         "items": [_form_response(item) for item in forms],
@@ -1167,17 +1194,46 @@ def facility_inventory_for_inspection(
 @router.get("/facilities/{facility_id}/equipment")
 def facility_equipment_for_inspection(
     facility_id: int,
+    search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     require_facility_access(db, current_user, facility_id)
-    equipment = (
+    query = (
         db.query(Equipment)
         .options(joinedload(Equipment.facility), joinedload(Equipment.tier), joinedload(Equipment.modality))
         .filter(Equipment.facility_id == facility_id)
-        .order_by(Equipment.created_at.desc(), Equipment.id.desc())
-        .all()
     )
+    search_term = normalize_list_search(search)
+    if search_term:
+        tier_match = (
+            db.query(Tier.id)
+            .filter(
+                Tier.id == Equipment.tier_id,
+                contains_ci(Tier.name, search_term),
+            )
+            .exists()
+        )
+        modality_match = (
+            db.query(Modality.id)
+            .filter(
+                Modality.id == Equipment.modality_id,
+                contains_ci(Modality.name, search_term),
+            )
+            .exists()
+        )
+        query = query.filter(
+            or_(
+                contains_ci(Equipment.asset_tag, search_term),
+                contains_ci(Equipment.make, search_term),
+                contains_ci(Equipment.model, search_term),
+                contains_ci(Equipment.serial_number, search_term),
+                value_contains_ci(Equipment.status, search_term),
+                tier_match,
+                modality_match,
+            )
+        )
+    equipment = query.order_by(Equipment.created_at.desc(), Equipment.id.desc()).all()
     return [
         {
             "id": item.id,
@@ -1365,33 +1421,66 @@ def list_inspections(
         query = query.filter(inspection_date_column >= datetime.combine(date_from, time.min))
     if date_to:
         query = query.filter(inspection_date_column <= datetime.combine(date_to, time.max))
-    if search and search.strip():
-        like = f"%{search.strip()}%"
+    search_term = normalize_list_search(search)
+    if search_term:
+        normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        tier_match = (
+            db.query(Tier.id)
+            .filter(
+                or_(Tier.id == Equipment.tier_id, Tier.id == InventoryPart.tier_id),
+                contains_ci(Tier.name, search_term),
+            )
+            .exists()
+        )
+        modality_match = (
+            db.query(Modality.id)
+            .filter(
+                Modality.id == Equipment.modality_id,
+                contains_ci(Modality.name, search_term),
+            )
+            .exists()
+        )
+        search_predicates = [
+            contains_ci(Inspection.inspection_number, search_term),
+            contains_ci(Inspection.inspection_frequency, normalized_value),
+            contains_ci(Inspection.compliance_requirement, search_term),
+            contains_ci(Inspection.criticality, search_term),
+            value_contains_ci(Inspection.status, normalized_value),
+            value_contains_ci(Inspection.result, normalized_value),
+            value_contains_ci(Inspection.scheduled_date, search_term),
+            value_contains_ci(Inspection.started_at, search_term),
+            value_contains_ci(Inspection.completed_at, search_term),
+            contains_ci(InspectionBatch.batch_number, search_term),
+            contains_ci(Facility.name, search_term),
+            contains_ci(Equipment.asset_tag, search_term),
+            contains_ci(Equipment.make, search_term),
+            contains_ci(Equipment.model, search_term),
+            contains_ci(Equipment.serial_number, search_term),
+            contains_ci(InventoryPart.part_number, search_term),
+            contains_ci(InventoryPart.description, search_term),
+            contains_ci(InventoryPart.make, search_term),
+            contains_ci(InventoryPart.model, search_term),
+            contains_ci(InventoryPart.serial_number, search_term),
+            contains_ci(User.full_name, search_term),
+            tier_match,
+            modality_match,
+        ]
+        searched_date = parsed_date_bounds(search_term)
+        if searched_date:
+            search_predicates.append(
+                and_(
+                    inspection_date_column >= searched_date[0],
+                    inspection_date_column < searched_date[1],
+                )
+            )
         query = (
             query
             .outerjoin(Facility, Inspection.facility_id == Facility.id)
             .outerjoin(Equipment, Inspection.equipment_id == Equipment.id)
             .outerjoin(InventoryPart, Inspection.inventory_part_id == InventoryPart.id)
             .outerjoin(InspectionBatch, Inspection.batch_id == InspectionBatch.id)
-            .filter(
-                or_(
-                    Inspection.inspection_number.ilike(like),
-                    Inspection.inspection_frequency.ilike(like),
-                    Inspection.compliance_requirement.ilike(like),
-                    Inspection.criticality.ilike(like),
-                    InspectionBatch.batch_number.ilike(like),
-                    Facility.name.ilike(like),
-                    Equipment.asset_tag.ilike(like),
-                    Equipment.make.ilike(like),
-                    Equipment.model.ilike(like),
-                    Equipment.serial_number.ilike(like),
-                    InventoryPart.part_number.ilike(like),
-                    InventoryPart.description.ilike(like),
-                    InventoryPart.make.ilike(like),
-                    InventoryPart.model.ilike(like),
-                    InventoryPart.serial_number.ilike(like),
-                )
-            )
+            .outerjoin(User, Inspection.inspector_id == User.id)
+            .filter(or_(*search_predicates))
         )
     if current_user.role == UserRole.TECHNICIAN:
         query = query.filter(Inspection.inspector_id == current_user.id)
@@ -1453,8 +1542,9 @@ def list_inspection_batches(
     if facility_id:
         require_facility_access(db, current_user, facility_id)
         query = query.filter(InspectionBatch.facility_id == facility_id)
-    if search and search.strip():
-        like = f"%{search.strip()}%"
+    search_term = normalize_list_search(search)
+    if search_term:
+        normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
         asset_match = (
             db.query(Inspection.id)
             .outerjoin(Equipment, Inspection.equipment_id == Equipment.id)
@@ -1462,16 +1552,16 @@ def list_inspection_batches(
             .filter(
                 Inspection.batch_id == InspectionBatch.id,
                 or_(
-                    Inspection.inspection_number.ilike(like),
-                    Equipment.asset_tag.ilike(like),
-                    Equipment.make.ilike(like),
-                    Equipment.model.ilike(like),
-                    Equipment.serial_number.ilike(like),
-                    InventoryPart.part_number.ilike(like),
-                    InventoryPart.description.ilike(like),
-                    InventoryPart.make.ilike(like),
-                    InventoryPart.model.ilike(like),
-                    InventoryPart.serial_number.ilike(like),
+                    contains_ci(Inspection.inspection_number, search_term),
+                    contains_ci(Equipment.asset_tag, search_term),
+                    contains_ci(Equipment.make, search_term),
+                    contains_ci(Equipment.model, search_term),
+                    contains_ci(Equipment.serial_number, search_term),
+                    contains_ci(InventoryPart.part_number, search_term),
+                    contains_ci(InventoryPart.description, search_term),
+                    contains_ci(InventoryPart.make, search_term),
+                    contains_ci(InventoryPart.model, search_term),
+                    contains_ci(InventoryPart.serial_number, search_term),
                 ),
             )
             .exists()
@@ -1482,9 +1572,14 @@ def list_inspection_batches(
             .outerjoin(User, InspectionBatch.inspector_id == User.id)
             .filter(
                 or_(
-                    InspectionBatch.batch_number.ilike(like),
-                    Facility.name.ilike(like),
-                    User.full_name.ilike(like),
+                    contains_ci(InspectionBatch.batch_number, search_term),
+                    contains_ci(Facility.name, search_term),
+                    contains_ci(User.full_name, search_term),
+                    contains_ci(InspectionBatch.inspection_frequency, normalized_value),
+                    value_contains_ci(InspectionBatch.status, normalized_value),
+                    value_contains_ci(InspectionBatch.scheduled_date, search_term),
+                    value_contains_ci(InspectionBatch.started_at, search_term),
+                    value_contains_ci(InspectionBatch.completed_at, search_term),
                     asset_match,
                 )
             )
@@ -2593,24 +2688,36 @@ def list_inspection_quotations(
     query = scope_invoice_approval_visibility(query, current_user)
     if invoice_id is not None:
         query = query.filter(Invoice.id == invoice_id)
-    if search and search.strip():
-        like = f"%{search.strip()}%"
+    search_term = normalize_list_search(search)
+    if search_term:
+        normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        searched_date = parsed_date_value(search_term)
+        search_predicates = [
+            contains_ci(Invoice.invoice_number, search_term),
+            contains_ci(Invoice.customer_name, search_term),
+            contains_ci(Invoice.customer_email, search_term),
+            contains_ci(Invoice.notes, search_term),
+            contains_ci(Invoice.payment_method, normalized_value),
+            value_contains_ci(Invoice.status, normalized_value),
+            value_contains_ci(Invoice.total_amount, search_term),
+            value_contains_ci(Invoice.amount_paid, search_term),
+            value_contains_ci(Invoice.balance_due, search_term),
+            value_contains_ci(Invoice.issue_date, search_term),
+            value_contains_ci(Invoice.due_date, search_term),
+            contains_ci(Facility.name, search_term),
+            contains_ci(Inspection.inspection_number, search_term),
+            contains_ci(InspectionBatch.batch_number, search_term),
+        ]
+        if searched_date:
+            search_predicates.extend(
+                [Invoice.issue_date == searched_date, Invoice.due_date == searched_date]
+            )
         query = (
             query
             .outerjoin(Facility, Invoice.facility_id == Facility.id)
             .outerjoin(Inspection, Invoice.inspection_id == Inspection.id)
             .outerjoin(InspectionBatch, Invoice.inspection_batch_id == InspectionBatch.id)
-            .filter(
-                or_(
-                    Invoice.invoice_number.ilike(like),
-                    Invoice.customer_name.ilike(like),
-                    Invoice.customer_email.ilike(like),
-                    Invoice.notes.ilike(like),
-                    Facility.name.ilike(like),
-                    Inspection.inspection_number.ilike(like),
-                    InspectionBatch.batch_number.ilike(like),
-                )
-            )
+            .filter(or_(*search_predicates))
         )
 
     # Keep the KPI summary consistent with the existing UI: it reflects the
@@ -2655,14 +2762,17 @@ def list_inspection_quotations(
         raise HTTPException(status_code=422, detail="Unsupported invoice balance filter")
 
     total = query.count()
-    invoices = (
-        query.options(
-            joinedload(Invoice.facility),
-            joinedload(Invoice.approved_for_billing_by),
-            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
-            joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
-            joinedload(Invoice.inspection).joinedload(Inspection.equipment),
-            joinedload(Invoice.inspection).joinedload(Inspection.inspector),
+    include_details = invoice_id is not None
+    load_options = [
+        joinedload(Invoice.facility),
+        joinedload(Invoice.approved_for_billing_by),
+        selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
+        joinedload(Invoice.inspection).joinedload(Inspection.inventory_part),
+        joinedload(Invoice.inspection).joinedload(Inspection.equipment),
+        joinedload(Invoice.inspection).joinedload(Inspection.inspector),
+    ]
+    if include_details:
+        load_options.extend([
             selectinload(Invoice.inspection_batch)
             .selectinload(InspectionBatch.inspections)
             .joinedload(Inspection.inventory_part)
@@ -2675,26 +2785,44 @@ def list_inspection_quotations(
             .selectinload(InspectionBatch.inspections)
             .joinedload(Inspection.facility)
             .joinedload(Facility.tier),
-        )
+        ])
+    else:
+        load_options.append(joinedload(Invoice.inspection_batch))
+    invoices = (
+        query.options(*load_options)
         .order_by(Invoice.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
+    batch_counts = _batch_counts(
+        db,
+        [invoice.inspection_batch_id for invoice in invoices if invoice.inspection_batch_id],
+    )
+    for invoice in invoices:
+        if invoice.inspection_batch_id:
+            invoice._batch_asset_count = batch_counts.get(
+                invoice.inspection_batch_id, {}
+            ).get("total", 0)
+            invoice._batch_items = (
+                _batch_invoice_items_for_listing(invoice)
+                if include_details
+                else _stored_batch_invoice_items(invoice.notes)
+            )
     return {
         "items": [
             {
                 **_invoice_response(invoice),
                 "inspection_number": invoice.inspection.inspection_number if invoice.inspection else None,
                 "inspection_batch_number": invoice.inspection_batch.batch_number if invoice.inspection_batch else None,
-                "batch_asset_count": len(invoice.inspection_batch.inspections or []) if invoice.inspection_batch else None,
-                "batch_items": _batch_invoice_items_for_listing(invoice),
+                "batch_asset_count": getattr(invoice, "_batch_asset_count", None),
+                "batch_items": getattr(invoice, "_batch_items", []),
                 "inventory_part_name": (
                     _part_name(invoice.inspection.inventory_part)
                     if invoice.inspection and invoice.inspection.inventory_part
                     else _equipment_name(invoice.inspection.equipment)
                     if invoice.inspection and invoice.inspection.equipment
-                    else f"{len(invoice.inspection_batch.inspections or [])} asset inspection batch"
+                    else f"{getattr(invoice, '_batch_asset_count', 0)} asset inspection batch"
                     if invoice.inspection_batch
                     else None
                 ),

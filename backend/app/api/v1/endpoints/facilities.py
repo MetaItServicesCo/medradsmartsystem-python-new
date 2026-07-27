@@ -9,21 +9,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app import crud, schemas
 from app.core.deps import get_current_user, get_admin_user, get_facility_admin_user, get_superadmin_user
 from app.utils.permission_deps import require_module_access
 from app.db.base import get_db
 from app.models.user import User
+from app.models.user_facility import UserFacility
 from app.models.facility import Facility
 from app.models.facility_tier import FacilityTier
+from app.models.tier import Tier
 from app.models.facility_document import FacilityDocument
 from app.models.equipment import Equipment
 from app.models.audit_log import AuditLog
 from app.utils.logging import log_activity
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.permissions import require_module_permission
+from app.utils.list_search import contains_ci, normalize_list_search, value_contains_ci
 
 router = APIRouter(dependencies=[Depends(require_module_access("facilities"))])
 
@@ -342,11 +345,20 @@ def _ensure_parent_can_become_child(db: Session, facility: Facility, parent_faci
         )
 
 
-def _facility_response(db: Session, facility: Facility) -> dict:
-    primary_users = db.query(User).filter(User.facility_id == facility.id).all()
-    from app.models.user_facility import UserFacility
-    secondary_users = db.query(User).join(UserFacility).filter(UserFacility.facility_id == facility.id).all()
-    all_users = {u.id: u for u in primary_users + secondary_users}.values()
+def _facility_response(
+    db: Session,
+    facility: Facility,
+    assigned_users: Optional[list[User]] = None,
+) -> dict:
+    if assigned_users is None:
+        primary_users = db.query(User).filter(User.facility_id == facility.id).all()
+        secondary_users = (
+            db.query(User)
+            .join(UserFacility, UserFacility.user_id == User.id)
+            .filter(UserFacility.facility_id == facility.id)
+            .all()
+        )
+        assigned_users = list({u.id: u for u in primary_users + secondary_users}.values())
 
     facility_dict = {c.name: getattr(facility, c.name) for c in facility.__table__.columns}
     tiers = [ft.tier for ft in facility.facility_tiers if ft.tier]
@@ -362,7 +374,7 @@ def _facility_response(db: Session, facility: Facility) -> dict:
             "role": u.role.value if hasattr(u.role, "value") else str(u.role),
             "avatar_url": u.avatar_url
         }
-        for u in all_users
+        for u in assigned_users
     ]
     return facility_dict
 
@@ -379,23 +391,103 @@ def read_facilities(
 ) -> Any:
     """Retrieve facilities (all authenticated users)."""
     query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
-    if search:
+    search_term = normalize_list_search(search)
+    if search_term:
+        identifier_term = search_term.lstrip("#")
+        tier_match = (
+            db.query(FacilityTier.id)
+            .join(Tier, Tier.id == FacilityTier.tier_id)
+            .filter(
+                FacilityTier.facility_id == Facility.id,
+                contains_ci(Tier.name, search_term),
+            )
+            .exists()
+        )
+        primary_user_match = (
+            db.query(User.id)
+            .filter(
+                User.facility_id == Facility.id,
+                or_(
+                    contains_ci(User.full_name, search_term),
+                    contains_ci(User.username, search_term),
+                    contains_ci(User.email, search_term),
+                ),
+            )
+            .exists()
+        )
+        secondary_user_match = (
+            db.query(UserFacility.id)
+            .join(User, User.id == UserFacility.user_id)
+            .filter(
+                UserFacility.facility_id == Facility.id,
+                or_(
+                    contains_ci(User.full_name, search_term),
+                    contains_ci(User.username, search_term),
+                    contains_ci(User.email, search_term),
+                ),
+            )
+            .exists()
+        )
+        timezone_predicates = []
+        normalized_timezone = search_term.lower()
+        if "west coast".startswith(normalized_timezone) or normalized_timezone in {"pacific", "pst", "pdt"}:
+            timezone_predicates.append(Facility.timezone == "America/Los_Angeles")
+        if "east coast".startswith(normalized_timezone) or normalized_timezone in {"eastern", "est", "edt"}:
+            timezone_predicates.append(Facility.timezone == "America/New_York")
+        if "central".startswith(normalized_timezone) or normalized_timezone in {"cst", "cdt"}:
+            timezone_predicates.append(Facility.timezone == "America/Chicago")
         query = query.filter(
             or_(
-                Facility.name.ilike(f"%{search}%"),
-                Facility.city.ilike(f"%{search}%"),
-                Facility.state.ilike(f"%{search}%"),
-                Facility.zip_code.ilike(f"%{search}%"),
-                Facility.country.ilike(f"%{search}%"),
-                Facility.email.ilike(f"%{search}%"),
-                Facility.phone.ilike(f"%{search}%"),
-                Facility.contact_person.ilike(f"%{search}%")
+                value_contains_ci(Facility.id, identifier_term),
+                contains_ci(Facility.name, search_term),
+                contains_ci(Facility.address, search_term),
+                contains_ci(Facility.suite, search_term),
+                contains_ci(Facility.city, search_term),
+                contains_ci(Facility.state, search_term),
+                contains_ci(Facility.zip_code, search_term),
+                contains_ci(Facility.country, search_term),
+                contains_ci(Facility.email, search_term),
+                contains_ci(Facility.phone, search_term),
+                contains_ci(Facility.contact_person, search_term),
+                contains_ci(Facility.timezone, search_term),
+                contains_ci(Facility.operating_hours, search_term),
+                contains_ci(Facility.status, search_term),
+                tier_match,
+                primary_user_match,
+                secondary_user_match,
+                *timezone_predicates,
             )
         )
     total = query.count()
-    items = query.order_by(Facility.created_at.desc()).offset(skip).limit(limit).all()
+    items = (
+        query.options(
+            joinedload(Facility.tier),
+            selectinload(Facility.facility_tiers).joinedload(FacilityTier.tier),
+        )
+        .order_by(Facility.created_at.desc(), Facility.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
-    results = [_facility_response(db, item) for item in items]
+    facility_ids = [item.id for item in items]
+    users_by_facility: dict[int, dict[int, User]] = {facility_id: {} for facility_id in facility_ids}
+    if facility_ids:
+        for assigned_user in db.query(User).filter(User.facility_id.in_(facility_ids)).all():
+            if assigned_user.facility_id:
+                users_by_facility[assigned_user.facility_id][assigned_user.id] = assigned_user
+        for facility_id, assigned_user in (
+            db.query(UserFacility.facility_id, User)
+            .join(User, User.id == UserFacility.user_id)
+            .filter(UserFacility.facility_id.in_(facility_ids))
+            .all()
+        ):
+            users_by_facility[facility_id][assigned_user.id] = assigned_user
+
+    results = [
+        _facility_response(db, item, list(users_by_facility.get(item.id, {}).values()))
+        for item in items
+    ]
 
     return {"items": results, "total": total, "skip": skip, "limit": limit}
 

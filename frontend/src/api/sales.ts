@@ -178,8 +178,12 @@ export interface SalesQuotationPayload {
   }>
 }
 
-export const fetchSalesParts = async (search?: string, limit?: number): Promise<{ items: SalesPart[]; total: number }> => {
-  const res = await apiClient.get('/sales/parts', { params: { search, limit } })
+export const fetchSalesParts = async (
+  search?: string,
+  limit?: number,
+  skip?: number,
+): Promise<{ items: SalesPart[]; total: number }> => {
+  const res = await apiClient.get('/sales/parts', { params: { search, limit, skip } })
   return res.data
 }
 
@@ -279,7 +283,7 @@ export const updateSalesInvoice = async (
 }
 
 export const fetchSalesHistory = async (
-  params: { skip?: number; limit?: number } = {}
+  params: { search?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: SalesHistoryItem[]; total: number }> => {
   const res = await apiClient.get('/sales/history', { params })
   return res.data

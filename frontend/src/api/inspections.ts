@@ -339,10 +339,14 @@ export const fetchInspectionFacilities = async (): Promise<InspectionFacility[]>
 }
 
 export const fetchInspectionForms = async (
-  modalityId?: number
+  modalityId?: number,
+  search?: string,
 ): Promise<{ items: InspectionFormOption[]; total: number }> => {
   const res = await apiClient.get('/inspections/forms', {
-    params: modalityId ? { modality_id: modalityId } : undefined,
+    params: {
+      modality_id: modalityId,
+      search,
+    },
   })
   return res.data
 }
@@ -369,9 +373,12 @@ export const fetchInspectionFacilityInventory = async (
 }
 
 export const fetchInspectionFacilityEquipment = async (
-  facilityId: number
+  facilityId: number,
+  search?: string,
 ): Promise<InspectionEquipmentItem[]> => {
-  const res = await apiClient.get(`/inspections/facilities/${facilityId}/equipment`)
+  const res = await apiClient.get(`/inspections/facilities/${facilityId}/equipment`, {
+    params: { search },
+  })
   return res.data
 }
 

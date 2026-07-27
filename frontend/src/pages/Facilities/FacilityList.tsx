@@ -518,7 +518,7 @@ const FacilityList = () => {
               <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
             </IconButton>
             <InputBase
-              placeholder="Search facilities..."
+              placeholder="Search facility, location, contact, manager, tier, status, or ID..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}

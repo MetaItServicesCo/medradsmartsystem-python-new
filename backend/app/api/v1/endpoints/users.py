@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_admin_user, require_roles
@@ -22,6 +22,7 @@ from app.core.security import create_access_token, get_password_hash
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notification
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
+from app.utils.list_search import contains_ci, normalize_list_search, value_contains_ci
 
 router = APIRouter()
 
@@ -66,23 +67,25 @@ PERMISSION_MODULE_ALIASES = {
 }
 
 
-def _build_user_response(db_user: User, db: Session) -> dict:
+def _build_user_response(
+    db_user: User,
+    db: Session,
+    assigned_facilities: Optional[list[Facility]] = None,
+) -> dict:
     """Build a UserResponse dict including the user's assigned facilities."""
-    # Get all facilities from UserFacility (many-to-many)
-    user_facs = (
-        db.query(Facility)
-        .join(UserFacility, UserFacility.facility_id == Facility.id)
-        .filter(UserFacility.user_id == db_user.id)
-        .all()
-    )
-    
-    # Also include the primary facility if set and not already in the list
-    if db_user.facility_id:
-        primary_exists = any(f.id == db_user.facility_id for f in user_facs)
-        if not primary_exists:
+    if assigned_facilities is None:
+        user_facs = (
+            db.query(Facility)
+            .join(UserFacility, UserFacility.facility_id == Facility.id)
+            .filter(UserFacility.user_id == db_user.id)
+            .all()
+        )
+        if db_user.facility_id and not any(f.id == db_user.facility_id for f in user_facs):
             primary_fac = db.query(Facility).filter(Facility.id == db_user.facility_id).first()
             if primary_fac:
                 user_facs.append(primary_fac)
+    else:
+        user_facs = assigned_facilities
                 
     facilities = [FacilityBrief(id=f.id, name=f.name) for f in user_facs]
     return UserResponse(
@@ -100,6 +103,50 @@ def _build_user_response(db_user: User, db: Session) -> dict:
         created_at=db_user.created_at,
         updated_at=db_user.updated_at,
         facilities=facilities,
+    )
+
+
+def _apply_user_list_search(query, search: Optional[str]):
+    search_term = normalize_list_search(search)
+    if not search_term:
+        return query
+
+    identifier_term = search_term.lstrip("#")
+    normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+    # SQLAlchemy's correlated EXISTS keeps the user result set unique while
+    # searching both primary and additional facility assignments.
+    primary_facility_match = (
+        Facility.id == User.facility_id
+    ) & contains_ci(Facility.name, search_term)
+    primary_facility_exists = query.session.query(Facility.id).filter(primary_facility_match).exists()
+    secondary_facility_exists = (
+        query.session.query(UserFacility.id)
+        .join(Facility, Facility.id == UserFacility.facility_id)
+        .filter(
+            UserFacility.user_id == User.id,
+            contains_ci(Facility.name, search_term),
+        )
+        .exists()
+    )
+    status_predicates = []
+    if "active".startswith(search_term.lower()):
+        status_predicates.append(User.is_active.is_(True))
+    if "inactive".startswith(search_term.lower()) or "disabled".startswith(search_term.lower()):
+        status_predicates.append(User.is_active.is_(False))
+
+    return query.filter(
+        or_(
+            value_contains_ci(User.id, identifier_term),
+            contains_ci(User.full_name, search_term),
+            contains_ci(User.username, search_term),
+            contains_ci(User.email, search_term),
+            contains_ci(User.phone, search_term),
+            value_contains_ci(User.role, normalized_value),
+            value_contains_ci(User.user_type, normalized_value),
+            primary_facility_exists,
+            secondary_facility_exists,
+            *status_predicates,
+        )
     )
 
 
@@ -285,13 +332,7 @@ def list_users(
             query = query.filter(User.role == role)
         if is_active is not None:
             query = query.filter(User.is_active == is_active)
-        if search:
-            like = f"%{search}%"
-            query = query.filter(
-                (User.full_name.ilike(like))
-                | (User.username.ilike(like))
-                | (User.email.ilike(like))
-            )
+        query = _apply_user_list_search(query, search)
         total = query.count()
         items = query.order_by(User.created_at.desc(), User.id.desc()).offset(skip).limit(limit).all()
     elif is_facility_scoped_user(current_user):
@@ -304,20 +345,42 @@ def list_users(
             query = query.filter(User.role == role)
         if is_active is not None:
             query = query.filter(User.is_active == is_active)
-        if search:
-            like = f"%{search}%"
-            query = query.filter(
-                (User.full_name.ilike(like))
-                | (User.username.ilike(like))
-                | (User.email.ilike(like))
-            )
+        query = _apply_user_list_search(query, search)
         total = query.count()
         items = query.order_by(User.created_at.desc(), User.id.desc()).offset(skip).limit(limit).all()
     else:
-        items, total = crud_user.get_multi_filtered(
-            db, skip=skip, limit=limit, role=role, is_active=is_active, search=search
-        )
-    user_responses = [_build_user_response(u, db) for u in items]
+        query = db.query(User)
+        if role:
+            query = query.filter(User.role == role)
+        if is_active is not None:
+            query = query.filter(User.is_active == is_active)
+        query = _apply_user_list_search(query, search)
+        total = query.count()
+        items = query.order_by(User.created_at.desc(), User.id.desc()).offset(skip).limit(limit).all()
+
+    user_ids = [item.id for item in items]
+    facilities_by_user: dict[int, dict[int, Facility]] = {user_id: {} for user_id in user_ids}
+    if user_ids:
+        primary_facility_ids = {item.facility_id for item in items if item.facility_id}
+        primary_facilities = {
+            facility.id: facility
+            for facility in db.query(Facility).filter(Facility.id.in_(primary_facility_ids)).all()
+        } if primary_facility_ids else {}
+        for item in items:
+            if item.facility_id and item.facility_id in primary_facilities:
+                facilities_by_user[item.id][item.facility_id] = primary_facilities[item.facility_id]
+        for user_id, facility in (
+            db.query(UserFacility.user_id, Facility)
+            .join(Facility, Facility.id == UserFacility.facility_id)
+            .filter(UserFacility.user_id.in_(user_ids))
+            .all()
+        ):
+            facilities_by_user[user_id][facility.id] = facility
+
+    user_responses = [
+        _build_user_response(item, db, list(facilities_by_user.get(item.id, {}).values()))
+        for item in items
+    ]
     return {"items": user_responses, "total": total}
 
 

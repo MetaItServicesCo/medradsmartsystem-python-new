@@ -327,7 +327,7 @@ const ServiceRequestList = () => {
           >
             <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
             <InputBase
-              placeholder="Search requests..."
+              placeholder="Search request #, facility, equipment, priority, status, requester, or created date..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}

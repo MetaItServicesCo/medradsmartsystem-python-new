@@ -29,6 +29,12 @@ from app.schemas.inventory import (
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.list_search import (
+    contains_ci,
+    normalize_list_search,
+    parsed_date_value,
+    value_contains_ci,
+)
 
 router = APIRouter(dependencies=[Depends(require_module_access("inventory"))])
 
@@ -73,17 +79,68 @@ def _apply_inventory_filters(
         query = query.filter(InventoryPart.quantity_on_hand <= InventoryPart.reorder_level)
     if expiring_days:
         query = query.filter(InventoryPart.expiry_date <= date.today() + timedelta(days=expiring_days))
-    if search:
-        query = query.filter(
-            or_(
-                InventoryPart.part_number.ilike(f"%{search}%"),
-                InventoryPart.asset_tag.ilike(f"%{search}%"),
-                InventoryPart.description.ilike(f"%{search}%"),
-                InventoryPart.make.ilike(f"%{search}%"),
-                InventoryPart.model.ilike(f"%{search}%"),
-                InventoryPart.serial_number.ilike(f"%{search}%"),
-                InventoryPart.batch_number.ilike(f"%{search}%"),
+    search_term = normalize_list_search(search)
+    if search_term:
+        identifier_term = search_term.lstrip("#")
+        facility_match = (
+            query.session.query(Facility.id)
+            .filter(
+                Facility.id == InventoryPart.facility_id,
+                contains_ci(Facility.name, search_term),
             )
+            .exists()
+        )
+        tier_match = (
+            query.session.query(Tier.id)
+            .filter(
+                Tier.id == InventoryPart.tier_id,
+                contains_ci(Tier.name, search_term),
+            )
+            .exists()
+        )
+        modality_match = (
+            query.session.query(Modality.id)
+            .filter(
+                Modality.id == InventoryPart.modality_id,
+                contains_ci(Modality.name, search_term),
+            )
+            .exists()
+        )
+        search_predicates = [
+            value_contains_ci(InventoryPart.id, identifier_term),
+            contains_ci(InventoryPart.part_number, search_term),
+            contains_ci(InventoryPart.asset_tag, search_term),
+            contains_ci(InventoryPart.part_type, search_term),
+            contains_ci(InventoryPart.description, search_term),
+            contains_ci(InventoryPart.make, search_term),
+            contains_ci(InventoryPart.model, search_term),
+            contains_ci(InventoryPart.serial_number, search_term),
+            contains_ci(InventoryPart.batch_number, search_term),
+            contains_ci(InventoryPart.supplier_name, search_term),
+            contains_ci(InventoryPart.supplier_contact, search_term),
+            contains_ci(InventoryPart.supplier_email, search_term),
+            contains_ci(InventoryPart.supplier_phone, search_term),
+            contains_ci(InventoryPart.location, search_term),
+            contains_ci(InventoryPart.condition, search_term),
+            contains_ci(InventoryPart.status, search_term),
+            value_contains_ci(InventoryPart.quantity_on_hand, search_term),
+            value_contains_ci(InventoryPart.reorder_level, search_term),
+            value_contains_ci(InventoryPart.unit_price, search_term),
+            value_contains_ci(InventoryPart.expiry_date, search_term),
+            facility_match,
+            tier_match,
+            modality_match,
+        ]
+        searched_date = parsed_date_value(search_term)
+        if searched_date:
+            search_predicates.extend(
+                [
+                    InventoryPart.expiry_date == searched_date,
+                    InventoryPart.inventory_date == searched_date,
+                ]
+            )
+        query = query.filter(
+            or_(*search_predicates)
         )
     return query
 

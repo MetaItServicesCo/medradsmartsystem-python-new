@@ -205,6 +205,11 @@ const Sales = () => {
   useEffect(() => {
     const handle = window.setTimeout(() => {
       setDebouncedSearch(search.trim())
+      setQuotationsPage(0)
+      setInvoicesPage(0)
+      setInProgressPage(0)
+      setCompletedPage(0)
+      setHistoryPage(0)
     }, 350)
 
     return () => window.clearTimeout(handle)
@@ -222,8 +227,8 @@ const Sales = () => {
     staleTime: 5 * 60_000,
   })
   const partsQ = useQuery({
-    queryKey: ['sales-parts', debouncedSearch],
-    queryFn: () => fetchSalesParts(debouncedSearch || undefined),
+    queryKey: ['sales-parts', 'dialog-preview'],
+    queryFn: () => fetchSalesParts(undefined, 100),
     enabled: partsAndFacilitiesNeeded,
     placeholderData: previousData => previousData,
   })
@@ -253,8 +258,12 @@ const Sales = () => {
     placeholderData: previousData => previousData,
   })
   const historyQ = useQuery({
-    queryKey: ['sales-history', historyPage],
-    queryFn: () => fetchSalesHistory({ skip: historyPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    queryKey: ['sales-history', debouncedSearch, historyPage],
+    queryFn: () => fetchSalesHistory({
+      search: debouncedSearch || undefined,
+      skip: historyPage * PAGE_SIZE,
+      limit: PAGE_SIZE,
+    }),
     enabled: tab === 4,
     placeholderData: previousData => previousData,
   })
@@ -965,6 +974,13 @@ const Sales = () => {
         )}
         {tab === 1 && (
           <Box>
+            <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
+              <Box>
+                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Invoices</Typography>
+                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by invoice, customer, facility, quotation, status, amount, or date.</Typography>
+              </Box>
+              <TextField size="small" label="Search invoices..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+            </Box>
             {renderInvoices()}
             {renderPagination(invoicesQ.data?.total || 0, invoicesPage, setInvoicesPage)}
           </Box>
@@ -981,6 +997,7 @@ const Sales = () => {
                   <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Payment Collected</Typography>
                   <Typography sx={{ color: '#059669', fontSize: 24, fontWeight: 900 }}>{money(inProgressPaid)}</Typography>
                 </Box>
+                <TextField size="small" label="Search in-progress sales..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280, bgcolor: '#fff' }} />
               </Box>
               <LinearProgress variant="determinate" value={inProgressPaymentPercent} sx={{ height: 10, borderRadius: 10, bgcolor: '#E0E7FF', '& .MuiLinearProgress-bar': { borderRadius: 10, bgcolor: '#7C3AED' } }} />
               <Typography sx={{ mt: 1, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>{inProgressPaymentPercent}% collected across active sales.</Typography>
@@ -992,8 +1009,13 @@ const Sales = () => {
         {tab === 3 && (
           <Box sx={{ p: 3 }}>
             <Card sx={{ p: 2.5, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', bgcolor: '#F7FEF9' }}>
-              <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Total Completed Sales</Typography>
-              <Typography sx={{ color: '#059669', fontSize: 30, fontWeight: 900 }}>{money(completedTotal)}</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                <Box>
+                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Total Completed Sales</Typography>
+                  <Typography sx={{ color: '#059669', fontSize: 30, fontWeight: 900 }}>{money(completedTotal)}</Typography>
+                </Box>
+                <TextField size="small" label="Search completed sales..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280, bgcolor: '#fff' }} />
+              </Box>
               <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
                 {['credit_card', 'cheque', 'bank_transfer'].map(method => (
                   <Chip
@@ -1010,6 +1032,13 @@ const Sales = () => {
         )}
         {tab === 4 && (
           <Box>
+          <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
+            <Box>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales History</Typography>
+              <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by work order, quotation, customer, facility, activity, user, or date.</Typography>
+            </Box>
+            <TextField size="small" label="Search history..." value={search} onChange={e => setSearch(e.target.value)} sx={{ minWidth: 280 }} />
+          </Box>
           <TableContainer className="list-scroll-panel">
             <Table stickyHeader>
               <TableHead>

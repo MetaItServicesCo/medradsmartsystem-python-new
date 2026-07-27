@@ -249,7 +249,7 @@ const Users = () => {
       <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
           size="small"
-          placeholder="Search users..."
+          placeholder="Search user, role, type, facility, status, or ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           sx={{ width: 280 }}

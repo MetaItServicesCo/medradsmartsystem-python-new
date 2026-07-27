@@ -8,8 +8,8 @@ class UserFacility(Base):
     __tablename__ = "user_facilities"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    facility_id = Column(Integer, ForeignKey("facilities.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id", ondelete="CASCADE"), nullable=False, index=True)
     role_at_facility = Column(String, nullable=True)  # optional override role at this facility
     assigned_at = Column(DateTime, default=datetime.utcnow)
 

@@ -6,8 +6,8 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import case, func, or_
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import and_, case, func, or_
+from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app import crud
@@ -54,6 +54,12 @@ from app.utils.invoice_approval import (
     require_invoice_payer,
     scope_invoice_approval_visibility,
     validate_requested_payment_status,
+)
+from app.utils.list_search import (
+    contains_ci,
+    normalize_list_search,
+    parsed_date_bounds,
+    value_contains_ci,
 )
 
 router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
@@ -363,7 +369,12 @@ def _latest_active_authorization(quotation: ServiceRequestQuotation) -> Optional
     )
 
 
-def _enrich(sr: ServiceRequest, *, include_quotation_ledger: bool = False) -> dict:
+def _enrich(
+    sr: ServiceRequest,
+    *,
+    include_quotation_ledger: bool = False,
+    include_quotations: bool = True,
+) -> dict:
     """Convert ORM object to dict with denormalised display names."""
     data = {c.name: getattr(sr, c.name) for c in sr.__table__.columns}
     # Enums → plain strings
@@ -385,7 +396,7 @@ def _enrich(sr: ServiceRequest, *, include_quotation_ledger: bool = False) -> di
     data["technician_name"] = sr.assigned_technician.full_name if sr.assigned_technician else None
     # Quotations (multiple)
     data["quotations"] = []
-    if sr.quotations:
+    if include_quotations and sr.quotations:
         for q in sr.quotations:
             data["quotations"].append(_quotation_dict(q, include_ledger=include_quotation_ledger))
     return data
@@ -822,10 +833,37 @@ def list_service_requests(
         base_query = base_query.filter(ServiceRequest.priority == priority)
     if facility_id:
         base_query = base_query.filter(ServiceRequest.facility_id == facility_id)
-    if search:
-        base_query = base_query.filter(
-            ServiceRequest.request_number.ilike(f"%{search}%")
-            | ServiceRequest.problem_description.ilike(f"%{search}%")
+    search_term = normalize_list_search(search)
+    if search_term:
+        requester = aliased(User)
+        normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
+        search_predicates = [
+            contains_ci(ServiceRequest.request_number, search_term),
+            contains_ci(Facility.name, search_term),
+            contains_ci(Equipment.asset_tag, search_term),
+            contains_ci(Equipment.make, search_term),
+            contains_ci(Equipment.model, search_term),
+            contains_ci(Equipment.serial_number, search_term),
+            contains_ci(requester.full_name, search_term),
+            contains_ci(requester.username, search_term),
+            contains_ci(requester.email, search_term),
+            contains_ci(ServiceRequest.requested_by_name, search_term),
+            value_contains_ci(ServiceRequest.priority, normalized_value),
+            value_contains_ci(ServiceRequest.status, normalized_value),
+            value_contains_ci(ServiceRequest.created_at, search_term),
+        ]
+        created_bounds = parsed_date_bounds(search_term)
+        if created_bounds:
+            search_predicates.append(and_(
+                ServiceRequest.created_at >= created_bounds[0],
+                ServiceRequest.created_at < created_bounds[1],
+            ))
+        base_query = (
+            base_query
+            .outerjoin(Facility, ServiceRequest.facility_id == Facility.id)
+            .outerjoin(Equipment, ServiceRequest.equipment_id == Equipment.id)
+            .outerjoin(requester, ServiceRequest.requester_id == requester.id)
+            .filter(or_(*search_predicates))
         )
     if date_from:
         base_query = base_query.filter(ServiceRequest.created_at >= datetime.combine(date_from, time.min))
@@ -877,13 +915,15 @@ def list_service_requests(
         joinedload(ServiceRequest.equipment).joinedload(Equipment.tier),
         joinedload(ServiceRequest.requester),
         joinedload(ServiceRequest.assigned_technician),
-        selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.line_items),
-        selectinload(ServiceRequest.quotations).selectinload(ServiceRequestQuotation.payments),
     )
 
     total = query.count()
     items = query.order_by(ServiceRequest.created_at.desc()).offset(skip).limit(limit).all()
-    return {"items": [_enrich(sr) for sr in items], "total": total, "stats": stats}
+    return {
+        "items": [_enrich(sr, include_quotations=False) for sr in items],
+        "total": total,
+        "stats": stats,
+    }
 
 
 # ── GET ONE ──────────────────────────────────────────────────────────────────

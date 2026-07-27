@@ -902,8 +902,48 @@ const Billing = () => {
     setAuthorizationNotes('')
   }
 
-  const viewBillingItem = (item: BillingItem) => {
-    setViewItem(item)
+  const hydrateInspectionBillingItem = async (item: BillingItem): Promise<BillingItem> => {
+    if (item.source !== 'inspection') return item
+    try {
+      const detail = await queryClient.fetchQuery({
+        queryKey: ['inspection-quotation-detail', item.id],
+        queryFn: () => fetchInspectionQuotations({ invoice_id: item.id, limit: 1 }),
+        staleTime: 30_000,
+      })
+      const invoice = detail.items[0]
+      if (!invoice) return item
+      return {
+        ...item,
+        facilityId: invoice.facility_id,
+        number: invoice.invoice_number,
+        relatedNumber: invoice.inspection_batch_number || invoice.inspection_number || '-',
+        facility: invoice.facility_name || '-',
+        customer: invoice.customer_name,
+        customerEmail: invoice.customer_email,
+        description: invoice.inspection_batch_id
+          ? `${invoice.batch_asset_count || invoice.batch_items?.length || 0} asset inspection batch`
+          : invoice.inventory_part_name || 'Inspection invoice',
+        amount: Number(invoice.total_amount || 0),
+        paid: Number(invoice.amount_paid || 0),
+        balance: Number(invoice.balance_due || 0),
+        status: invoice.status,
+        date: invoice.issue_date || invoice.created_at,
+        dueDate: invoice.due_date,
+        paymentMethod: invoice.payment_method,
+        billingApprovalStatus: invoice.billing_approval_status,
+        approvedForBillingByName: invoice.approved_for_billing_by_name,
+        approvedForBillingAt: invoice.approved_for_billing_at,
+        transactions: invoiceTransactions(invoice),
+        raw: invoice,
+      }
+    } catch {
+      toast.error('Could not load the full inspection invoice')
+      return item
+    }
+  }
+
+  const viewBillingItem = async (item: BillingItem) => {
+    setViewItem(await hydrateInspectionBillingItem(item))
   }
 
   const handlePay = () => {
@@ -1460,7 +1500,11 @@ const Billing = () => {
           </MenuItem>
         )}
         {actionItem && canEditInvoices && !(actionItem.source === 'service' && actionItem.billingKind !== 'service_invoice') && (
-          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setEditItem(actionItem); closeActions() }}>
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
+            const item = actionItem
+            closeActions()
+            void hydrateInspectionBillingItem(item).then(setEditItem)
+          }}>
             <ListItemIcon><EditOutlinedIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
             Edit Invoice
           </MenuItem>
@@ -1472,7 +1516,11 @@ const Billing = () => {
           </MenuItem>
         )}
         {actionItem && (
-          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setPrintItem(actionItem); closeActions() }}>
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
+            const item = actionItem
+            closeActions()
+            void hydrateInspectionBillingItem(item).then(setPrintItem)
+          }}>
             <ListItemIcon><PrintIcon fontSize="small" sx={{ color: '#059669' }} /></ListItemIcon>
             Print
           </MenuItem>

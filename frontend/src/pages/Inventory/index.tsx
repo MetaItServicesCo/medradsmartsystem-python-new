@@ -383,7 +383,7 @@ const Inventory = () => {
           </Typography>
         </Box>
         <Box sx={{ p: 2.5, display: 'flex', gap: 2, borderBottom: '1px solid #E5E7EB', alignItems: 'center', flexWrap: 'wrap' }}>
-          <TextField size="small" placeholder="Search parts, serials, batches..." value={search} onChange={(e) => setSearch(e.target.value)}
+          <TextField size="small" placeholder="Search part #, asset tag, description, make, model, serial, facility, quantity, price, or status..." value={search} onChange={(e) => setSearch(e.target.value)}
             sx={{ minWidth: 300 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#9CA3AF' }} /></InputAdornment> }}
           />
