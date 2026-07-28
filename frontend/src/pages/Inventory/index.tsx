@@ -32,6 +32,7 @@ import { resolveUploadUrl } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import ContextTableRow from '@/components/ContextTableRow'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const PAGE_SIZE = 25
@@ -464,7 +465,12 @@ const Inventory = () => {
               ) : parts.map((part) => {
                 const low = part.quantity_on_hand <= part.reorder_level
                 return (
-                  <TableRow key={part.id} hover>
+                  <ContextTableRow
+                    key={part.id}
+                    recordKey={`inventory-part-${part.id}`}
+                    recordLabel={part.part_number}
+                    hover
+                  >
                     <TableCell>
                       <Avatar
                         src={resolveUploadUrl(part.default_picture_url)}
@@ -507,7 +513,7 @@ const Inventory = () => {
                         </IconButton>
                       </Tooltip>
                     </TableCell>
-                  </TableRow>
+                  </ContextTableRow>
                 )
               })}
             </TableBody>
@@ -665,14 +671,18 @@ const Inventory = () => {
               </TableHead>
               <TableBody>
                 {(historyData?.items ?? []).map((txn) => (
-                  <TableRow key={txn.id}>
+                  <ContextTableRow
+                    key={txn.id}
+                    recordKey={`inventory-transaction-${txn.id}`}
+                    recordLabel={`${txn.transaction_type} · ${txn.quantity}`}
+                  >
                     <TableCell>{transactionLabels[txn.transaction_type]}</TableCell>
                     <TableCell>{txn.quantity}</TableCell>
                     <TableCell>{txn.balance_after}</TableCell>
                     <TableCell>{txn.created_by_name || `User #${txn.created_by_id}`}</TableCell>
                     <TableCell>{txn.authorization_reference || '-'}</TableCell>
                     <TableCell>{new Date(txn.created_at).toLocaleString()}</TableCell>
-                  </TableRow>
+                  </ContextTableRow>
                 ))}
                 {(historyData?.items ?? []).length === 0 && (
                   <TableRow><TableCell colSpan={6} align="center">No transactions yet</TableCell></TableRow>

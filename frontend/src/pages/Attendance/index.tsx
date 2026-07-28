@@ -40,6 +40,7 @@ import VideocamIcon from '@mui/icons-material/Videocam'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { toast } from 'react-toastify'
 import { useSearchParams } from 'react-router-dom'
+import ContextTableRow from '@/components/ContextTableRow'
 
 import {
   createAttendanceEvent,
@@ -666,7 +667,11 @@ const Attendance = () => {
                   {profiles.map((profile) => {
                     const status = FACE_STATUS[profile.face_status] || FACE_STATUS.not_enrolled
                     return (
-                      <TableRow key={`${profile.user_id}-${profile.id}`}>
+                      <ContextTableRow
+                        key={`${profile.user_id}-${profile.id}`}
+                        recordKey={`attendance-profile-${profile.user_id}-${profile.id}`}
+                        recordLabel={profile.user.full_name}
+                      >
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                             <Avatar src={resolveUploadUrl(profile.user.avatar_url)}>{profile.user.full_name.charAt(0)}</Avatar>
@@ -694,7 +699,7 @@ const Attendance = () => {
                             <MoreVertIcon fontSize="small" />
                           </IconButton>
                         </TableCell>
-                      </TableRow>
+                      </ContextTableRow>
                     )
                   })}
                   {profilesQ.isLoading && <TableRow><TableCell colSpan={6}><CircularProgress size={22} /></TableCell></TableRow>}
@@ -1026,14 +1031,18 @@ const EventTable = ({ rows }: { rows: AttendanceEvent[] }) => (
         {rows.map((event) => {
           const colors = EVENT_COLORS[event.event_type] || { bg: '#F3F4F6', color: '#374151' }
           return (
-            <TableRow key={event.id}>
+            <ContextTableRow
+              key={event.id}
+              recordKey={`attendance-event-${event.id}`}
+              recordLabel={`${event.user.full_name} · ${EVENT_LABELS[event.event_type] || event.event_type}`}
+            >
               <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>{event.user.full_name}</TableCell>
               <TableCell><Chip label={EVENT_LABELS[event.event_type] || event.event_type} sx={{ bgcolor: colors.bg, color: colors.color, fontWeight: 900 }} /></TableCell>
               <TableCell>{formatDateTime(event.event_time)}</TableCell>
               <TableCell>{event.facility?.name || '-'}</TableCell>
               <TableCell sx={{ textTransform: 'capitalize' }}>{event.source}</TableCell>
               <TableCell>{event.remark || '-'}</TableCell>
-            </TableRow>
+            </ContextTableRow>
           )
         })}
         {rows.length === 0 && <TableRow><TableCell colSpan={6}>No attendance events found</TableCell></TableRow>}

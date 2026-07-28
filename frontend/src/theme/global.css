@@ -178,6 +178,41 @@ input[type='number'] {
   transition: background-color 0.15s ease;
 }
 
+.MuiTableRow-root[data-list-row-selected='true'] > .MuiTableCell-root,
+.MuiTableRow-root[data-list-row-focused='true'] > .MuiTableCell-root {
+  background-color: #F5F3FF;
+}
+
+.MuiTableRow-root[data-list-row-selected='true'] > .MuiTableCell-root:first-of-type {
+  box-shadow: inset 4px 0 0 #A78BFA;
+}
+
+.MuiTableRow-root[data-list-row-focused='true'] > .MuiTableCell-root:first-of-type {
+  box-shadow: inset 4px 0 0 #7C3AED;
+}
+
+.MuiTableRow-root[data-list-row-focused='true'] {
+  outline: 2px solid rgba(124, 58, 237, 0.2);
+  outline-offset: -2px;
+  animation: listContextPulse 1.2s ease-out;
+}
+
+.MuiTableRow-root[data-list-row-focused='true'] .MuiTableCell-root {
+  color: #1E1B4B;
+}
+
+@keyframes listContextPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.38);
+  }
+  55% {
+    box-shadow: 0 0 0 8px rgba(124, 58, 237, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+  }
+}
+
 .MuiTableCell-root {
   vertical-align: middle;
 }

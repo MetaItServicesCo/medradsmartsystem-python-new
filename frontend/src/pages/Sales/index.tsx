@@ -31,6 +31,7 @@ import ClippedTooltipText from '@/components/ClippedTooltipText'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import ContextTableRow from '@/components/ContextTableRow'
 import {
   completeSalesQuotation,
   convertSalesQuotationToInvoice,
@@ -846,8 +847,10 @@ const Sales = () => {
             const paid = statusChip(item.paid_status)
             const highlighted = highlightQuotationId === item.id
             return (
-              <TableRow
+              <ContextTableRow
                 key={item.id}
+                recordKey={`sales-quotation-${item.id}`}
+                recordLabel={item.work_order || `Quotation #${item.id}`}
                 id={`sales-quotation-${item.id}`}
                 hover
                 sx={highlighted ? {
@@ -891,7 +894,7 @@ const Sales = () => {
                     <MoreVertIcon fontSize="small" />
                   </IconButton>
                 </TableCell>
-              </TableRow>
+              </ContextTableRow>
             )
           })}
         </TableBody>
@@ -924,8 +927,10 @@ const Sales = () => {
             const chip = statusChip(invoice.status)
             const highlighted = highlightInvoiceId === invoice.id
             return (
-              <TableRow
+              <ContextTableRow
                 key={invoice.id}
+                recordKey={`sales-invoice-${invoice.id}`}
+                recordLabel={invoice.invoice_number}
                 id={`sales-invoice-${invoice.id}`}
                 hover
                 sx={highlighted ? {
@@ -955,7 +960,7 @@ const Sales = () => {
                     <MoreVertIcon fontSize="small" />
                   </IconButton>
                 </TableCell>
-              </TableRow>
+              </ContextTableRow>
             )
           })}
         </TableBody>
@@ -1152,7 +1157,12 @@ const Sales = () => {
                 )) : (historyQ.data?.items || []).length === 0 ? (
                   <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No sales history yet.</TableCell></TableRow>
                 ) : historyQ.data!.items.map((item, index) => (
-                  <TableRow key={`${item.quotation_id}-${item.action}-${index}`} hover>
+                  <ContextTableRow
+                    key={`${item.quotation_id}-${item.action}-${index}`}
+                    recordKey={`sales-history-${item.quotation_id}-${index}`}
+                    recordLabel={`${item.quotation_number} · ${item.action.replace(/_/g, ' ')}`}
+                    hover
+                  >
                     <TableCell>{formatDate(item.at)}</TableCell>
                     <TableCell><ClippedTooltipText value={item.work_order} monospace fontWeight={900} onClick={() => openLinkedQuotation(item.quotation_id)} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.quotation_number} monospace color="#7161D8" fontWeight={900} onClick={() => openLinkedQuotation(item.quotation_id)} /></TableCell>
@@ -1160,7 +1170,7 @@ const Sales = () => {
                     <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
                     <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
                     <TableCell>{item.by}</TableCell>
-                  </TableRow>
+                  </ContextTableRow>
                 ))}
               </TableBody>
             </Table>

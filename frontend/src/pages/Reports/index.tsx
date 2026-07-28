@@ -17,6 +17,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import ContextTableRow from '@/components/ContextTableRow'
 import { buildInspectionReportDocumentHtml, printInspectionReportSheet } from '@/utils/inspectionReportHtml'
 import {
   fetchInspectionReports,
@@ -451,7 +452,12 @@ const Reports = () => {
         {tab === 'service' && (
           <ReportTable loading={isLoading} emptyText="No service reports found." colSpan={9}>
             {(serviceQ.data?.items || []).map(item => (
-              <TableRow key={item.id} hover>
+              <ContextTableRow
+                key={item.id}
+                recordKey={`report-service-${item.id}`}
+                recordLabel={item.request_number}
+                hover
+              >
                 <TableCell><ClippedTooltipText value={item.request_number} monospace color="#6757D8" fontWeight={950} onClick={() => setSelectedService(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={800} field /></TableCell>
                 <TableCell><ClippedTooltipText value={item.equipment_name || '-'} field /></TableCell>
@@ -461,7 +467,7 @@ const Reports = () => {
                 <TableCell>{formatDate(item.completed_at)}</TableCell>
                 <TableCell>{item.invoice ? <Chip label={item.invoice.invoice_number} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 900 }} /> : '-'}</TableCell>
                 <TableCell align="right"><ActionButton item={item} onOpen={openActions} /></TableCell>
-              </TableRow>
+              </ContextTableRow>
             ))}
           </ReportTable>
         )}
@@ -471,7 +477,12 @@ const Reports = () => {
             {(inspectionQ.data?.items || []).map(item => {
               const chip = statusChip(item.result)
               return (
-                <TableRow key={item.id} hover>
+                <ContextTableRow
+                  key={item.id}
+                  recordKey={`report-inspection-${item.id}`}
+                  recordLabel={item.inspection_number}
+                  hover
+                >
                   <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#6757D8" fontWeight={950} onClick={() => setSelectedInspection(item)} /></TableCell>
                   <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={800} field /></TableCell>
                   <TableCell><ClippedTooltipText value={item.asset_name || '-'} field /></TableCell>
@@ -481,7 +492,7 @@ const Reports = () => {
                   <TableCell>{formatDate(item.completed_at)}</TableCell>
                   <TableCell>{item.invoice ? <Chip label={item.invoice.invoice_number} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 900 }} /> : '-'}</TableCell>
                   <TableCell align="right"><ActionButton item={item} onOpen={openActions} /></TableCell>
-                </TableRow>
+                </ContextTableRow>
               )
             })}
           </ReportTable>
@@ -490,7 +501,12 @@ const Reports = () => {
         {tab === 'history' && (
           <ReportTable loading={isLoading} emptyText="No service request history found." colSpan={8}>
             {(historyQ.data?.items || []).map(item => (
-              <TableRow key={item.id} hover>
+              <ContextTableRow
+                key={item.id}
+                recordKey={`report-history-${item.id}`}
+                recordLabel={item.request_number}
+                hover
+              >
                 <TableCell>{formatDateTime(item.timestamp)}</TableCell>
                 <TableCell><ClippedTooltipText value={item.request_number} monospace color="#6757D8" fontWeight={950} onClick={() => setSelectedHistory(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={800} field /></TableCell>
@@ -499,7 +515,7 @@ const Reports = () => {
                 <TableCell><Chip label={historyActionLabel(item.action)} sx={{ bgcolor: '#EEF2FF', color: '#4338CA', fontWeight: 900 }} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.summary || formatChangeValue(item.changes)} field /></TableCell>
                 <TableCell align="right"><ActionButton item={item} onOpen={openActions} /></TableCell>
-              </TableRow>
+              </ContextTableRow>
             ))}
           </ReportTable>
         )}

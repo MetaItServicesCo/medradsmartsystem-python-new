@@ -27,6 +27,7 @@ import { fetchUsers, resolveUploadUrl } from '@/api/users'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import ContextTableRow from '@/components/ContextTableRow'
 
 const PAGE_SIZE = 25
 const ACTION_MENU_PAPER = {
@@ -281,7 +282,12 @@ const TestEquipmentPage = () => {
               ) : items.map((item) => {
                 const colors = statusColor(item.status)
                 return (
-                  <TableRow key={item.id} hover>
+                  <ContextTableRow
+                    key={item.id}
+                    recordKey={`test-equipment-${item.id}`}
+                    recordLabel={item.tem}
+                    hover
+                  >
                     <TableCell>
                       <Avatar
                         variant="rounded"
@@ -320,7 +326,7 @@ const TestEquipmentPage = () => {
                         </Tooltip>
                       )}
                     </TableCell>
-                  </TableRow>
+                  </ContextTableRow>
                 )
               })}
             </TableBody>

@@ -46,6 +46,7 @@ import InvoicePrintDialog, {
   type PrintablePaidQuotation,
 } from '@/components/Billing/InvoicePrintDialog'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import ContextTableRow from '@/components/ContextTableRow'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
@@ -1351,7 +1352,12 @@ const Billing = () => {
                   .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
                 return (
                   <Fragment key={item.key}>
-                    <TableRow key={item.key} hover>
+                    <ContextTableRow
+                      key={item.key}
+                      recordKey={`billing-${item.key}`}
+                      recordLabel={item.number}
+                      hover
+                    >
                       <TableCell>
                         <Tooltip title={billingTypeLabel(item)} arrow placement="top">
                           <Chip
@@ -1450,7 +1456,7 @@ const Billing = () => {
                           </IconButton>
                         </Tooltip>
                       </TableCell>
-                    </TableRow>
+                    </ContextTableRow>
                     <TableRow key={`${item.key}-details`}>
                       <TableCell colSpan={10} sx={{ py: 0, border: expanded ? undefined : 'none' }}>
                         <Collapse in={expanded}>

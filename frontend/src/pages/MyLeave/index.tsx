@@ -18,6 +18,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { toast } from 'react-toastify'
 import { fetchLeaveRequests, createLeaveRequest, deleteLeaveRequest, fetchLeaveTypes } from '@/api/hr'
+import ContextTableRow from '@/components/ContextTableRow'
 
 const STATUS_META: Record<string, { label: string; color: 'default' | 'warning' | 'success' | 'error' | 'info'; icon: React.ReactNode }> = {
   pending:   { label: 'Pending',   color: 'warning', icon: <HourglassEmptyIcon fontSize="small" /> },
@@ -312,7 +313,12 @@ export default function MyLeave() {
                   const isCustomLeave = !typeName
                   const displayName = typeName ?? (r.reason ? r.reason.split(':')[0] : 'Custom')
                   return (
-                    <TableRow key={r.id} hover>
+                    <ContextTableRow
+                      key={r.id}
+                      recordKey={`leave-request-${r.id}`}
+                      recordLabel={`${displayName} · ${fmt(r.start_date)}`}
+                      hover
+                    >
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? (isCustomLeave ? '#6b7280' : '#7161D8'), flexShrink: 0 }} />
@@ -342,7 +348,7 @@ export default function MyLeave() {
                           </Tooltip>
                         )}
                       </TableCell>
-                    </TableRow>
+                    </ContextTableRow>
                   )
                 })}
               </TableBody>

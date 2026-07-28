@@ -31,6 +31,7 @@ import {
 import CreateServiceRequestModal from './CreateServiceRequestModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import ContextTableRow from '@/components/ContextTableRow'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
@@ -516,8 +517,10 @@ const ServiceRequestList = () => {
                       const pColor = PRIORITY_COLORS[sr.priority] || PRIORITY_COLORS.low
                       const sColor = STATUS_COLORS[sr.status] || STATUS_COLORS.new
                       return (
-                        <TableRow
+                        <ContextTableRow
                           key={sr.id}
+                          recordKey={`service-request-${sr.id}`}
+                          recordLabel={sr.request_number}
                           sx={{
                             '&:hover': { backgroundColor: '#F8FAFC' },
                             cursor: 'pointer',
@@ -607,7 +610,7 @@ const ServiceRequestList = () => {
                               </IconButton>
                             </Tooltip>
                           </TableCell>
-                        </TableRow>
+                        </ContextTableRow>
                       )
                     })}
             </TableBody>

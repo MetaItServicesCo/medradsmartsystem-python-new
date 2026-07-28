@@ -55,6 +55,7 @@ import ModalitiesModal from './ModalitiesModal'
 import DepartmentsModal from './DepartmentsModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import ContextTableRow from '@/components/ContextTableRow'
 import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
 
 const STAT_CARDS = [
@@ -738,8 +739,10 @@ const FacilityList = () => {
                     const visibleChildCount = getVisibleChildCount(facility.id)
                     const isChild = Boolean(facility.parent_facility_id)
                     return (
-                    <TableRow
+                    <ContextTableRow
                       key={facility.id}
+                      recordKey={`facility-${facility.id}`}
+                      recordLabel={facility.name}
                       sx={{
                         '&:hover': {
                           backgroundColor: '#FAFAFF',
@@ -906,7 +909,7 @@ const FacilityList = () => {
                           </IconButton>
                         </Tooltip>
                       </TableCell>
-                    </TableRow>
+                    </ContextTableRow>
                   )})}
             </TableBody>
           </Table>

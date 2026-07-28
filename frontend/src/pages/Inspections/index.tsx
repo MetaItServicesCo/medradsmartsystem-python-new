@@ -75,7 +75,9 @@ import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipmen
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import ContextTableRow from '@/components/ContextTableRow'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import { useListContext } from '@/contexts/ListContext'
 import { formatUSPhone } from '@/utils/formatters'
 
 const CHECK_FIELDS = [
@@ -1113,6 +1115,7 @@ const Inspections = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { focusRecord } = useListContext()
   const currentUser = useAuthStore((state) => state.user)
   const canAddInspections = hasPermission(currentUser, 'inspections', 'add')
   const canEditInspections = hasPermission(currentUser, 'inspections', 'edit')
@@ -1557,13 +1560,26 @@ const Inspections = () => {
   const createMut = useMutation({
     mutationFn: createInstantInspection,
     onSuccess: (res) => {
-      const assetCount = res.items?.[0]?.asset_count || 0
+      const batch = res.items?.[0]
+      const assetCount = batch?.asset_count || 0
       toast.success(`${res.total} inspection batch started with ${assetCount} asset${assetCount === 1 ? '' : 's'}`)
       setSelectedInstantEquipmentIds([])
+      setInProgressSearch('')
+      setDebouncedInProgressSearch('')
+      setInProgressBatchPage(0)
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
-      selectTab(2)
+      setTab(2)
+      if (batch) {
+        focusRecord(`inspection-batch-${batch.id}`, batch.batch_number, {
+          message: 'Started as an instant inspection and moved to In Progress.',
+          announce: true,
+          query: { tab: 2, date_from: null, date_to: null },
+        })
+      } else {
+        selectTab(2)
+      }
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
   })
@@ -1571,13 +1587,31 @@ const Inspections = () => {
   const scheduleMut = useMutation({
     mutationFn: scheduleInspections,
     onSuccess: (res) => {
-      const assetCount = res.items?.[0]?.asset_count || 0
+      const batch = res.items?.[0]
+      const assetCount = batch?.asset_count || 0
       toast.success(`${res.total} inspection batch scheduled with ${assetCount} asset${assetCount === 1 ? '' : 's'}`)
       setSelectedEquipmentIds([])
+      setUpcomingSearch('')
+      setDebouncedUpcomingSearch('')
+      setUpcomingPage(0)
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
-      selectTab(0)
+      setTab(0)
+      if (batch) {
+        const firstInspection = batch.assets?.[0]
+        focusRecord(
+          firstInspection ? `inspection-${firstInspection.id}` : `inspection-batch-${batch.id}`,
+          firstInspection?.inspection_number || batch.batch_number,
+          {
+          message: 'Scheduled and available under Upcoming inspections.',
+          announce: true,
+          query: { tab: 0 },
+          },
+        )
+      } else {
+        selectTab(0)
+      }
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not schedule inspections'),
   })
@@ -1595,12 +1629,25 @@ const Inspections = () => {
 
   const startMut = useMutation({
     mutationFn: startScheduledInspection,
-    onSuccess: () => {
+    onSuccess: (inspection) => {
       toast.success('Inspection moved to in progress')
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
-      selectTab(2)
+      setTab(2)
+      setInProgressSearch('')
+      setDebouncedInProgressSearch('')
+      setInProgressBatchPage(0)
+      setLegacyInProgressPage(0)
+      focusRecord(
+        inspection.batch_id ? `inspection-batch-${inspection.batch_id}` : `inspection-${inspection.id}`,
+        inspection.inspection_number,
+        {
+          message: 'Started and moved from Upcoming to In Progress.',
+          announce: true,
+          query: { tab: 2, date_from: null, date_to: null },
+        },
+      )
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not start inspection'),
   })
@@ -1617,6 +1664,11 @@ const Inspections = () => {
       setInfoInspection(previous => previous?.id === updated.id ? (variables.reopen ? null : updated) : previous)
       setInfoDraft(previous => infoInspection?.id === updated.id ? (variables.reopen ? null : inspectionDetailsDraft(updated)) : previous)
       refreshInspectionQueries()
+      focusRecord(`inspection-${updated.id}`, updated.inspection_number, {
+        message: variables.reopen ? 'Reopened and returned to Upcoming.' : 'Schedule updated.',
+        announce: true,
+        query: variables.reopen ? { tab: 0 } : undefined,
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not reschedule inspection'),
   })
@@ -1630,6 +1682,10 @@ const Inspections = () => {
       setInfoDraft(inspectionDetailsDraft(updated))
       setInfoEditing(false)
       refreshInspectionQueries()
+      focusRecord(`inspection-${updated.id}`, updated.inspection_number, {
+        message: 'Inspection details updated.',
+        announce: true,
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update inspection'),
   })
@@ -1641,6 +1697,13 @@ const Inspections = () => {
       setCloseInspectionTarget(null)
       setInfoInspection(previous => previous?.id === closed.id ? null : previous)
       refreshInspectionQueries()
+      setTab(5)
+      setClosedPage(0)
+      focusRecord(`inspection-${closed.id}`, closed.inspection_number, {
+        message: 'Closed and moved to the Closed tab.',
+        announce: true,
+        query: { tab: 5 },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not close inspection'),
   })
@@ -1652,13 +1715,20 @@ const Inspections = () => {
       setReopenInspectionTarget(null)
       setInfoInspection(previous => previous?.id === reopened.id ? null : previous)
       refreshInspectionQueries()
+      setTab(0)
+      setUpcomingPage(0)
+      focusRecord(`inspection-${reopened.id}`, reopened.inspection_number, {
+        message: 'Reopened and returned to Upcoming.',
+        announce: true,
+        query: { tab: 0 },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not reopen inspection'),
   })
 
   const reportMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => saveInspectionReport(id, data),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       toast.success(reportStatus === 'completed' ? 'Inspection report completed' : 'Inspection moved back to in progress')
       setReportInspection(null)
       setReport(null)
@@ -1667,6 +1737,19 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
       queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
+      const destinationTab = reportStatus === 'completed' ? 3 : 2
+      setTab(destinationTab)
+      focusRecord(
+        updated.batch_id ? `inspection-batch-${updated.batch_id}` : `inspection-${updated.id}`,
+        updated.inspection_number,
+        {
+          message: reportStatus === 'completed'
+            ? 'Report completed and moved to Completed.'
+            : 'Report saved and returned to In Progress.',
+          announce: true,
+          query: { tab: destinationTab },
+        },
+      )
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save inspection report'),
   })
@@ -1707,7 +1790,13 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspection-equipment'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
       queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
-      selectTab(2)
+      setTab(2)
+      setInProgressBatchPage(0)
+      focusRecord(`inspection-batch-${batch.id}`, batch.batch_number, {
+        message: 'New asset added; this batch returned to In Progress.',
+        announce: true,
+        query: { tab: 2 },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not add asset to batch'),
   })
@@ -1724,7 +1813,13 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
       queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
-      selectTab(2)
+      setTab(2)
+      setInProgressBatchPage(0)
+      focusRecord(`inspection-batch-${batch.id}`, batch.batch_number, {
+        message: `${variables.equipmentIds.length} existing asset${variables.equipmentIds.length === 1 ? '' : 's'} added; this batch returned to In Progress.`,
+        announce: true,
+        query: { tab: 2 },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not add existing assets to batch'),
   })
@@ -3143,7 +3238,12 @@ const Inspections = () => {
           ) : items.map(item => {
             const resultStyle = statusChip(item.result)
             return (
-              <TableRow key={item.id} hover>
+              <ContextTableRow
+                key={item.id}
+                recordKey={`inspection-${item.id}`}
+                recordLabel={item.inspection_number}
+                hover
+              >
                 <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(item, mode)} /></TableCell>
               <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
               <TableCell>
@@ -3168,7 +3268,7 @@ const Inspections = () => {
                     </Box>
                   )}
                 </TableCell>
-              </TableRow>
+              </ContextTableRow>
             )
           })}
         </TableBody>
@@ -3198,7 +3298,12 @@ const Inspections = () => {
             const done = batch.completed_count || 0
             const total = batch.asset_count || 0
             return (
-              <TableRow key={batch.id} hover>
+              <ContextTableRow
+                key={batch.id}
+                recordKey={`inspection-batch-${batch.id}`}
+                recordLabel={batch.batch_number}
+                hover
+              >
                 <TableCell><ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} /></TableCell>
                 <TableCell><ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} /></TableCell>
                 <TableCell>
@@ -3243,7 +3348,7 @@ const Inspections = () => {
                     </Button>
                   </Box>
                 </TableCell>
-              </TableRow>
+              </ContextTableRow>
             )
           })}
         </TableBody>
@@ -3283,7 +3388,12 @@ const Inspections = () => {
           )) : (upcomingQ.data?.items || []).length === 0 ? (
             <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No upcoming inspections scheduled.</TableCell></TableRow>
           ) : upcomingQ.data!.items.map(item => (
-            <TableRow key={item.id} hover>
+            <ContextTableRow
+              key={item.id}
+              recordKey={`inspection-${item.id}`}
+              recordLabel={item.inspection_number}
+              hover
+            >
               <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} /></TableCell>
               <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
               <TableCell>
@@ -3310,7 +3420,7 @@ const Inspections = () => {
                   <Chip size="small" label="View only" sx={{ fontWeight: 900 }} />
                 )}
               </TableCell>
-            </TableRow>
+            </ContextTableRow>
           ))}
         </TableBody>
       </Table>
@@ -3386,7 +3496,12 @@ const Inspections = () => {
             )) : (closedQ.data?.items || []).length === 0 ? (
               <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No closed inspections match these filters.</TableCell></TableRow>
             ) : closedQ.data!.items.map(item => (
-              <TableRow key={item.id} hover>
+              <ContextTableRow
+                key={item.id}
+                recordKey={`inspection-${item.id}`}
+                recordLabel={item.inspection_number}
+                hover
+              >
                 <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
                 <TableCell>
@@ -3409,7 +3524,7 @@ const Inspections = () => {
                     <Button size="small" onClick={() => openInspectionInfo(item)} sx={{ fontWeight: 900, textTransform: 'none' }}>View</Button>
                   )}
                 </TableCell>
-              </TableRow>
+              </ContextTableRow>
             ))}
           </TableBody>
         </Table>
@@ -4017,14 +4132,22 @@ const Inspections = () => {
                       {equipmentQ.isLoading ? <TableRow><TableCell colSpan={6}><Skeleton /></TableCell></TableRow> : equipment.length === 0 ? (
                         <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: '#6B7280', fontWeight: 700 }}>No facility inventory found for scheduling.</TableCell></TableRow>
                       ) : equipment.map((item: InspectionEquipmentItem) => (
-                        <TableRow key={item.id} hover onClick={() => toggleEquipment(item.id)} sx={{ cursor: 'pointer' }}>
+                        <ContextTableRow
+                          key={item.id}
+                          recordKey={`inspection-asset-${item.id}`}
+                          recordLabel={item.asset_tag}
+                          contextSelected={selectedEquipmentIds.includes(item.id)}
+                          hover
+                          onClick={() => toggleEquipment(item.id)}
+                          sx={{ cursor: 'pointer' }}
+                        >
                           <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} /></TableCell>
                           <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
                           <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
                           <TableCell>{item.modality_name || '-'}</TableCell>
                           <TableCell>{item.criticality}</TableCell>
                           <TableCell><ClippedTooltipText value={item.serial_number} /></TableCell>
-                        </TableRow>
+                        </ContextTableRow>
                       ))}
                     </TableBody>
                   </Table>
@@ -4153,14 +4276,22 @@ const Inspections = () => {
                   )) : equipment.length === 0 ? (
                     <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>Select a facility with assets.</TableCell></TableRow>
                   ) : equipment.map((item: InspectionEquipmentItem) => (
-                    <TableRow key={item.id} hover onClick={() => toggleInstantEquipment(item.id)} sx={{ cursor: 'pointer' }}>
+                    <ContextTableRow
+                      key={item.id}
+                      recordKey={`inspection-asset-${item.id}`}
+                      recordLabel={item.asset_tag}
+                      contextSelected={selectedInstantEquipmentIds.includes(item.id)}
+                      hover
+                      onClick={() => toggleInstantEquipment(item.id)}
+                      sx={{ cursor: 'pointer' }}
+                    >
                       <TableCell padding="checkbox"><Checkbox checked={selectedInstantEquipmentIds.includes(item.id)} /></TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
                       <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
                       <TableCell>{item.modality_name || '-'}</TableCell>
                       <TableCell><ClippedTooltipText value={item.serial_number || '-'} /></TableCell>
                       <TableCell>{item.tier_name || '-'}</TableCell>
-                    </TableRow>
+                    </ContextTableRow>
                   ))}
                 </TableBody>
               </Table>
@@ -4317,7 +4448,12 @@ const Inspections = () => {
                     const cellCount = grid ? grid.rows * grid.columns : 0
                     const fieldCount = formioForm?.components?.length || cellCount
                     return (
-                      <TableRow key={form.id} hover>
+                      <ContextTableRow
+                        key={form.id}
+                        recordKey={`inspection-form-${form.id}`}
+                        recordLabel={form.name}
+                        hover
+                      >
                         <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
                           <ClippedTooltipText value={form.name} fontWeight={900} onClick={() => setViewForm(form)} />
                           <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>
@@ -4338,7 +4474,7 @@ const Inspections = () => {
                             <MoreVertIcon fontSize="small" />
                           </IconButton>
                         </TableCell>
-                      </TableRow>
+                      </ContextTableRow>
                     )
                   })}
                 </TableBody>
@@ -4450,7 +4586,12 @@ const Inspections = () => {
                     {(selectedBatch.assets || []).map(asset => {
                       const chip = statusChip(asset.status)
                       return (
-                        <TableRow key={asset.id} hover>
+                        <ContextTableRow
+                          key={asset.id}
+                          recordKey={`inspection-${asset.id}`}
+                          recordLabel={asset.inspection_number}
+                          hover
+                        >
                           <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.serial_number || '-'} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.asset_name || asset.equipment_name || '-'} fontWeight={800} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
@@ -4487,7 +4628,7 @@ const Inspections = () => {
                               </Box>
                             )}
                           </TableCell>
-                        </TableRow>
+                        </ContextTableRow>
                       )
                     })}
                   </TableBody>
@@ -4670,14 +4811,22 @@ const Inspections = () => {
                     </TableCell>
                   </TableRow>
                 ) : availableExistingBatchAssets.map((item: InspectionEquipmentItem) => (
-                  <TableRow key={item.id} hover onClick={() => toggleExistingBatchEquipment(item.id)} sx={{ cursor: 'pointer' }}>
+                  <ContextTableRow
+                    key={item.id}
+                    recordKey={`inspection-asset-${item.id}`}
+                    recordLabel={item.asset_tag}
+                    contextSelected={selectedExistingEquipmentIds.includes(item.id)}
+                    hover
+                    onClick={() => toggleExistingBatchEquipment(item.id)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     <TableCell padding="checkbox"><Checkbox checked={selectedExistingEquipmentIds.includes(item.id)} /></TableCell>
                     <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
                     <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} fontWeight={800} /></TableCell>
                     <TableCell>{item.modality_name || '-'}</TableCell>
                     <TableCell><ClippedTooltipText value={item.serial_number || '-'} /></TableCell>
                     <TableCell><Chip size="small" label={item.criticality || 'standard'} sx={{ fontWeight: 900 }} /></TableCell>
-                  </TableRow>
+                  </ContextTableRow>
                 ))}
               </TableBody>
             </Table>

@@ -32,6 +32,7 @@ import PermissionEditorModal from './PermissionEditorModal'
 import AddExistingUserModal from './AddExistingUserModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import ContextTableRow from '@/components/ContextTableRow'
 import { fetchFacility } from '@/api/facilities'
 import { hasPermission } from '@/config/permissions'
 
@@ -361,7 +362,12 @@ const Users = () => {
                 </TableRow>
               ) : (
                 users.map((u) => (
-                  <TableRow key={u.id} sx={{ '&:hover': { backgroundColor: '#FAFAFF' } }}>
+                  <ContextTableRow
+                    key={u.id}
+                    recordKey={`user-${u.id}`}
+                    recordLabel={u.full_name}
+                    sx={{ '&:hover': { backgroundColor: '#FAFAFF' } }}
+                  >
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         <Avatar
@@ -448,7 +454,7 @@ const Users = () => {
                         </Tooltip>
                       </TableCell>
                     )}
-                  </TableRow>
+                  </ContextTableRow>
                 ))
               )}
             </TableBody>

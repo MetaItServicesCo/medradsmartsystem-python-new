@@ -32,6 +32,7 @@ import ClippedTooltipText from '@/components/ClippedTooltipText'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import ContextTableRow from '@/components/ContextTableRow'
 import {
   fetchRentalParts,
   fetchRentals,
@@ -861,8 +862,10 @@ const Rentals = () => {
             const status = statusChip(item.status)
             const highlighted = highlightAgreementId === item.id
             return (
-              <TableRow
+              <ContextTableRow
                 key={item.id}
+                recordKey={`rental-agreement-${item.id}`}
+                recordLabel={item.rental_number}
                 id={`rental-agreement-${item.id}`}
                 hover
                 sx={highlighted ? {
@@ -896,7 +899,7 @@ const Rentals = () => {
                     <MoreVertIcon fontSize="small" />
                   </IconButton>
                 </TableCell>
-              </TableRow>
+              </ContextTableRow>
             )
           })}
         </TableBody>
@@ -942,8 +945,10 @@ const Rentals = () => {
             const chip = statusChip(invoice.status)
             const highlighted = highlightInvoiceId === invoice.id
             return (
-              <TableRow
+              <ContextTableRow
                 key={invoice.id}
+                recordKey={`rental-invoice-${invoice.id}`}
+                recordLabel={invoice.invoice_number}
                 id={`rental-invoice-${invoice.id}`}
                 hover
                 sx={highlighted ? {
@@ -975,7 +980,7 @@ const Rentals = () => {
                     <MoreVertIcon fontSize="small" />
                   </IconButton>
                 </TableCell>
-              </TableRow>
+              </ContextTableRow>
             )
           })}
         </TableBody>
@@ -1005,7 +1010,12 @@ const Rentals = () => {
           )) : parts.length === 0 ? (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
           ) : parts.map(part => (
-            <TableRow key={part.id} hover>
+            <ContextTableRow
+              key={part.id}
+              recordKey={`rental-product-${part.id}`}
+              recordLabel={part.part_number}
+              hover
+            >
               <TableCell>
                 <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 46, height: 46, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '12px' }}>
                   <LocalShippingIcon fontSize="small" />
@@ -1021,7 +1031,7 @@ const Rentals = () => {
               </TableCell>
               <TableCell sx={{ textTransform: 'capitalize' }}>{part.condition}</TableCell>
               <TableCell><Chip size="small" label={part.status} color={part.status === 'active' ? 'success' : 'default'} sx={{ fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
-            </TableRow>
+            </ContextTableRow>
           ))}
         </TableBody>
       </Table>
@@ -1048,7 +1058,12 @@ const Rentals = () => {
           )) : (historyQ.data?.items || []).length === 0 ? (
             <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental history logs yet.</TableCell></TableRow>
           ) : historyQ.data!.items.map((item, index) => (
-            <TableRow key={`${item.rental_id}-${item.action}-${index}`} hover>
+            <ContextTableRow
+              key={`${item.rental_id}-${item.action}-${index}`}
+              recordKey={`rental-history-${item.rental_id}-${index}`}
+              recordLabel={`${item.rental_number} · ${item.action.replace(/_/g, ' ')}`}
+              hover
+            >
               <TableCell>{formatDate(item.at)}</TableCell>
               <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => {
                 const agreement = rentals.find(rental => rental.id === item.rental_id)
@@ -1059,7 +1074,7 @@ const Rentals = () => {
               <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field onClick={() => openRentalPartInfo(parts.find(part => part.part_number === item.part_number), item)} /></TableCell>
               <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
               <TableCell>{item.by}</TableCell>
-            </TableRow>
+            </ContextTableRow>
           ))}
         </TableBody>
       </Table>

@@ -22,6 +22,7 @@ import {
   fetchMyTimesheets, createMyTimesheet, updateMyTimesheet,
   deleteMyTimesheet, submitMyTimesheet,
 } from '@/api/hr'
+import ContextTableRow from '@/components/ContextTableRow'
 
 const STATUS_META: Record<string, { label: string; color: 'default' | 'warning' | 'info' | 'success' | 'error'; icon: React.ReactNode }> = {
   draft:     { label: 'Draft',     color: 'default', icon: <EditIcon fontSize="small" /> },
@@ -230,7 +231,12 @@ export default function MyTimesheets() {
                 const isDraft  = item.status === 'draft'
                 const isRejected = item.status === 'rejected'
                 return (
-                  <TableRow key={item.id} hover>
+                  <ContextTableRow
+                    key={item.id}
+                    recordKey={`timesheet-${item.id}`}
+                    recordLabel={item.task_title}
+                    hover
+                  >
                     <TableCell>
                       <Typography variant="body2" fontWeight={600}>
                         {new Date(item.work_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
@@ -275,7 +281,7 @@ export default function MyTimesheets() {
                         <Typography variant="caption" color="text.disabled">—</Typography>
                       )}
                     </TableCell>
-                  </TableRow>
+                  </ContextTableRow>
                 )
               })}
             </TableBody>
