@@ -142,6 +142,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   const inventoryPartOptions = inventoryPartsData?.pages.flatMap((page) => page.items) || []
   const canManageAuthorization = isInternalServiceAdmin(user) && hasPermission(user, 'billing', 'edit')
   const canSelfAuthorize = isFacilityServiceBillingUser(user) && hasPermission(user, 'billing', 'edit')
+  const canPayQuotation = canManageAuthorization || canSelfAuthorize
 
   const facilityAuthorizersQ = useQuery({
     queryKey: ['quotation-authorization-candidates', authorizationQuotation?.id],
@@ -171,7 +172,23 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
   const payMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: QuotationPaymentCreate }) => createQuotationPayment(id, data),
-    onSuccess: () => { toast.success('Payment recorded'); queryClient.invalidateQueries({ queryKey }); setPayOpen(null); resetPayForm() },
+    onSuccess: async () => {
+      setPayOpen(null)
+      resetPayForm()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ['service-requests'] }),
+        queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] }),
+        queryClient.invalidateQueries({ queryKey: ['billing-service-invoices'] }),
+        queryClient.invalidateQueries({ queryKey: ['service-invoices'] }),
+        queryClient.invalidateQueries({ queryKey: ['service-invoices-for-sr', serviceRequestId] }),
+        queryClient.invalidateQueries({ queryKey: ['reports'] }),
+        queryClient.invalidateQueries({ queryKey: ['reports-summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['notifications-header'] }),
+      ])
+      toast.success('Payment recorded and billing updated')
+    },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
   })
 
@@ -331,10 +348,25 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   }
 
   const handlePay = (quotationId: number) => {
+    const quotation = quotations.find(item => item.id === quotationId)
+    const remainingBalance = quotation ? getQuotationRemainingBalance(quotation) : 0
+    const amount = Number(payAmount)
+    if (!quotation || !canOpenQuotationPayment(quotation)) {
+      toast.error('This quotation is no longer available for payment')
+      return
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid payment amount')
+      return
+    }
+    if (amount > remainingBalance + 0.001) {
+      toast.error(`Payment cannot exceed the remaining balance of $${remainingBalance.toFixed(2)}`)
+      return
+    }
     const actualMethod = payMethod === 'ach' ? achChoice : payMethod
     const data: QuotationPaymentCreate = {
       payment_method: actualMethod as any,
-      amount: parseFloat(payAmount),
+      amount,
       notes: payNotes || undefined,
     }
     if (actualMethod === 'credit_card') {
@@ -356,6 +388,40 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     }
     payMut.mutate({ id: quotationId, data })
   }
+
+  const getQuotationPaidTotal = (quotation: ServiceRequestQuotation) => (
+    (quotation.payments || [])
+      .filter(payment => payment.status === 'completed')
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+  )
+
+  const getQuotationRemainingBalance = (quotation: ServiceRequestQuotation) => (
+    Math.max(0, Number(quotation.amount || 0) - getQuotationPaidTotal(quotation))
+  )
+
+  const canOpenQuotationPayment = (quotation: ServiceRequestQuotation) => (
+    canPayQuotation
+    && ['authorized', 'partially_paid'].includes(quotation.status)
+    && quotation.authorizations?.some(authorization => authorization.status === 'authorized')
+    && getQuotationRemainingBalance(quotation) > 0.001
+  )
+
+  const openQuotationPayment = (quotation: ServiceRequestQuotation) => {
+    if (!canOpenQuotationPayment(quotation)) {
+      toast.error('Only an authorized quotation with an outstanding balance can be paid')
+      return
+    }
+    resetPayForm()
+    setPayAmount(getQuotationRemainingBalance(quotation).toFixed(2))
+    setPayOpen(quotation.id)
+  }
+
+  const activePayQuotation = payOpen === null
+    ? null
+    : quotations.find(item => item.id === payOpen) || null
+  const activePayBalance = activePayQuotation
+    ? getQuotationRemainingBalance(activePayQuotation)
+    : 0
 
   const canCreate = canEdit && !isCompleted && !isCancelled
   const canModify = canEdit && !isCompleted && !isCancelled
@@ -552,6 +618,15 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             Review Authorization
           </MenuItem>
         )}
+        {actionQuotation && canOpenQuotationPayment(actionQuotation) && (
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
+            openQuotationPayment(actionQuotation)
+            closeActions()
+          }}>
+            <ListItemIcon sx={{ minWidth: 34 }}><PaymentIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            Pay ${getQuotationRemainingBalance(actionQuotation).toFixed(2)}
+          </MenuItem>
+        )}
         {actionQuotation && canModifyQuotation(actionQuotation) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openEdit(actionQuotation); closeActions() }}>
             <ListItemIcon sx={{ minWidth: 34 }}><EditIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
@@ -717,8 +792,35 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       </Dialog>
 
       <Dialog open={payOpen !== null} onClose={() => { setPayOpen(null); resetPayForm() }} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>Record Payment</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>Pay Authorized Quotation</DialogTitle>
         <DialogContent>
+          {payOpen !== null && (() => {
+            const quotation = activePayQuotation
+            if (!quotation) return null
+            const paid = getQuotationPaidTotal(quotation)
+            const remaining = getQuotationRemainingBalance(quotation)
+            return (
+              <Box sx={{ mt: 0.5, mb: 2, p: 2, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>
+                  {quotation.quotation_number || `Q-${quotation.id}`}
+                </Typography>
+                <Typography sx={{ color: '#64748B', fontSize: 13, mb: 1 }}>
+                  {quotation.description}
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+                  <Typography sx={{ color: '#475569', fontSize: 13, fontWeight: 700 }}>
+                    Quotation: ${Number(quotation.amount || 0).toFixed(2)}
+                  </Typography>
+                  <Typography sx={{ color: '#047857', fontSize: 13, fontWeight: 800 }}>
+                    Paid: ${paid.toFixed(2)}
+                  </Typography>
+                  <Typography sx={{ color: '#B45309', fontSize: 13, fontWeight: 900 }}>
+                    Balance: ${remaining.toFixed(2)}
+                  </Typography>
+                </Box>
+              </Box>
+            )
+          })()}
           <FormControl sx={{ mt: 1, mb: 2 }}>
             <FormLabel sx={{ fontWeight: 600, mb: 1 }}>Payment Method</FormLabel>
             <RadioGroup row value={payMethod} onChange={e => { setPayMethod(e.target.value as any); setAchChoice('ach') }}>
@@ -738,7 +840,20 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             </Box>
           )}
 
-          <TextField label="Amount ($)" type="number" fullWidth value={payAmount} onChange={e => setPayAmount(e.target.value)} sx={{ mb: 2 }} inputProps={{ min: 0, step: 0.01 }} />
+          <TextField
+            label="Payment Amount ($)"
+            type="number"
+            fullWidth
+            value={payAmount}
+            onChange={e => setPayAmount(e.target.value)}
+            sx={{ mb: 2 }}
+            inputProps={{
+              min: 0.01,
+              max: activePayBalance || undefined,
+              step: 0.01,
+            }}
+            helperText="The outstanding balance is filled automatically; reduce it only when recording a partial payment."
+          />
           <TextField label="Notes" multiline rows={2} fullWidth value={payNotes} onChange={e => setPayNotes(e.target.value)} sx={{ mb: 2 }} />
 
           {/* Credit Card fields */}
@@ -812,7 +927,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
           <Button onClick={() => { setPayOpen(null); resetPayForm() }} variant="outlined" sx={{ borderRadius: '10px' }}>Cancel</Button>
           <Button onClick={() => payOpen && handlePay(payOpen)} variant="contained" disabled={payMut.isPending || !payAmount}
             sx={{ borderRadius: '10px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', fontWeight: 700 }}>
-            {payMut.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Record Payment'}
+            {payMut.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Confirm Payment'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -2697,8 +2697,6 @@ def create_quotation_payment(
         },
     )
 
-    db.commit()
-    db.refresh(db_payment)
     sr = db_quotation.service_request
     create_notifications(
         db,
@@ -2710,5 +2708,6 @@ def create_quotation_payment(
         actor_id=current_user.id,
     )
     db.commit()
+    db.refresh(db_payment)
 
     return _payment_dict(db_payment)
