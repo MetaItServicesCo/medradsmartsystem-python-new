@@ -45,6 +45,8 @@ class Invoice(Base):
     discount_amount = Column(Numeric(10, 2), default=0)
     total_amount = Column(Numeric(10, 2), nullable=False)
     amount_paid = Column(Numeric(10, 2), default=0)
+    refunded_amount = Column(Numeric(10, 2), default=0, nullable=False)
+    refund_status = Column(String, default="none", nullable=False)
     balance_due = Column(Numeric(10, 2), nullable=False)
     status = Column(SQLEnum(InvoiceStatus), default=InvoiceStatus.PENDING)
     issue_date = Column(Date, nullable=False)

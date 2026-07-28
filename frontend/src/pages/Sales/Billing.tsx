@@ -84,6 +84,7 @@ interface BillingItem {
   description: string
   amount: number
   paid: number
+  refunded?: number
   balance: number
   status: BillingStatus | string
   date: string | null
@@ -124,6 +125,8 @@ const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
   pending: { bg: '#EEF2FF', color: '#4338CA' },
   partially_paid: { bg: '#FEF3C7', color: '#B45309' },
   paid: { bg: '#D1FAE5', color: '#047857' },
+  partially_refunded: { bg: '#FFEDD5', color: '#C2410C' },
+  refunded: { bg: '#FCE7F3', color: '#BE185D' },
   overdue: { bg: '#FEE2E2', color: '#DC2626' },
   rejected: { bg: '#FEE2E2', color: '#DC2626' },
   cancelled: { bg: '#F3F4F6', color: '#6B7280' },
@@ -652,9 +655,10 @@ const Billing = () => {
       customerEmail: invoice.customer_email,
       description: 'Sales invoice',
       amount: Number(invoice.total_amount || 0),
-      paid: Number(invoice.amount_paid || 0),
+      paid: Number(invoice.net_paid ?? invoice.amount_paid ?? 0),
+      refunded: Number(invoice.refunded_amount || 0),
       balance: Number(invoice.balance_due || 0),
-      status: invoice.status,
+      status: invoice.refund_status && invoice.refund_status !== 'none' ? invoice.refund_status : invoice.status,
       date: invoice.issue_date || invoice.created_at,
       dueDate: invoice.due_date,
       paymentMethod: invoice.payment_method,

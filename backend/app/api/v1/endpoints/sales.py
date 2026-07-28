@@ -19,7 +19,7 @@ from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
     approval_response,
     ensure_financial_edit_allowed,
@@ -47,13 +47,16 @@ router = APIRouter(dependencies=[Depends(require_module_access("sales"))])
 
 
 class SalesQuotationItemIn(BaseModel):
-    part_id: int
+    part_id: Optional[int] = None
+    item_kind: str = "product"
+    is_default: bool = False
     quantity: int = 1
     unit_price: Optional[Decimal] = None
     shipping_fee: Decimal = Decimal("0")
     setup_fee: Decimal = Decimal("0")
     condition: Optional[str] = None
     description: Optional[str] = None
+    item_metadata: Optional[dict[str, Any]] = None
 
 
 class SalesQuotationCreate(BaseModel):
@@ -120,6 +123,14 @@ class SalesInvoiceCreate(BaseModel):
     action: Optional[str] = None
     due_date: Optional[date] = None
     notes: Optional[str] = None
+    selected_line_item_ids: Optional[list[int]] = None
+    selection_channel: str = "internal"
+
+
+class SalesInvoiceRefundCreate(BaseModel):
+    amount: Decimal
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
 
 
 def _money(value: Any) -> Decimal:
@@ -184,6 +195,10 @@ def _line_response(line: SalesQuotationLineItem) -> dict[str, Any]:
     return {
         "id": line.id,
         "part_id": line.part_id,
+        "item_kind": line.item_kind or "product",
+        "is_default": bool(line.is_default),
+        "is_selected": bool(line.is_selected),
+        "item_metadata": line.item_metadata or {},
         "part_number": line.part.part_number if line.part else None,
         "part_description": line.part.description if line.part else None,
         "description": line.description,
@@ -197,6 +212,7 @@ def _line_response(line: SalesQuotationLineItem) -> dict[str, Any]:
 
 
 def _invoice_response(invoice: Invoice) -> dict[str, Any]:
+    refunded_amount = _money(invoice.refunded_amount)
     return {
         "id": invoice.id,
         "invoice_number": invoice.invoice_number,
@@ -215,6 +231,9 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "discount_amount": invoice.discount_amount,
         "total_amount": invoice.total_amount,
         "amount_paid": invoice.amount_paid,
+        "refunded_amount": refunded_amount,
+        "net_paid": max(_money(invoice.amount_paid) - refunded_amount, Decimal("0")),
+        "refund_status": invoice.refund_status or "none",
         "balance_due": invoice.balance_due,
         "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
         "issue_date": invoice.issue_date,
@@ -243,8 +262,18 @@ def _quotation_response(quotation: SalesQuotation) -> dict[str, Any]:
         "customer_phone": quotation.customer_phone,
         "customer_address": quotation.customer_address,
         "quotation_type": quotation.quotation_type,
+        "selection_status": quotation.selection_status or "pending",
+        "selection_channel": quotation.selection_channel,
+        "selection_snapshot": quotation.selection_snapshot or [],
+        "accepted_by_id": quotation.accepted_by_id,
+        "accepted_by_name": quotation.accepted_by.full_name if quotation.accepted_by else None,
+        "accepted_at": quotation.accepted_at,
         "status": quotation.status,
-        "paid_status": quotation.paid_status,
+        "paid_status": (
+            quotation.converted_invoice.refund_status
+            if quotation.converted_invoice and quotation.converted_invoice.refund_status not in (None, "none")
+            else quotation.paid_status
+        ),
         "requested_date": quotation.requested_date,
         "notes": quotation.notes,
         "worked_hours": quotation.worked_hours,
@@ -290,40 +319,176 @@ def _sales_part_query(db: Session, current_user: User):
     )
 
 
+QUOTE_TYPES = {"standard", "choice_single", "choice_multiple"}
+INTERNAL_SALES_ROLES = {UserRole.SUPERADMIN, UserRole.ADMIN}
+
+
+def _effective_quotation_lines(quotation: SalesQuotation) -> list[SalesQuotationLineItem]:
+    lines = list(quotation.line_items or [])
+    if quotation.quotation_type not in {"choice_single", "choice_multiple"}:
+        return lines
+    return [line for line in lines if line.item_kind == "trade_in" or line.is_selected]
+
+
+def _selection_snapshot(lines: list[SalesQuotationLineItem]) -> list[dict[str, Any]]:
+    return [
+        {
+            "line_item_id": line.id,
+            "part_id": line.part_id,
+            "item_kind": line.item_kind or "product",
+            "part_number": line.part.part_number if line.part else None,
+            "description": line.description,
+            "quantity": line.quantity,
+            "unit_price": str(line.unit_price),
+            "shipping_fee": str(line.shipping_fee),
+            "setup_fee": str(line.setup_fee),
+            "condition": line.condition,
+            "total": str(line.total),
+            "item_metadata": line.item_metadata or {},
+        }
+        for line in lines
+    ]
+
+
+def _required_stock(lines: list[SalesQuotationLineItem]) -> dict[int, int]:
+    required: dict[int, int] = {}
+    for line in lines:
+        if line.item_kind != "product" or line.part_id is None:
+            continue
+        required[line.part_id] = required.get(line.part_id, 0) + line.quantity
+    return required
+
+
+def _accept_quotation_selection(
+    quotation: SalesQuotation,
+    selected_line_item_ids: Optional[list[int]],
+    channel: str,
+    current_user: User,
+) -> list[SalesQuotationLineItem]:
+    product_lines = [line for line in quotation.line_items or [] if (line.item_kind or "product") == "product"]
+    trade_lines = [line for line in quotation.line_items or [] if line.item_kind == "trade_in"]
+    if quotation.quotation_type not in {"choice_single", "choice_multiple"}:
+        selected = product_lines
+    else:
+        ids = set(selected_line_item_ids or [])
+        valid_ids = {line.id for line in product_lines}
+        if ids - valid_ids:
+            raise HTTPException(status_code=400, detail="One or more selected quotation options are invalid")
+        selected = [line for line in product_lines if line.id in ids]
+        if quotation.quotation_type == "choice_single" and len(selected) != 1:
+            raise HTTPException(status_code=400, detail="Choose exactly one quotation option")
+        if quotation.quotation_type == "choice_multiple" and not selected:
+            raise HTTPException(status_code=400, detail="Choose at least one quotation option")
+
+    for line in product_lines:
+        line.is_selected = line in selected
+    for line in trade_lines:
+        line.is_selected = True
+    accepted_lines = selected + trade_lines
+    quotation.selection_status = "accepted"
+    quotation.selection_channel = (channel or "internal")[:50]
+    quotation.accepted_by_id = current_user.id
+    quotation.accepted_at = datetime.utcnow()
+    quotation.selection_snapshot = _selection_snapshot(accepted_lines)
+    _append_history(
+        quotation,
+        "selection_accepted",
+        current_user,
+        {
+            "channel": quotation.selection_channel,
+            "selected_line_item_ids": [line.id for line in selected],
+        },
+    )
+    return accepted_lines
+
+
 def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotationItemIn], current_user: User) -> None:
     if not items:
         raise HTTPException(status_code=400, detail="At least one sales part is required")
+    if quotation.quotation_type not in QUOTE_TYPES:
+        raise HTTPException(status_code=400, detail="Quotation type must be Standard, Choice Single, or Choice Multiple")
+    if quotation.converted_invoice_id:
+        raise HTTPException(status_code=409, detail="An invoiced quotation cannot be changed")
 
     quotation.line_items.clear()
     subtotal = Decimal("0")
+    default_product_count = 0
     for item in items:
         if item.quantity <= 0:
             raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
-        part = _sales_part_query(db, current_user).filter(InventoryPart.id == item.part_id).first()
-        if not part:
-            raise HTTPException(status_code=404, detail=f"Sales part #{item.part_id} not found")
-        if part.quantity_on_hand < item.quantity:
-            raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number}")
-        unit_price = _money(item.unit_price if item.unit_price is not None else part.unit_price)
+        item_kind = (item.item_kind or "product").strip().lower()
+        if item_kind not in {"product", "trade_in"}:
+            raise HTTPException(status_code=400, detail="Item type must be product or trade-in")
+        part = None
+        if item_kind == "product":
+            if item.part_id is None:
+                raise HTTPException(status_code=400, detail="A product is required for every sales option")
+            part = _sales_part_query(db, current_user).filter(InventoryPart.id == item.part_id).first()
+            if not part:
+                raise HTTPException(status_code=404, detail=f"Sales part #{item.part_id} not found")
+            if part.quantity_on_hand < item.quantity:
+                raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number}")
+        elif not (item.description or "").strip():
+            raise HTTPException(status_code=400, detail="Trade-in description is required")
+
+        if (
+            item_kind == "product"
+            and quotation.quotation_type in {"choice_single", "choice_multiple"}
+            and item.is_default
+            and current_user.role not in INTERNAL_SALES_ROLES
+        ):
+            raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can set default quotation options")
+        is_default = quotation.quotation_type == "standard" or item_kind == "trade_in" or bool(item.is_default)
+        if item_kind == "product" and is_default:
+            default_product_count += 1
+        unit_price = _money(item.unit_price if item.unit_price is not None else (part.unit_price if part else 0))
         shipping_fee = _money(item.shipping_fee)
         setup_fee = _money(item.setup_fee)
-        total = (unit_price * item.quantity) + shipping_fee + setup_fee
-        subtotal += total
+        unsigned_total = (unit_price * item.quantity) + shipping_fee + setup_fee
+        total = -abs(unsigned_total) if item_kind == "trade_in" else unsigned_total
+        if is_default:
+            subtotal += total
         quotation.line_items.append(
             SalesQuotationLineItem(
-                part_id=part.id,
-                description=item.description or part.description,
+                part_id=part.id if part else None,
+                item_kind=item_kind,
+                is_default=is_default,
+                is_selected=is_default,
+                item_metadata=item.item_metadata or {},
+                description=item.description or (part.description if part else "Trade-in credit"),
                 quantity=item.quantity,
                 unit_price=unit_price,
                 shipping_fee=shipping_fee,
                 setup_fee=setup_fee,
-                condition=item.condition or part.condition,
+                condition=item.condition or (part.condition if part else None),
                 total=total,
             )
         )
 
+    if quotation.quotation_type == "choice_single" and default_product_count > 1:
+        raise HTTPException(status_code=400, detail="Choice Single can have at most one default option")
+    has_pending_choice = (
+        quotation.quotation_type in {"choice_single", "choice_multiple"}
+        and default_product_count == 0
+    )
+    if has_pending_choice:
+        # A choice quote may intentionally have no preselected option.  Its
+        # financial total is established only after the recipient chooses;
+        # fixed discounts must not turn the draft into a negative quotation.
+        subtotal = Decimal("0")
+    quotation.selection_status = "accepted" if quotation.quotation_type == "standard" else "pending"
+    quotation.selection_channel = "internal" if quotation.quotation_type == "standard" else None
+    quotation.selection_snapshot = None
+    quotation.accepted_by_id = current_user.id if quotation.quotation_type == "standard" else None
+    quotation.accepted_at = datetime.utcnow() if quotation.quotation_type == "standard" else None
     quotation.subtotal = subtotal
-    quotation.total_amount = subtotal + _money(quotation.tax_amount) - _money(quotation.discount_amount)
+    quotation.total_amount = (
+        Decimal("0")
+        if has_pending_choice
+        else subtotal + _money(quotation.tax_amount) - _money(quotation.discount_amount)
+    )
+    if quotation.total_amount < 0:
+        raise HTTPException(status_code=400, detail="Trade-in and discount credits cannot exceed the selected sales amount")
 
 
 @router.get("/parts")
@@ -418,6 +583,7 @@ def list_quotations(
         .options(
             joinedload(SalesQuotation.facility),
             joinedload(SalesQuotation.created_by),
+            joinedload(SalesQuotation.accepted_by),
             joinedload(SalesQuotation.converted_invoice),
             joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
         )
@@ -488,6 +654,7 @@ def get_quotation(
         .options(
             joinedload(SalesQuotation.facility),
             joinedload(SalesQuotation.created_by),
+            joinedload(SalesQuotation.accepted_by),
             joinedload(SalesQuotation.converted_invoice),
             joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
         )
@@ -642,19 +809,41 @@ def convert_to_invoice(
     if quotation.converted_invoice:
         return _invoice_response(quotation.converted_invoice)
 
+    selection_channel = (
+        (payload.selection_channel or "internal")
+        if current_user.role in INTERNAL_SALES_ROLES
+        else "client_portal"
+    )
+    accepted_lines = _accept_quotation_selection(
+        quotation,
+        payload.selected_line_item_ids,
+        selection_channel,
+        current_user,
+    )
+    for part_id, quantity in _required_stock(accepted_lines).items():
+        line = next(line for line in accepted_lines if line.part_id == part_id)
+        if not line.part or line.part.quantity_on_hand < quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not enough stock for {line.part.part_number if line.part else line.description}",
+            )
+
     worked_hours = _money(payload.worked_hours)
     setup_fee = _money(payload.setup_fee)
     service_fee = _money(payload.service_fee)
     shipping_fee = _money(payload.shipping_fee)
     application_fee = _money(payload.application_fee)
-    parts_amount = _money(quotation.subtotal)
+    parts_amount = sum((_money(line.total) for line in accepted_lines), Decimal("0"))
     raw_discount = _money(payload.discount_amount if payload.discount_amount is not None else quotation.discount_amount)
     tax_rate = _money(payload.tax_rate)
     tax_amount = (parts_amount * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
     subtotal = parts_amount + worked_hours + setup_fee + service_fee + shipping_fee + application_fee
     discount_amount = (subtotal * raw_discount / Decimal("100")).quantize(Decimal("0.01")) if payload.discount_type == "percent" else raw_discount
     total_amount = subtotal + tax_amount - discount_amount
+    if total_amount < 0:
+        raise HTTPException(status_code=400, detail="Invoice total cannot be negative")
 
+    quotation.subtotal = parts_amount
     quotation.worked_hours = worked_hours
     quotation.setup_fee = setup_fee
     quotation.service_fee = service_fee
@@ -666,6 +855,27 @@ def convert_to_invoice(
     quotation.total_amount = total_amount
     quotation.payment_method = payload.payment_method
 
+    invoice_line_items = [
+        {
+            "id": f"sales-line-{line.id}",
+            "item_number": line.part.part_number if line.part else "TRADE-IN",
+            "description": line.description,
+            "quantity": line.quantity,
+            "unit_price": float(line.unit_price),
+            "shipping_fee": float(line.shipping_fee),
+            "setup_fee": float(line.setup_fee),
+            "condition": line.condition,
+            "total": float(line.total),
+            "item_kind": line.item_kind or "product",
+        }
+        for line in accepted_lines
+    ]
+    visible_notes = payload.notes or f"Sales invoice for quotation {quotation.quotation_number} / work order {quotation.work_order}."
+    invoice_notes = compose_invoice_edit_notes(
+        None,
+        visible_notes,
+        {"line_items": invoice_line_items, "selection_snapshot": quotation.selection_snapshot or []},
+    )
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
         invoice_type=InvoiceType.SALES,
@@ -686,7 +896,7 @@ def convert_to_invoice(
         due_date=payload.due_date or date.today() + timedelta(days=30),
         payment_terms="Net 30",
         payment_method=payload.payment_method,
-        notes=payload.notes or f"Sales invoice for quotation {quotation.quotation_number} / work order {quotation.work_order}.",
+        notes=invoice_notes,
     )
     db.add(invoice)
     db.flush()
@@ -705,6 +915,7 @@ def convert_to_invoice(
             "action": action,
             "discount_type": payload.discount_type,
             "total_amount": str(total_amount),
+            "selected_line_item_ids": [line.id for line in accepted_lines if line.item_kind == "product"],
         },
     )
     log_activity(db, "sales_quotations", quotation.id, "CONVERT_TO_INVOICE", current_user, {"invoice_id": invoice.id})
@@ -778,12 +989,27 @@ def complete_quotation(
         require_facility_access(db, current_user, quotation.facility_id)
     if not quotation.converted_invoice:
         raise HTTPException(status_code=400, detail="Convert quotation to invoice before completing")
+    if quotation.status == "completed":
+        return _quotation_response(quotation)
 
-    for line in quotation.line_items or []:
-        if line.part.quantity_on_hand < line.quantity:
-            raise HTTPException(status_code=400, detail=f"Not enough stock for {line.part.part_number}")
-        line.part.quantity_on_hand -= line.quantity
-        line.part.updated_at = datetime.utcnow()
+    required_stock = _required_stock(_effective_quotation_lines(quotation))
+    locked_parts = {
+        part.id: part
+        for part in (
+            db.query(InventoryPart)
+            .filter(InventoryPart.id.in_(required_stock))
+            .with_for_update()
+            .all()
+        )
+    }
+    for part_id, quantity in required_stock.items():
+        part = locked_parts.get(part_id)
+        if not part or part.quantity_on_hand < quantity:
+            raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number if part else f'part #{part_id}'}")
+    for part_id, quantity in required_stock.items():
+        part = locked_parts[part_id]
+        part.quantity_on_hand -= quantity
+        part.updated_at = datetime.utcnow()
 
     quotation.status = "completed"
     if quotation.converted_invoice.status == InvoiceStatus.PAID:
@@ -844,14 +1070,21 @@ def list_sales_invoices(
             ],
             "notes": [contains_ci(Invoice.notes, search_term)],
             "payment_method": [contains_ci(Invoice.payment_method, normalized_value)],
-            "status": [value_contains_ci(Invoice.status, normalized_value)],
+            "status": [
+                value_contains_ci(Invoice.status, normalized_value),
+                contains_ci(Invoice.refund_status, normalized_value),
+            ],
             "amount": [
                 value_contains_ci(Invoice.total_amount, search_term),
                 value_contains_ci(Invoice.amount_paid, search_term),
+                value_contains_ci(Invoice.refunded_amount, search_term),
                 value_contains_ci(Invoice.balance_due, search_term),
             ],
             "total": [value_contains_ci(Invoice.total_amount, search_term)],
-            "paid": [value_contains_ci(Invoice.amount_paid, search_term)],
+            "paid": [
+                value_contains_ci(Invoice.amount_paid, search_term),
+                value_contains_ci(Invoice.refunded_amount, search_term),
+            ],
             "balance": [value_contains_ci(Invoice.balance_due, search_term)],
             "date": [
                 value_contains_ci(Invoice.issue_date, search_term),
@@ -978,6 +1211,87 @@ def update_sales_invoice(
     record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
     record_status_change(db, invoice, previous_status, current_user)
     log_activity(db, "invoices", invoice.id, "UPDATE_SALES_INVOICE", current_user, update_data)
+    db.commit()
+    db.refresh(invoice)
+    return _invoice_response(invoice)
+
+
+@router.post("/invoices/{invoice_id}/refunds")
+def refund_sales_invoice(
+    invoice_id: int,
+    payload: SalesInvoiceRefundCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Record a full or partial sales refund without mutating inventory."""
+    if current_user.role not in INTERNAL_SALES_ROLES:
+        raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can issue a refund")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Refund amount must be greater than zero")
+
+    invoice = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.sales_quotation),
+            joinedload(Invoice.facility),
+            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
+        )
+        .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.SALES)
+        .with_for_update(of=Invoice)
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Sales invoice not found")
+    if invoice.facility_id is not None:
+        require_facility_access(db, current_user, invoice.facility_id)
+    require_invoice_approved(invoice)
+
+    refundable = max(_money(invoice.amount_paid) - _money(invoice.refunded_amount), Decimal("0"))
+    if payload.amount > refundable:
+        raise HTTPException(status_code=400, detail="Refund cannot exceed the remaining paid amount")
+
+    invoice.refunded_amount = _money(invoice.refunded_amount) + payload.amount
+    invoice.refund_status = "refunded" if invoice.refunded_amount >= _money(invoice.amount_paid) else "partially_refunded"
+    invoice.updated_at = datetime.utcnow()
+    source_payment = next(
+        (item for item in invoice.transactions or [] if item.transaction_type == "payment"),
+        None,
+    )
+    refund_description = payload.notes or f"Sales refund issued for {invoice.invoice_number}"
+    if source_payment and source_payment.reference_number:
+        refund_description = f"{refund_description} (against {source_payment.reference_number})"
+    transaction = add_invoice_transaction(
+        db,
+        invoice,
+        "refund",
+        payload.amount,
+        payload.payment_method or invoice.payment_method,
+        refund_description,
+        current_user,
+        "REF",
+    )
+    if invoice.sales_quotation:
+        _append_history(
+            invoice.sales_quotation,
+            "refund_issued",
+            current_user,
+            {
+                "invoice_id": invoice.id,
+                "amount": str(payload.amount),
+                "refund_status": invoice.refund_status,
+                "transaction_reference": transaction.reference_number,
+            },
+        )
+    log_activity(
+        db,
+        "invoices",
+        invoice.id,
+        "REFUND_SALES_INVOICE",
+        current_user,
+        {"amount": str(payload.amount), "refund_status": invoice.refund_status},
+    )
     db.commit()
     db.refresh(invoice)
     return _invoice_response(invoice)

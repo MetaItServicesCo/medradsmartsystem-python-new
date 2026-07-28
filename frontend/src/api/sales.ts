@@ -23,7 +23,11 @@ export interface SalesPart {
 
 export interface SalesQuotationLineItem {
   id: number
-  part_id: number
+  part_id: number | null
+  item_kind: 'product' | 'trade_in'
+  is_default: boolean
+  is_selected: boolean
+  item_metadata?: Record<string, any>
   part_number: string | null
   part_description: string | null
   description: string
@@ -59,6 +63,12 @@ export interface SalesQuotation {
   customer_phone: string | null
   customer_address: string | null
   quotation_type: string
+  selection_status: 'pending' | 'accepted'
+  selection_channel: string | null
+  selection_snapshot: Array<Record<string, any>>
+  accepted_by_id: number | null
+  accepted_by_name: string | null
+  accepted_at: string | null
   status: SalesQuotationStatus | string
   paid_status: SalesPaidStatus | string
   requested_date: string | null
@@ -106,6 +116,9 @@ export interface SalesInvoice {
   discount_amount: number
   total_amount: number
   amount_paid: number
+  refunded_amount: number
+  net_paid: number
+  refund_status: 'none' | 'partially_refunded' | 'refunded'
   balance_due: number
   status: SalesInvoiceStatus
   issue_date: string
@@ -154,6 +167,8 @@ export interface SalesInvoiceCreatePayload {
   action?: string | null
   due_date?: string | null
   notes?: string | null
+  selected_line_item_ids?: number[]
+  selection_channel?: string
 }
 
 export interface SalesQuotationPayload {
@@ -168,13 +183,16 @@ export interface SalesQuotationPayload {
   tax_amount?: number
   discount_amount?: number
   items: Array<{
-    part_id: number
+    part_id?: number | null
+    item_kind?: 'product' | 'trade_in'
+    is_default?: boolean
     quantity: number
     unit_price?: number
     shipping_fee?: number
     setup_fee?: number
     condition?: string | null
     description?: string
+    item_metadata?: Record<string, any>
   }>
 }
 
@@ -282,6 +300,14 @@ export const updateSalesInvoice = async (
   }
 ): Promise<SalesInvoice> => {
   const res = await apiClient.put(`/sales/invoices/${id}`, data)
+  return res.data
+}
+
+export const refundSalesInvoice = async (
+  id: number,
+  data: { amount: number; payment_method?: string | null; notes?: string | null },
+): Promise<SalesInvoice> => {
+  const res = await apiClient.post(`/sales/invoices/${id}/refunds`, data)
   return res.data
 }
 

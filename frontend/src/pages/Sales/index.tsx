@@ -2,7 +2,7 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
   TextField, Typography,
@@ -45,6 +45,7 @@ import {
   fetchSalesParts,
   fetchSalesQuotations,
   requestSalesCardAuthorization,
+  refundSalesInvoice,
   updateSalesInvoice,
   updateSalesQuotation,
   type SalesInvoice,
@@ -54,6 +55,8 @@ import {
   type SalesQuotationLineItem,
   type SalesQuotationPayload,
 } from '@/api/sales'
+import { useListContext } from '@/contexts/ListContext'
+import { useAuthStore } from '@/stores/authStore'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed']
@@ -124,6 +127,8 @@ const statusChip = (value: string) => {
     unpaid: { bg: '#FEE2E2', color: '#DC2626' },
     partially_paid: { bg: '#FEF3C7', color: '#B45309' },
     overdue: { bg: '#FEE2E2', color: '#DC2626' },
+    partially_refunded: { bg: '#FFEDD5', color: '#C2410C' },
+    refunded: { bg: '#FCE7F3', color: '#BE185D' },
     cancelled: { bg: '#F3F4F6', color: '#6B7280' },
   }
   return map[value] || { bg: '#F3F4F6', color: '#374151' }
@@ -184,6 +189,9 @@ const Sales = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
+  const currentUser = useAuthStore(state => state.user)
+  const canConfigureDefaults = currentUser?.role === 'superadmin' || currentUser?.role === 'admin'
 
   const routeParams = new URLSearchParams(location.search)
   const routeSearch = routeParams.get('search') || ''
@@ -214,6 +222,11 @@ const Sales = () => {
   const [invoiceForm, setInvoiceForm] = useState({ amount_paid: 0, due_date: '', status: 'pending', payment_method: '', notes: '' })
   const [convertQuotation, setConvertQuotation] = useState<SalesQuotation | null>(null)
   const [invoiceDetails, setInvoiceDetails] = useState<SalesInvoiceCreatePayload>(emptyInvoiceDetails())
+  const [selectedQuoteOptions, setSelectedQuoteOptions] = useState<number[]>([])
+  const [tradeInDescription, setTradeInDescription] = useState('')
+  const [tradeInValue, setTradeInValue] = useState(0)
+  const [refundInvoice, setRefundInvoice] = useState<SalesInvoice | null>(null)
+  const [refundForm, setRefundForm] = useState({ amount: 0, payment_method: '', notes: '' })
   const [partInfo, setPartInfo] = useState<SalesPartInfo | null>(null)
   const [quotationsPage, setQuotationsPage] = useState(0)
   const [invoicesPage, setInvoicesPage] = useState(0)
@@ -397,14 +410,36 @@ const Sales = () => {
     queryClient.invalidateQueries({ queryKey: ['sales-parts'] })
   }
 
+  const locateSalesRecord = (
+    path: string,
+    key: string,
+    label: string,
+    message: string,
+  ) => {
+    setSearch(label)
+    setDebouncedSearch(label)
+    setQuotationsPage(0)
+    setInvoicesPage(0)
+    setInProgressPage(0)
+    setCompletedPage(0)
+    focusRecord(key, label, { message, announce: true })
+    navigate(`${path}?focus=${encodeURIComponent(key)}&search=${encodeURIComponent(label)}`)
+  }
+
   const saveQuotationMut = useMutation({
     mutationFn: () => editingQuotation ? updateSalesQuotation(editingQuotation.id, quotationForm) : createSalesQuotation(quotationForm),
-    onSuccess: () => {
+    onSuccess: quotation => {
       toast.success(editingQuotation ? 'Sales quotation updated' : 'Sales quotation created')
       setQuotationDialog(false)
       setEditingQuotation(null)
       setQuotationForm(emptyQuotation())
       invalidateSales()
+      locateSalesRecord(
+        '/sales/quotations',
+        `sales-quotation-${quotation.id}`,
+        quotation.work_order || quotation.quotation_number,
+        editingQuotation ? 'Updated quotation located' : 'New quotation located',
+      )
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save sales quotation'),
   })
@@ -421,13 +456,27 @@ const Sales = () => {
 
   const convertMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: SalesInvoiceCreatePayload }) => convertSalesQuotationToInvoice(id, data),
-    onSuccess: () => {
+    onSuccess: invoice => {
       toast.success('Quotation converted to invoice')
       setConvertQuotation(null)
       setInvoiceDetails(emptyInvoiceDetails())
       closeActions()
       invalidateSales()
-      navigate('/sales/invoices')
+      if (canConfigureDefaults) {
+        locateSalesRecord(
+          '/sales/invoices',
+          `sales-invoice-${invoice.id}`,
+          invoice.invoice_number,
+          'Generated invoice located',
+        )
+      } else if (convertQuotation) {
+        locateSalesRecord(
+          '/sales/in-progress',
+          `sales-quotation-${convertQuotation.id}`,
+          convertQuotation.work_order,
+          'Selection submitted; invoice is pending billing approval',
+        )
+      }
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not convert quotation'),
   })
@@ -444,22 +493,35 @@ const Sales = () => {
 
   const completeMut = useMutation({
     mutationFn: completeSalesQuotation,
-    onSuccess: () => {
+    onSuccess: quotation => {
       toast.success('Sales order completed')
       closeActions()
       invalidateSales()
+      locateSalesRecord('/sales/completed', `sales-quotation-${quotation.id}`, quotation.work_order, 'Completed sale located')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not complete sales order'),
   })
 
   const invoiceMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => updateSalesInvoice(id, data),
-    onSuccess: () => {
+    onSuccess: invoice => {
       toast.success('Sales invoice updated')
       setInvoiceEdit(null)
       invalidateSales()
+      locateSalesRecord('/sales/invoices', `sales-invoice-${invoice.id}`, invoice.invoice_number, 'Updated invoice located')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update invoice'),
+  })
+
+  const refundMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { amount: number; payment_method?: string; notes?: string } }) => refundSalesInvoice(id, data),
+    onSuccess: invoice => {
+      toast.success('Refund recorded in the invoice ledger')
+      setRefundInvoice(null)
+      invalidateSales()
+      locateSalesRecord('/sales/invoices', `sales-invoice-${invoice.id}`, invoice.invoice_number, 'Refunded invoice located')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not record refund'),
   })
 
   const selectedFacility = facilities.find(f => f.id === quotationForm.facility_id)
@@ -481,19 +543,24 @@ const Sales = () => {
       customer_email: quotation.customer_email || '',
       customer_phone: formatUSPhoneInput(quotation.customer_phone || ''),
       customer_address: quotation.customer_address || '',
-      quotation_type: quotation.quotation_type || 'standard',
+      quotation_type: ['standard', 'choice_single', 'choice_multiple'].includes(quotation.quotation_type)
+        ? quotation.quotation_type
+        : 'standard',
       requested_date: quotation.requested_date || new Date().toISOString().slice(0, 10),
       notes: quotation.notes || '',
       tax_amount: Number(quotation.tax_amount || 0),
       discount_amount: Number(quotation.discount_amount || 0),
       items: quotation.line_items.map(item => ({
         part_id: item.part_id,
+        item_kind: item.item_kind,
+        is_default: item.is_default,
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
         shipping_fee: Number(item.shipping_fee || 0),
         setup_fee: Number(item.setup_fee || 0),
         condition: item.condition || 'New',
         description: item.description,
+        item_metadata: item.item_metadata,
       })),
     })
     setQuotationDialog(true)
@@ -509,6 +576,8 @@ const Sales = () => {
         ...prev.items,
         {
           part_id: part.id,
+          item_kind: 'product',
+          is_default: prev.quotation_type === 'standard',
           quantity: selectedPartQty,
           unit_price: Number(part.unit_price || 0),
           shipping_fee: selectedPartShipping,
@@ -525,6 +594,30 @@ const Sales = () => {
     setSelectedPartCondition('New')
   }
 
+  const addTradeIn = () => {
+    if (!tradeInDescription.trim()) return toast.error('Enter the trade-in description')
+    if (tradeInValue <= 0) return toast.error('Trade-in value must be greater than zero')
+    setQuotationForm(prev => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          part_id: null,
+          item_kind: 'trade_in',
+          is_default: true,
+          quantity: 1,
+          unit_price: tradeInValue,
+          shipping_fee: 0,
+          setup_fee: 0,
+          condition: 'Trade-in',
+          description: tradeInDescription.trim(),
+        },
+      ],
+    }))
+    setTradeInDescription('')
+    setTradeInValue(0)
+  }
+
   const removeLineItem = (index: number) => {
     setQuotationForm(prev => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))
   }
@@ -537,7 +630,7 @@ const Sales = () => {
 
   const openSalesPartInfo = (
     part?: Partial<SalesPart> | null,
-    fallback?: Partial<SalesQuotationLineItem> & { part_id?: number; default_picture_url?: string | null },
+    fallback?: Partial<SalesQuotationLineItem> & { part_id?: number | null; default_picture_url?: string | null },
   ) => {
     const partNumber = part?.part_number || fallback?.part_number || ''
     const matchedPart = part || parts.find(item =>
@@ -599,21 +692,40 @@ const Sales = () => {
   const openConvertDialog = (quotation: SalesQuotation) => {
     closeActions()
     setConvertQuotation(quotation)
+    setSelectedQuoteOptions(
+      quotation.line_items
+        .filter(item => item.item_kind === 'product' && (quotation.quotation_type === 'standard' || item.is_default || item.is_selected))
+        .map(item => item.id),
+    )
     setInvoiceDetails({
       ...emptyInvoiceDetails(),
       discount_amount: Number(quotation.discount_amount || 0),
       tax_rate: Number(quotation.tax_rate || 0),
       payment_method: quotation.converted_invoice_payment_method || quotation.payment_method || '',
       action: 'convert_to_invoice',
+      selection_channel: canConfigureDefaults ? 'internal' : 'client_portal',
     })
   }
 
-  const lineTotal = (item: SalesQuotationPayload['items'][number]) => (
-    Number(item.quantity || 0) * Number(item.unit_price || 0) + Number(item.shipping_fee || 0) + Number(item.setup_fee || 0)
-  )
-  const quotationTotal = quotationForm.items.reduce((sum, item) => sum + lineTotal(item), 0)
+  const lineTotal = (item: SalesQuotationPayload['items'][number]) => {
+    const total = Number(item.quantity || 0) * Number(item.unit_price || 0) + Number(item.shipping_fee || 0) + Number(item.setup_fee || 0)
+    return item.item_kind === 'trade_in' ? -Math.abs(total) : total
+  }
+  const hasDefaultProduct = quotationForm.items.some(item => item.item_kind !== 'trade_in' && item.is_default)
+  const quotationTotal = quotationForm.items.reduce((sum, item) => {
+    const included = quotationForm.quotation_type === 'standard'
+      || (item.item_kind !== 'trade_in' && item.is_default)
+      || (item.item_kind === 'trade_in' && hasDefaultProduct)
+    return sum + (included ? lineTotal(item) : 0)
+  }, 0)
   const quotationGrandTotal = quotationTotal + Number(quotationForm.tax_amount || 0) - Number(quotationForm.discount_amount || 0)
-  const convertPartsTotal = convertQuotation ? Number(convertQuotation.subtotal || 0) : 0
+  const convertPartsTotal = convertQuotation
+    ? convertQuotation.line_items.reduce((sum, line) => (
+        line.item_kind === 'trade_in' || convertQuotation.quotation_type === 'standard' || selectedQuoteOptions.includes(line.id)
+          ? sum + Number(line.total || 0)
+          : sum
+      ), 0)
+    : 0
   const convertTaxAmount = convertPartsTotal * Number(invoiceDetails.tax_rate || 0) / 100
   const convertGrandTotal =
     convertPartsTotal +
@@ -632,35 +744,45 @@ const Sales = () => {
     const action = invoiceDetails.action || 'convert_to_invoice'
     if (action === 'approve') {
       updateSalesQuotation(convertQuotation.id, { status: 'approved' })
-        .then(() => {
+        .then(updated => {
           toast.success('Quotation approved')
           setConvertQuotation(null)
           invalidateSales()
+          locateSalesRecord('/sales/quotations', `sales-quotation-${updated.id}`, updated.work_order, 'Approved quotation located')
         })
         .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not approve quotation'))
       return
     }
     if (action === 'reject') {
       updateSalesQuotation(convertQuotation.id, { status: 'rejected' })
-        .then(() => {
+        .then(updated => {
           toast.success('Quotation rejected')
           setConvertQuotation(null)
           invalidateSales()
+          locateSalesRecord('/sales/quotations', `sales-quotation-${updated.id}`, updated.work_order, 'Rejected quotation located')
         })
         .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not reject quotation'))
       return
     }
     if (action === 'mark_pending') {
       updateSalesQuotation(convertQuotation.id, { status: 'pending' })
-        .then(() => {
+        .then(updated => {
           toast.success('Quotation marked pending')
           setConvertQuotation(null)
           invalidateSales()
+          locateSalesRecord('/sales/quotations', `sales-quotation-${updated.id}`, updated.work_order, 'Pending quotation located')
         })
         .catch((e: any) => toast.error(e.response?.data?.detail || 'Could not mark quotation pending'))
       return
     }
-    convertMut.mutate({ id: convertQuotation.id, data: invoiceDetails })
+    convertMut.mutate({
+      id: convertQuotation.id,
+      data: {
+        ...invoiceDetails,
+        selected_line_item_ids: selectedQuoteOptions,
+        selection_channel: canConfigureDefaults ? 'internal' : 'client_portal',
+      },
+    })
   }
 
   const syncCustomerFromFacility = (facilityId: number | '', selected?: Facility | null) => {
@@ -706,6 +828,18 @@ const Sales = () => {
 
   const invoiceLineItems = (invoice: SalesInvoice | null): PrintableLineItem[] => {
     if (!invoice) return []
+    if (invoice.line_items?.length) {
+      return invoice.line_items.map((line: any) => ({
+        item_number: line.item_number || line.part_number || (line.item_kind === 'trade_in' ? 'TRADE-IN' : String(line.part_id || '-')),
+        description: line.description || line.part_description || 'Sales item',
+        quantity: Number(line.quantity || 1),
+        unit_price: Number(line.unit_price || 0),
+        shipping_fee: Number(line.shipping_fee || 0),
+        setup_fee: Number(line.setup_fee || 0),
+        condition: line.condition || null,
+        total_amount: Number(line.total ?? line.total_amount ?? 0),
+      }))
+    }
     const quotation = quotations.find(item => item.id === invoice.sales_quotation_id)
     if (quotation?.line_items?.length) {
       return quotation.line_items.map(line => ({
@@ -864,11 +998,11 @@ const Sales = () => {
                 <TableCell>{item.id}</TableCell>
                 <TableCell><ClippedTooltipText value={item.work_order} monospace color="#1E40AF" fontWeight={900} onClick={() => setViewQuotation(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.facility_name || item.customer_name} fontWeight={800} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
-                <TableCell sx={{ textTransform: 'capitalize' }}>{item.quotation_type}</TableCell>
+                <TableCell sx={{ textTransform: 'capitalize' }}>{item.quotation_type.replace(/_/g, ' ')}</TableCell>
                 <TableCell>{item.created_by_name || '-'}</TableCell>
                 <TableCell>{formatDate(item.requested_date)}</TableCell>
                 <TableCell><Chip size="small" label={item.status.replace('_', ' ')} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
-                <TableCell><Chip size="small" label={item.paid_status === 'paid' ? 'Paid' : 'Un Paid'} sx={{ bgcolor: paid.bg, color: paid.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
+                <TableCell><Chip size="small" label={item.paid_status === 'unpaid' ? 'Unpaid' : item.paid_status.replace(/_/g, ' ')} sx={{ bgcolor: paid.bg, color: paid.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                 <TableCell align="right">
                   {highlighted && (
                     <Chip size="small" label="Selected" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
@@ -946,8 +1080,10 @@ const Sales = () => {
                 <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} onClick={invoice.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(invoice.facility_name!)}`) : undefined} /></TableCell>
                 <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
-                <TableCell>{money(invoice.amount_paid)}</TableCell>
-                <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
+                <TableCell>{money(invoice.net_paid ?? invoice.amount_paid)}</TableCell>
+                <TableCell>
+                  <Chip size="small" label={(invoice.refund_status !== 'none' ? invoice.refund_status : invoice.status).replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} />
+                </TableCell>
                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
                 <TableCell align="right">
                   {highlighted && (
@@ -1184,9 +1320,9 @@ const Sales = () => {
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
         <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && openConvertDialog(actionQuotation)}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><ReceiptLongIcon fontSize="small" /></ListItemIcon>
-          Convert to Invoice
+          {actionQuotation?.quotation_type === 'standard' ? 'Convert to Invoice' : 'Choose Options & Generate Invoice'}
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionQuotation && openEdit(actionQuotation)}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && openEdit(actionQuotation)}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
         </MenuItem>
@@ -1236,6 +1372,21 @@ const Sales = () => {
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) openInvoiceEdit(actionInvoice); closeInvoiceActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
+        </MenuItem>
+        <MenuItem
+          sx={ACTION_MENU_ITEM}
+          disabled={!actionInvoice || Number(actionInvoice.amount_paid || 0) - Number(actionInvoice.refunded_amount || 0) <= 0}
+          onClick={() => {
+            if (actionInvoice) {
+              const refundable = Math.max(0, Number(actionInvoice.amount_paid || 0) - Number(actionInvoice.refunded_amount || 0))
+              setRefundInvoice(actionInvoice)
+              setRefundForm({ amount: refundable, payment_method: actionInvoice.payment_method || '', notes: '' })
+            }
+            closeInvoiceActions()
+          }}
+        >
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PaymentIcon fontSize="small" /></ListItemIcon>
+          Refund Payment
         </MenuItem>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionInvoice && openCardAuthorization({ invoice: actionInvoice })}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
@@ -1305,7 +1456,7 @@ const Sales = () => {
             tax_amount: Number(printInvoice.tax_amount || 0),
             discount_amount: Number(printInvoice.discount_amount || 0),
             total_amount: Number(printInvoice.total_amount || 0),
-            amount_paid: Number(printInvoice.amount_paid || 0),
+            amount_paid: Number(printInvoice.net_paid ?? printInvoice.amount_paid ?? 0),
             balance_due: Number(printInvoice.balance_due || 0),
             status: String(printInvoice.status || ''),
             issue_date: printInvoice.issue_date,
@@ -1348,10 +1499,25 @@ const Sales = () => {
             <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
             <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
-            <TextField select label="Quotation Type" value={quotationForm.quotation_type || 'standard'} onChange={e => setQuotationForm(prev => ({ ...prev, quotation_type: e.target.value }))}>
+            <TextField
+              select
+              label="Quotation Type"
+              value={quotationForm.quotation_type || 'standard'}
+              onChange={e => {
+                const quotationType = e.target.value
+                setQuotationForm(prev => ({
+                  ...prev,
+                  quotation_type: quotationType,
+                  items: prev.items.map(item => ({
+                    ...item,
+                    is_default: item.item_kind === 'trade_in' || quotationType === 'standard',
+                  })),
+                }))
+              }}
+            >
               <MenuItem value="standard">Standard</MenuItem>
-              <MenuItem value="urgent">Urgent</MenuItem>
-              <MenuItem value="contract">Contract</MenuItem>
+              <MenuItem value="choice_single">Choice Single</MenuItem>
+              <MenuItem value="choice_multiple">Choice Multiple</MenuItem>
             </TextField>
             <TextField label="Requested Date" type="date" value={quotationForm.requested_date || ''} onChange={e => setQuotationForm(prev => ({ ...prev, requested_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
             <TextField label="Customer Address" value={quotationForm.customer_address || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_address: e.target.value }))} sx={{ gridColumn: '1 / -1' }} />
@@ -1379,11 +1545,24 @@ const Sales = () => {
             <Button startIcon={<AddIcon />} variant="contained" onClick={addLineItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>Add Part</Button>
           </Box>
 
+          <Card sx={{ p: 2, mb: 2, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+            <Typography sx={{ fontWeight: 900, color: '#9A3412', mb: 1 }}>Optional Trade-In Credit</Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px auto' }, gap: 1.5 }}>
+              <TextField label="Trade-in equipment / serial / notes" value={tradeInDescription} onChange={e => setTradeInDescription(e.target.value)} />
+              <TextField label="Credit Value" type="number" value={tradeInValue} onChange={e => setTradeInValue(Number(e.target.value))} />
+              <Button variant="outlined" startIcon={<AddIcon />} onClick={addTradeIn} sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Add Trade-In</Button>
+            </Box>
+            <Typography sx={{ mt: 1, color: '#9A3412', fontSize: 12, fontWeight: 700 }}>
+              Trade-in credit reduces the invoice and never changes sales inventory stock.
+            </Typography>
+          </Card>
+
           <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Image</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Type</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Item Number</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Item Description</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
@@ -1392,12 +1571,13 @@ const Sales = () => {
                   <TableCell sx={{ fontWeight: 900 }}>Setup Fee</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Total</TableCell>
+                  {quotationForm.quotation_type !== 'standard' && <TableCell sx={{ fontWeight: 900 }}>Default</TableCell>}
                   <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {quotationForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts selected.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts or trade-ins selected.</TableCell></TableRow>
                 ) : quotationForm.items.map((item, index) => {
                   const part = parts.find(candidate => candidate.id === item.part_id)
                   return (
@@ -1407,14 +1587,43 @@ const Sales = () => {
                           <Inventory2Icon fontSize="small" />
                         </Avatar>
                       </TableCell>
-                      <TableCell><ClippedTooltipText value={part?.part_number || item.part_id} monospace fontWeight={900} onClick={() => openSalesPartInfo(part, item)} /></TableCell>
-                      <TableCell><ClippedTooltipText value={item.description} field /></TableCell>
+                      <TableCell><Chip size="small" label={item.item_kind === 'trade_in' ? 'Trade-In' : 'Product'} color={item.item_kind === 'trade_in' ? 'warning' : 'primary'} /></TableCell>
+                      <TableCell><ClippedTooltipText value={item.item_kind === 'trade_in' ? 'TRADE-IN' : part?.part_number || item.part_id} monospace fontWeight={900} onClick={item.item_kind === 'product' ? () => openSalesPartInfo(part, item) : undefined} /></TableCell>
+                      <TableCell>
+                        {item.item_kind === 'trade_in'
+                          ? <TextField size="small" value={item.description || ''} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, description: e.target.value } : line) }))} />
+                          : <ClippedTooltipText value={item.description} field />}
+                      </TableCell>
                       <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.quantity} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(e.target.value) } : line) }))} sx={{ width: 90 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.shipping_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.setup_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell>{item.condition || 'New'}</TableCell>
                       <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(lineTotal(item))}</TableCell>
+                      {quotationForm.quotation_type !== 'standard' && (
+                        <TableCell>
+                          {item.item_kind === 'trade_in' ? (
+                            <Chip size="small" label="Always applied" />
+                          ) : (
+                            <Checkbox
+                              checked={Boolean(item.is_default)}
+                              disabled={!canConfigureDefaults}
+                              onChange={e => setQuotationForm(prev => ({
+                                ...prev,
+                                items: prev.items.map((line, lineIndex) => ({
+                                  ...line,
+                                  is_default: lineIndex === index
+                                    ? e.target.checked
+                                    : prev.quotation_type === 'choice_single' && e.target.checked && line.item_kind === 'product'
+                                      ? false
+                                      : line.is_default,
+                                })),
+                              }))}
+                              inputProps={{ 'aria-label': `Make option ${index + 1} selected by default` }}
+                            />
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell align="right"><IconButton size="small" onClick={() => removeLineItem(index)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton></TableCell>
                     </TableRow>
                   )
@@ -1476,6 +1685,50 @@ const Sales = () => {
                   </Table>
                 </Card>
 
+                {convertQuotation.quotation_type !== 'standard' && (
+                  <Card sx={{ p: 2, borderRadius: '14px', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
+                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                      {convertQuotation.quotation_type === 'choice_single' ? 'Choose one option' : 'Choose one or more options'}
+                    </Typography>
+                    <Typography sx={{ color: '#6B7280', fontSize: 13, mb: 1.5 }}>
+                      Defaults were selected by the quotation creator. This accepted selection becomes the immutable invoice snapshot.
+                    </Typography>
+                    <Box sx={{ display: 'grid', gap: 1 }}>
+                      {convertQuotation.line_items.filter(line => line.item_kind === 'product').map(line => (
+                        <Card
+                          key={line.id}
+                          variant="outlined"
+                          sx={{
+                            p: 1.25,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            borderColor: selectedQuoteOptions.includes(line.id) ? '#8B5CF6' : '#E5E7EB',
+                            bgcolor: selectedQuoteOptions.includes(line.id) ? '#F5F3FF' : '#fff',
+                          }}
+                        >
+                          <Checkbox
+                            checked={selectedQuoteOptions.includes(line.id)}
+                            onChange={event => setSelectedQuoteOptions(previous => {
+                              if (convertQuotation.quotation_type === 'choice_single') {
+                                return event.target.checked ? [line.id] : []
+                              }
+                              return event.target.checked
+                                ? [...new Set([...previous, line.id])]
+                                : previous.filter(id => id !== line.id)
+                            })}
+                          />
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <ClippedTooltipText value={`${line.part_number || 'Part'} · ${line.description}`} fontWeight={850} />
+                            <Typography sx={{ color: '#059669', fontWeight: 900 }}>{money(line.total)}</Typography>
+                          </Box>
+                          {line.is_default && <Chip size="small" label="Default" sx={{ bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />}
+                        </Card>
+                      ))}
+                    </Box>
+                  </Card>
+                )}
+
                 <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
                   <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>Parts Used</Box>
                   <Table>
@@ -1492,11 +1745,15 @@ const Sales = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {convertQuotation.line_items.map(line => {
+                      {convertQuotation.line_items.filter(line => (
+                        line.item_kind === 'trade_in' ||
+                        convertQuotation.quotation_type === 'standard' ||
+                        selectedQuoteOptions.includes(line.id)
+                      )).map(line => {
                         const part = parts.find(item => item.id === line.part_id)
                         return (
                           <TableRow key={line.id}>
-                            <TableCell><ClippedTooltipText value={line.part_number} monospace fontWeight={900} onClick={() => openSalesPartInfo(part, line)} /></TableCell>
+                            <TableCell><ClippedTooltipText value={line.item_kind === 'trade_in' ? 'TRADE-IN' : line.part_number} monospace fontWeight={900} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(part, line) : undefined} /></TableCell>
                             <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                             <TableCell>{money(line.unit_price)}</TableCell>
                             <TableCell>{line.quantity}</TableCell>
@@ -1595,6 +1852,7 @@ const Sales = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell>Part</TableCell>
+                      <TableCell>Option</TableCell>
                       <TableCell>Description</TableCell>
                       <TableCell>Qty</TableCell>
                       <TableCell>Shipping</TableCell>
@@ -1606,7 +1864,14 @@ const Sales = () => {
                   <TableBody>
                     {viewQuotation.line_items.map(line => (
                       <TableRow key={line.id}>
-                        <TableCell><ClippedTooltipText value={line.part_number} onClick={() => openSalesPartInfo(parts.find(item => item.id === line.part_id), line)} /></TableCell>
+                        <TableCell><ClippedTooltipText value={line.item_kind === 'trade_in' ? 'TRADE-IN' : line.part_number} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(parts.find(item => item.id === line.part_id), line) : undefined} /></TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            <Chip size="small" label={line.item_kind === 'trade_in' ? 'Trade-In' : 'Product'} />
+                            {line.is_default && line.item_kind === 'product' && <Chip size="small" label="Default" color="secondary" />}
+                            {viewQuotation.selection_status === 'accepted' && line.is_selected && <Chip size="small" label="Selected" color="success" />}
+                          </Box>
+                        </TableCell>
                         <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                         <TableCell>{line.quantity}</TableCell>
                         <TableCell>{money(line.shipping_fee)}</TableCell>
@@ -1637,6 +1902,8 @@ const Sales = () => {
               <Typography><strong>Facility:</strong> {viewInvoice.facility_name || '-'}</Typography>
               <Typography><strong>Total:</strong> {money(viewInvoice.total_amount)}</Typography>
               <Typography><strong>Paid:</strong> {money(viewInvoice.amount_paid)}</Typography>
+              <Typography><strong>Refunded:</strong> {money(viewInvoice.refunded_amount)}</Typography>
+              <Typography><strong>Net Paid:</strong> {money(viewInvoice.net_paid)}</Typography>
               <Typography><strong>Balance:</strong> {money(viewInvoice.balance_due)}</Typography>
               <Typography><strong>Payment:</strong> {paymentMethodLabel(viewInvoice.payment_method)}</Typography>
               <Typography sx={{ gridColumn: '1 / -1' }}><strong>Notes:</strong> {viewInvoice.notes || '-'}</Typography>
@@ -1717,6 +1984,44 @@ const Sales = () => {
           <Button onClick={() => setInvoiceEdit(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
           <Button onClick={() => invoiceEdit && invoiceMut.mutate({ id: invoiceEdit.id, data: invoiceForm })} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
             Save Invoice
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(refundInvoice)} onClose={() => setRefundInvoice(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Refund Sales Payment</DialogTitle>
+        <DialogContent dividers>
+          {refundInvoice && (
+            <Box sx={{ display: 'grid', gap: 2, pt: 1 }}>
+              <Card sx={{ p: 2, borderRadius: '14px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+                <Typography sx={{ fontWeight: 900 }}>{refundInvoice.invoice_number}</Typography>
+                <Typography sx={{ color: '#9A3412', fontWeight: 800 }}>
+                  Refundable: {money(Math.max(0, Number(refundInvoice.amount_paid || 0) - Number(refundInvoice.refunded_amount || 0)))}
+                </Typography>
+                <Typography sx={{ color: '#6B7280', fontSize: 12 }}>
+                  Refunds are ledger entries and do not automatically restock a sold part.
+                </Typography>
+              </Card>
+              <TextField label="Refund Amount" type="number" value={refundForm.amount} onChange={e => setRefundForm(prev => ({ ...prev, amount: Number(e.target.value) }))} />
+              <TextField select label="Refund Method" value={refundForm.payment_method} onChange={e => setRefundForm(prev => ({ ...prev, payment_method: e.target.value }))}>
+                <MenuItem value="">Use original method</MenuItem>
+                <MenuItem value="credit_card">Credit Card</MenuItem>
+                <MenuItem value="cheque">Cheque</MenuItem>
+                <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+              </TextField>
+              <TextField label="Refund Notes" value={refundForm.notes} onChange={e => setRefundForm(prev => ({ ...prev, notes: e.target.value }))} multiline rows={3} />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRefundInvoice(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!refundInvoice || refundForm.amount <= 0 || refundMut.isPending}
+            onClick={() => refundInvoice && refundMut.mutate({ id: refundInvoice.id, data: refundForm })}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Record Refund
           </Button>
         </DialogActions>
       </Dialog>
