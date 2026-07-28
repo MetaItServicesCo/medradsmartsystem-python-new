@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -8,6 +8,9 @@ from app.db.base import Base
 
 class SalesQuotation(Base):
     __tablename__ = "sales_quotations"
+    __table_args__ = (
+        Index("ix_sales_quotations_status_requested_created", "status", "requested_date", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     quotation_number = Column(String, unique=True, nullable=False, index=True)

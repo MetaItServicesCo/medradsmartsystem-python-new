@@ -29,6 +29,7 @@ import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import {
@@ -235,8 +236,12 @@ const Rentals = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const routeSearch = new URLSearchParams(location.search).get('search') || ''
-  const searchField = new URLSearchParams(location.search).get('search_field') || 'all'
+  const routeParams = new URLSearchParams(location.search)
+  const routeSearch = routeParams.get('search') || ''
+  const searchField = routeParams.get('search_field') || 'all'
+  const dateFrom = routeParams.get('date_from') || ''
+  const dateTo = routeParams.get('date_to') || ''
+  const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
   const [search, setSearch] = useState(routeSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [agreementPage, setAgreementPage] = useState(0)
@@ -307,46 +312,54 @@ const Rentals = () => {
     staleTime: 5 * 60_000,
   })
   const partsQ = useQuery({
-    queryKey: ['rental-parts', debouncedSearch, searchField, productsPage],
+    queryKey: ['rental-parts', debouncedSearch, searchField, dateFrom, dateTo, productsPage],
     queryFn: () => fetchRentalParts(
       debouncedSearch || undefined,
       PAGE_SIZE,
       productsPage * PAGE_SIZE,
       searchField === 'all' ? undefined : searchField,
+      dateFrom || undefined,
+      dateTo || undefined,
     ),
-    enabled: tab === 2,
+    enabled: tab === 2 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const rentalsQ = useQuery({
-    queryKey: ['rental-agreements', debouncedSearch, searchField, agreementPage, agreementRowsPerPage],
+    queryKey: ['rental-agreements', tab, debouncedSearch, searchField, dateFrom, dateTo, agreementPage, agreementRowsPerPage],
     queryFn: () => fetchRentals({
       search: debouncedSearch || undefined,
       search_field: searchField === 'all' ? undefined : searchField,
+      date_from: tab === 0 ? dateFrom || undefined : undefined,
+      date_to: tab === 0 ? dateTo || undefined : undefined,
       skip: agreementPage * agreementRowsPerPage,
       limit: agreementRowsPerPage,
     }),
+    enabled: tab !== 0 || !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const activeRentalsCountQ = useQuery({
-    queryKey: ['rental-agreements', 'active-count', debouncedSearch, searchField],
-    queryFn: () => fetchRentals({ status: 'active', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: 0, limit: 1 }),
+    queryKey: ['rental-agreements', 'active-count'],
+    queryFn: () => fetchRentals({ status: 'active', skip: 0, limit: 1 }),
+    staleTime: 60_000,
     placeholderData: previousData => previousData,
   })
   const invoicesQ = useQuery({
-    queryKey: ['rental-invoices', debouncedSearch, searchField, invoicesPage],
-    queryFn: () => fetchRentalInvoices({ search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
-    enabled: tab === 1,
+    queryKey: ['rental-invoices', debouncedSearch, searchField, dateFrom, dateTo, invoicesPage],
+    queryFn: () => fetchRentalInvoices({ search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 1 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const historyQ = useQuery({
-    queryKey: ['rental-history', debouncedSearch, searchField, historyPage],
+    queryKey: ['rental-history', debouncedSearch, searchField, dateFrom, dateTo, historyPage],
     queryFn: () => fetchRentalHistory({
       search: debouncedSearch || undefined,
       search_field: searchField === 'all' ? undefined : searchField,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
       skip: historyPage * PAGE_SIZE,
       limit: PAGE_SIZE,
     }),
-    enabled: tab === 3,
+    enabled: tab === 3 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const summaryQ = useQuery({ queryKey: ['rental-summary'], queryFn: fetchRentalSummary, placeholderData: previousData => previousData })
@@ -1072,6 +1085,24 @@ const Rentals = () => {
     setProductsPage(0)
   }
 
+  const setRouteParam = (key: string, value: string) => {
+    const params = new URLSearchParams(location.search)
+    if (value) params.set(key, value)
+    else params.delete(key)
+    navigate(`${location.pathname}${params.size ? `?${params.toString()}` : ''}`, { replace: true })
+    setAgreementPage(0)
+    setInvoicesPage(0)
+    setHistoryPage(0)
+    setProductsPage(0)
+  }
+
+  const handleTabChange = (value: number) => {
+    const params = new URLSearchParams()
+    if (dateFrom) params.set('date_from', dateFrom)
+    if (dateTo) params.set('date_to', dateTo)
+    navigate(`${ROUTE_TABS[value]}${params.size ? `?${params.toString()}` : ''}`)
+  }
+
   const renderSearchControl = (label: string) => (
     <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap' }}>
       <SearchFieldSelect
@@ -1087,6 +1118,13 @@ const Rentals = () => {
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         sx={{ minWidth: 280, bgcolor: '#fff' }}
+      />
+      <DateRangeFilter
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(value) => setRouteParam('date_from', value)}
+        onDateToChange={(value) => setRouteParam('date_to', value)}
+        label={tab === 0 ? 'agreement start date' : tab === 1 ? 'invoice issue date' : tab === 2 ? 'inventory date' : 'history date'}
       />
     </Box>
   )
@@ -1114,7 +1152,7 @@ const Rentals = () => {
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
-        <Tabs value={tab} onChange={(_, value) => navigate(ROUTE_TABS[value])} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
+        <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Agreements" />
           <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Invoices" />
           <Tab icon={<InfoIcon />} iconPosition="start" label="Rental Products" />

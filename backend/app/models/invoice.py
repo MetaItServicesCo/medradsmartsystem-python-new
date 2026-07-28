@@ -24,6 +24,7 @@ class Invoice(Base):
         Index("ix_invoices_facility_type_created", "facility_id", "invoice_type", "created_at"),
         Index("ix_invoices_type_approval_created", "invoice_type", "billing_approval_status", "created_at"),
         Index("ix_invoices_type_status_created", "invoice_type", "status", "created_at"),
+        Index("ix_invoices_type_issue", "invoice_type", "issue_date"),
     )
     
     id = Column(Integer, primary_key=True, index=True)

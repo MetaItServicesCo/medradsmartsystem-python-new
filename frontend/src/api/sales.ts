@@ -183,13 +183,15 @@ export const fetchSalesParts = async (
   limit?: number,
   skip?: number,
   searchField?: string,
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<{ items: SalesPart[]; total: number }> => {
-  const res = await apiClient.get('/sales/parts', { params: { search, search_field: searchField, limit, skip } })
+  const res = await apiClient.get('/sales/parts', { params: { search, search_field: searchField, date_from: dateFrom, date_to: dateTo, limit, skip } })
   return res.data
 }
 
 export const fetchSalesQuotations = async (
-  params: { status?: string; view?: 'quotations' | 'in_progress' | 'completed'; search?: string; search_field?: string; skip?: number; limit?: number } = {}
+  params: { status?: string; view?: 'quotations' | 'in_progress' | 'completed'; search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: SalesQuotation[]; total: number }> => {
   const res = await apiClient.get('/sales/quotations', { params })
   return res.data
@@ -251,7 +253,7 @@ export const completeSalesQuotation = async (id: number): Promise<SalesQuotation
 }
 
 export const fetchSalesInvoices = async (
-  params: { status?: SalesInvoiceStatus; search?: string; search_field?: string; skip?: number; limit?: number } = {}
+  params: { status?: SalesInvoiceStatus; search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: SalesInvoice[]; total: number }> => {
   const res = await apiClient.get('/sales/invoices', { params })
   return res.data
@@ -284,7 +286,7 @@ export const updateSalesInvoice = async (
 }
 
 export const fetchSalesHistory = async (
-  params: { search?: string; search_field?: string; skip?: number; limit?: number } = {}
+  params: { search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: SalesHistoryItem[]; total: number }> => {
   const res = await apiClient.get('/sales/history', { params })
   return res.data

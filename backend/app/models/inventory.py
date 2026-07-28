@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -7,6 +7,9 @@ from app.db.base import Base
 
 class InventoryPart(Base):
     __tablename__ = "inventory_parts"
+    __table_args__ = (
+        Index("ix_inventory_parts_type_status_inventory", "part_type", "status", "inventory_date"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=True, index=True)

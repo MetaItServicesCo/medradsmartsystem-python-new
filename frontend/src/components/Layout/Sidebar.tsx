@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Box, Tooltip, Menu, MenuItem, Typography } from '@mui/material'
+import { Box, Tooltip } from '@mui/material'
 import { useNavigate, useLocation } from 'react-router-dom'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import BusinessIcon from '@mui/icons-material/Business'
@@ -36,20 +35,19 @@ const allMenuItems: { text: string; icon: JSX.Element; path: string; module: Mod
   { 
     text: 'Sales', 
     icon: <ShoppingCartIcon />, 
-    path: '/sales', 
+    path: '/sales/quotations',
     module: 'sales',
     subItems: [
       { text: 'Quotations', path: '/sales/quotations' },
       { text: 'Invoice', path: '/sales/invoices' },
       { text: 'In Progress', path: '/sales/in-progress' },
       { text: 'Completed', path: '/sales/completed' },
-      { text: 'History', path: '/sales/history' },
     ]
   },
   { 
     text: 'Rentals', 
     icon: <LocalShippingIcon />, 
-    path: '/rentals', 
+    path: '/rentals/agreements',
     module: 'rentals',
     subItems: [
       { text: 'Agreements', path: '/rentals/agreements' },
@@ -83,23 +81,6 @@ const Sidebar = () => {
     if (path === '/') return location.pathname === '/'
     if (subItems) return subItems.some(sub => location.pathname === sub.path || location.pathname.startsWith(sub.path + '/'))
     return location.pathname.startsWith(path)
-  }
-
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
-  const [activeSubMenu, setActiveSubMenu] = useState<{ text: string; path: string }[] | null>(null)
-
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>, item: any) => {
-    if (item.subItems) {
-      setAnchorEl(event.currentTarget)
-      setActiveSubMenu(item.subItems)
-    } else {
-      navigate(item.path)
-    }
-  }
-
-  const handleClose = () => {
-    setAnchorEl(null)
-    setActiveSubMenu(null)
   }
 
   return (
@@ -156,9 +137,9 @@ const Sidebar = () => {
         {menuItems.map((item) => {
           const active = isActive(item.path, item.subItems)
           return (
-            <Tooltip key={item.text} title={item.subItems && anchorEl ? "" : item.text} placement="right" arrow>
+            <Tooltip key={item.text} title={item.text} placement="right" arrow>
               <Box
-                onClick={(e) => handleMenuClick(e, item)}
+                onClick={() => navigate(item.path)}
                 sx={{
                   width: '100%',
                   height: 48,
@@ -197,52 +178,6 @@ const Sidebar = () => {
             </Tooltip>
           )
         })}
-
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleClose}
-          anchorOrigin={{ vertical: 'center', horizontal: 'right' }}
-          transformOrigin={{ vertical: 'center', horizontal: 'left' }}
-          PaperProps={{
-            elevation: 4,
-            sx: {
-              ml: 1.5,
-              borderRadius: '12px',
-              minWidth: 160,
-              overflow: 'visible',
-              filter: 'drop-shadow(0px 4px 20px rgba(0,0,0,0.15))',
-              '&::before': {
-                content: '""', display: 'block', position: 'absolute',
-                top: '50%', left: -5, width: 10, height: 10,
-                backgroundColor: 'background.paper',
-                transform: 'translateY(-50%) rotate(45deg)', zIndex: 0,
-              },
-            }
-          }}
-        >
-          {activeSubMenu?.map(sub => (
-            <MenuItem 
-              key={sub.path} 
-              onClick={() => { navigate(sub.path); handleClose(); }}
-              selected={location.pathname === sub.path}
-              sx={{ 
-                py: 1.2, px: 2, mx: 1, borderRadius: '8px',
-                mb: 0.5,
-                '&.Mui-selected': {
-                  backgroundColor: 'rgba(124,58,237,0.1)',
-                  color: '#7C3AED',
-                  fontWeight: 700,
-                  '&:hover': { backgroundColor: 'rgba(124,58,237,0.15)' }
-                }
-              }}
-            >
-              <Typography variant="body2" sx={{ fontWeight: location.pathname === sub.path ? 700 : 500 }}>
-                {sub.text}
-              </Typography>
-            </MenuItem>
-          ))}
-        </Menu>
       </Box>
 
       {/* Logout */}

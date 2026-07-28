@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date, ForeignKey, Enum as SQLEnum, Numeric, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, Date, ForeignKey, Enum as SQLEnum, Index, Numeric, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -16,6 +16,9 @@ class BillingFrequency(str, enum.Enum):
 
 class Rental(Base):
     __tablename__ = "rentals"
+    __table_args__ = (
+        Index("ix_rentals_status_start_created", "status", "start_date", "created_at"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     rental_number = Column(String, unique=True, nullable=False, index=True)

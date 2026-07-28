@@ -6,7 +6,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload, load_only, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
 from app.core.deps import get_current_user
@@ -331,11 +331,31 @@ def list_sales_parts(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="From date cannot be after To date")
     query = _sales_part_query(db, current_user)
+    if date_from:
+        start_at = datetime.combine(date_from, datetime.min.time())
+        query = query.filter(
+            or_(
+                InventoryPart.inventory_date >= date_from,
+                (InventoryPart.inventory_date.is_(None) & (InventoryPart.created_at >= start_at)),
+            )
+        )
+    if date_to:
+        end_at = datetime.combine(date_to + timedelta(days=1), datetime.min.time())
+        query = query.filter(
+            or_(
+                InventoryPart.inventory_date <= date_to,
+                (InventoryPart.inventory_date.is_(None) & (InventoryPart.created_at < end_at)),
+            )
+        )
     search_term = normalize_list_search(search)
     if search_term:
         facility_match = (
@@ -385,10 +405,14 @@ def list_quotations(
     view: Optional[str] = Query(None, description="quotations | in_progress | completed"),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="From date cannot be after To date")
     query = (
         scope_query_to_user_facilities(db.query(SalesQuotation), SalesQuotation.facility_id, db, current_user)
         .options(
@@ -398,6 +422,10 @@ def list_quotations(
             joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
         )
     )
+    if date_from:
+        query = query.filter(SalesQuotation.requested_date >= date_from)
+    if date_to:
+        query = query.filter(SalesQuotation.requested_date <= date_to)
     if status_filter:
         query = query.filter(SalesQuotation.status == status_filter)
     if view == "in_progress":
@@ -427,6 +455,7 @@ def list_quotations(
             "facility": [contains_ci(Facility.name, search_term)],
             "created_by": [contains_ci(User.full_name, search_term)],
             "date": [value_contains_ci(SalesQuotation.requested_date, search_term)],
+            "activity": [value_contains_ci(SalesQuotation.history, search_term)],
         }
         if requested_date:
             search_by_field["date"].append(SalesQuotation.requested_date == requested_date)
@@ -772,10 +801,14 @@ def list_sales_invoices(
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="From date cannot be after To date")
     query = (
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)
         .options(
@@ -786,6 +819,10 @@ def list_sales_invoices(
         )
         .filter(Invoice.invoice_type == InvoiceType.SALES)
     )
+    if date_from:
+        query = query.filter(Invoice.issue_date >= date_from)
+    if date_to:
+        query = query.filter(Invoice.issue_date <= date_to)
     query = scope_invoice_approval_visibility(query, current_user)
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
@@ -951,13 +988,17 @@ def list_sales_history(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="From date cannot be after To date")
     quotations_query = (
         scope_query_to_user_facilities(db.query(SalesQuotation), SalesQuotation.facility_id, db, current_user)
-        .options(joinedload(SalesQuotation.facility))
+        .options(joinedload(SalesQuotation.facility), joinedload(SalesQuotation.created_by))
     )
     search_term = normalize_list_search(search)
     searched_date = parsed_date_value(search_term) if search_term else None
@@ -991,9 +1032,24 @@ def list_sales_history(
                     "work_order": quotation.work_order,
                     "facility_name": quotation.facility.name if quotation.facility else None,
                     "customer_name": quotation.customer_name,
+                    "quotation_type": quotation.quotation_type,
+                    "status": quotation.status,
+                    "created_by_name": quotation.created_by.full_name if quotation.created_by else None,
                 }
             )
     rows.sort(key=lambda item: item.get("at") or "", reverse=True)
+    if date_from or date_to:
+        def history_date_in_range(item: dict[str, Any]) -> bool:
+            raw_at = item.get("at")
+            if not raw_at:
+                return False
+            try:
+                item_date = datetime.fromisoformat(str(raw_at).replace("Z", "+00:00")).date()
+            except (TypeError, ValueError):
+                return False
+            return (date_from is None or item_date >= date_from) and (date_to is None or item_date <= date_to)
+
+        rows = [row for row in rows if history_date_in_range(row)]
     if search_term:
         normalized = search_term.casefold()
         row_fields = {
@@ -1002,6 +1058,9 @@ def list_sales_history(
             "customer": ("customer_name",),
             "facility": ("facility_name",),
             "activity": ("action", "by"),
+            "type": ("quotation_type",),
+            "status": ("status",),
+            "created_by": ("created_by_name", "by"),
             "date": ("at",),
         }
         selected_keys = row_fields.get(
@@ -1039,11 +1098,10 @@ def sales_summary(
         .filter(Invoice.invoice_type == InvoiceType.SALES),
         current_user,
     ).count()
-    history = sum(
-        len(q.history or [])
-        for q in scope_query_to_user_facilities(db.query(SalesQuotation), SalesQuotation.facility_id, db, current_user)
-        .options(load_only(SalesQuotation.history))
-        .all()
+    history = (
+        scope_query_to_user_facilities(db.query(SalesQuotation), SalesQuotation.facility_id, db, current_user)
+        .with_entities(func.coalesce(func.sum(func.json_array_length(SalesQuotation.history)), 0))
+        .scalar()
     )
     in_progress_total = base.filter(SalesQuotation.status.in_(IN_PROGRESS_QUOTATION_STATUSES)).with_entities(
         func.coalesce(func.sum(SalesQuotation.total_amount), 0)
@@ -1063,7 +1121,7 @@ def sales_summary(
         "invoices": invoices,
         "in_progress": in_progress,
         "completed": completed,
-        "history": history,
+        "history": int(history or 0),
         "parts": parts,
         "in_progress_total": float(in_progress_total or 0),
         "in_progress_paid": float(in_progress_paid or 0),

@@ -173,13 +173,15 @@ export const fetchRentalParts = async (
   limit?: number,
   skip?: number,
   searchField?: string,
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<{ items: RentalPart[]; total: number }> => {
-  const res = await apiClient.get('/rentals/parts', { params: { search, search_field: searchField, limit, skip } })
+  const res = await apiClient.get('/rentals/parts', { params: { search, search_field: searchField, date_from: dateFrom, date_to: dateTo, limit, skip } })
   return res.data
 }
 
 export const fetchRentals = async (
-  params: { status?: string; search?: string; search_field?: string; skip?: number; limit?: number } = {}
+  params: { status?: string; search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: Rental[]; total: number }> => {
   const res = await apiClient.get('/rentals', { params })
   return res.data
@@ -219,7 +221,7 @@ export const convertRentalToInvoice = async (
 }
 
 export const fetchRentalInvoices = async (
-  params: { status?: RentalInvoiceStatus; search?: string; search_field?: string; skip?: number; limit?: number } = {}
+  params: { status?: RentalInvoiceStatus; search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: RentalInvoice[]; total: number }> => {
   const res = await apiClient.get('/rentals/invoices', { params })
   return res.data
@@ -257,7 +259,7 @@ export const updateRentalInvoice = async (
 }
 
 export const fetchRentalHistory = async (
-  params: { search?: string; search_field?: string; skip?: number; limit?: number } = {}
+  params: { search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: RentalHistoryItem[]; total: number }> => {
   const res = await apiClient.get('/rentals/history', { params })
   return res.data

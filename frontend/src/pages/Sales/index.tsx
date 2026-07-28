@@ -28,6 +28,7 @@ import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import {
@@ -53,7 +54,7 @@ import {
 } from '@/api/sales'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
-const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed', '/sales/history']
+const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed']
 const PAGE_SIZE = 20
 const SALES_ORDER_SEARCH_FIELDS = [
   { value: 'all', label: 'All fields' },
@@ -78,14 +79,9 @@ const SALES_INVOICE_SEARCH_FIELDS = [
   { value: 'date', label: 'Date' },
   { value: 'notes', label: 'Notes' },
 ]
-const SALES_HISTORY_SEARCH_FIELDS = [
-  { value: 'all', label: 'All fields' },
-  { value: 'work_order', label: 'Work order' },
-  { value: 'quotation', label: 'Quotation #' },
-  { value: 'customer', label: 'Customer' },
-  { value: 'facility', label: 'Facility' },
+const SALES_COMPLETED_HISTORY_SEARCH_FIELDS = [
+  ...SALES_ORDER_SEARCH_FIELDS,
   { value: 'activity', label: 'Activity / user' },
-  { value: 'date', label: 'Date' },
 ]
 const SYSTEM_GRADIENT = 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)'
 const SYSTEM_PANEL_BORDER = '#E9D5FF'
@@ -187,8 +183,12 @@ const Sales = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const routeSearch = new URLSearchParams(location.search).get('search') || ''
-  const searchField = new URLSearchParams(location.search).get('search_field') || 'all'
+  const routeParams = new URLSearchParams(location.search)
+  const routeSearch = routeParams.get('search') || ''
+  const searchField = routeParams.get('search_field') || 'all'
+  const dateFrom = routeParams.get('date_from') || ''
+  const dateTo = routeParams.get('date_to') || ''
+  const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
   const [search, setSearch] = useState(routeSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [quotationDialog, setQuotationDialog] = useState(false)
@@ -229,6 +229,9 @@ const Sales = () => {
   useEffect(() => {
     if (location.pathname === '/sales') navigate('/sales/quotations', { replace: true })
     if (location.pathname === '/sales/billing') navigate('/sales/invoices', { replace: true })
+    if (location.pathname === '/sales/history') {
+      navigate(`/sales/completed${location.search}`, { replace: true })
+    }
   }, [location.pathname, navigate])
 
   useEffect(() => {
@@ -268,38 +271,40 @@ const Sales = () => {
   })
   const summaryQ = useQuery({ queryKey: ['sales-summary'], queryFn: fetchSalesSummary, placeholderData: previousData => previousData })
   const quotationsQ = useQuery({
-    queryKey: ['sales-quotations', 'quotations', debouncedSearch, searchField, quotationsPage],
-    queryFn: () => fetchSalesQuotations({ view: 'quotations', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: quotationsPage * PAGE_SIZE, limit: PAGE_SIZE }),
-    enabled: tab === 0,
+    queryKey: ['sales-quotations', 'quotations', debouncedSearch, searchField, dateFrom, dateTo, quotationsPage],
+    queryFn: () => fetchSalesQuotations({ view: 'quotations', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: quotationsPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 0 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const inProgressQ = useQuery({
-    queryKey: ['sales-quotations', 'in_progress', debouncedSearch, searchField, inProgressPage],
-    queryFn: () => fetchSalesQuotations({ view: 'in_progress', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: inProgressPage * PAGE_SIZE, limit: PAGE_SIZE }),
-    enabled: tab === 2,
+    queryKey: ['sales-quotations', 'in_progress', debouncedSearch, searchField, dateFrom, dateTo, inProgressPage],
+    queryFn: () => fetchSalesQuotations({ view: 'in_progress', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: inProgressPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 2 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const completedQ = useQuery({
-    queryKey: ['sales-quotations', 'completed', debouncedSearch, searchField, completedPage],
-    queryFn: () => fetchSalesQuotations({ view: 'completed', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: completedPage * PAGE_SIZE, limit: PAGE_SIZE }),
-    enabled: tab === 3,
+    queryKey: ['sales-quotations', 'completed', debouncedSearch, searchField, dateFrom, dateTo, completedPage],
+    queryFn: () => fetchSalesQuotations({ view: 'completed', search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: completedPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 3 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const invoicesQ = useQuery({
-    queryKey: ['sales-invoices', debouncedSearch, searchField, invoicesPage],
-    queryFn: () => fetchSalesInvoices({ search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
-    enabled: tab === 1,
+    queryKey: ['sales-invoices', debouncedSearch, searchField, dateFrom, dateTo, invoicesPage],
+    queryFn: () => fetchSalesInvoices({ search: debouncedSearch || undefined, search_field: searchField === 'all' ? undefined : searchField, date_from: dateFrom || undefined, date_to: dateTo || undefined, skip: invoicesPage * PAGE_SIZE, limit: PAGE_SIZE }),
+    enabled: tab === 1 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const historyQ = useQuery({
-    queryKey: ['sales-history', debouncedSearch, searchField, historyPage],
+    queryKey: ['sales-history', debouncedSearch, searchField, dateFrom, dateTo, historyPage],
     queryFn: () => fetchSalesHistory({
       search: debouncedSearch || undefined,
       search_field: searchField === 'all' ? undefined : searchField,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
       skip: historyPage * PAGE_SIZE,
       limit: PAGE_SIZE,
     }),
-    enabled: tab === 4,
+    enabled: tab === 3 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
 
@@ -362,7 +367,7 @@ const Sales = () => {
     setInProgressPage(0)
     setCompletedPage(0)
     setHistoryPage(0)
-  }, [debouncedSearch, searchField])
+  }, [debouncedSearch, searchField, dateFrom, dateTo])
 
   // Prefetch the linked quotation for dialogs whose content is built from it,
   // so their details resolve even when that quotation is not on a loaded page.
@@ -960,9 +965,23 @@ const Sales = () => {
 
   const activeSearchFields = tab === 1
     ? SALES_INVOICE_SEARCH_FIELDS
-    : tab === 4
-      ? SALES_HISTORY_SEARCH_FIELDS
+    : tab === 3
+      ? SALES_COMPLETED_HISTORY_SEARCH_FIELDS
       : SALES_ORDER_SEARCH_FIELDS
+
+  const setRouteParam = (key: string, value: string) => {
+    const params = new URLSearchParams(location.search)
+    if (value) params.set(key, value)
+    else params.delete(key)
+    navigate(`${location.pathname}${params.size ? `?${params.toString()}` : ''}`, { replace: true })
+  }
+
+  const handleTabChange = (value: number) => {
+    const params = new URLSearchParams()
+    if (dateFrom) params.set('date_from', dateFrom)
+    if (dateTo) params.set('date_to', dateTo)
+    navigate(`${ROUTE_TABS[value]}${params.size ? `?${params.toString()}` : ''}`)
+  }
 
   const handleSearchFieldChange = (value: string) => {
     const params = new URLSearchParams(location.search)
@@ -986,6 +1005,13 @@ const Sales = () => {
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         sx={{ minWidth: 280, bgcolor: '#fff' }}
+      />
+      <DateRangeFilter
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={(value) => setRouteParam('date_from', value)}
+        onDateToChange={(value) => setRouteParam('date_to', value)}
+        label={tab === 1 ? 'invoice issue date' : tab === 3 ? 'sale or history date' : 'requested date'}
       />
     </Box>
   )
@@ -1013,12 +1039,11 @@ const Sales = () => {
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        <Tabs value={tab} onChange={(_, value) => navigate(ROUTE_TABS[value])} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
+        <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Quotations" />
           <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Invoice" />
           <Tab icon={<ShoppingCartIcon />} iconPosition="start" label="In Progress" />
-          <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Completed" />
-          <Tab icon={<HistoryIcon />} iconPosition="start" label="History" />
+          <Tab icon={<CheckCircleIcon />} iconPosition="start" label="Completed & History" />
         </Tabs>
 
         {tab === 0 && (
@@ -1097,14 +1122,16 @@ const Sales = () => {
             {renderPagination(completedQ.data?.total || 0, completedPage, setCompletedPage)}
           </Box>
         )}
-        {tab === 4 && (
+        {tab === 3 && (
           <Box>
           <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
             <Box>
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales History</Typography>
               <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by work order, quotation, customer, facility, activity, user, or date.</Typography>
             </Box>
-            {renderSearchControl('Search history')}
+            <Typography sx={{ color: '#7C3AED', fontWeight: 800, fontSize: 13 }}>
+              Uses the Completed &amp; History filters above
+            </Typography>
           </Box>
           <TableContainer className="list-scroll-panel">
             <Table stickyHeader>
