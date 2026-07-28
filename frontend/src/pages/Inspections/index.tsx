@@ -77,6 +77,7 @@ import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
 import { formatUSPhone } from '@/utils/formatters'
 
@@ -4055,20 +4056,26 @@ const Inspections = () => {
         {tab === 0 && (
           <Box sx={{ p: 3 }}>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 180px auto auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
-              <FormControl fullWidth>
-                <InputLabel>Facility</InputLabel>
-                <Select label="Facility" value={facilityId} onChange={(e) => {
-                  setFacilityId(e.target.value as number)
+              <SearchableSelect<number>
+                label="Facility"
+                value={facilityId}
+                onChange={(nextFacilityId) => {
+                  setFacilityId(nextFacilityId)
                   setSelectedInstantEquipmentIds([])
                   setSelectedEquipmentIds([])
                   setScheduleAssetSearch('')
                   setDebouncedScheduleAssetSearch('')
-                }}>
-                  {(facilitiesQ.data || []).map(f => (
-                    <MenuItem key={f.id} value={f.id}>{f.name} - {f.tier_name || 'No tier'}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                }}
+                loading={facilitiesQ.isLoading}
+                options={(facilitiesQ.data || []).map(facility => ({
+                  value: facility.id,
+                  label: facility.name,
+                  secondary: `#${facility.id} · ${facility.tier_name || 'No tier'} · ${facility.inventory_count} asset(s)`,
+                  keywords: `${facility.id} ${facility.tier_name || ''}`,
+                }))}
+                placeholder="Search facility name, tier, or ID"
+                noOptionsText="No matching facilities available"
+              />
               <TextField select label="Frequency" value={frequency} onChange={e => setFrequency(e.target.value as InspectionFrequency)}>
                 <MenuItem value="quarterly">Quarterly</MenuItem>
                 <MenuItem value="semi_annual">Semi-Annual</MenuItem>
@@ -4195,20 +4202,26 @@ const Inspections = () => {
         {tab === 1 && (
           <Box sx={{ p: 3 }}>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 2, alignItems: 'center', mb: 3 }}>
-              <FormControl fullWidth>
-                <InputLabel>Facility</InputLabel>
-                <Select label="Facility" value={facilityId} onChange={(e) => {
-                  setFacilityId(e.target.value as number)
+              <SearchableSelect<number>
+                label="Facility"
+                value={facilityId}
+                onChange={(nextFacilityId) => {
+                  setFacilityId(nextFacilityId)
                   setSelectedInstantEquipmentIds([])
                   setSelectedEquipmentIds([])
                   setInstantAssetSearch('')
                   setDebouncedInstantAssetSearch('')
-                }}>
-                  {(facilitiesQ.data || []).map(f => (
-                    <MenuItem key={f.id} value={f.id}>{f.name} - {f.tier_name || 'No tier'} - {f.inventory_count} asset(s)</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                }}
+                loading={facilitiesQ.isLoading}
+                options={(facilitiesQ.data || []).map(facility => ({
+                  value: facility.id,
+                  label: facility.name,
+                  secondary: `#${facility.id} · ${facility.tier_name || 'No tier'} · ${facility.inventory_count} asset(s)`,
+                  keywords: `${facility.id} ${facility.tier_name || ''}`,
+                }))}
+                placeholder="Search facility name, tier, or ID"
+                noOptionsText="No matching facilities available"
+              />
               <TextField select label="Frequency" value={frequency} onChange={e => setFrequency(e.target.value as InspectionFrequency)} sx={{ minWidth: 180 }}>
                 <MenuItem value="instant">Instant</MenuItem>
                 <MenuItem value="quarterly">Quarterly</MenuItem>
@@ -4381,19 +4394,21 @@ const Inspections = () => {
                   onChange={event => setClosedSearch(event.target.value)}
                   fullWidth
                 />
-                <FormControl fullWidth>
-                  <InputLabel>Facility</InputLabel>
-                  <Select
-                    label="Facility"
-                    value={closedFacilityId}
-                    onChange={event => setClosedFacilityId(event.target.value === '' ? '' : Number(event.target.value))}
-                  >
-                    <MenuItem value="">All facilities</MenuItem>
-                    {(facilitiesQ.data || []).map(facility => (
-                      <MenuItem key={facility.id} value={facility.id}>{facility.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <SearchableSelect<number>
+                  label="Facility"
+                  value={closedFacilityId}
+                  onChange={setClosedFacilityId}
+                  loading={facilitiesQ.isLoading}
+                  options={(facilitiesQ.data || []).map(facility => ({
+                    value: facility.id,
+                    label: facility.name,
+                    secondary: `#${facility.id} · ${facility.inventory_count} asset(s)`,
+                    keywords: `${facility.id} ${facility.tier_name || ''}`,
+                  }))}
+                  placeholder="Search facility name or ID"
+                  noOptionsText="No matching facilities"
+                  helperText="Leave empty to include all facilities"
+                />
               </Box>
               <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, mt: 1 }}>
                 Module From/To dates also filter this list by its scheduled date. Reopening preserves the existing schedule; rescheduling assigns a new date and reopens it.
@@ -4736,18 +4751,19 @@ const Inspections = () => {
       <Dialog open={Boolean(techEdit)} onClose={() => setTechEdit(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Change Technician</DialogTitle>
         <DialogContent dividers>
-          <TextField
-            select
-            fullWidth
+          <SearchableSelect<number>
             label="Technician"
             value={selectedTechId}
-            onChange={e => setSelectedTechId(e.target.value ? Number(e.target.value) : '')}
-          >
-            <MenuItem value="">Unassigned</MenuItem>
-            {batchTechnicians.map(user => (
-              <MenuItem key={user.id} value={user.id}>{user.full_name || user.username} - {user.role}</MenuItem>
-            ))}
-          </TextField>
+            onChange={setSelectedTechId}
+            options={batchTechnicians.map(user => ({
+              value: user.id,
+              label: user.full_name || user.username,
+              secondary: `${user.role.replace(/_/g, ' ')} · ${user.email}`,
+              keywords: `${user.username} ${user.email} ${user.role}`,
+            }))}
+            placeholder="Search technician name, username, or email"
+            helperText="Leave empty to keep the inspection unassigned"
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setTechEdit(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
@@ -4854,16 +4870,20 @@ const Inspections = () => {
             <TextField label="Make *" value={batchAssetForm.make} onChange={e => setBatchAssetForm(prev => ({ ...prev, make: e.target.value }))} />
             <TextField label="Model *" value={batchAssetForm.model} onChange={e => setBatchAssetForm(prev => ({ ...prev, model: e.target.value }))} />
             <TextField label="Serial # *" value={batchAssetForm.serial_number} onChange={e => setBatchAssetForm(prev => ({ ...prev, serial_number: e.target.value }))} />
-            <TextField
-              select
-              label="Modality *"
+            <SearchableSelect<number>
+              label="Modality"
               value={batchAssetForm.modality_id || ''}
-              onChange={e => setBatchAssetForm(prev => ({ ...prev, modality_id: Number(e.target.value) }))}
-            >
-              {assignableModalities.map(modality => (
-                <MenuItem key={modality.id} value={modality.id}>{modality.name}</MenuItem>
-              ))}
-            </TextField>
+              required
+              options={assignableModalities.map(modality => ({
+                value: modality.id,
+                label: modality.name,
+                secondary: modality.category || undefined,
+                keywords: modality.description || '',
+              }))}
+              onChange={value => setBatchAssetForm(prev => ({ ...prev, modality_id: Number(value) }))}
+              placeholder="Search modalities..."
+              noOptionsText="No matching modalities"
+            />
             <TextField select label="PM Scheduling" value={batchAssetForm.pm_scheduling || 'annual'} onChange={e => setBatchAssetForm(prev => ({ ...prev, pm_scheduling: e.target.value }))}>
               <MenuItem value="quarterly">Quarterly</MenuItem>
               <MenuItem value="semi_annual">Semi-Annual</MenuItem>
@@ -6171,29 +6191,33 @@ const Inspections = () => {
                       onChange={event => setInfoDraft(previous => previous ? { ...previous, criticality: event.target.value } : previous)}
                       placeholder="For example: High"
                     />
-                    <TextField
-                      select
+                    <SearchableSelect<number>
                       label="Assigned technician"
                       value={infoDraft.inspectorId}
-                      onChange={event => setInfoDraft(previous => previous ? { ...previous, inspectorId: event.target.value === '' ? '' : Number(event.target.value) } : previous)}
-                    >
-                      <MenuItem value="">Unassigned</MenuItem>
-                      {infoTechnicians.map((user: UserData) => (
-                        <MenuItem key={user.id} value={user.id}>{user.full_name || user.username}</MenuItem>
-                      ))}
-                    </TextField>
-                    <TextField
-                      select
+                      onChange={inspectorId => setInfoDraft(previous => previous ? { ...previous, inspectorId } : previous)}
+                      options={infoTechnicians.map((user: UserData) => ({
+                        value: user.id,
+                        label: user.full_name || user.username,
+                        secondary: `${user.role.replace(/_/g, ' ')} · ${user.email}`,
+                        keywords: `${user.username} ${user.email} ${user.role}`,
+                      }))}
+                      placeholder="Search technician name, username, or email"
+                      helperText="Leave empty to keep the inspection unassigned"
+                    />
+                    <SearchableSelect<number>
                       label="Inspection form"
                       value={infoDraft.formTemplateId}
-                      onChange={event => setInfoDraft(previous => previous ? { ...previous, formTemplateId: Number(event.target.value) } : previous)}
+                      onChange={formTemplateId => setInfoDraft(previous => previous ? { ...previous, formTemplateId: Number(formTemplateId) } : previous)}
                       disabled={formsQ.isLoading}
                       required
-                    >
-                      {inspectionForms.map(form => (
-                        <MenuItem key={form.id} value={form.id}>{form.name}</MenuItem>
-                      ))}
-                    </TextField>
+                      options={inspectionForms.map(form => ({
+                        value: form.id,
+                        label: form.name,
+                        secondary: form.description || `Inspection form #${form.id}`,
+                        keywords: `${form.id} ${form.description || ''}`,
+                      }))}
+                      placeholder="Search inspection forms"
+                    />
                     <TextField
                       label="Compliance requirement"
                       value={infoDraft.complianceRequirement}

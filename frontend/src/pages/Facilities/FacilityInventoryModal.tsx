@@ -23,6 +23,7 @@ import { fetchTiers } from '@/api/tiers'
 import { type Facility } from '@/api/facilities'
 import CreateServiceRequestModal from '@/pages/ServiceRequests/CreateServiceRequestModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import SearchableSelect from '@/components/SearchableSelect'
 import { formatUSPhoneInput } from '@/utils/formatters'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
@@ -362,28 +363,52 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
               <TextField size="small" label="Make *" value={form.make} onChange={e => setForm({ ...form, make: e.target.value })} />
               <TextField size="small" label="Model *" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} />
               
-              <TextField size="small" label="Modality *" select value={selectedParentMod} onChange={e => { setSelectedParentMod(Number(e.target.value)); setSelectedSubMod(''); }}>
-                {modalities.map(m => (
-                  <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
-                ))}
-              </TextField>
+              <SearchableSelect<number>
+                label="Modality"
+                value={selectedParentMod}
+                required
+                options={modalities.map(modality => ({
+                  value: modality.id,
+                  label: modality.name,
+                  keywords: modality.description || '',
+                }))}
+                onChange={value => {
+                  setSelectedParentMod(value)
+                  setSelectedSubMod('')
+                }}
+                noOptionsText="No matching modalities"
+              />
 
               {subModalities.length > 0 ? (
-                <TextField size="small" label="Sub-Modality *" select value={selectedSubMod} onChange={e => setSelectedSubMod(Number(e.target.value))}>
-                  {subModalities.map((sub: any) => (
-                    <MenuItem key={sub.id} value={sub.id}>{sub.name}</MenuItem>
-                  ))}
-                </TextField>
+                <SearchableSelect<number>
+                  label="Sub-Modality"
+                  value={selectedSubMod}
+                  required
+                  options={subModalities.map((sub: any) => ({
+                    value: sub.id,
+                    label: sub.name,
+                    keywords: sub.description || '',
+                  }))}
+                  onChange={setSelectedSubMod}
+                  noOptionsText="No matching sub-modalities"
+                />
               ) : (
                 <Box /> // Empty placeholder to keep grid layout intact
               )}
 
-              <TextField size="small" label="Tier" select value={form.tier_id || ''} onChange={e => setForm({ ...form, tier_id: e.target.value ? Number(e.target.value) : null })}>
-                <MenuItem value="">No Tier</MenuItem>
-                {availableTiers.map((tier) => (
-                  <MenuItem key={tier.id} value={tier.id}>{tier.name}</MenuItem>
-                ))}
-              </TextField>
+              <SearchableSelect<number>
+                label="Tier"
+                value={form.tier_id || ''}
+                options={availableTiers.map(tier => ({
+                  value: tier.id,
+                  label: tier.name,
+                  secondary: tier.tier_code || undefined,
+                  keywords: `${tier.tier_code || ''} ${tier.description || ''}`,
+                }))}
+                onChange={value => setForm({ ...form, tier_id: value ? Number(value) : null })}
+                placeholder="Search assigned tiers..."
+                noOptionsText="No matching tiers"
+              />
 
               <Button component="label" variant="outlined" sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 800 }}>
                 Default Picture
@@ -461,22 +486,21 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <TextField size="small" type="date" label="Installation Date" InputLabelProps={{ shrink: true }} value={form.installation_date || ''} onChange={e => setForm({ ...form, installation_date: e.target.value || null })} />
                 <TextField size="small" type="date" label="Last PM Date" InputLabelProps={{ shrink: true }} value={form.last_pm_date || ''} onChange={e => setForm({ ...form, last_pm_date: e.target.value || null })} />
                 <TextField size="small" type="date" label="Next Generated PM Date" InputLabelProps={{ shrink: true }} value={nextInspectionDate || ''} InputProps={{ readOnly: true }} helperText="Generated from the last PM date and selected schedule" />
-                <TextField
-                  size="small"
+                <SearchableSelect<number>
                   label="Inspection Form"
-                  select
                   value={form.inspection_form_id || ''}
-                  onChange={e => setForm({ ...form, inspection_form_id: e.target.value ? Number(e.target.value) : null })}
+                  options={inspectionForms.map(inspectionForm => ({
+                    value: inspectionForm.id,
+                    label: inspectionForm.name,
+                    secondary: inspectionForm.modality_name || 'General',
+                    keywords: inspectionForm.description || '',
+                  }))}
+                  onChange={value => setForm({ ...form, inspection_form_id: value ? Number(value) : null })}
                   disabled={!selectedAssetModalityId}
                   helperText={selectedAssetModalityId ? 'Forms tagged to this asset type' : 'Select modality first'}
-                >
-                  <MenuItem value="">Select Form</MenuItem>
-                  {inspectionForms.map((inspectionForm) => (
-                    <MenuItem key={inspectionForm.id} value={inspectionForm.id}>
-                      {inspectionForm.name}{inspectionForm.modality_name ? ` - ${inspectionForm.modality_name}` : ' - General'}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  placeholder="Search inspection forms..."
+                  noOptionsText="No matching inspection forms"
+                />
 
               <TextField size="small" label="Status" select value={form.status || 'active'} onChange={e => setForm({ ...form, status: e.target.value })}>
                 <MenuItem value="active">Active</MenuItem>

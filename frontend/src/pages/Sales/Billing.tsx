@@ -47,6 +47,7 @@ import InvoicePrintDialog, {
 } from '@/components/Billing/InvoicePrintDialog'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
+import SearchableSelect from '@/components/SearchableSelect'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
@@ -1625,21 +1626,20 @@ const Billing = () => {
             </Select>
           </FormControl>
           {authorizationChannel === 'phone' && (
-            <FormControl fullWidth>
-              <InputLabel>Facility Representative</InputLabel>
-              <Select
-                value={phoneAuthorizerId}
-                label="Facility Representative"
-                onChange={event => setPhoneAuthorizerId(Number(event.target.value))}
-                disabled={facilityAuthorizersQ.isLoading}
-              >
-                {(facilityAuthorizersQ.data || []).map(authorizer => (
-                  <MenuItem key={authorizer.id} value={authorizer.id}>
-                    {authorizer.full_name} · {authorizer.role.replace(/_/g, ' ')}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <SearchableSelect<number>
+              label="Facility Representative"
+              value={phoneAuthorizerId}
+              options={(facilityAuthorizersQ.data || []).map(authorizer => ({
+                value: authorizer.id,
+                label: authorizer.full_name,
+                secondary: authorizer.role.replace(/_/g, ' '),
+                keywords: `${authorizer.email || ''} ${authorizer.role}`,
+              }))}
+              onChange={value => setPhoneAuthorizerId(value ? Number(value) : 0)}
+              loading={facilityAuthorizersQ.isLoading}
+              noOptionsText="No matching facility representatives"
+              required
+            />
           )}
           <TextField
             label={authorizationChannel === 'phone' ? 'Phone authorization notes' : 'Authorization notes'}

@@ -19,6 +19,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import { toast } from 'react-toastify'
 import { fetchLeaveRequests, createLeaveRequest, deleteLeaveRequest, fetchLeaveTypes } from '@/api/hr'
 import ContextTableRow from '@/components/ContextTableRow'
+import SearchableSelect from '@/components/SearchableSelect'
 
 const STATUS_META: Record<string, { label: string; color: 'default' | 'warning' | 'success' | 'error' | 'info'; icon: React.ReactNode }> = {
   pending:   { label: 'Pending',   color: 'warning', icon: <HourglassEmptyIcon fontSize="small" /> },
@@ -383,26 +384,26 @@ export default function MyLeave() {
       <Dialog open={dlg} onClose={() => { setDlg(false); setForm(EMPTY_FORM) }} maxWidth="xs" fullWidth>
         <DialogTitle>Apply for Leave</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          <FormControl size="small" fullWidth required>
-            <InputLabel>Leave Type</InputLabel>
-            <Select value={form.leave_type_id} label="Leave Type" onChange={f('leave_type_id')}>
-              {activeTypes.map((t: any) => (
-                <MenuItem key={t.id} value={t.id}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: t.color ?? '#7161D8', flexShrink: 0 }} />
-                    {t.name} {t.max_days_per_year > 0 ? `(max ${t.max_days_per_year}d/yr)` : ''}
-                    {!t.is_paid && <Chip size="small" label="Unpaid" sx={{ ml: 0.5, fontSize: 10, height: 16 }} />}
-                  </Box>
-                </MenuItem>
-              ))}
-              <MenuItem value={CUSTOM_VALUE}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#6b7280', flexShrink: 0 }} />
-                  Other / Custom
-                </Box>
-              </MenuItem>
-            </Select>
-          </FormControl>
+          <SearchableSelect<string>
+            label="Leave Type"
+            value={String(form.leave_type_id || '')}
+            required
+            options={[
+              ...activeTypes.map((leaveType: any) => ({
+                value: String(leaveType.id),
+                label: leaveType.name,
+                secondary: [
+                  leaveType.max_days_per_year > 0 ? `Maximum ${leaveType.max_days_per_year} days/year` : '',
+                  leaveType.is_paid ? 'Paid' : 'Unpaid',
+                ].filter(Boolean).join(' - '),
+                keywords: leaveType.description || '',
+              })),
+              { value: CUSTOM_VALUE, label: 'Other / Custom' },
+            ]}
+            onChange={value => setForm((previous: typeof EMPTY_FORM) => ({ ...previous, leave_type_id: value }))}
+            placeholder="Search leave types..."
+            noOptionsText="No matching leave types"
+          />
 
           {isCustom && (
             <TextField

@@ -32,6 +32,7 @@ import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
+import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import {
   completeSalesQuotation,
   convertSalesQuotationToInvoice,
@@ -662,8 +663,8 @@ const Sales = () => {
     convertMut.mutate({ id: convertQuotation.id, data: invoiceDetails })
   }
 
-  const syncCustomerFromFacility = (facilityId: number | '') => {
-    const facility = facilities.find(item => item.id === facilityId)
+  const syncCustomerFromFacility = (facilityId: number | '', selected?: Facility | null) => {
+    const facility = selected || facilities.find(item => item.id === facilityId)
     setQuotationForm(prev => ({
       ...prev,
       facility_id: facilityId ? Number(facilityId) : null,
@@ -1331,13 +1332,19 @@ const Sales = () => {
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{editingQuotation ? 'Edit Sales Quotation' : 'Create Sales Quotation'}</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
-            <FormControl>
-              <InputLabel>Facility</InputLabel>
-              <Select label="Facility" value={quotationForm.facility_id || ''} onChange={e => syncCustomerFromFacility(e.target.value ? Number(e.target.value) : '')}>
-                <MenuItem value="">Independent customer</MenuItem>
-                {facilities.map((facility: Facility) => <MenuItem key={facility.id} value={facility.id}>{facility.name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <FacilitySearchAutocomplete
+              label="Facility"
+              value={quotationForm.facility_id || ''}
+              enabled={quotationDialog}
+              selectedFacility={selectedFacility}
+              allowClear
+              helperText="Leave empty for an independent customer"
+              onChange={facilityId => setQuotationForm(previous => ({
+                ...previous,
+                facility_id: facilityId ? Number(facilityId) : null,
+              }))}
+              onFacilityChange={facility => syncCustomerFromFacility(facility?.id || '', facility)}
+            />
             <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
             <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />

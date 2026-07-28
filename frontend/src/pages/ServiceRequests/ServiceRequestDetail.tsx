@@ -50,6 +50,7 @@ import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipmen
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
+import SearchableSelect from '@/components/SearchableSelect'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
@@ -1457,23 +1458,19 @@ const ServiceRequestDetail = () => {
 
               {/* Assign Technician (for new → assigned) */}
               {sr.status === 'new' && (
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Assign Technician</InputLabel>
-                  <Select
-                    value={technicianId}
-                    label="Assign Technician"
-                    onChange={(e) => setTechnicianId(e.target.value as number)}
-                  >
-                    {technicians.map((u) => (
-                      <MenuItem key={u.id} value={u.id}>
-                        {u.full_name} — {u.email}
-                      </MenuItem>
-                    ))}
-                    {technicians.length === 0 && (
-                      <MenuItem disabled value="">No technicians available</MenuItem>
-                    )}
-                  </Select>
-                </FormControl>
+                <SearchableSelect<number>
+                  label="Assign Technician"
+                  value={technicianId}
+                  options={technicians.map(technician => ({
+                    value: technician.id,
+                    label: technician.full_name,
+                    secondary: technician.email,
+                    keywords: `${technician.role || ''} ${technician.phone || ''}`,
+                  }))}
+                  onChange={value => setTechnicianId(value ? Number(value) : '')}
+                  noOptionsText="No matching technicians"
+                  sx={{ mb: 2 }}
+                />
               )}
 
               {sr.status !== 'new' && !canLogWork && (
@@ -1917,23 +1914,18 @@ const ServiceRequestDetail = () => {
           <Typography sx={{ color: '#64748B', fontWeight: 700, mb: 2 }}>
             Reassign this service request without changing the service history, hours, or billing calculation.
           </Typography>
-          <FormControl fullWidth>
-            <InputLabel>Technician</InputLabel>
-            <Select
-              value={technicianId || sr.assigned_technician_id || ''}
-              label="Technician"
-              onChange={(e) => setTechnicianId(e.target.value as number)}
-            >
-              {technicians.map((u) => (
-                <MenuItem key={u.id} value={u.id}>
-                  {u.full_name} - {u.email}
-                </MenuItem>
-              ))}
-              {technicians.length === 0 && (
-                <MenuItem disabled value="">No technicians available</MenuItem>
-              )}
-            </Select>
-          </FormControl>
+          <SearchableSelect<number>
+            label="Technician"
+            value={technicianId || sr.assigned_technician_id || ''}
+            options={technicians.map(technician => ({
+              value: technician.id,
+              label: technician.full_name,
+              secondary: technician.email,
+              keywords: `${technician.role || ''} ${technician.phone || ''}`,
+            }))}
+            onChange={value => setTechnicianId(value ? Number(value) : '')}
+            noOptionsText="No matching technicians"
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setChangeTechOpen(false)} variant="outlined">

@@ -33,6 +33,7 @@ import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
+import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const PAGE_SIZE = 25
@@ -637,9 +638,16 @@ const Inventory = () => {
           </TextField>
           <TextField size="small" type="number" label={transactionForm.transaction_type === 'adjustment' ? 'New Balance' : 'Quantity'} value={transactionForm.quantity} onChange={(e) => setTransactionForm({ ...transactionForm, quantity: Number(e.target.value) })} />
           {transactionForm.transaction_type === 'transfer' && (
-            <TextField size="small" select label="Destination Facility" value={transactionForm.to_facility_id} onChange={(e) => setTransactionForm({ ...transactionForm, to_facility_id: e.target.value })} sx={{ gridColumn: 'span 2' }}>
-              {facilities.filter((f) => f.id !== transactionPart?.facility_id).map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
-            </TextField>
+            <FacilitySearchAutocomplete
+              label="Destination Facility"
+              value={transactionForm.to_facility_id ? Number(transactionForm.to_facility_id) : ''}
+              enabled={Boolean(transactionPart)}
+              excludeIds={transactionPart?.facility_id ? [transactionPart.facility_id] : []}
+              selectedFacility={facilities.find(facility => facility.id === Number(transactionForm.to_facility_id))}
+              onChange={facilityId => setTransactionForm({ ...transactionForm, to_facility_id: String(facilityId || '') })}
+              required
+              sx={{ gridColumn: 'span 2' }}
+            />
           )}
           <TextField size="small" type="number" label="Unit Cost" value={transactionForm.unit_cost} onChange={(e) => setTransactionForm({ ...transactionForm, unit_cost: Number(e.target.value) })} />
           <TextField size="small" label="Authorization Ref" value={transactionForm.authorization_reference} onChange={(e) => setTransactionForm({ ...transactionForm, authorization_reference: e.target.value })} />

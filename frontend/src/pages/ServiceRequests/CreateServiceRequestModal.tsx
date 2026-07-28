@@ -12,8 +12,9 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { toast } from 'react-toastify'
 
 import { createServiceRequest, uploadServiceRequestImage, type ServiceRequestCreate, type ServiceRequestPriority } from '@/api/serviceRequests'
-import { fetchFacilities } from '@/api/facilities'
 import { fetchEquipment, type EquipmentItem } from '@/api/equipment'
+import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
+import SearchableSelect from '@/components/SearchableSelect'
 
 interface Props {
   open: boolean
@@ -44,19 +45,12 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
 
-  const { data: facilitiesData } = useQuery({
-    queryKey: ['facilities-brief'],
-    queryFn: () => fetchFacilities({ limit: 500 }),
-    enabled: open,
-  })
-
-  const { data: equipmentData } = useQuery({
+  const { data: equipmentData, isLoading: equipmentLoading } = useQuery({
     queryKey: ['equipment-for-facility', facilityId],
     queryFn: () => fetchEquipment(facilityId as number),
     enabled: open && !!facilityId,
   })
 
-  const facilities = facilitiesData?.items ?? []
   const equipmentList: EquipmentItem[] = equipmentData?.items ?? []
 
   useEffect(() => {
@@ -175,30 +169,34 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
       <DialogContent sx={{ p: 3, backgroundColor: '#F8FAFC' }}>
         <Box sx={{ display: 'grid', gap: 2.25 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-            <FormControl fullWidth required>
-              <InputLabel>Facility</InputLabel>
-              <Select value={facilityId} label="Facility" onChange={(e) => setFacilityId(e.target.value as number)}>
-                {facilities.map((f) => (
-                  <MenuItem key={f.id} value={f.id}>{f.name} {f.city ? `- ${f.city}, ${f.state || ''}` : ''}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <FacilitySearchAutocomplete
+              label="Facility"
+              value={facilityId}
+              onChange={nextFacilityId => {
+                setFacilityId(nextFacilityId)
+                setEquipmentId('')
+              }}
+              required
+              enabled={open}
+              placeholder="Search facility name, city, state, or ID"
+            />
 
-            <FormControl fullWidth required disabled={!facilityId}>
-              <InputLabel>Select Equipment</InputLabel>
-              <Select value={equipmentId} label="Select Equipment" onChange={(e) => setEquipmentId(e.target.value as number)}>
-                {equipmentList.length === 0 && (
-                  <MenuItem disabled value="">
-                    {facilityId ? 'No equipment found for this facility' : 'Select facility first'}
-                  </MenuItem>
-                )}
-                {equipmentList.map((eq) => (
-                  <MenuItem key={eq.id} value={eq.id}>
-                    {eq.make} {eq.model} - {eq.asset_tag}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <SearchableSelect<number>
+              label="Select Equipment"
+              value={equipmentId}
+              onChange={setEquipmentId}
+              required
+              disabled={!facilityId}
+              loading={equipmentLoading}
+              options={equipmentList.map(eq => ({
+                value: eq.id,
+                label: [eq.asset_tag, eq.make, eq.model].filter(Boolean).join(' - '),
+                secondary: [eq.serial_number, eq.description].filter(Boolean).join(' - ') || `Equipment #${eq.id}`,
+                keywords: `${eq.id} ${eq.asset_tag || ''} ${eq.make || ''} ${eq.model || ''} ${eq.serial_number || ''}`,
+              }))}
+              noOptionsText={facilityId ? 'No matching equipment for this facility' : 'Select a facility first'}
+              placeholder="Search asset tag, make, model, or serial number"
+            />
           </Box>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr 1fr' }, gap: 2 }}>

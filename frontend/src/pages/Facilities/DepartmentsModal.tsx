@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Dialog, DialogContent, Box, Typography, IconButton,
   Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Chip, Skeleton, Tooltip, TextField, CircularProgress, MenuItem
+  Chip, Skeleton, Tooltip, TextField, CircularProgress
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import DomainIcon from '@mui/icons-material/Domain'
@@ -17,6 +17,7 @@ import {
   type Department, type DepartmentCreate, type DepartmentUpdate
 } from '@/api/departments'
 import { fetchFacilities } from '@/api/facilities'
+import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 
 interface Props {
   open: boolean
@@ -113,9 +114,14 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 2 }}>
               <TextField size="small" label="Name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-              <TextField size="small" label="Facility *" select value={form.facility_id || ''} onChange={e => setForm({ ...form, facility_id: Number(e.target.value) })}>
-                {facilities.map(f => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
-              </TextField>
+              <FacilitySearchAutocomplete
+                label="Facility"
+                value={form.facility_id || ''}
+                required
+                enabled={open && showForm}
+                selectedFacility={facilities.find(facility => facility.id === form.facility_id)}
+                onChange={facilityId => setForm({ ...form, facility_id: facilityId ? Number(facilityId) : 0 })}
+              />
               <TextField size="small" label="Description" value={form.description}
                 onChange={e => setForm({ ...form, description: e.target.value })}
                 fullWidth sx={{ gridColumn: 'span 2' }} />

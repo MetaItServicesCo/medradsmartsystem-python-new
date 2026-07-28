@@ -28,6 +28,7 @@ import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
+import SearchableSelect from '@/components/SearchableSelect'
 
 const PAGE_SIZE = 25
 const ACTION_MENU_PAPER = {
@@ -378,16 +379,21 @@ const TestEquipmentPage = () => {
                   <MenuItem value="maintenance">Maintenance</MenuItem>
                   <MenuItem value="inactive">Inactive</MenuItem>
                 </TextField>
-                <TextField
-                  select
+                <SearchableSelect<number>
                   label="Technician"
                   value={form.technician_id || ''}
-                  onChange={(e) => setForm({ ...form, technician_id: e.target.value ? Number(e.target.value) : null })}
+                  options={technicians.map(technician => ({
+                    value: technician.id,
+                    label: technician.full_name,
+                    secondary: technician.email,
+                    keywords: `${technician.username} ${technician.role}`,
+                  }))}
+                  onChange={value => setForm({ ...form, technician_id: value ? Number(value) : null })}
+                  placeholder="Search technician name or email"
+                  noOptionsText="No matching technicians"
+                  helperText="Leave empty for no assigned technician"
                   sx={{ gridColumn: { xs: 'auto', md: 'span 3' } }}
-                >
-                  <MenuItem value="">No assigned technician</MenuItem>
-                  {technicians.map((tech) => <MenuItem key={tech.id} value={tech.id}>{tech.full_name}</MenuItem>)}
-                </TextField>
+                />
                 <TextField
                   label="Description"
                   multiline

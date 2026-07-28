@@ -71,6 +71,7 @@ import {
 } from '@/api/hr'
 import { fetchAttendanceEvents } from '@/api/attendance'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
+import SearchableSelect from '@/components/SearchableSelect'
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
@@ -1248,18 +1249,30 @@ function PolicyAssignmentsTab() {
       <Dialog open={dlg} onClose={() => setDlg(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Assign Attendance Policy</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          <FormControl size="small" fullWidth>
-            <InputLabel>Employee</InputLabel>
-            <Select label="Employee" value={form.user_id} onChange={e => setForm((p: any) => ({ ...p, user_id: e.target.value }))}>
-              {employees.map((e: any) => <MenuItem key={e.id} value={e.id}>{e.full_name ?? e.email}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" fullWidth>
-            <InputLabel>Policy</InputLabel>
-            <Select label="Policy" value={form.policy_id} onChange={e => setForm((p: any) => ({ ...p, policy_id: e.target.value }))}>
-              {policies.map((p: any) => <MenuItem key={p.id} value={p.id}>{p.name}{p.is_default ? ' (Global)' : ''}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <SearchableSelect<number>
+            label="Employee"
+            value={form.user_id || ''}
+            options={employees.map((employee: any) => ({
+              value: employee.id,
+              label: employee.full_name || employee.email,
+              secondary: employee.email,
+              keywords: `${employee.employee_number || ''} ${employee.department || ''}`,
+            }))}
+            onChange={value => setForm((previous: any) => ({ ...previous, user_id: value }))}
+            noOptionsText="No matching employees"
+          />
+          <SearchableSelect<number>
+            label="Policy"
+            value={form.policy_id || ''}
+            options={policies.map((policy: any) => ({
+              value: policy.id,
+              label: policy.name,
+              secondary: policy.is_default ? 'Global policy' : undefined,
+              keywords: policy.description || '',
+            }))}
+            onChange={value => setForm((previous: any) => ({ ...previous, policy_id: value }))}
+            noOptionsText="No matching policies"
+          />
           <TextField label="Effective From" type="date" size="small" value={form.effective_from} InputLabelProps={{ shrink: true }}
             onChange={e => setForm((p: any) => ({ ...p, effective_from: e.target.value }))} />
         </DialogContent>
@@ -2728,21 +2741,31 @@ function DocumentsSection() {
                   <TextField fullWidth size="small" label="Version" value={docForm.version ?? '1.0'} onChange={e => setDocForm((f: any) => ({ ...f, version: e.target.value }))} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Employee</InputLabel>
-                    <Select value={docForm.user_id ?? ''} label="Employee" onChange={e => setDocForm((f: any) => ({ ...f, user_id: e.target.value }))}>
-                      {employees.map((u: any) => <MenuItem key={u.id} value={u.id}>{u.full_name ?? u.email}</MenuItem>)}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect<number>
+                    label="Employee"
+                    value={docForm.user_id ?? ''}
+                    options={employees.map((employee: any) => ({
+                      value: employee.id,
+                      label: employee.full_name || employee.email,
+                      secondary: employee.email,
+                      keywords: `${employee.employee_number || ''} ${employee.department || ''}`,
+                    }))}
+                    onChange={value => setDocForm((formValue: any) => ({ ...formValue, user_id: value }))}
+                    noOptionsText="No matching employees"
+                  />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Category</InputLabel>
-                    <Select value={docForm.category_id ?? ''} label="Category" onChange={e => setDocForm((f: any) => ({ ...f, category_id: e.target.value || null }))}>
-                      <MenuItem value="">None</MenuItem>
-                      {cats.map((c: any) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-                    </Select>
-                  </FormControl>
+                  <SearchableSelect<number>
+                    label="Category"
+                    value={docForm.category_id ?? ''}
+                    options={cats.map((category: any) => ({
+                      value: category.id,
+                      label: category.name,
+                      keywords: category.description || '',
+                    }))}
+                    onChange={value => setDocForm((formValue: any) => ({ ...formValue, category_id: value || null }))}
+                    noOptionsText="No matching categories"
+                  />
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <FormControl fullWidth size="small">
