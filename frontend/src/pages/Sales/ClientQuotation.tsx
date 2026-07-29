@@ -152,7 +152,33 @@ const ClientQuotation = () => {
   const statusLabel = quotation.status.replace(/_/g, ' ')
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: 2 }}>
+    <Box
+      sx={{
+        height: '100dvh',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        scrollBehavior: 'smooth',
+        scrollbarGutter: 'stable',
+        WebkitOverflowScrolling: 'touch',
+        bgcolor: '#F5F3FF',
+        py: { xs: 2, md: 5 },
+        px: 2,
+        '&::-webkit-scrollbar': { width: 10 },
+        '&::-webkit-scrollbar-track': { bgcolor: '#EEEAFE' },
+        '&::-webkit-scrollbar-thumb': {
+          bgcolor: '#B9A8F5',
+          borderRadius: 999,
+          border: '2px solid #EEEAFE',
+        },
+        '&::-webkit-scrollbar-thumb:hover': { bgcolor: '#8B6FE8' },
+        '@media print': {
+          height: 'auto',
+          overflow: 'visible',
+          py: 0,
+          px: 0,
+        },
+      }}
+    >
       <Card
         sx={{
           width: 'min(1120px, 100%)',
