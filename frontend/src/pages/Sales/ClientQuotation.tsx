@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useParams } from 'react-router-dom'
 import {
@@ -55,6 +55,7 @@ const ClientQuotation = () => {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [decision, setDecision] = useState<'decline' | 'request_changes' | null>(null)
   const [comments, setComments] = useState('')
+  const responseRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!quotation) return
@@ -169,6 +170,15 @@ const ClientQuotation = () => {
           </Box>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'start', '@media print': { display: 'none' } }}>
             <Chip label={statusLabel} sx={{ textTransform: 'capitalize', fontWeight: 900, bgcolor: '#EDE9FE', color: '#6D28D9' }} />
+            {data.can_accept && (
+              <Button
+                variant="contained"
+                onClick={() => responseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}
+              >
+                Sign & Approve
+              </Button>
+            )}
             <Button startIcon={<PrintIcon />} variant="outlined" onClick={() => window.print()}>Print</Button>
           </Box>
         </Box>
@@ -252,21 +262,82 @@ const ClientQuotation = () => {
             {data.invoice && ` Invoice ${data.invoice.invoice_number} is ${data.invoice.billing_approval_status === 'approved' ? 'available in Billing' : 'pending billing approval'}.`}
           </Alert>
         ) : data.can_accept ? (
-          <Box sx={{ borderTop: '1px solid #E5E7EB', pt: 3, '@media print': { display: 'none' } }}>
+          <Box
+            ref={responseRef}
+            sx={{
+              border: '1px solid #DDD6FE',
+              borderRadius: '18px',
+              bgcolor: '#FAF8FF',
+              p: { xs: 2, md: 3 },
+              scrollMarginTop: 24,
+              '@media print': { display: 'none' },
+            }}
+          >
+            <Typography variant="h6" sx={{ color: '#1E1B4B', fontWeight: 900, mb: 0.5 }}>
+              Sign and approve this quotation
+            </Typography>
+            <Typography sx={{ color: '#6B7280', mb: 2 }}>
+              Confirm your selected option, enter the signer’s name, and accept the terms.
+            </Typography>
             <TextField
               fullWidth
-              label="Signature / accepted by"
+              label="Type your full legal name"
               value={signatureName}
               onChange={event => setSignatureName(event.target.value)}
-              sx={{ mb: 1.5 }}
+              autoComplete="name"
+              helperText="Your typed name will be rendered as your electronic signature."
+              sx={{ mb: 2 }}
             />
+            <Box
+              role="img"
+              aria-label={signatureName.trim() ? `Electronic signature: ${signatureName.trim()}` : 'Electronic signature preview'}
+              sx={{
+                minHeight: 112,
+                mb: 2,
+                px: { xs: 2, md: 3 },
+                py: 2,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+                borderRadius: '14px',
+                bgcolor: '#FFFFFF',
+                border: '1px solid #E5E7EB',
+              }}
+            >
+              <Typography sx={{ color: '#8B95A7', fontWeight: 800, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                Electronic signature preview
+              </Typography>
+              <Typography
+                sx={{
+                  minHeight: 54,
+                  display: 'flex',
+                  alignItems: 'center',
+                  color: signatureName.trim() ? '#1E1B4B' : '#A1A1AA',
+                  fontFamily: '"Segoe Script", "Bradley Hand", "Brush Script MT", cursive',
+                  fontSize: { xs: 30, md: 40 },
+                  fontWeight: 500,
+                  fontStyle: 'italic',
+                  lineHeight: 1.25,
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {signatureName.trim() || 'Your signature will appear here'}
+              </Typography>
+              <Box sx={{ borderBottom: '1px solid #9CA3AF' }} />
+            </Box>
             <FormControlLabel
               control={<Checkbox checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} />}
               label="I confirm the selected products, pricing, and quotation terms."
             />
             <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
-              <Button variant="contained" disabled={acceptMut.isPending} onClick={validateAndAccept} sx={{ fontWeight: 900 }}>
-                Accept Quotation
+              <Button
+                variant="contained"
+                startIcon={acceptMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleOutlineIcon />}
+                disabled={acceptMut.isPending}
+                onClick={validateAndAccept}
+                sx={{ fontWeight: 900 }}
+              >
+                Sign & Approve
               </Button>
               <Button variant="outlined" onClick={() => setDecision('request_changes')}>Request Changes</Button>
               <Button color="error" variant="outlined" onClick={() => setDecision('decline')}>Decline</Button>
