@@ -18,6 +18,7 @@ from app.models.facility import Facility
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.sales import (
+    SalesPaymentAuthorization,
     SalesQuotation,
     SalesQuotationAcceptance,
     SalesQuotationLineItem,
@@ -150,6 +151,17 @@ class SalesQuotationSend(BaseModel):
     expires_in_days: int = 30
 
 
+class SalesCardAuthorizationCreate(BaseModel):
+    card_holder_name: Optional[str] = None
+    card_type: Optional[str] = None
+    name_on_card: Optional[str] = None
+    phone: Optional[str] = None
+    title: Optional[str] = None
+    expiration: Optional[str] = None
+    masked_card_number: Optional[str] = None
+    notes: Optional[str] = None
+
+
 def _money(value: Any) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
@@ -170,6 +182,53 @@ def _next_invoice_number(db: Session) -> str:
     last = db.query(Invoice).order_by(Invoice.id.desc()).first()
     next_num = (last.id + 1) if last else 1
     return f"INV-SALES-{next_num:06d}"
+
+
+def _authorization_response(authorization: SalesPaymentAuthorization) -> dict[str, Any]:
+    return {
+        "id": authorization.id,
+        "invoice_id": authorization.invoice_id,
+        "quotation_id": authorization.quotation_id,
+        "status": authorization.status,
+        "amount": authorization.amount,
+        "currency": authorization.currency,
+        "payment_method": authorization.payment_method,
+        "channel": authorization.channel,
+        "submitted_by_name": authorization.submitted_by_name,
+        "submitted_by_email": authorization.submitted_by_email,
+        "cardholder_name": authorization.cardholder_name,
+        "card_brand": authorization.card_brand,
+        "card_last_four": authorization.card_last_four,
+        "card_expiration": authorization.card_expiration,
+        "authorization_reference": authorization.authorization_reference,
+        "notes": authorization.notes,
+        "requested_by_name": (
+            authorization.requested_by.full_name
+            if getattr(authorization, "requested_by", None)
+            else None
+        ),
+        "requested_at": authorization.requested_at,
+        "submitted_at": authorization.submitted_at,
+        "processed_at": authorization.processed_at,
+        "token_expires_at": authorization.token_expires_at,
+    }
+
+
+def _acceptance_response(acceptance: Optional[SalesQuotationAcceptance]) -> Optional[dict[str, Any]]:
+    if not acceptance:
+        return None
+    return {
+        "id": acceptance.id,
+        "accepted_by_name": acceptance.accepted_by_name,
+        "signature_name": acceptance.signature_name,
+        "terms_accepted": acceptance.terms_accepted,
+        "accepted_at": acceptance.accepted_at,
+        "quotation_revision": acceptance.quotation_revision,
+        "selection_snapshot": acceptance.selection_snapshot,
+        "pricing_snapshot": acceptance.pricing_snapshot,
+        "ip_address": acceptance.ip_address,
+        "user_agent": acceptance.user_agent,
+    }
 
 
 def _history_entry(
@@ -374,6 +433,11 @@ def _quotation_response(quotation: SalesQuotation) -> dict[str, Any]:
             _recipient_response(item)
             for item in quotation.recipients or []
             if item.recipient_type == "additional"
+        ],
+        "acceptance": _acceptance_response(quotation.acceptance),
+        "payment_authorizations": [
+            _authorization_response(item)
+            for item in (quotation.payment_authorizations or [])
         ],
     }
 
@@ -885,6 +949,7 @@ def list_quotations(
             joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
             selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
             joinedload(SalesQuotation.acceptance),
+            selectinload(SalesQuotation.payment_authorizations).joinedload(SalesPaymentAuthorization.requested_by),
         )
     )
     if date_from:
@@ -958,6 +1023,7 @@ def get_quotation(
             joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
             selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
             joinedload(SalesQuotation.acceptance),
+            selectinload(SalesQuotation.payment_authorizations).joinedload(SalesPaymentAuthorization.requested_by),
         )
         .filter(SalesQuotation.id == quotation_id)
         .first()
@@ -1436,48 +1502,165 @@ def convert_to_invoice(
 @router.post("/quotations/{quotation_id}/request-card-authorization")
 def request_card_authorization(
     quotation_id: int,
+    payload: SalesCardAuthorizationCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    quotation = db.query(SalesQuotation).filter(SalesQuotation.id == quotation_id).first()
+    if current_user.role not in INTERNAL_SALES_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Only an Admin or Super Admin can request sales payment authorization",
+        )
+    quotation = (
+        db.query(SalesQuotation)
+        .options(
+            joinedload(SalesQuotation.converted_invoice),
+            joinedload(SalesQuotation.acceptance),
+            selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
+            selectinload(SalesQuotation.payment_authorizations),
+        )
+        .filter(SalesQuotation.id == quotation_id)
+        .with_for_update(of=SalesQuotation)
+        .first()
+    )
     if not quotation:
         raise HTTPException(status_code=404, detail="Sales quotation not found")
     if quotation.facility_id is not None:
         require_facility_access(db, current_user, quotation.facility_id)
-        recipient_roles = [UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT]
-        primary_users = (
-            db.query(User.id)
-            .filter(
-                User.facility_id == quotation.facility_id,
-                User.role.in_(recipient_roles),
-                User.is_active.is_(True),
-            )
-            .all()
+    if not quotation.acceptance:
+        raise HTTPException(
+            status_code=409,
+            detail="The customer must sign and approve the quotation before payment authorization is requested",
         )
-        linked_users = (
-            db.query(UserFacility.user_id)
-            .join(User, User.id == UserFacility.user_id)
-            .filter(
-                UserFacility.facility_id == quotation.facility_id,
-                User.role.in_(recipient_roles),
-                User.is_active.is_(True),
-            )
-            .all()
-        )
+    invoice = quotation.converted_invoice
+    if not invoice:
+        raise HTTPException(status_code=409, detail="The accepted quotation does not have an invoice")
+    require_invoice_approved(invoice)
+    balance_due = max(_money(invoice.balance_due), Decimal("0"))
+    if balance_due <= 0:
+        raise HTTPException(status_code=409, detail="This invoice has no outstanding balance")
+
+    now = datetime.utcnow()
+    for existing in quotation.payment_authorizations or []:
+        if existing.status in {"requested", "submitted"}:
+            existing.status = "superseded"
+            existing.updated_at = now
+
+    primary_recipient = next(
+        (item for item in quotation.recipients or [] if item.recipient_type == "primary"),
+        None,
+    )
+    token = secrets.token_urlsafe(32)
+    digits = "".join(character for character in (payload.masked_card_number or "") if character.isdigit())
+    has_authorization_details = bool(payload.card_holder_name or payload.name_on_card or digits)
+    authorization = SalesPaymentAuthorization(
+        invoice_id=invoice.id,
+        quotation_id=quotation.id,
+        recipient_id=primary_recipient.id if primary_recipient else None,
+        requested_by_id=current_user.id,
+        status="submitted" if has_authorization_details else "requested",
+        amount=balance_due,
+        currency="USD",
+        payment_method="credit_card",
+        channel="admin_assisted" if has_authorization_details else "public_link",
+        submitted_by_name=(
+            payload.card_holder_name or payload.name_on_card
+            if has_authorization_details
+            else None
+        ),
+        submitted_by_email=quotation.customer_email if has_authorization_details else None,
+        cardholder_name=payload.name_on_card or payload.card_holder_name,
+        card_brand=payload.card_type,
+        card_last_four=digits[-4:] if len(digits) >= 4 else None,
+        card_expiration=payload.expiration,
+        notes=payload.notes,
+        access_token_hash=_token_hash(token),
+        token_expires_at=now + timedelta(days=30),
+        requested_at=now,
+        submitted_at=now if has_authorization_details else None,
+    )
+    db.add(authorization)
+    db.flush()
+    if has_authorization_details:
+        authorization.authorization_reference = f"SAUTH-{authorization.id:06d}"
+
+    relative_url = f"/payment/sales/{token}"
+    public_url = f"{settings.PUBLIC_APP_URL.rstrip('/')}{relative_url}"
+    add_invoice_transaction(
+        db,
+        invoice,
+        "payment_authorization_submitted" if has_authorization_details else "payment_authorization_requested",
+        balance_due,
+        "credit_card",
+        (
+            f"Sales payment authorization {'submitted' if has_authorization_details else 'requested'} "
+            f"for the approved invoice balance"
+        ),
+        current_user,
+        "SAUTH",
+    )
+    history_details = {
+        "authorization_id": authorization.id,
+        "invoice_id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "amount": str(balance_due),
+        "status": authorization.status,
+        "channel": authorization.channel,
+        "authorization_reference": authorization.authorization_reference,
+    }
+    _append_history(
+        quotation,
+        "credit_card_authorization_submitted" if has_authorization_details else "credit_card_authorization_requested",
+        current_user,
+        history_details,
+    )
+
+    if primary_recipient and primary_recipient.user_id:
         create_notifications(
             db,
-            user_ids=[user.id for user in primary_users] + [user.user_id for user in linked_users],
-            title="Credit card authorization requested",
-            message=f"Authorization requested for {quotation.quotation_number or f'quotation #{quotation.id}'}.",
+            user_ids=[primary_recipient.user_id],
+            title="Payment authorization requested",
+            message=f"Authorize the {invoice.invoice_number} balance of ${balance_due:.2f}.",
             notification_type="billing",
-            link_url="/billing",
+            link_url=relative_url,
             actor_id=current_user.id,
         )
-    _append_history(quotation, "credit_card_authorization_requested", current_user)
-    quotation.updated_at = datetime.utcnow()
-    log_activity(db, "sales_quotations", quotation.id, "REQUEST_CARD_AUTHORIZATION", current_user, {})
+    if primary_recipient and primary_recipient.email:
+        background_tasks.add_task(
+            send_html_email,
+            [primary_recipient.email],
+            f"Payment authorization for {invoice.invoice_number}",
+            (
+                f"<p>Hello {primary_recipient.name},</p>"
+                f"<p>Invoice <strong>{invoice.invoice_number}</strong> has an outstanding "
+                f"balance of <strong>${balance_due:.2f}</strong>.</p>"
+                f"<p><a href=\"{public_url}\">Review invoice and authorize payment</a></p>"
+                "<p>For your security, this link expires in 30 days.</p>"
+            ),
+            (
+                f"Review invoice {invoice.invoice_number} and authorize its "
+                f"${balance_due:.2f} balance: {public_url}"
+            ),
+        )
+
+    log_activity(
+        db,
+        "sales_payment_authorizations",
+        authorization.id,
+        "REQUEST_SALES_PAYMENT_AUTHORIZATION",
+        current_user,
+        history_details,
+    )
+    quotation.updated_at = now
     db.commit()
-    return _quotation_response(quotation)
+    db.refresh(authorization)
+    return {
+        "authorization": _authorization_response(authorization),
+        "payment_url": public_url,
+        "invoice_number": invoice.invoice_number,
+        "amount": balance_due,
+    }
 
 
 @router.post("/quotations/{quotation_id}/complete")
@@ -1717,7 +1900,42 @@ def update_sales_invoice(
             invoice.sales_quotation.status = "completed"
         _append_history(invoice.sales_quotation, "invoice_updated", current_user, {"invoice_id": invoice.id, "status": invoice.status.value})
     invoice.updated_at = datetime.utcnow()
-    record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
+    payment_transaction = record_payment_delta(
+        db,
+        invoice,
+        previous_paid,
+        invoice.amount_paid,
+        current_user,
+        invoice.payment_method,
+        update_data.get("notes"),
+    )
+    if payment_transaction:
+        authorization = (
+            db.query(SalesPaymentAuthorization)
+            .filter(
+                SalesPaymentAuthorization.invoice_id == invoice.id,
+                SalesPaymentAuthorization.status == "submitted",
+            )
+            .order_by(SalesPaymentAuthorization.submitted_at.desc())
+            .with_for_update()
+            .first()
+        )
+        if authorization:
+            authorization.status = (
+                "processed"
+                if invoice.status == InvoiceStatus.PAID
+                else "partially_processed"
+            )
+            authorization.processed_at = datetime.utcnow()
+            authorization.updated_at = datetime.utcnow()
+            authorization.notes = " | ".join(
+                item
+                for item in [
+                    authorization.notes,
+                    f"Payment recorded as {payment_transaction.reference_number}",
+                ]
+                if item
+            )
     record_status_change(db, invoice, previous_status, current_user)
     log_activity(db, "invoices", invoice.id, "UPDATE_SALES_INVOICE", current_user, update_data)
     db.commit()

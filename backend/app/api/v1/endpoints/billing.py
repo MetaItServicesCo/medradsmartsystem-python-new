@@ -11,6 +11,7 @@ from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
 from app.models.invoice import Invoice, InvoiceStatus
+from app.models.sales import SalesPaymentAuthorization
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.invoice_approval import (
@@ -253,7 +254,7 @@ def record_invoice_payment(
     )
     invoice.updated_at = datetime.utcnow()
 
-    record_payment_delta(
+    payment_transaction = record_payment_delta(
         db,
         invoice,
         previous_paid,
@@ -262,6 +263,36 @@ def record_invoice_payment(
         payload.payment_method,
         payload.notes,
     )
+    if invoice.sales_quotation_id:
+        authorization = (
+            db.query(SalesPaymentAuthorization)
+            .filter(
+                SalesPaymentAuthorization.invoice_id == invoice.id,
+                SalesPaymentAuthorization.status == "submitted",
+            )
+            .order_by(SalesPaymentAuthorization.submitted_at.desc())
+            .with_for_update()
+            .first()
+        )
+        if authorization:
+            authorization.status = (
+                "processed"
+                if invoice.status == InvoiceStatus.PAID
+                else "partially_processed"
+            )
+            authorization.processed_at = datetime.utcnow()
+            authorization.updated_at = datetime.utcnow()
+            authorization.notes = " | ".join(
+                item
+                for item in [
+                    authorization.notes,
+                    (
+                        f"Payment recorded as "
+                        f"{payment_transaction.reference_number if payment_transaction else invoice.invoice_number}"
+                    ),
+                ]
+                if item
+            )
     record_status_change(db, invoice, previous_status, current_user)
     _append_source_payment_history(
         invoice,

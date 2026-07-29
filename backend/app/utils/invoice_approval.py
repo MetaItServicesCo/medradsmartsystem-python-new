@@ -176,6 +176,25 @@ def invalidate_invoice_approval(
     invoice.approved_for_billing_at = None
     invoice.approved_total_amount = None
     invoice.approval_invalidated_at = datetime.utcnow()
+    if getattr(invoice, "sales_quotation_id", None):
+        # Authorization is consent for one exact approved balance. Financial
+        # edits invalidate that consent so it can never drift to a new amount.
+        from app.models.sales import SalesPaymentAuthorization
+
+        (
+            db.query(SalesPaymentAuthorization)
+            .filter(
+                SalesPaymentAuthorization.invoice_id == invoice.id,
+                SalesPaymentAuthorization.status.in_(["requested", "submitted"]),
+            )
+            .update(
+                {
+                    SalesPaymentAuthorization.status: "invalidated",
+                    SalesPaymentAuthorization.updated_at: datetime.utcnow(),
+                },
+                synchronize_session=False,
+            )
+        )
     add_invoice_transaction(
         db,
         invoice,

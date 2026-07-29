@@ -73,6 +73,43 @@ export interface SalesHistoryItem {
   customer_name: string
 }
 
+export interface SalesQuotationAcceptance {
+  id: number
+  accepted_by_name: string
+  signature_name: string
+  terms_accepted: boolean
+  accepted_at: string
+  quotation_revision: number
+  selection_snapshot: Array<Record<string, any>>
+  pricing_snapshot: Record<string, string | number>
+  ip_address?: string | null
+  user_agent?: string | null
+}
+
+export interface SalesPaymentAuthorization {
+  id: number
+  invoice_id: number
+  quotation_id: number
+  status: string
+  amount: number
+  currency: string
+  payment_method: string
+  channel: string
+  submitted_by_name?: string | null
+  submitted_by_email?: string | null
+  cardholder_name?: string | null
+  card_brand?: string | null
+  card_last_four?: string | null
+  card_expiration?: string | null
+  authorization_reference?: string | null
+  notes?: string | null
+  requested_by_name?: string | null
+  requested_at: string
+  submitted_at?: string | null
+  processed_at?: string | null
+  token_expires_at: string
+}
+
 export interface SalesQuotation {
   id: number
   quotation_number: string
@@ -123,6 +160,8 @@ export interface SalesQuotation {
   recipients: SalesQuotationRecipient[]
   primary_recipient: SalesQuotationRecipient | null
   additional_recipients: SalesQuotationRecipient[]
+  acceptance?: SalesQuotationAcceptance | null
+  payment_authorizations?: SalesPaymentAuthorization[]
 }
 
 export interface SalesInvoice {
@@ -279,6 +318,56 @@ export interface SalesQuotationPortal {
   } | null
 }
 
+export interface SalesPublicPaymentAuthorization {
+  company_name: string
+  authorization: {
+    id: number
+    status: string
+    amount: number
+    currency: string
+    payment_method: string
+    channel: string
+    cardholder_name?: string | null
+    card_brand?: string | null
+    card_last_four?: string | null
+    card_expiration?: string | null
+    authorization_reference?: string | null
+    submitted_by_name?: string | null
+    submitted_at?: string | null
+    requested_at: string
+    token_expires_at: string
+  }
+  invoice: {
+    id: number
+    invoice_number: string
+    status: string
+    billing_approval_status: 'pending' | 'approved'
+    customer_name: string
+    customer_email?: string | null
+    customer_phone?: string | null
+    customer_address?: string | null
+    facility_name?: string | null
+    subtotal: number
+    tax_amount: number
+    discount_amount: number
+    total_amount: number
+    amount_paid: number
+    balance_due: number
+    issue_date: string
+    due_date: string
+    line_items: Array<Record<string, any>>
+  }
+  quotation: { id: number; quotation_number: string; revision: number }
+  acceptance: {
+    accepted_by_name: string
+    signature_name: string
+    accepted_at: string
+    quotation_revision: number
+  } | null
+  can_submit: boolean
+  payment_note: string
+}
+
 export const fetchSalesParts = async (
   search?: string,
   limit?: number,
@@ -363,8 +452,20 @@ export const convertSalesQuotationToInvoice = async (
   return res.data
 }
 
-export const requestSalesCardAuthorization = async (id: number): Promise<SalesQuotation> => {
-  const res = await apiClient.post(`/sales/quotations/${id}/request-card-authorization`)
+export const requestSalesCardAuthorization = async (
+  id: number,
+  data: {
+    card_holder_name?: string
+    card_type?: string
+    name_on_card?: string
+    phone?: string
+    title?: string
+    expiration?: string
+    masked_card_number?: string
+    notes?: string
+  } = {},
+): Promise<{ authorization: SalesPaymentAuthorization; payment_url: string; invoice_number: string; amount: number }> => {
+  const res = await apiClient.post(`/sales/quotations/${id}/request-card-authorization`, data)
   return res.data
 }
 
@@ -469,5 +570,29 @@ export const decideClientSalesQuotation = async (
   comments?: string,
 ): Promise<SalesQuotationPortal> => {
   const res = await apiClient.post(`/client-sales/quotations/${id}/decision`, { action, comments })
+  return res.data
+}
+
+export const fetchPublicSalesPaymentAuthorization = async (
+  token: string,
+): Promise<SalesPublicPaymentAuthorization> => {
+  const res = await apiClient.get(`/public/sales-payment/${token}`)
+  return res.data
+}
+
+export const submitPublicSalesPaymentAuthorization = async (
+  token: string,
+  data: {
+    cardholder_name: string
+    card_brand: string
+    card_last_four: string
+    card_expiration: string
+    submitted_by_name: string
+    submitted_by_email?: string
+    terms_accepted: boolean
+    notes?: string
+  },
+): Promise<SalesPublicPaymentAuthorization> => {
+  const res = await apiClient.post(`/public/sales-payment/${token}/authorize`, data)
   return res.data
 }

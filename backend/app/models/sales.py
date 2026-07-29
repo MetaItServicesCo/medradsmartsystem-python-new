@@ -59,6 +59,12 @@ class SalesQuotation(Base):
     line_items = relationship("SalesQuotationLineItem", back_populates="quotation", cascade="all, delete-orphan")
     recipients = relationship("SalesQuotationRecipient", back_populates="quotation", cascade="all, delete-orphan")
     acceptance = relationship("SalesQuotationAcceptance", back_populates="quotation", cascade="all, delete-orphan", uselist=False)
+    payment_authorizations = relationship(
+        "SalesPaymentAuthorization",
+        back_populates="quotation",
+        cascade="all, delete-orphan",
+        order_by="SalesPaymentAuthorization.created_at.desc()",
+    )
 
 
 class SalesQuotationLineItem(Base):
@@ -133,3 +139,55 @@ class SalesQuotationAcceptance(Base):
     quotation = relationship("SalesQuotation", back_populates="acceptance")
     recipient = relationship("SalesQuotationRecipient")
     accepted_by = relationship("User")
+
+
+class SalesPaymentAuthorization(Base):
+    """Auditable, PCI-minimized authorization against an accepted sales invoice.
+
+    The application deliberately stores only the card brand and last four digits.
+    Full card numbers and security codes must be handled by a PCI-compliant payment
+    processor and are never persisted here.
+    """
+
+    __tablename__ = "sales_payment_authorizations"
+    __table_args__ = (
+        Index("ix_sales_payment_auth_invoice_status", "invoice_id", "status"),
+        Index("ix_sales_payment_auth_quotation_created", "quotation_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False, index=True)
+    quotation_id = Column(Integer, ForeignKey("sales_quotations.id", ondelete="CASCADE"), nullable=False, index=True)
+    recipient_id = Column(Integer, ForeignKey("sales_quotation_recipients.id", ondelete="SET NULL"), nullable=True)
+    requested_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    submitted_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    status = Column(String, nullable=False, default="requested", index=True)
+    amount = Column(Numeric(10, 2), nullable=False)
+    currency = Column(String, nullable=False, default="USD")
+    payment_method = Column(String, nullable=False, default="credit_card")
+    channel = Column(String, nullable=False, default="public_link")
+    submitted_by_name = Column(String, nullable=True)
+    submitted_by_email = Column(String, nullable=True)
+    cardholder_name = Column(String, nullable=True)
+    card_brand = Column(String, nullable=True)
+    card_last_four = Column(String, nullable=True)
+    card_expiration = Column(String, nullable=True)
+    authorization_reference = Column(String, nullable=True, unique=True, index=True)
+    notes = Column(Text, nullable=True)
+
+    access_token_hash = Column(String, nullable=False, unique=True, index=True)
+    token_expires_at = Column(DateTime, nullable=False)
+    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    submitted_at = Column(DateTime, nullable=True)
+    processed_at = Column(DateTime, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    invoice = relationship("Invoice")
+    quotation = relationship("SalesQuotation", back_populates="payment_authorizations")
+    recipient = relationship("SalesQuotationRecipient")
+    requested_by = relationship("User", foreign_keys=[requested_by_id])
+    submitted_by = relationship("User", foreign_keys=[submitted_by_user_id])

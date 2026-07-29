@@ -283,10 +283,18 @@ const ClientQuotation = () => {
         {quotation.notes && <Alert icon={false} sx={{ mb: 3 }}>{quotation.notes}</Alert>}
 
         {data.acceptance ? (
-          <Alert severity="success" icon={<CheckCircleOutlineIcon />} sx={{ mb: 3 }}>
-            Accepted by {data.acceptance.accepted_by_name} on {dateLabel(data.acceptance.accepted_at)}.
-            {data.invoice && ` Invoice ${data.invoice.invoice_number} is ${data.invoice.billing_approval_status === 'approved' ? 'available in Billing' : 'pending billing approval'}.`}
-          </Alert>
+          <Box sx={{ mb: 3 }}>
+            <Alert severity="success" icon={<CheckCircleOutlineIcon />}>
+              Accepted by {data.acceptance.accepted_by_name} on {dateLabel(data.acceptance.accepted_at)}.
+              {data.invoice && ` Invoice ${data.invoice.invoice_number} is ${data.invoice.billing_approval_status === 'approved' ? 'available in Billing' : 'pending billing approval'}.`}
+            </Alert>
+            <Box sx={{ mt: 1.5, p: 2, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
+              <Typography sx={{ color: '#64748B', fontWeight: 800, fontSize: 12 }}>SIGNED ACCEPTANCE · REVISION {data.acceptance.quotation_revision}</Typography>
+              <Typography sx={{ mt: 1, pb: 0.5, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Bradley Hand", "Brush Script MT", cursive', fontSize: { xs: 28, md: 36 }, fontStyle: 'italic' }}>
+                {data.acceptance.signature_name}
+              </Typography>
+            </Box>
+          </Box>
         ) : data.can_accept ? (
           <Box
             ref={responseRef}

@@ -41,6 +41,8 @@ interface Props {
   customerName?: string | null
   requestType?: string
   items: AuthorizationLineItem[]
+  secureRequestMode?: boolean
+  submitting?: boolean
   onClose: () => void
   onSubmit: (payload: CreditCardAuthorizationPayload) => void
 }
@@ -56,7 +58,7 @@ const emptyForm = {
   card_holder_name: '',
   card_type: '',
   name_on_card: '',
-  card_number: '',
+  card_last_four: '',
   phone: '',
   security_code: '',
   title: '',
@@ -65,7 +67,16 @@ const emptyForm = {
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 
-const CreditCardAuthorizationDialog = ({ open, customerName, requestType = 'Service', items, onClose, onSubmit }: Props) => {
+const CreditCardAuthorizationDialog = ({
+  open,
+  customerName,
+  requestType = 'Service',
+  items,
+  secureRequestMode = false,
+  submitting = false,
+  onClose,
+  onSubmit,
+}: Props) => {
   const [form, setForm] = useState(emptyForm)
 
   useEffect(() => {
@@ -85,7 +96,20 @@ const CreditCardAuthorizationDialog = ({ open, customerName, requestType = 'Serv
       phone: formatUSPhoneInput(form.phone),
       title: form.title,
       expiration: form.expiration,
-      masked_card_number: maskCardNumber(form.card_number),
+      masked_card_number: maskCardNumber(form.card_last_four),
+    })
+  }
+
+  const requestSecureLink = () => {
+    onSubmit({
+      request_type: requestType,
+      card_holder_name: '',
+      card_type: '',
+      name_on_card: '',
+      phone: '',
+      title: '',
+      expiration: '',
+      masked_card_number: '',
     })
   }
 
@@ -160,7 +184,9 @@ const CreditCardAuthorizationDialog = ({ open, customerName, requestType = 'Serv
           </Table>
         </TableContainer>
 
-        <Typography sx={{ fontWeight: 900, mb: 1 }}>Credit or Debit Card Details:</Typography>
+        <Typography sx={{ fontWeight: 900, mb: 1 }}>
+          {secureRequestMode ? 'Optional phone authorization record:' : 'Credit or Debit Card Details:'}
+        </Typography>
         <Box sx={{ border: '1px solid #CBD5E1', borderRadius: '4px', overflow: 'hidden' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
             <FormCell label="Card Holder Name">
@@ -178,14 +204,31 @@ const CreditCardAuthorizationDialog = ({ open, customerName, requestType = 'Serv
             <FormCell label="Name On Card">
               <TextField size="small" placeholder="Name On Card" value={form.name_on_card} onChange={e => setForm(prev => ({ ...prev, name_on_card: e.target.value }))} />
             </FormCell>
-            <FormCell label="Card Number">
-              <TextField size="small" placeholder="Card Number" value={form.card_number} onChange={e => setForm(prev => ({ ...prev, card_number: e.target.value }))} />
+            <FormCell label={secureRequestMode ? 'Last 4 Digits' : 'Card Number'}>
+              <TextField
+                size="small"
+                placeholder={secureRequestMode ? 'Last 4 only' : 'Card Number'}
+                value={form.card_last_four}
+                onChange={e => setForm(prev => ({
+                  ...prev,
+                  card_last_four: secureRequestMode
+                    ? e.target.value.replace(/\D/g, '').slice(0, 4)
+                    : e.target.value,
+                }))}
+                inputProps={secureRequestMode ? { inputMode: 'numeric', maxLength: 4 } : undefined}
+              />
             </FormCell>
             <FormCell label="PH#">
               <TextField size="small" placeholder="Phone Number" value={form.phone} onChange={e => setForm(prev => ({ ...prev, phone: formatUSPhoneInput(e.target.value) }))} />
             </FormCell>
-            <FormCell label="Security Code">
-              <TextField size="small" placeholder="Security Code" value={form.security_code} onChange={e => setForm(prev => ({ ...prev, security_code: e.target.value }))} />
+            <FormCell label={secureRequestMode ? 'Security' : 'Security Code'}>
+              {secureRequestMode ? (
+                <Typography sx={{ color: '#64748B', fontSize: 12 }}>
+                  Never collect or store CVV
+                </Typography>
+              ) : (
+                <TextField size="small" placeholder="Security Code" value={form.security_code} onChange={e => setForm(prev => ({ ...prev, security_code: e.target.value }))} />
+              )}
             </FormCell>
             <FormCell label="Title">
               <TextField size="small" placeholder="Title" value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} />
@@ -198,14 +241,21 @@ const CreditCardAuthorizationDialog = ({ open, customerName, requestType = 'Serv
 
         <Box sx={{ mt: 2, p: 1.5, border: '1px solid #E2E8F0', borderRadius: '4px', bgcolor: '#F8FAFC' }}>
           <Typography sx={{ fontStyle: 'italic', color: '#475569', fontSize: 12 }}>
-            Note: 3.5% CC processing fee will be added to the charged amount. Full card number and security code are not stored in this system.
+            {secureRequestMode
+              ? 'Send the secure link for customer authorization. If authorization is received by phone, record only the card brand and last four digits. Never enter a full card number or security code.'
+              : 'Note: 3.5% CC processing fee will be added to the charged amount. Full card number and security code are not stored in this system.'}
           </Typography>
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3.2, pb: 2.5 }}>
-        <Button onClick={onClose} sx={{ fontWeight: 900 }}>Cancel</Button>
-        <Button onClick={submit} variant="contained" sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
-          Submit Authorization
+        <Button onClick={onClose} disabled={submitting} sx={{ fontWeight: 900 }}>Cancel</Button>
+        {secureRequestMode && (
+          <Button onClick={requestSecureLink} disabled={submitting} variant="outlined" sx={{ fontWeight: 900 }}>
+            Send Secure Link
+          </Button>
+        )}
+        <Button onClick={submit} disabled={submitting} variant="contained" sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
+          {secureRequestMode ? 'Record Phone Authorization' : 'Submit Authorization'}
         </Button>
       </DialogActions>
     </Dialog>

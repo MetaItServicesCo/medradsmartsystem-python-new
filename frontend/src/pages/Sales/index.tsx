@@ -532,9 +532,16 @@ const Sales = () => {
   })
 
   const cardAuthMut = useMutation({
-    mutationFn: requestSalesCardAuthorization,
-    onSuccess: () => {
-      toast.success('Credit card authorization requested')
+    mutationFn: ({ id, data }: { id: number; data: CreditCardAuthorizationPayload }) =>
+      requestSalesCardAuthorization(id, data),
+    onSuccess: result => {
+      if (result.authorization.status === 'submitted') {
+        toast.success(`Authorization ${result.authorization.authorization_reference || ''} recorded for ${money(result.amount)}`)
+      } else {
+        navigator.clipboard?.writeText(result.payment_url).catch(() => undefined)
+        toast.success(`Secure authorization link created for ${money(result.amount)} and copied`)
+      }
+      setCardAuthDialog(null)
       closeActions()
       invalidateSales()
     },
@@ -961,7 +968,10 @@ const Sales = () => {
 
   const quotationLineItems = (quotation: SalesQuotation | null): PrintableLineItem[] => {
     if (!quotation) return []
-    return (quotation.line_items || []).map(line => ({
+    const lines = quotation.selection_status === 'accepted'
+      ? (quotation.line_items || []).filter(line => line.is_selected)
+      : (quotation.line_items || [])
+    return lines.map(line => ({
       item_number: line.part_number || String(line.part_id),
       description: line.description || line.part_description || 'Sales item',
       quantity: Number(line.quantity || 1),
@@ -1002,32 +1012,31 @@ const Sales = () => {
     || quotations.find(item => item.id === cardAuthDialog?.invoice?.sales_quotation_id)
     || null
 
-  const cardAuthorizationItems: AuthorizationLineItem[] = cardAuthorizationQuotation
-    ? cardAuthorizationQuotation.line_items.map(line => ({
-      item_number: line.part_number || String(line.part_id),
-      description: line.description,
-      amount: Number(line.unit_price || 0),
-      quantity: Number(line.quantity || 1),
-      total_amount: Number(line.total || 0),
-    }))
-    : cardAuthDialog?.invoice
-      ? [{
-        item_number: cardAuthDialog.invoice.invoice_number,
-        description: cardAuthDialog.invoice.work_order || 'Sales invoice',
-        amount: Number(cardAuthDialog.invoice.total_amount || 0),
-        quantity: 1,
-        total_amount: Number(cardAuthDialog.invoice.total_amount || 0),
-      }]
-      : []
+  const authorizationInvoiceNumber = cardAuthDialog?.invoice?.invoice_number
+    || cardAuthorizationQuotation?.converted_invoice_number
+    || 'Accepted sales invoice'
+  const authorizationBalance = Number(
+    cardAuthDialog?.invoice?.balance_due
+    ?? cardAuthorizationQuotation?.converted_invoice_balance_due
+    ?? 0,
+  )
+  const cardAuthorizationItems: AuthorizationLineItem[] = cardAuthDialog
+    ? [{
+      item_number: authorizationInvoiceNumber,
+      description: 'Approved invoice outstanding balance',
+      amount: authorizationBalance,
+      quantity: 1,
+      total_amount: authorizationBalance,
+    }]
+    : []
 
-  const submitCardAuthorization = (_payload: CreditCardAuthorizationPayload) => {
+  const submitCardAuthorization = (payload: CreditCardAuthorizationPayload) => {
     const quotationId = cardAuthorizationQuotation?.id || cardAuthDialog?.invoice?.sales_quotation_id
     if (quotationId) {
-      cardAuthMut.mutate(quotationId)
+      cardAuthMut.mutate({ id: quotationId, data: payload })
     } else {
-      toast.success('Credit card authorization form prepared')
+      toast.error('This authorization must be tied to an accepted sales invoice')
     }
-    setCardAuthDialog(null)
   }
 
   const quotationPaymentPercent = (quotation: SalesQuotation) => {
@@ -1452,7 +1461,15 @@ const Sales = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><DeleteIcon fontSize="small" /></ListItemIcon>
           Delete
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionQuotation && openCardAuthorization({ quotation: actionQuotation })}>
+        <MenuItem
+          sx={ACTION_MENU_ITEM}
+          disabled={
+            !actionQuotation?.acceptance
+            || !actionQuotation.converted_invoice_id
+            || Number(actionQuotation.converted_invoice_balance_due || 0) <= 0
+          }
+          onClick={() => actionQuotation && openCardAuthorization({ quotation: actionQuotation })}
+        >
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
           Request Card Authorization
         </MenuItem>
@@ -1496,7 +1513,15 @@ const Sales = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PaymentIcon fontSize="small" /></ListItemIcon>
           Refund Payment
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionInvoice && openCardAuthorization({ invoice: actionInvoice })}>
+        <MenuItem
+          sx={ACTION_MENU_ITEM}
+          disabled={
+            !actionInvoice?.sales_quotation_id
+            || actionInvoice.billing_approval_status !== 'approved'
+            || Number(actionInvoice.balance_due || 0) <= 0
+          }
+          onClick={() => actionInvoice && openCardAuthorization({ invoice: actionInvoice })}
+        >
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
           Request Card Authorization
         </MenuItem>
@@ -1514,6 +1539,8 @@ const Sales = () => {
         customerName={cardAuthDialog?.quotation?.customer_name || cardAuthDialog?.invoice?.customer_name}
         requestType="Sales"
         items={cardAuthorizationItems}
+        secureRequestMode
+        submitting={cardAuthMut.isPending}
         onClose={() => setCardAuthDialog(null)}
         onSubmit={submitCardAuthorization}
       />
@@ -1545,6 +1572,7 @@ const Sales = () => {
         moduleLabel="Sales"
         primaryDocumentLabel="Quotation"
         accent="#7C3AED"
+        acceptance={printQuotation?.acceptance || null}
       />
 
       <InvoicePrintDialog
@@ -2113,6 +2141,39 @@ const Sales = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+              {viewQuotation.acceptance && (
+                <Card sx={{ p: 2.2, borderRadius: '16px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
+                  <Typography sx={{ fontWeight: 950, color: '#312E81' }}>Signed Acceptance Record</Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: 13 }}>
+                    {viewQuotation.acceptance.accepted_by_name} · {formatDate(viewQuotation.acceptance.accepted_at)} · Revision {viewQuotation.acceptance.quotation_revision}
+                  </Typography>
+                  <Typography sx={{ mt: 1.5, pb: 0.8, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 32, fontStyle: 'italic' }}>
+                    {viewQuotation.acceptance.signature_name}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
+                    <Chip size="small" color="success" label="Terms accepted" />
+                    <Chip size="small" label={`Signed total ${money(viewQuotation.acceptance.pricing_snapshot.total_amount)}`} />
+                    {viewQuotation.acceptance.ip_address && <Chip size="small" variant="outlined" label={`IP ${viewQuotation.acceptance.ip_address}`} />}
+                  </Box>
+                </Card>
+              )}
+              {Boolean(viewQuotation.payment_authorizations?.length) && (
+                <Card sx={{ p: 2.2, borderRadius: '16px', border: '1px solid #E2E8F0' }}>
+                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Payment Authorization Audit</Typography>
+                  <Box sx={{ display: 'grid', gap: 1 }}>
+                    {viewQuotation.payment_authorizations!.map(authorization => (
+                      <Box key={authorization.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto auto' }, gap: 1, p: 1.2, borderRadius: '10px', bgcolor: '#F8FAFC' }}>
+                        <Typography sx={{ fontWeight: 800 }}>
+                          {authorization.authorization_reference || `Authorization #${authorization.id}`}
+                          {authorization.card_last_four ? ` · ${authorization.card_brand || 'Card'} ending ${authorization.card_last_four}` : ''}
+                        </Typography>
+                        <Typography sx={{ fontWeight: 900 }}>{money(authorization.amount)}</Typography>
+                        <Chip size="small" label={authorization.status.replace(/_/g, ' ')} color={authorization.status === 'processed' ? 'success' : authorization.status === 'submitted' ? 'warning' : 'default'} />
+                      </Box>
+                    ))}
+                  </Box>
+                </Card>
+              )}
             </Box>
           )}
         </DialogContent>

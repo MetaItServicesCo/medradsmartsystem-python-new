@@ -26,6 +26,7 @@ const Billing = lazyWithReload(() => import('./pages/Sales/Billing'))
 const MyTimesheets = lazyWithReload(() => import('./pages/MyTimesheets'))
 const MyLeave = lazyWithReload(() => import('./pages/MyLeave'))
 const ClientQuotation = lazyWithReload(() => import('./pages/Sales/ClientQuotation'))
+const PublicSalesPayment = lazyWithReload(() => import('./pages/Sales/PublicSalesPayment'))
 
 const RouteFallback = () => (
   <div
@@ -96,6 +97,7 @@ function App() {
         <Route path="/landing" element={<Landing />} />
         <Route path="/quotation/:token" element={<ClientQuotation />} />
         <Route path="/quotation/account/:quotationId" element={isAuthenticated ? <ClientQuotation /> : <Navigate to="/login" replace />} />
+        <Route path="/payment/sales/:token" element={<PublicSalesPayment />} />
         <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
 
         <Route

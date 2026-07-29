@@ -155,6 +155,13 @@ export interface PrintablePaidQuotation {
   line_items?: PrintablePaidQuotationLineItem[]
 }
 
+export interface PrintableAcceptance {
+  accepted_by_name: string
+  signature_name: string
+  accepted_at: string
+  quotation_revision: number
+}
+
 export interface PrintableInvoiceEditPayload {
   customer_name?: string
   customer_email?: string | null
@@ -182,6 +189,7 @@ interface InvoicePrintDialogProps {
   lineItems: PrintableLineItem[]
   ledgerTransactions: PrintableLedgerTransaction[]
   paidQuotations?: PrintablePaidQuotation[]
+  acceptance?: PrintableAcceptance | null
   moduleLabel: string
   primaryDocumentLabel?: string
   accent?: string
@@ -442,6 +450,7 @@ const buildPrintableHtml = (
   accent: string,
   quantityLabel = 'Qty',
   paidQuotations: PrintablePaidQuotation[] = [],
+  acceptance?: PrintableAcceptance | null,
 ) => {
   const title = documentLabel(type, primaryDocumentLabel)
   const labels = mergeInvoiceLabels(invoice.labels)
@@ -585,6 +594,17 @@ const buildPrintableHtml = (
       ` : ''}
 
       ${invoice.notes ? `<section class="note"><strong>${escapeHtml(labels.notes)}:</strong><br>${escapeHtml(invoice.notes)}</section>` : ''}
+      ${acceptance ? `
+        <section class="note">
+          <strong>Signed acceptance</strong><br>
+          Accepted by ${escapeHtml(acceptance.accepted_by_name)} on ${escapeHtml(formatDate(acceptance.accepted_at))}
+          · Revision ${escapeHtml(acceptance.quotation_revision)}
+          <div style="margin-top:18px;font-family:'Segoe Script','Brush Script MT',cursive;font-size:30px;font-style:italic;color:#1e1b4b;border-bottom:1px solid #94a3b8;padding-bottom:6px;">
+            ${escapeHtml(acceptance.signature_name)}
+          </div>
+          <small>Electronic signature audit record</small>
+        </section>
+      ` : ''}
       ${type === 'packing_slip' ? '<section class="signature"><div class="line">Packed By</div><div class="line">Received By</div></section>' : ''}
       <section class="footer">
         <span>Mr. BioMed Tech Services</span>
@@ -607,6 +627,7 @@ const InvoicePrintDialog = ({
   quantityLabel = 'Qty',
   appendHtml,
   paidQuotations = [],
+  acceptance,
   mode = 'print',
   onSave,
   saving = false,
@@ -720,7 +741,7 @@ const InvoicePrintDialog = ({
   const handlePrint = () => {
     if (!displayInvoice) return
     const printableRows = isEditMode ? editRows : lineItems
-    const html = buildPrintableHtml(displayInvoice, activeDocumentType, printableRows, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations)
+    const html = buildPrintableHtml(displayInvoice, activeDocumentType, printableRows, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations, acceptance)
     printHtml(`${displayInvoice.invoice_number} ${documentLabel(activeDocumentType, primaryDocumentLabel)}`, html + (appendHtml || ''))
   }
 
@@ -1106,6 +1127,20 @@ const InvoicePrintDialog = ({
                   onChange={event => setEditForm(prev => ({ ...prev, notes: event.target.value }))}
                   sx={{ mt: 2, bgcolor: '#fff' }}
                 />
+              )}
+              {!isEditMode && acceptance && (
+                <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
+                  <Typography sx={{ fontWeight: 950, color: '#312E81' }}>Signed acceptance</Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: 13 }}>
+                    Accepted by {acceptance.accepted_by_name} on {formatDate(acceptance.accepted_at)} · Revision {acceptance.quotation_revision}
+                  </Typography>
+                  <Typography sx={{ mt: 1.5, pb: 0.8, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 30, fontStyle: 'italic' }}>
+                    {acceptance.signature_name}
+                  </Typography>
+                  <Typography sx={{ mt: 0.5, color: '#94A3B8', fontSize: 11, fontWeight: 800 }}>
+                    Electronic signature audit record
+                  </Typography>
+                </Box>
               )}
               </Box>
             </Card>
