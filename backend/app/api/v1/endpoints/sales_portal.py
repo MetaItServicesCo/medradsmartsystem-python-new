@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.base import get_db
-from app.models.invoice import Invoice, InvoiceStatus
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction
 from app.models.sales import (
     SalesPaymentAuthorization,
     SalesQuotation,
@@ -18,6 +18,13 @@ from app.models.sales import (
 )
 from app.models.user import User
 from app.utils.notifications import create_notifications, notify_admins
+from app.utils.square_payments import (
+    SquareConfigurationError,
+    SquareRequestError,
+    create_square_payment,
+    minor_units_to_amount,
+    square_public_config,
+)
 from app.api.v1.endpoints.sales import (
     _accept_quotation_selection,
     _append_history,
@@ -29,7 +36,12 @@ from app.api.v1.endpoints.sales import (
     _token_hash,
 )
 from app.utils.invoice_editing import editable_line_items
-from app.utils.invoice_ledger import add_invoice_transaction
+from app.utils.invoice_approval import approval_response
+from app.utils.invoice_ledger import (
+    add_invoice_transaction,
+    record_payment_delta,
+    record_status_change,
+)
 
 
 router = APIRouter()
@@ -57,6 +69,18 @@ class PortalPaymentAuthorizationIn(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=2000)
 
 
+class PortalTestPaymentIn(BaseModel):
+    payer_name: str = Field(min_length=2, max_length=200)
+    confirmation: bool
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class PortalSquarePaymentIn(BaseModel):
+    source_id: str = Field(min_length=8, max_length=500)
+    idempotency_key: str = Field(min_length=16, max_length=45)
+    payer_name: str = Field(min_length=2, max_length=200)
+
+
 def _recipient_options():
     return (
         joinedload(SalesQuotationRecipient.user),
@@ -78,6 +102,8 @@ def _portal_response(recipient: SalesQuotationRecipient) -> dict[str, Any]:
     quotation = recipient.quotation
     acceptance = quotation.acceptance
     invoice = quotation.converted_invoice
+    invoice_approval = approval_response(invoice) if invoice else None
+    square_config = square_public_config()
     return {
         "company_name": settings.PROJECT_NAME,
         "quotation": {
@@ -107,6 +133,29 @@ def _portal_response(recipient: SalesQuotationRecipient) -> dict[str, Any]:
             and quotation.status in {"sent", "viewed"}
             and quotation.selection_status != "accepted"
         ),
+        "test_payment_enabled": settings.ENABLE_TEST_PAYMENTS,
+        "square_payment": square_config,
+        "can_square_pay": (
+            square_config["enabled"]
+            and recipient.recipient_type == "primary"
+            and acceptance is not None
+            and invoice is not None
+            and invoice.status not in {InvoiceStatus.PAID, InvoiceStatus.CANCELLED}
+            and _money(invoice.balance_due) > 0
+        ),
+        "can_test_pay": (
+            settings.ENABLE_TEST_PAYMENTS
+            and recipient.recipient_type == "primary"
+            and acceptance is not None
+            and invoice is not None
+            and invoice.status not in {InvoiceStatus.PAID, InvoiceStatus.CANCELLED}
+            and _money(invoice.balance_due) > 0
+        ),
+        "test_payment_notice": (
+            "Test mode only. No bank account or card is charged."
+            if settings.ENABLE_TEST_PAYMENTS
+            else None
+        ),
         "acceptance": (
             {
                 "accepted_by_name": acceptance.accepted_by_name,
@@ -124,14 +173,275 @@ def _portal_response(recipient: SalesQuotationRecipient) -> dict[str, Any]:
                 "id": invoice.id,
                 "invoice_number": invoice.invoice_number,
                 "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
-                "billing_approval_status": invoice.billing_approval_status,
+                "billing_approval_required": invoice_approval["billing_approval_required"],
+                "billing_approval_status": invoice_approval["billing_approval_status"],
                 "total_amount": invoice.total_amount,
+                "amount_paid": invoice.amount_paid,
                 "balance_due": invoice.balance_due,
+                "payment_method": invoice.payment_method,
             }
             if invoice
             else None
         ),
     }
+
+
+def _record_test_payment(
+    db: Session,
+    recipient: SalesQuotationRecipient,
+    payload: PortalTestPaymentIn,
+    actor: Optional[User],
+) -> dict[str, Any]:
+    if not settings.ENABLE_TEST_PAYMENTS:
+        raise HTTPException(status_code=403, detail="Test payments are disabled")
+    if recipient.recipient_type != "primary":
+        raise HTTPException(status_code=403, detail="Only the primary recipient can make this payment")
+    if not payload.confirmation:
+        raise HTTPException(status_code=400, detail="Confirm that this is a simulated test payment")
+    quotation = recipient.quotation
+    if not quotation.acceptance or not quotation.converted_invoice_id:
+        raise HTTPException(status_code=409, detail="Accept the quotation before making payment")
+
+    invoice = (
+        db.query(Invoice)
+        .filter(Invoice.id == quotation.converted_invoice_id)
+        .with_for_update()
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Sales invoice not found")
+    if invoice.status == InvoiceStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    if invoice.status == InvoiceStatus.PAID:
+        return _portal_response(recipient)
+
+    balance = max(_money(invoice.balance_due), _money(0))
+    if balance <= 0:
+        raise HTTPException(status_code=409, detail="This invoice has no payable balance")
+
+    previous_paid = _money(invoice.amount_paid)
+    previous_status = invoice.status
+    invoice.amount_paid = previous_paid + balance
+    invoice.balance_due = _money(0)
+    invoice.payment_method = "test_mode"
+    invoice.status = InvoiceStatus.PAID
+    invoice.updated_at = datetime.utcnow()
+    payment = record_payment_delta(
+        db,
+        invoice,
+        previous_paid,
+        invoice.amount_paid,
+        actor,
+        "test_mode",
+        (
+            f"TEST PAYMENT recorded by {payload.payer_name.strip()}. "
+            "No funds were charged."
+            + (f" {payload.notes.strip()}" if payload.notes and payload.notes.strip() else "")
+        ),
+    )
+    record_status_change(
+        db,
+        invoice,
+        previous_status,
+        actor,
+        "Invoice marked paid by the temporary test-payment workflow",
+    )
+    quotation.payment_method = "test_mode"
+    quotation.paid_status = "paid"
+    quotation.status = "completed"
+    quotation.updated_at = datetime.utcnow()
+    _append_history(
+        quotation,
+        "test_payment_recorded",
+        actor,
+        {
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "amount": str(balance),
+            "payment_reference": payment.reference_number if payment else None,
+            "test_mode": True,
+            "no_funds_charged": True,
+        },
+        payload.payer_name.strip(),
+    )
+    (
+        db.query(SalesPaymentAuthorization)
+        .filter(
+            SalesPaymentAuthorization.invoice_id == invoice.id,
+            SalesPaymentAuthorization.status.in_(["requested", "submitted"]),
+        )
+        .update(
+            {
+                SalesPaymentAuthorization.status: "superseded",
+                SalesPaymentAuthorization.updated_at: datetime.utcnow(),
+                SalesPaymentAuthorization.notes: "Superseded by simulated test payment",
+            },
+            synchronize_session=False,
+        )
+    )
+    notify_admins(
+        db,
+        title="Test sales payment completed",
+        message=(
+            f"{payload.payer_name.strip()} completed a simulated ${balance:.2f} payment "
+            f"for {invoice.invoice_number}. No funds were charged."
+        ),
+        notification_type="billing",
+        link_url=f"/billing?search={invoice.invoice_number}",
+        actor_id=actor.id if actor else recipient.user_id,
+    )
+    db.commit()
+    db.refresh(recipient)
+    return _portal_response(recipient)
+
+
+def _record_square_payment(
+    db: Session,
+    recipient: SalesQuotationRecipient,
+    payload: PortalSquarePaymentIn,
+    actor: Optional[User],
+) -> dict[str, Any]:
+    if recipient.recipient_type != "primary":
+        raise HTTPException(status_code=403, detail="Only the primary recipient can make this payment")
+    quotation = recipient.quotation
+    if not quotation.acceptance or not quotation.converted_invoice_id:
+        raise HTTPException(status_code=409, detail="Accept the quotation before making payment")
+
+    invoice = (
+        db.query(Invoice)
+        .filter(Invoice.id == quotation.converted_invoice_id)
+        .with_for_update()
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Sales invoice not found")
+    if invoice.status == InvoiceStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    if invoice.status == InvoiceStatus.PAID:
+        return _portal_response(recipient)
+
+    balance = max(_money(invoice.balance_due), _money(0))
+    if balance <= 0:
+        raise HTTPException(status_code=409, detail="This invoice has no payable balance")
+    try:
+        square_payment = create_square_payment(
+            source_id=payload.source_id,
+            idempotency_key=payload.idempotency_key,
+            amount=balance,
+            invoice_number=invoice.invoice_number,
+            customer_email=invoice.customer_email,
+        )
+    except SquareConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SquareRequestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    payment_id = str(square_payment.get("id") or "").strip()
+    payment_status = str(square_payment.get("status") or "").upper()
+    square_amount = minor_units_to_amount(
+        (square_payment.get("amount_money") or {}).get("amount")
+    )
+    square_currency = str(
+        (square_payment.get("amount_money") or {}).get("currency") or ""
+    ).upper()
+    expected_currency = settings.SQUARE_CURRENCY.strip().upper() or "USD"
+    if payment_status != "COMPLETED":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Square payment is {payment_status.lower() or 'not completed'}",
+        )
+    if square_amount != balance or square_currency != expected_currency:
+        raise HTTPException(
+            status_code=409,
+            detail="Square completed an unexpected amount or currency; the invoice was not changed",
+        )
+    existing_transaction = (
+        db.query(InvoiceTransaction.id)
+        .filter(InvoiceTransaction.reference_number == payment_id)
+        .first()
+    )
+    if existing_transaction:
+        return _portal_response(recipient)
+
+    previous_paid = _money(invoice.amount_paid)
+    previous_status = invoice.status
+    invoice.amount_paid = previous_paid + square_amount
+    invoice.balance_due = max(_money(invoice.total_amount) - _money(invoice.amount_paid), _money(0))
+    invoice.payment_method = "square_card"
+    invoice.status = (
+        InvoiceStatus.PAID
+        if invoice.balance_due <= 0
+        else InvoiceStatus.PARTIALLY_PAID
+    )
+    invoice.updated_at = datetime.utcnow()
+    payment_transaction = record_payment_delta(
+        db,
+        invoice,
+        previous_paid,
+        invoice.amount_paid,
+        actor,
+        "square_card",
+        f"Square payment completed by {payload.payer_name.strip()} ({payment_id})",
+    )
+    if payment_transaction:
+        payment_transaction.reference_number = payment_id
+    record_status_change(
+        db,
+        invoice,
+        previous_status,
+        actor,
+        "Invoice status synchronized with completed Square payment",
+    )
+    quotation.payment_method = "square_card"
+    quotation.paid_status = (
+        "paid" if invoice.status == InvoiceStatus.PAID else "unpaid"
+    )
+    if invoice.status == InvoiceStatus.PAID:
+        quotation.status = "completed"
+    quotation.updated_at = datetime.utcnow()
+    _append_history(
+        quotation,
+        "square_payment_completed",
+        actor,
+        {
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "amount": str(square_amount),
+            "square_payment_id": payment_id,
+            "square_status": payment_status,
+        },
+        payload.payer_name.strip(),
+    )
+    (
+        db.query(SalesPaymentAuthorization)
+        .filter(
+            SalesPaymentAuthorization.invoice_id == invoice.id,
+            SalesPaymentAuthorization.status.in_(["requested", "submitted"]),
+        )
+        .update(
+            {
+                SalesPaymentAuthorization.status: "processed",
+                SalesPaymentAuthorization.processed_at: datetime.utcnow(),
+                SalesPaymentAuthorization.updated_at: datetime.utcnow(),
+                SalesPaymentAuthorization.notes: f"Processed through Square payment {payment_id}",
+            },
+            synchronize_session=False,
+        )
+    )
+    notify_admins(
+        db,
+        title="Sales payment completed",
+        message=(
+            f"{payload.payer_name.strip()} paid ${square_amount:.2f} through Square "
+            f"for {invoice.invoice_number}."
+        ),
+        notification_type="billing",
+        link_url=f"/billing?search={invoice.invoice_number}",
+        actor_id=actor.id if actor else recipient.user_id,
+    )
+    db.commit()
+    db.refresh(recipient)
+    return _portal_response(recipient)
 
 
 def _payment_authorization_options():
@@ -150,6 +460,7 @@ def _payment_authorization_response(authorization: SalesPaymentAuthorization) ->
     invoice = authorization.invoice
     quotation = authorization.quotation
     acceptance = quotation.acceptance
+    invoice_approval = approval_response(invoice)
     stored_lines = editable_line_items(invoice.notes)
     line_items = stored_lines or [
         {
@@ -188,7 +499,8 @@ def _payment_authorization_response(authorization: SalesPaymentAuthorization) ->
             "id": invoice.id,
             "invoice_number": invoice.invoice_number,
             "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
-            "billing_approval_status": invoice.billing_approval_status,
+            "billing_approval_required": invoice_approval["billing_approval_required"],
+            "billing_approval_status": invoice_approval["billing_approval_status"],
             "customer_name": invoice.customer_name,
             "customer_email": invoice.customer_email,
             "customer_phone": invoice.customer_phone,
@@ -222,7 +534,6 @@ def _payment_authorization_response(authorization: SalesPaymentAuthorization) ->
         "can_submit": (
             authorization.status == "requested"
             and authorization.token_expires_at >= datetime.utcnow()
-            and invoice.billing_approval_status == "approved"
             and invoice.status not in {InvoiceStatus.PAID, InvoiceStatus.CANCELLED}
             and _money(invoice.balance_due) > 0
         ),
@@ -356,7 +667,7 @@ def _accept_recipient_quotation(
     invoice = _create_invoice_for_accepted_quotation(db, quotation, accepted_lines, actor or recipient.user)
     _append_history(
         quotation,
-        "invoice_generated_pending_billing_approval",
+        "invoice_generated",
         actor,
         {
             "invoice_id": invoice.id,
@@ -370,7 +681,7 @@ def _accept_recipient_quotation(
         title="Sales quotation accepted",
         message=(
             f"{quotation.quotation_number} was accepted by {recipient.name}; "
-            f"{invoice.invoice_number} is pending billing approval."
+            f"{invoice.invoice_number} is ready for payment."
         ),
         notification_type="billing",
         link_url=f"/sales/invoices?search={invoice.invoice_number}",
@@ -380,7 +691,7 @@ def _accept_recipient_quotation(
         db,
         user_ids=[item.user_id for item in quotation.recipients if item.user_id],
         title="Quotation accepted",
-        message=f"{quotation.quotation_number} was accepted and its invoice is pending billing approval.",
+        message=f"{quotation.quotation_number} was accepted and its invoice is ready for payment.",
         notification_type="billing",
         link_url=f"/quotation/account/{quotation.id}",
         actor_id=actor.id if actor else recipient.user_id,
@@ -468,6 +779,40 @@ def decide_public_quotation(
     return _portal_response(recipient)
 
 
+@router.post("/public/quotations/{token}/test-payment")
+def pay_public_quotation_in_test_mode(
+    token: str,
+    payload: PortalTestPaymentIn,
+    db: Session = Depends(get_db),
+) -> Any:
+    recipient = (
+        db.query(SalesQuotationRecipient)
+        .options(*_recipient_options())
+        .filter(SalesQuotationRecipient.access_token_hash == _token_hash(token))
+        .with_for_update(of=SalesQuotationRecipient)
+        .first()
+    )
+    recipient = _ensure_recipient_available(recipient)
+    return _record_test_payment(db, recipient, payload, recipient.user)
+
+
+@router.post("/public/quotations/{token}/square-payment")
+def pay_public_quotation_with_square(
+    token: str,
+    payload: PortalSquarePaymentIn,
+    db: Session = Depends(get_db),
+) -> Any:
+    recipient = (
+        db.query(SalesQuotationRecipient)
+        .options(*_recipient_options())
+        .filter(SalesQuotationRecipient.access_token_hash == _token_hash(token))
+        .with_for_update(of=SalesQuotationRecipient)
+        .first()
+    )
+    recipient = _ensure_recipient_available(recipient)
+    return _record_square_payment(db, recipient, payload, recipient.user)
+
+
 @router.get("/public/sales-payment/{token}")
 def get_public_sales_payment_authorization(
     token: str,
@@ -495,8 +840,6 @@ def submit_public_sales_payment_authorization(
             status_code=409,
             detail=f"This authorization is {authorization.status.replace('_', ' ')}",
         )
-    if invoice.billing_approval_status != "approved":
-        raise HTTPException(status_code=409, detail="This invoice is not approved for payment")
     if invoice.status in {InvoiceStatus.PAID, InvoiceStatus.CANCELLED}:
         raise HTTPException(
             status_code=409,
@@ -709,3 +1052,47 @@ def decide_client_quotation(
     )
     db.commit()
     return _portal_response(recipient)
+
+
+@router.post("/client-sales/quotations/{quotation_id}/test-payment")
+def pay_client_quotation_in_test_mode(
+    quotation_id: int,
+    payload: PortalTestPaymentIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    recipient = (
+        db.query(SalesQuotationRecipient)
+        .options(*_recipient_options())
+        .filter(
+            SalesQuotationRecipient.quotation_id == quotation_id,
+            SalesQuotationRecipient.user_id == current_user.id,
+        )
+        .with_for_update(of=SalesQuotationRecipient)
+        .first()
+    )
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    return _record_test_payment(db, recipient, payload, current_user)
+
+
+@router.post("/client-sales/quotations/{quotation_id}/square-payment")
+def pay_client_quotation_with_square(
+    quotation_id: int,
+    payload: PortalSquarePaymentIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    recipient = (
+        db.query(SalesQuotationRecipient)
+        .options(*_recipient_options())
+        .filter(
+            SalesQuotationRecipient.quotation_id == quotation_id,
+            SalesQuotationRecipient.user_id == current_user.id,
+        )
+        .with_for_update(of=SalesQuotationRecipient)
+        .first()
+    )
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    return _record_square_payment(db, recipient, payload, current_user)

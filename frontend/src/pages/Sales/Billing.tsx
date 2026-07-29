@@ -166,6 +166,11 @@ const billingTypeLabel = (item: BillingItem) => {
   return SOURCE_LABEL[item.source]
 }
 
+const requiresBillingApproval = (item: BillingItem) => (
+  item.source === 'inspection'
+  || (item.source === 'service' && item.billingKind === 'service_invoice')
+)
+
 const ValueBox = ({
   value,
   maxWidth,
@@ -732,7 +737,7 @@ const Billing = () => {
 
   const filteredItems = inspectionServerPage ? items : items.filter(item => {
     if (sourceFilter !== 'all' && item.source !== sourceFilter) return false
-    if (statusFilter === 'billing_pending' && item.billingApprovalStatus !== 'pending') return false
+    if (statusFilter === 'billing_pending' && (!requiresBillingApproval(item) || item.billingApprovalStatus !== 'pending')) return false
     if (statusFilter !== 'all' && statusFilter !== 'billing_pending' && item.status !== statusFilter) return false
     if (tab === 1) return item.balance > 0 && item.status !== 'cancelled' && item.status !== 'rejected'
     if (tab === 2) return item.status === 'paid' || item.balance <= 0
@@ -872,11 +877,11 @@ const Billing = () => {
       }
       return updateInspectionInvoice(item.id, { ...commonPayload, payment_method: data.payment_method || null } as any)
     },
-    onSuccess: async updatedInvoice => {
+    onSuccess: async (updatedInvoice, variables) => {
       await invalidateBilling()
       setEditItem(null)
       toast.success(
-        updatedInvoice.billing_approval_status === 'pending'
+        requiresBillingApproval(variables.item) && updatedInvoice.billing_approval_status === 'pending'
           ? 'Invoice updated; billing approval is required'
           : 'Invoice updated',
       )
@@ -904,7 +909,7 @@ const Billing = () => {
   }
 
   const openPayment = (item: BillingItem) => {
-    if (item.billingKind !== 'service_quotation' && item.billingApprovalStatus !== 'approved') {
+    if (requiresBillingApproval(item) && item.billingApprovalStatus !== 'approved') {
       toast.info('Approve this invoice for billing before recording payment')
       return
     }
@@ -1488,9 +1493,9 @@ const Billing = () => {
                       <TableCell>
                         <Tooltip
                           title={
-                            item.billingApprovalStatus === 'pending'
+                            requiresBillingApproval(item) && item.billingApprovalStatus === 'pending'
                               ? 'Pending billing approval'
-                              : item.billingApprovalStatus === 'approved'
+                              : requiresBillingApproval(item) && item.billingApprovalStatus === 'approved'
                                 ? `Approved for billing${item.approvedForBillingByName ? ` by ${item.approvedForBillingByName}` : ''}${item.approvedForBillingAt ? ` on ${formatDate(item.approvedForBillingAt)}` : ''}`
                                 : methodLabel(item.status)
                           }
@@ -1512,7 +1517,7 @@ const Billing = () => {
                               },
                             }}
                           />
-                          {item.billingApprovalStatus && (
+                          {requiresBillingApproval(item) && item.billingApprovalStatus && (
                             <Typography
                               component="span"
                               sx={{
@@ -1581,7 +1586,7 @@ const Billing = () => {
       </Card>
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
-        {actionItem && canApproveBilling && actionItem.billingKind !== 'service_quotation' && actionItem.billingApprovalStatus !== 'approved' && (
+        {actionItem && canApproveBilling && requiresBillingApproval(actionItem) && actionItem.billingApprovalStatus !== 'approved' && (
           <MenuItem
             sx={ACTION_MENU_ITEM}
             disabled={approveBillingMut.isPending}
@@ -1615,7 +1620,7 @@ const Billing = () => {
           </MenuItem>
         )}
         {actionItem && canPay && actionItem.balance > 0
-          && (actionItem.billingKind === 'service_quotation' || actionItem.billingApprovalStatus === 'approved')
+          && (!requiresBillingApproval(actionItem) || actionItem.billingApprovalStatus === 'approved')
           && (!(actionItem.source === 'service' && actionItem.billingKind === 'service_quotation') || ['authorized', 'partially_paid'].includes(actionItem.status)) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openPayment(actionItem); closeActions() }}>
             <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>

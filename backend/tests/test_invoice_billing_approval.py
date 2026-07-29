@@ -4,15 +4,17 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.models.invoice import InvoiceStatus
+from app.models.invoice import InvoiceStatus, InvoiceType
 from app.models.user import UserRole
 from app.utils.invoice_approval import (
     BILLING_APPROVAL_APPROVED,
     BILLING_APPROVAL_PENDING,
+    approval_response,
     approve_invoice_for_billing,
     ensure_financial_edit_allowed,
     has_financial_edits,
     invalidate_invoice_approval,
+    invoice_requires_billing_approval,
     is_invoice_approver,
     is_invoice_payer,
     require_invoice_approved,
@@ -46,12 +48,18 @@ def _user(role: UserRole, *, user_id: int = 1, facility_id=None):
     )
 
 
-def _invoice(approval_status=BILLING_APPROVAL_PENDING, *, paid=Decimal("0")):
+def _invoice(
+    approval_status=BILLING_APPROVAL_PENDING,
+    *,
+    paid=Decimal("0"),
+    invoice_type=InvoiceType.SERVICE,
+):
     return SimpleNamespace(
         id=12,
         invoice_number="INV-TEST-12",
         facility_id=4,
         status=InvoiceStatus.PENDING,
+        invoice_type=invoice_type,
         total_amount=Decimal("125.00"),
         amount_paid=paid,
         billing_approval_status=approval_status,
@@ -86,6 +94,49 @@ def test_pending_invoice_cannot_be_paid():
     with pytest.raises(HTTPException) as error:
         require_invoice_approved(_invoice())
     assert error.value.status_code == 409
+
+
+@pytest.mark.parametrize("invoice_type", [InvoiceType.SERVICE, InvoiceType.INSPECTION])
+def test_service_and_inspection_require_billing_approval(invoice_type):
+    invoice = _invoice(invoice_type=invoice_type)
+
+    assert invoice_requires_billing_approval(invoice)
+    with pytest.raises(HTTPException) as error:
+        require_invoice_approved(invoice)
+    assert error.value.status_code == 409
+
+
+@pytest.mark.parametrize("invoice_type", [InvoiceType.SALES, InvoiceType.RENTAL])
+def test_sales_and_rental_are_immediately_payable_without_billing_approval(invoice_type):
+    invoice = _invoice(invoice_type=invoice_type)
+
+    assert not invoice_requires_billing_approval(invoice)
+    require_invoice_approved(invoice)
+    response = approval_response(invoice)
+    assert response["billing_approval_required"] is False
+    assert response["billing_approval_status"] == BILLING_APPROVAL_APPROVED
+
+
+def test_sales_and_rental_cannot_enter_the_manual_approval_workflow():
+    db = _FakeSession()
+    invoice = _invoice(invoice_type=InvoiceType.SALES)
+
+    with pytest.raises(HTTPException) as error:
+        approve_invoice_for_billing(db, invoice, _user(UserRole.SUPERADMIN))
+
+    assert error.value.status_code == 409
+    assert db.added == []
+
+
+def test_sales_financial_edit_does_not_create_an_approval_invalidation():
+    db = _FakeSession()
+    invoice = _invoice(
+        BILLING_APPROVAL_APPROVED,
+        invoice_type=InvoiceType.SALES,
+    )
+
+    assert invalidate_invoice_approval(db, invoice, _user(UserRole.ADMIN)) is False
+    assert db.added == []
 
 
 def test_approval_records_snapshot_actor_and_ledger_entry():

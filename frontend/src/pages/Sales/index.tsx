@@ -524,7 +524,7 @@ const Sales = () => {
           '/sales/in-progress',
           `sales-quotation-${convertQuotation.id}`,
           convertQuotation.work_order,
-          'Selection submitted; invoice is pending billing approval',
+          'Selection submitted; sales invoice is ready for payment',
         )
       }
     },
@@ -1517,7 +1517,6 @@ const Sales = () => {
           sx={ACTION_MENU_ITEM}
           disabled={
             !actionInvoice?.sales_quotation_id
-            || actionInvoice.billing_approval_status !== 'approved'
             || Number(actionInvoice.balance_due || 0) <= 0
           }
           onClick={() => actionInvoice && openCardAuthorization({ invoice: actionInvoice })}

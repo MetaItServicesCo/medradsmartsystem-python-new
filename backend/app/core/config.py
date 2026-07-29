@@ -40,6 +40,22 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
     PUBLIC_APP_URL: str = "http://localhost:3000"
+
+    # Temporary QA-only payment simulation. This must be disabled when a real
+    # payment processor is connected.
+    ENABLE_TEST_PAYMENTS: bool = False
+
+    # Square payments. The application ID and location ID are safe to expose
+    # through the public payment configuration response. The access token and
+    # webhook signature key must remain backend-only.
+    SQUARE_ENVIRONMENT: str = "sandbox"
+    SQUARE_APPLICATION_ID: str = ""
+    SQUARE_ACCESS_TOKEN: str = ""
+    SQUARE_LOCATION_ID: str = ""
+    SQUARE_CURRENCY: str = "USD"
+    SQUARE_API_VERSION: str = "2026-07-15"
+    SQUARE_WEBHOOK_SIGNATURE_KEY: str = ""
+    SQUARE_WEBHOOK_NOTIFICATION_URL: str = ""
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

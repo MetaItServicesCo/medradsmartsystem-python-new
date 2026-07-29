@@ -603,11 +603,6 @@ def _create_invoice_for_accepted_quotation(
     tax_amount = _money(quotation.tax_amount)
     discount_amount = _money(quotation.discount_amount)
     total_amount = subtotal + tax_amount - discount_amount
-    if total_amount < 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Refund, trade-in and discount credits cannot exceed the selected sales amount",
-        )
 
     quotation.subtotal = subtotal
     quotation.total_amount = total_amount
@@ -809,8 +804,6 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
         if has_pending_choice
         else subtotal + _money(quotation.tax_amount) - _money(quotation.discount_amount)
     )
-    if quotation.total_amount < 0:
-        raise HTTPException(status_code=400, detail="Trade-in and discount credits cannot exceed the selected sales amount")
 
 
 @router.get("/parts")
@@ -1409,8 +1402,6 @@ def convert_to_invoice(
     subtotal = parts_amount + worked_hours + setup_fee + service_fee + shipping_fee + application_fee
     discount_amount = (subtotal * raw_discount / Decimal("100")).quantize(Decimal("0.01")) if payload.discount_type == "percent" else raw_discount
     total_amount = subtotal + tax_amount - discount_amount
-    if total_amount < 0:
-        raise HTTPException(status_code=400, detail="Invoice total cannot be negative")
 
     quotation.subtotal = parts_amount
     quotation.worked_hours = worked_hours

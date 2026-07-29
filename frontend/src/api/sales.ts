@@ -300,6 +300,18 @@ export interface SalesQuotationPortal {
   }
   recipient: SalesQuotationRecipient
   can_accept: boolean
+  test_payment_enabled: boolean
+  can_test_pay: boolean
+  test_payment_notice: string | null
+  square_payment: {
+    enabled: boolean
+    environment: 'sandbox' | 'production'
+    application_id: string | null
+    location_id: string | null
+    currency: string
+    sdk_url: string
+  }
+  can_square_pay: boolean
   acceptance: {
     accepted_by_name: string
     signature_name: string
@@ -312,9 +324,12 @@ export interface SalesQuotationPortal {
     id: number
     invoice_number: string
     status: string
+    billing_approval_required: boolean
     billing_approval_status: 'pending' | 'approved'
     total_amount: number
+    amount_paid: number
     balance_due: number
+    payment_method: string | null
   } | null
 }
 
@@ -341,6 +356,7 @@ export interface SalesPublicPaymentAuthorization {
     id: number
     invoice_number: string
     status: string
+    billing_approval_required: boolean
     billing_approval_status: 'pending' | 'approved'
     customer_name: string
     customer_email?: string | null
@@ -544,6 +560,22 @@ export const decidePublicSalesQuotation = async (
   return res.data
 }
 
+export const payPublicSalesQuotationInTestMode = async (
+  token: string,
+  data: { payer_name: string; confirmation: boolean; notes?: string },
+): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.post(`/public/quotations/${token}/test-payment`, data)
+  return res.data
+}
+
+export const payPublicSalesQuotationWithSquare = async (
+  token: string,
+  data: { source_id: string; idempotency_key: string; payer_name: string },
+): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.post(`/public/quotations/${token}/square-payment`, data)
+  return res.data
+}
+
 export const fetchClientSalesQuotations = async (
   params: { search?: string; skip?: number; limit?: number } = {},
 ): Promise<{ items: SalesQuotationPortal[]; total: number }> => {
@@ -570,6 +602,22 @@ export const decideClientSalesQuotation = async (
   comments?: string,
 ): Promise<SalesQuotationPortal> => {
   const res = await apiClient.post(`/client-sales/quotations/${id}/decision`, { action, comments })
+  return res.data
+}
+
+export const payClientSalesQuotationInTestMode = async (
+  id: number,
+  data: { payer_name: string; confirmation: boolean; notes?: string },
+): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.post(`/client-sales/quotations/${id}/test-payment`, data)
+  return res.data
+}
+
+export const payClientSalesQuotationWithSquare = async (
+  id: number,
+  data: { source_id: string; idempotency_key: string; payer_name: string },
+): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.post(`/client-sales/quotations/${id}/square-payment`, data)
   return res.data
 }
 

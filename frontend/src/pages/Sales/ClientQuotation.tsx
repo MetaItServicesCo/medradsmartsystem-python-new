@@ -7,6 +7,7 @@ import {
   TableHead, TableRow, TextField, Typography,
 } from '@mui/material'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import PaymentIcon from '@mui/icons-material/Payment'
 import PrintIcon from '@mui/icons-material/Print'
 import { toast } from 'react-toastify'
 
@@ -17,8 +18,13 @@ import {
   decidePublicSalesQuotation,
   fetchClientSalesQuotation,
   fetchPublicSalesQuotation,
+  payClientSalesQuotationInTestMode,
+  payClientSalesQuotationWithSquare,
+  payPublicSalesQuotationInTestMode,
+  payPublicSalesQuotationWithSquare,
   type SalesQuotationLineItem,
 } from '@/api/sales'
+import SquareCardCheckout from '@/components/Billing/SquareCardCheckout'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 const dateLabel = (value?: string | null) => value
@@ -39,6 +45,7 @@ const ClientQuotation = () => {
       : fetchPublicSalesQuotation(String(token)),
     enabled: accountMode ? id > 0 : Boolean(token),
     retry: false,
+    refetchInterval: 15_000,
   })
   const data = quoteQ.data
   const quotation = data?.quotation
@@ -55,7 +62,13 @@ const ClientQuotation = () => {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [decision, setDecision] = useState<'decline' | 'request_changes' | null>(null)
   const [comments, setComments] = useState('')
+  const [testPayOpen, setTestPayOpen] = useState(false)
+  const [squarePayOpen, setSquarePayOpen] = useState(false)
+  const [testPayerName, setTestPayerName] = useState('')
+  const [testPaymentNotes, setTestPaymentNotes] = useState('')
+  const [testPaymentConfirmed, setTestPaymentConfirmed] = useState(false)
   const responseRef = useRef<HTMLDivElement | null>(null)
+  const paymentConfirmationRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!quotation) return
@@ -66,6 +79,7 @@ const ClientQuotation = () => {
           .filter(Boolean),
       )
       setSignatureName(data.acceptance.signature_name)
+      setTestPayerName(previous => previous || data.acceptance!.accepted_by_name)
       setTermsAccepted(true)
       return
     }
@@ -75,6 +89,14 @@ const ClientQuotation = () => {
       setSelectedIds(productLines.filter(line => line.is_default).map(line => line.id))
     }
   }, [quotation?.id, quotation?.revision, quotation?.selection_status, data?.acceptance, productLines])
+
+  useEffect(() => {
+    if (data?.invoice?.status !== 'paid') return
+    const timeout = window.setTimeout(() => {
+      paymentConfirmationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 150)
+    return () => window.clearTimeout(timeout)
+  }, [data?.invoice?.status])
 
   const selectedProductLines = productLines.filter(line =>
     quotation?.quotation_type === 'standard' || selectedIds.includes(line.id),
@@ -96,7 +118,7 @@ const ClientQuotation = () => {
     },
     onSuccess: response => {
       queryClient.setQueryData(queryKey, response)
-      toast.success('Quotation accepted. The invoice is pending billing approval.')
+      toast.success('Quotation accepted. The sales invoice is ready for payment.')
     },
     onError: (error: any) => toast.error(error.response?.data?.detail || 'Could not accept quotation'),
   })
@@ -112,6 +134,48 @@ const ClientQuotation = () => {
       toast.success(response.quotation.status === 'declined' ? 'Quotation declined' : 'Change request sent')
     },
     onError: (error: any) => toast.error(error.response?.data?.detail || 'Could not submit response'),
+  })
+
+  const testPaymentMut = useMutation({
+    mutationFn: () => {
+      const payload = {
+        payer_name: testPayerName.trim(),
+        confirmation: testPaymentConfirmed,
+        notes: testPaymentNotes.trim() || undefined,
+      }
+      return accountMode
+        ? payClientSalesQuotationInTestMode(id, payload)
+        : payPublicSalesQuotationInTestMode(String(token), payload)
+    },
+    onSuccess: response => {
+      queryClient.setQueryData(queryKey, response)
+      setTestPayOpen(false)
+      setTestPaymentConfirmed(false)
+      setTestPaymentNotes('')
+      toast.success('Test payment completed. No funds were charged.')
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || 'Could not complete the test payment'),
+  })
+
+  const squarePaymentMut = useMutation({
+    mutationFn: ({ sourceId, idempotencyKey }: { sourceId: string; idempotencyKey: string }) => {
+      const payload = {
+        source_id: sourceId,
+        idempotency_key: idempotencyKey,
+        payer_name: data?.acceptance?.accepted_by_name || data?.recipient.name || 'Customer',
+      }
+      return accountMode
+        ? payClientSalesQuotationWithSquare(id, payload)
+        : payPublicSalesQuotationWithSquare(String(token), payload)
+    },
+    onSuccess: response => {
+      queryClient.setQueryData(queryKey, response)
+      setSquarePayOpen(false)
+      toast.success('Payment completed securely. The invoice and ledger are now updated.')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || error.message || 'Square could not complete the payment')
+    },
   })
 
   const toggleProduct = (line: SalesQuotationLineItem) => {
@@ -190,9 +254,17 @@ const ClientQuotation = () => {
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 4 }}>
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation</Typography>
-            <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{data.company_name}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              component="img"
+              src="/mr-biomed-logo.jpeg"
+              alt="Mr. BioMed Tech Services"
+              sx={{ width: 94, height: 62, display: 'block', objectFit: 'contain' }}
+            />
+            <Box>
+              <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation</Typography>
+              <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{data.company_name}</Typography>
+            </Box>
           </Box>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'start', '@media print': { display: 'none' } }}>
             <Chip label={statusLabel} sx={{ textTransform: 'capitalize', fontWeight: 900, bgcolor: '#EDE9FE', color: '#6D28D9' }} />
@@ -284,16 +356,149 @@ const ClientQuotation = () => {
 
         {data.acceptance ? (
           <Box sx={{ mb: 3 }}>
-            <Alert severity="success" icon={<CheckCircleOutlineIcon />}>
-              Accepted by {data.acceptance.accepted_by_name} on {dateLabel(data.acceptance.accepted_at)}.
-              {data.invoice && ` Invoice ${data.invoice.invoice_number} is ${data.invoice.billing_approval_status === 'approved' ? 'available in Billing' : 'pending billing approval'}.`}
-            </Alert>
+            {data.invoice?.status === 'paid' ? (
+              <Box
+                ref={paymentConfirmationRef}
+                sx={{
+                  p: { xs: 2.5, md: 3.5 },
+                  borderRadius: '20px',
+                  color: '#064E3B',
+                  border: '1px solid #A7F3D0',
+                  background: 'linear-gradient(135deg, #ECFDF5 0%, #F0FDFA 55%, #FFFFFF 100%)',
+                  boxShadow: '0 16px 38px rgba(5,150,105,0.10)',
+                  scrollMarginTop: 24,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                  <Box
+                    sx={{
+                      width: 52,
+                      height: 52,
+                      flexShrink: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                      borderRadius: '16px',
+                      bgcolor: '#10B981',
+                      color: '#FFFFFF',
+                      boxShadow: '0 8px 20px rgba(16,185,129,0.25)',
+                    }}
+                  >
+                    <CheckCircleOutlineIcon sx={{ fontSize: 32 }} />
+                  </Box>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 950, color: '#064E3B' }}>
+                      Thank you for your payment
+                    </Typography>
+                    <Typography sx={{ mt: 0.7, color: '#047857', lineHeight: 1.6 }}>
+                      Your payment has been received successfully. Invoice {data.invoice.invoice_number} is fully paid,
+                      and no further payment is due.
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box
+                  sx={{
+                    mt: 2.5,
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
+                    gap: 1.2,
+                  }}
+                >
+                  {[
+                    ['Invoice', data.invoice.invoice_number],
+                    ['Amount received', money(data.invoice.amount_paid)],
+                    ['Payment status', 'Paid'],
+                  ].map(([label, value]) => (
+                    <Box
+                      key={label}
+                      sx={{
+                        px: 1.8,
+                        py: 1.4,
+                        borderRadius: '13px',
+                        bgcolor: 'rgba(255,255,255,0.78)',
+                        border: '1px solid rgba(167,243,208,0.85)',
+                      }}
+                    >
+                      <Typography sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+                        {label}
+                      </Typography>
+                      <Typography sx={{ mt: 0.35, color: '#064E3B', fontWeight: 950, overflowWrap: 'anywhere' }}>
+                        {value}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            ) : (
+              <Alert severity="info" icon={<CheckCircleOutlineIcon />}>
+                Accepted by {data.acceptance.accepted_by_name} on {dateLabel(data.acceptance.accepted_at)}.
+                {data.invoice ? ` Invoice ${data.invoice.invoice_number} is ready for payment.` : ''}
+              </Alert>
+            )}
             <Box sx={{ mt: 1.5, p: 2, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
               <Typography sx={{ color: '#64748B', fontWeight: 800, fontSize: 12 }}>SIGNED ACCEPTANCE · REVISION {data.acceptance.quotation_revision}</Typography>
               <Typography sx={{ mt: 1, pb: 0.5, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Bradley Hand", "Brush Script MT", cursive', fontSize: { xs: 28, md: 36 }, fontStyle: 'italic' }}>
                 {data.acceptance.signature_name}
               </Typography>
             </Box>
+            {data.square_payment.enabled && data.invoice && data.invoice.status !== 'paid' && (
+              <Box
+                sx={{
+                  mt: 2,
+                  p: 2.4,
+                  borderRadius: '16px',
+                  border: '1px solid #C4B5FD',
+                  bgcolor: '#F8F7FF',
+                  display: { sm: 'flex' },
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 2,
+                }}
+              >
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography sx={{ color: '#1E1B4B', fontWeight: 950 }}>Secure card payment</Typography>
+                    {data.square_payment.environment === 'sandbox' && (
+                      <Chip
+                        size="small"
+                        label="Square Sandbox"
+                        sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 900 }}
+                      />
+                    )}
+                  </Box>
+                  <Typography sx={{ color: '#64748B', fontSize: 13, mt: 0.4 }}>
+                    Pay the outstanding balance of {money(data.invoice.balance_due)}. Card details are handled securely by Square.
+                  </Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  startIcon={<PaymentIcon />}
+                  disabled={!data.can_square_pay}
+                  onClick={() => setSquarePayOpen(true)}
+                  sx={{ fontWeight: 950, minWidth: 180, whiteSpace: 'nowrap' }}
+                >
+                  Pay {money(data.invoice.balance_due)}
+                </Button>
+              </Box>
+            )}
+            {data.test_payment_enabled && !data.square_payment.enabled && data.invoice && data.invoice.status !== 'paid' && (
+              <Box sx={{ mt: 2, p: 2.2, borderRadius: '16px', border: '1px dashed #F59E0B', bgcolor: '#FFFBEB' }}>
+                <Typography sx={{ color: '#92400E', fontWeight: 950 }}>Simulated workflow fallback</Typography>
+                <Typography sx={{ color: '#92400E', fontSize: 13, mb: 1.5 }}>
+                  Pay the balance of {money(data.invoice.balance_due)} here for workflow testing.
+                  No card, bank account, or real funds will be used.
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="warning"
+                  startIcon={<PaymentIcon />}
+                  disabled={!data.can_test_pay}
+                  onClick={() => setTestPayOpen(true)}
+                  sx={{ fontWeight: 950 }}
+                >
+                  Pay {money(data.invoice.balance_due)} (Test)
+                </Button>
+              </Box>
+            )}
           </Box>
         ) : data.can_accept ? (
           <Box
@@ -383,6 +588,96 @@ const ClientQuotation = () => {
           </Alert>
         )}
       </Card>
+
+      <Dialog
+        open={squarePayOpen}
+        onClose={() => !squarePaymentMut.isPending && setSquarePayOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '20px' } }}
+      >
+        <DialogTitle sx={{ color: '#1E1B4B', fontWeight: 950 }}>
+          Pay Invoice Securely
+        </DialogTitle>
+        <DialogContent dividers>
+          {data.square_payment.environment === 'sandbox' && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Square Sandbox is active. Use a Square sandbox test card; no real funds will be charged.
+            </Alert>
+          )}
+          <Typography sx={{ mb: 2, color: '#475569', fontWeight: 800 }}>
+            Invoice {data.invoice?.invoice_number} · {money(data.invoice?.balance_due)}
+          </Typography>
+          {data.square_payment.application_id && data.square_payment.location_id && data.invoice && (
+            <SquareCardCheckout
+              applicationId={data.square_payment.application_id}
+              locationId={data.square_payment.location_id}
+              sdkUrl={data.square_payment.sdk_url}
+              amount={Number(data.invoice.balance_due)}
+              currency={data.square_payment.currency}
+              payerName={data.acceptance?.accepted_by_name || data.recipient.name}
+              payerEmail={data.recipient.email}
+              processing={squarePaymentMut.isPending}
+              onPaymentToken={(sourceId, idempotencyKey) => {
+                squarePaymentMut.mutate({ sourceId, idempotencyKey })
+              }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => setSquarePayOpen(false)}
+            disabled={squarePaymentMut.isPending}
+          >
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={testPayOpen} onClose={() => !testPaymentMut.isPending && setTestPayOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ color: '#92400E', fontWeight: 950 }}>Complete Test Payment</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Testing only: this marks the invoice paid and updates the ledger, but no money is charged.
+          </Alert>
+          <Typography sx={{ mb: 2, fontWeight: 900 }}>
+            Invoice {data.invoice?.invoice_number} · {money(data.invoice?.balance_due)}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Payer name"
+            value={testPayerName}
+            onChange={event => setTestPayerName(event.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Optional test notes"
+            value={testPaymentNotes}
+            onChange={event => setTestPaymentNotes(event.target.value)}
+          />
+          <FormControlLabel
+            sx={{ mt: 1.5, alignItems: 'flex-start' }}
+            control={<Checkbox checked={testPaymentConfirmed} onChange={event => setTestPaymentConfirmed(event.target.checked)} />}
+            label="I understand this is a simulated payment and no funds will be charged."
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setTestPayOpen(false)} disabled={testPaymentMut.isPending}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            startIcon={testPaymentMut.isPending ? <CircularProgress size={18} /> : <PaymentIcon />}
+            disabled={testPaymentMut.isPending || !testPaymentConfirmed || !testPayerName.trim()}
+            onClick={() => testPaymentMut.mutate()}
+            sx={{ fontWeight: 950 }}
+          >
+            Mark Paid in Test Mode
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={Boolean(decision)} onClose={() => setDecision(null)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 900 }}>{decision === 'decline' ? 'Decline Quotation' : 'Request Changes'}</DialogTitle>

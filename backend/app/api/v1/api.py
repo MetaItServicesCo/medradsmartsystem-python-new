@@ -25,6 +25,7 @@ from app.api.v1.endpoints import (
     hr,
     reports,
     billing,
+    square_webhooks,
 )
 
 api_router = APIRouter()
@@ -54,3 +55,4 @@ api_router.include_router(attendance.router, prefix="/attendance", tags=["attend
 api_router.include_router(hr.router, prefix="/hr", tags=["hr"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
+api_router.include_router(square_webhooks.router, prefix="/webhooks", tags=["webhooks"])

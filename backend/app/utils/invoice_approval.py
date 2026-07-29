@@ -4,9 +4,10 @@ import json
 from typing import Any
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Query, Session
 
-from app.models.invoice import Invoice, InvoiceStatus
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.user import User, UserRole
 from app.utils.invoice_editing import parse_invoice_edit_metadata
 from app.utils.invoice_ledger import add_invoice_transaction
@@ -14,6 +15,10 @@ from app.utils.invoice_ledger import add_invoice_transaction
 
 BILLING_APPROVAL_PENDING = "pending"
 BILLING_APPROVAL_APPROVED = "approved"
+BILLING_APPROVAL_REQUIRED_TYPES = {
+    InvoiceType.SERVICE,
+    InvoiceType.INSPECTION,
+}
 
 FACILITY_BILLING_ROLES = {
     UserRole.FACILITY_ADMIN,
@@ -66,17 +71,38 @@ def is_facility_billing_user(user: User) -> bool:
     )
 
 
+def invoice_requires_billing_approval(invoice: Invoice) -> bool:
+    invoice_type = invoice.invoice_type
+    if isinstance(invoice_type, str):
+        try:
+            invoice_type = InvoiceType(invoice_type)
+        except ValueError:
+            return True
+    return invoice_type in BILLING_APPROVAL_REQUIRED_TYPES
+
+
 def scope_invoice_approval_visibility(query: Query, user: User) -> Query:
-    """Hide unapproved invoices from customer-facing facility accounts."""
+    """Hide only unapproved Service/Inspection invoices from facility accounts."""
     if is_facility_billing_user(user):
-        return query.filter(Invoice.billing_approval_status == BILLING_APPROVAL_APPROVED)
+        return query.filter(
+            or_(
+                Invoice.invoice_type.notin_(BILLING_APPROVAL_REQUIRED_TYPES),
+                Invoice.billing_approval_status == BILLING_APPROVAL_APPROVED,
+            )
+        )
     return query
 
 
 def approval_response(invoice: Invoice) -> dict[str, Any]:
     approver = getattr(invoice, "approved_for_billing_by", None)
+    approval_required = invoice_requires_billing_approval(invoice)
     return {
-        "billing_approval_status": invoice.billing_approval_status or BILLING_APPROVAL_PENDING,
+        "billing_approval_required": approval_required,
+        "billing_approval_status": (
+            invoice.billing_approval_status or BILLING_APPROVAL_PENDING
+            if approval_required
+            else BILLING_APPROVAL_APPROVED
+        ),
         "approved_for_billing_by_id": invoice.approved_for_billing_by_id,
         "approved_for_billing_by_name": approver.full_name if approver else None,
         "approved_for_billing_at": invoice.approved_for_billing_at,
@@ -86,6 +112,8 @@ def approval_response(invoice: Invoice) -> dict[str, Any]:
 
 
 def require_invoice_approved(invoice: Invoice) -> None:
+    if not invoice_requires_billing_approval(invoice):
+        return
     if invoice.billing_approval_status != BILLING_APPROVAL_APPROVED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -169,6 +197,8 @@ def invalidate_invoice_approval(
     *,
     reason: str = "Invoice financial details changed",
 ) -> bool:
+    if not invoice_requires_billing_approval(invoice):
+        return False
     if invoice.billing_approval_status != BILLING_APPROVAL_APPROVED:
         return False
     invoice.billing_approval_status = BILLING_APPROVAL_PENDING
@@ -208,6 +238,11 @@ def invalidate_invoice_approval(
 
 
 def approve_invoice_for_billing(db: Session, invoice: Invoice, user: User) -> None:
+    if not invoice_requires_billing_approval(invoice):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Billing approval applies only to Service and Inspection invoices",
+        )
     if not is_invoice_approver(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
