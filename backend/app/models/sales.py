@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -45,6 +45,9 @@ class SalesQuotation(Base):
     selection_channel = Column(String, nullable=True)
     selection_snapshot = Column(JSON, nullable=True)
     accepted_at = Column(DateTime, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    revision = Column(Integer, nullable=False, default=1)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -54,6 +57,8 @@ class SalesQuotation(Base):
     accepted_by = relationship("User", foreign_keys=[accepted_by_id])
     converted_invoice = relationship("Invoice", foreign_keys=[converted_invoice_id])
     line_items = relationship("SalesQuotationLineItem", back_populates="quotation", cascade="all, delete-orphan")
+    recipients = relationship("SalesQuotationRecipient", back_populates="quotation", cascade="all, delete-orphan")
+    acceptance = relationship("SalesQuotationAcceptance", back_populates="quotation", cascade="all, delete-orphan", uselist=False)
 
 
 class SalesQuotationLineItem(Base):
@@ -77,3 +82,54 @@ class SalesQuotationLineItem(Base):
 
     quotation = relationship("SalesQuotation", back_populates="line_items")
     part = relationship("InventoryPart")
+
+
+class SalesQuotationRecipient(Base):
+    __tablename__ = "sales_quotation_recipients"
+    __table_args__ = (
+        Index("ix_sales_quote_recipients_user_status", "user_id", "status"),
+        Index("ix_sales_quote_recipients_quote_type", "quotation_id", "recipient_type"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    quotation_id = Column(Integer, ForeignKey("sales_quotations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    recipient_type = Column(String, nullable=False, default="additional")
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="draft", index=True)
+    access_token_hash = Column(String, nullable=True, unique=True, index=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    viewed_at = Column(DateTime, nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    quotation = relationship("SalesQuotation", back_populates="recipients")
+    user = relationship("User")
+
+
+class SalesQuotationAcceptance(Base):
+    __tablename__ = "sales_quotation_acceptances"
+    __table_args__ = (
+        UniqueConstraint("quotation_id", name="uq_sales_quote_acceptance_quotation"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    quotation_id = Column(Integer, ForeignKey("sales_quotations.id", ondelete="CASCADE"), nullable=False, index=True)
+    recipient_id = Column(Integer, ForeignKey("sales_quotation_recipients.id", ondelete="SET NULL"), nullable=True)
+    accepted_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    accepted_by_name = Column(String, nullable=False)
+    signature_name = Column(String, nullable=False)
+    terms_accepted = Column(Boolean, nullable=False, default=False)
+    quotation_revision = Column(Integer, nullable=False)
+    selection_snapshot = Column(JSON, nullable=False)
+    pricing_snapshot = Column(JSON, nullable=False)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    accepted_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    quotation = relationship("SalesQuotation", back_populates="acceptance")
+    recipient = relationship("SalesQuotationRecipient")
+    accepted_by = relationship("User")

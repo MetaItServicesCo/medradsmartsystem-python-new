@@ -61,6 +61,12 @@ services:
       - DATABASE_URL=postgresql://medrad:medrad123@postgres:5432/medrad_db
       - REDIS_URL=redis://redis:6379/0
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173","http://127.0.0.1:3000","http://127.0.0.1:5173","http://134.199.192.91:3000","http://134.199.192.91","http://medcodesolution.com","https://medcodesolution.com"]}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL:-https://medcodesolution.com}
     depends_on:
       - postgres
       - redis

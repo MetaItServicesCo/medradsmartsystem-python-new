@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    PUBLIC_APP_URL: str = "http://localhost:3000"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

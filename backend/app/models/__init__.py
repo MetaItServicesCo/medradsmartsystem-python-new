@@ -17,7 +17,12 @@ from app.models.equipment_facility import EquipmentFacility
 from app.models.facility_tier import FacilityTier
 from app.models.inventory import InventoryPart, InventoryTransaction
 from app.models.test_equipment import TestEquipment
-from app.models.sales import SalesQuotation, SalesQuotationLineItem
+from app.models.sales import (
+    SalesQuotation,
+    SalesQuotationAcceptance,
+    SalesQuotationLineItem,
+    SalesQuotationRecipient,
+)
 from app.models.attendance import (
     AttendanceProfile,
     AttendanceFaceSample,

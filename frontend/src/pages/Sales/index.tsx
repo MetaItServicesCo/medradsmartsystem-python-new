@@ -2,7 +2,7 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  Autocomplete, Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
   TextField, Typography,
@@ -41,11 +41,13 @@ import {
   fetchSalesHistory,
   fetchSalesInvoices,
   fetchSalesQuotation,
+  fetchSalesQuotationRecipientCandidates,
   fetchSalesSummary,
   fetchSalesParts,
   fetchSalesQuotations,
   requestSalesCardAuthorization,
   refundSalesInvoice,
+  sendSalesQuotation,
   updateSalesInvoice,
   updateSalesQuotation,
   type SalesInvoice,
@@ -54,6 +56,7 @@ import {
   type SalesQuotation,
   type SalesQuotationLineItem,
   type SalesQuotationPayload,
+  type SalesQuotationRecipientCandidate,
 } from '@/api/sales'
 import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
@@ -118,6 +121,12 @@ const ACTION_MENU_DANGER = {
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
+    draft: { bg: '#F3F4F6', color: '#4B5563' },
+    sent: { bg: '#DBEAFE', color: '#1D4ED8' },
+    viewed: { bg: '#EDE9FE', color: '#6D28D9' },
+    changes_requested: { bg: '#FFEDD5', color: '#C2410C' },
+    declined: { bg: '#FEE2E2', color: '#DC2626' },
+    accepted: { bg: '#D1FAE5', color: '#047857' },
     pending: { bg: '#EEF2FF', color: '#4338CA' },
     approved: { bg: '#D1FAE5', color: '#047857' },
     rejected: { bg: '#FEE2E2', color: '#DC2626' },
@@ -152,6 +161,8 @@ const emptyQuotation = (): SalesQuotationPayload => ({
   notes: '',
   tax_amount: 0,
   discount_amount: 0,
+  primary_recipient_user_id: null,
+  additional_recipient_user_ids: [],
   items: [],
 })
 
@@ -225,9 +236,13 @@ const Sales = () => {
   const [selectedQuoteOptions, setSelectedQuoteOptions] = useState<number[]>([])
   const [tradeInDescription, setTradeInDescription] = useState('')
   const [tradeInValue, setTradeInValue] = useState(0)
+  const [refundAdjustmentDescription, setRefundAdjustmentDescription] = useState('')
+  const [refundAdjustmentReference, setRefundAdjustmentReference] = useState('')
+  const [refundAdjustmentValue, setRefundAdjustmentValue] = useState(0)
   const [refundInvoice, setRefundInvoice] = useState<SalesInvoice | null>(null)
   const [refundForm, setRefundForm] = useState({ amount: 0, payment_method: '', notes: '' })
   const [partInfo, setPartInfo] = useState<SalesPartInfo | null>(null)
+  const [deliveryLink, setDeliveryLink] = useState('')
   const [quotationsPage, setQuotationsPage] = useState(0)
   const [invoicesPage, setInvoicesPage] = useState(0)
   const [inProgressPage, setInProgressPage] = useState(0)
@@ -284,6 +299,12 @@ const Sales = () => {
     enabled: partsAndFacilitiesNeeded,
     placeholderData: previousData => previousData,
   })
+  const recipientCandidatesQ = useQuery({
+    queryKey: ['sales-quotation-recipient-candidates', quotationForm.facility_id],
+    queryFn: () => fetchSalesQuotationRecipientCandidates(Number(quotationForm.facility_id)),
+    enabled: quotationDialog && Boolean(quotationForm.facility_id),
+    staleTime: 60_000,
+  })
   const summaryQ = useQuery({ queryKey: ['sales-summary'], queryFn: fetchSalesSummary, placeholderData: previousData => previousData })
   const quotationsQ = useQuery({
     queryKey: ['sales-quotations', 'quotations', debouncedSearch, searchField, dateFrom, dateTo, quotationsPage],
@@ -325,6 +346,7 @@ const Sales = () => {
 
   const facilities = facilitiesQ.data?.items || []
   const parts = partsQ.data?.items || []
+  const recipientCandidates = recipientCandidatesQ.data?.items || []
   const summary = summaryQ.data
   const pendingQuotations = quotationsQ.data?.items || []
   const inProgressQuotations = inProgressQ.data?.items || []
@@ -427,9 +449,20 @@ const Sales = () => {
   }
 
   const saveQuotationMut = useMutation({
-    mutationFn: () => editingQuotation ? updateSalesQuotation(editingQuotation.id, quotationForm) : createSalesQuotation(quotationForm),
-    onSuccess: quotation => {
-      toast.success(editingQuotation ? 'Sales quotation updated' : 'Sales quotation created')
+    mutationFn: async (action: 'draft' | 'send') => {
+      const quotation = editingQuotation
+        ? await updateSalesQuotation(editingQuotation.id, quotationForm)
+        : await createSalesQuotation(quotationForm)
+      const delivered = action === 'send'
+        ? await sendSalesQuotation(quotation.id)
+        : quotation
+      return { quotation: delivered, sent: action === 'send' }
+    },
+    onSuccess: ({ quotation, sent }) => {
+      toast.success(sent ? 'Sales quotation sent to its recipients' : editingQuotation ? 'Sales quotation draft updated' : 'Sales quotation saved as draft')
+      if (sent && 'primary_share_url' in quotation && typeof quotation.primary_share_url === 'string' && quotation.primary_share_url) {
+        setDeliveryLink(quotation.primary_share_url)
+      }
       setQuotationDialog(false)
       setEditingQuotation(null)
       setQuotationForm(emptyQuotation())
@@ -438,7 +471,7 @@ const Sales = () => {
         '/sales/quotations',
         `sales-quotation-${quotation.id}`,
         quotation.work_order || quotation.quotation_number,
-        editingQuotation ? 'Updated quotation located' : 'New quotation located',
+        sent ? 'Sent quotation located' : editingQuotation ? 'Updated draft located' : 'New draft located',
       )
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save sales quotation'),
@@ -452,6 +485,23 @@ const Sales = () => {
       invalidateSales()
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not delete quotation'),
+  })
+
+  const sendQuotationMut = useMutation({
+    mutationFn: (id: number) => sendSalesQuotation(id),
+    onSuccess: quotation => {
+      toast.success('Sales quotation sent to its recipients')
+      if (quotation.primary_share_url) setDeliveryLink(quotation.primary_share_url)
+      closeActions()
+      invalidateSales()
+      locateSalesRecord(
+        '/sales/quotations',
+        `sales-quotation-${quotation.id}`,
+        quotation.work_order || quotation.quotation_number,
+        'Sent quotation located',
+      )
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not send quotation'),
   })
 
   const convertMut = useMutation({
@@ -525,6 +575,12 @@ const Sales = () => {
   })
 
   const selectedFacility = facilities.find(f => f.id === quotationForm.facility_id)
+  const selectedPrimaryRecipient = recipientCandidates.find(
+    candidate => candidate.id === quotationForm.primary_recipient_user_id,
+  ) || null
+  const selectedAdditionalRecipients = recipientCandidates.filter(
+    candidate => quotationForm.additional_recipient_user_ids?.includes(candidate.id),
+  )
 
   const openCreate = () => {
     setEditingQuotation(null)
@@ -550,6 +606,8 @@ const Sales = () => {
       notes: quotation.notes || '',
       tax_amount: Number(quotation.tax_amount || 0),
       discount_amount: Number(quotation.discount_amount || 0),
+      primary_recipient_user_id: quotation.primary_recipient?.user_id || null,
+      additional_recipient_user_ids: quotation.additional_recipients?.map(item => item.user_id).filter((id): id is number => Boolean(id)) || [],
       items: quotation.line_items.map(item => ({
         part_id: item.part_id,
         item_kind: item.item_kind,
@@ -618,14 +676,48 @@ const Sales = () => {
     setTradeInValue(0)
   }
 
+  const addRefundAdjustment = () => {
+    if (!refundAdjustmentDescription.trim()) return toast.error('Enter the refund reason')
+    if (refundAdjustmentValue <= 0) return toast.error('Refund payment must be greater than zero')
+    setQuotationForm(prev => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          part_id: null,
+          item_kind: 'refund',
+          is_default: true,
+          quantity: 1,
+          unit_price: refundAdjustmentValue,
+          shipping_fee: 0,
+          setup_fee: 0,
+          condition: 'Refund adjustment',
+          description: refundAdjustmentDescription.trim(),
+          item_metadata: {
+            payment_reference: refundAdjustmentReference.trim() || null,
+          },
+        },
+      ],
+    }))
+    setRefundAdjustmentDescription('')
+    setRefundAdjustmentReference('')
+    setRefundAdjustmentValue(0)
+  }
+
   const removeLineItem = (index: number) => {
     setQuotationForm(prev => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))
   }
 
-  const submitQuotation = () => {
+  const submitQuotation = (action: 'draft' | 'send') => {
     if (!quotationForm.customer_name) return toast.error('Customer name is required')
     if (quotationForm.items.length === 0) return toast.error('Add at least one sales part')
-    saveQuotationMut.mutate()
+    if (action === 'send' && quotationForm.facility_id && !quotationForm.primary_recipient_user_id) {
+      return toast.error('Select a primary facility recipient before sending')
+    }
+    if (action === 'send' && !quotationForm.customer_email) {
+      return toast.error('Customer email is required before sending')
+    }
+    saveQuotationMut.mutate(action)
   }
 
   const openSalesPartInfo = (
@@ -709,19 +801,19 @@ const Sales = () => {
 
   const lineTotal = (item: SalesQuotationPayload['items'][number]) => {
     const total = Number(item.quantity || 0) * Number(item.unit_price || 0) + Number(item.shipping_fee || 0) + Number(item.setup_fee || 0)
-    return item.item_kind === 'trade_in' ? -Math.abs(total) : total
+    return item.item_kind === 'trade_in' || item.item_kind === 'refund' ? -Math.abs(total) : total
   }
-  const hasDefaultProduct = quotationForm.items.some(item => item.item_kind !== 'trade_in' && item.is_default)
+  const hasDefaultProduct = quotationForm.items.some(item => item.item_kind === 'product' && item.is_default)
   const quotationTotal = quotationForm.items.reduce((sum, item) => {
     const included = quotationForm.quotation_type === 'standard'
-      || (item.item_kind !== 'trade_in' && item.is_default)
-      || (item.item_kind === 'trade_in' && hasDefaultProduct)
+      || (item.item_kind === 'product' && item.is_default)
+      || (item.item_kind !== 'product' && hasDefaultProduct)
     return sum + (included ? lineTotal(item) : 0)
   }, 0)
   const quotationGrandTotal = quotationTotal + Number(quotationForm.tax_amount || 0) - Number(quotationForm.discount_amount || 0)
   const convertPartsTotal = convertQuotation
     ? convertQuotation.line_items.reduce((sum, line) => (
-        line.item_kind === 'trade_in' || convertQuotation.quotation_type === 'standard' || selectedQuoteOptions.includes(line.id)
+        line.item_kind !== 'product' || convertQuotation.quotation_type === 'standard' || selectedQuoteOptions.includes(line.id)
           ? sum + Number(line.total || 0)
           : sum
       ), 0)
@@ -796,6 +888,8 @@ const Sales = () => {
       customer_address: facility
         ? [facility.billing_street || facility.address, facility.billing_city || facility.city, facility.billing_state || facility.state, facility.billing_zip_code || facility.zip_code].filter(Boolean).join(', ')
         : prev.customer_address,
+      primary_recipient_user_id: null,
+      additional_recipient_user_ids: [],
     }))
   }
 
@@ -830,7 +924,7 @@ const Sales = () => {
     if (!invoice) return []
     if (invoice.line_items?.length) {
       return invoice.line_items.map((line: any) => ({
-        item_number: line.item_number || line.part_number || (line.item_kind === 'trade_in' ? 'TRADE-IN' : String(line.part_id || '-')),
+        item_number: line.item_number || line.part_number || (line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? 'TRADE-IN' : String(line.part_id || '-')),
         description: line.description || line.part_description || 'Sales item',
         quantity: Number(line.quantity || 1),
         unit_price: Number(line.unit_price || 0),
@@ -1318,11 +1412,25 @@ const Sales = () => {
       </Card>
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
+        {actionQuotation && ['draft', 'pending', 'sent', 'viewed'].includes(String(actionQuotation.status)) && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            disabled={sendQuotationMut.isPending}
+            onClick={() => sendQuotationMut.mutate(actionQuotation.id)}
+          >
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><AssignmentIcon fontSize="small" /></ListItemIcon>
+            {['sent', 'viewed'].includes(String(actionQuotation.status)) ? 'Resend Quotation' : 'Send Quotation'}
+          </MenuItem>
+        )}
         <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && openConvertDialog(actionQuotation)}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><ReceiptLongIcon fontSize="small" /></ListItemIcon>
           {actionQuotation?.quotation_type === 'standard' ? 'Convert to Invoice' : 'Choose Options & Generate Invoice'}
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && openEdit(actionQuotation)}>
+        <MenuItem
+          sx={ACTION_MENU_ITEM}
+          disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id) || !['draft', 'pending', 'changes_requested'].includes(String(actionQuotation.status))}
+          onClick={() => actionQuotation && openEdit(actionQuotation)}
+        >
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
         </MenuItem>
@@ -1496,6 +1604,53 @@ const Sales = () => {
               }))}
               onFacilityChange={facility => syncCustomerFromFacility(facility?.id || '', facility)}
             />
+            {quotationForm.facility_id ? (
+              <>
+                <Autocomplete<SalesQuotationRecipientCandidate>
+                  options={recipientCandidates}
+                  value={selectedPrimaryRecipient}
+                  loading={recipientCandidatesQ.isLoading}
+                  getOptionLabel={option => `${option.full_name} · ${option.email}`}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  onChange={(_, recipient) => setQuotationForm(prev => ({
+                    ...prev,
+                    primary_recipient_user_id: recipient?.id || null,
+                    additional_recipient_user_ids: (prev.additional_recipient_user_ids || []).filter(id => id !== recipient?.id),
+                    customer_name: recipient?.full_name || prev.customer_name,
+                    customer_email: recipient?.email || prev.customer_email,
+                    customer_phone: recipient?.phone ? formatUSPhoneInput(recipient.phone) : prev.customer_phone,
+                  }))}
+                  renderInput={params => (
+                    <TextField
+                      {...params}
+                      label="Primary Recipient"
+                      helperText={recipientCandidates.length === 0 && !recipientCandidatesQ.isLoading
+                        ? 'No facility admin, manager, or client is attached to this facility'
+                        : 'This person can accept or decline the quotation'}
+                    />
+                  )}
+                />
+                <Autocomplete<SalesQuotationRecipientCandidate, true>
+                  multiple
+                  options={recipientCandidates.filter(candidate => candidate.id !== quotationForm.primary_recipient_user_id)}
+                  value={selectedAdditionalRecipients}
+                  loading={recipientCandidatesQ.isLoading}
+                  getOptionLabel={option => `${option.full_name} · ${option.email}`}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  onChange={(_, recipients) => setQuotationForm(prev => ({
+                    ...prev,
+                    additional_recipient_user_ids: recipients.map(item => item.id),
+                  }))}
+                  renderInput={params => (
+                    <TextField
+                      {...params}
+                      label="Additional Recipients"
+                      helperText="Optional; copied recipients can view the quotation"
+                    />
+                  )}
+                />
+              </>
+            ) : null}
             <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
             <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
@@ -1510,7 +1665,7 @@ const Sales = () => {
                   quotation_type: quotationType,
                   items: prev.items.map(item => ({
                     ...item,
-                    is_default: item.item_kind === 'trade_in' || quotationType === 'standard',
+                    is_default: item.item_kind !== 'product' || quotationType === 'standard',
                   })),
                 }))
               }}
@@ -1557,6 +1712,41 @@ const Sales = () => {
             </Typography>
           </Card>
 
+          <Card sx={{ p: 2, mb: 2, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+            <Typography sx={{ fontWeight: 900, color: '#B91C1C', mb: 1 }}>Refund Payment</Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 220px auto' }, gap: 1.5 }}>
+              <TextField
+                label="Refund reason"
+                value={refundAdjustmentDescription}
+                onChange={e => setRefundAdjustmentDescription(e.target.value)}
+              />
+              <TextField
+                label="Refund amount"
+                type="number"
+                inputProps={{ min: 0, step: '0.01' }}
+                value={refundAdjustmentValue}
+                onChange={e => setRefundAdjustmentValue(Number(e.target.value))}
+              />
+              <TextField
+                label="Payment reference (optional)"
+                value={refundAdjustmentReference}
+                onChange={e => setRefundAdjustmentReference(e.target.value)}
+              />
+              <Button
+                color="error"
+                variant="contained"
+                startIcon={<PaymentIcon />}
+                onClick={addRefundAdjustment}
+                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+              >
+                Refund Payment
+              </Button>
+            </Box>
+            <Typography sx={{ mt: 1, color: '#B91C1C', fontSize: 12, fontWeight: 700 }}>
+              Adds a clearly identified negative line to this quotation. It does not alter inventory stock.
+            </Typography>
+          </Card>
+
           <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
             <Table size="small" stickyHeader>
               <TableHead>
@@ -1577,9 +1767,11 @@ const Sales = () => {
               </TableHead>
               <TableBody>
                 {quotationForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={12} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts or trade-ins selected.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts or credits selected.</TableCell></TableRow>
                 ) : quotationForm.items.map((item, index) => {
                   const part = parts.find(candidate => candidate.id === item.part_id)
+                  const itemLabel = item.item_kind === 'trade_in' ? 'Trade-In' : item.item_kind === 'refund' ? 'Refund' : 'Product'
+                  const itemNumber = item.item_kind === 'trade_in' ? 'TRADE-IN' : item.item_kind === 'refund' ? 'REFUND' : part?.part_number || item.part_id
                   return (
                     <TableRow key={`${item.part_id}-${index}`}>
                       <TableCell>
@@ -1587,10 +1779,10 @@ const Sales = () => {
                           <Inventory2Icon fontSize="small" />
                         </Avatar>
                       </TableCell>
-                      <TableCell><Chip size="small" label={item.item_kind === 'trade_in' ? 'Trade-In' : 'Product'} color={item.item_kind === 'trade_in' ? 'warning' : 'primary'} /></TableCell>
-                      <TableCell><ClippedTooltipText value={item.item_kind === 'trade_in' ? 'TRADE-IN' : part?.part_number || item.part_id} monospace fontWeight={900} onClick={item.item_kind === 'product' ? () => openSalesPartInfo(part, item) : undefined} /></TableCell>
+                      <TableCell><Chip size="small" label={itemLabel} color={item.item_kind === 'refund' ? 'error' : item.item_kind === 'trade_in' ? 'warning' : 'primary'} /></TableCell>
+                      <TableCell><ClippedTooltipText value={itemNumber} monospace fontWeight={900} onClick={item.item_kind === 'product' ? () => openSalesPartInfo(part, item) : undefined} /></TableCell>
                       <TableCell>
-                        {item.item_kind === 'trade_in'
+                        {item.item_kind !== 'product'
                           ? <TextField size="small" value={item.description || ''} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, description: e.target.value } : line) }))} />
                           : <ClippedTooltipText value={item.description} field />}
                       </TableCell>
@@ -1602,7 +1794,7 @@ const Sales = () => {
                       <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(lineTotal(item))}</TableCell>
                       {quotationForm.quotation_type !== 'standard' && (
                         <TableCell>
-                          {item.item_kind === 'trade_in' ? (
+                          {item.item_kind !== 'product' ? (
                             <Chip size="small" label="Always applied" />
                           ) : (
                             <Checkbox
@@ -1646,8 +1838,46 @@ const Sales = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setQuotationDialog(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={saveQuotationMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitQuotation} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
-            {editingQuotation ? 'Update Quotation' : 'Create Quotation'}
+          <Button
+            disabled={saveQuotationMut.isPending}
+            onClick={() => submitQuotation('draft')}
+            variant="outlined"
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Save as Draft
+          </Button>
+          <Button
+            disabled={saveQuotationMut.isPending}
+            startIcon={saveQuotationMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />}
+            onClick={() => submitQuotation('send')}
+            variant="contained"
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Send Quotation
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation Sent</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: '#4B5563', mb: 2 }}>
+            Recipients were notified. You can also copy this secure quotation link.
+          </Typography>
+          <TextField fullWidth value={deliveryLink} InputProps={{ readOnly: true }} />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setDeliveryLink('')}>Close</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              navigator.clipboard.writeText(deliveryLink)
+                .then(() => toast.success('Quotation link copied'))
+                .catch(() => toast.error('Copy the link from the field'))
+            }}
+            sx={{ fontWeight: 900 }}
+          >
+            Copy Link
           </Button>
         </DialogActions>
       </Dialog>
@@ -1746,14 +1976,14 @@ const Sales = () => {
                     </TableHead>
                     <TableBody>
                       {convertQuotation.line_items.filter(line => (
-                        line.item_kind === 'trade_in' ||
+                        line.item_kind !== 'product' ||
                         convertQuotation.quotation_type === 'standard' ||
                         selectedQuoteOptions.includes(line.id)
                       )).map(line => {
                         const part = parts.find(item => item.id === line.part_id)
                         return (
                           <TableRow key={line.id}>
-                            <TableCell><ClippedTooltipText value={line.item_kind === 'trade_in' ? 'TRADE-IN' : line.part_number} monospace fontWeight={900} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(part, line) : undefined} /></TableCell>
+                            <TableCell><ClippedTooltipText value={line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? 'TRADE-IN' : line.part_number} monospace fontWeight={900} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(part, line) : undefined} /></TableCell>
                             <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                             <TableCell>{money(line.unit_price)}</TableCell>
                             <TableCell>{line.quantity}</TableCell>
@@ -1864,10 +2094,10 @@ const Sales = () => {
                   <TableBody>
                     {viewQuotation.line_items.map(line => (
                       <TableRow key={line.id}>
-                        <TableCell><ClippedTooltipText value={line.item_kind === 'trade_in' ? 'TRADE-IN' : line.part_number} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(parts.find(item => item.id === line.part_id), line) : undefined} /></TableCell>
+                        <TableCell><ClippedTooltipText value={line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? 'TRADE-IN' : line.part_number} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(parts.find(item => item.id === line.part_id), line) : undefined} /></TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            <Chip size="small" label={line.item_kind === 'trade_in' ? 'Trade-In' : 'Product'} />
+                            <Chip size="small" label={line.item_kind === 'refund' ? 'Refund' : line.item_kind === 'trade_in' ? 'Trade-In' : 'Product'} color={line.item_kind === 'refund' ? 'error' : line.item_kind === 'trade_in' ? 'warning' : 'primary'} />
                             {line.is_default && line.item_kind === 'product' && <Chip size="small" label="Default" color="secondary" />}
                             {viewQuotation.selection_status === 'accepted' && line.is_selected && <Chip size="small" label="Selected" color="success" />}
                           </Box>

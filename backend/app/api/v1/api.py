@@ -19,6 +19,7 @@ from app.api.v1.endpoints import (
     inspections,
     test_equipment,
     sales,
+    sales_portal,
     rentals,
     attendance,
     hr,
@@ -47,6 +48,7 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(inspections.router, prefix="/inspections", tags=["inspections"])
 api_router.include_router(test_equipment.router, prefix="/test-equipment", tags=["test-equipment"])
 api_router.include_router(sales.router, prefix="/sales", tags=["sales"])
+api_router.include_router(sales_portal.router, tags=["sales-portal"])
 api_router.include_router(rentals.router, prefix="/rentals", tags=["rentals"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["attendance"])
 api_router.include_router(hr.router, prefix="/hr", tags=["hr"])

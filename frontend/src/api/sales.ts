@@ -1,6 +1,6 @@
 import apiClient from './client'
 
-export type SalesQuotationStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+export type SalesQuotationStatus = 'draft' | 'sent' | 'viewed' | 'changes_requested' | 'declined' | 'accepted' | 'pending' | 'in_progress' | 'completed' | 'cancelled'
 export type SalesPaidStatus = 'unpaid' | 'paid'
 export type SalesInvoiceStatus = 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled'
 
@@ -24,7 +24,7 @@ export interface SalesPart {
 export interface SalesQuotationLineItem {
   id: number
   part_id: number | null
-  item_kind: 'product' | 'trade_in'
+  item_kind: 'product' | 'trade_in' | 'refund'
   is_default: boolean
   is_selected: boolean
   item_metadata?: Record<string, any>
@@ -37,6 +37,27 @@ export interface SalesQuotationLineItem {
   setup_fee: number
   condition: string | null
   total: number
+}
+
+export interface SalesQuotationRecipient {
+  id: number
+  user_id: number | null
+  recipient_type: 'primary' | 'additional'
+  name: string
+  email: string
+  role: string | null
+  status: string
+  sent_at: string | null
+  viewed_at: string | null
+  accepted_at: string | null
+}
+
+export interface SalesQuotationRecipientCandidate {
+  id: number
+  full_name: string
+  email: string
+  phone: string | null
+  role: 'facility_admin' | 'facility_manager' | 'client' | string
 }
 
 export interface SalesHistoryItem {
@@ -69,6 +90,9 @@ export interface SalesQuotation {
   accepted_by_id: number | null
   accepted_by_name: string | null
   accepted_at: string | null
+  sent_at: string | null
+  expires_at: string | null
+  revision: number
   status: SalesQuotationStatus | string
   paid_status: SalesPaidStatus | string
   requested_date: string | null
@@ -96,6 +120,9 @@ export interface SalesQuotation {
   updated_at: string
   history: SalesHistoryItem[]
   line_items: SalesQuotationLineItem[]
+  recipients: SalesQuotationRecipient[]
+  primary_recipient: SalesQuotationRecipient | null
+  additional_recipients: SalesQuotationRecipient[]
 }
 
 export interface SalesInvoice {
@@ -184,7 +211,7 @@ export interface SalesQuotationPayload {
   discount_amount?: number
   items: Array<{
     part_id?: number | null
-    item_kind?: 'product' | 'trade_in'
+    item_kind?: 'product' | 'trade_in' | 'refund'
     is_default?: boolean
     quantity: number
     unit_price?: number
@@ -194,6 +221,62 @@ export interface SalesQuotationPayload {
     description?: string
     item_metadata?: Record<string, any>
   }>
+  primary_recipient_user_id?: number | null
+  additional_recipient_user_ids?: number[]
+}
+
+export interface SalesQuotationDelivery extends SalesQuotation {
+  primary_share_url: string | null
+  delivery_links: Array<{
+    recipient_id: number
+    recipient_type: 'primary' | 'additional'
+    name: string
+    email: string
+    share_url: string
+  }>
+}
+
+export interface SalesQuotationPortal {
+  company_name: string
+  quotation: {
+    id: number
+    quotation_number: string
+    work_order: string
+    revision: number
+    quotation_type: string
+    status: string
+    selection_status: string
+    facility_name: string | null
+    customer_name: string
+    customer_address: string | null
+    requested_date: string | null
+    sent_at: string | null
+    expires_at: string | null
+    notes: string | null
+    subtotal: number
+    tax_amount: number
+    discount_amount: number
+    total_amount: number
+    line_items: SalesQuotationLineItem[]
+  }
+  recipient: SalesQuotationRecipient
+  can_accept: boolean
+  acceptance: {
+    accepted_by_name: string
+    signature_name: string
+    accepted_at: string
+    quotation_revision: number
+    selection_snapshot: Array<Record<string, any>>
+    pricing_snapshot: Record<string, any>
+  } | null
+  invoice: {
+    id: number
+    invoice_number: string
+    status: string
+    billing_approval_status: 'pending' | 'approved'
+    total_amount: number
+    balance_due: number
+  } | null
 }
 
 export const fetchSalesParts = async (
@@ -245,6 +328,26 @@ export const updateSalesQuotation = async (
   data: Partial<SalesQuotationPayload> & { status?: string; paid_status?: string }
 ): Promise<SalesQuotation> => {
   const res = await apiClient.put(`/sales/quotations/${id}`, data)
+  return res.data
+}
+
+export const fetchSalesQuotationRecipientCandidates = async (
+  facilityId: number,
+  search?: string,
+): Promise<{ items: SalesQuotationRecipientCandidate[]; total: number }> => {
+  const res = await apiClient.get(`/sales/facilities/${facilityId}/quotation-recipients`, {
+    params: { search, limit: 100 },
+  })
+  return res.data
+}
+
+export const sendSalesQuotation = async (
+  id: number,
+  expiresInDays = 30,
+): Promise<SalesQuotationDelivery> => {
+  const res = await apiClient.post(`/sales/quotations/${id}/send`, {
+    expires_in_days: expiresInDays,
+  })
   return res.data
 }
 
@@ -315,5 +418,56 @@ export const fetchSalesHistory = async (
   params: { search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: SalesHistoryItem[]; total: number }> => {
   const res = await apiClient.get('/sales/history', { params })
+  return res.data
+}
+
+export const fetchPublicSalesQuotation = async (token: string): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.get(`/public/quotations/${token}`)
+  return res.data
+}
+
+export const acceptPublicSalesQuotation = async (
+  token: string,
+  data: { selected_line_item_ids: number[]; signature_name: string; terms_accepted: boolean },
+): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.post(`/public/quotations/${token}/accept`, data)
+  return res.data
+}
+
+export const decidePublicSalesQuotation = async (
+  token: string,
+  action: 'decline' | 'request_changes',
+  comments?: string,
+): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.post(`/public/quotations/${token}/decision`, { action, comments })
+  return res.data
+}
+
+export const fetchClientSalesQuotations = async (
+  params: { search?: string; skip?: number; limit?: number } = {},
+): Promise<{ items: SalesQuotationPortal[]; total: number }> => {
+  const res = await apiClient.get('/client-sales/quotations', { params })
+  return res.data
+}
+
+export const fetchClientSalesQuotation = async (id: number): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.get(`/client-sales/quotations/${id}`)
+  return res.data
+}
+
+export const acceptClientSalesQuotation = async (
+  id: number,
+  data: { selected_line_item_ids: number[]; signature_name: string; terms_accepted: boolean },
+): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.post(`/client-sales/quotations/${id}/accept`, data)
+  return res.data
+}
+
+export const decideClientSalesQuotation = async (
+  id: number,
+  action: 'decline' | 'request_changes',
+  comments?: string,
+): Promise<SalesQuotationPortal> => {
+  const res = await apiClient.post(`/client-sales/quotations/${id}/decision`, { action, comments })
   return res.data
 }

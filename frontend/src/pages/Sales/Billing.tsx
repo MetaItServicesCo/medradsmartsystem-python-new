@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Alert, Avatar, Box, Button, Card, Chip, CircularProgress, Collapse, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, FormControl,
@@ -25,7 +25,12 @@ import { toast } from 'react-toastify'
 
 import { fetchAllInspectionQuotations, fetchInspectionQuotations, updateInspectionInvoice, type InspectionInvoice } from '@/api/inspections'
 import { fetchRentalInvoices, updateRentalInvoice, type RentalInvoice } from '@/api/rentals'
-import { fetchSalesInvoices, updateSalesInvoice, type SalesInvoice } from '@/api/sales'
+import {
+  fetchClientSalesQuotations,
+  fetchSalesInvoices,
+  updateSalesInvoice,
+  type SalesInvoice,
+} from '@/api/sales'
 import {
   createQuotationPayment,
   requestQuotationAuthorization,
@@ -411,6 +416,7 @@ const ACTION_MENU_ITEM = {
 
 const Billing = () => {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = useAuthStore(s => s.user)
   const isInternalBillingAdmin = user?.role === 'superadmin' || (user?.role === 'admin' && !user.facility_id)
@@ -446,10 +452,11 @@ const Billing = () => {
   const activeSearch = search.trim()
   const querySearch = activeSearch || undefined
   const querySearchField = searchField === 'all' ? undefined : searchField
-  const shouldFetchService = sourceFilter === 'all' || sourceFilter === 'service'
-  const shouldFetchInspection = sourceFilter === 'all' || sourceFilter === 'inspection'
-  const shouldFetchSales = sourceFilter === 'all' || sourceFilter === 'sales'
-  const shouldFetchRental = sourceFilter === 'all' || sourceFilter === 'rental'
+  const clientQuotationTab = isFacilityBillingUser && tab === 3
+  const shouldFetchService = !clientQuotationTab && (sourceFilter === 'all' || sourceFilter === 'service')
+  const shouldFetchInspection = !clientQuotationTab && (sourceFilter === 'all' || sourceFilter === 'inspection')
+  const shouldFetchSales = !clientQuotationTab && (sourceFilter === 'all' || sourceFilter === 'sales')
+  const shouldFetchRental = !clientQuotationTab && (sourceFilter === 'all' || sourceFilter === 'rental')
   const inspectionServerPage = sourceFilter === 'inspection'
 
   const [payMethod, setPayMethod] = useState<PayMethod>('credit_card')
@@ -551,6 +558,17 @@ const Billing = () => {
     staleTime: 30_000,
     placeholderData: previousData => previousData,
   })
+  const clientQuotationsQ = useQuery({
+    queryKey: ['client-sales-quotations', querySearch, page, rowsPerPage],
+    queryFn: () => fetchClientSalesQuotations({
+      search: querySearch,
+      skip: page * rowsPerPage,
+      limit: rowsPerPage,
+    }),
+    enabled: clientQuotationTab,
+    staleTime: 30_000,
+    placeholderData: previousData => previousData,
+  })
 
   const activeBillingQueries = [
     { enabled: shouldFetchService, isLoading: serviceQ.isLoading, isFetching: serviceQ.isFetching },
@@ -558,6 +576,7 @@ const Billing = () => {
     { enabled: shouldFetchInspection, isLoading: inspectionQ.isLoading, isFetching: inspectionQ.isFetching },
     { enabled: shouldFetchSales, isLoading: salesQ.isLoading, isFetching: salesQ.isFetching },
     { enabled: shouldFetchRental, isLoading: rentalsQ.isLoading, isFetching: rentalsQ.isFetching },
+    { enabled: clientQuotationTab, isLoading: clientQuotationsQ.isLoading, isFetching: clientQuotationsQ.isFetching },
   ].filter(query => query.enabled)
   const allBillingSourcesLoading = activeBillingQueries.length > 0 && activeBillingQueries.every(query => query.isLoading)
   const anyBillingSourceFetching = activeBillingQueries.some(query => query.isFetching)
@@ -1303,7 +1322,80 @@ const Billing = () => {
           <Tab label="All Billing" />
           <Tab label="Outstanding" />
           <Tab label="Paid" />
+          {isFacilityBillingUser && <Tab label="Quotations" />}
         </Tabs>
+        {clientQuotationTab ? (
+          <>
+            <TableContainer className="list-scroll-panel">
+              <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: 900 }}>
+                <TableHead>
+                  <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                    <TableCell sx={{ fontWeight: 700 }}>Quotation #</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Facility</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }} align="right">Amount</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Sent</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }} align="center">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {clientQuotationsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
+                    <TableRow key={index}>{Array.from({ length: 7 }).map((__, cell) => <TableCell key={cell}><Skeleton /></TableCell>)}</TableRow>
+                  )) : (clientQuotationsQ.data?.items || []).length === 0 ? (
+                    <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: '#6B7280', fontWeight: 800 }}>No quotations have been sent to you.</TableCell></TableRow>
+                  ) : (clientQuotationsQ.data?.items || []).map(item => {
+                    const quote = item.quotation
+                    const chip = STATUS_CHIP[quote.status] || STATUS_CHIP.pending
+                    return (
+                      <TableRow key={`${quote.id}-${item.recipient.id}`} hover>
+                        <TableCell>
+                          <Button
+                            onClick={() => navigate(`/quotation/account/${quote.id}`)}
+                            sx={{ p: 0, minWidth: 0, fontWeight: 900, textTransform: 'none', fontFamily: 'monospace' }}
+                          >
+                            {quote.quotation_number}
+                          </Button>
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>{quote.facility_name || quote.customer_name}</TableCell>
+                        <TableCell sx={{ textTransform: 'capitalize' }}>{quote.quotation_type.replace(/_/g, ' ')}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 900 }}>{money(quote.total_amount)}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={methodLabel(quote.status)}
+                            sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 800 }}
+                          />
+                        </TableCell>
+                        <TableCell>{formatDate(quote.sent_at)}</TableCell>
+                        <TableCell align="center">
+                          <Button
+                            startIcon={<VisibilityOutlinedIcon />}
+                            variant="outlined"
+                            onClick={() => navigate(`/quotation/account/${quote.id}`)}
+                            sx={{ borderRadius: '10px', fontWeight: 800, textTransform: 'none' }}
+                          >
+                            View & Respond
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <TablePagination
+              component="div"
+              count={Number(clientQuotationsQ.data?.total || 0)}
+              page={page}
+              onPageChange={(_, nextPage) => setPage(nextPage)}
+              rowsPerPage={rowsPerPage}
+              rowsPerPageOptions={[rowsPerPage]}
+              labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
+            />
+          </>
+        ) : (
+          <>
         <TableContainer className="list-scroll-panel">
           <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: 1340 }}>
             <colgroup>
@@ -1484,6 +1576,8 @@ const Billing = () => {
           rowsPerPageOptions={[rowsPerPage]}
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
         />
+          </>
+        )}
       </Card>
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>

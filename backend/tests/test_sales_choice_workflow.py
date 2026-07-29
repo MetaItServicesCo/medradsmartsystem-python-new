@@ -26,7 +26,7 @@ def _line(line_id: int, *, kind: str = "product", selected: bool = False) -> Sal
         unit_price=Decimal("100"),
         shipping_fee=Decimal("0"),
         setup_fee=Decimal("0"),
-        total=Decimal("-100") if kind == "trade_in" else Decimal("100"),
+        total=Decimal("-100") if kind in {"trade_in", "refund"} else Decimal("100"),
     )
 
 
@@ -70,6 +70,20 @@ def test_choice_multiple_effective_lines_exclude_unselected_alternatives() -> No
     _accept_quotation_selection(quotation, [1, 3], "internal", _user())
 
     assert _effective_quotation_lines(quotation) == [first, third, trade_in]
+
+
+def test_refund_adjustment_is_always_included_with_selected_options() -> None:
+    first = _line(1)
+    second = _line(2)
+    refund = _line(3, kind="refund")
+    quotation = SalesQuotation(quotation_type="choice_single", history=[])
+    quotation.line_items = [first, second, refund]
+
+    accepted = _accept_quotation_selection(quotation, [1], "client_portal", _user(), "Facility User")
+
+    assert accepted == [first, refund]
+    assert refund.is_selected is True
+    assert quotation.history[-1]["by"] == "Admin User"
 
 
 def test_standard_keeps_required_all_behavior_for_backward_compatibility() -> None:

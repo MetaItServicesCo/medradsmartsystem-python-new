@@ -1,20 +1,28 @@
 import json
+import hashlib
+import secrets
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
 from app.core.deps import get_current_user
+from app.core.config import settings
 from app.utils.permission_deps import require_module_access
 from app.models.facility import Facility
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
-from app.models.sales import SalesQuotation, SalesQuotationLineItem
+from app.models.sales import (
+    SalesQuotation,
+    SalesQuotationAcceptance,
+    SalesQuotationLineItem,
+    SalesQuotationRecipient,
+)
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
@@ -33,6 +41,7 @@ from app.utils.invoice_approval import (
     validate_requested_payment_status,
 )
 from app.utils.logging import log_activity
+from app.utils.email import send_html_email
 from app.utils.notifications import create_notifications
 from app.utils.permissions import has_module_permission
 from app.utils.list_search import (
@@ -70,6 +79,8 @@ class SalesQuotationCreate(BaseModel):
     notes: Optional[str] = None
     tax_amount: Decimal = Decimal("0")
     discount_amount: Decimal = Decimal("0")
+    primary_recipient_user_id: Optional[int] = None
+    additional_recipient_user_ids: list[int] = Field(default_factory=list)
     items: list[SalesQuotationItemIn]
 
 
@@ -86,6 +97,8 @@ class SalesQuotationUpdate(BaseModel):
     discount_amount: Optional[Decimal] = None
     status: Optional[str] = None
     paid_status: Optional[str] = None
+    primary_recipient_user_id: Optional[int] = None
+    additional_recipient_user_ids: Optional[list[int]] = None
     items: Optional[list[SalesQuotationItemIn]] = None
 
 
@@ -133,6 +146,10 @@ class SalesInvoiceRefundCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class SalesQuotationSend(BaseModel):
+    expires_in_days: int = 30
+
+
 def _money(value: Any) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
@@ -155,20 +172,35 @@ def _next_invoice_number(db: Session) -> str:
     return f"INV-SALES-{next_num:06d}"
 
 
-def _history_entry(action: str, user: User, details: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def _history_entry(
+    action: str,
+    user: Optional[User],
+    details: Optional[dict[str, Any]] = None,
+    actor_name: Optional[str] = None,
+) -> dict[str, Any]:
     return {
         "action": action,
-        "by": user.full_name or user.username,
-        "user_id": user.id,
+        "by": (
+            user.full_name or user.username
+            if user
+            else actor_name or "External recipient"
+        ),
+        "user_id": user.id if user else None,
         "at": datetime.utcnow().isoformat(),
         "details": details or {},
     }
 
 
-def _append_history(quotation: SalesQuotation, action: str, user: User, details: Optional[dict[str, Any]] = None) -> None:
+def _append_history(
+    quotation: SalesQuotation,
+    action: str,
+    user: Optional[User],
+    details: Optional[dict[str, Any]] = None,
+    actor_name: Optional[str] = None,
+) -> None:
     history = list(quotation.history or [])
     safe_details = json.loads(json.dumps(details or {}, default=str)) if details else None
-    history.append(_history_entry(action, user, safe_details))
+    history.append(_history_entry(action, user, safe_details, actor_name))
     quotation.history = history
 
 
@@ -208,6 +240,27 @@ def _line_response(line: SalesQuotationLineItem) -> dict[str, Any]:
         "setup_fee": line.setup_fee,
         "condition": line.condition,
         "total": line.total,
+    }
+
+
+def _recipient_response(recipient: SalesQuotationRecipient) -> dict[str, Any]:
+    return {
+        "id": recipient.id,
+        "user_id": recipient.user_id,
+        "recipient_type": recipient.recipient_type,
+        "name": recipient.name,
+        "email": recipient.email,
+        "role": (
+            recipient.user.role.value
+            if recipient.user and hasattr(recipient.user.role, "value")
+            else recipient.user.role
+            if recipient.user
+            else None
+        ),
+        "status": recipient.status,
+        "sent_at": recipient.sent_at,
+        "viewed_at": recipient.viewed_at,
+        "accepted_at": recipient.accepted_at,
     }
 
 
@@ -268,6 +321,9 @@ def _quotation_response(quotation: SalesQuotation) -> dict[str, Any]:
         "accepted_by_id": quotation.accepted_by_id,
         "accepted_by_name": quotation.accepted_by.full_name if quotation.accepted_by else None,
         "accepted_at": quotation.accepted_at,
+        "sent_at": quotation.sent_at,
+        "expires_at": quotation.expires_at,
+        "revision": quotation.revision or 1,
         "status": quotation.status,
         "paid_status": (
             quotation.converted_invoice.refund_status
@@ -305,6 +361,20 @@ def _quotation_response(quotation: SalesQuotation) -> dict[str, Any]:
         "updated_at": quotation.updated_at,
         "history": quotation.history or [],
         "line_items": [_line_response(line) for line in quotation.line_items or []],
+        "recipients": [_recipient_response(item) for item in quotation.recipients or []],
+        "primary_recipient": next(
+            (
+                _recipient_response(item)
+                for item in quotation.recipients or []
+                if item.recipient_type == "primary"
+            ),
+            None,
+        ),
+        "additional_recipients": [
+            _recipient_response(item)
+            for item in quotation.recipients or []
+            if item.recipient_type == "additional"
+        ],
     }
 
 
@@ -321,13 +391,101 @@ def _sales_part_query(db: Session, current_user: User):
 
 QUOTE_TYPES = {"standard", "choice_single", "choice_multiple"}
 INTERNAL_SALES_ROLES = {UserRole.SUPERADMIN, UserRole.ADMIN}
+QUOTATION_RECIPIENT_ROLES = {
+    UserRole.FACILITY_ADMIN,
+    UserRole.FACILITY_MANAGER,
+    UserRole.CLIENT,
+}
+CREDIT_ITEM_KINDS = {"trade_in", "refund"}
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _eligible_quotation_recipient_query(db: Session, facility_id: int):
+    linked_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id == facility_id)
+    return db.query(User).filter(
+        User.is_active.is_(True),
+        User.role.in_(QUOTATION_RECIPIENT_ROLES),
+        or_(User.facility_id == facility_id, User.id.in_(linked_user_ids)),
+    )
+
+
+def _sync_quotation_recipients(
+    db: Session,
+    quotation: SalesQuotation,
+    primary_user_id: Optional[int],
+    additional_user_ids: Optional[list[int]],
+) -> None:
+    if quotation.status not in {"draft", "pending", "changes_requested"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Recipients cannot be changed after the quotation has been sent",
+        )
+
+    if quotation.facility_id is None:
+        if primary_user_id or additional_user_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Facility users can only be selected after choosing a facility",
+            )
+        quotation.recipients.clear()
+        return
+
+    requested_ids = {
+        user_id
+        for user_id in [primary_user_id, *(additional_user_ids or [])]
+        if user_id is not None
+    }
+    users = (
+        _eligible_quotation_recipient_query(db, quotation.facility_id)
+        .filter(User.id.in_(requested_ids))
+        .order_by(User.id.asc())
+        .all()
+        if requested_ids
+        else []
+    )
+    users_by_id = {user.id: user for user in users}
+    missing = sorted(requested_ids - set(users_by_id))
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="One or more recipients are not active attached users of this facility",
+        )
+
+    additional_ids = [user_id for user_id in dict.fromkeys(additional_user_ids or []) if user_id != primary_user_id]
+    quotation.recipients.clear()
+    if primary_user_id:
+        primary = users_by_id[primary_user_id]
+        quotation.recipients.append(
+            SalesQuotationRecipient(
+                user_id=primary.id,
+                recipient_type="primary",
+                name=primary.full_name,
+                email=primary.email,
+            )
+        )
+        quotation.customer_name = primary.full_name
+        quotation.customer_email = primary.email
+        quotation.customer_phone = primary.phone
+    for user_id in additional_ids:
+        user = users_by_id[user_id]
+        quotation.recipients.append(
+            SalesQuotationRecipient(
+                user_id=user.id,
+                recipient_type="additional",
+                name=user.full_name,
+                email=user.email,
+            )
+        )
 
 
 def _effective_quotation_lines(quotation: SalesQuotation) -> list[SalesQuotationLineItem]:
     lines = list(quotation.line_items or [])
     if quotation.quotation_type not in {"choice_single", "choice_multiple"}:
         return lines
-    return [line for line in lines if line.item_kind == "trade_in" or line.is_selected]
+    return [line for line in lines if line.item_kind in CREDIT_ITEM_KINDS or line.is_selected]
 
 
 def _selection_snapshot(lines: list[SalesQuotationLineItem]) -> list[dict[str, Any]]:
@@ -359,14 +517,110 @@ def _required_stock(lines: list[SalesQuotationLineItem]) -> dict[int, int]:
     return required
 
 
+def _create_invoice_for_accepted_quotation(
+    db: Session,
+    quotation: SalesQuotation,
+    accepted_lines: list[SalesQuotationLineItem],
+    accepted_by: Optional[User],
+) -> Invoice:
+    """Create the single pending-approval invoice for a portal acceptance."""
+    if quotation.converted_invoice:
+        return quotation.converted_invoice
+
+    for part_id, quantity in _required_stock(accepted_lines).items():
+        line = next(line for line in accepted_lines if line.part_id == part_id)
+        if not line.part or line.part.quantity_on_hand < quantity:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Not enough stock for {line.part.part_number if line.part else line.description}",
+            )
+
+    subtotal = sum((_money(line.total) for line in accepted_lines), Decimal("0"))
+    tax_amount = _money(quotation.tax_amount)
+    discount_amount = _money(quotation.discount_amount)
+    total_amount = subtotal + tax_amount - discount_amount
+    if total_amount < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Refund, trade-in and discount credits cannot exceed the selected sales amount",
+        )
+
+    quotation.subtotal = subtotal
+    quotation.total_amount = total_amount
+    invoice_line_items = [
+        {
+            "id": f"sales-line-{line.id}",
+            "item_number": (
+                line.part.part_number
+                if line.part
+                else "REFUND"
+                if line.item_kind == "refund"
+                else "TRADE-IN"
+            ),
+            "description": line.description,
+            "quantity": line.quantity,
+            "unit_price": float(line.unit_price),
+            "shipping_fee": float(line.shipping_fee),
+            "setup_fee": float(line.setup_fee),
+            "condition": line.condition,
+            "total": float(line.total),
+            "item_kind": line.item_kind or "product",
+            "item_metadata": line.item_metadata or {},
+        }
+        for line in accepted_lines
+    ]
+    invoice = Invoice(
+        invoice_number=_next_invoice_number(db),
+        invoice_type=InvoiceType.SALES,
+        customer_name=quotation.customer_name,
+        customer_email=quotation.customer_email or "billing@example.com",
+        customer_phone=quotation.customer_phone,
+        customer_address=quotation.customer_address,
+        facility_id=quotation.facility_id,
+        sales_quotation_id=quotation.id,
+        subtotal=subtotal,
+        tax_amount=tax_amount,
+        discount_amount=discount_amount,
+        total_amount=total_amount,
+        amount_paid=Decimal("0"),
+        balance_due=total_amount,
+        status=InvoiceStatus.PENDING,
+        issue_date=date.today(),
+        due_date=date.today() + timedelta(days=30),
+        payment_terms="Net 30",
+        notes=compose_invoice_edit_notes(
+            None,
+            f"Sales invoice generated from accepted quotation {quotation.quotation_number}.",
+            {
+                "line_items": invoice_line_items,
+                "selection_snapshot": quotation.selection_snapshot or [],
+                "quotation_revision": quotation.revision or 1,
+            },
+        ),
+    )
+    db.add(invoice)
+    db.flush()
+    record_invoice_created(
+        db,
+        invoice,
+        accepted_by,
+        f"Sales invoice created from accepted quotation {quotation.quotation_number}",
+    )
+    quotation.converted_invoice_id = invoice.id
+    quotation.status = "accepted"
+    quotation.updated_at = datetime.utcnow()
+    return invoice
+
+
 def _accept_quotation_selection(
     quotation: SalesQuotation,
     selected_line_item_ids: Optional[list[int]],
     channel: str,
-    current_user: User,
+    current_user: Optional[User],
+    accepted_name: Optional[str] = None,
 ) -> list[SalesQuotationLineItem]:
     product_lines = [line for line in quotation.line_items or [] if (line.item_kind or "product") == "product"]
-    trade_lines = [line for line in quotation.line_items or [] if line.item_kind == "trade_in"]
+    credit_lines = [line for line in quotation.line_items or [] if line.item_kind in CREDIT_ITEM_KINDS]
     if quotation.quotation_type not in {"choice_single", "choice_multiple"}:
         selected = product_lines
     else:
@@ -382,12 +636,12 @@ def _accept_quotation_selection(
 
     for line in product_lines:
         line.is_selected = line in selected
-    for line in trade_lines:
+    for line in credit_lines:
         line.is_selected = True
-    accepted_lines = selected + trade_lines
+    accepted_lines = selected + credit_lines
     quotation.selection_status = "accepted"
     quotation.selection_channel = (channel or "internal")[:50]
-    quotation.accepted_by_id = current_user.id
+    quotation.accepted_by_id = current_user.id if current_user else None
     quotation.accepted_at = datetime.utcnow()
     quotation.selection_snapshot = _selection_snapshot(accepted_lines)
     _append_history(
@@ -398,6 +652,7 @@ def _accept_quotation_selection(
             "channel": quotation.selection_channel,
             "selected_line_item_ids": [line.id for line in selected],
         },
+        accepted_name,
     )
     return accepted_lines
 
@@ -417,8 +672,8 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
         if item.quantity <= 0:
             raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
         item_kind = (item.item_kind or "product").strip().lower()
-        if item_kind not in {"product", "trade_in"}:
-            raise HTTPException(status_code=400, detail="Item type must be product or trade-in")
+        if item_kind not in {"product", "trade_in", "refund"}:
+            raise HTTPException(status_code=400, detail="Item type must be product, trade-in, or refund")
         part = None
         if item_kind == "product":
             if item.part_id is None:
@@ -429,7 +684,10 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
             if part.quantity_on_hand < item.quantity:
                 raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number}")
         elif not (item.description or "").strip():
-            raise HTTPException(status_code=400, detail="Trade-in description is required")
+            raise HTTPException(
+                status_code=400,
+                detail="A description is required for trade-in and refund adjustments",
+            )
 
         if (
             item_kind == "product"
@@ -438,14 +696,14 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
             and current_user.role not in INTERNAL_SALES_ROLES
         ):
             raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can set default quotation options")
-        is_default = quotation.quotation_type == "standard" or item_kind == "trade_in" or bool(item.is_default)
+        is_default = quotation.quotation_type == "standard" or item_kind in CREDIT_ITEM_KINDS or bool(item.is_default)
         if item_kind == "product" and is_default:
             default_product_count += 1
         unit_price = _money(item.unit_price if item.unit_price is not None else (part.unit_price if part else 0))
         shipping_fee = _money(item.shipping_fee)
         setup_fee = _money(item.setup_fee)
         unsigned_total = (unit_price * item.quantity) + shipping_fee + setup_fee
-        total = -abs(unsigned_total) if item_kind == "trade_in" else unsigned_total
+        total = -abs(unsigned_total) if item_kind in CREDIT_ITEM_KINDS else unsigned_total
         if is_default:
             subtotal += total
         quotation.line_items.append(
@@ -455,7 +713,7 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
                 is_default=is_default,
                 is_selected=is_default,
                 item_metadata=item.item_metadata or {},
-                description=item.description or (part.description if part else "Trade-in credit"),
+                description=item.description or (part.description if part else "Quotation credit"),
                 quantity=item.quantity,
                 unit_price=unit_price,
                 shipping_fee=shipping_fee,
@@ -476,11 +734,11 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
         # financial total is established only after the recipient chooses;
         # fixed discounts must not turn the draft into a negative quotation.
         subtotal = Decimal("0")
-    quotation.selection_status = "accepted" if quotation.quotation_type == "standard" else "pending"
-    quotation.selection_channel = "internal" if quotation.quotation_type == "standard" else None
+    quotation.selection_status = "pending"
+    quotation.selection_channel = None
     quotation.selection_snapshot = None
-    quotation.accepted_by_id = current_user.id if quotation.quotation_type == "standard" else None
-    quotation.accepted_at = datetime.utcnow() if quotation.quotation_type == "standard" else None
+    quotation.accepted_by_id = None
+    quotation.accepted_at = None
     quotation.subtotal = subtotal
     quotation.total_amount = (
         Decimal("0")
@@ -559,8 +817,47 @@ def list_sales_parts(
     return {"items": [_part_response(part) for part in parts], "total": total, "skip": skip, "limit": limit}
 
 
-IN_PROGRESS_QUOTATION_STATUSES = ("in_progress",)
+IN_PROGRESS_QUOTATION_STATUSES = ("accepted", "in_progress")
 COMPLETED_QUOTATION_STATUSES = ("completed",)
+
+
+@router.get("/facilities/{facility_id}/quotation-recipients")
+def list_quotation_recipient_candidates(
+    facility_id: int,
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    facility = db.query(Facility.id).filter(Facility.id == facility_id).first()
+    if not facility:
+        raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility_id)
+    query = _eligible_quotation_recipient_query(db, facility_id)
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                User.full_name.ilike(like),
+                User.email.ilike(like),
+                User.username.ilike(like),
+            )
+        )
+    total = query.count()
+    users = query.order_by(User.full_name.asc(), User.id.asc()).limit(limit).all()
+    return {
+        "items": [
+            {
+                "id": user.id,
+                "full_name": user.full_name,
+                "email": user.email,
+                "phone": user.phone,
+                "role": user.role.value if hasattr(user.role, "value") else user.role,
+            }
+            for user in users
+        ],
+        "total": total,
+    }
 
 
 @router.get("/quotations")
@@ -586,6 +883,8 @@ def list_quotations(
             joinedload(SalesQuotation.accepted_by),
             joinedload(SalesQuotation.converted_invoice),
             joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
+            selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
+            joinedload(SalesQuotation.acceptance),
         )
     )
     if date_from:
@@ -657,6 +956,8 @@ def get_quotation(
             joinedload(SalesQuotation.accepted_by),
             joinedload(SalesQuotation.converted_invoice),
             joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
+            selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
+            joinedload(SalesQuotation.acceptance),
         )
         .filter(SalesQuotation.id == quotation_id)
         .first()
@@ -687,7 +988,7 @@ def create_quotation(
         customer_phone=payload.customer_phone,
         customer_address=payload.customer_address,
         quotation_type=payload.quotation_type or "standard",
-        status="pending",
+        status="draft",
         paid_status="unpaid",
         requested_date=payload.requested_date or date.today(),
         notes=payload.notes,
@@ -698,6 +999,12 @@ def create_quotation(
     _append_history(quotation, "created", current_user)
     db.add(quotation)
     db.flush()
+    _sync_quotation_recipients(
+        db,
+        quotation,
+        payload.primary_recipient_user_id,
+        payload.additional_recipient_user_ids,
+    )
     _apply_items(db, quotation, payload.items, current_user)
     log_activity(db, "sales_quotations", quotation.id, "CREATE", current_user, {"work_order": quotation.work_order})
     db.commit()
@@ -714,7 +1021,11 @@ def update_quotation(
 ) -> Any:
     quotation = (
         db.query(SalesQuotation)
-        .options(joinedload(SalesQuotation.line_items), joinedload(SalesQuotation.facility))
+        .options(
+            joinedload(SalesQuotation.line_items),
+            joinedload(SalesQuotation.facility),
+            selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
+        )
         .filter(SalesQuotation.id == quotation_id)
         .first()
     )
@@ -725,7 +1036,24 @@ def update_quotation(
     if payload.facility_id is not None:
         require_facility_access(db, current_user, payload.facility_id)
 
-    update_data = payload.model_dump(exclude_unset=True, exclude={"items"})
+    changed_fields = set(payload.model_fields_set) - {"status", "paid_status"}
+    if quotation.status not in {"draft", "pending", "changes_requested"} and (
+        payload.items is not None
+        or changed_fields
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="A sent or accepted quotation cannot be edited; create a revision instead",
+        )
+
+    update_data = payload.model_dump(
+        exclude_unset=True,
+        exclude={
+            "items",
+            "primary_recipient_user_id",
+            "additional_recipient_user_ids",
+        },
+    )
     for field, value in update_data.items():
         if field == "customer_email" and value is not None:
             value = str(value)
@@ -734,12 +1062,187 @@ def update_quotation(
         _apply_items(db, quotation, payload.items, current_user)
     else:
         quotation.total_amount = _money(quotation.subtotal) + _money(quotation.tax_amount) - _money(quotation.discount_amount)
+    if {
+        "primary_recipient_user_id",
+        "additional_recipient_user_ids",
+    }.intersection(payload.model_fields_set):
+        _sync_quotation_recipients(
+            db,
+            quotation,
+            payload.primary_recipient_user_id,
+            payload.additional_recipient_user_ids or [],
+        )
+    if quotation.sent_at and changed_fields:
+        quotation.revision = (quotation.revision or 1) + 1
+        quotation.status = "draft"
+        quotation.sent_at = None
+        quotation.expires_at = None
+        for recipient in quotation.recipients:
+            recipient.status = "draft"
+            recipient.access_token_hash = None
+            recipient.token_expires_at = None
+            recipient.sent_at = None
+            recipient.viewed_at = None
+            recipient.accepted_at = None
+        _append_history(
+            quotation,
+            "revision_created",
+            current_user,
+            {"revision": quotation.revision},
+        )
     quotation.updated_at = datetime.utcnow()
     _append_history(quotation, "updated", current_user, update_data)
     log_activity(db, "sales_quotations", quotation.id, "UPDATE", current_user, update_data)
     db.commit()
     db.refresh(quotation)
     return _quotation_response(quotation)
+
+
+@router.post("/quotations/{quotation_id}/send")
+def send_quotation(
+    quotation_id: int,
+    payload: SalesQuotationSend,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    if current_user.role not in INTERNAL_SALES_ROLES:
+        raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can send sales quotations")
+    if not 1 <= payload.expires_in_days <= 90:
+        raise HTTPException(status_code=400, detail="Quotation expiration must be between 1 and 90 days")
+
+    quotation = (
+        db.query(SalesQuotation)
+        .options(
+            joinedload(SalesQuotation.facility),
+            joinedload(SalesQuotation.created_by),
+            joinedload(SalesQuotation.accepted_by),
+            joinedload(SalesQuotation.converted_invoice),
+            joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
+            selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
+        )
+        .filter(SalesQuotation.id == quotation_id)
+        .with_for_update(of=SalesQuotation)
+        .first()
+    )
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Sales quotation not found")
+    if quotation.facility_id is not None:
+        require_facility_access(db, current_user, quotation.facility_id)
+    if quotation.converted_invoice_id or quotation.status in {"accepted", "completed", "cancelled", "declined"}:
+        raise HTTPException(status_code=409, detail="This quotation can no longer be sent")
+
+    primary = next(
+        (item for item in quotation.recipients if item.recipient_type == "primary"),
+        None,
+    )
+    if not primary:
+        if quotation.facility_id is not None:
+            raise HTTPException(status_code=400, detail="Select a primary facility recipient before sending")
+        if not quotation.customer_name or not quotation.customer_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Customer name and email are required before sending an external quotation",
+            )
+        primary = SalesQuotationRecipient(
+            quotation_id=quotation.id,
+            recipient_type="primary",
+            name=quotation.customer_name,
+            email=quotation.customer_email,
+        )
+        quotation.recipients.append(primary)
+
+    db.flush()
+    now = datetime.utcnow()
+    expires_at = now + timedelta(days=payload.expires_in_days)
+    delivery_links: list[dict[str, Any]] = []
+    for recipient in quotation.recipients:
+        token = secrets.token_urlsafe(32)
+        recipient.access_token_hash = _token_hash(token)
+        recipient.token_expires_at = expires_at
+        recipient.sent_at = now
+        recipient.status = "sent"
+        recipient.updated_at = now
+        relative_url = f"/quotation/{token}"
+        public_url = f"{settings.PUBLIC_APP_URL.rstrip('/')}{relative_url}"
+        delivery_links.append(
+            {
+                "recipient_id": recipient.id,
+                "recipient_type": recipient.recipient_type,
+                "name": recipient.name,
+                "email": recipient.email,
+                "share_url": public_url,
+            }
+        )
+        if recipient.user_id:
+            create_notifications(
+                db,
+                user_ids=[recipient.user_id],
+                title="Sales quotation received",
+                message=f"{quotation.quotation_number} is ready for your review.",
+                notification_type="billing",
+                link_url=relative_url,
+                actor_id=current_user.id,
+            )
+        background_tasks.add_task(
+            send_html_email,
+            [recipient.email],
+            f"Quotation {quotation.quotation_number}",
+            (
+                f"<p>Hello {recipient.name},</p>"
+                f"<p>Quotation <strong>{quotation.quotation_number}</strong> is ready for review.</p>"
+                f"<p><a href=\"{public_url}\">View quotation</a></p>"
+                f"<p>This secure link expires on {expires_at.strftime('%B %d, %Y')}.</p>"
+            ),
+            (
+                f"Hello {recipient.name},\n\nQuotation {quotation.quotation_number} is ready for review.\n"
+                f"{public_url}\n\nThis link expires on {expires_at.strftime('%B %d, %Y')}."
+            ),
+        )
+
+    quotation.status = "sent"
+    quotation.sent_at = now
+    quotation.expires_at = expires_at
+    quotation.updated_at = now
+    _append_history(
+        quotation,
+        "sent",
+        current_user,
+        {
+            "revision": quotation.revision or 1,
+            "expires_at": expires_at.isoformat(),
+            "recipients": [
+                {
+                    "user_id": item.user_id,
+                    "name": item.name,
+                    "email": item.email,
+                    "recipient_type": item.recipient_type,
+                }
+                for item in quotation.recipients
+            ],
+        },
+    )
+    log_activity(
+        db,
+        "sales_quotations",
+        quotation.id,
+        "SEND",
+        current_user,
+        {"recipient_count": len(quotation.recipients), "expires_at": expires_at},
+    )
+    db.commit()
+    return {
+        **_quotation_response(quotation),
+        "delivery_links": delivery_links,
+        "primary_share_url": next(
+            (
+                item["share_url"]
+                for item in delivery_links
+                if item["recipient_type"] == "primary"
+            ),
+            None,
+        ),
+    }
 
 
 @router.delete("/quotations/{quotation_id}")
@@ -858,7 +1361,13 @@ def convert_to_invoice(
     invoice_line_items = [
         {
             "id": f"sales-line-{line.id}",
-            "item_number": line.part.part_number if line.part else "TRADE-IN",
+            "item_number": (
+                line.part.part_number
+                if line.part
+                else "REFUND"
+                if line.item_kind == "refund"
+                else "TRADE-IN"
+            ),
             "description": line.description,
             "quantity": line.quantity,
             "unit_price": float(line.unit_price),
