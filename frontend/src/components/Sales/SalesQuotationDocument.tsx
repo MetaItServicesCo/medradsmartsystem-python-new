@@ -17,7 +17,8 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import PrintIcon from '@mui/icons-material/Print'
 
 import type { SalesQuotationLineItem } from '@/api/sales'
-import { calculateSalesPricing, SALES_TAX_RATE } from '@/utils/salesPricing'
+import { calculateSalesPricing } from '@/utils/salesPricing'
+import SalesPricingBreakdown from './SalesPricingBreakdown'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 const dateLabel = (value?: string | null) => value
@@ -77,29 +78,6 @@ const SalesQuotationDocument = ({
   const pricing = calculateSalesPricing(selectedLines, Number(quotation.discount_amount || 0))
   const statusLabel = quotation.status.replace(/_/g, ' ')
   const hasSelection = quotation.quotation_type !== 'standard'
-
-  const summaryRows: Array<{
-    label: string
-    value: number
-    negative?: boolean
-  }> = [
-    { label: 'Parts', value: pricing.merchandise },
-    { label: 'Shipping & Packing', value: pricing.shippingPacking },
-    { label: 'Delivery & Setup', value: pricing.deliverySetup },
-    { label: 'Labor (non-taxable)', value: pricing.labor },
-    ...(pricing.tradeInCredit > 0
-      ? [{ label: 'Trade-In Credit', value: pricing.tradeInCredit, negative: true }]
-      : []),
-    ...(pricing.refundCredit > 0
-      ? [{ label: 'Refund Payment', value: pricing.refundCredit, negative: true }]
-      : []),
-    { label: 'Subtotal', value: pricing.subtotal },
-    { label: 'Taxable Amount', value: pricing.taxableBase },
-    { label: `Sales Tax (${SALES_TAX_RATE}%)`, value: pricing.taxAmount },
-    ...(pricing.discountAmount > 0
-      ? [{ label: 'Discount', value: pricing.discountAmount, negative: true }]
-      : []),
-  ]
 
   return (
     <Box>
@@ -218,29 +196,8 @@ const SalesQuotationDocument = ({
         </Table>
       </TableContainer>
 
-      <Box sx={{ ml: 'auto', width: { xs: '100%', sm: 430 }, mb: 4 }}>
-        {summaryRows.map(({ label, value, negative }, index) => (
-          <Box
-            key={label}
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: '1fr auto',
-              gap: 2,
-              py: index >= summaryRows.length - 3 ? 0.7 : 0.45,
-              borderTop: label === 'Subtotal' ? '1px solid #E5E7EB' : undefined,
-              mt: label === 'Subtotal' ? 0.7 : 0,
-            }}
-          >
-            <Typography sx={{ color: '#475569', fontWeight: label === 'Subtotal' ? 900 : 700 }}>{label}</Typography>
-            <Typography sx={{ textAlign: 'right', color: negative ? '#DC2626' : '#1E1B4B', fontWeight: label === 'Subtotal' ? 900 : 700 }}>
-              {negative ? '-' : ''}{money(value)}
-            </Typography>
-          </Box>
-        ))}
-        <Box sx={{ mt: 1, pt: 1.3, borderTop: '2px solid #312E81', display: 'grid', gridTemplateColumns: '1fr auto', gap: 2 }}>
-          <Typography sx={{ fontWeight: 950, fontSize: 21, color: '#1E1B4B' }}>Total</Typography>
-          <Typography sx={{ fontWeight: 950, fontSize: 21, color: '#059669' }}>{money(pricing.total)}</Typography>
-        </Box>
+      <Box sx={{ mb: 4 }}>
+        <SalesPricingBreakdown pricing={pricing} />
       </Box>
 
       {quotation.notes && <Alert icon={false} sx={{ mb: 3 }}>{quotation.notes}</Alert>}

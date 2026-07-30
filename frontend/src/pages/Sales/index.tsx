@@ -30,6 +30,7 @@ import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLine
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
+import SalesPricingBreakdown from '@/components/Sales/SalesPricingBreakdown'
 import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
@@ -66,6 +67,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import {
+  calculateSalesPricing,
   roundSalesMoney as roundMoney,
   SALES_TAX_RATE,
   salesLineTaxableAmount,
@@ -1003,15 +1005,10 @@ const Sales = () => {
     || (item.item_kind === 'product' && item.is_default)
     || (item.item_kind !== 'product' && hasDefaultProduct)
   )
-  const quotationTotal = quotationForm.items.reduce((sum, item) => {
-    return sum + (isQuotationLineIncluded(item) ? lineTotal(item) : 0)
-  }, 0)
-  const quotationTaxableBase = Math.max(0, quotationForm.items.reduce(
-    (sum, item) => sum + (isQuotationLineIncluded(item) ? salesLineTaxableAmount(item) : 0),
-    0,
-  ))
-  const quotationTaxAmount = roundMoney(quotationTaxableBase * SALES_TAX_FACTOR)
-  const quotationGrandTotal = quotationTotal + quotationTaxAmount - Number(quotationForm.discount_amount || 0)
+  const quotationPricing = calculateSalesPricing(
+    quotationForm.items.filter(isQuotationLineIncluded),
+    Number(quotationForm.discount_amount || 0),
+  )
   const convertPartsTotal = convertQuotation
     ? convertQuotation.line_items.reduce((sum, line) => (
         line.item_kind !== 'product' || convertQuotation.quotation_type === 'standard' || selectedQuoteOptions.includes(line.id)
@@ -1935,7 +1932,7 @@ const Sales = () => {
 
       <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{editingQuotation ? 'Edit Sales Quotation' : 'Create Sales Quotation'}</DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
             <FacilitySearchAutocomplete
               label="Facility"
@@ -2131,7 +2128,7 @@ const Sales = () => {
             </Card>
           )}
 
-          <Card sx={{ p: 2, mb: 2, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+          <Card sx={{ order: 1, p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
             <FormControlLabel
               control={<Checkbox checked={tradeInEnabled} onChange={event => setTradeInEnabled(event.target.checked)} />}
               label={<Typography sx={{ fontWeight: 900, color: '#9A3412' }}>Add Trade-In</Typography>}
@@ -2197,7 +2194,7 @@ const Sales = () => {
             )}
           </Card>
 
-          <Card sx={{ p: 2, mb: 2, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+          <Card sx={{ order: 1, p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
             <FormControlLabel
               control={<Checkbox checked={refundAdjustmentEnabled} onChange={event => setRefundAdjustmentEnabled(event.target.checked)} />}
               label={<Typography sx={{ fontWeight: 900, color: '#B91C1C' }}>Refund Payment</Typography>}
@@ -2373,22 +2370,21 @@ const Sales = () => {
             </Table>
           </TableContainer>
 
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 180px 180px' }, gap: 2, mt: 2, alignItems: 'start' }}>
-            <TextField label="Notes" value={quotationForm.notes || ''} onChange={e => setQuotationForm(prev => ({ ...prev, notes: e.target.value }))} multiline rows={3} />
-            <TextField
-              label={`Tax (${SALES_TAX_RATE}%)`}
-              value={quotationTaxAmount.toFixed(2)}
-              InputProps={{ readOnly: true }}
-              helperText={`Taxable base ${money(quotationTaxableBase)} · labor excluded`}
-            />
-            <TextField label="Discount" type="number" value={quotationForm.discount_amount || 0} onChange={e => setQuotationForm(prev => ({ ...prev, discount_amount: Number(e.target.value) }))} />
-            <Card sx={{ p: 2, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #EEF0F6' }}>
-              <Typography sx={{ color: '#6B7280', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>Total</Typography>
-              <Typography sx={{ color: '#059669', fontWeight: 900, fontSize: 26 }}>{money(quotationGrandTotal)}</Typography>
-            </Card>
+          <Box sx={{ order: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(280px, 1fr) minmax(480px, 620px)' }, gap: 2, mt: 2, alignItems: 'start' }}>
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              <TextField label="Notes" value={quotationForm.notes || ''} onChange={e => setQuotationForm(prev => ({ ...prev, notes: e.target.value }))} multiline rows={3} />
+              <TextField
+                label="Discount"
+                type="number"
+                value={quotationForm.discount_amount || 0}
+                onChange={e => setQuotationForm(prev => ({ ...prev, discount_amount: Number(e.target.value) }))}
+                inputProps={{ min: 0, step: '0.01' }}
+              />
+            </Box>
+            <SalesPricingBreakdown pricing={quotationPricing} />
           </Box>
 
-          {selectedFacility && <Typography sx={{ color: '#8B95A7', mt: 1, fontWeight: 700, fontSize: 13 }}>Using billing details from {selectedFacility.name}.</Typography>}
+          {selectedFacility && <Typography sx={{ order: 3, color: '#8B95A7', mt: 1, fontWeight: 700, fontSize: 13 }}>Using billing details from {selectedFacility.name}.</Typography>}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setQuotationDialog(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
