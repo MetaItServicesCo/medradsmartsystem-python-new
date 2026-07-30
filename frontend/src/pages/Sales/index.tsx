@@ -66,6 +66,7 @@ import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed']
+const COMPLETED_PAYMENT_METHODS = ['credit_card', 'cheque', 'bank_transfer'] as const
 const PAGE_SIZE = 20
 const SALES_ORDER_SEARCH_FIELDS = [
   { value: 'all', label: 'All fields' },
@@ -1111,8 +1112,31 @@ const Sales = () => {
     }))
   }
 
-  const renderKpi = (label: string, value: number, icon: JSX.Element, color: string) => (
-    <Card sx={{ p: 2.2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(49,46,129,0.07)' }}>
+  const renderKpi = (label: string, value: number, icon: JSX.Element, color: string, targetTab: number) => (
+    <Card
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${label}`}
+      aria-pressed={tab === targetTab}
+      onClick={() => handleTabChange(targetTab)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          handleTabChange(targetTab)
+        }
+      }}
+      sx={{
+        p: 2.2,
+        borderRadius: '18px',
+        border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
+        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(49,46,129,0.07)',
+        cursor: 'pointer',
+        transform: tab === targetTab ? 'translateY(-2px)' : 'none',
+        transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
+        '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 18px 40px ${color}20` },
+        '&:focus-visible': { outline: `3px solid ${color}35`, outlineOffset: 2 },
+      }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
         <Avatar sx={{ bgcolor: `${color}18`, color, borderRadius: '14px' }}>{icon}</Avatar>
         <Box>
@@ -1127,8 +1151,13 @@ const Sales = () => {
     if (!method) return '-'
     const labels: Record<string, string> = {
       credit_card: 'Credit Card',
+      square_card: 'Credit Card',
       cheque: 'Cheque',
+      check: 'Cheque',
       bank_transfer: 'Bank Transfer',
+      wire_transfer: 'Bank Transfer',
+      ach: 'Bank Transfer',
+      mbmts_ach: 'Bank Transfer',
     }
     return labels[method] || method.replace(/_/g, ' ')
   }
@@ -1508,11 +1537,11 @@ const Sales = () => {
       </Card>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 2, mb: 3 }}>
-        {renderKpi('Quotations', stats.quotations, <AssignmentIcon />, '#4F46E5')}
-        {renderKpi('Invoices', stats.invoices, <ReceiptLongIcon />, '#2563EB')}
-        {renderKpi('In Progress', stats.inProgress, <ShoppingCartIcon />, '#F59E0B')}
-        {renderKpi('Completed', stats.completed, <CheckCircleIcon />, '#059669')}
-        {renderKpi('History', stats.history, <HistoryIcon />, '#7C3AED')}
+        {renderKpi('Quotations', stats.quotations, <AssignmentIcon />, '#4F46E5', 0)}
+        {renderKpi('Invoices', stats.invoices, <ReceiptLongIcon />, '#2563EB', 1)}
+        {renderKpi('In Progress', stats.inProgress, <ShoppingCartIcon />, '#F59E0B', 2)}
+        {renderKpi('Completed', stats.completed, <CheckCircleIcon />, '#059669', 3)}
+        {renderKpi('History', stats.history, <HistoryIcon />, '#7C3AED', 3)}
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
@@ -1586,10 +1615,10 @@ const Sales = () => {
                 {renderSearchControl('Search completed sales')}
               </Box>
               <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
-                {['credit_card', 'cheque', 'bank_transfer'].map(method => (
+                {COMPLETED_PAYMENT_METHODS.map(method => (
                   <Chip
                     key={method}
-                    label={`${paymentMethodLabel(method)}: ${completedQuotations.filter(q => (q.converted_invoice_payment_method || q.payment_method) === method).length}`}
+                    label={`${paymentMethodLabel(method)}: ${summary?.completed_payment_methods?.[method] || 0}`}
                     sx={{ fontWeight: 900, bgcolor: '#ECFDF5', color: '#047857' }}
                   />
                 ))}

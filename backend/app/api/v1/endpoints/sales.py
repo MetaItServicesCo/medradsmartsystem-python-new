@@ -1221,6 +1221,18 @@ IN_PROGRESS_QUOTATION_STATUSES = ("accepted", "in_progress")
 COMPLETED_QUOTATION_STATUSES = ("completed",)
 
 
+def _sales_payment_method_category(value: Optional[str]) -> Optional[str]:
+    """Map gateway and legacy payment values to the three Sales UI groups."""
+    normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"credit_card", "square_card", "card", "square"}:
+        return "credit_card"
+    if normalized in {"cheque", "check"}:
+        return "cheque"
+    if normalized in {"bank_transfer", "wire_transfer", "ach", "mbmts_ach"}:
+        return "bank_transfer"
+    return None
+
+
 @router.get("/facilities/{facility_id}/quotation-recipients")
 def list_quotation_recipient_candidates(
     facility_id: int,
@@ -2582,6 +2594,28 @@ def sales_summary(
     completed_total = base.filter(SalesQuotation.status.in_(COMPLETED_QUOTATION_STATUSES)).with_entities(
         func.coalesce(func.sum(SalesQuotation.total_amount), 0)
     ).scalar()
+    payment_method_expression = func.lower(
+        func.coalesce(Invoice.payment_method, SalesQuotation.payment_method, "")
+    )
+    completed_payment_rows = (
+        base.filter(SalesQuotation.status.in_(COMPLETED_QUOTATION_STATUSES))
+        .outerjoin(Invoice, SalesQuotation.converted_invoice_id == Invoice.id)
+        .with_entities(
+            payment_method_expression.label("payment_method"),
+            func.count(SalesQuotation.id).label("record_count"),
+        )
+        .group_by(payment_method_expression)
+        .all()
+    )
+    completed_payment_methods = {
+        "credit_card": 0,
+        "cheque": 0,
+        "bank_transfer": 0,
+    }
+    for payment_method, record_count in completed_payment_rows:
+        category = _sales_payment_method_category(payment_method)
+        if category:
+            completed_payment_methods[category] += int(record_count or 0)
     in_progress_paid = (
         base.filter(SalesQuotation.status.in_(IN_PROGRESS_QUOTATION_STATUSES))
         .join(Invoice, SalesQuotation.converted_invoice_id == Invoice.id)
@@ -2599,4 +2633,5 @@ def sales_summary(
         "in_progress_total": float(in_progress_total or 0),
         "in_progress_paid": float(in_progress_paid or 0),
         "completed_total": float(completed_total or 0),
+        "completed_payment_methods": completed_payment_methods,
     }

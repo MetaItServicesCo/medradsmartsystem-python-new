@@ -11,8 +11,10 @@ from app.api.v1.endpoints.sales import (
     _accept_quotation_selection,
     _apply_items,
     _effective_quotation_lines,
+    _sales_payment_method_category,
     _validate_saved_quotation_stock,
     revise_quotation,
+    sales_summary,
 )
 from app.api.v1.endpoints.sales_portal import (
     PortalSquarePaymentIn,
@@ -59,6 +61,90 @@ def _line(line_id: int, *, kind: str = "product", selected: bool = False) -> Sal
         setup_fee=Decimal("0"),
         total=Decimal("-100") if kind in {"trade_in", "refund"} else Decimal("100"),
     )
+
+
+@pytest.mark.parametrize(
+    ("stored_method", "expected_category"),
+    [
+        ("credit_card", "credit_card"),
+        ("square_card", "credit_card"),
+        ("Credit Card", "credit_card"),
+        ("cheque", "cheque"),
+        ("check", "cheque"),
+        ("bank_transfer", "bank_transfer"),
+        ("wire transfer", "bank_transfer"),
+        ("ach", "bank_transfer"),
+        (None, None),
+        ("test_mode", None),
+    ],
+)
+def test_sales_payment_methods_are_grouped_for_completed_sales(
+    stored_method: str | None,
+    expected_category: str | None,
+) -> None:
+    assert _sales_payment_method_category(stored_method) == expected_category
+
+
+def test_sales_summary_counts_square_payments_as_credit_cards() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        admin = User(
+            username="sales-summary-admin",
+            email="sales-summary-admin@example.com",
+            full_name="Sales Summary Admin",
+            hashed_password="test",
+            user_type=UserType.EMPLOYEE,
+            role=UserRole.ADMIN,
+        )
+        db.add(admin)
+        db.flush()
+        for index in range(4):
+            quotation = SalesQuotation(
+                quotation_number=f"SQ-SUMMARY-{index}",
+                work_order=f"SO-SUMMARY-{index}",
+                created_by_id=admin.id,
+                customer_name=f"Customer {index}",
+                status="completed",
+                paid_status="paid",
+                payment_method="square_card",
+                subtotal=Decimal("100"),
+                total_amount=Decimal("100"),
+                history=[],
+            )
+            db.add(quotation)
+            db.flush()
+            invoice = Invoice(
+                invoice_number=f"INV-SALES-SUMMARY-{index}",
+                invoice_type=InvoiceType.SALES,
+                customer_name=quotation.customer_name,
+                customer_email=f"customer-{index}@example.com",
+                sales_quotation_id=quotation.id,
+                subtotal=Decimal("100"),
+                total_amount=Decimal("100"),
+                amount_paid=Decimal("100"),
+                balance_due=Decimal("0"),
+                payment_method="square_card",
+                status=InvoiceStatus.PAID,
+                issue_date=date.today(),
+                due_date=date.today(),
+            )
+            db.add(invoice)
+            db.flush()
+            quotation.converted_invoice_id = invoice.id
+        db.commit()
+
+        summary = sales_summary(db=db, current_user=admin)
+
+        assert summary["completed"] == 4
+        assert summary["completed_payment_methods"] == {
+            "credit_card": 4,
+            "cheque": 0,
+            "bank_transfer": 0,
+        }
+    finally:
+        db.close()
 
 
 def test_choice_single_accepts_exactly_one_product_and_always_includes_trade_in() -> None:

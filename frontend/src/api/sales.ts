@@ -454,6 +454,11 @@ export const fetchSalesSummary = async (): Promise<{
   in_progress_total: number
   in_progress_paid: number
   completed_total: number
+  completed_payment_methods: {
+    credit_card: number
+    cheque: number
+    bank_transfer: number
+  }
 }> => {
   const res = await apiClient.get('/sales/summary')
   return res.data
