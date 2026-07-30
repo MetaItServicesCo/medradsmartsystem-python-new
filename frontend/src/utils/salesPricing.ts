@@ -24,13 +24,6 @@ export const salesLineTotal = (line: SalesPricingLine) => {
     : unsignedTotal
 }
 
-export const salesLineTaxableAmount = (line: SalesPricingLine) => {
-  const merchandise = Number(line.quantity || 0) * Number(line.unit_price || 0)
-  if (line.item_kind === 'trade_in') return -Math.abs(merchandise)
-  if (line.item_kind === 'refund') return 0
-  return merchandise + Number(line.shipping_fee || 0) + Number(line.setup_fee || 0)
-}
-
 export const calculateSalesPricing = (
   lines: SalesPricingLine[],
   discountAmount = 0,
@@ -63,10 +56,10 @@ export const calculateSalesPricing = (
     0,
   )
   const subtotal = lines.reduce((sum, line) => sum + salesLineTotal(line), 0)
-  const taxableBase = Math.max(
-    0,
-    lines.reduce((sum, line) => sum + salesLineTaxableAmount(line), 0),
-  )
+  // Trade-in credit applies only against merchandise. Any unused trade-in
+  // value must not reduce taxable Shipping & Packing or Delivery & Setup.
+  const taxableMerchandise = Math.max(0, merchandise - tradeInCredit)
+  const taxableBase = taxableMerchandise + shippingPacking + deliverySetup
   const taxAmount = roundSalesMoney(taxableBase * SALES_TAX_FACTOR)
   const total = roundSalesMoney(subtotal + taxAmount - Number(discountAmount || 0))
 

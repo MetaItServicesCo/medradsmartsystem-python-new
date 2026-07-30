@@ -689,8 +689,10 @@ def _effective_quotation_lines(quotation: SalesQuotation) -> list[SalesQuotation
     ]
 
 
-def _line_pricing(line: SalesQuotationLineItem) -> tuple[Decimal, Decimal]:
-    """Return the signed line total and its signed Sales taxable amount.
+def _line_pricing(
+    line: SalesQuotationLineItem,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Return signed total, taxable merchandise, and taxable line fees.
 
     Products, Shipping & Packing, and Delivery & Setup are taxable. Labor is
     deliberately excluded. Trade-ins reduce the merchandise taxable base;
@@ -706,12 +708,19 @@ def _line_pricing(line: SalesQuotationLineItem) -> tuple[Decimal, Decimal]:
     item_kind = (line.item_kind or "product").strip().lower()
     signed_total = -abs(unsigned_total) if item_kind in CREDIT_ITEM_KINDS else unsigned_total
     if item_kind == "product":
-        taxable_amount = merchandise + shipping + setup
+        taxable_merchandise = merchandise
+        taxable_fees = shipping + setup
     elif item_kind == "trade_in":
-        taxable_amount = -abs(merchandise)
+        taxable_merchandise = -abs(merchandise)
+        taxable_fees = Decimal("0")
     else:
-        taxable_amount = Decimal("0")
-    return _money(signed_total), _money(taxable_amount)
+        taxable_merchandise = Decimal("0")
+        taxable_fees = Decimal("0")
+    return (
+        _money(signed_total),
+        _money(taxable_merchandise),
+        _money(taxable_fees),
+    )
 
 
 def _quotation_pricing(
@@ -720,14 +729,22 @@ def _quotation_pricing(
 ) -> tuple[Decimal, Decimal, Decimal, Decimal]:
     """Calculate subtotal, taxable base, tax, and total authoritatively."""
     subtotal = Decimal("0")
-    taxable_base = Decimal("0")
+    taxable_merchandise = Decimal("0")
+    taxable_fees = Decimal("0")
     for line in lines:
-        line_total, line_taxable = _line_pricing(line)
+        line_total, line_merchandise, line_fees = _line_pricing(line)
         line.total = line_total
         subtotal += line_total
-        taxable_base += line_taxable
+        taxable_merchandise += line_merchandise
+        taxable_fees += line_fees
     subtotal = _money(subtotal)
-    taxable_base = max(_money(taxable_base), Decimal("0"))
+    # A trade-in can reduce taxable merchandise to zero, but its unused credit
+    # must never spill into Shipping & Packing or Delivery & Setup.
+    taxable_base = (
+        max(_money(taxable_merchandise), Decimal("0"))
+        + max(_money(taxable_fees), Decimal("0"))
+    )
+    taxable_base = _money(taxable_base)
     tax_amount = (taxable_base * SALES_TAX_FACTOR).quantize(Decimal("0.01"))
     total_amount = subtotal + tax_amount - _money(discount_amount)
     return subtotal, taxable_base, tax_amount, _money(total_amount)

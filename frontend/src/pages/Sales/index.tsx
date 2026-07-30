@@ -68,9 +68,7 @@ import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import {
   calculateSalesPricing,
-  roundSalesMoney as roundMoney,
   SALES_TAX_RATE,
-  salesLineTaxableAmount,
   salesLineTotal,
 } from '@/utils/salesPricing'
 
@@ -157,8 +155,6 @@ const statusChip = (value: string) => {
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
-const SALES_TAX_FACTOR = SALES_TAX_RATE / 100
-
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
@@ -1009,21 +1005,18 @@ const Sales = () => {
     quotationForm.items.filter(isQuotationLineIncluded),
     Number(quotationForm.discount_amount || 0),
   )
-  const convertPartsTotal = convertQuotation
-    ? convertQuotation.line_items.reduce((sum, line) => (
-        line.item_kind !== 'product' || convertQuotation.quotation_type === 'standard' || selectedQuoteOptions.includes(line.id)
-          ? sum + Number(line.total || 0)
-          : sum
-      ), 0)
-    : 0
-  const convertTaxableBase = convertQuotation
-    ? Math.max(0, convertQuotation.line_items.reduce((sum, line) => (
-        line.item_kind !== 'product' || convertQuotation.quotation_type === 'standard' || selectedQuoteOptions.includes(line.id)
-          ? sum + salesLineTaxableAmount(line)
-          : sum
-      ), 0))
-    : 0
-  const convertTaxAmount = roundMoney(convertTaxableBase * SALES_TAX_FACTOR)
+  const convertPricing = calculateSalesPricing(
+    convertQuotation
+      ? convertQuotation.line_items.filter(line => (
+          line.item_kind !== 'product'
+          || convertQuotation.quotation_type === 'standard'
+          || selectedQuoteOptions.includes(line.id)
+        ))
+      : [],
+    0,
+  )
+  const convertPartsTotal = convertPricing.subtotal
+  const convertTaxAmount = convertPricing.taxAmount
   const convertGrandTotal =
     convertPartsTotal +
     Number(invoiceDetails.worked_hours || 0) +

@@ -225,6 +225,25 @@ def test_trade_in_reduces_merchandise_taxable_base_but_refund_does_not() -> None
     assert total_amount == Decimal("834.81")
 
 
+def test_trade_in_cannot_reduce_shipping_or_setup_tax() -> None:
+    product = _line(1)
+    product.unit_price = Decimal("269.11")
+    product.shipping_fee = Decimal("100")
+    product.setup_fee = Decimal("100")
+    product.labor_fee = Decimal("100")
+    trade_in = _line(2, kind="trade_in")
+    trade_in.unit_price = Decimal("299.99")
+
+    subtotal, taxable_base, tax_amount, total_amount = _quotation_pricing(
+        [product, trade_in],
+    )
+
+    assert subtotal == Decimal("269.12")
+    assert taxable_base == Decimal("200.00")
+    assert tax_amount == Decimal("16.50")
+    assert total_amount == Decimal("285.62")
+
+
 def test_refund_adjustment_is_always_included_with_selected_options() -> None:
     first = _line(1)
     second = _line(2)
