@@ -42,6 +42,10 @@ from app.utils.invoice_ledger import (
     record_payment_delta,
     record_status_change,
 )
+from app.utils.sales_inventory import (
+    ensure_sales_inventory_available,
+    fulfill_sales_invoice_inventory,
+)
 
 
 router = APIRouter()
@@ -218,6 +222,7 @@ def _record_test_payment(
     balance = max(_money(invoice.balance_due), _money(0))
     if balance <= 0:
         raise HTTPException(status_code=409, detail="This invoice has no payable balance")
+    ensure_sales_inventory_available(db, invoice)
 
     previous_paid = _money(invoice.amount_paid)
     previous_status = invoice.status
@@ -250,6 +255,7 @@ def _record_test_payment(
     quotation.paid_status = "paid"
     quotation.status = "completed"
     quotation.updated_at = datetime.utcnow()
+    fulfill_sales_invoice_inventory(db, invoice, actor)
     _append_history(
         quotation,
         "test_payment_recorded",
@@ -323,6 +329,9 @@ def _record_square_payment(
     balance = max(_money(invoice.balance_due), _money(0))
     if balance <= 0:
         raise HTTPException(status_code=409, detail="This invoice has no payable balance")
+    # Lock and validate the exact selected products before Square charges the
+    # customer. The locks remain in this transaction through fulfillment.
+    ensure_sales_inventory_available(db, invoice)
     try:
         square_payment = create_square_payment(
             source_id=payload.source_id,
@@ -399,6 +408,7 @@ def _record_square_payment(
     if invoice.status == InvoiceStatus.PAID:
         quotation.status = "completed"
     quotation.updated_at = datetime.utcnow()
+    fulfill_sales_invoice_inventory(db, invoice, actor)
     _append_history(
         quotation,
         "square_payment_completed",

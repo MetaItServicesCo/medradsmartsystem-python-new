@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -64,6 +64,11 @@ class SalesQuotation(Base):
         back_populates="quotation",
         cascade="all, delete-orphan",
         order_by="SalesPaymentAuthorization.created_at.desc()",
+    )
+    inventory_reservations = relationship(
+        "SalesInventoryReservation",
+        back_populates="quotation",
+        cascade="all, delete-orphan",
     )
 
 
@@ -191,3 +196,50 @@ class SalesPaymentAuthorization(Base):
     recipient = relationship("SalesQuotationRecipient")
     requested_by = relationship("User", foreign_keys=[requested_by_id])
     submitted_by = relationship("User", foreign_keys=[submitted_by_user_id])
+
+
+class SalesInventoryReservation(Base):
+    """Hard stock commitment created only after a Sales quotation is accepted."""
+
+    __tablename__ = "sales_inventory_reservations"
+    __table_args__ = (
+        UniqueConstraint("quotation_id", "part_id", name="uq_sales_inventory_reservation_quote_part"),
+        CheckConstraint("quantity > 0", name="ck_sales_inventory_reservation_quantity_positive"),
+        CheckConstraint(
+            "status IN ('active', 'released', 'fulfilled')",
+            name="ck_sales_inventory_reservation_status",
+        ),
+        Index("ix_sales_inventory_reservation_part_status", "part_id", "status"),
+        Index("ix_sales_inventory_reservation_invoice_status", "invoice_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    quotation_id = Column(
+        Integer,
+        ForeignKey("sales_quotations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    invoice_id = Column(
+        Integer,
+        ForeignKey("invoices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    part_id = Column(
+        Integer,
+        ForeignKey("inventory_parts.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    quantity = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, default="active", index=True)
+    released_at = Column(DateTime, nullable=True)
+    fulfilled_at = Column(DateTime, nullable=True)
+    release_reason = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    quotation = relationship("SalesQuotation", back_populates="inventory_reservations")
+    invoice = relationship("Invoice")
+    part = relationship("InventoryPart")

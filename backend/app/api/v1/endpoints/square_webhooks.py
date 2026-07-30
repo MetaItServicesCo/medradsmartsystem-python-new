@@ -17,6 +17,7 @@ from app.utils.invoice_ledger import (
     record_status_change,
 )
 from app.utils.square_payments import minor_units_to_amount, verify_square_webhook_signature
+from app.utils.sales_inventory import fulfill_sales_invoice_inventory
 
 
 router = APIRouter()
@@ -128,6 +129,7 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
         None,
         "Invoice status synchronized from Square webhook",
     )
+    fulfill_sales_invoice_inventory(db, invoice, None)
     _sync_source_after_payment(invoice, applied_amount, payment_id)
     db.commit()
     return "processed"

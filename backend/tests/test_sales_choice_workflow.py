@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.api.v1.endpoints.sales import (
     _accept_quotation_selection,
     _effective_quotation_lines,
+    revise_quotation,
 )
 from app.api.v1.endpoints.sales_portal import (
     PortalSquarePaymentIn,
@@ -18,14 +19,22 @@ from app.api.v1.endpoints.sales_portal import (
 )
 from app.core.config import settings
 from app.db.base import Base
+from app.models.inventory import InventoryPart, InventoryTransaction
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.sales import (
+    SalesInventoryReservation,
     SalesQuotation,
     SalesQuotationAcceptance,
     SalesQuotationLineItem,
     SalesQuotationRecipient,
 )
 from app.models.user import User, UserRole, UserType
+from app.utils.sales_inventory import (
+    ensure_sales_inventory_available,
+    fulfill_sales_invoice_inventory,
+    release_sales_inventory_reservations,
+    reserve_sales_inventory,
+)
 
 
 def _user() -> User:
@@ -113,6 +122,92 @@ def test_standard_keeps_required_all_behavior_for_backward_compatibility() -> No
     assert all(line.is_selected for line in quotation.line_items)
 
 
+def test_sent_quotation_revision_snapshots_and_invalidates_delivery_links() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        admin = User(
+            username="revision-admin",
+            email="revision-admin@example.com",
+            full_name="Revision Admin",
+            hashed_password="test",
+            user_type=UserType.EMPLOYEE,
+            role=UserRole.ADMIN,
+        )
+        db.add(admin)
+        db.flush()
+        sent_at = datetime.utcnow()
+        quotation = SalesQuotation(
+            quotation_number="SQ-REVISION-001",
+            work_order="SO-REVISION-001",
+            created_by_id=admin.id,
+            customer_name="Revision Customer",
+            customer_email="revision@example.com",
+            quotation_type="choice_single",
+            status="viewed",
+            paid_status="unpaid",
+            selection_status="pending",
+            subtotal=Decimal("100"),
+            total_amount=Decimal("100"),
+            sent_at=sent_at,
+            expires_at=sent_at + timedelta(days=30),
+            revision=1,
+            history=[],
+        )
+        db.add(quotation)
+        db.flush()
+        line = SalesQuotationLineItem(
+            quotation_id=quotation.id,
+            item_kind="product",
+            is_default=True,
+            is_selected=True,
+            description="Revision product",
+            quantity=1,
+            unit_price=Decimal("100"),
+            shipping_fee=Decimal("0"),
+            setup_fee=Decimal("0"),
+            condition="new",
+            total=Decimal("100"),
+        )
+        recipient = SalesQuotationRecipient(
+            quotation_id=quotation.id,
+            recipient_type="primary",
+            name=quotation.customer_name,
+            email=quotation.customer_email,
+            status="viewed",
+            access_token_hash="old-public-token-hash",
+            token_expires_at=quotation.expires_at,
+            sent_at=sent_at,
+            viewed_at=sent_at,
+        )
+        db.add_all([line, recipient])
+        db.commit()
+
+        response = revise_quotation(quotation.id, db, admin)
+
+        assert response["revision"] == 2
+        assert response["status"] == "draft"
+        assert response["sent_at"] is None
+        db.refresh(quotation)
+        db.refresh(recipient)
+        assert quotation.expires_at is None
+        assert quotation.selection_status == "pending"
+        assert recipient.status == "draft"
+        assert recipient.access_token_hash is None
+        assert recipient.token_expires_at is None
+        assert recipient.sent_at is None
+        assert recipient.viewed_at is None
+        revision_entry = quotation.history[-1]
+        assert revision_entry["action"] == "revision_created"
+        assert revision_entry["details"]["previous_revision"] == 1
+        assert revision_entry["details"]["revision"] == 2
+        assert revision_entry["details"]["previous_links_invalidated"] is True
+        assert revision_entry["details"]["previous_revision_snapshot"]["line_items"][0]["description"] == "Revision product"
+    finally:
+        db.close()
+
+
 def test_test_payment_marks_the_approved_invoice_paid_without_gateway(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -137,6 +232,18 @@ def test_test_payment_marks_the_approved_invoice_paid_without_gateway(monkeypatc
         )
         db.add_all([admin, client])
         db.flush()
+        part = InventoryPart(
+            part_number="SQUARE-PART-001",
+            part_type="sales",
+            description="Square payment stock test",
+            unit_price=Decimal("50"),
+            condition="new",
+            quantity_on_hand=5,
+            reorder_level=1,
+            status="active",
+        )
+        db.add(part)
+        db.flush()
         quotation = SalesQuotation(
             quotation_number="SQ-TEST-001",
             work_order="SO-TEST-001",
@@ -154,6 +261,50 @@ def test_test_payment_marks_the_approved_invoice_paid_without_gateway(monkeypatc
         )
         db.add(quotation)
         db.flush()
+        db.add(
+            SalesQuotationLineItem(
+                quotation_id=quotation.id,
+                part_id=part.id,
+                item_kind="product",
+                is_default=True,
+                is_selected=True,
+                description=part.description,
+                quantity=2,
+                unit_price=Decimal("50"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                condition="new",
+                total=Decimal("100"),
+            )
+        )
+        db.add(
+            SalesQuotationLineItem(
+                quotation_id=quotation.id,
+                part_id=None,
+                item_kind="trade_in",
+                is_default=True,
+                is_selected=True,
+                item_metadata={
+                    "inventory_part": {
+                        "part_number": "TRADE-IN-001",
+                        "description": "Customer trade-in monitor",
+                        "make": "Acme",
+                        "model": "Legacy Monitor",
+                        "serial_number": "TRADE-SERIAL-001",
+                        "condition": "used",
+                        "reorder_level": 0,
+                        "location": "Trade-in receiving",
+                    }
+                },
+                description="Customer trade-in monitor",
+                quantity=1,
+                unit_price=Decimal("25"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                condition="used",
+                total=Decimal("-25"),
+            )
+        )
         recipient = SalesQuotationRecipient(
             quotation_id=quotation.id,
             user_id=client.id,
@@ -218,12 +369,348 @@ def test_test_payment_marks_the_approved_invoice_paid_without_gateway(monkeypatc
         assert invoice.payment_method == "test_mode"
         assert response["invoice"]["status"] == "paid"
         assert response["can_test_pay"] is False
+        db.refresh(part)
+        assert part.quantity_on_hand == 3
         assert any(
             transaction.transaction_type == "payment"
             and transaction.payment_method == "test_mode"
             and "No funds were charged" in transaction.description
             for transaction in invoice.transactions
         )
+    finally:
+        db.close()
+
+
+def test_sales_payment_preflight_rejects_insufficient_stock() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        admin = User(
+            username="stock-admin",
+            email="stock-admin@example.com",
+            full_name="Stock Admin",
+            hashed_password="test",
+            user_type=UserType.EMPLOYEE,
+            role=UserRole.ADMIN,
+        )
+        db.add(admin)
+        db.flush()
+        part = InventoryPart(
+            part_number="LOW-STOCK-001",
+            part_type="sales",
+            description="Insufficient stock test",
+            unit_price=Decimal("50"),
+            condition="new",
+            quantity_on_hand=1,
+            reorder_level=1,
+            status="active",
+        )
+        db.add(part)
+        db.flush()
+        quotation = SalesQuotation(
+            quotation_number="SQ-LOW-STOCK-001",
+            work_order="SO-LOW-STOCK-001",
+            created_by_id=admin.id,
+            customer_name="Stock Customer",
+            customer_email="stock@example.com",
+            quotation_type="standard",
+            status="accepted",
+            paid_status="unpaid",
+            selection_status="accepted",
+            subtotal=Decimal("100"),
+            total_amount=Decimal("100"),
+            history=[],
+        )
+        db.add(quotation)
+        db.flush()
+        db.add(
+            SalesQuotationLineItem(
+                quotation_id=quotation.id,
+                part_id=part.id,
+                item_kind="product",
+                is_selected=True,
+                description=part.description,
+                quantity=2,
+                unit_price=Decimal("50"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                condition="new",
+                total=Decimal("100"),
+            )
+        )
+        invoice = Invoice(
+            invoice_number="INV-SALES-LOW-STOCK-001",
+            invoice_type=InvoiceType.SALES,
+            customer_name=quotation.customer_name,
+            customer_email=quotation.customer_email,
+            sales_quotation_id=quotation.id,
+            subtotal=Decimal("100"),
+            tax_amount=Decimal("0"),
+            discount_amount=Decimal("0"),
+            total_amount=Decimal("100"),
+            amount_paid=Decimal("0"),
+            balance_due=Decimal("100"),
+            status=InvoiceStatus.PENDING,
+            issue_date=date.today(),
+            due_date=date.today(),
+        )
+        db.add(invoice)
+        db.flush()
+        quotation.converted_invoice_id = invoice.id
+        db.commit()
+
+        with pytest.raises(HTTPException) as error:
+            ensure_sales_inventory_available(db, invoice)
+
+        assert error.value.status_code == 409
+        assert "Available: 1" in error.value.detail
+        assert "required: 2" in error.value.detail
+        db.refresh(part)
+        assert part.quantity_on_hand == 1
+        assert db.query(InventoryTransaction).count() == 0
+    finally:
+        db.close()
+
+
+def test_accepted_sales_invoice_reserves_last_unit_until_payment() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        admin = User(
+            username="reservation-admin",
+            email="reservation-admin@example.com",
+            full_name="Reservation Admin",
+            hashed_password="test",
+            user_type=UserType.EMPLOYEE,
+            role=UserRole.ADMIN,
+        )
+        part = InventoryPart(
+            part_number="LAST-UNIT-001",
+            part_type="sales",
+            description="Last unit reservation test",
+            unit_price=Decimal("75"),
+            condition="new",
+            quantity_on_hand=1,
+            reorder_level=0,
+            status="active",
+        )
+        db.add_all([admin, part])
+        db.flush()
+
+        def make_sale(suffix: str) -> tuple[SalesQuotation, SalesQuotationLineItem, Invoice]:
+            quotation = SalesQuotation(
+                quotation_number=f"SQ-RESERVE-{suffix}",
+                work_order=f"SO-RESERVE-{suffix}",
+                created_by_id=admin.id,
+                customer_name=f"Customer {suffix}",
+                customer_email=f"customer-{suffix.lower()}@example.com",
+                quotation_type="standard",
+                status="accepted",
+                paid_status="unpaid",
+                selection_status="accepted",
+                subtotal=Decimal("75"),
+                total_amount=Decimal("75"),
+                history=[],
+            )
+            line = SalesQuotationLineItem(
+                part_id=part.id,
+                item_kind="product",
+                is_default=True,
+                is_selected=True,
+                description=part.description,
+                quantity=1,
+                unit_price=Decimal("75"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                condition="new",
+                total=Decimal("75"),
+            )
+            quotation.line_items.append(line)
+            db.add(quotation)
+            db.flush()
+            invoice = Invoice(
+                invoice_number=f"INV-SALES-RESERVE-{suffix}",
+                invoice_type=InvoiceType.SALES,
+                customer_name=quotation.customer_name,
+                customer_email=quotation.customer_email,
+                sales_quotation_id=quotation.id,
+                subtotal=Decimal("75"),
+                tax_amount=Decimal("0"),
+                discount_amount=Decimal("0"),
+                total_amount=Decimal("75"),
+                amount_paid=Decimal("0"),
+                balance_due=Decimal("75"),
+                status=InvoiceStatus.PENDING,
+                issue_date=date.today(),
+                due_date=date.today(),
+            )
+            db.add(invoice)
+            db.flush()
+            quotation.converted_invoice_id = invoice.id
+            return quotation, line, invoice
+
+        first_quote, first_line, first_invoice = make_sale("A")
+        reserve_sales_inventory(db, first_quote, first_invoice, [first_line], admin)
+        db.commit()
+
+        db.refresh(part)
+        assert part.quantity_on_hand == 1
+        first_reservation = (
+            db.query(SalesInventoryReservation)
+            .filter(SalesInventoryReservation.invoice_id == first_invoice.id)
+            .one()
+        )
+        assert first_reservation.quantity == 1
+        assert first_reservation.status == "active"
+
+        second_quote, second_line, second_invoice = make_sale("B")
+        with pytest.raises(HTTPException) as error:
+            reserve_sales_inventory(
+                db,
+                second_quote,
+                second_invoice,
+                [second_line],
+                admin,
+            )
+        assert error.value.status_code == 409
+        assert "0 unit(s) are available" in error.value.detail
+        db.rollback()
+
+        first_invoice = db.query(Invoice).filter(Invoice.id == first_invoice.id).one()
+        first_invoice.amount_paid = first_invoice.total_amount
+        first_invoice.balance_due = Decimal("0")
+        first_invoice.status = InvoiceStatus.PAID
+        assert fulfill_sales_invoice_inventory(db, first_invoice, admin) is True
+        db.commit()
+
+        db.refresh(part)
+        db.refresh(first_reservation)
+        assert part.quantity_on_hand == 0
+        assert first_reservation.status == "fulfilled"
+        assert (
+            db.query(InventoryTransaction)
+            .filter(
+                InventoryTransaction.part_id == part.id,
+                InventoryTransaction.transaction_type == "sale",
+            )
+            .count()
+            == 1
+        )
+    finally:
+        db.close()
+
+
+def test_cancelling_unpaid_sales_invoice_releases_stock_reservation() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        admin = User(
+            username="release-admin",
+            email="release-admin@example.com",
+            full_name="Release Admin",
+            hashed_password="test",
+            user_type=UserType.EMPLOYEE,
+            role=UserRole.ADMIN,
+        )
+        part = InventoryPart(
+            part_number="RELEASE-001",
+            part_type="sales",
+            description="Reservation release test",
+            unit_price=Decimal("50"),
+            condition="new",
+            quantity_on_hand=1,
+            reorder_level=0,
+            status="active",
+        )
+        db.add_all([admin, part])
+        db.flush()
+
+        def make_sale(suffix: str) -> tuple[SalesQuotation, SalesQuotationLineItem, Invoice]:
+            quotation = SalesQuotation(
+                quotation_number=f"SQ-RELEASE-{suffix}",
+                work_order=f"SO-RELEASE-{suffix}",
+                created_by_id=admin.id,
+                customer_name=f"Customer {suffix}",
+                customer_email=f"release-{suffix.lower()}@example.com",
+                quotation_type="standard",
+                status="accepted",
+                paid_status="unpaid",
+                selection_status="accepted",
+                subtotal=Decimal("50"),
+                total_amount=Decimal("50"),
+                history=[],
+            )
+            line = SalesQuotationLineItem(
+                part_id=part.id,
+                item_kind="product",
+                is_default=True,
+                is_selected=True,
+                description=part.description,
+                quantity=1,
+                unit_price=Decimal("50"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                condition="new",
+                total=Decimal("50"),
+            )
+            quotation.line_items.append(line)
+            db.add(quotation)
+            db.flush()
+            invoice = Invoice(
+                invoice_number=f"INV-SALES-RELEASE-{suffix}",
+                invoice_type=InvoiceType.SALES,
+                customer_name=quotation.customer_name,
+                customer_email=quotation.customer_email,
+                sales_quotation_id=quotation.id,
+                subtotal=Decimal("50"),
+                tax_amount=Decimal("0"),
+                discount_amount=Decimal("0"),
+                total_amount=Decimal("50"),
+                amount_paid=Decimal("0"),
+                balance_due=Decimal("50"),
+                status=InvoiceStatus.PENDING,
+                issue_date=date.today(),
+                due_date=date.today(),
+            )
+            db.add(invoice)
+            db.flush()
+            quotation.converted_invoice_id = invoice.id
+            return quotation, line, invoice
+
+        first_quote, first_line, first_invoice = make_sale("A")
+        reserve_sales_inventory(db, first_quote, first_invoice, [first_line], admin)
+        assert release_sales_inventory_reservations(
+            db,
+            first_invoice,
+            "Invoice cancelled in test",
+            admin,
+        ) == 1
+        db.commit()
+
+        released = (
+            db.query(SalesInventoryReservation)
+            .filter(SalesInventoryReservation.invoice_id == first_invoice.id)
+            .one()
+        )
+        assert released.status == "released"
+        assert released.release_reason == "Invoice cancelled in test"
+
+        second_quote, second_line, second_invoice = make_sale("B")
+        reservations = reserve_sales_inventory(
+            db,
+            second_quote,
+            second_invoice,
+            [second_line],
+            admin,
+        )
+        db.commit()
+        assert len(reservations) == 1
+        assert reservations[0].status == "active"
+        db.refresh(part)
+        assert part.quantity_on_hand == 1
     finally:
         db.close()
 
@@ -270,6 +757,18 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         )
         db.add_all([admin, client])
         db.flush()
+        part = InventoryPart(
+            part_number="SQUARE-PART-001",
+            part_type="sales",
+            description="Square payment stock test",
+            unit_price=Decimal("50"),
+            condition="new",
+            quantity_on_hand=5,
+            reorder_level=1,
+            status="active",
+        )
+        db.add(part)
+        db.flush()
         quotation = SalesQuotation(
             quotation_number="SQ-SQUARE-001",
             work_order="SO-SQUARE-001",
@@ -287,6 +786,50 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         )
         db.add(quotation)
         db.flush()
+        db.add(
+            SalesQuotationLineItem(
+                quotation_id=quotation.id,
+                part_id=part.id,
+                item_kind="product",
+                is_default=True,
+                is_selected=True,
+                description=part.description,
+                quantity=2,
+                unit_price=Decimal("50"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                condition="new",
+                total=Decimal("100"),
+            )
+        )
+        db.add(
+            SalesQuotationLineItem(
+                quotation_id=quotation.id,
+                part_id=None,
+                item_kind="trade_in",
+                is_default=True,
+                is_selected=True,
+                item_metadata={
+                    "inventory_part": {
+                        "part_number": "TRADE-IN-001",
+                        "description": "Customer trade-in monitor",
+                        "make": "Acme",
+                        "model": "Legacy Monitor",
+                        "serial_number": "TRADE-SERIAL-001",
+                        "condition": "used",
+                        "reorder_level": 0,
+                        "location": "Trade-in receiving",
+                    }
+                },
+                description="Customer trade-in monitor",
+                quantity=1,
+                unit_price=Decimal("25"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                condition="used",
+                total=Decimal("-25"),
+            )
+        )
         recipient = SalesQuotationRecipient(
             quotation_id=quotation.id,
             user_id=client.id,
@@ -354,6 +897,35 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         assert invoice.payment_method == "square_card"
         assert response["invoice"]["status"] == "paid"
         assert response["can_square_pay"] is False
+        db.refresh(part)
+        assert part.quantity_on_hand == 3
+        stock_transaction = (
+            db.query(InventoryTransaction)
+            .filter(
+                InventoryTransaction.part_id == part.id,
+                InventoryTransaction.transaction_type == "sale",
+                InventoryTransaction.authorization_reference == invoice.invoice_number,
+            )
+            .one()
+        )
+        assert stock_transaction.quantity == 2
+        assert stock_transaction.balance_after == 3
+        trade_in_part = db.query(InventoryPart).filter(InventoryPart.part_number == "TRADE-IN-001").one()
+        assert trade_in_part.part_type == "sales"
+        assert trade_in_part.facility_id is None
+        assert trade_in_part.quantity_on_hand == 1
+        assert trade_in_part.serial_number == "TRADE-SERIAL-001"
+        trade_in_transaction = (
+            db.query(InventoryTransaction)
+            .filter(
+                InventoryTransaction.part_id == trade_in_part.id,
+                InventoryTransaction.transaction_type == "trade_in_receiving",
+                InventoryTransaction.authorization_reference == invoice.invoice_number,
+            )
+            .one()
+        )
+        assert trade_in_transaction.quantity == 1
+        assert trade_in_transaction.balance_after == 1
         assert (
             db.query(InvoiceTransaction)
             .filter(InvoiceTransaction.reference_number == "square-payment-001")
@@ -364,6 +936,28 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         duplicate = _record_square_payment(db, recipient, payload, client)
         assert duplicate["invoice"]["status"] == "paid"
         assert len(square_calls) == 1
+        db.refresh(part)
+        assert part.quantity_on_hand == 3
+        assert (
+            db.query(InventoryTransaction)
+            .filter(
+                InventoryTransaction.part_id == part.id,
+                InventoryTransaction.transaction_type == "sale",
+                InventoryTransaction.authorization_reference == invoice.invoice_number,
+            )
+            .count()
+            == 1
+        )
+        assert db.query(InventoryPart).filter(InventoryPart.part_number == "TRADE-IN-001").count() == 1
+        assert (
+            db.query(InventoryTransaction)
+            .filter(
+                InventoryTransaction.transaction_type == "trade_in_receiving",
+                InventoryTransaction.authorization_reference == invoice.invoice_number,
+            )
+            .count()
+            == 1
+        )
         assert (
             db.query(InvoiceTransaction)
             .filter(InvoiceTransaction.reference_number == "square-payment-001")

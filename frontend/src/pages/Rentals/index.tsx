@@ -55,6 +55,7 @@ import {
   type RentalStatus,
   type RentalInvoiceStatus,
 } from '@/api/rentals'
+import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { digitsOnly, formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/rentals/agreements', '/rentals/invoices', '/rentals/products', '/rentals/history']
@@ -705,8 +706,18 @@ const Rentals = () => {
   }
 
   const sameInvoiceAccount = (left: RentalInvoice, right: RentalInvoice) => {
-    if (left.facility_id && right.facility_id) return left.facility_id === right.facility_id
-    return left.customer_name.trim().toLowerCase() === right.customer_name.trim().toLowerCase()
+    return isSameBillingAccount(
+      {
+        facilityId: left.facility_id,
+        customerEmail: left.customer_email,
+        recordKey: `rental-invoice-${left.id}`,
+      },
+      {
+        facilityId: right.facility_id,
+        customerEmail: right.customer_email,
+        recordKey: `rental-invoice-${right.id}`,
+      },
+    )
   }
 
   const invoiceLineItems = (invoice: RentalInvoice | null): PrintableLineItem[] => {
@@ -753,7 +764,20 @@ const Rentals = () => {
   const agreementLedgerTransactions = (rental: Rental | null): PrintableLedgerTransaction[] => {
     if (!rental) return []
     return invoices
-      .filter(invoice => rental.customer_name.trim().toLowerCase() === invoice.customer_name.trim().toLowerCase())
+      .filter(invoice => {
+        if (invoice.rental_id === rental.id) return true
+        return isSameBillingAccount(
+          {
+            customerEmail: rental.customer_email,
+            recordKey: `rental-${rental.id}`,
+          },
+          {
+            facilityId: invoice.facility_id,
+            customerEmail: invoice.customer_email,
+            recordKey: `rental-invoice-${invoice.id}`,
+          },
+        )
+      })
       .flatMap(invoice => (invoice.transactions || []).map(transaction => ({
         ...transaction,
         invoice_number: invoice.invoice_number,

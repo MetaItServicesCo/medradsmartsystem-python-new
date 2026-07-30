@@ -18,6 +18,7 @@ from app.models.facility import Facility
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.sales import (
+    SalesInventoryReservation,
     SalesPaymentAuthorization,
     SalesQuotation,
     SalesQuotationAcceptance,
@@ -45,6 +46,11 @@ from app.utils.logging import log_activity
 from app.utils.email import send_html_email
 from app.utils.notifications import create_notifications
 from app.utils.permissions import has_module_permission
+from app.utils.sales_inventory import (
+    fulfill_sales_invoice_inventory,
+    release_sales_inventory_reservations,
+    reserve_sales_inventory,
+)
 from app.utils.list_search import (
     contains_ci,
     normalize_list_search,
@@ -54,6 +60,29 @@ from app.utils.list_search import (
 )
 
 router = APIRouter(dependencies=[Depends(require_module_access("sales"))])
+
+
+class SalesTradeInPartIn(BaseModel):
+    part_number: str = Field(min_length=1, max_length=255)
+    description: str = Field(min_length=1)
+    make: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    batch_number: Optional[str] = None
+    default_picture_url: Optional[str] = None
+    condition: str = "used"
+    reorder_level: int = Field(default=0, ge=0)
+    location: Optional[str] = None
+    supplier_name: Optional[str] = None
+    supplier_contact: Optional[str] = None
+    supplier_email: Optional[str] = None
+    supplier_phone: Optional[str] = None
+    supplier_address: Optional[str] = None
+    vendor_name: Optional[str] = None
+    purchase_location: Optional[str] = None
+    shipping_method: Optional[str] = None
+    acquisition_date: Optional[date] = None
+    warehouse_arrival_date: Optional[date] = None
 
 
 class SalesQuotationItemIn(BaseModel):
@@ -67,6 +96,7 @@ class SalesQuotationItemIn(BaseModel):
     condition: Optional[str] = None
     description: Optional[str] = None
     item_metadata: Optional[dict[str, Any]] = None
+    trade_in_part: Optional[SalesTradeInPartIn] = None
 
 
 class SalesQuotationCreate(BaseModel):
@@ -263,7 +293,12 @@ def _append_history(
     quotation.history = history
 
 
-def _part_response(part: InventoryPart) -> dict[str, Any]:
+def _part_response(
+    part: InventoryPart,
+    commitment: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    stock = commitment or {}
+    reserved_quantity = int(stock.get("reserved_quantity") or 0)
     return {
         "id": part.id,
         "part_number": part.part_number,
@@ -275,6 +310,10 @@ def _part_response(part: InventoryPart) -> dict[str, Any]:
         "serial_number": part.serial_number,
         "condition": part.condition,
         "quantity_on_hand": part.quantity_on_hand,
+        "quantity_reserved": reserved_quantity,
+        "quantity_available": max(int(part.quantity_on_hand or 0) - reserved_quantity, 0),
+        "quantity_in_open_quotations": int(stock.get("open_quote_quantity") or 0),
+        "stock_commitments": stock.get("commitments") or [],
         "unit_price": part.unit_price,
         "facility_id": part.facility_id,
         "facility_name": part.facility.name if part.facility else None,
@@ -282,14 +321,98 @@ def _part_response(part: InventoryPart) -> dict[str, Any]:
     }
 
 
+OPEN_UNACCEPTED_QUOTATION_STATUSES = ("sent", "viewed", "changes_requested")
+
+
+def _part_commitment_map(
+    db: Session,
+    part_ids: list[int],
+) -> dict[int, dict[str, Any]]:
+    """Return bounded commitment details for the currently requested parts page."""
+    result: dict[int, dict[str, Any]] = {
+        part_id: {
+            "reserved_quantity": 0,
+            "open_quote_quantity": 0,
+            "commitments": [],
+        }
+        for part_id in part_ids
+    }
+    if not part_ids:
+        return result
+
+    open_lines = (
+        db.query(SalesQuotationLineItem, SalesQuotation)
+        .join(SalesQuotation, SalesQuotation.id == SalesQuotationLineItem.quotation_id)
+        .filter(
+            SalesQuotationLineItem.part_id.in_(part_ids),
+            SalesQuotationLineItem.item_kind == "product",
+            SalesQuotation.status.in_(OPEN_UNACCEPTED_QUOTATION_STATUSES),
+            SalesQuotation.converted_invoice_id.is_(None),
+        )
+        .order_by(SalesQuotation.created_at.desc(), SalesQuotationLineItem.id.desc())
+        .all()
+    )
+    for line, quotation in open_lines:
+        stock = result[line.part_id]
+        quantity = int(line.quantity or 0)
+        stock["open_quote_quantity"] += quantity
+        stock["commitments"].append(
+            {
+                "type": "open_quotation",
+                "quantity": quantity,
+                "quotation_id": quotation.id,
+                "quotation_number": quotation.quotation_number,
+                "quotation_status": quotation.status,
+                "invoice_id": None,
+                "invoice_number": None,
+                "invoice_status": None,
+            }
+        )
+
+    active_reservations = (
+        db.query(SalesInventoryReservation, SalesQuotation, Invoice)
+        .join(SalesQuotation, SalesQuotation.id == SalesInventoryReservation.quotation_id)
+        .join(Invoice, Invoice.id == SalesInventoryReservation.invoice_id)
+        .filter(
+            SalesInventoryReservation.part_id.in_(part_ids),
+            SalesInventoryReservation.status == "active",
+        )
+        .order_by(SalesInventoryReservation.created_at.desc())
+        .all()
+    )
+    for reservation, quotation, invoice in active_reservations:
+        stock = result[reservation.part_id]
+        quantity = int(reservation.quantity or 0)
+        stock["reserved_quantity"] += quantity
+        stock["commitments"].append(
+            {
+                "type": "reserved_unpaid_invoice",
+                "quantity": quantity,
+                "quotation_id": quotation.id,
+                "quotation_number": quotation.quotation_number,
+                "quotation_status": quotation.status,
+                "invoice_id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "invoice_status": (
+                    invoice.status.value
+                    if hasattr(invoice.status, "value")
+                    else invoice.status
+                ),
+            }
+        )
+    return result
+
+
 def _line_response(line: SalesQuotationLineItem) -> dict[str, Any]:
+    metadata = line.item_metadata or {}
     return {
         "id": line.id,
         "part_id": line.part_id,
         "item_kind": line.item_kind or "product",
         "is_default": bool(line.is_default),
         "is_selected": bool(line.is_selected),
-        "item_metadata": line.item_metadata or {},
+        "item_metadata": metadata,
+        "trade_in_part": metadata.get("inventory_part") if line.item_kind == "trade_in" else None,
         "part_number": line.part.part_number if line.part else None,
         "part_description": line.part.description if line.part else None,
         "description": line.description,
@@ -572,6 +695,56 @@ def _selection_snapshot(lines: list[SalesQuotationLineItem]) -> list[dict[str, A
     ]
 
 
+def _sales_line_item_number(line: SalesQuotationLineItem) -> str:
+    if line.part:
+        return line.part.part_number
+    if line.item_kind == "refund":
+        return "REFUND"
+    if line.item_kind == "trade_in":
+        inventory_part = (line.item_metadata or {}).get("inventory_part") or {}
+        return str(inventory_part.get("part_number") or "TRADE-IN")
+    return "SALES-ITEM"
+
+
+def _quotation_revision_snapshot(quotation: SalesQuotation) -> dict[str, Any]:
+    """Capture the customer-visible revision without retaining access tokens."""
+    return {
+        "revision": quotation.revision or 1,
+        "status": quotation.status,
+        "sent_at": quotation.sent_at,
+        "expires_at": quotation.expires_at,
+        "customer": {
+            "name": quotation.customer_name,
+            "email": quotation.customer_email,
+            "phone": quotation.customer_phone,
+            "address": quotation.customer_address,
+            "facility_id": quotation.facility_id,
+        },
+        "quotation_type": quotation.quotation_type,
+        "requested_date": quotation.requested_date,
+        "notes": quotation.notes,
+        "pricing": {
+            "subtotal": quotation.subtotal,
+            "tax_amount": quotation.tax_amount,
+            "discount_amount": quotation.discount_amount,
+            "total_amount": quotation.total_amount,
+        },
+        "line_items": _selection_snapshot(list(quotation.line_items or [])),
+        "recipients": [
+            {
+                "user_id": recipient.user_id,
+                "recipient_type": recipient.recipient_type,
+                "name": recipient.name,
+                "email": recipient.email,
+                "status": recipient.status,
+                "sent_at": recipient.sent_at,
+                "viewed_at": recipient.viewed_at,
+            }
+            for recipient in quotation.recipients or []
+        ],
+    }
+
+
 def _required_stock(lines: list[SalesQuotationLineItem]) -> dict[int, int]:
     required: dict[int, int] = {}
     for line in lines:
@@ -609,13 +782,7 @@ def _create_invoice_for_accepted_quotation(
     invoice_line_items = [
         {
             "id": f"sales-line-{line.id}",
-            "item_number": (
-                line.part.part_number
-                if line.part
-                else "REFUND"
-                if line.item_kind == "refund"
-                else "TRADE-IN"
-            ),
+            "item_number": _sales_line_item_number(line),
             "description": line.description,
             "quantity": line.quantity,
             "unit_price": float(line.unit_price),
@@ -665,6 +832,7 @@ def _create_invoice_for_accepted_quotation(
         accepted_by,
         f"Sales invoice created from accepted quotation {quotation.quotation_number}",
     )
+    reserve_sales_inventory(db, quotation, invoice, accepted_lines, accepted_by)
     quotation.converted_invoice_id = invoice.id
     quotation.status = "accepted"
     quotation.updated_at = datetime.utcnow()
@@ -742,10 +910,15 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
                 raise HTTPException(status_code=404, detail=f"Sales part #{item.part_id} not found")
             if part.quantity_on_hand < item.quantity:
                 raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number}")
-        elif not (item.description or "").strip():
+        elif not (item.description or (item.trade_in_part.description if item.trade_in_part else "")).strip():
             raise HTTPException(
                 status_code=400,
                 detail="A description is required for trade-in and refund adjustments",
+            )
+        if item_kind != "trade_in" and item.trade_in_part is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Trade-in inventory details can only be attached to a trade-in line",
             )
 
         if (
@@ -765,14 +938,27 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
         total = -abs(unsigned_total) if item_kind in CREDIT_ITEM_KINDS else unsigned_total
         if is_default:
             subtotal += total
+        item_metadata = dict(item.item_metadata or {})
+        if item_kind == "trade_in" and item.trade_in_part:
+            trade_in_part = item.trade_in_part.model_dump(mode="json")
+            trade_in_part["part_number"] = item.trade_in_part.part_number.strip()
+            trade_in_part["description"] = item.trade_in_part.description.strip()
+            trade_in_part["condition"] = (item.trade_in_part.condition or "used").strip().lower()
+            trade_in_part["serial_number"] = (item.trade_in_part.serial_number or "").strip() or None
+            trade_in_part["batch_number"] = (item.trade_in_part.batch_number or "").strip() or None
+            item_metadata["inventory_part"] = trade_in_part
         quotation.line_items.append(
             SalesQuotationLineItem(
                 part_id=part.id if part else None,
                 item_kind=item_kind,
                 is_default=is_default,
                 is_selected=is_default,
-                item_metadata=item.item_metadata or {},
-                description=item.description or (part.description if part else "Quotation credit"),
+                item_metadata=item_metadata,
+                description=(
+                    item.description
+                    or (item.trade_in_part.description if item.trade_in_part else None)
+                    or (part.description if part else "Quotation credit")
+                ),
                 quantity=item.quantity,
                 unit_price=unit_price,
                 shipping_fee=shipping_fee,
@@ -811,6 +997,10 @@ def list_sales_parts(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    part_ids: Optional[str] = Query(
+        None,
+        description="Optional comma-separated part ids for bounded stock checks",
+    ),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
@@ -820,6 +1010,20 @@ def list_sales_parts(
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=422, detail="From date cannot be after To date")
     query = _sales_part_query(db, current_user)
+    if part_ids:
+        try:
+            requested_part_ids = sorted(
+                {
+                    int(value.strip())
+                    for value in part_ids.split(",")
+                    if value.strip()
+                }
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="part_ids must contain integers") from exc
+        if len(requested_part_ids) > 100:
+            raise HTTPException(status_code=422, detail="At most 100 part ids may be requested")
+        query = query.filter(InventoryPart.id.in_(requested_part_ids))
     if date_from:
         start_at = datetime.combine(date_from, datetime.min.time())
         query = query.filter(
@@ -871,7 +1075,16 @@ def list_sales_parts(
         .limit(limit)
         .all()
     )
-    return {"items": [_part_response(part) for part in parts], "total": total, "skip": skip, "limit": limit}
+    commitments = _part_commitment_map(db, [part.id for part in parts])
+    return {
+        "items": [
+            _part_response(part, commitments.get(part.id))
+            for part in parts
+        ],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 IN_PROGRESS_QUOTATION_STATUSES = ("accepted", "in_progress")
@@ -1086,6 +1299,7 @@ def update_quotation(
             selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
         )
         .filter(SalesQuotation.id == quotation_id)
+        .with_for_update(of=SalesQuotation)
         .first()
     )
     if not quotation:
@@ -1095,14 +1309,31 @@ def update_quotation(
     if payload.facility_id is not None:
         require_facility_access(db, current_user, payload.facility_id)
 
+    requested_status = (
+        str(payload.status).strip().lower()
+        if "status" in payload.model_fields_set and payload.status is not None
+        else None
+    )
+    if (
+        quotation.converted_invoice_id
+        and requested_status in {"cancelled", "declined", "rejected"}
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Cancel the linked unpaid Sales invoice instead. "
+                "That action releases its inventory reservation."
+            ),
+        )
+
     changed_fields = set(payload.model_fields_set) - {"status", "paid_status"}
-    if quotation.status not in {"draft", "pending", "changes_requested"} and (
+    if quotation.status not in {"draft", "pending"} and (
         payload.items is not None
         or changed_fields
     ):
         raise HTTPException(
             status_code=409,
-            detail="A sent or accepted quotation cannot be edited; create a revision instead",
+            detail="This quotation is locked. Create a revision before editing a sent quotation.",
         )
 
     update_data = payload.model_dump(
@@ -1131,27 +1362,106 @@ def update_quotation(
             payload.primary_recipient_user_id,
             payload.additional_recipient_user_ids or [],
         )
-    if quotation.sent_at and changed_fields:
-        quotation.revision = (quotation.revision or 1) + 1
-        quotation.status = "draft"
-        quotation.sent_at = None
-        quotation.expires_at = None
-        for recipient in quotation.recipients:
-            recipient.status = "draft"
-            recipient.access_token_hash = None
-            recipient.token_expires_at = None
-            recipient.sent_at = None
-            recipient.viewed_at = None
-            recipient.accepted_at = None
-        _append_history(
-            quotation,
-            "revision_created",
-            current_user,
-            {"revision": quotation.revision},
-        )
     quotation.updated_at = datetime.utcnow()
     _append_history(quotation, "updated", current_user, update_data)
     log_activity(db, "sales_quotations", quotation.id, "UPDATE", current_user, update_data)
+    db.commit()
+    db.refresh(quotation)
+    return _quotation_response(quotation)
+
+
+@router.post("/quotations/{quotation_id}/revise")
+def revise_quotation(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Reopen an unaccepted delivered quotation as a new draft revision."""
+    if current_user.role not in INTERNAL_SALES_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Only an Admin or Super Admin can create quotation revisions",
+        )
+    quotation = (
+        db.query(SalesQuotation)
+        .options(
+            joinedload(SalesQuotation.facility),
+            joinedload(SalesQuotation.created_by),
+            joinedload(SalesQuotation.accepted_by),
+            joinedload(SalesQuotation.converted_invoice),
+            joinedload(SalesQuotation.acceptance),
+            joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
+            selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
+        )
+        .filter(SalesQuotation.id == quotation_id)
+        .with_for_update(of=SalesQuotation)
+        .first()
+    )
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Sales quotation not found")
+    if quotation.facility_id is not None:
+        require_facility_access(db, current_user, quotation.facility_id)
+    if (
+        quotation.acceptance
+        or quotation.accepted_at
+        or quotation.converted_invoice_id
+        or quotation.status in {"accepted", "in_progress", "completed", "cancelled", "declined"}
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Accepted, invoiced, declined, cancelled, or completed quotations cannot be revised",
+        )
+    if quotation.status not in {"sent", "viewed", "changes_requested"} or not quotation.sent_at:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a sent, viewed, or change-requested quotation can be revised",
+        )
+
+    previous_revision = quotation.revision or 1
+    previous_snapshot = _quotation_revision_snapshot(quotation)
+    now = datetime.utcnow()
+    quotation.revision = previous_revision + 1
+    quotation.status = "draft"
+    quotation.selection_status = "pending"
+    quotation.selection_channel = None
+    quotation.selection_snapshot = None
+    quotation.accepted_by_id = None
+    quotation.accepted_at = None
+    quotation.sent_at = None
+    quotation.expires_at = None
+    quotation.updated_at = now
+    for line in quotation.line_items or []:
+        line.is_selected = bool(line.is_default)
+    for recipient in quotation.recipients or []:
+        recipient.status = "draft"
+        recipient.access_token_hash = None
+        recipient.token_expires_at = None
+        recipient.sent_at = None
+        recipient.viewed_at = None
+        recipient.accepted_at = None
+        recipient.updated_at = now
+    _append_history(
+        quotation,
+        "revision_created",
+        current_user,
+        {
+            "previous_revision": previous_revision,
+            "revision": quotation.revision,
+            "previous_revision_snapshot": previous_snapshot,
+            "previous_links_invalidated": True,
+        },
+    )
+    log_activity(
+        db,
+        "sales_quotations",
+        quotation.id,
+        "CREATE_REVISION",
+        current_user,
+        {
+            "previous_revision": previous_revision,
+            "revision": quotation.revision,
+        },
+    )
     db.commit()
     db.refresh(quotation)
     return _quotation_response(quotation)
@@ -1338,6 +1648,7 @@ def convert_to_invoice(
             joinedload(SalesQuotation.converted_invoice),
         )
         .filter(SalesQuotation.id == quotation_id)
+        .with_for_update(of=SalesQuotation)
         .first()
     )
     if not quotation:
@@ -1354,6 +1665,11 @@ def convert_to_invoice(
         db.commit()
         return _quotation_response(quotation)
     if action in {"reject", "rejected"}:
+        if quotation.converted_invoice_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Cancel the unpaid Sales invoice to release its inventory reservation",
+            )
         quotation.status = "rejected"
         quotation.updated_at = datetime.utcnow()
         _append_history(quotation, "rejected", current_user)
@@ -1418,13 +1734,7 @@ def convert_to_invoice(
     invoice_line_items = [
         {
             "id": f"sales-line-{line.id}",
-            "item_number": (
-                line.part.part_number
-                if line.part
-                else "REFUND"
-                if line.item_kind == "refund"
-                else "TRADE-IN"
-            ),
+            "item_number": _sales_line_item_number(line),
             "description": line.description,
             "quantity": line.quantity,
             "unit_price": float(line.unit_price),
@@ -1433,6 +1743,7 @@ def convert_to_invoice(
             "condition": line.condition,
             "total": float(line.total),
             "item_kind": line.item_kind or "product",
+            "item_metadata": line.item_metadata or {},
         }
         for line in accepted_lines
     ]
@@ -1467,6 +1778,7 @@ def convert_to_invoice(
     db.add(invoice)
     db.flush()
     record_invoice_created(db, invoice, current_user, f"Sales invoice created from quotation {quotation.quotation_number}")
+    reserve_sales_inventory(db, quotation, invoice, accepted_lines, current_user)
     quotation.converted_invoice_id = invoice.id
     quotation.status = "in_progress"
     quotation.updated_at = datetime.utcnow()
@@ -1674,27 +1986,17 @@ def complete_quotation(
         raise HTTPException(status_code=400, detail="Convert quotation to invoice before completing")
     if quotation.status == "completed":
         return _quotation_response(quotation)
-
-    required_stock = _required_stock(_effective_quotation_lines(quotation))
-    locked_parts = {
-        part.id: part
-        for part in (
-            db.query(InventoryPart)
-            .filter(InventoryPart.id.in_(required_stock))
-            .with_for_update()
-            .all()
+    if quotation.converted_invoice.status != InvoiceStatus.PAID:
+        raise HTTPException(
+            status_code=409,
+            detail="The sales invoice must be fully paid before the sale can be completed",
         )
-    }
-    for part_id, quantity in required_stock.items():
-        part = locked_parts.get(part_id)
-        if not part or part.quantity_on_hand < quantity:
-            raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number if part else f'part #{part_id}'}")
-    for part_id, quantity in required_stock.items():
-        part = locked_parts[part_id]
-        part.quantity_on_hand -= quantity
-        part.updated_at = datetime.utcnow()
 
-    quotation.status = "completed"
+    fulfill_sales_invoice_inventory(
+        db,
+        quotation.converted_invoice,
+        current_user,
+    )
     if quotation.converted_invoice.status == InvoiceStatus.PAID:
         quotation.paid_status = "paid"
     quotation.updated_at = datetime.utcnow()
@@ -1890,6 +2192,13 @@ def update_sales_invoice(
         if invoice.status == InvoiceStatus.PAID and invoice.sales_quotation.status == "in_progress":
             invoice.sales_quotation.status = "completed"
         _append_history(invoice.sales_quotation, "invoice_updated", current_user, {"invoice_id": invoice.id, "status": invoice.status.value})
+    if invoice.status == InvoiceStatus.CANCELLED and previous_status != InvoiceStatus.CANCELLED:
+        release_sales_inventory_reservations(
+            db,
+            invoice,
+            "Sales invoice cancelled",
+            current_user,
+        )
     invoice.updated_at = datetime.utcnow()
     payment_transaction = record_payment_delta(
         db,
@@ -1928,6 +2237,7 @@ def update_sales_invoice(
                 if item
             )
     record_status_change(db, invoice, previous_status, current_user)
+    fulfill_sales_invoice_inventory(db, invoice, current_user)
     log_activity(db, "invoices", invoice.id, "UPDATE_SALES_INVOICE", current_user, update_data)
     db.commit()
     db.refresh(invoice)

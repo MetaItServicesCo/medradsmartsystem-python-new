@@ -109,7 +109,10 @@ class InventoryTransaction(Base):
     authorization_details = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
 
-    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # System-originated transactions (for example an external Square webhook)
+    # have no authenticated MedRad user. Production schema is already nullable
+    # through migration c9d0e1f2a3b4.
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     part = relationship("InventoryPart", back_populates="transactions")

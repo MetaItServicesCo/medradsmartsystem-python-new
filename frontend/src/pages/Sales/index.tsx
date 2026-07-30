@@ -2,8 +2,8 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Autocomplete, Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
+  Alert, Autocomplete, Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  DialogTitle, Divider, FormControl, FormControlLabel, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
   TextField, Typography,
 } from '@mui/material'
@@ -47,6 +47,7 @@ import {
   fetchSalesQuotations,
   requestSalesCardAuthorization,
   refundSalesInvoice,
+  reviseSalesQuotation,
   sendSalesQuotation,
   updateSalesInvoice,
   updateSalesQuotation,
@@ -57,9 +58,11 @@ import {
   type SalesQuotationLineItem,
   type SalesQuotationPayload,
   type SalesQuotationRecipientCandidate,
+  type SalesTradeInPart,
 } from '@/api/sales'
 import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
+import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed']
@@ -182,6 +185,29 @@ const emptyInvoiceDetails = (): SalesInvoiceCreatePayload => ({
   notes: '',
 })
 
+const emptyTradeInPart = (): SalesTradeInPart => ({
+  part_number: '',
+  description: '',
+  make: '',
+  model: '',
+  serial_number: '',
+  batch_number: '',
+  default_picture_url: '',
+  condition: 'used',
+  reorder_level: 0,
+  location: '',
+  supplier_name: '',
+  supplier_contact: '',
+  supplier_email: '',
+  supplier_phone: '',
+  supplier_address: '',
+  vendor_name: '',
+  purchase_location: '',
+  shipping_method: '',
+  acquisition_date: null,
+  warehouse_arrival_date: null,
+})
+
 interface SalesPartInfo {
   partNumber: string
   description: string
@@ -223,6 +249,7 @@ const Sales = () => {
   const [selectedPartCondition, setSelectedPartCondition] = useState('New')
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionQuotation, setActionQuotation] = useState<SalesQuotation | null>(null)
+  const [revisionQuotation, setRevisionQuotation] = useState<SalesQuotation | null>(null)
   const [invoiceActionAnchor, setInvoiceActionAnchor] = useState<HTMLElement | null>(null)
   const [actionInvoice, setActionInvoice] = useState<SalesInvoice | null>(null)
   const [viewInvoice, setViewInvoice] = useState<SalesInvoice | null>(null)
@@ -234,8 +261,11 @@ const Sales = () => {
   const [convertQuotation, setConvertQuotation] = useState<SalesQuotation | null>(null)
   const [invoiceDetails, setInvoiceDetails] = useState<SalesInvoiceCreatePayload>(emptyInvoiceDetails())
   const [selectedQuoteOptions, setSelectedQuoteOptions] = useState<number[]>([])
-  const [tradeInDescription, setTradeInDescription] = useState('')
+  const [tradeInEnabled, setTradeInEnabled] = useState(false)
+  const [tradeInPart, setTradeInPart] = useState<SalesTradeInPart>(emptyTradeInPart())
+  const [tradeInQuantity, setTradeInQuantity] = useState(1)
   const [tradeInValue, setTradeInValue] = useState(0)
+  const [refundAdjustmentEnabled, setRefundAdjustmentEnabled] = useState(false)
   const [refundAdjustmentDescription, setRefundAdjustmentDescription] = useState('')
   const [refundAdjustmentReference, setRefundAdjustmentReference] = useState('')
   const [refundAdjustmentValue, setRefundAdjustmentValue] = useState(0)
@@ -287,6 +317,16 @@ const Sales = () => {
   // on every page view fetched 500 + 771 rows for nothing — defer until a dialog
   // that needs them is open so the list page loads fast.
   const partsAndFacilitiesNeeded = quotationDialog || Boolean(convertQuotation)
+  const convertPartIds = useMemo(
+    () => (
+      convertQuotation?.line_items
+        .filter(line => line.item_kind === 'product' && line.part_id)
+        .map(line => Number(line.part_id))
+        .filter((id, index, values) => values.indexOf(id) === index)
+        .join(',') || ''
+    ),
+    [convertQuotation],
+  )
   const facilitiesQ = useQuery({
     queryKey: ['sales-facilities'],
     queryFn: () => fetchFacilities({ limit: 500 }),
@@ -298,6 +338,12 @@ const Sales = () => {
     queryFn: () => fetchSalesParts(undefined, 100),
     enabled: partsAndFacilitiesNeeded,
     placeholderData: previousData => previousData,
+  })
+  const convertPartsQ = useQuery({
+    queryKey: ['sales-parts', 'conversion-stock', convertPartIds],
+    queryFn: () => fetchSalesParts(undefined, 100, undefined, undefined, undefined, undefined, convertPartIds),
+    enabled: Boolean(convertQuotation && convertPartIds),
+    staleTime: 5_000,
   })
   const recipientCandidatesQ = useQuery({
     queryKey: ['sales-quotation-recipient-candidates', quotationForm.facility_id],
@@ -346,6 +392,7 @@ const Sales = () => {
 
   const facilities = facilitiesQ.data?.items || []
   const parts = partsQ.data?.items || []
+  const conversionParts = convertPartsQ.data?.items || []
   const recipientCandidates = recipientCandidatesQ.data?.items || []
   const summary = summaryQ.data
   const pendingQuotations = quotationsQ.data?.items || []
@@ -466,6 +513,14 @@ const Sales = () => {
       setQuotationDialog(false)
       setEditingQuotation(null)
       setQuotationForm(emptyQuotation())
+      setTradeInEnabled(false)
+      setTradeInPart(emptyTradeInPart())
+      setTradeInQuantity(1)
+      setTradeInValue(0)
+      setRefundAdjustmentEnabled(false)
+      setRefundAdjustmentDescription('')
+      setRefundAdjustmentReference('')
+      setRefundAdjustmentValue(0)
       invalidateSales()
       locateSalesRecord(
         '/sales/quotations',
@@ -502,6 +557,18 @@ const Sales = () => {
       )
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not send quotation'),
+  })
+
+  const revisionMut = useMutation({
+    mutationFn: (id: number) => reviseSalesQuotation(id),
+    onSuccess: quotation => {
+      setRevisionQuotation(null)
+      closeActions()
+      invalidateSales()
+      toast.success(`Revision ${quotation.revision} created. Edit and resend this draft.`)
+      openEdit(quotation)
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not create quotation revision'),
   })
 
   const convertMut = useMutation({
@@ -593,6 +660,14 @@ const Sales = () => {
     setEditingQuotation(null)
     setSelectedPart(null)
     setQuotationForm(emptyQuotation())
+    setTradeInEnabled(false)
+    setTradeInPart(emptyTradeInPart())
+    setTradeInQuantity(1)
+    setTradeInValue(0)
+    setRefundAdjustmentEnabled(false)
+    setRefundAdjustmentDescription('')
+    setRefundAdjustmentReference('')
+    setRefundAdjustmentValue(0)
     setQuotationDialog(true)
   }
 
@@ -626,8 +701,17 @@ const Sales = () => {
         condition: item.condition || 'New',
         description: item.description,
         item_metadata: item.item_metadata,
+        trade_in_part: item.trade_in_part || item.item_metadata?.inventory_part || null,
       })),
     })
+    setTradeInEnabled(false)
+    setTradeInPart(emptyTradeInPart())
+    setTradeInQuantity(1)
+    setTradeInValue(0)
+    setRefundAdjustmentEnabled(false)
+    setRefundAdjustmentDescription('')
+    setRefundAdjustmentReference('')
+    setRefundAdjustmentValue(0)
     setQuotationDialog(true)
   }
 
@@ -635,6 +719,18 @@ const Sales = () => {
     const part = selectedPart
     if (!part) return toast.error('Select a sales part first')
     if (selectedPartQty <= 0) return toast.error('Quantity must be greater than zero')
+    const available = part.quantity_available ?? part.quantity_on_hand
+    if (selectedPartQty > part.quantity_on_hand) {
+      return toast.error(
+        `${part.part_number} has only ${part.quantity_on_hand} unit(s) on hand.`,
+      )
+    }
+    if (selectedPartQty > available) {
+      toast.warning(
+        `${part.part_number} was added to the quotation, but ${part.quantity_reserved || 0} `
+        + 'unit(s) are reserved for unpaid invoices. A new invoice will be blocked until stock is released or replenished.',
+      )
+    }
     setQuotationForm(prev => ({
       ...prev,
       items: [
@@ -660,7 +756,9 @@ const Sales = () => {
   }
 
   const addTradeIn = () => {
-    if (!tradeInDescription.trim()) return toast.error('Enter the trade-in description')
+    if (!tradeInPart.part_number.trim()) return toast.error('Enter the trade-in part number')
+    if (!tradeInPart.description.trim()) return toast.error('Enter the trade-in part description')
+    if (tradeInQuantity <= 0) return toast.error('Trade-in quantity must be greater than zero')
     if (tradeInValue <= 0) return toast.error('Trade-in value must be greater than zero')
     setQuotationForm(prev => ({
       ...prev,
@@ -670,17 +768,31 @@ const Sales = () => {
           part_id: null,
           item_kind: 'trade_in',
           is_default: true,
-          quantity: 1,
+          quantity: tradeInQuantity,
           unit_price: tradeInValue,
           shipping_fee: 0,
           setup_fee: 0,
-          condition: 'Trade-in',
-          description: tradeInDescription.trim(),
+          condition: tradeInPart.condition || 'used',
+          description: tradeInPart.description.trim(),
+          trade_in_part: {
+            ...tradeInPart,
+            part_number: tradeInPart.part_number.trim(),
+            description: tradeInPart.description.trim(),
+          },
         },
       ],
     }))
-    setTradeInDescription('')
+    setTradeInPart(emptyTradeInPart())
+    setTradeInQuantity(1)
     setTradeInValue(0)
+  }
+
+  const handleTradeInImage = (file?: File) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) return toast.error('Select a valid image file')
+    const reader = new FileReader()
+    reader.onload = () => setTradeInPart(prev => ({ ...prev, default_picture_url: String(reader.result || '') }))
+    reader.readAsDataURL(file)
   }
 
   const addRefundAdjustment = () => {
@@ -837,6 +949,42 @@ const Sales = () => {
     (invoiceDetails.discount_type === 'percent'
       ? (convertPartsTotal + Number(invoiceDetails.worked_hours || 0) + Number(invoiceDetails.setup_fee || 0) + Number(invoiceDetails.service_fee || 0) + Number(invoiceDetails.shipping_fee || 0) + Number(invoiceDetails.application_fee || 0)) * Number(invoiceDetails.discount_amount || 0) / 100
       : Number(invoiceDetails.discount_amount || 0))
+  const conversionStockRows = convertQuotation
+    ? convertQuotation.line_items
+        .filter(line => (
+          line.item_kind === 'product'
+          && (
+            convertQuotation.quotation_type === 'standard'
+            || selectedQuoteOptions.includes(line.id)
+          )
+        ))
+        .map(line => {
+          const part = conversionParts.find(item => item.id === line.part_id)
+          return {
+            line,
+            part,
+            required: Number(line.quantity || 0),
+            available: part?.quantity_available ?? part?.quantity_on_hand ?? 0,
+          }
+        })
+    : []
+  const conversionStockBlocked = conversionStockRows.some(
+    item => !item.part || item.required > item.available,
+  )
+  const conversionNeedsStock = !invoiceDetails.action || invoiceDetails.action === 'convert_to_invoice'
+
+  const openCommitmentRecord = (
+    commitment: SalesPart['stock_commitments'][number],
+    closeQuotationDialog = false,
+  ) => {
+    if (closeQuotationDialog) setQuotationDialog(false)
+    setConvertQuotation(null)
+    if (commitment.invoice_id && commitment.invoice_number) {
+      navigate(`/sales/invoices?search=${encodeURIComponent(commitment.invoice_number)}`)
+      return
+    }
+    navigate(`/sales/quotations?search=${encodeURIComponent(commitment.quotation_number)}`)
+  }
 
   const applyConvertAction = () => {
     if (!convertQuotation) return
@@ -923,15 +1071,25 @@ const Sales = () => {
   }
 
   const sameInvoiceAccount = (left: SalesInvoice, right: SalesInvoice) => {
-    if (left.facility_id && right.facility_id) return left.facility_id === right.facility_id
-    return left.customer_name.trim().toLowerCase() === right.customer_name.trim().toLowerCase()
+    return isSameBillingAccount(
+      {
+        facilityId: left.facility_id,
+        customerEmail: left.customer_email,
+        recordKey: `sales-invoice-${left.id}`,
+      },
+      {
+        facilityId: right.facility_id,
+        customerEmail: right.customer_email,
+        recordKey: `sales-invoice-${right.id}`,
+      },
+    )
   }
 
   const invoiceLineItems = (invoice: SalesInvoice | null): PrintableLineItem[] => {
     if (!invoice) return []
     if (invoice.line_items?.length) {
       return invoice.line_items.map((line: any) => ({
-        item_number: line.item_number || line.part_number || (line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? 'TRADE-IN' : String(line.part_id || '-')),
+        item_number: line.item_number || line.part_number || (line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? line.item_metadata?.inventory_part?.part_number || 'TRADE-IN' : String(line.part_id || '-')),
         description: line.description || line.part_description || 'Sales item',
         quantity: Number(line.quantity || 1),
         unit_price: Number(line.unit_price || 0),
@@ -944,7 +1102,7 @@ const Sales = () => {
     const quotation = quotations.find(item => item.id === invoice.sales_quotation_id)
     if (quotation?.line_items?.length) {
       return quotation.line_items.map(line => ({
-        item_number: line.part_number || String(line.part_id),
+        item_number: line.part_number || (line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? line.trade_in_part?.part_number || 'TRADE-IN' : String(line.part_id || '-')),
         description: line.description || line.part_description || 'Sales item',
         quantity: Number(line.quantity || 1),
         unit_price: Number(line.unit_price || 0),
@@ -972,7 +1130,7 @@ const Sales = () => {
       ? (quotation.line_items || []).filter(line => line.is_selected)
       : (quotation.line_items || [])
     return lines.map(line => ({
-      item_number: line.part_number || String(line.part_id),
+      item_number: line.part_number || (line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? line.trade_in_part?.part_number || 'TRADE-IN' : String(line.part_id || '-')),
       description: line.description || line.part_description || 'Sales item',
       quantity: Number(line.quantity || 1),
       unit_price: Number(line.unit_price || 0),
@@ -987,8 +1145,19 @@ const Sales = () => {
     if (!quotation) return []
     return invoices
       .filter(invoice => {
-        if (quotation.facility_id && invoice.facility_id) return quotation.facility_id === invoice.facility_id
-        return quotation.customer_name.trim().toLowerCase() === invoice.customer_name.trim().toLowerCase()
+        if (quotation.converted_invoice_id === invoice.id) return true
+        return isSameBillingAccount(
+          {
+            facilityId: quotation.facility_id,
+            customerEmail: quotation.customer_email,
+            recordKey: `sales-quotation-${quotation.id}`,
+          },
+          {
+            facilityId: invoice.facility_id,
+            customerEmail: invoice.customer_email,
+            recordKey: `sales-invoice-${invoice.id}`,
+          },
+        )
       })
       .flatMap(invoice => (invoice.transactions || []).map(transaction => ({
         ...transaction,
@@ -1437,12 +1606,25 @@ const Sales = () => {
         </MenuItem>
         <MenuItem
           sx={ACTION_MENU_ITEM}
-          disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id) || !['draft', 'pending', 'changes_requested'].includes(String(actionQuotation.status))}
+          disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id) || !['draft', 'pending'].includes(String(actionQuotation.status))}
           onClick={() => actionQuotation && openEdit(actionQuotation)}
         >
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
         </MenuItem>
+        {actionQuotation && ['sent', 'viewed', 'changes_requested'].includes(String(actionQuotation.status)) && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            disabled={Boolean(actionQuotation.converted_invoice_id) || Boolean(actionQuotation.acceptance)}
+            onClick={() => {
+              setRevisionQuotation(actionQuotation)
+              closeActions()
+            }}
+          >
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><HistoryIcon fontSize="small" /></ListItemIcon>
+            Create Revision
+          </MenuItem>
+        )}
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionQuotation) setViewQuotation(actionQuotation); closeActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View
@@ -1726,52 +1908,172 @@ const Sales = () => {
             </TextField>
             <Button startIcon={<AddIcon />} variant="contained" onClick={addLineItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>Add Part</Button>
           </Box>
+          {selectedPart && (
+            <Card
+              variant="outlined"
+              sx={{
+                p: 1.5,
+                mb: 2,
+                borderRadius: '14px',
+                borderColor: selectedPart.quantity_reserved > 0 ? '#FCA5A5' : '#DDD6FE',
+                bgcolor: selectedPart.quantity_reserved > 0 ? '#FFF7F7' : '#FAF8FF',
+              }}
+            >
+              <Typography sx={{ color: '#312E81', fontWeight: 900, mb: 1 }}>
+                Stock position for {selectedPart.part_number}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+                <Chip size="small" label={`On hand: ${selectedPart.quantity_on_hand}`} />
+                <Chip
+                  size="small"
+                  label={`Available: ${selectedPart.quantity_available}`}
+                  color={selectedPart.quantity_available > 0 ? 'success' : 'error'}
+                />
+                <Chip
+                  size="small"
+                  label={`Reserved: ${selectedPart.quantity_reserved}`}
+                  color={selectedPart.quantity_reserved > 0 ? 'error' : 'default'}
+                  variant={selectedPart.quantity_reserved > 0 ? 'filled' : 'outlined'}
+                />
+                <Chip
+                  size="small"
+                  label={`In sent quotations: ${selectedPart.quantity_in_open_quotations}`}
+                  color={selectedPart.quantity_in_open_quotations > 0 ? 'warning' : 'default'}
+                  variant="outlined"
+                />
+              </Box>
+              {selectedPart.stock_commitments.length > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap', mt: 1 }}>
+                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800 }}>
+                    Related:
+                  </Typography>
+                  {selectedPart.stock_commitments.map(commitment => (
+                    <Chip
+                      key={`${commitment.type}-${commitment.quotation_id}-${commitment.invoice_id || 0}`}
+                      size="small"
+                      clickable
+                      onClick={() => openCommitmentRecord(commitment, true)}
+                      label={
+                        commitment.invoice_number
+                          ? `${commitment.invoice_number} · ${commitment.quantity} reserved`
+                          : `${commitment.quotation_number} · ${commitment.quantity} quoted`
+                      }
+                      color={commitment.invoice_id ? 'error' : 'warning'}
+                      variant="outlined"
+                      sx={{ fontWeight: 850 }}
+                    />
+                  ))}
+                </Box>
+              )}
+            </Card>
+          )}
 
           <Card sx={{ p: 2, mb: 2, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
-            <Typography sx={{ fontWeight: 900, color: '#9A3412', mb: 1 }}>Optional Trade-In Credit</Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px auto' }, gap: 1.5 }}>
-              <TextField label="Trade-in equipment / serial / notes" value={tradeInDescription} onChange={e => setTradeInDescription(e.target.value)} />
-              <TextField label="Credit Value" type="number" value={tradeInValue} onChange={e => setTradeInValue(Number(e.target.value))} />
-              <Button variant="outlined" startIcon={<AddIcon />} onClick={addTradeIn} sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>Add Trade-In</Button>
-            </Box>
-            <Typography sx={{ mt: 1, color: '#9A3412', fontSize: 12, fontWeight: 700 }}>
-              Trade-in credit reduces the invoice and never changes sales inventory stock.
-            </Typography>
+            <FormControlLabel
+              control={<Checkbox checked={tradeInEnabled} onChange={event => setTradeInEnabled(event.target.checked)} />}
+              label={<Typography sx={{ fontWeight: 900, color: '#9A3412' }}>Add Trade-In</Typography>}
+            />
+            {tradeInEnabled && (
+              <Box sx={{ mt: 1.5, display: 'grid', gap: 2 }}>
+                <Typography sx={{ color: '#9A3412', fontSize: 13, fontWeight: 800 }}>
+                  Register the incoming part now. It will enter global Parts Inventory only after this invoice is fully paid.
+                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                  <TextField label="Part Number *" value={tradeInPart.part_number} onChange={e => setTradeInPart(prev => ({ ...prev, part_number: e.target.value }))} />
+                  <TextField label="Part Type" value="Sales" disabled />
+                  <TextField label="Part Description *" value={tradeInPart.description} onChange={e => setTradeInPart(prev => ({ ...prev, description: e.target.value }))} />
+                  <TextField label="Make" value={tradeInPart.make || ''} onChange={e => setTradeInPart(prev => ({ ...prev, make: e.target.value }))} />
+                  <TextField label="Model" value={tradeInPart.model || ''} onChange={e => setTradeInPart(prev => ({ ...prev, model: e.target.value }))} />
+                  <TextField label="Serial Number" value={tradeInPart.serial_number || ''} onChange={e => setTradeInPart(prev => ({ ...prev, serial_number: e.target.value }))} />
+                  <TextField label="Batch Number" value={tradeInPart.batch_number || ''} onChange={e => setTradeInPart(prev => ({ ...prev, batch_number: e.target.value }))} />
+                  <TextField label="Quantity *" type="number" inputProps={{ min: 1, step: 1 }} value={tradeInQuantity} onChange={e => setTradeInQuantity(Number(e.target.value))} />
+                  <TextField label="Credit Value Per Part *" type="number" inputProps={{ min: 0, step: '0.01' }} value={tradeInValue} onChange={e => setTradeInValue(Number(e.target.value))} />
+                  <TextField select label="Part Condition *" value={tradeInPart.condition} onChange={e => setTradeInPart(prev => ({ ...prev, condition: e.target.value }))}>
+                    <MenuItem value="new">New</MenuItem>
+                    <MenuItem value="refurbished">Refurbished</MenuItem>
+                    <MenuItem value="used">Used</MenuItem>
+                    <MenuItem value="damaged">Damaged</MenuItem>
+                  </TextField>
+                  <TextField label="Reorder Level" type="number" inputProps={{ min: 0, step: 1 }} value={tradeInPart.reorder_level || 0} onChange={e => setTradeInPart(prev => ({ ...prev, reorder_level: Number(e.target.value) }))} />
+                  <TextField label="Inventory Location" value={tradeInPart.location || ''} onChange={e => setTradeInPart(prev => ({ ...prev, location: e.target.value }))} />
+                </Box>
+
+                <Typography sx={{ fontWeight: 900, color: '#7C2D12' }}>Source / Contact</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                  <TextField label="Company" value={tradeInPart.supplier_name || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_name: e.target.value }))} />
+                  <TextField label="Phone" value={tradeInPart.supplier_phone || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_phone: formatUSPhoneInput(e.target.value) }))} />
+                  <TextField label="Contact Name" value={tradeInPart.supplier_contact || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_contact: e.target.value }))} />
+                  <TextField label="Address" value={tradeInPart.supplier_address || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_address: e.target.value }))} />
+                  <TextField label="Email" type="email" value={tradeInPart.supplier_email || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_email: e.target.value }))} />
+                </Box>
+
+                <Typography sx={{ fontWeight: 900, color: '#7C2D12' }}>Acquired From (Optional)</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                  <TextField label="Vendor Name" value={tradeInPart.vendor_name || ''} onChange={e => setTradeInPart(prev => ({ ...prev, vendor_name: e.target.value }))} />
+                  <TextField label="Purchase Location" value={tradeInPart.purchase_location || ''} onChange={e => setTradeInPart(prev => ({ ...prev, purchase_location: e.target.value }))} />
+                  <TextField label="Shipping Method" value={tradeInPart.shipping_method || ''} onChange={e => setTradeInPart(prev => ({ ...prev, shipping_method: e.target.value }))} />
+                  <TextField label="Acquisition Date" type="date" InputLabelProps={{ shrink: true }} value={tradeInPart.acquisition_date || ''} onChange={e => setTradeInPart(prev => ({ ...prev, acquisition_date: e.target.value || null }))} />
+                  <TextField label="Warehouse Arrival Date" type="date" InputLabelProps={{ shrink: true }} value={tradeInPart.warehouse_arrival_date || ''} onChange={e => setTradeInPart(prev => ({ ...prev, warehouse_arrival_date: e.target.value || null }))} />
+                </Box>
+
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
+                  <Button component="label" variant="outlined" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+                    Choose Part Image
+                    <input hidden type="file" accept="image/*" onChange={event => handleTradeInImage(event.target.files?.[0])} />
+                  </Button>
+                  {tradeInPart.default_picture_url && (
+                    <Avatar src={tradeInPart.default_picture_url} variant="rounded" sx={{ width: 64, height: 64, borderRadius: '12px' }}>
+                      <Inventory2Icon />
+                    </Avatar>
+                  )}
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={addTradeIn} sx={{ ml: { md: 'auto' }, borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+                    Add Trade-In Part
+                  </Button>
+                </Box>
+              </Box>
+            )}
           </Card>
 
           <Card sx={{ p: 2, mb: 2, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
-            <Typography sx={{ fontWeight: 900, color: '#B91C1C', mb: 1 }}>Refund Payment</Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 220px auto' }, gap: 1.5 }}>
-              <TextField
-                label="Refund reason"
-                value={refundAdjustmentDescription}
-                onChange={e => setRefundAdjustmentDescription(e.target.value)}
-              />
-              <TextField
-                label="Refund amount"
-                type="number"
-                inputProps={{ min: 0, step: '0.01' }}
-                value={refundAdjustmentValue}
-                onChange={e => setRefundAdjustmentValue(Number(e.target.value))}
-              />
-              <TextField
-                label="Payment reference (optional)"
-                value={refundAdjustmentReference}
-                onChange={e => setRefundAdjustmentReference(e.target.value)}
-              />
-              <Button
-                color="error"
-                variant="contained"
-                startIcon={<PaymentIcon />}
-                onClick={addRefundAdjustment}
-                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
-              >
-                Refund Payment
-              </Button>
-            </Box>
-            <Typography sx={{ mt: 1, color: '#B91C1C', fontSize: 12, fontWeight: 700 }}>
-              Adds a clearly identified negative line to this quotation. It does not alter inventory stock.
-            </Typography>
+            <FormControlLabel
+              control={<Checkbox checked={refundAdjustmentEnabled} onChange={event => setRefundAdjustmentEnabled(event.target.checked)} />}
+              label={<Typography sx={{ fontWeight: 900, color: '#B91C1C' }}>Refund Payment</Typography>}
+            />
+            {refundAdjustmentEnabled && (
+              <>
+                <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 220px auto' }, gap: 1.5 }}>
+                  <TextField
+                    label="Refund reason"
+                    value={refundAdjustmentDescription}
+                    onChange={e => setRefundAdjustmentDescription(e.target.value)}
+                  />
+                  <TextField
+                    label="Refund amount"
+                    type="number"
+                    inputProps={{ min: 0, step: '0.01' }}
+                    value={refundAdjustmentValue}
+                    onChange={e => setRefundAdjustmentValue(Number(e.target.value))}
+                  />
+                  <TextField
+                    label="Payment reference (optional)"
+                    value={refundAdjustmentReference}
+                    onChange={e => setRefundAdjustmentReference(e.target.value)}
+                  />
+                  <Button
+                    color="error"
+                    variant="contained"
+                    startIcon={<PaymentIcon />}
+                    onClick={addRefundAdjustment}
+                    sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+                  >
+                    Add Refund
+                  </Button>
+                </Box>
+                <Typography sx={{ mt: 1, color: '#B91C1C', fontSize: 12, fontWeight: 700 }}>
+                  Adds a clearly identified negative line to this quotation. It does not alter inventory stock.
+                </Typography>
+              </>
+            )}
           </Card>
 
           <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
@@ -1798,11 +2100,12 @@ const Sales = () => {
                 ) : quotationForm.items.map((item, index) => {
                   const part = parts.find(candidate => candidate.id === item.part_id)
                   const itemLabel = item.item_kind === 'trade_in' ? 'Trade-In' : item.item_kind === 'refund' ? 'Refund' : 'Product'
-                  const itemNumber = item.item_kind === 'trade_in' ? 'TRADE-IN' : item.item_kind === 'refund' ? 'REFUND' : part?.part_number || item.part_id
+                  const itemNumber = item.item_kind === 'trade_in' ? item.trade_in_part?.part_number || 'TRADE-IN' : item.item_kind === 'refund' ? 'REFUND' : part?.part_number || item.part_id
+                  const itemImage = item.item_kind === 'trade_in' ? item.trade_in_part?.default_picture_url : part?.default_picture_url
                   return (
                     <TableRow key={`${item.part_id}-${index}`}>
                       <TableCell>
-                        <Avatar src={resolveUploadUrl(part?.default_picture_url)} variant="rounded" sx={{ width: 42, height: 42, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '10px' }}>
+                        <Avatar src={resolveUploadUrl(itemImage)} variant="rounded" sx={{ width: 42, height: 42, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '10px' }}>
                           <Inventory2Icon fontSize="small" />
                         </Avatar>
                       </TableCell>
@@ -1810,7 +2113,16 @@ const Sales = () => {
                       <TableCell><ClippedTooltipText value={itemNumber} monospace fontWeight={900} onClick={item.item_kind === 'product' ? () => openSalesPartInfo(part, item) : undefined} /></TableCell>
                       <TableCell>
                         {item.item_kind !== 'product'
-                          ? <TextField size="small" value={item.description || ''} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, description: e.target.value } : line) }))} />
+                          ? <TextField size="small" value={item.description || ''} onChange={e => setQuotationForm(prev => ({
+                            ...prev,
+                            items: prev.items.map((line, lineIndex) => lineIndex === index ? {
+                              ...line,
+                              description: e.target.value,
+                              trade_in_part: line.trade_in_part
+                                ? { ...line.trade_in_part, description: e.target.value }
+                                : line.trade_in_part,
+                            } : line),
+                          }))} />
                           : <ClippedTooltipText value={item.description} field />}
                       </TableCell>
                       <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>
@@ -1986,6 +2298,98 @@ const Sales = () => {
                   </Card>
                 )}
 
+                {convertPartsQ.isFetching && (
+                  <Alert severity="info" sx={{ borderRadius: '14px' }}>
+                    Checking live Sales inventory availability…
+                  </Alert>
+                )}
+                {!convertPartsQ.isFetching && conversionStockRows.length > 0 && (
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      p: 1.5,
+                      borderRadius: '14px',
+                      borderColor: conversionStockBlocked ? '#FCA5A5' : '#BBF7D0',
+                      bgcolor: conversionStockBlocked ? '#FFF7F7' : '#F7FFF9',
+                    }}
+                  >
+                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>
+                      Live inventory commitment check
+                    </Typography>
+                    <Typography sx={{ color: '#64748B', fontSize: 12.5, mb: 1 }}>
+                      Accepted options are reserved when this invoice is created. Sent quotations remain visible but do not reserve stock.
+                    </Typography>
+                    <Box sx={{ display: 'grid', gap: 0.8 }}>
+                      {conversionStockRows.map(({ line, part, required, available }) => {
+                        const blocked = !part || required > available
+                        return (
+                          <Box
+                            key={line.id}
+                            sx={{
+                              p: 1,
+                              borderRadius: '10px',
+                              border: `1px solid ${blocked ? '#FECACA' : '#D1FAE5'}`,
+                              bgcolor: '#fff',
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', gap: 0.7, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <Typography sx={{ fontWeight: 850, color: '#312E81', mr: 'auto' }}>
+                                {line.part_number || line.description}
+                              </Typography>
+                              <Chip size="small" label={`Required: ${required}`} />
+                              <Chip size="small" label={`On hand: ${part?.quantity_on_hand ?? '—'}`} />
+                              <Chip
+                                size="small"
+                                label={`Reserved: ${part?.quantity_reserved ?? '—'}`}
+                                color={(part?.quantity_reserved || 0) > 0 ? 'error' : 'default'}
+                                variant="outlined"
+                              />
+                              <Chip
+                                size="small"
+                                label={`Available: ${part?.quantity_available ?? '—'}`}
+                                color={blocked ? 'error' : 'success'}
+                              />
+                              {(part?.quantity_in_open_quotations || 0) > 0 && (
+                                <Chip
+                                  size="small"
+                                  label={`Sent quotes: ${part?.quantity_in_open_quotations}`}
+                                  color="warning"
+                                  variant="outlined"
+                                />
+                              )}
+                            </Box>
+                            {part && part.stock_commitments.length > 0 && (
+                              <Box sx={{ display: 'flex', gap: 0.6, flexWrap: 'wrap', mt: 0.8 }}>
+                                {part.stock_commitments.map(commitment => (
+                                  <Chip
+                                    key={`${commitment.type}-${commitment.quotation_id}-${commitment.invoice_id || 0}`}
+                                    size="small"
+                                    clickable
+                                    onClick={() => openCommitmentRecord(commitment)}
+                                    label={
+                                      commitment.invoice_number
+                                        ? `${commitment.invoice_number} · ${commitment.quantity} reserved`
+                                        : `${commitment.quotation_number} · ${commitment.quantity} quoted`
+                                    }
+                                    color={commitment.invoice_id ? 'error' : 'warning'}
+                                    variant="outlined"
+                                    sx={{ fontWeight: 800 }}
+                                  />
+                                ))}
+                              </Box>
+                            )}
+                          </Box>
+                        )
+                      })}
+                    </Box>
+                    {conversionStockBlocked && (
+                      <Alert severity="error" sx={{ mt: 1, borderRadius: '10px' }}>
+                        This invoice cannot be created until enough unreserved stock is available.
+                      </Alert>
+                    )}
+                  </Card>
+                )}
+
                 <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
                   <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>Parts Used</Box>
                   <Table>
@@ -2010,7 +2414,7 @@ const Sales = () => {
                         const part = parts.find(item => item.id === line.part_id)
                         return (
                           <TableRow key={line.id}>
-                            <TableCell><ClippedTooltipText value={line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? 'TRADE-IN' : line.part_number} monospace fontWeight={900} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(part, line) : undefined} /></TableCell>
+                            <TableCell><ClippedTooltipText value={line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? line.trade_in_part?.part_number || 'TRADE-IN' : line.part_number} monospace fontWeight={900} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(part, line) : undefined} /></TableCell>
                             <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
                             <TableCell>{money(line.unit_price)}</TableCell>
                             <TableCell>{line.quantity}</TableCell>
@@ -2085,7 +2489,11 @@ const Sales = () => {
           <Button onClick={() => setConvertQuotation(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
           <Button
             variant="contained"
-            disabled={!convertQuotation || convertMut.isPending}
+            disabled={
+              !convertQuotation
+              || convertMut.isPending
+              || (conversionNeedsStock && (convertPartsQ.isFetching || conversionStockBlocked))
+            }
             onClick={applyConvertAction}
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}
           >
@@ -2121,7 +2529,7 @@ const Sales = () => {
                   <TableBody>
                     {viewQuotation.line_items.map(line => (
                       <TableRow key={line.id}>
-                        <TableCell><ClippedTooltipText value={line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? 'TRADE-IN' : line.part_number} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(parts.find(item => item.id === line.part_id), line) : undefined} /></TableCell>
+                        <TableCell><ClippedTooltipText value={line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? line.trade_in_part?.part_number || 'TRADE-IN' : line.part_number} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(parts.find(item => item.id === line.part_id), line) : undefined} /></TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                             <Chip size="small" label={line.item_kind === 'refund' ? 'Refund' : line.item_kind === 'trade_in' ? 'Trade-In' : 'Product'} color={line.item_kind === 'refund' ? 'error' : line.item_kind === 'trade_in' ? 'warning' : 'primary'} />
@@ -2312,6 +2720,47 @@ const Sales = () => {
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
           >
             Record Refund
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(revisionQuotation)}
+        onClose={() => !revisionMut.isPending && setRevisionQuotation(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '22px' } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Create Quotation Revision?</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'grid', gap: 1.5 }}>
+            <Typography sx={{ color: '#1E1B4B', fontWeight: 800 }}>
+              {revisionQuotation?.quotation_number} will become Revision {(revisionQuotation?.revision || 1) + 1}.
+            </Typography>
+            <Typography sx={{ color: '#64748B' }}>
+              The current revision will remain in the audit history. Existing customer links will stop working, and the new revision will open as a draft for editing and resending.
+            </Typography>
+            <Typography sx={{ color: '#B45309', fontWeight: 800 }}>
+              Signed, accepted, invoiced, or paid quotations cannot be revised.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button
+            onClick={() => setRevisionQuotation(null)}
+            disabled={revisionMut.isPending}
+            sx={{ fontWeight: 900, textTransform: 'none' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => revisionQuotation && revisionMut.mutate(revisionQuotation.id)}
+            disabled={!revisionQuotation || revisionMut.isPending}
+            variant="contained"
+            startIcon={revisionMut.isPending ? <CircularProgress size={16} color="inherit" /> : <HistoryIcon />}
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Create Revision
           </Button>
         </DialogActions>
       </Dialog>

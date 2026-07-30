@@ -334,7 +334,13 @@ const ClientQuotation = () => {
                         : <Checkbox checked={selected} disabled={responseLocked} />}
                     </TableCell>
                   )}
-                  <TableCell sx={{ fontWeight: 900 }}>{line.item_kind === 'refund' ? 'Refund' : line.item_kind === 'trade_in' ? 'Trade-In' : line.part_number || 'Product'}</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>
+                    {line.item_kind === 'refund'
+                      ? 'Refund'
+                      : line.item_kind === 'trade_in'
+                        ? line.trade_in_part?.part_number || 'Trade-In'
+                        : line.part_number || 'Product'}
+                  </TableCell>
                   <TableCell>{line.description}</TableCell>
                   <TableCell align="right">{line.quantity}</TableCell>
                   <TableCell align="right">{money(line.unit_price)}</TableCell>

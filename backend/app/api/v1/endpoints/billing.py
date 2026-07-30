@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
-from app.models.invoice import Invoice, InvoiceStatus
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.sales import SalesPaymentAuthorization
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
@@ -31,6 +31,10 @@ from app.utils.invoice_ledger import (
 from app.utils.notifications import create_notifications
 from app.utils.permission_deps import require_module_access
 from app.utils.permissions import has_module_permission
+from app.utils.sales_inventory import (
+    ensure_sales_inventory_available,
+    fulfill_sales_invoice_inventory,
+)
 
 
 router = APIRouter(dependencies=[Depends(require_module_access("billing"))])
@@ -237,6 +241,8 @@ def record_invoice_payment(
     require_invoice_approved(invoice)
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    if invoice.invoice_type == InvoiceType.SALES:
+        ensure_sales_inventory_available(db, invoice)
 
     previous_paid = _money(invoice.amount_paid)
     previous_status = invoice.status
@@ -300,6 +306,8 @@ def record_invoice_payment(
         payload.amount,
         payload.payment_method,
     )
+    if invoice.invoice_type == InvoiceType.SALES:
+        fulfill_sales_invoice_inventory(db, invoice, current_user)
     db.commit()
     db.refresh(invoice)
     return {

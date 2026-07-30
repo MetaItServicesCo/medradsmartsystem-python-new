@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Autocomplete, Avatar, Box, CircularProgress, TextField, Typography } from '@mui/material'
+import { Autocomplete, Avatar, Box, Chip, CircularProgress, TextField, Typography } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import { resolveUploadUrl } from '@/api/users'
 
@@ -10,6 +10,9 @@ export interface PickerPart {
   description: string
   default_picture_url: string | null
   quantity_on_hand: number
+  quantity_reserved?: number
+  quantity_available?: number
+  quantity_in_open_quotations?: number
   unit_price: number
 }
 
@@ -87,21 +90,57 @@ export default function PartSearchAutocomplete<T extends PickerPart>({
       getOptionLabel={option => `${option.part_number} - ${option.description}`}
       getOptionDisabled={getOptionDisabled}
       noOptionsText={partsQ.isFetching ? 'Searching…' : debounced ? 'No matching parts' : 'Start typing to search parts'}
-      renderOption={(props, option) => (
-        <Box component="li" {...props} key={option.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-          <Avatar
-            src={resolveUploadUrl(option.default_picture_url)}
-            variant="rounded"
-            imgProps={{ loading: 'lazy' }}
-            sx={{ width: 32, height: 32, bgcolor: avatarBg, color: avatarColor }}
-          >
-            {icon}
-          </Avatar>
-          <Typography component="span" sx={{ fontSize: 14 }}>
-            {option.part_number} - {option.description} ({option.quantity_on_hand} available, {fmtMoney(option.unit_price)})
-          </Typography>
-        </Box>
-      )}
+      renderOption={(props, option) => {
+        const available = option.quantity_available ?? option.quantity_on_hand
+        const reserved = option.quantity_reserved ?? 0
+        const openQuoted = option.quantity_in_open_quotations ?? 0
+        return (
+          <Box component="li" {...props} key={option.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Avatar
+              src={resolveUploadUrl(option.default_picture_url)}
+              variant="rounded"
+              imgProps={{ loading: 'lazy' }}
+              sx={{ width: 32, height: 32, bgcolor: avatarBg, color: avatarColor }}
+            >
+              {icon}
+            </Avatar>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography component="div" sx={{ fontSize: 14, fontWeight: 750 }}>
+                {option.part_number} - {option.description}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 0.35, flexWrap: 'wrap' }}>
+                <Chip
+                  size="small"
+                  label={`${available} available`}
+                  color={available > 0 ? 'success' : 'error'}
+                  sx={{ height: 22, fontWeight: 800 }}
+                />
+                <Typography component="span" sx={{ fontSize: 12, color: '#64748B' }}>
+                  {option.quantity_on_hand} on hand · {fmtMoney(option.unit_price)}
+                </Typography>
+                {reserved > 0 && (
+                  <Chip
+                    size="small"
+                    label={`${reserved} reserved`}
+                    color="error"
+                    variant="outlined"
+                    sx={{ height: 22, fontWeight: 800 }}
+                  />
+                )}
+                {openQuoted > 0 && (
+                  <Chip
+                    size="small"
+                    label={`${openQuoted} in sent quotes`}
+                    color="warning"
+                    variant="outlined"
+                    sx={{ height: 22, fontWeight: 800 }}
+                  />
+                )}
+              </Box>
+            </Box>
+          </Box>
+        )
+      }}
       renderInput={params => (
         <TextField
           {...params}

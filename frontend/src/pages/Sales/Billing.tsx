@@ -55,6 +55,7 @@ import ContextTableRow from '@/components/ContextTableRow'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
+import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
 import { approveInvoiceForBilling, recordInvoicePayment } from '@/api/billing'
 
@@ -396,10 +397,18 @@ const serviceTransactions = (quotation: ServiceRequestQuotationList): BillingTra
 }
 
 const sameAccount = (left: BillingItem, right: BillingItem) => {
-  if (left.facilityId && right.facilityId) return left.facilityId === right.facilityId
-  if (left.facility !== '-' && right.facility !== '-') return left.facility === right.facility
-  if (left.customerEmail && right.customerEmail) return left.customerEmail === right.customerEmail
-  return left.customer === right.customer
+  return isSameBillingAccount(
+    {
+      facilityId: left.facilityId,
+      customerEmail: left.customerEmail,
+      recordKey: left.key,
+    },
+    {
+      facilityId: right.facilityId,
+      customerEmail: right.customerEmail,
+      recordKey: right.key,
+    },
+  )
 }
 
 const ACTION_MENU_PAPER = {

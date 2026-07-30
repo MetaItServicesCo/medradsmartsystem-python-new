@@ -4,6 +4,17 @@ export type SalesQuotationStatus = 'draft' | 'sent' | 'viewed' | 'changes_reques
 export type SalesPaidStatus = 'unpaid' | 'paid'
 export type SalesInvoiceStatus = 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled'
 
+export interface SalesStockCommitment {
+  type: 'open_quotation' | 'reserved_unpaid_invoice'
+  quantity: number
+  quotation_id: number
+  quotation_number: string
+  quotation_status: string
+  invoice_id: number | null
+  invoice_number: string | null
+  invoice_status: string | null
+}
+
 export interface SalesPart {
   id: number
   part_number: string
@@ -15,6 +26,10 @@ export interface SalesPart {
   serial_number: string | null
   condition: string
   quantity_on_hand: number
+  quantity_reserved: number
+  quantity_available: number
+  quantity_in_open_quotations: number
+  stock_commitments: SalesStockCommitment[]
   unit_price: number
   facility_id: number | null
   facility_name: string | null
@@ -28,6 +43,7 @@ export interface SalesQuotationLineItem {
   is_default: boolean
   is_selected: boolean
   item_metadata?: Record<string, any>
+  trade_in_part?: SalesTradeInPart | null
   part_number: string | null
   part_description: string | null
   description: string
@@ -37,6 +53,29 @@ export interface SalesQuotationLineItem {
   setup_fee: number
   condition: string | null
   total: number
+}
+
+export interface SalesTradeInPart {
+  part_number: string
+  description: string
+  make?: string | null
+  model?: string | null
+  serial_number?: string | null
+  batch_number?: string | null
+  default_picture_url?: string | null
+  condition: string
+  reorder_level?: number
+  location?: string | null
+  supplier_name?: string | null
+  supplier_contact?: string | null
+  supplier_email?: string | null
+  supplier_phone?: string | null
+  supplier_address?: string | null
+  vendor_name?: string | null
+  purchase_location?: string | null
+  shipping_method?: string | null
+  acquisition_date?: string | null
+  warehouse_arrival_date?: string | null
 }
 
 export interface SalesQuotationRecipient {
@@ -259,6 +298,7 @@ export interface SalesQuotationPayload {
     condition?: string | null
     description?: string
     item_metadata?: Record<string, any>
+    trade_in_part?: SalesTradeInPart | null
   }>
   primary_recipient_user_id?: number | null
   additional_recipient_user_ids?: number[]
@@ -391,8 +431,9 @@ export const fetchSalesParts = async (
   searchField?: string,
   dateFrom?: string,
   dateTo?: string,
+  partIds?: string,
 ): Promise<{ items: SalesPart[]; total: number }> => {
-  const res = await apiClient.get('/sales/parts', { params: { search, search_field: searchField, date_from: dateFrom, date_to: dateTo, limit, skip } })
+  const res = await apiClient.get('/sales/parts', { params: { search, search_field: searchField, date_from: dateFrom, date_to: dateTo, part_ids: partIds, limit, skip } })
   return res.data
 }
 
@@ -433,6 +474,11 @@ export const updateSalesQuotation = async (
   data: Partial<SalesQuotationPayload> & { status?: string; paid_status?: string }
 ): Promise<SalesQuotation> => {
   const res = await apiClient.put(`/sales/quotations/${id}`, data)
+  return res.data
+}
+
+export const reviseSalesQuotation = async (id: number): Promise<SalesQuotation> => {
+  const res = await apiClient.post(`/sales/quotations/${id}/revise`)
   return res.data
 }
 
