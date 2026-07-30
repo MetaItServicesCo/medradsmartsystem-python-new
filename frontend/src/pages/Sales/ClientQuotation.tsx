@@ -3,12 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useParams } from 'react-router-dom'
 import {
   Alert, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions,
-  DialogContent, DialogTitle, FormControlLabel, Radio, Table, TableBody, TableCell,
-  TableHead, TableRow, TextField, Typography,
+  DialogContent, DialogTitle, FormControlLabel, TextField, Typography,
 } from '@mui/material'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import PaymentIcon from '@mui/icons-material/Payment'
-import PrintIcon from '@mui/icons-material/Print'
 import { toast } from 'react-toastify'
 
 import {
@@ -25,6 +23,7 @@ import {
   type SalesQuotationLineItem,
 } from '@/api/sales'
 import SquareCardCheckout from '@/components/Billing/SquareCardCheckout'
+import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 const dateLabel = (value?: string | null) => value
@@ -51,10 +50,6 @@ const ClientQuotation = () => {
   const quotation = data?.quotation
   const productLines = useMemo(
     () => (quotation?.line_items || []).filter(line => line.item_kind === 'product'),
-    [quotation?.line_items],
-  )
-  const creditLines = useMemo(
-    () => (quotation?.line_items || []).filter(line => line.item_kind !== 'product'),
     [quotation?.line_items],
   )
   const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -97,13 +92,6 @@ const ClientQuotation = () => {
     }, 150)
     return () => window.clearTimeout(timeout)
   }, [data?.invoice?.status])
-
-  const selectedProductLines = productLines.filter(line =>
-    quotation?.quotation_type === 'standard' || selectedIds.includes(line.id),
-  )
-  const selectedLines = [...selectedProductLines, ...creditLines]
-  const subtotal = selectedLines.reduce((sum, line) => sum + Number(line.total || 0), 0)
-  const grandTotal = subtotal + Number(quotation?.tax_amount || 0) - Number(quotation?.discount_amount || 0)
 
   const acceptMut = useMutation({
     mutationFn: () => {
@@ -253,112 +241,19 @@ const ClientQuotation = () => {
           '@media print': { boxShadow: 'none', borderRadius: 0, p: 1 },
         }}
       >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box
-              component="img"
-              src="/mr-biomed-logo.jpeg"
-              alt="Mr. BioMed Tech Services"
-              sx={{ width: 94, height: 62, display: 'block', objectFit: 'contain' }}
-            />
-            <Box>
-              <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation</Typography>
-              <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{data.company_name}</Typography>
-            </Box>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'start', '@media print': { display: 'none' } }}>
-            <Chip label={statusLabel} sx={{ textTransform: 'capitalize', fontWeight: 900, bgcolor: '#EDE9FE', color: '#6D28D9' }} />
-            {data.can_accept && (
-              <Button
-                variant="contained"
-                onClick={() => responseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}
-              >
-                Sign & Approve
-              </Button>
-            )}
-            <Button startIcon={<PrintIcon />} variant="outlined" onClick={() => window.print()}>Print</Button>
-          </Box>
-        </Box>
-
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3, mb: 4 }}>
-          <Box>
-            <Typography sx={{ color: '#6B7280', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>Prepared for</Typography>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 20 }}>{data.recipient.name}</Typography>
-            <Typography sx={{ color: '#4B5563' }}>{data.recipient.email}</Typography>
-            <Typography sx={{ color: '#4B5563' }}>{quotation.facility_name || quotation.customer_name}</Typography>
-            <Typography sx={{ color: '#4B5563' }}>{quotation.customer_address || ''}</Typography>
-          </Box>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 0.8, justifySelf: { md: 'end' } }}>
-            <Typography sx={{ fontWeight: 900 }}>Quote</Typography><Typography>{quotation.quotation_number}</Typography>
-            <Typography sx={{ fontWeight: 900 }}>Revision</Typography><Typography>{quotation.revision}</Typography>
-            <Typography sx={{ fontWeight: 900 }}>Issued</Typography><Typography>{dateLabel(quotation.sent_at)}</Typography>
-            <Typography sx={{ fontWeight: 900 }}>Expires</Typography><Typography>{dateLabel(quotation.expires_at)}</Typography>
-          </Box>
-        </Box>
-
-        {quotation.quotation_type !== 'standard' && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            {quotation.quotation_type === 'choice_single'
-              ? 'Choose one of the following sales options.'
-              : 'Choose one or more of the following sales options.'}
-          </Alert>
-        )}
-
-        <Table sx={{ mb: 3 }}>
-          <TableHead>
-            <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-              {quotation.quotation_type !== 'standard' && <TableCell sx={{ width: 60 }}>Select</TableCell>}
-              <TableCell sx={{ fontWeight: 900 }}>Item</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Quantity</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Price</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Total</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {[...productLines, ...creditLines].map(line => {
-              const isCredit = line.item_kind !== 'product'
-              const selected = isCredit || quotation.quotation_type === 'standard' || selectedIds.includes(line.id)
-              return (
-                <TableRow
-                  key={line.id}
-                  hover={!isCredit && !responseLocked}
-                  onClick={() => !isCredit && toggleProduct(line)}
-                  sx={{ cursor: !isCredit && !responseLocked && quotation.quotation_type !== 'standard' ? 'pointer' : 'default', opacity: selected ? 1 : 0.55 }}
-                >
-                  {quotation.quotation_type !== 'standard' && (
-                    <TableCell>
-                      {isCredit ? <CheckCircleOutlineIcon color="success" /> : quotation.quotation_type === 'choice_single'
-                        ? <Radio checked={selected} disabled={responseLocked} />
-                        : <Checkbox checked={selected} disabled={responseLocked} />}
-                    </TableCell>
-                  )}
-                  <TableCell sx={{ fontWeight: 900 }}>
-                    {line.item_kind === 'refund'
-                      ? 'Refund'
-                      : line.item_kind === 'trade_in'
-                        ? line.trade_in_part?.part_number || 'Trade-In'
-                        : line.part_number || 'Product'}
-                  </TableCell>
-                  <TableCell>{line.description}</TableCell>
-                  <TableCell align="right">{line.quantity}</TableCell>
-                  <TableCell align="right">{money(line.unit_price)}</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 900, color: isCredit ? '#DC2626' : '#1E1B4B' }}>{money(line.total)}</TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-
-        <Box sx={{ ml: 'auto', width: { xs: '100%', sm: 360 }, display: 'grid', gridTemplateColumns: '1fr auto', gap: 1, mb: 4 }}>
-          <Typography sx={{ fontWeight: 700 }}>Subtotal</Typography><Typography sx={{ textAlign: 'right' }}>{money(subtotal)}</Typography>
-          <Typography sx={{ fontWeight: 700 }}>Tax</Typography><Typography sx={{ textAlign: 'right' }}>{money(quotation.tax_amount)}</Typography>
-          <Typography sx={{ fontWeight: 700 }}>Discount</Typography><Typography sx={{ textAlign: 'right' }}>-{money(quotation.discount_amount)}</Typography>
-          <Typography sx={{ fontWeight: 900, fontSize: 20 }}>Total</Typography><Typography sx={{ fontWeight: 900, fontSize: 20, textAlign: 'right' }}>{money(grandTotal)}</Typography>
-        </Box>
-
-        {quotation.notes && <Alert icon={false} sx={{ mb: 3 }}>{quotation.notes}</Alert>}
+        <SalesQuotationDocument
+          quotation={quotation}
+          companyName={data.company_name}
+          recipientName={data.recipient.name}
+          recipientEmail={data.recipient.email}
+          selectedLineItemIds={selectedIds}
+          canSelect={!responseLocked}
+          onToggleProduct={toggleProduct}
+          onSignAndApprove={data.can_accept
+            ? () => responseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            : undefined}
+          onPrint={() => window.print()}
+        />
 
         {data.acceptance ? (
           <Box sx={{ mb: 3 }}>
@@ -441,7 +336,7 @@ const ClientQuotation = () => {
               </Alert>
             )}
             <Box sx={{ mt: 1.5, p: 2, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
-              <Typography sx={{ color: '#64748B', fontWeight: 800, fontSize: 12 }}>SIGNED ACCEPTANCE · REVISION {data.acceptance.quotation_revision}</Typography>
+              <Typography sx={{ color: '#64748B', fontWeight: 800, fontSize: 12 }}>SIGNED ACCEPTANCE</Typography>
               <Typography sx={{ mt: 1, pb: 0.5, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Bradley Hand", "Brush Script MT", cursive', fontSize: { xs: 28, md: 36 }, fontStyle: 'italic' }}>
                 {data.acceptance.signature_name}
               </Typography>

@@ -94,6 +94,7 @@ class SalesQuotationItemIn(BaseModel):
     unit_price: Optional[Decimal] = None
     shipping_fee: Decimal = Decimal("0")
     setup_fee: Decimal = Decimal("0")
+    labor_fee: Decimal = Decimal("0")
     condition: Optional[str] = None
     description: Optional[str] = None
     item_metadata: Optional[dict[str, Any]] = None
@@ -421,6 +422,7 @@ def _line_response(line: SalesQuotationLineItem) -> dict[str, Any]:
         "unit_price": line.unit_price,
         "shipping_fee": line.shipping_fee,
         "setup_fee": line.setup_fee,
+        "labor_fee": line.labor_fee,
         "condition": line.condition,
         "total": line.total,
     }
@@ -585,6 +587,8 @@ QUOTATION_RECIPIENT_ROLES = {
     UserRole.CLIENT,
 }
 CREDIT_ITEM_KINDS = {"trade_in", "refund"}
+SALES_TAX_RATE = Decimal("8.25")
+SALES_TAX_FACTOR = SALES_TAX_RATE / Decimal("100")
 
 
 def _token_hash(token: str) -> str:
@@ -673,7 +677,72 @@ def _effective_quotation_lines(quotation: SalesQuotation) -> list[SalesQuotation
     lines = list(quotation.line_items or [])
     if quotation.quotation_type not in {"choice_single", "choice_multiple"}:
         return lines
-    return [line for line in lines if line.item_kind in CREDIT_ITEM_KINDS or line.is_selected]
+    selected_products = [
+        line
+        for line in lines
+        if (line.item_kind or "product") == "product" and line.is_selected
+    ]
+    if not selected_products:
+        return []
+    return selected_products + [
+        line for line in lines if line.item_kind in CREDIT_ITEM_KINDS
+    ]
+
+
+def _line_pricing(line: SalesQuotationLineItem) -> tuple[Decimal, Decimal]:
+    """Return the signed line total and its signed Sales taxable amount.
+
+    Products, Shipping & Packing, and Delivery & Setup are taxable. Labor is
+    deliberately excluded. Trade-ins reduce the merchandise taxable base;
+    refund credits do not rewrite tax because they represent a payment
+    adjustment rather than a merchandise trade-in.
+    """
+    quantity = max(int(line.quantity or 0), 0)
+    merchandise = _money(line.unit_price) * quantity
+    shipping = _money(line.shipping_fee)
+    setup = _money(line.setup_fee)
+    labor = _money(line.labor_fee)
+    unsigned_total = merchandise + shipping + setup + labor
+    item_kind = (line.item_kind or "product").strip().lower()
+    signed_total = -abs(unsigned_total) if item_kind in CREDIT_ITEM_KINDS else unsigned_total
+    if item_kind == "product":
+        taxable_amount = merchandise + shipping + setup
+    elif item_kind == "trade_in":
+        taxable_amount = -abs(merchandise)
+    else:
+        taxable_amount = Decimal("0")
+    return _money(signed_total), _money(taxable_amount)
+
+
+def _quotation_pricing(
+    lines: list[SalesQuotationLineItem],
+    discount_amount: Decimal | int | float | None = None,
+) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    """Calculate subtotal, taxable base, tax, and total authoritatively."""
+    subtotal = Decimal("0")
+    taxable_base = Decimal("0")
+    for line in lines:
+        line_total, line_taxable = _line_pricing(line)
+        line.total = line_total
+        subtotal += line_total
+        taxable_base += line_taxable
+    subtotal = _money(subtotal)
+    taxable_base = max(_money(taxable_base), Decimal("0"))
+    tax_amount = (taxable_base * SALES_TAX_FACTOR).quantize(Decimal("0.01"))
+    total_amount = subtotal + tax_amount - _money(discount_amount)
+    return subtotal, taxable_base, tax_amount, _money(total_amount)
+
+
+def _apply_quotation_pricing(
+    quotation: SalesQuotation,
+    lines: list[SalesQuotationLineItem],
+) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    pricing = _quotation_pricing(lines, quotation.discount_amount)
+    quotation.subtotal = pricing[0]
+    quotation.tax_rate = SALES_TAX_RATE
+    quotation.tax_amount = pricing[2]
+    quotation.total_amount = pricing[3]
+    return pricing
 
 
 def _selection_snapshot(lines: list[SalesQuotationLineItem]) -> list[dict[str, Any]]:
@@ -688,6 +757,7 @@ def _selection_snapshot(lines: list[SalesQuotationLineItem]) -> list[dict[str, A
             "unit_price": str(line.unit_price),
             "shipping_fee": str(line.shipping_fee),
             "setup_fee": str(line.setup_fee),
+            "labor_fee": str(line.labor_fee),
             "condition": line.condition,
             "total": str(line.total),
             "item_metadata": line.item_metadata or {},
@@ -907,13 +977,12 @@ def _create_invoice_for_accepted_quotation(
                 detail=f"Not enough stock for {line.part.part_number if line.part else line.description}",
             )
 
-    subtotal = sum((_money(line.total) for line in accepted_lines), Decimal("0"))
-    tax_amount = _money(quotation.tax_amount)
+    subtotal, _, tax_amount, total_amount = _apply_quotation_pricing(
+        quotation,
+        accepted_lines,
+    )
     discount_amount = _money(quotation.discount_amount)
-    total_amount = subtotal + tax_amount - discount_amount
 
-    quotation.subtotal = subtotal
-    quotation.total_amount = total_amount
     invoice_line_items = [
         {
             "id": f"sales-line-{line.id}",
@@ -923,6 +992,18 @@ def _create_invoice_for_accepted_quotation(
             "unit_price": float(line.unit_price),
             "shipping_fee": float(line.shipping_fee),
             "setup_fee": float(line.setup_fee),
+            "labor_fee": float(line.labor_fee),
+            "custom_cells": (
+                [
+                    {
+                        "id": f"labor-{line.id}",
+                        "label": "Labor",
+                        "value": f"${_money(line.labor_fee):.2f}",
+                    }
+                ]
+                if _money(line.labor_fee) > 0
+                else []
+            ),
             "condition": line.condition,
             "total": float(line.total),
             "item_kind": line.item_kind or "product",
@@ -954,6 +1035,11 @@ def _create_invoice_for_accepted_quotation(
             f"Sales invoice generated from accepted quotation {quotation.quotation_number}.",
             {
                 "line_items": invoice_line_items,
+                "labels": {
+                    "shipping": "Shipping & Packing",
+                    "setup": "Delivery & Setup",
+                    "tax": "Sales Tax (8.25%)",
+                },
                 "selection_snapshot": quotation.selection_snapshot or [],
                 "quotation_revision": quotation.revision or 1,
             },
@@ -1001,6 +1087,7 @@ def _accept_quotation_selection(
     for line in credit_lines:
         line.is_selected = True
     accepted_lines = selected + credit_lines
+    _apply_quotation_pricing(quotation, accepted_lines)
     quotation.selection_status = "accepted"
     quotation.selection_channel = (channel or "internal")[:50]
     quotation.accepted_by_id = current_user.id if current_user else None
@@ -1029,7 +1116,7 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
 
     parts_by_id = _validate_quotation_item_stock(db, items, current_user)
     quotation.line_items.clear()
-    subtotal = Decimal("0")
+    selected_lines: list[SalesQuotationLineItem] = []
     default_product_count = 0
     for item in items:
         if item.quantity <= 0:
@@ -1064,10 +1151,9 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
         unit_price = _money(item.unit_price if item.unit_price is not None else (part.unit_price if part else 0))
         shipping_fee = _money(item.shipping_fee)
         setup_fee = _money(item.setup_fee)
-        unsigned_total = (unit_price * item.quantity) + shipping_fee + setup_fee
+        labor_fee = _money(item.labor_fee)
+        unsigned_total = (unit_price * item.quantity) + shipping_fee + setup_fee + labor_fee
         total = -abs(unsigned_total) if item_kind in CREDIT_ITEM_KINDS else unsigned_total
-        if is_default:
-            subtotal += total
         item_metadata = dict(item.item_metadata or {})
         if item_kind == "trade_in" and item.trade_in_part:
             trade_in_part = item.trade_in_part.model_dump(mode="json")
@@ -1077,8 +1163,7 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
             trade_in_part["serial_number"] = (item.trade_in_part.serial_number or "").strip() or None
             trade_in_part["batch_number"] = (item.trade_in_part.batch_number or "").strip() or None
             item_metadata["inventory_part"] = trade_in_part
-        quotation.line_items.append(
-            SalesQuotationLineItem(
+        line = SalesQuotationLineItem(
                 part_id=part.id if part else None,
                 item_kind=item_kind,
                 is_default=is_default,
@@ -1093,10 +1178,13 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
                 unit_price=unit_price,
                 shipping_fee=shipping_fee,
                 setup_fee=setup_fee,
+                labor_fee=labor_fee,
                 condition=item.condition or (part.condition if part else None),
                 total=total,
             )
-        )
+        quotation.line_items.append(line)
+        if is_default:
+            selected_lines.append(line)
 
     if quotation.quotation_type == "choice_single" and default_product_count > 1:
         raise HTTPException(status_code=400, detail="Choice Single can have at most one default option")
@@ -1108,18 +1196,13 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
         # A choice quote may intentionally have no preselected option.  Its
         # financial total is established only after the recipient chooses;
         # fixed discounts must not turn the draft into a negative quotation.
-        subtotal = Decimal("0")
+        selected_lines = []
     quotation.selection_status = "pending"
     quotation.selection_channel = None
     quotation.selection_snapshot = None
     quotation.accepted_by_id = None
     quotation.accepted_at = None
-    quotation.subtotal = subtotal
-    quotation.total_amount = (
-        Decimal("0")
-        if has_pending_choice
-        else subtotal + _money(quotation.tax_amount) - _money(quotation.discount_amount)
-    )
+    _apply_quotation_pricing(quotation, selected_lines)
 
 
 @router.get("/parts")
@@ -1493,7 +1576,10 @@ def update_quotation(
     if payload.items is not None:
         _apply_items(db, quotation, payload.items, current_user)
     else:
-        quotation.total_amount = _money(quotation.subtotal) + _money(quotation.tax_amount) - _money(quotation.discount_amount)
+        _apply_quotation_pricing(
+            quotation,
+            _effective_quotation_lines(quotation),
+        )
     if {
         "primary_recipient_user_id",
         "additional_recipient_user_ids",
@@ -1854,10 +1940,13 @@ def convert_to_invoice(
     service_fee = _money(payload.service_fee)
     shipping_fee = _money(payload.shipping_fee)
     application_fee = _money(payload.application_fee)
-    parts_amount = sum((_money(line.total) for line in accepted_lines), Decimal("0"))
+    parts_amount, _, line_tax_amount, _ = _quotation_pricing(
+        accepted_lines,
+        Decimal("0"),
+    )
     raw_discount = _money(payload.discount_amount if payload.discount_amount is not None else quotation.discount_amount)
-    tax_rate = _money(payload.tax_rate)
-    tax_amount = (parts_amount * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
+    tax_rate = SALES_TAX_RATE
+    tax_amount = line_tax_amount
     subtotal = parts_amount + worked_hours + setup_fee + service_fee + shipping_fee + application_fee
     discount_amount = (subtotal * raw_discount / Decimal("100")).quantize(Decimal("0.01")) if payload.discount_type == "percent" else raw_discount
     total_amount = subtotal + tax_amount - discount_amount
@@ -1883,6 +1972,18 @@ def convert_to_invoice(
             "unit_price": float(line.unit_price),
             "shipping_fee": float(line.shipping_fee),
             "setup_fee": float(line.setup_fee),
+            "labor_fee": float(line.labor_fee),
+            "custom_cells": (
+                [
+                    {
+                        "id": f"labor-{line.id}",
+                        "label": "Labor",
+                        "value": f"${_money(line.labor_fee):.2f}",
+                    }
+                ]
+                if _money(line.labor_fee) > 0
+                else []
+            ),
             "condition": line.condition,
             "total": float(line.total),
             "item_kind": line.item_kind or "product",
@@ -1894,7 +1995,15 @@ def convert_to_invoice(
     invoice_notes = compose_invoice_edit_notes(
         None,
         visible_notes,
-        {"line_items": invoice_line_items, "selection_snapshot": quotation.selection_snapshot or []},
+        {
+            "line_items": invoice_line_items,
+            "labels": {
+                "shipping": "Shipping & Packing",
+                "setup": "Delivery & Setup",
+                "tax": "Sales Tax (8.25%)",
+            },
+            "selection_snapshot": quotation.selection_snapshot or [],
+        },
     )
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),

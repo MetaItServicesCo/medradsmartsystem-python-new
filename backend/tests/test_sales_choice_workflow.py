@@ -11,6 +11,7 @@ from app.api.v1.endpoints.sales import (
     _accept_quotation_selection,
     _apply_items,
     _effective_quotation_lines,
+    _quotation_pricing,
     _sales_payment_method_category,
     _validate_saved_quotation_stock,
     revise_quotation,
@@ -59,6 +60,7 @@ def _line(line_id: int, *, kind: str = "product", selected: bool = False) -> Sal
         unit_price=Decimal("100"),
         shipping_fee=Decimal("0"),
         setup_fee=Decimal("0"),
+        labor_fee=Decimal("0"),
         total=Decimal("-100") if kind in {"trade_in", "refund"} else Decimal("100"),
     )
 
@@ -187,6 +189,40 @@ def test_choice_multiple_effective_lines_exclude_unselected_alternatives() -> No
     _accept_quotation_selection(quotation, [1, 3], "internal", _user())
 
     assert _effective_quotation_lines(quotation) == [first, third, trade_in]
+
+
+def test_sales_tax_excludes_labor_and_includes_both_line_fees() -> None:
+    product = _line(1)
+    product.unit_price = Decimal("1000")
+    product.shipping_fee = Decimal("100")
+    product.setup_fee = Decimal("100")
+    product.labor_fee = Decimal("100")
+
+    subtotal, taxable_base, tax_amount, total_amount = _quotation_pricing([product])
+
+    assert subtotal == Decimal("1300.00")
+    assert taxable_base == Decimal("1200.00")
+    assert tax_amount == Decimal("99.00")
+    assert total_amount == Decimal("1399.00")
+
+
+def test_trade_in_reduces_merchandise_taxable_base_but_refund_does_not() -> None:
+    product = _line(1)
+    product.unit_price = Decimal("1000")
+    product.labor_fee = Decimal("100")
+    trade_in = _line(2, kind="trade_in")
+    trade_in.unit_price = Decimal("275")
+    refund = _line(3, kind="refund")
+    refund.unit_price = Decimal("50")
+
+    subtotal, taxable_base, tax_amount, total_amount = _quotation_pricing(
+        [product, trade_in, refund],
+    )
+
+    assert subtotal == Decimal("775.00")
+    assert taxable_base == Decimal("725.00")
+    assert tax_amount == Decimal("59.81")
+    assert total_amount == Decimal("834.81")
 
 
 def test_refund_adjustment_is_always_included_with_selected_options() -> None:

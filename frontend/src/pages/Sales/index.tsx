@@ -30,6 +30,7 @@ import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLine
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
+import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
@@ -64,6 +65,12 @@ import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
 import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
+import {
+  roundSalesMoney as roundMoney,
+  SALES_TAX_RATE,
+  salesLineTaxableAmount,
+  salesLineTotal,
+} from '@/utils/salesPricing'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed']
 const COMPLETED_PAYMENT_METHODS = ['credit_card', 'cheque', 'bank_transfer'] as const
@@ -148,6 +155,7 @@ const statusChip = (value: string) => {
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
+const SALES_TAX_FACTOR = SALES_TAX_RATE / 100
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
@@ -177,7 +185,7 @@ const emptyInvoiceDetails = (): SalesInvoiceCreatePayload => ({
   service_fee: 0,
   shipping_fee: 0,
   application_fee: 0,
-  tax_rate: 0,
+  tax_rate: SALES_TAX_RATE,
   discount_type: 'fixed',
   discount_amount: 0,
   payment_method: '',
@@ -247,6 +255,7 @@ const Sales = () => {
   const [selectedPartQty, setSelectedPartQty] = useState(1)
   const [selectedPartShipping, setSelectedPartShipping] = useState(0)
   const [selectedPartSetup, setSelectedPartSetup] = useState(0)
+  const [selectedPartLabor, setSelectedPartLabor] = useState(0)
   const [selectedPartCondition, setSelectedPartCondition] = useState('New')
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionQuotation, setActionQuotation] = useState<SalesQuotation | null>(null)
@@ -766,6 +775,7 @@ const Sales = () => {
         unit_price: Number(item.unit_price),
         shipping_fee: Number(item.shipping_fee || 0),
         setup_fee: Number(item.setup_fee || 0),
+        labor_fee: Number(item.labor_fee || 0),
         condition: item.condition || 'New',
         description: item.description,
         item_metadata: item.item_metadata,
@@ -804,6 +814,7 @@ const Sales = () => {
           unit_price: Number(part.unit_price || 0),
           shipping_fee: selectedPartShipping,
           setup_fee: selectedPartSetup,
+          labor_fee: selectedPartLabor,
           condition: selectedPartCondition || part.condition || 'New',
           description: `${part.part_number} - ${part.description}`,
         },
@@ -813,6 +824,7 @@ const Sales = () => {
     setSelectedPartQty(1)
     setSelectedPartShipping(0)
     setSelectedPartSetup(0)
+    setSelectedPartLabor(0)
     setSelectedPartCondition('New')
   }
 
@@ -833,6 +845,7 @@ const Sales = () => {
           unit_price: tradeInValue,
           shipping_fee: 0,
           setup_fee: 0,
+          labor_fee: 0,
           condition: tradeInPart.condition || 'used',
           description: tradeInPart.description.trim(),
           trade_in_part: {
@@ -871,6 +884,7 @@ const Sales = () => {
           unit_price: refundAdjustmentValue,
           shipping_fee: 0,
           setup_fee: 0,
+          labor_fee: 0,
           condition: 'Refund adjustment',
           description: refundAdjustmentDescription.trim(),
           item_metadata: {
@@ -975,25 +989,29 @@ const Sales = () => {
     setInvoiceDetails({
       ...emptyInvoiceDetails(),
       discount_amount: Number(quotation.discount_amount || 0),
-      tax_rate: Number(quotation.tax_rate || 0),
+      tax_rate: SALES_TAX_RATE,
       payment_method: quotation.converted_invoice_payment_method || quotation.payment_method || '',
       action: 'convert_to_invoice',
       selection_channel: canConfigureDefaults ? 'internal' : 'client_portal',
     })
   }
 
-  const lineTotal = (item: SalesQuotationPayload['items'][number]) => {
-    const total = Number(item.quantity || 0) * Number(item.unit_price || 0) + Number(item.shipping_fee || 0) + Number(item.setup_fee || 0)
-    return item.item_kind === 'trade_in' || item.item_kind === 'refund' ? -Math.abs(total) : total
-  }
+  const lineTotal = salesLineTotal
   const hasDefaultProduct = quotationForm.items.some(item => item.item_kind === 'product' && item.is_default)
+  const isQuotationLineIncluded = (item: SalesQuotationPayload['items'][number]) => (
+    quotationForm.quotation_type === 'standard'
+    || (item.item_kind === 'product' && item.is_default)
+    || (item.item_kind !== 'product' && hasDefaultProduct)
+  )
   const quotationTotal = quotationForm.items.reduce((sum, item) => {
-    const included = quotationForm.quotation_type === 'standard'
-      || (item.item_kind === 'product' && item.is_default)
-      || (item.item_kind !== 'product' && hasDefaultProduct)
-    return sum + (included ? lineTotal(item) : 0)
+    return sum + (isQuotationLineIncluded(item) ? lineTotal(item) : 0)
   }, 0)
-  const quotationGrandTotal = quotationTotal + Number(quotationForm.tax_amount || 0) - Number(quotationForm.discount_amount || 0)
+  const quotationTaxableBase = Math.max(0, quotationForm.items.reduce(
+    (sum, item) => sum + (isQuotationLineIncluded(item) ? salesLineTaxableAmount(item) : 0),
+    0,
+  ))
+  const quotationTaxAmount = roundMoney(quotationTaxableBase * SALES_TAX_FACTOR)
+  const quotationGrandTotal = quotationTotal + quotationTaxAmount - Number(quotationForm.discount_amount || 0)
   const convertPartsTotal = convertQuotation
     ? convertQuotation.line_items.reduce((sum, line) => (
         line.item_kind !== 'product' || convertQuotation.quotation_type === 'standard' || selectedQuoteOptions.includes(line.id)
@@ -1001,7 +1019,14 @@ const Sales = () => {
           : sum
       ), 0)
     : 0
-  const convertTaxAmount = convertPartsTotal * Number(invoiceDetails.tax_rate || 0) / 100
+  const convertTaxableBase = convertQuotation
+    ? Math.max(0, convertQuotation.line_items.reduce((sum, line) => (
+        line.item_kind !== 'product' || convertQuotation.quotation_type === 'standard' || selectedQuoteOptions.includes(line.id)
+          ? sum + salesLineTaxableAmount(line)
+          : sum
+      ), 0))
+    : 0
+  const convertTaxAmount = roundMoney(convertTaxableBase * SALES_TAX_FACTOR)
   const convertGrandTotal =
     convertPartsTotal +
     Number(invoiceDetails.worked_hours || 0) +
@@ -1187,6 +1212,9 @@ const Sales = () => {
         unit_price: Number(line.unit_price || 0),
         shipping_fee: Number(line.shipping_fee || 0),
         setup_fee: Number(line.setup_fee || 0),
+        custom_cells: Number(line.labor_fee || 0) > 0
+          ? [{ id: `labor-${line.id || 'line'}`, label: 'Labor', value: money(line.labor_fee) }]
+          : [],
         condition: line.condition || null,
         total_amount: Number(line.total ?? line.total_amount ?? 0),
       }))
@@ -1200,6 +1228,9 @@ const Sales = () => {
         unit_price: Number(line.unit_price || 0),
         shipping_fee: Number(line.shipping_fee || 0),
         setup_fee: Number(line.setup_fee || 0),
+        custom_cells: Number(line.labor_fee || 0) > 0
+          ? [{ id: `labor-${line.id}`, label: 'Labor', value: money(line.labor_fee) }]
+          : [],
         condition: line.condition || null,
         total_amount: Number(line.total || 0),
       }))
@@ -1228,6 +1259,9 @@ const Sales = () => {
       unit_price: Number(line.unit_price || 0),
       shipping_fee: Number(line.shipping_fee || 0),
       setup_fee: Number(line.setup_fee || 0),
+      custom_cells: Number(line.labor_fee || 0) > 0
+        ? [{ id: `labor-${line.id}`, label: 'Labor', value: money(line.labor_fee) }]
+        : [],
       condition: line.condition || null,
       total_amount: Number(line.total || 0),
     }))
@@ -1839,6 +1873,11 @@ const Sales = () => {
           due_date: printQuotation.requested_date,
           payment_method: printQuotation.converted_invoice_payment_method || printQuotation.payment_method,
           notes: printQuotation.notes,
+          labels: {
+            shipping: 'Shipping & Packing',
+            setup: 'Delivery & Setup',
+            tax: `Sales Tax (${SALES_TAX_RATE}%)`,
+          },
         } : null}
         lineItems={quotationLineItems(printQuotation)}
         ledgerTransactions={quotationLedgerTransactions(printQuotation)}
@@ -1872,6 +1911,12 @@ const Sales = () => {
             due_date: printInvoice.due_date,
             payment_method: printInvoice.payment_method,
             notes: printInvoice.notes,
+            labels: {
+              shipping: 'Shipping & Packing',
+              setup: 'Delivery & Setup',
+              tax: `Sales Tax (${SALES_TAX_RATE}%)`,
+              ...(printInvoice.labels || {}),
+            },
             ...(hasExtraFees && q ? {
               parts_total: Number(q.subtotal || 0),
               worked_hours_fee: Number(q.worked_hours || 0) || null,
@@ -1981,7 +2026,7 @@ const Sales = () => {
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Sales Parts</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 110px 130px 130px 150px auto' }, gap: 2, mb: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(260px, 1fr) 90px repeat(3, minmax(125px, 0.55fr)) 140px auto' }, gap: 2, mb: 2 }}>
             <PartSearchAutocomplete<SalesPart>
               label="Part assigned for sale"
               value={selectedPart}
@@ -2018,8 +2063,9 @@ const Sales = () => {
                 ? `${selectedPartRemaining} more available for this quotation`
                 : ' '}
             />
-            <TextField label="Shipping Fee" type="number" value={selectedPartShipping} onChange={e => setSelectedPartShipping(Number(e.target.value))} />
-            <TextField label="Setup Fee" type="number" value={selectedPartSetup} onChange={e => setSelectedPartSetup(Number(e.target.value))} />
+            <TextField label="Shipping & Packing" type="number" value={selectedPartShipping} onChange={e => setSelectedPartShipping(Number(e.target.value))} />
+            <TextField label="Delivery & Setup" type="number" value={selectedPartSetup} onChange={e => setSelectedPartSetup(Number(e.target.value))} />
+            <TextField label="Labor" type="number" value={selectedPartLabor} onChange={e => setSelectedPartLabor(Number(e.target.value))} />
             <TextField select label="Condition" value={selectedPartCondition} onChange={e => setSelectedPartCondition(e.target.value)}>
               {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
             </TextField>
@@ -2209,8 +2255,9 @@ const Sales = () => {
                   <TableCell sx={{ fontWeight: 900 }}>Item Description</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Quantity</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Shipping Fee</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Setup Fee</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Shipping & Packing</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Delivery & Setup</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Labor</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Total</TableCell>
                   {quotationForm.quotation_type !== 'standard' && <TableCell sx={{ fontWeight: 900 }}>Default</TableCell>}
@@ -2219,7 +2266,7 @@ const Sales = () => {
               </TableHead>
               <TableBody>
                 {quotationForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={12} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts or credits selected.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={quotationForm.quotation_type !== 'standard' ? 13 : 12} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts or credits selected.</TableCell></TableRow>
                 ) : quotationForm.items.map((item, index) => {
                   const part = item.part_id ? quotationPartCatalog.get(item.part_id) : undefined
                   const stockIssue = quotationStockIssues.find(issue => issue.index === index)
@@ -2291,6 +2338,7 @@ const Sales = () => {
                       </TableCell>
                       <TableCell><TextField size="small" type="number" value={item.shipping_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.setup_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
+                      <TableCell><TextField size="small" type="number" value={item.labor_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, labor_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell>{item.condition || 'New'}</TableCell>
                       <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(lineTotal(item))}</TableCell>
                       {quotationForm.quotation_type !== 'standard' && (
@@ -2327,7 +2375,12 @@ const Sales = () => {
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 180px 180px' }, gap: 2, mt: 2, alignItems: 'start' }}>
             <TextField label="Notes" value={quotationForm.notes || ''} onChange={e => setQuotationForm(prev => ({ ...prev, notes: e.target.value }))} multiline rows={3} />
-            <TextField label="Tax" type="number" value={quotationForm.tax_amount || 0} onChange={e => setQuotationForm(prev => ({ ...prev, tax_amount: Number(e.target.value) }))} />
+            <TextField
+              label={`Tax (${SALES_TAX_RATE}%)`}
+              value={quotationTaxAmount.toFixed(2)}
+              InputProps={{ readOnly: true }}
+              helperText={`Taxable base ${money(quotationTaxableBase)} · labor excluded`}
+            />
             <TextField label="Discount" type="number" value={quotationForm.discount_amount || 0} onChange={e => setQuotationForm(prev => ({ ...prev, discount_amount: Number(e.target.value) }))} />
             <Card sx={{ p: 2, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #EEF0F6' }}>
               <Typography sx={{ color: '#6B7280', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>Total</Typography>
@@ -2561,8 +2614,9 @@ const Sales = () => {
                         <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Unit Amount</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Quantity</TableCell>
-                        <TableCell sx={{ fontWeight: 900 }}>Shipping Fee</TableCell>
-                        <TableCell sx={{ fontWeight: 900 }}>Setup Fee</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Shipping & Packing</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Delivery & Setup</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Labor</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900 }}>Total</TableCell>
                       </TableRow>
@@ -2582,6 +2636,7 @@ const Sales = () => {
                             <TableCell>{line.quantity}</TableCell>
                             <TableCell>{money(line.shipping_fee)}</TableCell>
                             <TableCell>{money(line.setup_fee)}</TableCell>
+                            <TableCell>{money(line.labor_fee)}</TableCell>
                             <TableCell>{line.condition || part?.condition || '-'}</TableCell>
                             <TableCell align="right" sx={{ fontWeight: 900 }}>{money(line.total)}</TableCell>
                           </TableRow>
@@ -2593,15 +2648,15 @@ const Sales = () => {
                         ['Service Fee', Number(invoiceDetails.service_fee || 0)],
                         ['Shipping Fee', Number(invoiceDetails.shipping_fee || 0)],
                         ['Application Fee', Number(invoiceDetails.application_fee || 0)],
-                        ['Tax Amount on Parts', convertTaxAmount],
+                        [`Sales Tax (${SALES_TAX_RATE}%)`, convertTaxAmount],
                       ].map(([label, value]) => (
                         <TableRow key={String(label)}>
-                          <TableCell colSpan={7} align="right" sx={{ fontWeight: 900 }}>{label}</TableCell>
+                          <TableCell colSpan={8} align="right" sx={{ fontWeight: 900 }}>{label}</TableCell>
                           <TableCell align="right">{money(value as number)}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow>
-                        <TableCell colSpan={7} align="right" sx={{ fontWeight: 900 }}>Grand Total</TableCell>
+                        <TableCell colSpan={8} align="right" sx={{ fontWeight: 900 }}>Grand Total</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900 }}>{money(convertGrandTotal)}</TableCell>
                       </TableRow>
                     </TableBody>
@@ -2632,7 +2687,7 @@ const Sales = () => {
                   <TextField size="small" label="Shipping / Delivery Fee" type="number" value={invoiceDetails.shipping_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
                   <TextField size="small" label="Application Fee" type="number" value={invoiceDetails.application_fee || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, application_fee: Number(e.target.value) }))} />
                   <TextField size="small" label="Parts Total" value={convertPartsTotal.toFixed(2)} InputProps={{ readOnly: true }} />
-                  <TextField size="small" label="Tax Rate (%)" type="number" value={invoiceDetails.tax_rate || 0} onChange={e => setInvoiceDetails(prev => ({ ...prev, tax_rate: Number(e.target.value) }))} />
+                  <TextField size="small" label="Tax Rate (%)" value={SALES_TAX_RATE.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" label="Tax Amount" value={convertTaxAmount.toFixed(2)} InputProps={{ readOnly: true }} />
                   <TextField size="small" select label="Discount Type" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(prev => ({ ...prev, discount_type: e.target.value as 'fixed' | 'percent' }))}>
                     <MenuItem value="fixed">Fixed ($)</MenuItem>
@@ -2664,86 +2719,67 @@ const Sales = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(viewQuotation)} onClose={() => setViewQuotation(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Quotation Details</DialogTitle>
-        <DialogContent dividers>
+      <Dialog open={Boolean(viewQuotation)} onClose={() => setViewQuotation(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogContent sx={{ p: { xs: 2, md: 4 } }}>
           {viewQuotation && (
-            <Box sx={{ display: 'grid', gap: 2 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-                <Card sx={{ p: 2, borderRadius: '14px', border: '1px solid #EEF0F6' }}><Typography sx={{ fontWeight: 900 }}>Work Order</Typography><Typography>{viewQuotation.work_order}</Typography></Card>
-                <Card sx={{ p: 2, borderRadius: '14px', border: '1px solid #EEF0F6' }}><Typography sx={{ fontWeight: 900 }}>Customer</Typography><Typography>{viewQuotation.customer_name}</Typography></Card>
-                <Card sx={{ p: 2, borderRadius: '14px', border: '1px solid #EEF0F6' }}><Typography sx={{ fontWeight: 900 }}>Total</Typography><Typography sx={{ color: '#059669', fontWeight: 900 }}>{money(viewQuotation.total_amount)}</Typography></Card>
-              </Box>
-              <TableContainer className="list-scroll-panel">
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Part</TableCell>
-                      <TableCell>Option</TableCell>
-                      <TableCell>Description</TableCell>
-                      <TableCell>Qty</TableCell>
-                      <TableCell>Shipping</TableCell>
-                      <TableCell>Setup</TableCell>
-                      <TableCell>Condition</TableCell>
-                      <TableCell>Total</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {viewQuotation.line_items.map(line => (
-                      <TableRow key={line.id}>
-                        <TableCell><ClippedTooltipText value={line.item_kind === 'refund' ? 'REFUND' : line.item_kind === 'trade_in' ? line.trade_in_part?.part_number || 'TRADE-IN' : line.part_number} onClick={line.item_kind === 'product' ? () => openSalesPartInfo(parts.find(item => item.id === line.part_id), line) : undefined} /></TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            <Chip size="small" label={line.item_kind === 'refund' ? 'Refund' : line.item_kind === 'trade_in' ? 'Trade-In' : 'Product'} color={line.item_kind === 'refund' ? 'error' : line.item_kind === 'trade_in' ? 'warning' : 'primary'} />
-                            {line.is_default && line.item_kind === 'product' && <Chip size="small" label="Default" color="secondary" />}
-                            {viewQuotation.selection_status === 'accepted' && line.is_selected && <Chip size="small" label="Selected" color="success" />}
-                          </Box>
-                        </TableCell>
-                        <TableCell><ClippedTooltipText value={line.description} field /></TableCell>
-                        <TableCell>{line.quantity}</TableCell>
-                        <TableCell>{money(line.shipping_fee)}</TableCell>
-                        <TableCell>{money(line.setup_fee)}</TableCell>
-                        <TableCell>{line.condition || '-'}</TableCell>
-                        <TableCell>{money(line.total)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              {viewQuotation.acceptance && (
-                <Card sx={{ p: 2.2, borderRadius: '16px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
-                  <Typography sx={{ fontWeight: 950, color: '#312E81' }}>Signed Acceptance Record</Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 13 }}>
-                    {viewQuotation.acceptance.accepted_by_name} · {formatDate(viewQuotation.acceptance.accepted_at)} · Revision {viewQuotation.acceptance.quotation_revision}
-                  </Typography>
-                  <Typography sx={{ mt: 1.5, pb: 0.8, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 32, fontStyle: 'italic' }}>
-                    {viewQuotation.acceptance.signature_name}
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
-                    <Chip size="small" color="success" label="Terms accepted" />
-                    <Chip size="small" label={`Signed total ${money(viewQuotation.acceptance.pricing_snapshot.total_amount)}`} />
-                    {viewQuotation.acceptance.ip_address && <Chip size="small" variant="outlined" label={`IP ${viewQuotation.acceptance.ip_address}`} />}
-                  </Box>
-                </Card>
+            <>
+              <SalesQuotationDocument
+                quotation={viewQuotation}
+                companyName="Medrad Admin Panel"
+                recipientName={viewQuotation.primary_recipient?.name || viewQuotation.customer_name}
+                recipientEmail={viewQuotation.primary_recipient?.email || viewQuotation.customer_email}
+                selectedLineItemIds={viewQuotation.line_items
+                  .filter(line => line.item_kind === 'product' && (
+                    viewQuotation.quotation_type === 'standard'
+                    || (viewQuotation.selection_status === 'accepted' ? line.is_selected : line.is_default)
+                  ))
+                  .map(line => line.id)}
+                onPrint={() => {
+                  setPrintQuotation(viewQuotation)
+                  setViewQuotation(null)
+                }}
+              />
+              {(viewQuotation.acceptance || Boolean(viewQuotation.payment_authorizations?.length)) && (
+                <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid #E2E8F0' }}>
+                <Typography sx={{ mb: 2, color: '#64748B', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+                  Internal acceptance and payment record
+                </Typography>
+                {viewQuotation.acceptance && (
+                  <Card sx={{ p: 2.2, mb: 2, borderRadius: '16px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
+                    <Typography sx={{ fontWeight: 950, color: '#312E81' }}>Signed Acceptance Record</Typography>
+                    <Typography sx={{ color: '#64748B', fontSize: 13 }}>
+                      {viewQuotation.acceptance.accepted_by_name} · {formatDate(viewQuotation.acceptance.accepted_at)}
+                    </Typography>
+                    <Typography sx={{ mt: 1.5, pb: 0.8, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 32, fontStyle: 'italic' }}>
+                      {viewQuotation.acceptance.signature_name}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
+                      <Chip size="small" color="success" label="Terms accepted" />
+                      <Chip size="small" label={`Signed total ${money(viewQuotation.acceptance.pricing_snapshot.total_amount)}`} />
+                      {viewQuotation.acceptance.ip_address && <Chip size="small" variant="outlined" label={`IP ${viewQuotation.acceptance.ip_address}`} />}
+                    </Box>
+                  </Card>
+                )}
+                {Boolean(viewQuotation.payment_authorizations?.length) && (
+                  <Card sx={{ p: 2.2, borderRadius: '16px', border: '1px solid #E2E8F0' }}>
+                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Payment Authorization Audit</Typography>
+                    <Box sx={{ display: 'grid', gap: 1 }}>
+                      {viewQuotation.payment_authorizations!.map(authorization => (
+                        <Box key={authorization.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto auto' }, gap: 1, p: 1.2, borderRadius: '10px', bgcolor: '#F8FAFC' }}>
+                          <Typography sx={{ fontWeight: 800 }}>
+                            {authorization.authorization_reference || `Authorization #${authorization.id}`}
+                            {authorization.card_last_four ? ` · ${authorization.card_brand || 'Card'} ending ${authorization.card_last_four}` : ''}
+                          </Typography>
+                          <Typography sx={{ fontWeight: 900 }}>{money(authorization.amount)}</Typography>
+                          <Chip size="small" label={authorization.status.replace(/_/g, ' ')} color={authorization.status === 'processed' ? 'success' : authorization.status === 'submitted' ? 'warning' : 'default'} />
+                        </Box>
+                      ))}
+                    </Box>
+                  </Card>
+                )}
+                </Box>
               )}
-              {Boolean(viewQuotation.payment_authorizations?.length) && (
-                <Card sx={{ p: 2.2, borderRadius: '16px', border: '1px solid #E2E8F0' }}>
-                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Payment Authorization Audit</Typography>
-                  <Box sx={{ display: 'grid', gap: 1 }}>
-                    {viewQuotation.payment_authorizations!.map(authorization => (
-                      <Box key={authorization.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto auto' }, gap: 1, p: 1.2, borderRadius: '10px', bgcolor: '#F8FAFC' }}>
-                        <Typography sx={{ fontWeight: 800 }}>
-                          {authorization.authorization_reference || `Authorization #${authorization.id}`}
-                          {authorization.card_last_four ? ` · ${authorization.card_brand || 'Card'} ending ${authorization.card_last_four}` : ''}
-                        </Typography>
-                        <Typography sx={{ fontWeight: 900 }}>{money(authorization.amount)}</Typography>
-                        <Chip size="small" label={authorization.status.replace(/_/g, ' ')} color={authorization.status === 'processed' ? 'success' : authorization.status === 'submitted' ? 'warning' : 'default'} />
-                      </Box>
-                    ))}
-                  </Box>
-                </Card>
-              )}
-            </Box>
+            </>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>

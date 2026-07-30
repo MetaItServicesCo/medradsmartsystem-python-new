@@ -51,6 +51,7 @@ export interface SalesQuotationLineItem {
   unit_price: number
   shipping_fee: number
   setup_fee: number
+  labor_fee: number
   condition: string | null
   total: number
 }
@@ -295,6 +296,7 @@ export interface SalesQuotationPayload {
     unit_price?: number
     shipping_fee?: number
     setup_fee?: number
+    labor_fee?: number
     condition?: string | null
     description?: string
     item_metadata?: Record<string, any>

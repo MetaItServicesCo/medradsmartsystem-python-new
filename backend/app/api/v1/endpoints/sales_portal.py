@@ -480,6 +480,7 @@ def _payment_authorization_response(authorization: SalesPaymentAuthorization) ->
             "unit_price": line.unit_price,
             "shipping_fee": line.shipping_fee,
             "setup_fee": line.setup_fee,
+            "labor_fee": line.labor_fee,
             "condition": line.condition,
             "total": line.total,
         }
@@ -645,14 +646,10 @@ def _accept_recipient_quotation(
     )
     accepted_at = datetime.utcnow()
     pricing_snapshot = {
-        "subtotal": str(sum((_money(line.total) for line in accepted_lines), _money(0))),
+        "subtotal": str(_money(quotation.subtotal)),
         "tax_amount": str(_money(quotation.tax_amount)),
         "discount_amount": str(_money(quotation.discount_amount)),
-        "total_amount": str(
-            sum((_money(line.total) for line in accepted_lines), _money(0))
-            + _money(quotation.tax_amount)
-            - _money(quotation.discount_amount)
-        ),
+        "total_amount": str(_money(quotation.total_amount)),
     }
     acceptance = SalesQuotationAcceptance(
         quotation_id=quotation.id,
