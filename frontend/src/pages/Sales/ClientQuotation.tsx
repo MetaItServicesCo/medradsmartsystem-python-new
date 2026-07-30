@@ -5,9 +5,30 @@ import {
   Alert, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, FormControlLabel, TextField, Typography,
 } from '@mui/material'
+import { keyframes } from '@mui/system'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import PaymentIcon from '@mui/icons-material/Payment'
 import { toast } from 'react-toastify'
+
+// Celebration animations for the "payment received" confirmation.
+const cardPopIn = keyframes`
+  0% { opacity: 0; transform: translateY(18px) scale(0.965); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+`
+const checkPop = keyframes`
+  0% { transform: scale(0) rotate(-25deg); opacity: 0; }
+  55% { transform: scale(1.22) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+`
+const ringPulse = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.45); }
+  70% { box-shadow: 0 0 0 20px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+`
+const riseFade = keyframes`
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+`
 
 import {
   acceptClientSalesQuotation,
@@ -253,6 +274,8 @@ const ClientQuotation = () => {
             ? () => responseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
             : undefined}
           onPrint={() => window.print()}
+          invoiceNumber={quotation.selection_status === 'accepted' ? data.invoice?.invoice_number : undefined}
+          invoicePaid={data.invoice?.status === 'paid'}
         />
 
         {data.acceptance ? (
@@ -261,6 +284,8 @@ const ClientQuotation = () => {
               <Box
                 ref={paymentConfirmationRef}
                 sx={{
+                  position: 'relative',
+                  overflow: 'hidden',
                   p: { xs: 2.5, md: 3.5 },
                   borderRadius: '20px',
                   color: '#064E3B',
@@ -268,6 +293,8 @@ const ClientQuotation = () => {
                   background: 'linear-gradient(135deg, #ECFDF5 0%, #F0FDFA 55%, #FFFFFF 100%)',
                   boxShadow: '0 16px 38px rgba(5,150,105,0.10)',
                   scrollMarginTop: 24,
+                  animation: `${cardPopIn} 0.55s cubic-bezier(0.22, 1, 0.36, 1) both`,
+                  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
@@ -282,13 +309,15 @@ const ClientQuotation = () => {
                       bgcolor: '#10B981',
                       color: '#FFFFFF',
                       boxShadow: '0 8px 20px rgba(16,185,129,0.25)',
+                      animation: `${checkPop} 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both, ${ringPulse} 2s ease-out 0.75s 2`,
+                      '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                     }}
                   >
                     <CheckCircleOutlineIcon sx={{ fontSize: 32 }} />
                   </Box>
-                  <Box sx={{ minWidth: 0 }}>
+                  <Box sx={{ minWidth: 0, animation: `${riseFade} 0.5s ease-out 0.28s both` }}>
                     <Typography variant="h5" sx={{ fontWeight: 950, color: '#064E3B' }}>
-                      Thank you for your payment
+                      Thank you for your payment 🎉
                     </Typography>
                     <Typography sx={{ mt: 0.7, color: '#047857', lineHeight: 1.6 }}>
                       Your payment has been received successfully. Invoice {data.invoice.invoice_number} is fully paid,
@@ -308,7 +337,7 @@ const ClientQuotation = () => {
                     ['Invoice', data.invoice.invoice_number],
                     ['Amount received', money(data.invoice.amount_paid)],
                     ['Payment status', 'Paid'],
-                  ].map(([label, value]) => (
+                  ].map(([label, value], index) => (
                     <Box
                       key={label}
                       sx={{
@@ -317,6 +346,8 @@ const ClientQuotation = () => {
                         borderRadius: '13px',
                         bgcolor: 'rgba(255,255,255,0.78)',
                         border: '1px solid rgba(167,243,208,0.85)',
+                        animation: `${riseFade} 0.5s ease-out ${0.42 + index * 0.09}s both`,
+                        '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                       }}
                     >
                       <Typography sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>

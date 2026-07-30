@@ -25,6 +25,18 @@ const dateLabel = (value?: string | null) => value
   ? new Date(value).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   : '—'
 
+const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
+  accepted: { bg: '#DCFCE7', color: '#15803D' },
+  completed: { bg: '#DCFCE7', color: '#15803D' },
+  paid: { bg: '#DCFCE7', color: '#15803D' },
+  sent: { bg: '#EDE9FE', color: '#6D28D9' },
+  viewed: { bg: '#DBEAFE', color: '#1D4ED8' },
+  changes_requested: { bg: '#FEF3C7', color: '#B45309' },
+  declined: { bg: '#FEE2E2', color: '#B91C1C' },
+  cancelled: { bg: '#FEE2E2', color: '#B91C1C' },
+  pending: { bg: '#F1F5F9', color: '#475569' },
+}
+
 export interface SalesQuotationDocumentData {
   quotation_number: string
   work_order?: string | null
@@ -53,6 +65,10 @@ interface SalesQuotationDocumentProps {
   onToggleProduct?: (line: SalesQuotationLineItem) => void
   onSignAndApprove?: () => void
   onPrint?: () => void
+  // Once the quotation is accepted an invoice is raised; passing it flips the
+  // document header from "Quotation" to "Invoice".
+  invoiceNumber?: string | null
+  invoicePaid?: boolean
 }
 
 const SalesQuotationDocument = ({
@@ -65,6 +81,8 @@ const SalesQuotationDocument = ({
   onToggleProduct,
   onSignAndApprove,
   onPrint,
+  invoiceNumber,
+  invoicePaid = false,
 }: SalesQuotationDocumentProps) => {
   const productLines = quotation.line_items.filter(line => line.item_kind === 'product')
   const creditLines = quotation.line_items.filter(line => line.item_kind !== 'product')
@@ -76,51 +94,69 @@ const SalesQuotationDocument = ({
     ...creditLines,
   ]
   const pricing = calculateSalesPricing(selectedLines, Number(quotation.discount_amount || 0))
-  const statusLabel = quotation.status.replace(/_/g, ' ')
   const hasSelection = quotation.quotation_type !== 'standard'
+  const isInvoice = Boolean(invoiceNumber)
+  const documentLabel = isInvoice ? 'Invoice' : 'Quotation'
+  const statusKey = invoicePaid ? 'paid' : quotation.status
+  const statusLabel = statusKey.replace(/_/g, ' ')
+  const statusStyle = STATUS_STYLES[statusKey] ?? STATUS_STYLES.pending
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 4 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start', mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.2 }}>
           <Box
             component="img"
             src="/mr-biomed-logo.jpeg"
             alt="Mr. BioMed Tech Services"
-            sx={{ width: 94, height: 62, display: 'block', objectFit: 'contain' }}
+            sx={{ width: 92, height: 60, display: 'block', objectFit: 'contain' }}
           />
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation</Typography>
+            <Typography sx={{ color: '#8B5CF6', fontWeight: 900, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' }}>
+              {isInvoice ? 'Sales Invoice' : 'Sales Quotation'}
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 950, color: '#1E1B4B', lineHeight: 1.05, letterSpacing: '-0.5px' }}>
+              {documentLabel}
+            </Typography>
             <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{companyName}</Typography>
           </Box>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'start', '@media print': { display: 'none' } }}>
-          <Chip label={statusLabel} sx={{ textTransform: 'capitalize', fontWeight: 900, bgcolor: '#EDE9FE', color: '#6D28D9' }} />
-          {onSignAndApprove && (
-            <Button variant="contained" onClick={onSignAndApprove} sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}>
-              Sign & Approve
-            </Button>
-          )}
-          {onPrint && <Button startIcon={<PrintIcon />} variant="outlined" onClick={onPrint}>Print</Button>}
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Chip
+            label={statusLabel}
+            sx={{ textTransform: 'capitalize', fontWeight: 900, bgcolor: statusStyle.bg, color: statusStyle.color }}
+          />
+          <Box sx={{ display: 'flex', gap: 1, '@media print': { display: 'none' } }}>
+            {onSignAndApprove && (
+              <Button variant="contained" onClick={onSignAndApprove} sx={{ fontWeight: 900, whiteSpace: 'nowrap', borderRadius: '12px' }}>
+                Sign & Approve
+              </Button>
+            )}
+            {onPrint && <Button startIcon={<PrintIcon />} variant="outlined" onClick={onPrint} sx={{ borderRadius: '12px' }}>Print</Button>}
+          </Box>
         </Box>
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3, mb: 4 }}>
-        <Box>
-          <Typography sx={{ color: '#6B7280', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>Prepared for</Typography>
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 20 }}>{recipientName || quotation.customer_name}</Typography>
+      <Box sx={{ height: 4, borderRadius: 999, mb: 3.5, background: 'linear-gradient(90deg, #7C3AED 0%, #EC4899 58%, #F59E0B 100%)' }} />
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5, mb: 4 }}>
+        <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#FAF9FF', border: '1px solid #EDE9FE' }}>
+          <Typography sx={{ color: '#8B5CF6', fontWeight: 900, fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px' }}>Prepared for</Typography>
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 20, mt: 0.4 }}>{recipientName || quotation.customer_name}</Typography>
           {(recipientEmail || quotation.customer_email) && <Typography sx={{ color: '#4B5563' }}>{recipientEmail || quotation.customer_email}</Typography>}
           <Typography sx={{ color: '#4B5563' }}>{quotation.facility_name || quotation.customer_name}</Typography>
           {quotation.customer_address && <Typography sx={{ color: '#4B5563' }}>{quotation.customer_address}</Typography>}
         </Box>
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 0.8, justifySelf: { md: 'end' } }}>
-          <Typography sx={{ fontWeight: 900 }}>Quote</Typography><Typography>{quotation.quotation_number}</Typography>
-          {quotation.work_order && <><Typography sx={{ fontWeight: 900 }}>Work Order</Typography><Typography>{quotation.work_order}</Typography></>}
-          <Typography sx={{ fontWeight: 900 }}>Issued</Typography><Typography>{dateLabel(quotation.sent_at || quotation.created_at)}</Typography>
+        <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 2, rowGap: 0.8, alignContent: 'start' }}>
+          <Typography sx={{ fontWeight: 900, color: '#64748B' }}>{isInvoice ? 'Invoice #' : 'Quote #'}</Typography>
+          <Typography sx={{ fontWeight: 900, textAlign: 'right', color: '#1E1B4B' }}>{isInvoice ? invoiceNumber : quotation.quotation_number}</Typography>
+          {isInvoice && <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Quote #</Typography><Typography sx={{ textAlign: 'right' }}>{quotation.quotation_number}</Typography></>}
+          {quotation.work_order && <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Work Order</Typography><Typography sx={{ textAlign: 'right' }}>{quotation.work_order}</Typography></>}
+          <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Issued</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(quotation.sent_at || quotation.created_at)}</Typography>
           {quotation.expires_at ? (
-            <><Typography sx={{ fontWeight: 900 }}>Expires</Typography><Typography>{dateLabel(quotation.expires_at)}</Typography></>
+            <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>{isInvoice ? 'Due' : 'Expires'}</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(quotation.expires_at)}</Typography></>
           ) : quotation.requested_date ? (
-            <><Typography sx={{ fontWeight: 900 }}>Requested</Typography><Typography>{dateLabel(quotation.requested_date)}</Typography></>
+            <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Requested</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(quotation.requested_date)}</Typography></>
           ) : null}
         </Box>
       </Box>
