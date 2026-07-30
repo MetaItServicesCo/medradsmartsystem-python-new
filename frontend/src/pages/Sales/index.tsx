@@ -327,6 +327,16 @@ const Sales = () => {
     ),
     [convertQuotation],
   )
+  const quotationPartIds = useMemo(
+    () => (
+      quotationForm.items
+        .filter(item => item.item_kind === 'product' && item.part_id)
+        .map(item => Number(item.part_id))
+        .filter((id, index, values) => values.indexOf(id) === index)
+        .join(',')
+    ),
+    [quotationForm.items],
+  )
   const facilitiesQ = useQuery({
     queryKey: ['sales-facilities'],
     queryFn: () => fetchFacilities({ limit: 500 }),
@@ -338,6 +348,12 @@ const Sales = () => {
     queryFn: () => fetchSalesParts(undefined, 100),
     enabled: partsAndFacilitiesNeeded,
     placeholderData: previousData => previousData,
+  })
+  const quotationPartsQ = useQuery({
+    queryKey: ['sales-parts', 'quotation-stock', quotationPartIds],
+    queryFn: () => fetchSalesParts(undefined, 100, undefined, undefined, undefined, undefined, quotationPartIds),
+    enabled: quotationDialog && Boolean(quotationPartIds),
+    staleTime: 0,
   })
   const convertPartsQ = useQuery({
     queryKey: ['sales-parts', 'conversion-stock', convertPartIds],
@@ -392,6 +408,7 @@ const Sales = () => {
 
   const facilities = facilitiesQ.data?.items || []
   const parts = partsQ.data?.items || []
+  const quotationParts = quotationPartsQ.data?.items || []
   const conversionParts = convertPartsQ.data?.items || []
   const recipientCandidates = recipientCandidatesQ.data?.items || []
   const summary = summaryQ.data
@@ -399,6 +416,56 @@ const Sales = () => {
   const inProgressQuotations = inProgressQ.data?.items || []
   const completedQuotations = completedQ.data?.items || []
   const invoices = invoicesQ.data?.items || []
+  const quotationPartCatalog = useMemo(() => {
+    const catalog = new Map<number, SalesPart>()
+    for (const part of [...parts, ...quotationParts]) catalog.set(part.id, part)
+    if (selectedPart) catalog.set(selectedPart.id, selectedPart)
+    return catalog
+  }, [parts, quotationParts, selectedPart])
+  const quotationStockIssues = useMemo(() => {
+    const issues: Array<{ index: number; message: string }> = []
+    const quantities = new Map<number, number>()
+    const indexes = new Map<number, number[]>()
+    quotationForm.items.forEach((item, index) => {
+      if (item.item_kind !== 'product' || !item.part_id) return
+      const part = quotationPartCatalog.get(item.part_id)
+      const label = part?.part_number || `Part #${item.part_id}`
+      const quantity = Number(item.quantity || 0)
+      if (quantity <= 0) {
+        issues.push({ index, message: `${label} quantity must be greater than zero.` })
+        return
+      }
+      quantities.set(item.part_id, (quantities.get(item.part_id) || 0) + quantity)
+      indexes.set(item.part_id, [...(indexes.get(item.part_id) || []), index])
+    })
+    quantities.forEach((quantity, partId) => {
+      const part = quotationPartCatalog.get(partId)
+      if (!part) return
+      const available = part.quantity_available ?? part.quantity_on_hand
+      if (quantity > available) {
+        const message = `Only ${available} unit(s) of ${part.part_number} are currently available; this quotation requests ${quantity} across all lines.`
+        for (const index of indexes.get(partId) || []) issues.push({ index, message })
+      }
+    })
+    return issues
+  }, [quotationForm.items, quotationPartCatalog])
+  const selectedPartAlreadyAdded = selectedPart
+    ? quotationForm.items.reduce(
+        (total, item) => total + (
+          item.item_kind === 'product' && item.part_id === selectedPart.id
+            ? Number(item.quantity || 0)
+            : 0
+        ),
+        0,
+      )
+    : 0
+  const selectedPartRemaining = selectedPart
+    ? Math.max(
+        (selectedPart.quantity_available ?? selectedPart.quantity_on_hand)
+          - selectedPartAlreadyAdded,
+        0,
+      )
+    : 0
   // Flattened set of currently-loaded quotation pages, used for id lookups
   // (opening a linked quotation from an invoice/history row, print, card auth).
   const quotations = useMemo(
@@ -719,16 +786,9 @@ const Sales = () => {
     const part = selectedPart
     if (!part) return toast.error('Select a sales part first')
     if (selectedPartQty <= 0) return toast.error('Quantity must be greater than zero')
-    const available = part.quantity_available ?? part.quantity_on_hand
-    if (selectedPartQty > part.quantity_on_hand) {
+    if (selectedPartQty > selectedPartRemaining) {
       return toast.error(
-        `${part.part_number} has only ${part.quantity_on_hand} unit(s) on hand.`,
-      )
-    }
-    if (selectedPartQty > available) {
-      toast.warning(
-        `${part.part_number} was added to the quotation, but ${part.quantity_reserved || 0} `
-        + 'unit(s) are reserved for unpaid invoices. A new invoice will be blocked until stock is released or replenished.',
+        `Only ${selectedPartRemaining} additional unit(s) of ${part.part_number} can be added to this quotation.`,
       )
     }
     setQuotationForm(prev => ({
@@ -830,6 +890,9 @@ const Sales = () => {
   const submitQuotation = (action: 'draft' | 'send') => {
     if (!quotationForm.customer_name) return toast.error('Customer name is required')
     if (quotationForm.items.length === 0) return toast.error('Add at least one sales part')
+    if (quotationStockIssues.length > 0) {
+      return toast.error(quotationStockIssues[0].message)
+    }
     if (action === 'send' && quotationForm.facility_id && !quotationForm.primary_recipient_user_id) {
       return toast.error('Select a primary facility recipient before sending')
     }
@@ -1899,8 +1962,33 @@ const Sales = () => {
               icon={<Inventory2Icon fontSize="small" />}
               avatarBg="#F5F3FF"
               avatarColor="#7C3AED"
+              getOptionDisabled={part => {
+                const alreadyAdded = quotationForm.items.reduce(
+                  (total, item) => total + (
+                    item.item_kind === 'product' && item.part_id === part.id
+                      ? Number(item.quantity || 0)
+                      : 0
+                  ),
+                  0,
+                )
+                return (part.quantity_available ?? part.quantity_on_hand) - alreadyAdded <= 0
+              }}
             />
-            <TextField label="Qty" type="number" value={selectedPartQty} onChange={e => setSelectedPartQty(Number(e.target.value))} />
+            <TextField
+              label="Qty"
+              type="number"
+              value={selectedPartQty}
+              onChange={e => setSelectedPartQty(Number(e.target.value))}
+              inputProps={{
+                min: 1,
+                step: 1,
+                max: selectedPart ? selectedPartRemaining : undefined,
+              }}
+              error={Boolean(selectedPart && selectedPartQty > selectedPartRemaining)}
+              helperText={selectedPart
+                ? `${selectedPartRemaining} more available for this quotation`
+                : ' '}
+            />
             <TextField label="Shipping Fee" type="number" value={selectedPartShipping} onChange={e => setSelectedPartShipping(Number(e.target.value))} />
             <TextField label="Setup Fee" type="number" value={selectedPartSetup} onChange={e => setSelectedPartSetup(Number(e.target.value))} />
             <TextField select label="Condition" value={selectedPartCondition} onChange={e => setSelectedPartCondition(e.target.value)}>
@@ -2076,6 +2164,12 @@ const Sales = () => {
             )}
           </Card>
 
+          {quotationStockIssues.length > 0 && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: '14px', fontWeight: 800 }}>
+              {quotationStockIssues[0].message}
+            </Alert>
+          )}
+
           <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
             <Table size="small" stickyHeader>
               <TableHead>
@@ -2098,7 +2192,26 @@ const Sales = () => {
                 {quotationForm.items.length === 0 ? (
                   <TableRow><TableCell colSpan={12} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts or credits selected.</TableCell></TableRow>
                 ) : quotationForm.items.map((item, index) => {
-                  const part = parts.find(candidate => candidate.id === item.part_id)
+                  const part = item.part_id ? quotationPartCatalog.get(item.part_id) : undefined
+                  const stockIssue = quotationStockIssues.find(issue => issue.index === index)
+                  const quantityOnOtherLines = item.item_kind === 'product' && item.part_id
+                    ? quotationForm.items.reduce(
+                        (total, line, lineIndex) => total + (
+                          lineIndex !== index
+                          && line.item_kind === 'product'
+                          && line.part_id === item.part_id
+                            ? Number(line.quantity || 0)
+                            : 0
+                        ),
+                        0,
+                      )
+                    : 0
+                  const rowAvailable = part
+                    ? Math.max(
+                        (part.quantity_available ?? part.quantity_on_hand) - quantityOnOtherLines,
+                        0,
+                      )
+                    : undefined
                   const itemLabel = item.item_kind === 'trade_in' ? 'Trade-In' : item.item_kind === 'refund' ? 'Refund' : 'Product'
                   const itemNumber = item.item_kind === 'trade_in' ? item.trade_in_part?.part_number || 'TRADE-IN' : item.item_kind === 'refund' ? 'REFUND' : part?.part_number || item.part_id
                   const itemImage = item.item_kind === 'trade_in' ? item.trade_in_part?.default_picture_url : part?.default_picture_url
@@ -2126,7 +2239,27 @@ const Sales = () => {
                           : <ClippedTooltipText value={item.description} field />}
                       </TableCell>
                       <TableCell><TextField size="small" type="number" value={item.unit_price} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(e.target.value) } : line) }))} sx={{ width: 120 }} /></TableCell>
-                      <TableCell><TextField size="small" type="number" value={item.quantity} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(e.target.value) } : line) }))} sx={{ width: 90 }} /></TableCell>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={item.quantity}
+                          onChange={e => setQuotationForm(prev => ({
+                            ...prev,
+                            items: prev.items.map((line, lineIndex) => (
+                              lineIndex === index ? { ...line, quantity: Number(e.target.value) } : line
+                            )),
+                          }))}
+                          inputProps={{
+                            min: 1,
+                            step: 1,
+                            max: item.item_kind === 'product' ? rowAvailable : undefined,
+                          }}
+                          error={Boolean(stockIssue)}
+                          helperText={stockIssue?.message}
+                          sx={{ width: stockIssue ? 220 : 90 }}
+                        />
+                      </TableCell>
                       <TableCell><TextField size="small" type="number" value={item.shipping_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, shipping_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.setup_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell>{item.condition || 'New'}</TableCell>

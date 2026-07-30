@@ -47,6 +47,7 @@ from app.utils.email import send_html_email
 from app.utils.notifications import create_notifications
 from app.utils.permissions import has_module_permission
 from app.utils.sales_inventory import (
+    ACTIVE_RESERVATION,
     fulfill_sales_invoice_inventory,
     release_sales_inventory_reservations,
     reserve_sales_inventory,
@@ -754,6 +755,140 @@ def _required_stock(lines: list[SalesQuotationLineItem]) -> dict[int, int]:
     return required
 
 
+def _active_reserved_quantity_map(
+    db: Session,
+    part_ids: set[int],
+) -> dict[int, int]:
+    if not part_ids:
+        return {}
+    rows = (
+        db.query(
+            SalesInventoryReservation.part_id,
+            func.coalesce(func.sum(SalesInventoryReservation.quantity), 0),
+        )
+        .filter(
+            SalesInventoryReservation.part_id.in_(sorted(part_ids)),
+            SalesInventoryReservation.status == ACTIVE_RESERVATION,
+        )
+        .group_by(SalesInventoryReservation.part_id)
+        .all()
+    )
+    return {int(part_id): int(quantity or 0) for part_id, quantity in rows}
+
+
+def _validate_quotation_item_stock(
+    db: Session,
+    items: list[SalesQuotationItemIn],
+    current_user: User,
+) -> dict[int, InventoryPart]:
+    """Validate combined quantities across every line for each Sales SKU."""
+    product_items = [
+        item
+        for item in items
+        if (item.item_kind or "product").strip().lower() == "product"
+    ]
+    part_ids = {item.part_id for item in product_items if item.part_id is not None}
+    parts = (
+        _sales_part_query(db, current_user)
+        .filter(InventoryPart.id.in_(sorted(part_ids)))
+        .all()
+        if part_ids
+        else []
+    )
+    parts_by_id = {part.id: part for part in parts}
+    missing = sorted(part_ids - set(parts_by_id))
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Sales part #{missing[0]} not found",
+        )
+
+    for item in product_items:
+        if item.part_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="A product is required for every sales option",
+            )
+
+    reserved_by_part = _active_reserved_quantity_map(db, set(parts_by_id))
+    required_by_part: dict[int, int] = {}
+    for item in product_items:
+        required_by_part[item.part_id] = (
+            required_by_part.get(item.part_id, 0) + int(item.quantity or 0)
+        )
+    for part_id, required in required_by_part.items():
+        part = parts_by_id[part_id]
+        reserved = reserved_by_part.get(part.id, 0)
+        available = max(int(part.quantity_on_hand or 0) - reserved, 0)
+        if required > available:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Only {available} unit(s) of {part.part_number} are currently "
+                    f"available; this quotation requests {required} across all lines."
+                ),
+            )
+    return parts_by_id
+
+
+def _validate_saved_quotation_stock(
+    db: Session,
+    quotation: SalesQuotation,
+) -> None:
+    """Revalidate immediately before delivery in case stock changed after draft."""
+    product_lines = [
+        line
+        for line in quotation.line_items or []
+        if (line.item_kind or "product") == "product"
+    ]
+    part_ids = {line.part_id for line in product_lines if line.part_id is not None}
+    parts = (
+        db.query(InventoryPart)
+        .filter(
+            InventoryPart.id.in_(sorted(part_ids)),
+            InventoryPart.part_type.ilike("sales"),
+            InventoryPart.status == "active",
+        )
+        .all()
+        if part_ids
+        else []
+    )
+    parts_by_id = {part.id: part for part in parts}
+    missing = sorted(part_ids - set(parts_by_id))
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sales part #{missing[0]} is no longer available",
+        )
+
+    for line in product_lines:
+        if line.part_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail="A quotation product no longer has a valid inventory part",
+            )
+
+    reserved_by_part = _active_reserved_quantity_map(db, set(parts_by_id))
+    required_by_part: dict[int, int] = {}
+    for line in product_lines:
+        required_by_part[line.part_id] = (
+            required_by_part.get(line.part_id, 0) + int(line.quantity or 0)
+        )
+    for part_id, required in required_by_part.items():
+        part = parts_by_id[part_id]
+        reserved = reserved_by_part.get(part.id, 0)
+        available = max(int(part.quantity_on_hand or 0) - reserved, 0)
+        if required > available:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Only {available} unit(s) of {part.part_number} are currently "
+                    f"available; this quotation requests {required} across all lines. "
+                    "Update the quotation before sending."
+                ),
+            )
+
+
 def _create_invoice_for_accepted_quotation(
     db: Session,
     quotation: SalesQuotation,
@@ -892,6 +1027,7 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
     if quotation.converted_invoice_id:
         raise HTTPException(status_code=409, detail="An invoiced quotation cannot be changed")
 
+    parts_by_id = _validate_quotation_item_stock(db, items, current_user)
     quotation.line_items.clear()
     subtotal = Decimal("0")
     default_product_count = 0
@@ -903,13 +1039,7 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
             raise HTTPException(status_code=400, detail="Item type must be product, trade-in, or refund")
         part = None
         if item_kind == "product":
-            if item.part_id is None:
-                raise HTTPException(status_code=400, detail="A product is required for every sales option")
-            part = _sales_part_query(db, current_user).filter(InventoryPart.id == item.part_id).first()
-            if not part:
-                raise HTTPException(status_code=404, detail=f"Sales part #{item.part_id} not found")
-            if part.quantity_on_hand < item.quantity:
-                raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number}")
+            part = parts_by_id[item.part_id]
         elif not (item.description or (item.trade_in_part.description if item.trade_in_part else "")).strip():
             raise HTTPException(
                 status_code=400,
@@ -1500,6 +1630,7 @@ def send_quotation(
         require_facility_access(db, current_user, quotation.facility_id)
     if quotation.converted_invoice_id or quotation.status in {"accepted", "completed", "cancelled", "declined"}:
         raise HTTPException(status_code=409, detail="This quotation can no longer be sent")
+    _validate_saved_quotation_stock(db, quotation)
 
     primary = next(
         (item for item in quotation.recipients if item.recipient_type == "primary"),

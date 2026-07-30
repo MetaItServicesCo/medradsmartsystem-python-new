@@ -7,8 +7,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.endpoints.sales import (
+    SalesQuotationItemIn,
     _accept_quotation_selection,
+    _apply_items,
     _effective_quotation_lines,
+    _validate_saved_quotation_stock,
     revise_quotation,
 )
 from app.api.v1.endpoints.sales_portal import (
@@ -120,6 +123,172 @@ def test_standard_keeps_required_all_behavior_for_backward_compatibility() -> No
 
     assert accepted == quotation.line_items
     assert all(line.is_selected for line in quotation.line_items)
+
+
+def test_quotation_rejects_the_same_part_twice_when_only_one_is_available() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        part = InventoryPart(
+            part_number="ONE-ONLY-001",
+            part_type="sales",
+            description="Only one available",
+            unit_price=Decimal("25"),
+            condition="new",
+            quantity_on_hand=1,
+            reorder_level=0,
+            status="active",
+        )
+        db.add(part)
+        db.flush()
+        quotation = SalesQuotation(
+            quotation_type="standard",
+            tax_amount=Decimal("0"),
+            discount_amount=Decimal("0"),
+            history=[],
+        )
+        items = [
+            SalesQuotationItemIn(part_id=part.id, quantity=1),
+            SalesQuotationItemIn(part_id=part.id, quantity=1),
+        ]
+
+        with pytest.raises(HTTPException) as error:
+            _apply_items(db, quotation, items, _user())
+
+        assert error.value.status_code == 409
+        assert "Only 1 unit(s)" in error.value.detail
+        assert "requests 2 across all lines" in error.value.detail
+    finally:
+        db.close()
+
+
+def test_quotation_allows_the_same_part_twice_when_two_are_available() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        part = InventoryPart(
+            part_number="TWO-AVAILABLE-001",
+            part_type="sales",
+            description="Two available",
+            unit_price=Decimal("25"),
+            condition="new",
+            quantity_on_hand=2,
+            reorder_level=0,
+            status="active",
+        )
+        db.add(part)
+        db.flush()
+        quotation = SalesQuotation(
+            quotation_type="standard",
+            tax_amount=Decimal("0"),
+            discount_amount=Decimal("0"),
+            history=[],
+        )
+
+        _apply_items(
+            db,
+            quotation,
+            [
+                SalesQuotationItemIn(part_id=part.id, quantity=1),
+                SalesQuotationItemIn(part_id=part.id, quantity=1),
+            ],
+            _user(),
+        )
+
+        assert len(quotation.line_items) == 2
+        assert quotation.subtotal == Decimal("50")
+    finally:
+        db.close()
+
+
+def test_quotation_rejects_quantity_above_current_available_stock() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        part = InventoryPart(
+            part_number="ONE-ONLY-002",
+            part_type="sales",
+            description="Quantity validation",
+            unit_price=Decimal("25"),
+            condition="new",
+            quantity_on_hand=1,
+            reorder_level=0,
+            status="active",
+        )
+        db.add(part)
+        db.flush()
+        quotation = SalesQuotation(
+            quotation_type="standard",
+            tax_amount=Decimal("0"),
+            discount_amount=Decimal("0"),
+            history=[],
+        )
+
+        with pytest.raises(HTTPException) as error:
+            _apply_items(
+                db,
+                quotation,
+                [SalesQuotationItemIn(part_id=part.id, quantity=2)],
+                _user(),
+            )
+
+        assert error.value.status_code == 409
+        assert "Only 1 unit(s)" in error.value.detail
+        assert "requests 2" in error.value.detail
+    finally:
+        db.close()
+
+
+def test_send_validation_aggregates_duplicate_part_line_quantities() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        part = InventoryPart(
+            part_number="ONE-ONLY-003",
+            part_type="sales",
+            description="Send validation",
+            unit_price=Decimal("25"),
+            condition="new",
+            quantity_on_hand=1,
+            reorder_level=0,
+            status="active",
+        )
+        db.add(part)
+        db.flush()
+        quotation = SalesQuotation(quotation_type="standard", history=[])
+        quotation.line_items = [
+            SalesQuotationLineItem(
+                part_id=part.id,
+                item_kind="product",
+                quantity=1,
+                unit_price=Decimal("25"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                total=Decimal("25"),
+            ),
+            SalesQuotationLineItem(
+                part_id=part.id,
+                item_kind="product",
+                quantity=1,
+                unit_price=Decimal("25"),
+                shipping_fee=Decimal("0"),
+                setup_fee=Decimal("0"),
+                total=Decimal("25"),
+            ),
+        ]
+
+        with pytest.raises(HTTPException) as error:
+            _validate_saved_quotation_stock(db, quotation)
+
+        assert error.value.status_code == 409
+        assert "Only 1 unit(s)" in error.value.detail
+        assert "requests 2 across all lines" in error.value.detail
+    finally:
+        db.close()
 
 
 def test_sent_quotation_revision_snapshots_and_invalidates_delivery_links() -> None:
