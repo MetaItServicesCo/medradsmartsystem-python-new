@@ -55,7 +55,16 @@ class SalesQuotation(Base):
     facility = relationship("Facility")
     created_by = relationship("User", foreign_keys=[created_by_id])
     accepted_by = relationship("User", foreign_keys=[accepted_by_id])
-    converted_invoice = relationship("Invoice", foreign_keys=[converted_invoice_id])
+    # Sales quotations and invoices intentionally reference one another:
+    # invoices.sales_quotation_id identifies the source quotation, while this
+    # field records the invoice produced by an accepted quotation.  Defer this
+    # side to a second UPDATE so SQLAlchemy can flush both dirty records without
+    # a circular dependency (notably during payment/inventory notifications).
+    converted_invoice = relationship(
+        "Invoice",
+        foreign_keys=[converted_invoice_id],
+        post_update=True,
+    )
     line_items = relationship("SalesQuotationLineItem", back_populates="quotation", cascade="all, delete-orphan")
     recipients = relationship("SalesQuotationRecipient", back_populates="quotation", cascade="all, delete-orphan")
     acceptance = relationship("SalesQuotationAcceptance", back_populates="quotation", cascade="all, delete-orphan", uselist=False)

@@ -17,6 +17,7 @@ from app.api.v1.endpoints.sales import (
 from app.api.v1.endpoints.sales_portal import (
     PortalSquarePaymentIn,
     PortalTestPaymentIn,
+    _recipient_options,
     _record_square_payment,
     _record_test_payment,
 )
@@ -24,6 +25,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.models.inventory import InventoryPart, InventoryTransaction
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
+from app.models.notification import Notification
 from app.models.sales import (
     SalesInventoryReservation,
     SalesQuotation,
@@ -932,7 +934,7 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
             description="Square payment stock test",
             unit_price=Decimal("50"),
             condition="new",
-            quantity_on_hand=5,
+            quantity_on_hand=2,
             reorder_level=1,
             status="active",
         )
@@ -1044,7 +1046,12 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         quotation.converted_invoice_id = invoice.id
         db.commit()
 
-        recipient = db.query(SalesQuotationRecipient).filter_by(id=recipient.id).first()
+        recipient = (
+            db.query(SalesQuotationRecipient)
+            .options(*_recipient_options())
+            .filter_by(id=recipient.id)
+            .first()
+        )
         payload = PortalSquarePaymentIn(
             source_id="cnon:sandbox-card-token",
             idempotency_key="3e09d6c0-c764-4b06-b11e-2712914fb9ae",
@@ -1067,7 +1074,7 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         assert response["invoice"]["status"] == "paid"
         assert response["can_square_pay"] is False
         db.refresh(part)
-        assert part.quantity_on_hand == 3
+        assert part.quantity_on_hand == 0
         stock_transaction = (
             db.query(InventoryTransaction)
             .filter(
@@ -1078,7 +1085,16 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
             .one()
         )
         assert stock_transaction.quantity == 2
-        assert stock_transaction.balance_after == 3
+        assert stock_transaction.balance_after == 0
+        assert (
+            db.query(Notification)
+            .filter(
+                Notification.user_id == admin.id,
+                Notification.title == "Low stock alert",
+            )
+            .count()
+            == 1
+        )
         trade_in_part = db.query(InventoryPart).filter(InventoryPart.part_number == "TRADE-IN-001").one()
         assert trade_in_part.part_type == "sales"
         assert trade_in_part.facility_id is None
@@ -1106,7 +1122,7 @@ def test_square_payment_marks_sales_invoice_paid_and_is_idempotent(monkeypatch) 
         assert duplicate["invoice"]["status"] == "paid"
         assert len(square_calls) == 1
         db.refresh(part)
-        assert part.quantity_on_hand == 3
+        assert part.quantity_on_hand == 0
         assert (
             db.query(InventoryTransaction)
             .filter(
