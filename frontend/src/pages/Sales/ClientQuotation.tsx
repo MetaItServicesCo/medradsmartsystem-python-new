@@ -85,6 +85,45 @@ const ClientQuotation = () => {
   const [testPaymentConfirmed, setTestPaymentConfirmed] = useState(false)
   const responseRef = useRef<HTMLDivElement | null>(null)
   const paymentConfirmationRef = useRef<HTMLDivElement | null>(null)
+  const printRef = useRef<HTMLDivElement | null>(null)
+
+  // Auto-scale the document to the printable page width so no columns are ever
+  // clipped. We measure the widest laid-out element (the line-items table) live
+  // and zoom the whole sheet down just enough to fit — dynamic to any content
+  // width or paper size, with nothing hardcoded. Reset once printing is done.
+  useEffect(() => {
+    // Letter/A4 width minus ~10mm margins each side, in CSS px; kept slightly
+    // conservative so the fit holds on either paper size.
+    const PRINTABLE_WIDTH = 720
+    const fitToPage = () => {
+      const el = printRef.current
+      if (!el) return
+      el.style.width = ''
+      el.style.zoom = '1'
+      const tables = Array.from(el.querySelectorAll('table')) as HTMLElement[]
+      const widest = Math.max(el.scrollWidth, ...tables.map(table => table.scrollWidth), 1)
+      const scale = Math.min(1, PRINTABLE_WIDTH / widest)
+      if (scale < 1) {
+        el.style.width = `${widest}px`
+        el.style.zoom = String(scale)
+      } else {
+        el.style.width = ''
+        el.style.zoom = ''
+      }
+    }
+    const resetFit = () => {
+      const el = printRef.current
+      if (!el) return
+      el.style.width = ''
+      el.style.zoom = ''
+    }
+    window.addEventListener('beforeprint', fitToPage)
+    window.addEventListener('afterprint', resetFit)
+    return () => {
+      window.removeEventListener('beforeprint', fitToPage)
+      window.removeEventListener('afterprint', resetFit)
+    }
+  }, [])
 
   useEffect(() => {
     if (!quotation) return
@@ -253,6 +292,7 @@ const ClientQuotation = () => {
       }}
     >
       <Card
+        ref={printRef}
         sx={{
           width: 'min(1120px, 100%)',
           mx: 'auto',

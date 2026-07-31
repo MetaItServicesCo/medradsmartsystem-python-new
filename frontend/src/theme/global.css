@@ -296,6 +296,11 @@ input[type='number'] {
 }
 
 @media print {
+  @page {
+    size: auto;
+    margin: 10mm;
+  }
+
   body {
     overflow: visible;
     background: #fff;

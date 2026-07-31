@@ -191,7 +191,7 @@ const SalesQuotationDocument = ({
         </Alert>
       )}
 
-      <TableContainer sx={{ mb: 3, overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: '14px' }}>
+      <TableContainer sx={{ mb: 3, overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: '14px', '@media print': { overflow: 'visible' } }}>
         <Table sx={{ minWidth: 1050, '& td, & th': { borderColor: '#EEF0F6' } }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
