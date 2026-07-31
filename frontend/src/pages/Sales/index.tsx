@@ -5,7 +5,7 @@ import {
   Alert, Autocomplete, Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, FormControlLabel, IconButton, InputLabel, ListItemIcon, Menu, MenuItem, Select,
   LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs,
-  TextField, Typography,
+  TextField, Typography, useMediaQuery, useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentIcon from '@mui/icons-material/Assignment'
@@ -233,6 +233,8 @@ const Sales = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const theme = useTheme()
+  const fullScreenDialog = useMediaQuery(theme.breakpoints.down('sm'))
   const { focusRecord } = useListContext()
   const currentUser = useAuthStore(state => state.user)
   const canConfigureDefaults = currentUser?.role === 'superadmin' || currentUser?.role === 'admin'
@@ -1560,7 +1562,7 @@ const Sales = () => {
         </Box>
       </Card>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(5, 1fr)' }, gap: 2, mb: 3 }}>
         {renderKpi('Quotations', stats.quotations, <AssignmentIcon />, '#4F46E5', 0)}
         {renderKpi('Invoices', stats.invoices, <ReceiptLongIcon />, '#2563EB', 1)}
         {renderKpi('In Progress', stats.inProgress, <ShoppingCartIcon />, '#F59E0B', 2)}
@@ -1923,10 +1925,10 @@ const Sales = () => {
         accent="#7C3AED"
       />
 
-      <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+      <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{editingQuotation ? 'Edit Sales Quotation' : 'Create Sales Quotation'}</DialogTitle>
         <DialogContent dividers>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
             <FacilitySearchAutocomplete
               label="Facility"
               value={quotationForm.facility_id || ''}
@@ -2016,28 +2018,30 @@ const Sales = () => {
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Sales Parts</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(260px, 1fr) 90px repeat(3, minmax(125px, 0.55fr)) 140px auto' }, gap: 2, mb: 2 }}>
-            <PartSearchAutocomplete<SalesPart>
-              label="Part assigned for sale"
-              value={selectedPart}
-              onChange={setSelectedPart}
-              fetchParts={fetchSalesParts}
-              queryKey="sales-parts-picker"
-              icon={<Inventory2Icon fontSize="small" />}
-              avatarBg="#F5F3FF"
-              avatarColor="#7C3AED"
-              getOptionDisabled={part => {
-                const alreadyAdded = quotationForm.items.reduce(
-                  (total, item) => total + (
-                    item.item_kind === 'product' && item.part_id === part.id
-                      ? Number(item.quantity || 0)
-                      : 0
-                  ),
-                  0,
-                )
-                return (part.quantity_available ?? part.quantity_on_hand) - alreadyAdded <= 0
-              }}
-            />
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(240px, 1.5fr) 88px repeat(3, minmax(115px, 0.6fr)) 130px auto' }, gap: 2, mb: 2 }}>
+            <Box sx={{ gridColumn: { xs: '1 / -1', lg: 'auto' } }}>
+              <PartSearchAutocomplete<SalesPart>
+                label="Part assigned for sale"
+                value={selectedPart}
+                onChange={setSelectedPart}
+                fetchParts={fetchSalesParts}
+                queryKey="sales-parts-picker"
+                icon={<Inventory2Icon fontSize="small" />}
+                avatarBg="#F5F3FF"
+                avatarColor="#7C3AED"
+                getOptionDisabled={part => {
+                  const alreadyAdded = quotationForm.items.reduce(
+                    (total, item) => total + (
+                      item.item_kind === 'product' && item.part_id === part.id
+                        ? Number(item.quantity || 0)
+                        : 0
+                    ),
+                    0,
+                  )
+                  return (part.quantity_available ?? part.quantity_on_hand) - alreadyAdded <= 0
+                }}
+              />
+            </Box>
             <TextField
               label="Qty"
               type="number"
@@ -2127,8 +2131,8 @@ const Sales = () => {
             </Alert>
           )}
 
-          <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
-            <Table size="small" stickyHeader>
+          <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px', overflowX: 'auto' }}>
+            <Table size="small" stickyHeader sx={{ minWidth: 920 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Image</TableCell>
@@ -2265,7 +2269,7 @@ const Sales = () => {
                 <Typography sx={{ color: '#9A3412', fontSize: 13, fontWeight: 800 }}>
                   Register the incoming part now. It will enter global Parts Inventory only after this invoice is fully paid.
                 </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
                   <TextField label="Part Number *" value={tradeInPart.part_number} onChange={e => setTradeInPart(prev => ({ ...prev, part_number: e.target.value }))} />
                   <TextField label="Part Type" value="Sales" disabled />
                   <TextField label="Part Description *" value={tradeInPart.description} onChange={e => setTradeInPart(prev => ({ ...prev, description: e.target.value }))} />
@@ -2286,7 +2290,7 @@ const Sales = () => {
                 </Box>
 
                 <Typography sx={{ fontWeight: 900, color: '#7C2D12' }}>Source / Contact</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
                   <TextField label="Company" value={tradeInPart.supplier_name || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_name: e.target.value }))} />
                   <TextField label="Phone" value={tradeInPart.supplier_phone || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_phone: formatUSPhoneInput(e.target.value) }))} />
                   <TextField label="Contact Name" value={tradeInPart.supplier_contact || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_contact: e.target.value }))} />
@@ -2295,7 +2299,7 @@ const Sales = () => {
                 </Box>
 
                 <Typography sx={{ fontWeight: 900, color: '#7C2D12' }}>Acquired From (Optional)</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
                   <TextField label="Vendor Name" value={tradeInPart.vendor_name || ''} onChange={e => setTradeInPart(prev => ({ ...prev, vendor_name: e.target.value }))} />
                   <TextField label="Purchase Location" value={tradeInPart.purchase_location || ''} onChange={e => setTradeInPart(prev => ({ ...prev, purchase_location: e.target.value }))} />
                   <TextField label="Shipping Method" value={tradeInPart.shipping_method || ''} onChange={e => setTradeInPart(prev => ({ ...prev, shipping_method: e.target.value }))} />
@@ -2328,7 +2332,7 @@ const Sales = () => {
             />
             {refundAdjustmentEnabled && (
               <>
-                <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 220px auto' }, gap: 1.5 }}>
+                <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: '1fr 180px 220px auto' }, gap: 1.5 }}>
                   <TextField
                     label="Refund reason"
                     value={refundAdjustmentDescription}
@@ -2363,7 +2367,7 @@ const Sales = () => {
             )}
           </Card>
 
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(280px, 1fr) minmax(480px, 620px)' }, gap: 2, mt: 2, alignItems: 'start' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(280px, 1fr) minmax(460px, 620px)' }, gap: 2, mt: 2, alignItems: 'start' }}>
             <Box sx={{ display: 'grid', gap: 2 }}>
               <TextField label="Notes" value={quotationForm.notes || ''} onChange={e => setQuotationForm(prev => ({ ...prev, notes: e.target.value }))} multiline rows={3} />
               <TextField

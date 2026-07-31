@@ -101,6 +101,17 @@ const SalesQuotationDocument = ({
   const statusLabel = statusKey.replace(/_/g, ' ')
   const statusStyle = STATUS_STYLES[statusKey] ?? STATUS_STYLES.pending
 
+  const headCellSx = {
+    fontWeight: 800,
+    fontSize: 11,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.5px',
+    color: '#64748B',
+    py: 1.4,
+    whiteSpace: 'nowrap' as const,
+  }
+  const numSx = { fontVariantNumeric: 'tabular-nums' as const, color: '#334155' }
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start', mb: 3 }}>
@@ -170,24 +181,34 @@ const SalesQuotationDocument = ({
       )}
 
       <TableContainer sx={{ mb: 3, overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: '14px' }}>
-        <Table sx={{ minWidth: 1050 }}>
+        <Table sx={{ minWidth: 1050, '& td, & th': { borderColor: '#EEF0F6' } }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-              {hasSelection && <TableCell sx={{ width: 60, fontWeight: 900 }}>Select</TableCell>}
-              <TableCell sx={{ fontWeight: 900 }}>Item</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Quantity</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Part Amount</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Shipping & Packing</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Delivery & Setup</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Labor</TableCell>
-              <TableCell sx={{ fontWeight: 900 }} align="right">Line Total</TableCell>
+              {hasSelection && <TableCell sx={{ ...headCellSx, width: 60 }}>Select</TableCell>}
+              <TableCell sx={headCellSx}>Item</TableCell>
+              <TableCell sx={headCellSx}>Description</TableCell>
+              <TableCell sx={headCellSx} align="right">Qty</TableCell>
+              <TableCell sx={headCellSx} align="right">Part Amount</TableCell>
+              <TableCell sx={headCellSx} align="right">Shipping &amp; Packing</TableCell>
+              <TableCell sx={headCellSx} align="right">Delivery &amp; Setup</TableCell>
+              <TableCell sx={headCellSx} align="right">Labor</TableCell>
+              <TableCell sx={headCellSx} align="right">Line Total</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {[...productLines, ...creditLines].map(line => {
+            {[...productLines, ...creditLines].map((line, rowIndex) => {
               const isCredit = line.item_kind !== 'product'
               const selected = isCredit || quotation.quotation_type === 'standard' || effectiveSelectedIds.includes(line.id)
+              const itemName = line.item_kind === 'refund'
+                ? 'Refund'
+                : line.item_kind === 'trade_in'
+                  ? line.trade_in_part?.part_number || 'Trade-In'
+                  : line.part_number || 'Product'
+              const typeChip = line.item_kind === 'refund'
+                ? { label: 'Refund', color: 'error' as const }
+                : line.item_kind === 'trade_in'
+                  ? { label: 'Trade-In', color: 'warning' as const }
+                  : null
               return (
                 <TableRow
                   key={line.id}
@@ -195,8 +216,9 @@ const SalesQuotationDocument = ({
                   onClick={() => !isCredit && canSelect && onToggleProduct?.(line)}
                   sx={{
                     cursor: !isCredit && canSelect && hasSelection ? 'pointer' : 'default',
-                    opacity: selected ? 1 : 0.5,
-                    bgcolor: selected ? '#FFFFFF' : '#F8FAFC',
+                    opacity: selected ? 1 : 0.45,
+                    bgcolor: selected ? (rowIndex % 2 ? '#FCFCFF' : '#FFFFFF') : '#F8FAFC',
+                    '& td': { py: 1.35 },
                   }}
                 >
                   {hasSelection && (
@@ -206,25 +228,24 @@ const SalesQuotationDocument = ({
                         : <Checkbox checked={selected} disabled={!canSelect} />}
                     </TableCell>
                   )}
-                  <TableCell sx={{ fontWeight: 900 }}>
-                    {line.item_kind === 'refund'
-                      ? 'Refund'
-                      : line.item_kind === 'trade_in'
-                        ? line.trade_in_part?.part_number || 'Trade-In'
-                        : line.part_number || 'Product'}
-                  </TableCell>
-                  <TableCell>{line.description}</TableCell>
-                  <TableCell align="right">{line.quantity}</TableCell>
-                  <TableCell align="right">{money(Number(line.quantity || 0) * Number(line.unit_price || 0))}</TableCell>
-                  <TableCell align="right">{money(line.shipping_fee)}</TableCell>
-                  <TableCell align="right">{money(line.setup_fee)}</TableCell>
-                  <TableCell align="right">
-                    <Box>
-                      <Typography component="span" sx={{ fontWeight: 800 }}>{money(line.labor_fee)}</Typography>
-                      {Number(line.labor_fee || 0) > 0 && <Typography sx={{ fontSize: 10, color: '#64748B' }}>Non-taxable</Typography>}
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                      <Typography component="span" sx={{ fontWeight: 900, color: '#1E1B4B' }}>{itemName}</Typography>
+                      {typeChip && <Chip size="small" label={typeChip.label} color={typeChip.color} sx={{ height: 20, fontWeight: 800 }} />}
                     </Box>
                   </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 900, color: isCredit ? '#DC2626' : '#1E1B4B' }}>{money(line.total)}</TableCell>
+                  <TableCell sx={{ color: '#475569' }}>{line.description}</TableCell>
+                  <TableCell align="right" sx={numSx}>{line.quantity}</TableCell>
+                  <TableCell align="right" sx={numSx}>{money(Number(line.quantity || 0) * Number(line.unit_price || 0))}</TableCell>
+                  <TableCell align="right" sx={numSx}>{money(line.shipping_fee)}</TableCell>
+                  <TableCell align="right" sx={numSx}>{money(line.setup_fee)}</TableCell>
+                  <TableCell align="right" sx={numSx}>
+                    <Box>
+                      <Typography component="span" sx={{ fontWeight: 800 }}>{money(line.labor_fee)}</Typography>
+                      {Number(line.labor_fee || 0) > 0 && <Typography sx={{ fontSize: 10, color: '#94A3B8' }}>Non-taxable</Typography>}
+                    </Box>
+                  </TableCell>
+                  <TableCell align="right" sx={{ ...numSx, fontWeight: 900, color: isCredit ? '#DC2626' : '#1E1B4B' }}>{money(line.total)}</TableCell>
                 </TableRow>
               )
             })}
@@ -236,7 +257,27 @@ const SalesQuotationDocument = ({
         <SalesPricingBreakdown pricing={pricing} />
       </Box>
 
-      {quotation.notes && <Alert icon={false} sx={{ mb: 3 }}>{quotation.notes}</Alert>}
+      {quotation.notes && (
+        <Box sx={{ mb: 3, p: 2.2, borderRadius: '14px', bgcolor: '#FAF9FF', border: '1px solid #EDE9FE' }}>
+          <Typography sx={{ color: '#8B5CF6', fontWeight: 900, fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px', mb: 0.6 }}>
+            Notes
+          </Typography>
+          <Typography sx={{ color: '#475569', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{quotation.notes}</Typography>
+        </Box>
+      )}
+
+      <Box sx={{ height: 3, borderRadius: 999, mt: 4, mb: 2.5, background: 'linear-gradient(90deg, #7C3AED 0%, #EC4899 58%, #F59E0B 100%)' }} />
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
+        <Box>
+          <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 15 }}>Thank you for your business.</Typography>
+          <Typography sx={{ color: '#6B7280', fontSize: 13, mt: 0.3 }}>{companyName}</Typography>
+        </Box>
+        <Typography sx={{ color: '#94A3B8', fontSize: 12, maxWidth: 380, textAlign: { xs: 'left', sm: 'right' }, lineHeight: 1.55 }}>
+          {isInvoice
+            ? `Payment is due by the date shown above. Please reference ${invoiceNumber} on all correspondence.`
+            : 'This quotation is valid until the date shown above. Pricing and availability are subject to change thereafter.'}
+        </Typography>
+      </Box>
     </Box>
   )
 }
