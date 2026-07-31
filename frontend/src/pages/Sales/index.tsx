@@ -305,6 +305,20 @@ const Sales = () => {
     }
   }, [location.pathname, navigate])
 
+  // Mouse-wheel over a focused number input silently changes its value (a browser
+  // default). Blur the field on wheel so scrolling the form never mutates a value
+  // the user already entered.
+  useEffect(() => {
+    const stopWheelMutation = () => {
+      const active = document.activeElement as HTMLInputElement | null
+      if (active && active.tagName === 'INPUT' && active.type === 'number') {
+        active.blur()
+      }
+    }
+    document.addEventListener('wheel', stopWheelMutation, { passive: true })
+    return () => document.removeEventListener('wheel', stopWheelMutation)
+  }, [])
+
   useEffect(() => {
     setSearch(routeSearch)
     setDebouncedSearch(routeSearch)
@@ -1862,7 +1876,9 @@ const Sales = () => {
         open={Boolean(printQuotation)}
         onClose={() => setPrintQuotation(null)}
         invoice={printQuotation ? {
-          invoice_number: printQuotation.quotation_number,
+          invoice_number: printQuotation.converted_invoice_id
+            ? (printQuotation.converted_invoice_number || printQuotation.quotation_number)
+            : printQuotation.quotation_number,
           invoice_type: printQuotation.quotation_type,
           reference_number: printQuotation.work_order,
           customer_name: printQuotation.customer_name,
@@ -1888,7 +1904,7 @@ const Sales = () => {
         lineItems={quotationLineItems(printQuotation)}
         ledgerTransactions={quotationLedgerTransactions(printQuotation)}
         moduleLabel="Sales"
-        primaryDocumentLabel="Quotation"
+        primaryDocumentLabel={printQuotation?.converted_invoice_id ? 'Invoice' : 'Quotation'}
         accent="#7C3AED"
         acceptance={printQuotation?.acceptance || null}
       />
@@ -2742,6 +2758,8 @@ const Sales = () => {
               <SalesQuotationDocument
                 quotation={viewQuotation}
                 showRevision
+                invoiceNumber={viewQuotation.converted_invoice_id ? viewQuotation.converted_invoice_number : null}
+                invoicePaid={viewQuotation.converted_invoice_status === 'paid' || viewQuotation.paid_status === 'paid'}
                 companyName="Medrad Admin Panel"
                 recipientName={viewQuotation.primary_recipient?.name || viewQuotation.customer_name}
                 recipientEmail={viewQuotation.primary_recipient?.email || viewQuotation.customer_email}

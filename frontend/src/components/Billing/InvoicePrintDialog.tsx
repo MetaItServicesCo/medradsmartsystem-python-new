@@ -393,7 +393,7 @@ const printStyles = `
   .meta span { text-align: right; font-weight: 700; color: #111827; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 24px; font-size: 13px; border: 1px solid #E5E7EB; border-radius: 14px; overflow: hidden; }
   th { text-align: left; background: var(--accent-soft); color: #334155; padding: 12px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #DDD6FE; }
-  td { border-bottom: 1px solid #EEF2F7; padding: 12px 11px; vertical-align: top; }
+  td { border-bottom: 1px solid #EEF2F7; padding: 12px 11px; vertical-align: top; word-break: break-word; }
   tr:nth-child(even) td { background: #FAFBFF; }
   tr:last-child td { border-bottom: 0; }
   .item-number { color: var(--accent); font-weight: 800; }
@@ -426,10 +426,13 @@ const printStyles = `
   .report-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
   .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
   @media print {
+    @page { margin: 0.4in; }
     body { background: #fff; }
     .sheet { margin: 0; width: 100%; min-height: 0; overflow: visible; box-shadow: none; }
     .hero, .report-hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     th, .totals .grand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    thead { display: table-header-group; }
+    tr, .totals, .note, .paid-separate, .signature, .report-session { page-break-inside: avoid; }
   }
 </style>
 `
