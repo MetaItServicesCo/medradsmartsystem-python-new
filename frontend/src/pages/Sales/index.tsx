@@ -2121,114 +2121,6 @@ const Sales = () => {
             </Card>
           )}
 
-          <Card sx={{ p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
-            <FormControlLabel
-              control={<Checkbox checked={tradeInEnabled} onChange={event => setTradeInEnabled(event.target.checked)} />}
-              label={<Typography sx={{ fontWeight: 900, color: '#9A3412' }}>Add Trade-In</Typography>}
-            />
-            {tradeInEnabled && (
-              <Box sx={{ mt: 1.5, display: 'grid', gap: 2 }}>
-                <Typography sx={{ color: '#9A3412', fontSize: 13, fontWeight: 800 }}>
-                  Register the incoming part now. It will enter global Parts Inventory only after this invoice is fully paid.
-                </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
-                  <TextField label="Part Number *" value={tradeInPart.part_number} onChange={e => setTradeInPart(prev => ({ ...prev, part_number: e.target.value }))} />
-                  <TextField label="Part Type" value="Sales" disabled />
-                  <TextField label="Part Description *" value={tradeInPart.description} onChange={e => setTradeInPart(prev => ({ ...prev, description: e.target.value }))} />
-                  <TextField label="Make" value={tradeInPart.make || ''} onChange={e => setTradeInPart(prev => ({ ...prev, make: e.target.value }))} />
-                  <TextField label="Model" value={tradeInPart.model || ''} onChange={e => setTradeInPart(prev => ({ ...prev, model: e.target.value }))} />
-                  <TextField label="Serial Number" value={tradeInPart.serial_number || ''} onChange={e => setTradeInPart(prev => ({ ...prev, serial_number: e.target.value }))} />
-                  <TextField label="Batch Number" value={tradeInPart.batch_number || ''} onChange={e => setTradeInPart(prev => ({ ...prev, batch_number: e.target.value }))} />
-                  <TextField label="Quantity *" type="number" inputProps={{ min: 1, step: 1 }} value={tradeInQuantity} onChange={e => setTradeInQuantity(Number(e.target.value))} />
-                  <TextField label="Credit Value Per Part *" type="number" inputProps={{ min: 0, step: '0.01' }} value={tradeInValue} onChange={e => setTradeInValue(Number(e.target.value))} />
-                  <TextField select label="Part Condition *" value={tradeInPart.condition} onChange={e => setTradeInPart(prev => ({ ...prev, condition: e.target.value }))}>
-                    <MenuItem value="new">New</MenuItem>
-                    <MenuItem value="refurbished">Refurbished</MenuItem>
-                    <MenuItem value="used">Used</MenuItem>
-                    <MenuItem value="damaged">Damaged</MenuItem>
-                  </TextField>
-                  <TextField label="Reorder Level" type="number" inputProps={{ min: 0, step: 1 }} value={tradeInPart.reorder_level || 0} onChange={e => setTradeInPart(prev => ({ ...prev, reorder_level: Number(e.target.value) }))} />
-                  <TextField label="Inventory Location" value={tradeInPart.location || ''} onChange={e => setTradeInPart(prev => ({ ...prev, location: e.target.value }))} />
-                </Box>
-
-                <Typography sx={{ fontWeight: 900, color: '#7C2D12' }}>Source / Contact</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
-                  <TextField label="Company" value={tradeInPart.supplier_name || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_name: e.target.value }))} />
-                  <TextField label="Phone" value={tradeInPart.supplier_phone || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_phone: formatUSPhoneInput(e.target.value) }))} />
-                  <TextField label="Contact Name" value={tradeInPart.supplier_contact || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_contact: e.target.value }))} />
-                  <TextField label="Address" value={tradeInPart.supplier_address || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_address: e.target.value }))} />
-                  <TextField label="Email" type="email" value={tradeInPart.supplier_email || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_email: e.target.value }))} />
-                </Box>
-
-                <Typography sx={{ fontWeight: 900, color: '#7C2D12' }}>Acquired From (Optional)</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
-                  <TextField label="Vendor Name" value={tradeInPart.vendor_name || ''} onChange={e => setTradeInPart(prev => ({ ...prev, vendor_name: e.target.value }))} />
-                  <TextField label="Purchase Location" value={tradeInPart.purchase_location || ''} onChange={e => setTradeInPart(prev => ({ ...prev, purchase_location: e.target.value }))} />
-                  <TextField label="Shipping Method" value={tradeInPart.shipping_method || ''} onChange={e => setTradeInPart(prev => ({ ...prev, shipping_method: e.target.value }))} />
-                  <TextField label="Acquisition Date" type="date" InputLabelProps={{ shrink: true }} value={tradeInPart.acquisition_date || ''} onChange={e => setTradeInPart(prev => ({ ...prev, acquisition_date: e.target.value || null }))} />
-                  <TextField label="Warehouse Arrival Date" type="date" InputLabelProps={{ shrink: true }} value={tradeInPart.warehouse_arrival_date || ''} onChange={e => setTradeInPart(prev => ({ ...prev, warehouse_arrival_date: e.target.value || null }))} />
-                </Box>
-
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
-                  <Button component="label" variant="outlined" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
-                    Choose Part Image
-                    <input hidden type="file" accept="image/*" onChange={event => handleTradeInImage(event.target.files?.[0])} />
-                  </Button>
-                  {tradeInPart.default_picture_url && (
-                    <Avatar src={tradeInPart.default_picture_url} variant="rounded" sx={{ width: 64, height: 64, borderRadius: '12px' }}>
-                      <Inventory2Icon />
-                    </Avatar>
-                  )}
-                  <Button variant="contained" startIcon={<AddIcon />} onClick={addTradeIn} sx={{ ml: { md: 'auto' }, borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
-                    Add Trade-In Part
-                  </Button>
-                </Box>
-              </Box>
-            )}
-          </Card>
-
-          <Card sx={{ p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
-            <FormControlLabel
-              control={<Checkbox checked={refundAdjustmentEnabled} onChange={event => setRefundAdjustmentEnabled(event.target.checked)} />}
-              label={<Typography sx={{ fontWeight: 900, color: '#B91C1C' }}>Refund Payment</Typography>}
-            />
-            {refundAdjustmentEnabled && (
-              <>
-                <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 220px auto' }, gap: 1.5 }}>
-                  <TextField
-                    label="Refund reason"
-                    value={refundAdjustmentDescription}
-                    onChange={e => setRefundAdjustmentDescription(e.target.value)}
-                  />
-                  <TextField
-                    label="Refund amount"
-                    type="number"
-                    inputProps={{ min: 0, step: '0.01' }}
-                    value={refundAdjustmentValue}
-                    onChange={e => setRefundAdjustmentValue(Number(e.target.value))}
-                  />
-                  <TextField
-                    label="Payment reference (optional)"
-                    value={refundAdjustmentReference}
-                    onChange={e => setRefundAdjustmentReference(e.target.value)}
-                  />
-                  <Button
-                    color="error"
-                    variant="contained"
-                    startIcon={<PaymentIcon />}
-                    onClick={addRefundAdjustment}
-                    sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
-                  >
-                    Add Refund
-                  </Button>
-                </Box>
-                <Typography sx={{ mt: 1, color: '#B91C1C', fontSize: 12, fontWeight: 700 }}>
-                  Adds a clearly identified negative line to this quotation. It does not alter inventory stock.
-                </Typography>
-              </>
-            )}
-          </Card>
-
           {quotationStockIssues.length > 0 && (
             <Alert severity="error" sx={{ mb: 2, borderRadius: '14px', fontWeight: 800 }}>
               {quotationStockIssues[0].message}
@@ -2362,6 +2254,114 @@ const Sales = () => {
               </TableBody>
             </Table>
           </TableContainer>
+
+          <Card sx={{ p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+            <FormControlLabel
+              control={<Checkbox checked={tradeInEnabled} onChange={event => setTradeInEnabled(event.target.checked)} />}
+              label={<Typography sx={{ fontWeight: 900, color: '#9A3412' }}>Add Trade-In</Typography>}
+            />
+            {tradeInEnabled && (
+              <Box sx={{ mt: 1.5, display: 'grid', gap: 2 }}>
+                <Typography sx={{ color: '#9A3412', fontSize: 13, fontWeight: 800 }}>
+                  Register the incoming part now. It will enter global Parts Inventory only after this invoice is fully paid.
+                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                  <TextField label="Part Number *" value={tradeInPart.part_number} onChange={e => setTradeInPart(prev => ({ ...prev, part_number: e.target.value }))} />
+                  <TextField label="Part Type" value="Sales" disabled />
+                  <TextField label="Part Description *" value={tradeInPart.description} onChange={e => setTradeInPart(prev => ({ ...prev, description: e.target.value }))} />
+                  <TextField label="Make" value={tradeInPart.make || ''} onChange={e => setTradeInPart(prev => ({ ...prev, make: e.target.value }))} />
+                  <TextField label="Model" value={tradeInPart.model || ''} onChange={e => setTradeInPart(prev => ({ ...prev, model: e.target.value }))} />
+                  <TextField label="Serial Number" value={tradeInPart.serial_number || ''} onChange={e => setTradeInPart(prev => ({ ...prev, serial_number: e.target.value }))} />
+                  <TextField label="Batch Number" value={tradeInPart.batch_number || ''} onChange={e => setTradeInPart(prev => ({ ...prev, batch_number: e.target.value }))} />
+                  <TextField label="Quantity *" type="number" inputProps={{ min: 1, step: 1 }} value={tradeInQuantity} onChange={e => setTradeInQuantity(Number(e.target.value))} />
+                  <TextField label="Credit Value Per Part *" type="number" inputProps={{ min: 0, step: '0.01' }} value={tradeInValue} onChange={e => setTradeInValue(Number(e.target.value))} />
+                  <TextField select label="Part Condition *" value={tradeInPart.condition} onChange={e => setTradeInPart(prev => ({ ...prev, condition: e.target.value }))}>
+                    <MenuItem value="new">New</MenuItem>
+                    <MenuItem value="refurbished">Refurbished</MenuItem>
+                    <MenuItem value="used">Used</MenuItem>
+                    <MenuItem value="damaged">Damaged</MenuItem>
+                  </TextField>
+                  <TextField label="Reorder Level" type="number" inputProps={{ min: 0, step: 1 }} value={tradeInPart.reorder_level || 0} onChange={e => setTradeInPart(prev => ({ ...prev, reorder_level: Number(e.target.value) }))} />
+                  <TextField label="Inventory Location" value={tradeInPart.location || ''} onChange={e => setTradeInPart(prev => ({ ...prev, location: e.target.value }))} />
+                </Box>
+
+                <Typography sx={{ fontWeight: 900, color: '#7C2D12' }}>Source / Contact</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                  <TextField label="Company" value={tradeInPart.supplier_name || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_name: e.target.value }))} />
+                  <TextField label="Phone" value={tradeInPart.supplier_phone || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_phone: formatUSPhoneInput(e.target.value) }))} />
+                  <TextField label="Contact Name" value={tradeInPart.supplier_contact || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_contact: e.target.value }))} />
+                  <TextField label="Address" value={tradeInPart.supplier_address || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_address: e.target.value }))} />
+                  <TextField label="Email" type="email" value={tradeInPart.supplier_email || ''} onChange={e => setTradeInPart(prev => ({ ...prev, supplier_email: e.target.value }))} />
+                </Box>
+
+                <Typography sx={{ fontWeight: 900, color: '#7C2D12' }}>Acquired From (Optional)</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+                  <TextField label="Vendor Name" value={tradeInPart.vendor_name || ''} onChange={e => setTradeInPart(prev => ({ ...prev, vendor_name: e.target.value }))} />
+                  <TextField label="Purchase Location" value={tradeInPart.purchase_location || ''} onChange={e => setTradeInPart(prev => ({ ...prev, purchase_location: e.target.value }))} />
+                  <TextField label="Shipping Method" value={tradeInPart.shipping_method || ''} onChange={e => setTradeInPart(prev => ({ ...prev, shipping_method: e.target.value }))} />
+                  <TextField label="Acquisition Date" type="date" InputLabelProps={{ shrink: true }} value={tradeInPart.acquisition_date || ''} onChange={e => setTradeInPart(prev => ({ ...prev, acquisition_date: e.target.value || null }))} />
+                  <TextField label="Warehouse Arrival Date" type="date" InputLabelProps={{ shrink: true }} value={tradeInPart.warehouse_arrival_date || ''} onChange={e => setTradeInPart(prev => ({ ...prev, warehouse_arrival_date: e.target.value || null }))} />
+                </Box>
+
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
+                  <Button component="label" variant="outlined" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+                    Choose Part Image
+                    <input hidden type="file" accept="image/*" onChange={event => handleTradeInImage(event.target.files?.[0])} />
+                  </Button>
+                  {tradeInPart.default_picture_url && (
+                    <Avatar src={tradeInPart.default_picture_url} variant="rounded" sx={{ width: 64, height: 64, borderRadius: '12px' }}>
+                      <Inventory2Icon />
+                    </Avatar>
+                  )}
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={addTradeIn} sx={{ ml: { md: 'auto' }, borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+                    Add Trade-In Part
+                  </Button>
+                </Box>
+              </Box>
+            )}
+          </Card>
+
+          <Card sx={{ p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+            <FormControlLabel
+              control={<Checkbox checked={refundAdjustmentEnabled} onChange={event => setRefundAdjustmentEnabled(event.target.checked)} />}
+              label={<Typography sx={{ fontWeight: 900, color: '#B91C1C' }}>Refund Payment</Typography>}
+            />
+            {refundAdjustmentEnabled && (
+              <>
+                <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 180px 220px auto' }, gap: 1.5 }}>
+                  <TextField
+                    label="Refund reason"
+                    value={refundAdjustmentDescription}
+                    onChange={e => setRefundAdjustmentDescription(e.target.value)}
+                  />
+                  <TextField
+                    label="Refund amount"
+                    type="number"
+                    inputProps={{ min: 0, step: '0.01' }}
+                    value={refundAdjustmentValue}
+                    onChange={e => setRefundAdjustmentValue(Number(e.target.value))}
+                  />
+                  <TextField
+                    label="Payment reference (optional)"
+                    value={refundAdjustmentReference}
+                    onChange={e => setRefundAdjustmentReference(e.target.value)}
+                  />
+                  <Button
+                    color="error"
+                    variant="contained"
+                    startIcon={<PaymentIcon />}
+                    onClick={addRefundAdjustment}
+                    sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+                  >
+                    Add Refund
+                  </Button>
+                </Box>
+                <Typography sx={{ mt: 1, color: '#B91C1C', fontSize: 12, fontWeight: 700 }}>
+                  Adds a clearly identified negative line to this quotation. It does not alter inventory stock.
+                </Typography>
+              </>
+            )}
+          </Card>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(280px, 1fr) minmax(480px, 620px)' }, gap: 2, mt: 2, alignItems: 'start' }}>
             <Box sx={{ display: 'grid', gap: 2 }}>
