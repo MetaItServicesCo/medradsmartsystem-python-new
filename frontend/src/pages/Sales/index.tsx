@@ -1925,7 +1925,7 @@ const Sales = () => {
 
       <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{editingQuotation ? 'Edit Sales Quotation' : 'Create Sales Quotation'}</DialogTitle>
-        <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column' }}>
+        <DialogContent dividers>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
             <FacilitySearchAutocomplete
               label="Facility"
@@ -2121,7 +2121,7 @@ const Sales = () => {
             </Card>
           )}
 
-          <Card sx={{ order: 1, p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+          <Card sx={{ p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
             <FormControlLabel
               control={<Checkbox checked={tradeInEnabled} onChange={event => setTradeInEnabled(event.target.checked)} />}
               label={<Typography sx={{ fontWeight: 900, color: '#9A3412' }}>Add Trade-In</Typography>}
@@ -2187,7 +2187,7 @@ const Sales = () => {
             )}
           </Card>
 
-          <Card sx={{ order: 1, p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+          <Card sx={{ p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
             <FormControlLabel
               control={<Checkbox checked={refundAdjustmentEnabled} onChange={event => setRefundAdjustmentEnabled(event.target.checked)} />}
               label={<Typography sx={{ fontWeight: 900, color: '#B91C1C' }}>Refund Payment</Typography>}
@@ -2363,7 +2363,7 @@ const Sales = () => {
             </Table>
           </TableContainer>
 
-          <Box sx={{ order: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(280px, 1fr) minmax(480px, 620px)' }, gap: 2, mt: 2, alignItems: 'start' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(280px, 1fr) minmax(480px, 620px)' }, gap: 2, mt: 2, alignItems: 'start' }}>
             <Box sx={{ display: 'grid', gap: 2 }}>
               <TextField label="Notes" value={quotationForm.notes || ''} onChange={e => setQuotationForm(prev => ({ ...prev, notes: e.target.value }))} multiline rows={3} />
               <TextField
@@ -2377,7 +2377,7 @@ const Sales = () => {
             <SalesPricingBreakdown pricing={quotationPricing} />
           </Box>
 
-          {selectedFacility && <Typography sx={{ order: 3, color: '#8B95A7', mt: 1, fontWeight: 700, fontSize: 13 }}>Using billing details from {selectedFacility.name}.</Typography>}
+          {selectedFacility && <Typography sx={{ color: '#8B95A7', mt: 1, fontWeight: 700, fontSize: 13 }}>Using billing details from {selectedFacility.name}.</Typography>}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setQuotationDialog(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
