@@ -2018,7 +2018,7 @@ const Sales = () => {
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Sales Parts</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(240px, 1.5fr) 88px repeat(3, minmax(115px, 0.6fr)) 130px auto' }, gap: 2, mb: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(240px, 1.5fr) 92px repeat(3, minmax(120px, 0.6fr)) 130px auto' }, gap: 2, mb: 2, alignItems: 'start' }}>
             <Box sx={{ gridColumn: { xs: '1 / -1', lg: 'auto' } }}>
               <PartSearchAutocomplete<SalesPart>
                 label="Part assigned for sale"
@@ -2054,7 +2054,7 @@ const Sales = () => {
               }}
               error={Boolean(selectedPart && selectedPartQty > selectedPartRemaining)}
               helperText={selectedPart
-                ? `${selectedPartRemaining} more available for this quotation`
+                ? `${selectedPartRemaining} more available`
                 : ' '}
             />
             <TextField label="Shipping & Packing" type="number" value={selectedPartShipping} onChange={e => setSelectedPartShipping(Number(e.target.value))} />
@@ -2063,7 +2063,7 @@ const Sales = () => {
             <TextField select label="Condition" value={selectedPartCondition} onChange={e => setSelectedPartCondition(e.target.value)}>
               {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
             </TextField>
-            <Button startIcon={<AddIcon />} variant="contained" onClick={addLineItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>Add Part</Button>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={addLineItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, height: 56, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add Part</Button>
           </Box>
           {selectedPart && (
             <Card
