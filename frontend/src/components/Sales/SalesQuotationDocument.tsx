@@ -42,6 +42,7 @@ export interface SalesQuotationDocumentData {
   work_order?: string | null
   quotation_type: string
   status: string
+  revision?: number | null
   facility_name?: string | null
   customer_name: string
   customer_email?: string | null
@@ -69,6 +70,9 @@ interface SalesQuotationDocumentProps {
   // document header from "Quotation" to "Invoice".
   invoiceNumber?: string | null
   invoicePaid?: boolean
+  // Internal surfaces (the admin View dialog) set this to surface the revision
+  // number; the customer-facing document leaves it off so revisions stay internal.
+  showRevision?: boolean
 }
 
 const SalesQuotationDocument = ({
@@ -83,6 +87,7 @@ const SalesQuotationDocument = ({
   onPrint,
   invoiceNumber,
   invoicePaid = false,
+  showRevision = false,
 }: SalesQuotationDocumentProps) => {
   const productLines = quotation.line_items.filter(line => line.item_kind === 'product')
   const creditLines = quotation.line_items.filter(line => line.item_kind !== 'product')
@@ -137,6 +142,12 @@ const SalesQuotationDocument = ({
             label={statusLabel}
             sx={{ textTransform: 'capitalize', fontWeight: 900, bgcolor: statusStyle.bg, color: statusStyle.color }}
           />
+          {showRevision && Number(quotation.revision || 1) > 1 && (
+            <Chip
+              label={`Rev ${quotation.revision}`}
+              sx={{ fontWeight: 900, bgcolor: '#EDE9FE', color: '#6D28D9' }}
+            />
+          )}
           <Box sx={{ display: 'flex', gap: 1, '@media print': { display: 'none' } }}>
             {onSignAndApprove && (
               <Button variant="contained" onClick={onSignAndApprove} sx={{ fontWeight: 900, whiteSpace: 'nowrap', borderRadius: '12px' }}>

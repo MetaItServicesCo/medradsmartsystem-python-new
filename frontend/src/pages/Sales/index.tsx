@@ -32,6 +32,7 @@ import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SalesPricingBreakdown from '@/components/Sales/SalesPricingBreakdown'
 import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
+import QuotationHistoryTimeline from '@/components/Sales/QuotationHistoryTimeline'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
@@ -1399,7 +1400,12 @@ const Sales = () => {
                 <TableCell sx={{ textTransform: 'capitalize' }}>{item.quotation_type.replace(/_/g, ' ')}</TableCell>
                 <TableCell>{item.created_by_name || '-'}</TableCell>
                 <TableCell>{formatDate(item.requested_date)}</TableCell>
-                <TableCell><Chip size="small" label={item.status.replace('_', ' ')} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexWrap: 'wrap' }}>
+                    <Chip size="small" label={item.status.replace('_', ' ')} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} />
+                    {item.revision > 1 && <Chip size="small" label={`Rev ${item.revision}`} sx={{ bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />}
+                  </Box>
+                </TableCell>
                 <TableCell><Chip size="small" label={item.paid_status === 'unpaid' ? 'Unpaid' : item.paid_status.replace(/_/g, ' ')} sx={{ bgcolor: paid.bg, color: paid.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                 <TableCell align="right">
                   {highlighted && (
@@ -2735,6 +2741,7 @@ const Sales = () => {
             <>
               <SalesQuotationDocument
                 quotation={viewQuotation}
+                showRevision
                 companyName="Medrad Admin Panel"
                 recipientName={viewQuotation.primary_recipient?.name || viewQuotation.customer_name}
                 recipientEmail={viewQuotation.primary_recipient?.email || viewQuotation.customer_email}
@@ -2787,6 +2794,14 @@ const Sales = () => {
                     </Box>
                   </Card>
                 )}
+                </Box>
+              )}
+              {viewQuotation.history && viewQuotation.history.length > 0 && (
+                <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid #E2E8F0' }}>
+                  <Typography sx={{ mb: 2, color: '#64748B', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+                    Revision &amp; activity history
+                  </Typography>
+                  <QuotationHistoryTimeline history={viewQuotation.history} />
                 </Box>
               )}
             </>
