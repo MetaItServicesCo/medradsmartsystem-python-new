@@ -998,13 +998,21 @@ const Sales = () => {
 
   const lineTotal = salesLineTotal
   const hasDefaultProduct = quotationForm.items.some(item => item.item_kind === 'product' && item.is_default)
-  const isQuotationLineIncluded = (item: SalesQuotationPayload['items'][number]) => (
-    quotationForm.quotation_type === 'standard'
-    || (item.item_kind === 'product' && item.is_default)
-    || (item.item_kind !== 'product' && hasDefaultProduct)
-  )
+  // Which lines the price preview sums. Standard quotes bill every line. Choice
+  // quotes bill the pre-selected (default) option plus any always-applied credits;
+  // when no default is marked yet we still preview the first option so the editor
+  // shows a meaningful total instead of a confusing $0 next to real line items.
+  const pricingLines = (() => {
+    if (quotationForm.quotation_type === 'standard') return quotationForm.items
+    const products = quotationForm.items.filter(item => item.item_kind === 'product')
+    const credits = quotationForm.items.filter(item => item.item_kind !== 'product')
+    const chosenProducts = hasDefaultProduct
+      ? products.filter(item => item.is_default)
+      : products.slice(0, 1)
+    return chosenProducts.length > 0 ? [...chosenProducts, ...credits] : []
+  })()
   const quotationPricing = calculateSalesPricing(
-    quotationForm.items.filter(isQuotationLineIncluded),
+    pricingLines,
     Number(quotationForm.discount_amount || 0),
   )
   const convertPricing = calculateSalesPricing(
@@ -2378,7 +2386,16 @@ const Sales = () => {
                 inputProps={{ min: 0, step: '0.01' }}
               />
             </Box>
-            <SalesPricingBreakdown pricing={quotationPricing} />
+            <Box sx={{ display: 'grid', gap: 1 }}>
+              {quotationForm.quotation_type !== 'standard' && (
+                <Typography sx={{ fontSize: 12, color: hasDefaultProduct ? '#94A3B8' : '#B45309', fontWeight: 800, textAlign: { xs: 'left', lg: 'right' }, lineHeight: 1.4 }}>
+                  {hasDefaultProduct
+                    ? 'Preview reflects the default option customers see pre-selected.'
+                    : 'No default option marked — previewing the first option. Tick “Default” to set which option customers see first.'}
+                </Typography>
+              )}
+              <SalesPricingBreakdown pricing={quotationPricing} />
+            </Box>
           </Box>
 
           {selectedFacility && <Typography sx={{ color: '#8B95A7', mt: 1, fontWeight: 700, fontSize: 13 }}>Using billing details from {selectedFacility.name}.</Typography>}
