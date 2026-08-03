@@ -502,7 +502,7 @@ const Rentals = () => {
     closeActions()
     setEditingAgreement(rental)
     setAgreementForm({
-      part_id: rental.part_id,
+      part_id: rental.part_id ?? undefined,
       customer_name: rental.customer_name,
       customer_email: rental.customer_email,
       customer_phone: formatUSPhoneInput(rental.customer_phone),

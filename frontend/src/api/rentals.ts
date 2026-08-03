@@ -1,7 +1,11 @@
 import apiClient from './client'
 
 export type RentalStatus = 'active' | 'completed' | 'cancelled'
-export type BillingFrequency = 'daily' | 'weekly' | 'monthly'
+// 'daily' is retained only for legacy agreements; new agreements use the tiers below.
+export type BillingFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
+export type RentalItemStatus = 'out' | 'returned'
+export type RentalDiscountType = 'flat' | 'percent'
+export type RentalDepositStatus = 'held' | 'refunded' | 'deducted' | 'waived'
 export type RentalInvoiceStatus = 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled'
 
 export interface RentalPart {
@@ -35,11 +39,41 @@ export interface RentalHistoryItem {
   part_description: string | null
 }
 
+export interface RentalItem {
+  id: number
+  part_id: number | null
+  equipment_id: number | null
+  part_number: string | null
+  part_description: string | null
+  default_picture_url: string | null
+  quantity: number
+  rental_rate: number
+  item_condition: string | null
+  shipping_fee: number
+  setup_fee: number
+  initial_condition: string | null
+  return_condition: string | null
+  initial_meter_reading: string | null
+  final_meter_reading: number | null
+  returned_at: string | null
+  item_status: RentalItemStatus
+}
+
 export interface Rental {
   id: number
   rental_number: string
+  items: RentalItem[]
+  auto_charge: boolean
+  committed_periods: number | null
+  periods_billed: number
+  next_bill_date: string | null
+  discount_type: RentalDiscountType | null
+  discount_value: number | null
+  discount_apply_after_periods: number | null
+  deposit_status: RentalDepositStatus | null
+  deposit_settled_amount: number | null
   equipment_id: number | null
-  part_id: number
+  part_id: number | null
   part_number: string | null
   part_description: string | null
   customer_name: string
@@ -142,30 +176,67 @@ export interface RentalInvoiceCreatePayload {
   notes?: string | null
 }
 
+export interface RentalItemPayload {
+  part_id?: number | null
+  equipment_id?: number | null
+  quantity?: number
+  rental_rate?: number
+  item_condition?: string | null
+  shipping_fee?: number
+  setup_fee?: number
+  initial_condition?: string | null
+  initial_meter_reading?: string | null
+}
+
 export interface RentalPayload {
-  part_id: number
   customer_name: string
   customer_email: string
   customer_phone: string
   customer_address: string
   billing_frequency: BillingFrequency
-  rental_rate: number
   security_deposit: number
+  start_date: string
+  end_date: string
+  terms_and_conditions?: string | null
+  items?: RentalItemPayload[]
+  // Legacy single-item fallback (still accepted by the backend during transition).
+  part_id?: number
+  rental_rate?: number
   quantity?: number
   shipping_fee?: number
   setup_fee?: number
   item_condition?: string | null
-  start_date: string
-  end_date: string
   initial_condition?: string | null
   initial_meter_reading?: string | null
-  terms_and_conditions?: string | null
+  // Recurring billing / commitment discount configuration.
+  auto_charge?: boolean
+  committed_periods?: number | null
+  discount_type?: RentalDiscountType | null
+  discount_value?: number | null
+  discount_apply_after_periods?: number | null
+}
+
+export interface RentalProductRate {
+  part_id: number
+  weekly_rate: number | null
+  biweekly_rate: number | null
+  monthly_rate: number | null
+  quarterly_rate: number | null
+  default_deposit: number | null
+}
+
+export interface RentalItemReturnPayload {
+  item_id: number
+  return_condition?: string | null
+  final_meter_reading?: number | null
 }
 
 export interface RentalReturnPayload {
   actual_return_date: string
-  return_condition: string
+  return_condition?: string | null
   final_meter_reading?: number | null
+  // When provided, only these items are returned (partial return).
+  items?: RentalItemReturnPayload[]
 }
 
 export const fetchRentalParts = async (
@@ -262,5 +333,18 @@ export const fetchRentalHistory = async (
   params: { search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: RentalHistoryItem[]; total: number }> => {
   const res = await apiClient.get('/rentals/history', { params })
+  return res.data
+}
+
+export const fetchRentalProductRate = async (partId: number): Promise<RentalProductRate> => {
+  const res = await apiClient.get(`/rentals/product-rates/${partId}`)
+  return res.data
+}
+
+export const upsertRentalProductRate = async (
+  partId: number,
+  data: Partial<Omit<RentalProductRate, 'part_id'>>,
+): Promise<RentalProductRate> => {
+  const res = await apiClient.put(`/rentals/product-rates/${partId}`, data)
   return res.data
 }

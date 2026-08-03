@@ -6,7 +6,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
@@ -15,9 +15,22 @@ from app.utils.permission_deps import require_module_access
 from app.models.facility import Facility
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
-from app.models.rental import Rental, RentalStatus, BillingFrequency
+from app.models.rental import (
+    Rental,
+    RentalItem,
+    RentalProductRate,
+    RentalStatus,
+    RentalItemStatus,
+    RentalDepositStatus,
+    BillingFrequency,
+)
 from app.models.user import User, UserRole
-from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.facility_access import (
+    require_facility_access,
+    scope_query_to_user_facilities,
+    is_facility_scoped_user,
+    get_user_facility_ids,
+)
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
@@ -45,24 +58,45 @@ from app.utils.list_search import (
 router = APIRouter(dependencies=[Depends(require_module_access("rentals"))])
 
 
+class RentalItemIn(BaseModel):
+    part_id: Optional[int] = None
+    equipment_id: Optional[int] = None
+    quantity: int = 1
+    rental_rate: Decimal = Decimal("0")
+    item_condition: Optional[str] = None
+    shipping_fee: Decimal = Decimal("0")
+    setup_fee: Decimal = Decimal("0")
+    initial_condition: Optional[str] = None
+    initial_meter_reading: Optional[str] = None
+
+
 class RentalCreate(BaseModel):
-    part_id: int
     customer_name: str
     customer_email: EmailStr
     customer_phone: str
     customer_address: str
     billing_frequency: BillingFrequency
-    rental_rate: Decimal
-    security_deposit: Decimal
-    quantity: int = 1
-    shipping_fee: Decimal = Decimal("0")
-    setup_fee: Decimal = Decimal("0")
-    item_condition: Optional[str] = None
+    security_deposit: Decimal = Decimal("0")
     start_date: date
     end_date: date
+    terms_and_conditions: Optional[str] = None
+    # Multiple rented items (preferred). The legacy single-item fields below are a
+    # fallback so the pre-migration client keeps working during the transition.
+    items: Optional[list[RentalItemIn]] = None
+    part_id: Optional[int] = None
+    rental_rate: Optional[Decimal] = None
+    quantity: Optional[int] = None
+    shipping_fee: Optional[Decimal] = None
+    setup_fee: Optional[Decimal] = None
+    item_condition: Optional[str] = None
     initial_condition: Optional[str] = None
     initial_meter_reading: Optional[str] = None
-    terms_and_conditions: Optional[str] = None
+    # Recurring billing / commitment discount configuration.
+    auto_charge: bool = False
+    committed_periods: Optional[int] = None
+    discount_type: Optional[str] = None       # 'flat' | 'percent'
+    discount_value: Optional[Decimal] = None
+    discount_apply_after_periods: Optional[int] = None
 
 
 class RentalUpdate(BaseModel):
@@ -71,24 +105,32 @@ class RentalUpdate(BaseModel):
     customer_phone: Optional[str] = None
     customer_address: Optional[str] = None
     billing_frequency: Optional[BillingFrequency] = None
-    rental_rate: Optional[Decimal] = None
     security_deposit: Optional[Decimal] = None
-    quantity: Optional[int] = None
-    shipping_fee: Optional[Decimal] = None
-    setup_fee: Optional[Decimal] = None
-    item_condition: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: Optional[RentalStatus] = None
-    initial_condition: Optional[str] = None
-    initial_meter_reading: Optional[str] = None
     terms_and_conditions: Optional[str] = None
+    items: Optional[list[RentalItemIn]] = None
+    auto_charge: Optional[bool] = None
+    committed_periods: Optional[int] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[Decimal] = None
+    discount_apply_after_periods: Optional[int] = None
+
+
+class RentalItemReturn(BaseModel):
+    item_id: int
+    return_condition: Optional[str] = None
+    final_meter_reading: Optional[int] = None
 
 
 class RentalReturnPayload(BaseModel):
     actual_return_date: date
-    return_condition: str
+    return_condition: Optional[str] = None
     final_meter_reading: Optional[int] = None
+    # When provided, only these items are returned (partial return); otherwise all
+    # still-outstanding items are returned.
+    items: Optional[list[RentalItemReturn]] = None
 
 
 class RentalInvoiceCreate(BaseModel):
@@ -218,34 +260,71 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
     }
 
 
+def _rental_item_response(item: RentalItem) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "part_id": item.part_id,
+        "equipment_id": item.equipment_id,
+        "part_number": item.part_number or (item.part.part_number if item.part else None),
+        "part_description": item.part_description or (item.part.description if item.part else None),
+        "default_picture_url": item.part.default_picture_url if item.part else None,
+        "quantity": item.quantity,
+        "rental_rate": item.rental_rate,
+        "item_condition": item.item_condition,
+        "shipping_fee": item.shipping_fee,
+        "setup_fee": item.setup_fee,
+        "initial_condition": item.initial_condition,
+        "return_condition": item.return_condition,
+        "initial_meter_reading": item.initial_meter_reading,
+        "final_meter_reading": item.final_meter_reading,
+        "returned_at": item.returned_at,
+        "item_status": item.item_status,
+    }
+
+
 def _rental_response(rental: Rental) -> dict[str, Any]:
+    items = list(rental.items or [])
+    first = items[0] if items else None
     return {
         "id": rental.id,
         "rental_number": rental.rental_number,
-        "equipment_id": rental.equipment_id,
-        "part_id": rental.part_id,
-        "part_number": rental.part.part_number if rental.part else None,
-        "part_description": rental.part.description if rental.part else None,
         "customer_name": rental.customer_name,
         "customer_email": rental.customer_email,
         "customer_phone": rental.customer_phone,
         "customer_address": rental.customer_address,
         "billing_frequency": rental.billing_frequency.value if hasattr(rental.billing_frequency, "value") else rental.billing_frequency,
-        "rental_rate": rental.rental_rate,
         "security_deposit": rental.security_deposit,
-        "quantity": rental.quantity,
-        "shipping_fee": rental.shipping_fee,
-        "setup_fee": rental.setup_fee,
-        "item_condition": rental.item_condition,
         "start_date": rental.start_date,
         "end_date": rental.end_date,
-        "actual_return_date": rental.actual_return_date,
         "status": rental.status.value if hasattr(rental.status, "value") else rental.status,
-        "initial_condition": rental.initial_condition,
-        "return_condition": rental.return_condition,
-        "initial_meter_reading": rental.initial_meter_reading,
-        "final_meter_reading": rental.final_meter_reading,
         "terms_and_conditions": rental.terms_and_conditions,
+        "items": [_rental_item_response(item) for item in items],
+        # Recurring billing / commitment discount / deposit settlement.
+        "auto_charge": rental.auto_charge,
+        "committed_periods": rental.committed_periods,
+        "periods_billed": rental.periods_billed,
+        "next_bill_date": rental.next_bill_date,
+        "discount_type": rental.discount_type,
+        "discount_value": rental.discount_value,
+        "discount_apply_after_periods": rental.discount_apply_after_periods,
+        "deposit_status": rental.deposit_status,
+        "deposit_settled_amount": rental.deposit_settled_amount,
+        # Legacy top-level fields, derived from the first item so older clients
+        # keep rendering during the multi-item transition.
+        "equipment_id": rental.equipment_id or (first.equipment_id if first else None),
+        "part_id": rental.part_id or (first.part_id if first else None),
+        "part_number": (rental.part.part_number if rental.part else None) or (first.part_number if first else None),
+        "part_description": (rental.part.description if rental.part else None) or (first.part_description if first else None),
+        "rental_rate": rental.rental_rate if rental.rental_rate is not None else (first.rental_rate if first else None),
+        "quantity": rental.quantity if rental.quantity is not None else (first.quantity if first else None),
+        "shipping_fee": rental.shipping_fee if rental.shipping_fee is not None else (first.shipping_fee if first else None),
+        "setup_fee": rental.setup_fee if rental.setup_fee is not None else (first.setup_fee if first else None),
+        "item_condition": rental.item_condition or (first.item_condition if first else None),
+        "actual_return_date": rental.actual_return_date or (first.returned_at if first else None),
+        "initial_condition": rental.initial_condition or (first.initial_condition if first else None),
+        "return_condition": rental.return_condition or (first.return_condition if first else None),
+        "initial_meter_reading": rental.initial_meter_reading or (first.initial_meter_reading if first else None),
+        "final_meter_reading": rental.final_meter_reading if rental.final_meter_reading is not None else (first.final_meter_reading if first else None),
         "converted_invoice_id": rental.converted_invoice_id,
         "converted_invoice_number": rental.converted_invoice.invoice_number if rental.converted_invoice else None,
         "converted_invoice_status": (
@@ -275,6 +354,129 @@ def _rental_part_query(db: Session, current_user: User):
             InventoryPart.status == "active",
         )
     )
+
+
+def _frequency_value(freq: Any) -> str:
+    return (freq.value if hasattr(freq, "value") else str(freq)).lower()
+
+
+def _reject_daily(freq: Any) -> None:
+    if _frequency_value(freq) == "daily":
+        raise HTTPException(
+            status_code=400,
+            detail="Daily billing is no longer offered; choose weekly, bi-weekly, monthly or quarterly.",
+        )
+
+
+def _period_count(days: int, freq: str) -> int:
+    """Number of billing periods covering `days` for the given frequency."""
+    if days < 1:
+        days = 1
+    if freq == "daily":
+        return days
+    if freq == "weekly":
+        return ceil(days / 7.0)
+    if freq == "biweekly":
+        return ceil(days / 14.0)
+    if freq == "monthly":
+        return ceil(days / 30.0)
+    if freq == "quarterly":
+        return ceil(days / 91.0)
+    return days
+
+
+def _required_stock(items: list["RentalItemIn"]) -> dict[int, int]:
+    required: dict[int, int] = {}
+    for item in items:
+        if item.part_id:
+            required[item.part_id] = required.get(item.part_id, 0) + max(1, int(item.quantity or 1))
+    return required
+
+
+def _apply_stock_delta(db: Session, delta: dict[int, int]) -> None:
+    """Reserve (positive) or release (negative) stock per part, guarding availability."""
+    for part_id, qty in delta.items():
+        if qty == 0:
+            continue
+        part = db.query(InventoryPart).filter(InventoryPart.id == part_id).first()
+        if not part:
+            continue
+        if qty > 0 and (part.quantity_on_hand or 0) < qty:
+            raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number}")
+        part.quantity_on_hand = (part.quantity_on_hand or 0) - qty
+        part.updated_at = datetime.utcnow()
+
+
+def _resolve_create_items(payload: "RentalCreate") -> list["RentalItemIn"]:
+    if payload.items:
+        return payload.items
+    if payload.part_id:
+        return [RentalItemIn(
+            part_id=payload.part_id,
+            quantity=payload.quantity or 1,
+            rental_rate=payload.rental_rate or Decimal("0"),
+            item_condition=payload.item_condition,
+            shipping_fee=payload.shipping_fee or Decimal("0"),
+            setup_fee=payload.setup_fee or Decimal("0"),
+            initial_condition=payload.initial_condition,
+            initial_meter_reading=payload.initial_meter_reading,
+        )]
+    raise HTTPException(status_code=400, detail="At least one rental item is required")
+
+
+def _build_rental_items(db: Session, current_user: User, items: list["RentalItemIn"]) -> list[RentalItem]:
+    rows: list[RentalItem] = []
+    for item in items:
+        if int(item.quantity or 0) <= 0:
+            raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
+        part = None
+        if item.part_id:
+            part = _rental_part_query(db, current_user).filter(InventoryPart.id == item.part_id).first()
+            if not part:
+                raise HTTPException(status_code=404, detail=f"Rental product {item.part_id} not found in active inventory")
+        rows.append(RentalItem(
+            part_id=item.part_id,
+            equipment_id=item.equipment_id,
+            part_number=part.part_number if part else None,
+            part_description=part.description if part else None,
+            quantity=int(item.quantity or 1),
+            rental_rate=item.rental_rate or Decimal("0"),
+            item_condition=item.item_condition or (part.condition if part else None),
+            shipping_fee=item.shipping_fee or Decimal("0"),
+            setup_fee=item.setup_fee or Decimal("0"),
+            initial_condition=item.initial_condition,
+            initial_meter_reading=item.initial_meter_reading,
+            item_status=RentalItemStatus.OUT.value,
+        ))
+    return rows
+
+
+def _required_stock_from_rows(rows: list[RentalItem]) -> dict[int, int]:
+    required: dict[int, int] = {}
+    for row in rows:
+        if row.part_id:
+            required[row.part_id] = required.get(row.part_id, 0) + max(1, int(row.quantity or 1))
+    return required
+
+
+def _stock_delta(old: dict[int, int], new: dict[int, int]) -> dict[int, int]:
+    delta: dict[int, int] = {}
+    for part_id in set(old) | set(new):
+        change = new.get(part_id, 0) - old.get(part_id, 0)
+        if change:
+            delta[part_id] = change
+    return delta
+
+
+def _require_rental_facility_access(db: Session, current_user: User, rental: Rental) -> None:
+    facility_ids: set[int] = set()
+    if rental.part and rental.part.facility_id is not None:
+        facility_ids.add(rental.part.facility_id)
+    for item in rental.items or []:
+        if item.part and item.part.facility_id is not None:
+            facility_ids.add(item.part.facility_id)
+    for facility_id in facility_ids:
+        require_facility_access(db, current_user, facility_id)
 
 
 @router.get("/parts")
@@ -345,6 +547,64 @@ def list_rental_parts(
     return {"items": [_part_response(part) for part in parts], "total": total, "skip": skip, "limit": limit}
 
 
+class RentalProductRatePayload(BaseModel):
+    weekly_rate: Optional[Decimal] = None
+    biweekly_rate: Optional[Decimal] = None
+    monthly_rate: Optional[Decimal] = None
+    quarterly_rate: Optional[Decimal] = None
+    default_deposit: Optional[Decimal] = None
+
+
+def _rate_card_response(rate: Optional[RentalProductRate], part_id: int) -> dict[str, Any]:
+    return {
+        "part_id": part_id,
+        "weekly_rate": rate.weekly_rate if rate else None,
+        "biweekly_rate": rate.biweekly_rate if rate else None,
+        "monthly_rate": rate.monthly_rate if rate else None,
+        "quarterly_rate": rate.quarterly_rate if rate else None,
+        "default_deposit": rate.default_deposit if rate else None,
+    }
+
+
+@router.get("/product-rates/{part_id}")
+def get_product_rate(
+    part_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    part = _rental_part_query(db, current_user).filter(InventoryPart.id == part_id).first()
+    if not part:
+        raise HTTPException(status_code=404, detail="Rental product not found in active inventory")
+    rate = db.query(RentalProductRate).filter(RentalProductRate.part_id == part_id).first()
+    return _rate_card_response(rate, part_id)
+
+
+@router.put("/product-rates/{part_id}")
+def upsert_product_rate(
+    part_id: int,
+    payload: RentalProductRatePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    part = _rental_part_query(db, current_user).filter(InventoryPart.id == part_id).first()
+    if not part:
+        raise HTTPException(status_code=404, detail="Rental product not found in active inventory")
+    if part.facility_id is not None:
+        require_facility_access(db, current_user, part.facility_id)
+
+    rate = db.query(RentalProductRate).filter(RentalProductRate.part_id == part_id).first()
+    if not rate:
+        rate = RentalProductRate(part_id=part_id)
+        db.add(rate)
+    for field in ("weekly_rate", "biweekly_rate", "monthly_rate", "quarterly_rate", "default_deposit"):
+        setattr(rate, field, getattr(payload, field))
+    rate.updated_at = datetime.utcnow()
+    log_activity(db, "rental_product_rates", part_id, "UPSERT", current_user, {})
+    db.commit()
+    db.refresh(rate)
+    return _rate_card_response(rate, part_id)
+
+
 @router.get("")
 def list_rentals(
     db: Session = Depends(get_db),
@@ -360,15 +620,27 @@ def list_rentals(
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=422, detail="From date cannot be after To date")
     query = (
-        scope_query_to_user_facilities(db.query(Rental), InventoryPart.facility_id, db, current_user)
-        .select_from(Rental)
-        .join(InventoryPart, Rental.part_id == InventoryPart.id)
+        db.query(Rental)
         .options(
+            selectinload(Rental.items).joinedload(RentalItem.part).joinedload(InventoryPart.facility),
             joinedload(Rental.part).joinedload(InventoryPart.facility),
             joinedload(Rental.created_by),
             joinedload(Rental.converted_invoice),
         )
     )
+
+    # Facility scoping: a scoped user sees an agreement when any of its items'
+    # parts belong to an accessible facility. Every agreement has items (the
+    # migration backfilled them), so item-based scoping covers all records.
+    if is_facility_scoped_user(current_user):
+        accessible = get_user_facility_ids(db, current_user)
+        scope = (
+            select(RentalItem.rental_id)
+            .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
+            .where(InventoryPart.facility_id.in_(accessible))
+        )
+        query = query.filter(Rental.id.in_(scope))
+
     if date_from:
         query = query.filter(Rental.start_date >= date_from)
     if date_to:
@@ -379,6 +651,29 @@ def list_rentals(
     if search_term:
         normalized_value = search_term.lower().replace("-", "_").replace(" ", "_")
         searched_date = parsed_date_value(search_term)
+        # Product / facility / condition search matches across the agreement's items.
+        product_scope = (
+            select(RentalItem.rental_id)
+            .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
+            .where(or_(
+                contains_ci(InventoryPart.part_number, search_term),
+                contains_ci(InventoryPart.description, search_term),
+                contains_ci(InventoryPart.make, search_term),
+                contains_ci(InventoryPart.model, search_term),
+                contains_ci(InventoryPart.serial_number, search_term),
+                contains_ci(RentalItem.part_number, search_term),
+                contains_ci(RentalItem.part_description, search_term),
+            ))
+        )
+        facility_scope = (
+            select(RentalItem.rental_id)
+            .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
+            .join(Facility, InventoryPart.facility_id == Facility.id)
+            .where(contains_ci(Facility.name, search_term))
+        )
+        condition_scope = (
+            select(RentalItem.rental_id).where(contains_ci(RentalItem.item_condition, search_term))
+        )
         search_by_field = {
             "agreement": [
                 value_contains_ci(Rental.id, search_term.lstrip("#")),
@@ -389,25 +684,15 @@ def list_rentals(
                 contains_ci(Rental.customer_email, search_term),
                 contains_ci(Rental.customer_phone, search_term),
             ],
-            "product": [
-                contains_ci(InventoryPart.part_number, search_term),
-                contains_ci(InventoryPart.description, search_term),
-                contains_ci(InventoryPart.make, search_term),
-                contains_ci(InventoryPart.model, search_term),
-                contains_ci(InventoryPart.serial_number, search_term),
-            ],
-            "facility": [contains_ci(Facility.name, search_term)],
+            "product": [Rental.id.in_(product_scope)],
+            "facility": [Rental.id.in_(facility_scope)],
             "created_by": [contains_ci(User.full_name, search_term)],
             "billing": [
                 value_contains_ci(Rental.billing_frequency, normalized_value),
-                value_contains_ci(Rental.rental_rate, search_term),
-                value_contains_ci(Rental.quantity, search_term),
                 value_contains_ci(Rental.security_deposit, search_term),
-                value_contains_ci(Rental.shipping_fee, search_term),
-                value_contains_ci(Rental.setup_fee, search_term),
             ],
             "status": [value_contains_ci(Rental.status, normalized_value)],
-            "condition": [contains_ci(Rental.item_condition, search_term)],
+            "condition": [Rental.id.in_(condition_scope)],
             "date": [
                 value_contains_ci(Rental.start_date, search_term),
                 value_contains_ci(Rental.end_date, search_term),
@@ -419,7 +704,6 @@ def list_rentals(
             )
         query = (
             query
-            .outerjoin(Facility, InventoryPart.facility_id == Facility.id)
             .outerjoin(User, Rental.created_by_id == User.id)
             .filter(or_(*predicates_for_field(search_field, search_by_field)))
         )
@@ -434,50 +718,43 @@ def create_rental(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    # Look up inventory part and enforce facility access
-    part = _rental_part_query(db, current_user).filter(InventoryPart.id == payload.part_id).first()
-    if not part:
-        raise HTTPException(status_code=404, detail="Rental product not found in active inventory")
+    _reject_daily(payload.billing_frequency)
+    items_in = _resolve_create_items(payload)
+    item_rows = _build_rental_items(db, current_user, items_in)
 
-    if payload.quantity <= 0:
-        raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
-
-    if part.quantity_on_hand < payload.quantity:
-        raise HTTPException(status_code=400, detail=f"No stock available for {part.part_number}")
-
-    # Generate rental record
+    deposit = payload.security_deposit or Decimal("0")
     rental = Rental(
         rental_number=_next_number(db, Rental, "rental_number", "RNT"),
-        part_id=payload.part_id,
         created_by_id=current_user.id,
         customer_name=payload.customer_name,
         customer_email=str(payload.customer_email),
         customer_phone=payload.customer_phone,
         customer_address=payload.customer_address,
         billing_frequency=payload.billing_frequency,
-        rental_rate=payload.rental_rate,
-        security_deposit=payload.security_deposit,
-        quantity=payload.quantity,
-        shipping_fee=payload.shipping_fee,
-        setup_fee=payload.setup_fee,
-        item_condition=payload.item_condition or part.condition,
+        security_deposit=deposit,
         start_date=payload.start_date,
         end_date=payload.end_date,
         status=RentalStatus.ACTIVE,
-        initial_condition=payload.initial_condition,
-        initial_meter_reading=payload.initial_meter_reading,
         terms_and_conditions=payload.terms_and_conditions,
+        auto_charge=bool(payload.auto_charge),
+        committed_periods=payload.committed_periods,
+        discount_type=payload.discount_type,
+        discount_value=payload.discount_value,
+        discount_apply_after_periods=payload.discount_apply_after_periods,
+        deposit_status=RentalDepositStatus.HELD.value if deposit > 0 else None,
+        periods_billed=0,
+        next_bill_date=payload.start_date,
         history=[],
     )
-    
-    # Deduct stock
-    part.quantity_on_hand -= payload.quantity
-    part.updated_at = datetime.utcnow()
+    rental.items = item_rows
 
-    _append_history(rental, "created", current_user)
+    # Reserve stock across all items.
+    _apply_stock_delta(db, _required_stock(items_in))
+
+    _append_history(rental, "created", current_user, {"items": len(item_rows)})
     db.add(rental)
     db.flush()
-    
+
     log_activity(db, "rentals", rental.id, "CREATE", current_user, {"rental_number": rental.rental_number})
     db.commit()
     db.refresh(rental)
@@ -493,36 +770,41 @@ def update_rental(
 ) -> Any:
     rental = (
         db.query(Rental)
-        .options(joinedload(Rental.part), joinedload(Rental.converted_invoice))
+        .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part), joinedload(Rental.converted_invoice))
         .filter(Rental.id == rental_id)
         .first()
     )
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
-        
-    if rental.part and rental.part.facility_id is not None:
-        require_facility_access(db, current_user, rental.part.facility_id)
 
-    update_data = payload.model_dump(exclude_unset=True)
-    if "quantity" in update_data:
-        next_quantity = int(update_data["quantity"] or 0)
-        if next_quantity <= 0:
-            raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
-        if rental.status == RentalStatus.ACTIVE and rental.part:
-            current_quantity = rental.quantity or 1
-            quantity_delta = next_quantity - current_quantity
-            if quantity_delta > 0 and rental.part.quantity_on_hand < quantity_delta:
-                raise HTTPException(status_code=400, detail=f"Not enough stock for {rental.part.part_number}")
-            rental.part.quantity_on_hand -= quantity_delta
-            rental.part.updated_at = datetime.utcnow()
+    _require_rental_facility_access(db, current_user, rental)
+
+    if payload.billing_frequency is not None:
+        _reject_daily(payload.billing_frequency)
+
+    update_data = payload.model_dump(exclude_unset=True, exclude={"items"})
+
+    # Replace the item set (and reconcile reserved stock) when items are supplied.
+    if payload.items is not None:
+        if not payload.items:
+            raise HTTPException(status_code=400, detail="At least one rental item is required")
+        new_rows = _build_rental_items(db, current_user, payload.items)
+        if rental.status == RentalStatus.ACTIVE:
+            delta = _stock_delta(_required_stock_from_rows(rental.items or []), _required_stock(payload.items))
+            _apply_stock_delta(db, delta)
+        rental.items = new_rows
+
     for field, value in update_data.items():
         if field == "customer_email" and value is not None:
             value = str(value)
         setattr(rental, field, value)
-        
+
     rental.updated_at = datetime.utcnow()
-    _append_history(rental, "updated", current_user, update_data)
-    log_activity(db, "rentals", rental.id, "UPDATE", current_user, update_data)
+    changed = {key: str(value) for key, value in update_data.items()}
+    if payload.items is not None:
+        changed["items"] = str(len(payload.items))
+    _append_history(rental, "updated", current_user, changed)
+    log_activity(db, "rentals", rental.id, "UPDATE", current_user, changed)
     db.commit()
     db.refresh(rental)
     return _rental_response(rental)
@@ -534,20 +816,26 @@ def delete_rental(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    rental = db.query(Rental).filter(Rental.id == rental_id).first()
+    rental = (
+        db.query(Rental)
+        .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part))
+        .filter(Rental.id == rental_id)
+        .first()
+    )
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
-        
-    if rental.part and rental.part.facility_id is not None:
-        require_facility_access(db, current_user, rental.part.facility_id)
-        
+
+    _require_rental_facility_access(db, current_user, rental)
+
     if rental.converted_invoice_id:
         raise HTTPException(status_code=400, detail="Cannot delete a rental already converted to invoice")
 
-    # If the agreement was active, return the stock to inventory
-    if rental.status == RentalStatus.ACTIVE and rental.part:
-        rental.part.quantity_on_hand += rental.quantity or 1
-        rental.part.updated_at = datetime.utcnow()
+    # Release stock reserved for items still out.
+    if rental.status == RentalStatus.ACTIVE:
+        release = _required_stock_from_rows(
+            [item for item in (rental.items or []) if item.item_status != RentalItemStatus.RETURNED.value]
+        )
+        _apply_stock_delta(db, {part_id: -qty for part_id, qty in release.items()})
 
     log_activity(db, "rentals", rental.id, "DELETE", current_user, {"rental_number": rental.rental_number})
     db.delete(rental)
@@ -564,41 +852,71 @@ def return_rental(
 ) -> Any:
     rental = (
         db.query(Rental)
-        .options(joinedload(Rental.part), joinedload(Rental.converted_invoice))
+        .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part), joinedload(Rental.converted_invoice))
         .filter(Rental.id == rental_id)
         .first()
     )
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
-        
-    if rental.part and rental.part.facility_id is not None:
-        require_facility_access(db, current_user, rental.part.facility_id)
+
+    _require_rental_facility_access(db, current_user, rental)
 
     if rental.status == RentalStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Rental is already completed/returned")
 
-    rental.status = RentalStatus.COMPLETED
-    rental.actual_return_date = payload.actual_return_date
-    rental.return_condition = payload.return_condition
-    rental.final_meter_reading = payload.final_meter_reading
+    outstanding = [item for item in (rental.items or []) if item.item_status != RentalItemStatus.RETURNED.value]
+    if not outstanding:
+        raise HTTPException(status_code=400, detail="All items are already returned")
+
+    # Return the specified items (partial) or every outstanding item.
+    if payload.items:
+        by_id = {item.id: item for item in outstanding}
+        targets = []
+        for ret in payload.items:
+            item = by_id.get(ret.item_id)
+            if not item:
+                raise HTTPException(status_code=400, detail=f"Item {ret.item_id} is not an outstanding item on this agreement")
+            targets.append((item, ret.return_condition, ret.final_meter_reading))
+    else:
+        targets = [(item, payload.return_condition, payload.final_meter_reading) for item in outstanding]
+
+    released: dict[int, int] = {}
+    for item, condition, meter in targets:
+        item.item_status = RentalItemStatus.RETURNED.value
+        item.returned_at = payload.actual_return_date
+        resolved_condition = condition if condition is not None else payload.return_condition
+        if resolved_condition is not None:
+            item.return_condition = resolved_condition
+        resolved_meter = meter if meter is not None else payload.final_meter_reading
+        if resolved_meter is not None:
+            item.final_meter_reading = resolved_meter
+        if item.part_id:
+            released[item.part_id] = released.get(item.part_id, 0) + max(1, int(item.quantity or 1))
+
+    # Return the released stock to inventory.
+    _apply_stock_delta(db, {part_id: -qty for part_id, qty in released.items()})
+
+    fully_returned = all(item.item_status == RentalItemStatus.RETURNED.value for item in (rental.items or []))
+    if fully_returned:
+        rental.status = RentalStatus.COMPLETED
+        rental.actual_return_date = payload.actual_return_date
+        if payload.return_condition is not None:
+            rental.return_condition = payload.return_condition
+        if payload.final_meter_reading is not None:
+            rental.final_meter_reading = payload.final_meter_reading
     rental.updated_at = datetime.utcnow()
 
-    # Restore stock to inventory
-    if rental.part:
-        rental.part.quantity_on_hand += rental.quantity or 1
-        rental.part.updated_at = datetime.utcnow()
-
     _append_history(
-        rental, 
-        "returned", 
-        current_user, 
+        rental,
+        "returned",
+        current_user,
         {
             "actual_return_date": str(payload.actual_return_date),
-            "return_condition": payload.return_condition,
-            "final_meter_reading": payload.final_meter_reading
-        }
+            "returned_items": [item.id for item, _, _ in targets],
+            "fully_returned": fully_returned,
+        },
     )
-    log_activity(db, "rentals", rental.id, "RETURN", current_user, {})
+    log_activity(db, "rentals", rental.id, "RETURN", current_user, {"fully_returned": fully_returned})
     db.commit()
     db.refresh(rental)
     return _rental_response(rental)
@@ -613,15 +931,14 @@ def convert_to_invoice(
 ) -> Any:
     rental = (
         db.query(Rental)
-        .options(joinedload(Rental.part), joinedload(Rental.converted_invoice))
+        .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part), joinedload(Rental.converted_invoice))
         .filter(Rental.id == rental_id)
         .first()
     )
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
-        
-    if rental.part and rental.part.facility_id is not None:
-        require_facility_access(db, current_user, rental.part.facility_id)
+
+    _require_rental_facility_access(db, current_user, rental)
 
     action = (payload.action or "convert_to_invoice").lower()
     if action in {"approve", "approved"}:
@@ -632,9 +949,11 @@ def convert_to_invoice(
         return _rental_response(rental)
     if action in {"reject", "rejected"}:
         _append_history(rental, "rejected", current_user)
-        if rental.status == RentalStatus.ACTIVE and rental.part:
-            rental.part.quantity_on_hand += rental.quantity or 1
-            rental.part.updated_at = datetime.utcnow()
+        if rental.status == RentalStatus.ACTIVE:
+            release = _required_stock_from_rows(
+                [item for item in (rental.items or []) if item.item_status != RentalItemStatus.RETURNED.value]
+            )
+            _apply_stock_delta(db, {part_id: -qty for part_id, qty in release.items()})
         rental.status = RentalStatus.CANCELLED
         rental.updated_at = datetime.utcnow()
         log_activity(db, "rentals", rental.id, "REJECT", current_user, {})
@@ -650,29 +969,27 @@ def convert_to_invoice(
     if rental.converted_invoice:
         return _invoice_response(rental.converted_invoice)
 
-    # Calculate base rental cost
-    # Calculate duration
+    # Base rental cost = periods covering the rental duration × each item's rate × qty.
     end_date = rental.actual_return_date if rental.actual_return_date else rental.end_date
     days = (end_date - rental.start_date).days
     if days < 1:
         days = 1
+    freq = _frequency_value(rental.billing_frequency)
+    periods = _period_count(days, freq)
 
-    rate = Decimal(str(rental.rental_rate))
-    freq = rental.billing_frequency.value if hasattr(rental.billing_frequency, "value") else str(rental.billing_frequency).lower()
-    
-    if freq == "daily":
-        base_rental_amount = Decimal(days) * rate * Decimal(rental.quantity or 1)
-    elif freq == "weekly":
-        base_rental_amount = Decimal(ceil(days / 7.0)) * rate * Decimal(rental.quantity or 1)
-    elif freq == "monthly":
-        base_rental_amount = Decimal(ceil(days / 30.0)) * rate * Decimal(rental.quantity or 1)
-    else:
-        base_rental_amount = Decimal(days) * rate * Decimal(rental.quantity or 1)
+    items = list(rental.items or [])
+    base_rental_amount = Decimal("0")
+    items_shipping = Decimal("0")
+    items_setup = Decimal("0")
+    for item in items:
+        base_rental_amount += Decimal(periods) * _money(item.rental_rate) * Decimal(max(1, int(item.quantity or 1)))
+        items_shipping += _money(item.shipping_fee)
+        items_setup += _money(item.setup_fee)
 
     worked_hours = _money(payload.worked_hours)
-    setup_fee = _money(payload.setup_fee) + _money(rental.setup_fee)
+    setup_fee = _money(payload.setup_fee) + items_setup
     service_fee = _money(payload.service_fee)
-    shipping_fee = _money(payload.shipping_fee) + _money(rental.shipping_fee)
+    shipping_fee = _money(payload.shipping_fee) + items_shipping
     application_fee = _money(payload.application_fee)
     raw_discount = _money(payload.discount_amount)
     tax_rate = _money(payload.tax_rate)
@@ -690,7 +1007,7 @@ def convert_to_invoice(
         customer_email=rental.customer_email or "billing@example.com",
         customer_phone=rental.customer_phone,
         customer_address=rental.customer_address,
-        facility_id=rental.part.facility_id if rental.part else None,
+        facility_id=(items[0].part.facility_id if items and items[0].part else (rental.part.facility_id if rental.part else None)),
         rental_id=rental.id,
         subtotal=subtotal,
         tax_amount=tax_amount,
@@ -931,22 +1248,44 @@ def list_rental_history(
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=422, detail="From date cannot be after To date")
     rentals_query = (
-        scope_query_to_user_facilities(db.query(Rental), InventoryPart.facility_id, db, current_user)
-        .select_from(Rental)
-        .join(InventoryPart, Rental.part_id == InventoryPart.id)
-        .options(joinedload(Rental.part).joinedload(InventoryPart.facility))
+        db.query(Rental)
+        .options(
+            selectinload(Rental.items).joinedload(RentalItem.part).joinedload(InventoryPart.facility),
+            joinedload(Rental.part).joinedload(InventoryPart.facility),
+        )
     )
+    if is_facility_scoped_user(current_user):
+        accessible = get_user_facility_ids(db, current_user)
+        scope = (
+            select(RentalItem.rental_id)
+            .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
+            .where(InventoryPart.facility_id.in_(accessible))
+        )
+        rentals_query = rentals_query.filter(Rental.id.in_(scope))
     search_term = normalize_list_search(search)
     searched_date = parsed_date_value(search_term) if search_term else None
     if search_term:
+        product_scope = (
+            select(RentalItem.rental_id)
+            .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
+            .where(or_(
+                contains_ci(InventoryPart.part_number, search_term),
+                contains_ci(InventoryPart.description, search_term),
+                contains_ci(RentalItem.part_number, search_term),
+                contains_ci(RentalItem.part_description, search_term),
+            ))
+        )
+        facility_scope = (
+            select(RentalItem.rental_id)
+            .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
+            .join(Facility, InventoryPart.facility_id == Facility.id)
+            .where(contains_ci(Facility.name, search_term))
+        )
         history_search_by_field = {
             "agreement": [contains_ci(Rental.rental_number, search_term)],
             "customer": [contains_ci(Rental.customer_name, search_term)],
-            "product": [
-                contains_ci(InventoryPart.part_number, search_term),
-                contains_ci(InventoryPart.description, search_term),
-            ],
-            "facility": [contains_ci(Facility.name, search_term)],
+            "product": [Rental.id.in_(product_scope)],
+            "facility": [Rental.id.in_(facility_scope)],
             "activity": [value_contains_ci(Rental.history, search_term)],
             "date": [value_contains_ci(Rental.history, search_term)],
         }
@@ -954,24 +1293,29 @@ def list_rental_history(
             history_search_by_field["date"].append(
                 value_contains_ci(Rental.history, searched_date.isoformat())
             )
-        rentals_query = rentals_query.outerjoin(
-            Facility, InventoryPart.facility_id == Facility.id
-        ).filter(
+        rentals_query = rentals_query.filter(
             or_(*predicates_for_field(search_field, history_search_by_field))
         )
     rentals = rentals_query.order_by(Rental.updated_at.desc()).all()
     rows: list[dict[str, Any]] = []
     for rental in rentals:
+        first_item = (rental.items or [None])[0]
+        facility_name = (
+            (rental.part.facility.name if rental.part and rental.part.facility else None)
+            or (first_item.part.facility.name if first_item and first_item.part and first_item.part.facility else None)
+        )
+        part_number = (rental.part.part_number if rental.part else None) or (first_item.part_number if first_item else None)
+        part_description = (rental.part.description if rental.part else None) or (first_item.part_description if first_item else None)
         for item in rental.history or []:
             rows.append(
                 {
                     **item,
                     "rental_id": rental.id,
                     "rental_number": rental.rental_number,
-                    "facility_name": rental.part.facility.name if rental.part and rental.part.facility else None,
+                    "facility_name": facility_name,
                     "customer_name": rental.customer_name,
-                    "part_number": rental.part.part_number if rental.part else None,
-                    "part_description": rental.part.description if rental.part else None,
+                    "part_number": part_number,
+                    "part_description": part_description,
                 }
             )
     rows.sort(key=lambda item: item.get("at") or "", reverse=True)

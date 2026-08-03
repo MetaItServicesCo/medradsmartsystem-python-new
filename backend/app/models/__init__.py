@@ -7,7 +7,16 @@ from app.models.modality import Modality, ModalityCategory
 from app.models.department import Department
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction
-from app.models.rental import Rental, RentalStatus
+from app.models.rental import (
+    Rental,
+    RentalStatus,
+    RentalItem,
+    RentalProductRate,
+    BillingFrequency,
+    RentalDiscountType,
+    RentalDepositStatus,
+    RentalItemStatus,
+)
 from app.models.inspection_form import InspectionForm
 from app.models.audit_log import AuditLog
 from app.models.notification import Notification
