@@ -1164,7 +1164,7 @@ const Rentals = () => {
                   '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setViewInvoice(invoice)} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setPrintInvoice(invoice)} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.rental_number || '-'} monospace fontWeight={800} onClick={() => {
                   const agreement = rentals.find(item => item.id === invoice.rental_id)
                   if (agreement) setViewAgreement(agreement)
@@ -1496,7 +1496,7 @@ const Rentals = () => {
       </Menu>
 
       <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
-        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setPrintInvoice(actionInvoice); closeInvoiceActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View
         </MenuItem>
