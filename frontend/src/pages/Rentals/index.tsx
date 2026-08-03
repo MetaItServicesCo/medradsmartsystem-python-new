@@ -1424,12 +1424,38 @@ const Rentals = () => {
       />
 
       {/* Agreement Modal CREATE / EDIT */}
-      <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>
+      <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           {editingAgreement ? 'Edit Rental Agreement' : 'Create Rental Agreement'}
         </DialogTitle>
         <DialogContent dividers>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2, pt: 1 }}>
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
+            Customer &amp; Agreement Details
+          </Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
+            <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
+            <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
+            <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
+            <TextField label="Delivery Address" value={agreementForm.customer_address} onChange={e => setAgreementForm(prev => ({ ...prev, customer_address: e.target.value }))} sx={{ gridColumn: '1 / -1' }} />
+            <TextField
+              select
+              label="Billing Frequency"
+              value={agreementForm.billing_frequency}
+              onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}
+            >
+              <MenuItem value="daily">Daily</MenuItem>
+              <MenuItem value="weekly">Weekly</MenuItem>
+              <MenuItem value="monthly">Monthly</MenuItem>
+            </TextField>
+            <TextField label="Start Date" type="date" value={agreementForm.start_date} onChange={e => setAgreementForm(prev => ({ ...prev, start_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
+            <TextField label="End Date" type="date" value={agreementForm.end_date} onChange={e => setAgreementForm(prev => ({ ...prev, end_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
+          </Box>
+
+          <Divider sx={{ my: 3 }} />
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
+            Rental Product
+          </Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
             {!editingAgreement ? (
               <FormControl sx={{ gridColumn: '1 / -1' }}>
                 <PartSearchAutocomplete<RentalPart>
@@ -1453,35 +1479,21 @@ const Rentals = () => {
                 sx={{ gridColumn: '1 / -1' }}
               />
             )}
-
-            <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
-            <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
-            <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
-            <TextField
-              select
-              label="Billing Frequency"
-              value={agreementForm.billing_frequency}
-              onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}
-            >
-              <MenuItem value="daily">Daily</MenuItem>
-              <MenuItem value="weekly">Weekly</MenuItem>
-              <MenuItem value="monthly">Monthly</MenuItem>
-            </TextField>
-
             <TextField label="Rental Rate (Standard) *" type="number" value={agreementForm.rental_rate} onChange={e => setAgreementForm(prev => ({ ...prev, rental_rate: Number(e.target.value) }))} />
-            <TextField label="Security Deposit" type="number" value={agreementForm.security_deposit} onChange={e => setAgreementForm(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} />
             <TextField label="Quantity" type="number" value={agreementForm.quantity || 1} onChange={e => setAgreementForm(prev => ({ ...prev, quantity: Number(e.target.value) }))} />
-            <TextField label="Shipping Fee" type="number" value={agreementForm.shipping_fee || 0} onChange={e => setAgreementForm(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
-            <TextField label="Setup Fee" type="number" value={agreementForm.setup_fee || 0} onChange={e => setAgreementForm(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
             <TextField select label="Condition" value={agreementForm.item_condition || 'New'} onChange={e => setAgreementForm(prev => ({ ...prev, item_condition: e.target.value }))}>
               {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
             </TextField>
-            
-            <TextField label="Start Date" type="date" value={agreementForm.start_date} onChange={e => setAgreementForm(prev => ({ ...prev, start_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-            <TextField label="End Date" type="date" value={agreementForm.end_date} onChange={e => setAgreementForm(prev => ({ ...prev, end_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-            
-            <TextField label="Customer Address" value={agreementForm.customer_address} onChange={e => setAgreementForm(prev => ({ ...prev, customer_address: e.target.value }))} sx={{ gridColumn: '1 / -1' }} />
-            
+            <TextField label="Shipping Fee" type="number" value={agreementForm.shipping_fee || 0} onChange={e => setAgreementForm(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
+            <TextField label="Setup Fee" type="number" value={agreementForm.setup_fee || 0} onChange={e => setAgreementForm(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
+            <TextField label="Security Deposit" type="number" value={agreementForm.security_deposit} onChange={e => setAgreementForm(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} />
+          </Box>
+
+          <Divider sx={{ my: 3 }} />
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
+            Equipment Handover Details
+          </Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
             <TextField label="Initial Condition" value={agreementForm.initial_condition || ''} onChange={e => setAgreementForm(prev => ({ ...prev, initial_condition: e.target.value }))} />
             <TextField
               label="Initial Reading"
@@ -1489,7 +1501,6 @@ const Rentals = () => {
               onChange={e => setAgreementForm(prev => ({ ...prev, initial_meter_reading: e.target.value }))}
               helperText="Optional reading or note"
             />
-            
             <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions || ''} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
           </Box>
         </DialogContent>
