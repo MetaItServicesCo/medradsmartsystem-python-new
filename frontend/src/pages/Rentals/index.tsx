@@ -1,11 +1,11 @@
-import { type MouseEvent, useEffect, useMemo, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControl, IconButton, ListItemIcon, Menu, MenuItem,
-  LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
-  TablePagination, TextField, Typography,
+  LinearProgress, Skeleton, Switch, FormControlLabel, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
+  TablePagination, TextField, Typography, useMediaQuery, useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AssignmentIcon from '@mui/icons-material/Assignment'
@@ -45,12 +45,15 @@ import {
   fetchRentalSummary,
   updateRentalInvoice,
   fetchRentalHistory,
+  fetchRentalProductRate,
   type Rental,
   type RentalInvoice,
   type RentalInvoiceCreatePayload,
   type RentalPart,
   type RentalPayload,
+  type RentalItemPayload,
   type RentalReturnPayload,
+  type RentalProductRate,
   type BillingFrequency,
   type RentalStatus,
   type RentalInvoiceStatus,
@@ -183,25 +186,78 @@ const apiErrorMessage = (error: any, fallback: string) => {
   return fallback
 }
 
-const emptyAgreement = (): RentalPayload => ({
-  part_id: 0,
+interface RentalItemForm {
+  key: string
+  part_id: number | null
+  part_number: string
+  part_description: string
+  quantity: number
+  rental_rate: number
+  item_condition: string
+  shipping_fee: number
+  setup_fee: number
+  initial_condition: string
+  initial_meter_reading: string
+}
+
+interface RentalAgreementFormState {
+  customer_name: string
+  customer_email: string
+  customer_phone: string
+  customer_address: string
+  billing_frequency: BillingFrequency
+  security_deposit: number
+  start_date: string
+  end_date: string
+  terms_and_conditions: string
+  auto_charge: boolean
+  committed_periods: number | ''
+  discount_type: '' | 'flat' | 'percent'
+  discount_value: number
+  discount_apply_after_periods: number | ''
+  items: RentalItemForm[]
+}
+
+const emptyAgreement = (): RentalAgreementFormState => ({
   customer_name: '',
   customer_email: '',
   customer_phone: '',
   customer_address: '',
   billing_frequency: 'monthly',
-  rental_rate: 0,
   security_deposit: 0,
-  quantity: 1,
-  shipping_fee: 0,
-  setup_fee: 0,
-  item_condition: 'New',
   start_date: new Date().toISOString().slice(0, 10),
   end_date: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().slice(0, 10),
+  terms_and_conditions: '',
+  auto_charge: false,
+  committed_periods: '',
+  discount_type: '',
+  discount_value: 0,
+  discount_apply_after_periods: '',
+  items: [],
+})
+
+const newRentalItem = (): RentalItemForm => ({
+  key: Math.random().toString(36).slice(2),
+  part_id: null,
+  part_number: '',
+  part_description: '',
+  quantity: 1,
+  rental_rate: 0,
+  item_condition: 'New',
+  shipping_fee: 0,
+  setup_fee: 0,
   initial_condition: '',
   initial_meter_reading: '',
-  terms_and_conditions: '',
 })
+
+const rateForFrequency = (card: RentalProductRate | null, freq: BillingFrequency): number | null => {
+  if (!card) return null
+  if (freq === 'weekly') return card.weekly_rate
+  if (freq === 'biweekly') return card.biweekly_rate
+  if (freq === 'monthly') return card.monthly_rate
+  if (freq === 'quarterly') return card.quarterly_rate
+  return null
+}
 
 const emptyInvoiceDetails = (): RentalInvoiceCreatePayload => ({
   labour_hours: 0,
@@ -237,6 +293,19 @@ const Rentals = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const theme = useTheme()
+  const fullScreenDialog = useMediaQuery(theme.breakpoints.down('sm'))
+
+  // Mouse-wheel over a focused number input silently changes its value; blur on
+  // wheel so scrolling the form never mutates an entered value.
+  useEffect(() => {
+    const stopWheelMutation = () => {
+      const active = document.activeElement as HTMLInputElement | null
+      if (active && active.tagName === 'INPUT' && active.type === 'number') active.blur()
+    }
+    document.addEventListener('wheel', stopWheelMutation, { passive: true })
+    return () => document.removeEventListener('wheel', stopWheelMutation)
+  }, [])
 
   const routeParams = new URLSearchParams(location.search)
   const routeSearch = routeParams.get('search') || ''
@@ -254,8 +323,10 @@ const Rentals = () => {
   const [agreementDialog, setAgreementDialog] = useState(false)
   const [editingAgreement, setEditingAgreement] = useState<Rental | null>(null)
   const [viewAgreement, setViewAgreement] = useState<Rental | null>(null)
-  const [agreementForm, setAgreementForm] = useState<RentalPayload>(emptyAgreement())
+  const [agreementForm, setAgreementForm] = useState<RentalAgreementFormState>(emptyAgreement())
+  // Item picker row state (add-an-item), separate from the committed items list.
   const [selectedRentalPart, setSelectedRentalPart] = useState<RentalPart | null>(null)
+  const [itemDraft, setItemDraft] = useState<RentalItemForm>(newRentalItem())
 
   const [returnDialog, setReturnDialog] = useState<Rental | null>(null)
   const [returnForm, setReturnForm] = useState<RentalReturnPayload>({
@@ -406,31 +477,36 @@ const Rentals = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-parts'] })
   }
 
+  const buildAgreementItems = (): RentalItemPayload[] => agreementForm.items.map(item => ({
+    part_id: item.part_id,
+    quantity: Math.max(1, Number(item.quantity || 1)),
+    rental_rate: normalizeMoneyInput(item.rental_rate),
+    item_condition: item.item_condition || null,
+    shipping_fee: normalizeMoneyInput(item.shipping_fee),
+    setup_fee: normalizeMoneyInput(item.setup_fee),
+    initial_condition: item.initial_condition?.trim() || null,
+    initial_meter_reading: item.initial_meter_reading?.trim() || null,
+  }))
+
   const buildAgreementCreatePayload = (): RentalPayload => ({
-    part_id: Number(agreementForm.part_id || 0),
     customer_name: agreementForm.customer_name.trim(),
     customer_email: agreementForm.customer_email.trim(),
     customer_phone: digitsOnly(agreementForm.customer_phone),
     customer_address: agreementForm.customer_address.trim(),
     billing_frequency: agreementForm.billing_frequency,
-    rental_rate: normalizeMoneyInput(agreementForm.rental_rate),
     security_deposit: normalizeMoneyInput(agreementForm.security_deposit),
-    quantity: Math.max(1, Number(agreementForm.quantity || 1)),
-    shipping_fee: normalizeMoneyInput(agreementForm.shipping_fee),
-    setup_fee: normalizeMoneyInput(agreementForm.setup_fee),
-    item_condition: agreementForm.item_condition || null,
     start_date: normalizeDateInput(agreementForm.start_date),
     end_date: normalizeDateInput(agreementForm.end_date),
-    initial_condition: agreementForm.initial_condition?.trim() || null,
-    initial_meter_reading: agreementForm.initial_meter_reading?.trim() || null,
     terms_and_conditions: agreementForm.terms_and_conditions?.trim() || null,
+    items: buildAgreementItems(),
+    auto_charge: agreementForm.auto_charge,
+    committed_periods: agreementForm.committed_periods === '' ? null : Number(agreementForm.committed_periods),
+    discount_type: agreementForm.discount_type || null,
+    discount_value: agreementForm.discount_type ? normalizeMoneyInput(agreementForm.discount_value) : null,
+    discount_apply_after_periods: agreementForm.discount_apply_after_periods === '' ? null : Number(agreementForm.discount_apply_after_periods),
   })
 
-  const buildAgreementUpdatePayload = () => {
-    const payload: Partial<RentalPayload> = { ...buildAgreementCreatePayload() }
-    delete payload.part_id
-    return payload
-  }
+  const buildAgreementUpdatePayload = (): Partial<RentalPayload> => buildAgreementCreatePayload()
 
   const saveAgreementMut = useMutation({
     mutationFn: () => (
@@ -494,6 +570,7 @@ const Rentals = () => {
   const openCreate = () => {
     setEditingAgreement(null)
     setSelectedRentalPart(null)
+    setItemDraft(newRentalItem())
     setAgreementForm(emptyAgreement())
     setAgreementDialog(true)
   }
@@ -501,65 +578,100 @@ const Rentals = () => {
   const openEdit = (rental: Rental) => {
     closeActions()
     setEditingAgreement(rental)
+    setSelectedRentalPart(null)
+    setItemDraft(newRentalItem())
     setAgreementForm({
-      part_id: rental.part_id ?? undefined,
       customer_name: rental.customer_name,
       customer_email: rental.customer_email,
       customer_phone: formatUSPhoneInput(rental.customer_phone),
       customer_address: rental.customer_address,
       billing_frequency: rental.billing_frequency,
-      rental_rate: Number(rental.rental_rate),
-      security_deposit: Number(rental.security_deposit),
-      quantity: Number(rental.quantity || 1),
-      shipping_fee: Number(rental.shipping_fee || 0),
-      setup_fee: Number(rental.setup_fee || 0),
-      item_condition: rental.item_condition || rental.initial_condition || 'New',
+      security_deposit: Number(rental.security_deposit || 0),
       start_date: rental.start_date || '',
       end_date: rental.end_date || '',
-      initial_condition: rental.initial_condition || '',
-      initial_meter_reading: rental.initial_meter_reading || '',
       terms_and_conditions: rental.terms_and_conditions || '',
+      auto_charge: Boolean(rental.auto_charge),
+      committed_periods: rental.committed_periods ?? '',
+      discount_type: (rental.discount_type as '' | 'flat' | 'percent') || '',
+      discount_value: Number(rental.discount_value || 0),
+      discount_apply_after_periods: rental.discount_apply_after_periods ?? '',
+      items: (rental.items || []).map(item => ({
+        key: `existing-${item.id}`,
+        part_id: item.part_id,
+        part_number: item.part_number || '',
+        part_description: item.part_description || '',
+        quantity: Number(item.quantity || 1),
+        rental_rate: Number(item.rental_rate || 0),
+        item_condition: item.item_condition || 'New',
+        shipping_fee: Number(item.shipping_fee || 0),
+        setup_fee: Number(item.setup_fee || 0),
+        initial_condition: item.initial_condition || '',
+        initial_meter_reading: item.initial_meter_reading || '',
+      })),
     })
     setAgreementDialog(true)
   }
 
-  const handlePartSelect = (part: RentalPart | null) => {
-    setSelectedRentalPart(part)
-    if (!part) {
-      setAgreementForm(prev => ({ ...prev, part_id: 0 }))
-      return
-    }
+  const applyFacilityToCustomer = (facilityId: number | null) => {
+    if (!facilityId) return
+    const fac = facilities.find(f => f.id === facilityId)
+    if (!fac) return
     setAgreementForm(prev => ({
       ...prev,
-      part_id: part.id,
-      rental_rate: Number(part.unit_price || 0),
-      item_condition: part.condition || prev.item_condition || 'New',
+      customer_name: prev.customer_name || fac.billing_name || fac.name || '',
+      customer_email: prev.customer_email || fac.billing_email || fac.email || '',
+      customer_phone: prev.customer_phone || (fac.phone ? formatUSPhoneInput(fac.phone) : ''),
+      customer_address: prev.customer_address || [
+        fac.billing_street || fac.address,
+        fac.billing_city || fac.city,
+        fac.billing_state || fac.state,
+        fac.billing_zip_code || fac.zip_code,
+      ].filter(Boolean).join(', '),
     }))
-    if (part.facility_id) {
-      const fac = facilities.find(f => f.id === part.facility_id)
-      if (fac) {
-        setAgreementForm(prev => ({
-          ...prev,
-          customer_name: fac.billing_name || fac.name || prev.customer_name,
-          customer_email: fac.billing_email || fac.email || prev.customer_email,
-          customer_phone: fac.phone ? formatUSPhoneInput(fac.phone) : prev.customer_phone,
-          customer_address: [
-            fac.billing_street || fac.address,
-            fac.billing_city || fac.city,
-            fac.billing_state || fac.state,
-            fac.billing_zip_code || fac.zip_code
-          ].filter(Boolean).join(', '),
-        }))
-      }
+  }
+
+  const handlePartSelect = async (part: RentalPart | null) => {
+    setSelectedRentalPart(part)
+    if (!part) {
+      setItemDraft(prev => ({ ...prev, part_id: null, part_number: '', part_description: '' }))
+      return
     }
+    setItemDraft(prev => ({
+      ...prev,
+      part_id: part.id,
+      part_number: part.part_number,
+      part_description: part.description,
+      item_condition: part.condition || prev.item_condition || 'New',
+      rental_rate: Number(part.unit_price || 0),
+    }))
+    // Auto-fill the rate from the product's tiered rate card for the chosen frequency.
+    try {
+      const card = await fetchRentalProductRate(part.id)
+      const tierRate = rateForFrequency(card, agreementForm.billing_frequency)
+      if (tierRate != null) setItemDraft(prev => ({ ...prev, rental_rate: Number(tierRate) }))
+    } catch {
+      /* no rate card configured yet — keep the unit price as the default */
+    }
+    applyFacilityToCustomer(part.facility_id)
+  }
+
+  const addRentalItem = () => {
+    if (!itemDraft.part_id) return toast.error('Select a rental product to add')
+    if (!itemDraft.quantity || itemDraft.quantity < 1) return toast.error('Quantity must be greater than zero')
+    setAgreementForm(prev => ({ ...prev, items: [...prev.items, { ...itemDraft, key: Math.random().toString(36).slice(2) }] }))
+    setSelectedRentalPart(null)
+    setItemDraft(newRentalItem())
+  }
+
+  const removeRentalItem = (key: string) => {
+    setAgreementForm(prev => ({ ...prev, items: prev.items.filter(item => item.key !== key) }))
   }
 
   const submitAgreement = () => {
-    if (!agreementForm.part_id) return toast.error('Rental product is required')
-    if (!agreementForm.customer_name) return toast.error('Customer name is required')
-    if (!agreementForm.customer_email) return toast.error('Customer email is required')
-    if (!agreementForm.rental_rate) return toast.error('Rental rate is required')
-    if (!agreementForm.quantity || agreementForm.quantity < 1) return toast.error('Quantity must be greater than zero')
+    if (!agreementForm.customer_name.trim()) return toast.error('Customer name is required')
+    if (!agreementForm.customer_email.trim()) return toast.error('Customer email is required')
+    if (agreementForm.items.length === 0) return toast.error('Add at least one rental product')
+    if (agreementForm.billing_frequency === 'daily') return toast.error('Daily billing is no longer offered')
     saveAgreementMut.mutate()
   }
 
@@ -1424,84 +1536,111 @@ const Rentals = () => {
       />
 
       {/* Agreement Modal CREATE / EDIT */}
-      <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+      <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="lg" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           {editingAgreement ? 'Edit Rental Agreement' : 'Create Rental Agreement'}
         </DialogTitle>
         <DialogContent dividers>
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
-            Customer &amp; Agreement Details
-          </Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Customer &amp; Agreement Details</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
             <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
             <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
             <TextField label="Delivery Address" value={agreementForm.customer_address} onChange={e => setAgreementForm(prev => ({ ...prev, customer_address: e.target.value }))} sx={{ gridColumn: '1 / -1' }} />
-            <TextField
-              select
-              label="Billing Frequency"
-              value={agreementForm.billing_frequency}
-              onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}
-            >
-              <MenuItem value="daily">Daily</MenuItem>
+            <TextField select label="Billing Frequency" value={agreementForm.billing_frequency} onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}>
               <MenuItem value="weekly">Weekly</MenuItem>
+              <MenuItem value="biweekly">Bi-weekly</MenuItem>
               <MenuItem value="monthly">Monthly</MenuItem>
+              <MenuItem value="quarterly">Quarterly</MenuItem>
             </TextField>
             <TextField label="Start Date" type="date" value={agreementForm.start_date} onChange={e => setAgreementForm(prev => ({ ...prev, start_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
             <TextField label="End Date" type="date" value={agreementForm.end_date} onChange={e => setAgreementForm(prev => ({ ...prev, end_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-          </Box>
-
-          <Divider sx={{ my: 3 }} />
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
-            Rental Product
-          </Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-            {!editingAgreement ? (
-              <FormControl sx={{ gridColumn: '1 / -1' }}>
-                <PartSearchAutocomplete<RentalPart>
-                  label="Select Rental Product *"
-                  required
-                  value={selectedRentalPart}
-                  onChange={handlePartSelect}
-                  fetchParts={fetchRentalParts}
-                  queryKey="rental-parts-picker"
-                  icon={<LocalShippingIcon fontSize="small" />}
-                  avatarBg="#EFF6FF"
-                  avatarColor="#2563EB"
-                  getOptionDisabled={option => option.quantity_on_hand <= 0}
-                />
-              </FormControl>
-            ) : (
-              <TextField
-                label="Selected Product"
-                value={editingAgreement.part_number ? `${editingAgreement.part_number} - ${editingAgreement.part_description || ''}` : ''}
-                disabled
-                sx={{ gridColumn: '1 / -1' }}
-              />
-            )}
-            <TextField label="Rental Rate (Standard) *" type="number" value={agreementForm.rental_rate} onChange={e => setAgreementForm(prev => ({ ...prev, rental_rate: Number(e.target.value) }))} />
-            <TextField label="Quantity" type="number" value={agreementForm.quantity || 1} onChange={e => setAgreementForm(prev => ({ ...prev, quantity: Number(e.target.value) }))} />
-            <TextField select label="Condition" value={agreementForm.item_condition || 'New'} onChange={e => setAgreementForm(prev => ({ ...prev, item_condition: e.target.value }))}>
-              {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
-            </TextField>
-            <TextField label="Shipping Fee" type="number" value={agreementForm.shipping_fee || 0} onChange={e => setAgreementForm(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
-            <TextField label="Setup Fee" type="number" value={agreementForm.setup_fee || 0} onChange={e => setAgreementForm(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
             <TextField label="Security Deposit" type="number" value={agreementForm.security_deposit} onChange={e => setAgreementForm(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} />
           </Box>
 
           <Divider sx={{ my: 3 }} />
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
-            Equipment Handover Details
-          </Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
-            <TextField label="Initial Condition" value={agreementForm.initial_condition || ''} onChange={e => setAgreementForm(prev => ({ ...prev, initial_condition: e.target.value }))} />
-            <TextField
-              label="Initial Reading"
-              value={agreementForm.initial_meter_reading ?? ''}
-              onChange={e => setAgreementForm(prev => ({ ...prev, initial_meter_reading: e.target.value }))}
-              helperText="Optional reading or note"
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Rental Products</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(220px, 1.6fr) 84px 120px 130px 100px 100px auto' }, gap: 2, mb: 2, alignItems: 'start' }}>
+            <Box sx={{ gridColumn: { xs: '1 / -1', lg: 'auto' } }}>
+              <PartSearchAutocomplete<RentalPart>
+                label="Rental product"
+                value={selectedRentalPart}
+                onChange={handlePartSelect}
+                fetchParts={fetchRentalParts}
+                queryKey="rental-parts-picker"
+                icon={<LocalShippingIcon fontSize="small" />}
+                avatarBg="#EFF6FF"
+                avatarColor="#2563EB"
+                getOptionDisabled={option => option.quantity_on_hand <= 0}
+              />
+            </Box>
+            <TextField label="Qty" type="number" value={itemDraft.quantity} onChange={e => setItemDraft(prev => ({ ...prev, quantity: Number(e.target.value) }))} inputProps={{ min: 1 }} />
+            <TextField label={`Rate / ${agreementForm.billing_frequency}`} type="number" value={itemDraft.rental_rate} onChange={e => setItemDraft(prev => ({ ...prev, rental_rate: Number(e.target.value) }))} />
+            <TextField select label="Condition" value={itemDraft.item_condition} onChange={e => setItemDraft(prev => ({ ...prev, item_condition: e.target.value }))}>
+              {['New', 'Used', 'Refurbished', 'Damaged'].map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+            </TextField>
+            <TextField label="Shipping" type="number" value={itemDraft.shipping_fee} onChange={e => setItemDraft(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
+            <TextField label="Setup" type="number" value={itemDraft.setup_fee} onChange={e => setItemDraft(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
+            <Button startIcon={<AddIcon />} variant="contained" onClick={addRentalItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, height: 56, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add</Button>
+          </Box>
+
+          <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '16px', overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 640 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                  <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Qty</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Rate</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Shipping</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Setup</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {agreementForm.items.length === 0 ? (
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
+                ) : agreementForm.items.map(item => (
+                  <TableRow key={item.key}>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.part_number}</Typography>
+                      <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{item.part_description}</Typography>
+                    </TableCell>
+                    <TableCell align="right">{item.quantity}</TableCell>
+                    <TableCell align="right">{money(item.rental_rate)}</TableCell>
+                    <TableCell>{item.item_condition}</TableCell>
+                    <TableCell align="right">{money(item.shipping_fee)}</TableCell>
+                    <TableCell align="right">{money(item.setup_fee)}</TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" onClick={() => removeRentalItem(item.key)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Divider sx={{ my: 3 }} />
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Billing &amp; Discount</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, alignItems: 'center' }}>
+            <FormControlLabel
+              control={<Switch checked={agreementForm.auto_charge} onChange={e => setAgreementForm(prev => ({ ...prev, auto_charge: e.target.checked }))} />}
+              label="Auto-charge saved card each period"
+              sx={{ gridColumn: { xs: '1 / -1', md: 'auto' } }}
             />
-            <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions || ''} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
+            <TextField label="Committed periods" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="e.g. 4 for a 4-period deal" inputProps={{ min: 0 }} />
+            <TextField select label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent' }))}>
+              <MenuItem value="">No discount</MenuItem>
+              <MenuItem value="flat">Flat amount</MenuItem>
+              <MenuItem value="percent">Percent</MenuItem>
+            </TextField>
+            {agreementForm.discount_type && (
+              <>
+                <TextField label={agreementForm.discount_type === 'percent' ? 'Discount %' : 'Discount amount'} type="number" value={agreementForm.discount_value} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} />
+                <TextField label="Apply after N periods" type="number" value={agreementForm.discount_apply_after_periods} onChange={e => setAgreementForm(prev => ({ ...prev, discount_apply_after_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="e.g. after 3 paid periods" inputProps={{ min: 0 }} />
+              </>
+            )}
+            <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
