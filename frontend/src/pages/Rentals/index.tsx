@@ -1091,7 +1091,10 @@ const Rentals = () => {
                 <TableCell>{formatDate(item.start_date)}</TableCell>
                 <TableCell>{formatDate(item.end_date)}</TableCell>
                 <TableCell>
-                  <Chip size="small" label={item.status} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexWrap: 'wrap' }}>
+                    <Chip size="small" label={item.status} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} />
+                    {item.is_overdue && <Chip size="small" label="Overdue" sx={{ bgcolor: '#FEE2E2', color: '#B91C1C', fontWeight: 900, textTransform: 'uppercase' }} />}
+                  </Box>
                 </TableCell>
                 <TableCell align="right">
                   {highlighted && (
@@ -1758,6 +1761,29 @@ const Rentals = () => {
             <TextField label="Actual Return Date" type="date" value={returnForm.actual_return_date} onChange={e => setReturnForm(prev => ({ ...prev, actual_return_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
             <TextField label="Return Condition *" value={returnForm.return_condition} onChange={e => setReturnForm(prev => ({ ...prev, return_condition: e.target.value }))} placeholder="E.g. Returned clean and functioning" />
             <TextField label="Final Meter Reading" type="number" value={returnForm.final_meter_reading || 0} onChange={e => setReturnForm(prev => ({ ...prev, final_meter_reading: Number(e.target.value) }))} />
+            {Number(returnDialog?.security_deposit || 0) > 0 && (
+              <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F0F9FF', border: '1px solid #BFDBFE' }}>
+                <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Security Deposit — {money(returnDialog?.security_deposit)}</Typography>
+                <TextField
+                  select fullWidth size="small" label="Deposit settlement"
+                  value={returnForm.deposit_action || ''}
+                  onChange={e => setReturnForm(prev => ({ ...prev, deposit_action: (e.target.value || null) as 'refund' | 'deduct' | 'waive' | null }))}
+                >
+                  <MenuItem value="">Decide later</MenuItem>
+                  <MenuItem value="refund">Refund the full deposit</MenuItem>
+                  <MenuItem value="deduct">Deduct damages / fees</MenuItem>
+                  <MenuItem value="waive">Waive (keep full deposit)</MenuItem>
+                </TextField>
+                {returnForm.deposit_action === 'deduct' && (
+                  <TextField
+                    fullWidth size="small" type="number" label="Amount to deduct" sx={{ mt: 1.5 }}
+                    value={returnForm.deposit_deduction || 0}
+                    onChange={e => setReturnForm(prev => ({ ...prev, deposit_deduction: Number(e.target.value) }))}
+                    helperText={`Refunds ${money(Math.max(0, Number(returnDialog?.security_deposit || 0) - Number(returnForm.deposit_deduction || 0)))} to the customer`}
+                  />
+                )}
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>

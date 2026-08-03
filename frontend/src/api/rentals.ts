@@ -62,6 +62,7 @@ export interface RentalItem {
 export interface Rental {
   id: number
   rental_number: string
+  is_overdue: boolean
   items: RentalItem[]
   auto_charge: boolean
   committed_periods: number | null
@@ -237,6 +238,9 @@ export interface RentalReturnPayload {
   final_meter_reading?: number | null
   // When provided, only these items are returned (partial return).
   items?: RentalItemReturnPayload[]
+  // Security-deposit settlement, applied when the agreement is fully returned.
+  deposit_action?: 'refund' | 'deduct' | 'waive' | null
+  deposit_deduction?: number | null
 }
 
 export const fetchRentalParts = async (

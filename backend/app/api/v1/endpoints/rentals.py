@@ -131,6 +131,9 @@ class RentalReturnPayload(BaseModel):
     # When provided, only these items are returned (partial return); otherwise all
     # still-outstanding items are returned.
     items: Optional[list[RentalItemReturn]] = None
+    # Security-deposit settlement, applied when the agreement is fully returned.
+    deposit_action: Optional[str] = None       # 'refund' | 'deduct' | 'waive'
+    deposit_deduction: Optional[Decimal] = None
 
 
 class RentalInvoiceCreate(BaseModel):
@@ -285,9 +288,16 @@ def _rental_item_response(item: RentalItem) -> dict[str, Any]:
 def _rental_response(rental: Rental) -> dict[str, Any]:
     items = list(rental.items or [])
     first = items[0] if items else None
+    is_overdue = (
+        rental.status == RentalStatus.ACTIVE
+        and rental.end_date is not None
+        and rental.end_date < date.today()
+        and any(item.item_status != RentalItemStatus.RETURNED.value for item in items)
+    )
     return {
         "id": rental.id,
         "rental_number": rental.rental_number,
+        "is_overdue": is_overdue,
         "customer_name": rental.customer_name,
         "customer_email": rental.customer_email,
         "customer_phone": rental.customer_phone,
@@ -904,6 +914,21 @@ def return_rental(
             rental.return_condition = payload.return_condition
         if payload.final_meter_reading is not None:
             rental.final_meter_reading = payload.final_meter_reading
+        # Settle the security deposit. deposit_settled_amount is the amount refunded
+        # to the customer (full deposit for a refund, deposit minus damages for a deduction).
+        deposit = _money(rental.security_deposit)
+        if deposit > 0 and payload.deposit_action:
+            action = payload.deposit_action.strip().lower()
+            if action == "refund":
+                rental.deposit_status = RentalDepositStatus.REFUNDED.value
+                rental.deposit_settled_amount = deposit
+            elif action == "deduct":
+                deduction = min(deposit, _money(payload.deposit_deduction))
+                rental.deposit_status = RentalDepositStatus.DEDUCTED.value
+                rental.deposit_settled_amount = deposit - deduction
+            elif action == "waive":
+                rental.deposit_status = RentalDepositStatus.WAIVED.value
+                rental.deposit_settled_amount = Decimal("0")
     rental.updated_at = datetime.utcnow()
 
     _append_history(
