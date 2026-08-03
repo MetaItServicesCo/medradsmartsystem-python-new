@@ -46,6 +46,7 @@ import {
   updateRentalInvoice,
   fetchRentalHistory,
   fetchRentalProductRate,
+  upsertRentalProductRate,
   type Rental,
   type RentalInvoice,
   type RentalInvoiceCreatePayload,
@@ -350,6 +351,8 @@ const Rentals = () => {
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
   const [partInfo, setPartInfo] = useState<RentalPartInfo | null>(null)
+  const [rateCardPart, setRateCardPart] = useState<RentalPart | null>(null)
+  const [rateCardForm, setRateCardForm] = useState({ weekly_rate: '', biweekly_rate: '', monthly_rate: '', quarterly_rate: '', default_deposit: '' })
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
@@ -674,6 +677,43 @@ const Rentals = () => {
     if (agreementForm.billing_frequency === 'daily') return toast.error('Daily billing is no longer offered')
     saveAgreementMut.mutate()
   }
+
+  const openRateCard = async (part: RentalPart) => {
+    setRateCardPart(part)
+    setRateCardForm({ weekly_rate: '', biweekly_rate: '', monthly_rate: '', quarterly_rate: '', default_deposit: '' })
+    try {
+      const card = await fetchRentalProductRate(part.id)
+      const s = (v: number | null) => (v != null ? String(v) : '')
+      setRateCardForm({
+        weekly_rate: s(card.weekly_rate),
+        biweekly_rate: s(card.biweekly_rate),
+        monthly_rate: s(card.monthly_rate),
+        quarterly_rate: s(card.quarterly_rate),
+        default_deposit: s(card.default_deposit),
+      })
+    } catch {
+      /* no rate card configured yet */
+    }
+  }
+
+  const rateCardMut = useMutation({
+    mutationFn: () => {
+      if (!rateCardPart) return Promise.reject(new Error('No product selected'))
+      const num = (v: string) => (v.trim() === '' ? null : Number(v))
+      return upsertRentalProductRate(rateCardPart.id, {
+        weekly_rate: num(rateCardForm.weekly_rate),
+        biweekly_rate: num(rateCardForm.biweekly_rate),
+        monthly_rate: num(rateCardForm.monthly_rate),
+        quarterly_rate: num(rateCardForm.quarterly_rate),
+        default_deposit: num(rateCardForm.default_deposit),
+      })
+    },
+    onSuccess: () => {
+      toast.success('Rate card saved')
+      setRateCardPart(null)
+    },
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not save rate card')),
+  })
 
   const openRentalPartInfo = (
     part?: Partial<RentalPart> | null,
@@ -1149,13 +1189,14 @@ const Rentals = () => {
             <TableCell sx={{ fontWeight: 900 }}>Qty Available</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
+            <TableCell sx={{ fontWeight: 900 }} align="right">Rental Rates</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {partsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={index}><TableCell colSpan={9}><Skeleton /></TableCell></TableRow>
+            <TableRow key={index}><TableCell colSpan={10}><Skeleton /></TableCell></TableRow>
           )) : parts.length === 0 ? (
-            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={10} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
           ) : parts.map(part => (
             <ContextTableRow
               key={part.id}
@@ -1178,6 +1219,9 @@ const Rentals = () => {
               </TableCell>
               <TableCell sx={{ textTransform: 'capitalize' }}>{part.condition}</TableCell>
               <TableCell><Chip size="small" label={part.status} color={part.status === 'active' ? 'success' : 'default'} sx={{ fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
+              <TableCell align="right">
+                <Button size="small" startIcon={<CalendarMonthIcon fontSize="small" />} onClick={() => openRateCard(part)} sx={{ fontWeight: 800, textTransform: 'none', borderRadius: '10px' }}>Set Rates</Button>
+              </TableCell>
             </ContextTableRow>
           ))}
         </TableBody>
@@ -1658,6 +1702,31 @@ const Rentals = () => {
           <Button onClick={() => setAgreementDialog(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
           <Button startIcon={saveAgreementMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitAgreement} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}>
             {editingAgreement ? 'Update Agreement' : 'Create Agreement'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rate Card Dialog */}
+      <Dialog open={Boolean(rateCardPart)} onClose={() => !rateCardMut.isPending && setRateCardPart(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 560, width: '100%' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Rental Rates — {rateCardPart?.part_number}
+          <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
+            Set the price per billing period. These auto-fill on the agreement when the frequency is chosen.
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2, pt: 1 }}>
+            <TextField label="Weekly rate" type="number" value={rateCardForm.weekly_rate} onChange={e => setRateCardForm(prev => ({ ...prev, weekly_rate: e.target.value }))} />
+            <TextField label="Bi-weekly rate" type="number" value={rateCardForm.biweekly_rate} onChange={e => setRateCardForm(prev => ({ ...prev, biweekly_rate: e.target.value }))} />
+            <TextField label="Monthly rate" type="number" value={rateCardForm.monthly_rate} onChange={e => setRateCardForm(prev => ({ ...prev, monthly_rate: e.target.value }))} />
+            <TextField label="Quarterly rate" type="number" value={rateCardForm.quarterly_rate} onChange={e => setRateCardForm(prev => ({ ...prev, quarterly_rate: e.target.value }))} />
+            <TextField label="Default deposit" type="number" value={rateCardForm.default_deposit} onChange={e => setRateCardForm(prev => ({ ...prev, default_deposit: e.target.value }))} sx={{ gridColumn: { xs: '1', sm: '1 / -1' } }} />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRateCardPart(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button variant="contained" onClick={() => rateCardMut.mutate()} disabled={rateCardMut.isPending} startIcon={rateCardMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : undefined} sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}>
+            Save Rates
           </Button>
         </DialogActions>
       </Dialog>
