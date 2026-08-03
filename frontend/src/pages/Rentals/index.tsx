@@ -1,9 +1,9 @@
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, IconButton, ListItemIcon, Menu, MenuItem,
+  DialogTitle, Divider, IconButton, ListItemIcon, Menu, MenuItem,
   LinearProgress, Skeleton, Switch, FormControlLabel, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TablePagination, TextField, Typography, useMediaQuery, useTheme,
 } from '@mui/material'
@@ -861,16 +861,27 @@ const Rentals = () => {
 
   const agreementLineItems = (rental: Rental | null): PrintableLineItem[] => {
     if (!rental) return []
-    return [{
-      item_number: rental.part_number || rental.rental_number,
-      description: rental.part_description || 'Rental product',
-      quantity: Number(rental.quantity || 1),
-      unit_price: Number(rental.rental_rate || 0),
-      shipping_fee: Number(rental.shipping_fee || 0),
-      setup_fee: Number(rental.setup_fee || 0),
-      condition: rental.item_condition || rental.initial_condition || null,
-      total_amount: Number(rental.rental_rate || 0) * Number(rental.quantity || 1) + Number(rental.shipping_fee || 0) + Number(rental.setup_fee || 0),
-    }]
+    const items = (rental.items && rental.items.length > 0)
+      ? rental.items
+      : [{
+          part_number: rental.part_number,
+          part_description: rental.part_description,
+          quantity: rental.quantity || 1,
+          rental_rate: rental.rental_rate || 0,
+          shipping_fee: rental.shipping_fee || 0,
+          setup_fee: rental.setup_fee || 0,
+          item_condition: rental.item_condition,
+        }]
+    return items.map(item => ({
+      item_number: item.part_number || rental.rental_number,
+      description: item.part_description || 'Rental product',
+      quantity: Number(item.quantity || 1),
+      unit_price: Number(item.rental_rate || 0),
+      shipping_fee: Number(item.shipping_fee || 0),
+      setup_fee: Number(item.setup_fee || 0),
+      condition: item.item_condition || null,
+      total_amount: Number(item.rental_rate || 0) * Number(item.quantity || 1) + Number(item.shipping_fee || 0) + Number(item.setup_fee || 0),
+    }))
   }
 
   const agreementLedgerTransactions = (rental: Rental | null): PrintableLedgerTransaction[] => {
@@ -1912,8 +1923,8 @@ const Rentals = () => {
                   <Typography sx={{ fontWeight: 900, color: '#1E3A8A', fontFamily: 'monospace' }}>{viewAgreement.rental_number}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>RENTAL PRODUCT</Typography>
-                  <Typography sx={{ fontWeight: 900 }}>{viewAgreement.part_number ? `${viewAgreement.part_number} - ${viewAgreement.part_description || ''}` : '-'}</Typography>
+                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>RENTAL PRODUCTS</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>{(viewAgreement.items?.length || 0)} item{(viewAgreement.items?.length || 0) === 1 ? '' : 's'}</Typography>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>CUSTOMER NAME</Typography>
@@ -1932,16 +1943,16 @@ const Rentals = () => {
                   <Typography sx={{ fontWeight: 800, color: '#B45309' }}>{formatDate(viewAgreement.actual_return_date)}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>BILLING FREQUENCY & RATE</Typography>
-                  <Typography sx={{ fontWeight: 900, color: '#047857' }}>{money(viewAgreement.rental_rate)} ({viewAgreement.billing_frequency})</Typography>
+                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>BILLING FREQUENCY</Typography>
+                  <Typography sx={{ fontWeight: 900, color: '#047857', textTransform: 'capitalize' }}>{viewAgreement.billing_frequency}{viewAgreement.auto_charge ? ' · auto-charge' : ''}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>QUANTITY / CONDITION</Typography>
-                  <Typography sx={{ fontWeight: 900 }}>{viewAgreement.quantity || 1} / {viewAgreement.item_condition || '-'}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>ITEM FEES</Typography>
-                  <Typography sx={{ fontWeight: 900 }}>Shipping {money(viewAgreement.shipping_fee)} / Setup {money(viewAgreement.setup_fee)}</Typography>
+                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>DISCOUNT</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>
+                    {viewAgreement.discount_type
+                      ? `${viewAgreement.discount_type === 'percent' ? `${viewAgreement.discount_value}%` : money(viewAgreement.discount_value)}${viewAgreement.discount_apply_after_periods ? ` after ${viewAgreement.discount_apply_after_periods} periods` : ''}`
+                      : 'None'}
+                  </Typography>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>SECURITY DEPOSIT</Typography>
@@ -1951,6 +1962,43 @@ const Rentals = () => {
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>CUSTOMER ADDRESS</Typography>
                   <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_address}</Typography>
                 </Box>
+              </Box>
+
+              <Box>
+                <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Items</Typography>
+                <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '12px', overflowX: 'auto' }}>
+                  <Table size="small" sx={{ minWidth: 640 }}>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                        <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }} align="right">Qty</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }} align="right">Rate</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }} align="right">Shipping</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }} align="right">Setup</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {(viewAgreement.items || []).map(item => (
+                        <TableRow key={item.id}>
+                          <TableCell>
+                            <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.part_number || '-'}</Typography>
+                            <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{item.part_description}</Typography>
+                          </TableCell>
+                          <TableCell align="right">{item.quantity}</TableCell>
+                          <TableCell align="right">{money(item.rental_rate)}</TableCell>
+                          <TableCell>{item.item_condition || '-'}</TableCell>
+                          <TableCell align="right">{money(item.shipping_fee)}</TableCell>
+                          <TableCell align="right">{money(item.setup_fee)}</TableCell>
+                          <TableCell>
+                            <Chip size="small" label={item.item_status === 'returned' ? 'Returned' : 'Out'} sx={{ fontWeight: 800, bgcolor: item.item_status === 'returned' ? '#DCFCE7' : '#DBEAFE', color: item.item_status === 'returned' ? '#15803D' : '#1D4ED8' }} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               </Box>
 
               <Divider />
