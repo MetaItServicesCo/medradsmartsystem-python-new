@@ -425,12 +425,58 @@ const printStyles = `
   .report-h4 { margin: 12px 0 5px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
   .report-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
   .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
+
+  /* Unified document skin — mirrors the client-facing quotation (Layout A):
+     a white header with a thin brand gradient rule instead of a colour hero.
+     Scoped to .doc-a so the appended service report keeps its own styling. */
+  .doc-a .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding: 34px 40px 16px; background: #fff; }
+  .doc-a .head .brand { display: flex; gap: 16px; align-items: center; font-weight: 400; }
+  .doc-a .head .brand img { width: 96px; height: 62px; object-fit: contain; background: none; box-shadow: none; border-radius: 0; padding: 0; }
+  .doc-a .eyebrow { color: var(--accent); font-weight: 800; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+  .doc-a .doc-title { margin: 2px 0; font-size: 34px; font-weight: 900; letter-spacing: -0.5px; color: #1E1B4B; line-height: 1.02; }
+  .doc-a .doc-company { color: #6B7280; font-weight: 700; font-size: 13px; }
+  .doc-a .doc-address { color: #6B7280; font-size: 12px; line-height: 1.45; margin-top: 4px; }
+  .doc-a .head-right { text-align: right; }
+  .doc-a .status-pill { display: inline-block; padding: 7px 14px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }
+  .doc-a .accent-bar { height: 4px; margin: 4px 40px 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent) 0%, #EC4899 58%, #F59E0B 100%); }
+  .doc-a .content { padding: 28px 40px 40px; }
+  .doc-a .grid { grid-template-columns: 1fr 1fr; gap: 20px; }
+  .doc-a .box { border: 1px solid #E2E8F0; border-radius: 16px; padding: 18px; background: #F8FAFC; }
+  .doc-a .box.prepared { background: var(--accent-soft); border-color: #EDE9FE; }
+  .doc-a .box h3 { color: var(--accent); font-weight: 900; }
+  .doc-a .box strong.customer { color: #1E1B4B; font-size: 19px; }
+  .doc-a .muted { color: #4B5563; }
+  .doc-a .meta { grid-template-columns: auto 1fr; column-gap: 16px; row-gap: 8px; }
+  .doc-a .meta strong { color: #64748B; font-weight: 900; }
+  .doc-a .meta span { color: #1E1B4B; font-weight: 800; }
+  .doc-a table { font-size: 12.5px; }
+  .doc-a th { background: #F8FAFC; color: #64748B; font-weight: 800; border-bottom: 1px solid #E5E7EB; font-size: 10.5px; }
+  .doc-a td { border-bottom: 1px solid #EEF0F6; color: #334155; }
+  .doc-a tr:nth-child(even) td { background: #FCFCFF; }
+  .doc-a .item-number { color: #1E1B4B; }
+  .doc-a .item-condition { color: #94A3B8; }
+  .doc-a .right { font-variant-numeric: tabular-nums; }
+  .doc-a .amount { color: #1E1B4B; }
+  .doc-a .totals { width: 330px; }
+  .doc-a .totals div { border-bottom: 1px solid #EEF0F6; padding: 10px 16px; font-size: 13px; }
+  .doc-a .totals span { color: #64748B; }
+  .doc-a .totals strong { color: #1E1B4B; }
+  .doc-a .totals .grand { background: var(--accent-soft); color: #1E1B4B; }
+  .doc-a .totals .grand span { color: #1E1B4B; font-weight: 900; font-size: 15px; }
+  .doc-a .totals .grand span:last-child { color: var(--accent); }
+  .doc-a .note { border: 1px solid #EDE9FE; background: #FAF9FF; border-radius: 14px; }
+  .doc-a .note strong { color: var(--accent); }
+  .doc-a .foot-divider { height: 3px; margin: 32px 0 14px; border-radius: 999px; background: linear-gradient(90deg, var(--accent) 0%, #EC4899 58%, #F59E0B 100%); }
+  .doc-a .footer { border-top: 0; margin-top: 0; color: #94A3B8; }
+  .doc-a .footer strong { color: #1E1B4B; }
+
   @media print {
     @page { margin: 0.4in; }
     body { background: #fff; }
     .sheet { margin: 0; width: 100%; min-height: 0; overflow: visible; box-shadow: none; }
     .hero, .report-hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     th, .totals .grand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .doc-a .accent-bar, .doc-a .foot-divider, .doc-a .status-pill, .doc-a .box.prepared { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     thead { display: table-header-group; }
     tr, .totals, .note, .paid-separate, .signature, .report-session { page-break-inside: avoid; }
   }
@@ -512,25 +558,26 @@ const buildPrintableHtml = (
     .join('')
 
   return `
-    <main class="sheet" style="--accent:${escapeHtml(accent)}; --accent-soft:${escapeHtml(accentSoft)}">
-      <section class="hero">
-        <div>
-          <div class="brand">
-            <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
-            <div>Mr. BioMed Tech Services<small>Biomedical Equipment Repair & Rental Services</small></div>
+    <main class="sheet doc-a" style="--accent:${escapeHtml(accent)}; --accent-soft:${escapeHtml(accentSoft)}">
+      <section class="head">
+        <div class="brand">
+          <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
+          <div>
+            <div class="eyebrow">${escapeHtml(moduleLabel)} ${escapeHtml(invoice.invoice_type || '')}</div>
+            <h1 class="doc-title">${escapeHtml(title)}</h1>
+            <div class="doc-company">Mr. BioMed Tech Services</div>
+            <div class="doc-address">555 N. 5th Street Suite 109 &middot; Garland, TX 75040</div>
           </div>
-          <p class="company-address">555 N. 5th Street Suite 109<br>Garland, TX 75040</p>
         </div>
-        <div class="title">
-          <h1>${escapeHtml(title)}</h1>
-          <div class="module">${escapeHtml(moduleLabel)} ${escapeHtml(invoice.invoice_type || '')}</div>
-          <span class="pill">${escapeHtml(invoice.status)}</span>
+        <div class="head-right">
+          <span class="status-pill">${escapeHtml(invoice.status)}</span>
         </div>
       </section>
+      <div class="accent-bar"></div>
 
       <section class="content">
       <section class="grid">
-        <div class="box">
+        <div class="box prepared">
           <h3>${escapeHtml(labels.billTo)}</h3>
           <strong class="customer">${escapeHtml(invoice.customer_name)}</strong><br>
           ${invoice.customer_email ? `<span class="muted">${escapeHtml(invoice.customer_email)}</span><br>` : ''}
@@ -609,9 +656,10 @@ const buildPrintableHtml = (
         </section>
       ` : ''}
       ${type === 'packing_slip' ? '<section class="signature"><div class="line">Packed By</div><div class="line">Received By</div></section>' : ''}
+      <div class="foot-divider"></div>
       <section class="footer">
-        <span>Mr. BioMed Tech Services</span>
-        <span>Generated from Medrad Admin Panel</span>
+        <strong>Thank you for your business.</strong>
+        <span>Mr. BioMed Tech Services &middot; Generated from Medrad Admin Panel</span>
       </section>
       </section>
     </main>
@@ -862,30 +910,22 @@ const InvoicePrintDialog = ({
             </Box>
 
             <Card sx={{ borderRadius: '18px', border: '1px solid #E5E7EB', bgcolor: '#fff', overflow: 'hidden', boxShadow: '0 18px 45px rgba(15,23,42,0.08)' }}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: 2,
-                  flexWrap: 'wrap',
-                  p: 3,
-                  color: '#fff',
-                  background: `linear-gradient(135deg, ${accent} 0%, #0EA5E9 65%, #F59E0B 130%)`,
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Box sx={{ bgcolor: '#fff', borderRadius: '14px', p: 1, boxShadow: '0 10px 24px rgba(15,23,42,0.18)' }}>
-                    <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 108, height: 70, objectFit: 'contain', display: 'block' }} />
+              <Box sx={{ p: 3, pb: 1.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 92, height: 60, objectFit: 'contain', display: 'block' }} />
+                    <Box>
+                      <Typography sx={{ color: accent, fontWeight: 900, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' }}>{moduleLabel} {displayInvoice.invoice_type || ''}</Typography>
+                      <Typography sx={{ fontWeight: 950, fontSize: 26, color: '#1E1B4B', lineHeight: 1.05, letterSpacing: '-0.5px' }}>{documentLabel(activeDocumentType, primaryDocumentLabel)}</Typography>
+                      <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Mr. BioMed Tech Services</Typography>
+                    </Box>
                   </Box>
-                  <Box>
-                    <Typography sx={{ fontWeight: 950, fontSize: 22 }}>Mr. BioMed Tech Services</Typography>
-                    <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>Biomedical Equipment Repair & Rental Services</Typography>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Chip label={displayInvoice.status.replace(/_/g, ' ')} sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900, textTransform: 'uppercase' }} />
+                    <Typography sx={{ color: '#64748B', fontWeight: 800, fontSize: 13, mt: 0.6 }}>{displayInvoice.invoice_number}</Typography>
                   </Box>
                 </Box>
-                <Box sx={{ textAlign: 'right' }}>
-                  <Typography sx={{ fontWeight: 950, fontSize: 24 }}>{documentLabel(activeDocumentType, primaryDocumentLabel)}</Typography>
-                  <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{displayInvoice.invoice_number}</Typography>
-                </Box>
+                <Box sx={{ height: 4, borderRadius: 999, mt: 2, background: `linear-gradient(90deg, ${accent} 0%, #EC4899 58%, #F59E0B 100%)` }} />
               </Box>
 
               <Box sx={{ p: 3 }}>

@@ -517,6 +517,13 @@ const Sales = () => {
     const quotation = await ensureQuotation(id)
     if (quotation) setViewQuotation(quotation)
   }
+  // A sales invoice is raised from its quotation; open that full document (it flips
+  // to "Invoice" once converted) so viewing an invoice shows the same polished
+  // document clients see and printing produces — not a bare details popup.
+  const openInvoiceDocument = (invoice: SalesInvoice) => {
+    if (invoice.sales_quotation_id) void openLinkedQuotation(invoice.sales_quotation_id)
+    else setViewInvoice(invoice)
+  }
   const inProgressTotal = summary?.in_progress_total || 0
   const completedTotal = summary?.completed_total || 0
   const inProgressPaid = summary?.in_progress_paid || 0
@@ -1493,7 +1500,7 @@ const Sales = () => {
                   '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#7161D8" fontWeight={900} onClick={() => setViewInvoice(invoice)} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInvoiceDocument(invoice)} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.work_order || '-'} monospace fontWeight={800} onClick={() => openLinkedQuotation(invoice.sales_quotation_id)} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} onClick={invoice.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(invoice.facility_name!)}`) : undefined} /></TableCell>
@@ -1804,7 +1811,7 @@ const Sales = () => {
       </Menu>
 
       <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
-        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setViewInvoice(actionInvoice); closeInvoiceActions() }}>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) openInvoiceDocument(actionInvoice); closeInvoiceActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View
         </MenuItem>
