@@ -48,6 +48,7 @@ import {
   fetchRentalProductRate,
   upsertRentalProductRate,
   type Rental,
+  type RentalItem,
   type RentalInvoice,
   type RentalInvoiceCreatePayload,
   type RentalPart,
@@ -805,35 +806,64 @@ const Rentals = () => {
     return diff < 1 ? 1 : diff
   }, [convertAgreement])
 
-  const calculatedBaseRental = useMemo(() => {
-    if (!convertAgreement) return 0
-    const rate = Number(convertAgreement.rental_rate)
-    const quantity = Number(convertAgreement.quantity || 1)
-    const freq = convertAgreement.billing_frequency
-    if (freq === 'daily') {
-      return durationDays * rate * quantity
-    } else if (freq === 'weekly') {
-      return Math.ceil(durationDays / 7) * rate * quantity
-    } else if (freq === 'monthly') {
-      return Math.ceil(durationDays / 30) * rate * quantity
+  // Number of billing periods covering the rental duration (mirrors the backend).
+  const billingPeriods = useMemo(() => {
+    if (!convertAgreement) return 1
+    switch (convertAgreement.billing_frequency) {
+      case 'weekly': return Math.ceil(durationDays / 7)
+      case 'biweekly': return Math.ceil(durationDays / 14)
+      case 'monthly': return Math.ceil(durationDays / 30)
+      case 'quarterly': return Math.ceil(durationDays / 91)
+      case 'daily': return durationDays
+      default: return Math.ceil(durationDays / 30)
     }
-    return durationDays * rate * quantity
   }, [convertAgreement, durationDays])
 
+  // Every item on the agreement (falls back to the legacy single item for old records).
+  const convertItems = useMemo(() => {
+    if (!convertAgreement) return [] as RentalItem[]
+    if (convertAgreement.items && convertAgreement.items.length > 0) return convertAgreement.items
+    return [{
+      id: 0,
+      part_id: convertAgreement.part_id,
+      equipment_id: convertAgreement.equipment_id,
+      part_number: convertAgreement.part_number,
+      part_description: convertAgreement.part_description,
+      default_picture_url: null,
+      quantity: convertAgreement.quantity || 1,
+      rental_rate: convertAgreement.rental_rate || 0,
+      item_condition: convertAgreement.item_condition,
+      shipping_fee: convertAgreement.shipping_fee || 0,
+      setup_fee: convertAgreement.setup_fee || 0,
+      initial_condition: null,
+      return_condition: null,
+      initial_meter_reading: null,
+      final_meter_reading: null,
+      returned_at: null,
+      item_status: 'out',
+    } as RentalItem]
+  }, [convertAgreement])
+
+  // Base rental = periods × rate × qty, summed across every item.
+  const calculatedBaseRental = useMemo(
+    () => convertItems.reduce((sum, item) => sum + billingPeriods * Number(item.rental_rate || 0) * Number(item.quantity || 1), 0),
+    [convertItems, billingPeriods],
+  )
+  const itemsShippingTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.shipping_fee || 0), 0), [convertItems])
+  const itemsSetupTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.setup_fee || 0), 0), [convertItems])
+
   const convertTaxAmount = calculatedBaseRental * Number(invoiceDetails.tax_rate || 0) / 100
-  const convertGrandTotal =
+  const convertSubtotal =
     calculatedBaseRental +
     Number(invoiceDetails.worked_hours || 0) +
-    Number(invoiceDetails.setup_fee || 0) +
-    Number(convertAgreement?.setup_fee || 0) +
+    Number(invoiceDetails.setup_fee || 0) + itemsSetupTotal +
     Number(invoiceDetails.service_fee || 0) +
-    Number(invoiceDetails.shipping_fee || 0) +
-    Number(convertAgreement?.shipping_fee || 0) +
-    Number(invoiceDetails.application_fee || 0) +
-    convertTaxAmount -
-    (invoiceDetails.discount_type === 'percent'
-      ? (calculatedBaseRental + Number(invoiceDetails.worked_hours || 0) + Number(invoiceDetails.setup_fee || 0) + Number(convertAgreement?.setup_fee || 0) + Number(invoiceDetails.service_fee || 0) + Number(invoiceDetails.shipping_fee || 0) + Number(convertAgreement?.shipping_fee || 0) + Number(invoiceDetails.application_fee || 0)) * Number(invoiceDetails.discount_amount || 0) / 100
-      : Number(invoiceDetails.discount_amount || 0))
+    Number(invoiceDetails.shipping_fee || 0) + itemsShippingTotal +
+    Number(invoiceDetails.application_fee || 0)
+  const convertDiscountAmount = invoiceDetails.discount_type === 'percent'
+    ? convertSubtotal * Number(invoiceDetails.discount_amount || 0) / 100
+    : Number(invoiceDetails.discount_amount || 0)
+  const convertGrandTotal = convertSubtotal + convertTaxAmount - convertDiscountAmount
 
   const renderKpi = (label: string, value: string | number, icon: JSX.Element, color: string) => (
     <Card sx={{ p: 2.2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(59,130,246,0.07)' }}>
@@ -875,18 +905,7 @@ const Rentals = () => {
   const invoiceLineItems = (invoice: RentalInvoice | null): PrintableLineItem[] => {
     if (!invoice) return []
     const rental = rentals.find(item => item.id === invoice.rental_id)
-    if (rental) {
-      return [{
-        item_number: rental.part_number || rental.rental_number,
-        description: rental.part_description || 'Rental product',
-        quantity: Number(rental.quantity || 1),
-        unit_price: Number(rental.rental_rate || 0),
-        shipping_fee: Number(rental.shipping_fee || 0),
-        setup_fee: Number(rental.setup_fee || 0),
-        condition: rental.item_condition || rental.initial_condition || null,
-        total_amount: Number(rental.rental_rate || 0) * Number(rental.quantity || 1) + Number(rental.shipping_fee || 0) + Number(rental.setup_fee || 0),
-      }]
-    }
+    if (rental) return agreementLineItems(rental)
     return [{
       item_number: invoice.invoice_number,
       description: invoice.notes || 'Rental invoice',
@@ -1797,30 +1816,34 @@ const Rentals = () => {
                         <TableCell sx={{ fontWeight: 900 }}>Shipping Fee</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Setup Fee</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
-                        <TableCell sx={{ fontWeight: 900 }}>Duration Days</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Periods</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900 }}>Rental Base Total</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      <TableRow>
-                        <TableCell sx={{ fontWeight: 800 }}>{convertAgreement.part_number ? `${convertAgreement.part_number} - ${convertAgreement.part_description || ''}` : '-'}</TableCell>
-                        <TableCell sx={{ textTransform: 'capitalize' }}>{convertAgreement.billing_frequency}</TableCell>
-                        <TableCell>{money(convertAgreement.rental_rate)}</TableCell>
-                        <TableCell>{convertAgreement.quantity || 1}</TableCell>
-                        <TableCell>{money(convertAgreement.shipping_fee)}</TableCell>
-                        <TableCell>{money(convertAgreement.setup_fee)}</TableCell>
-                        <TableCell>{convertAgreement.item_condition || '-'}</TableCell>
-                        <TableCell>{durationDays} day(s)</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 900, color: '#047857' }}>{money(calculatedBaseRental)}</TableCell>
-                      </TableRow>
+                      {convertItems.map((item, index) => (
+                        <TableRow key={item.id || index}>
+                          <TableCell sx={{ fontWeight: 800 }}>{item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'}</TableCell>
+                          <TableCell sx={{ textTransform: 'capitalize' }}>{convertAgreement.billing_frequency}</TableCell>
+                          <TableCell>{money(item.rental_rate)}</TableCell>
+                          <TableCell>{item.quantity || 1}</TableCell>
+                          <TableCell>{money(item.shipping_fee)}</TableCell>
+                          <TableCell>{money(item.setup_fee)}</TableCell>
+                          <TableCell>{item.item_condition || '-'}</TableCell>
+                          <TableCell>{billingPeriods}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 900, color: '#047857' }}>{money(billingPeriods * Number(item.rental_rate || 0) * Number(item.quantity || 1))}</TableCell>
+                        </TableRow>
+                      ))}
                       {[
-                        ['Security Deposit Paid', Number(convertAgreement.security_deposit || 0)],
+                        ['Base Rental Total', calculatedBaseRental],
+                        ['Security Deposit (held separately)', Number(convertAgreement.security_deposit || 0)],
                         ['Working Hours Fee', Number(invoiceDetails.worked_hours || 0)],
-                        ['Setup Fee', Number(invoiceDetails.setup_fee || 0) + Number(convertAgreement.setup_fee || 0)],
+                        ['Setup Fees', Number(invoiceDetails.setup_fee || 0) + itemsSetupTotal],
                         ['Service Fee', Number(invoiceDetails.service_fee || 0)],
-                        ['Shipping Fee', Number(invoiceDetails.shipping_fee || 0) + Number(convertAgreement.shipping_fee || 0)],
+                        ['Shipping & Delivery', Number(invoiceDetails.shipping_fee || 0) + itemsShippingTotal],
                         ['Application Fee', Number(invoiceDetails.application_fee || 0)],
-                        ['Tax Amount', convertTaxAmount],
+                        [`Tax (${Number(invoiceDetails.tax_rate || 0)}%)`, convertTaxAmount],
+                        ['Discount', -convertDiscountAmount],
                       ].map(([label, value]) => (
                         <TableRow key={String(label)}>
                           <TableCell colSpan={8} align="right" sx={{ fontWeight: 900, color: '#4B5563' }}>{label}</TableCell>
