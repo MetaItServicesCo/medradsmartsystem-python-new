@@ -39,6 +39,7 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
 
 export interface SalesQuotationDocumentData {
   quotation_number: string
+  document_kind?: 'quotation' | 'direct_invoice'
   work_order?: string | null
   quotation_type: string
   status: string
@@ -100,7 +101,8 @@ const SalesQuotationDocument = ({
   ]
   const pricing = calculateSalesPricing(selectedLines, Number(quotation.discount_amount || 0))
   const hasSelection = quotation.quotation_type !== 'standard'
-  const isInvoice = Boolean(invoiceNumber)
+  const isDirectInvoice = quotation.document_kind === 'direct_invoice'
+  const isInvoice = isDirectInvoice || Boolean(invoiceNumber)
   const documentLabel = isInvoice ? 'Invoice' : 'Quotation'
   const statusKey = invoicePaid ? 'paid' : quotation.status
   const statusLabel = statusKey.replace(/_/g, ' ')
@@ -172,7 +174,7 @@ const SalesQuotationDocument = ({
         <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 2, rowGap: 0.8, alignContent: 'start' }}>
           <Typography sx={{ fontWeight: 900, color: '#64748B' }}>{isInvoice ? 'Invoice #' : 'Quote #'}</Typography>
           <Typography sx={{ fontWeight: 900, textAlign: 'right', color: '#1E1B4B' }}>{isInvoice ? invoiceNumber : quotation.quotation_number}</Typography>
-          {isInvoice && <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Quote #</Typography><Typography sx={{ textAlign: 'right' }}>{quotation.quotation_number}</Typography></>}
+          {isInvoice && !isDirectInvoice && <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Quote #</Typography><Typography sx={{ textAlign: 'right' }}>{quotation.quotation_number}</Typography></>}
           {quotation.work_order && <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Work Order</Typography><Typography sx={{ textAlign: 'right' }}>{quotation.work_order}</Typography></>}
           <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Issued</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(quotation.sent_at || quotation.created_at)}</Typography>
           {quotation.expires_at ? (

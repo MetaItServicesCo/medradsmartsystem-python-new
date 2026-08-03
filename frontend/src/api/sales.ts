@@ -160,6 +160,7 @@ export interface SalesQuotation {
   customer_email: string | null
   customer_phone: string | null
   customer_address: string | null
+  document_kind: 'quotation' | 'direct_invoice'
   quotation_type: string
   selection_status: 'pending' | 'accepted'
   selection_channel: string | null
@@ -192,6 +193,7 @@ export interface SalesQuotation {
   converted_invoice_status: SalesInvoiceStatus | string | null
   converted_invoice_amount_paid: number | null
   converted_invoice_balance_due: number | null
+  converted_invoice_due_date: string | null
   converted_invoice_payment_method: string | null
   created_at: string
   updated_at: string
@@ -210,6 +212,8 @@ export interface SalesInvoice {
   invoice_type: string
   sales_quotation_id: number | null
   sales_quotation_number: string | null
+  source_document_kind: 'quotation' | 'direct_invoice' | null
+  source_document_status: string | null
   work_order: string | null
   customer_name: string
   customer_email: string
@@ -304,6 +308,7 @@ export interface SalesQuotationPayload {
   }>
   primary_recipient_user_id?: number | null
   additional_recipient_user_ids?: number[]
+  due_date?: string | null
 }
 
 export interface SalesQuotationDelivery extends SalesQuotation {
@@ -322,6 +327,7 @@ export interface SalesQuotationPortal {
   quotation: {
     id: number
     quotation_number: string
+    document_kind: 'quotation' | 'direct_invoice'
     work_order: string
     revision: number
     quotation_type: string
@@ -473,6 +479,25 @@ export const fetchSalesQuotation = async (id: number): Promise<SalesQuotation> =
 
 export const createSalesQuotation = async (data: SalesQuotationPayload): Promise<SalesQuotation> => {
   const res = await apiClient.post('/sales/quotations', data)
+  return res.data
+}
+
+export const createDirectSalesInvoice = async (data: SalesQuotationPayload): Promise<SalesQuotation> => {
+  const res = await apiClient.post('/sales/direct-invoices', {
+    ...data,
+    quotation_type: 'standard',
+  })
+  return res.data
+}
+
+export const updateDirectSalesInvoice = async (
+  invoiceId: number,
+  data: SalesQuotationPayload,
+): Promise<SalesQuotation> => {
+  const res = await apiClient.put(`/sales/direct-invoices/${invoiceId}`, {
+    ...data,
+    quotation_type: 'standard',
+  })
   return res.data
 }
 

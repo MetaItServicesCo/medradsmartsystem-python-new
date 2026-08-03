@@ -24,6 +24,10 @@ class SalesQuotation(Base):
     customer_email = Column(String, nullable=True)
     customer_phone = Column(String, nullable=True)
     customer_address = Column(Text, nullable=True)
+    # Quotations and directly-created Sales invoices share the same immutable
+    # pricing/recipient source model.  document_kind keeps the two user-facing
+    # workflows separate while reusing signature, payment, and stock controls.
+    document_kind = Column(String, nullable=False, default="quotation", index=True)
     quotation_type = Column(String, nullable=False, default="standard")
     status = Column(String, nullable=False, default="pending", index=True)
     paid_status = Column(String, nullable=False, default="unpaid", index=True)

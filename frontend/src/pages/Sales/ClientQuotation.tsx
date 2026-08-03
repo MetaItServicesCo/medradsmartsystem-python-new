@@ -69,6 +69,7 @@ const ClientQuotation = () => {
   })
   const data = quoteQ.data
   const quotation = data?.quotation
+  const isDirectInvoice = quotation?.document_kind === 'direct_invoice'
   const productLines = useMemo(
     () => (quotation?.line_items || []).filter(line => line.item_kind === 'product'),
     [quotation?.line_items],
@@ -166,9 +167,9 @@ const ClientQuotation = () => {
     },
     onSuccess: response => {
       queryClient.setQueryData(queryKey, response)
-      toast.success('Quotation accepted. The sales invoice is ready for payment.')
+      toast.success(isDirectInvoice ? 'Invoice signed. It is ready for payment.' : 'Quotation accepted. The sales invoice is ready for payment.')
     },
-    onError: (error: any) => toast.error(error.response?.data?.detail || 'Could not accept quotation'),
+    onError: (error: any) => toast.error(error.response?.data?.detail || `Could not approve ${isDirectInvoice ? 'invoice' : 'quotation'}`),
   })
 
   const decisionMut = useMutation({
@@ -179,7 +180,7 @@ const ClientQuotation = () => {
       queryClient.setQueryData(queryKey, response)
       setDecision(null)
       setComments('')
-      toast.success(response.quotation.status === 'declined' ? 'Quotation declined' : 'Change request sent')
+      toast.success(response.quotation.status === 'declined' ? `${isDirectInvoice ? 'Invoice' : 'Quotation'} declined` : 'Change request sent')
     },
     onError: (error: any) => toast.error(error.response?.data?.detail || 'Could not submit response'),
   })
@@ -243,7 +244,7 @@ const ClientQuotation = () => {
       return toast.error('Choose at least one sales option')
     }
     if (!signatureName.trim()) return toast.error('Enter the signer name')
-    if (!termsAccepted) return toast.error('Accept the quotation terms')
+    if (!termsAccepted) return toast.error(`Accept the ${isDirectInvoice ? 'invoice' : 'quotation'} terms`)
     acceptMut.mutate()
   }
 
@@ -254,7 +255,7 @@ const ClientQuotation = () => {
     return (
       <Box sx={{ minHeight: '100vh', p: 4, bgcolor: '#F5F3FF' }}>
         <Alert severity="error" sx={{ maxWidth: 760, mx: 'auto' }}>
-          {(quoteQ.error as any)?.response?.data?.detail || 'This quotation is unavailable or its link has expired.'}
+          {(quoteQ.error as any)?.response?.data?.detail || 'This sales document is unavailable or its link has expired.'}
         </Alert>
       </Box>
     )
@@ -314,7 +315,7 @@ const ClientQuotation = () => {
             ? () => responseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
             : undefined}
           onPrint={() => window.print()}
-          invoiceNumber={quotation.selection_status === 'accepted' ? data.invoice?.invoice_number : undefined}
+          invoiceNumber={isDirectInvoice || quotation.selection_status === 'accepted' ? data.invoice?.invoice_number : undefined}
           invoicePaid={data.invoice?.status === 'paid'}
         />
 
@@ -485,7 +486,7 @@ const ClientQuotation = () => {
             }}
           >
             <Typography variant="h6" sx={{ color: '#1E1B4B', fontWeight: 900, mb: 0.5 }}>
-              Sign and approve this quotation
+              Sign and approve this {isDirectInvoice ? 'invoice' : 'quotation'}
             </Typography>
             <Typography sx={{ color: '#6B7280', mb: 2 }}>
               Confirm your selected option, enter the signer’s name, and accept the terms.
@@ -538,7 +539,7 @@ const ClientQuotation = () => {
             </Box>
             <FormControlLabel
               control={<Checkbox checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} />}
-              label="I confirm the selected products, pricing, and quotation terms."
+              label={`I confirm the selected products, pricing, and ${isDirectInvoice ? 'invoice' : 'quotation'} terms.`}
             />
             <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
               <Button
@@ -556,7 +557,7 @@ const ClientQuotation = () => {
           </Box>
         ) : (
           <Alert severity={quotation.status === 'declined' ? 'warning' : 'info'}>
-            This quotation is {statusLabel}. No further response is available.
+            This {isDirectInvoice ? 'invoice' : 'quotation'} is {statusLabel}. No further response is available.
           </Alert>
         )}
       </Card>
@@ -652,7 +653,7 @@ const ClientQuotation = () => {
       </Dialog>
 
       <Dialog open={Boolean(decision)} onClose={() => setDecision(null)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 900 }}>{decision === 'decline' ? 'Decline Quotation' : 'Request Changes'}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900 }}>{decision === 'decline' ? `Decline ${isDirectInvoice ? 'Invoice' : 'Quotation'}` : 'Request Changes'}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus

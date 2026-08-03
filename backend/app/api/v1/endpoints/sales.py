@@ -117,6 +117,10 @@ class SalesQuotationCreate(BaseModel):
     items: list[SalesQuotationItemIn]
 
 
+class SalesDirectInvoiceCreate(SalesQuotationCreate):
+    due_date: Optional[date] = None
+
+
 class SalesQuotationUpdate(BaseModel):
     facility_id: Optional[int] = None
     customer_name: Optional[str] = None
@@ -133,6 +137,10 @@ class SalesQuotationUpdate(BaseModel):
     primary_recipient_user_id: Optional[int] = None
     additional_recipient_user_ids: Optional[list[int]] = None
     items: Optional[list[SalesQuotationItemIn]] = None
+
+
+class SalesDirectInvoiceUpdate(SalesQuotationUpdate):
+    due_date: Optional[date] = None
 
 
 class SalesInvoiceUpdate(BaseModel):
@@ -457,6 +465,12 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "invoice_type": invoice.invoice_type.value if hasattr(invoice.invoice_type, "value") else invoice.invoice_type,
         "sales_quotation_id": invoice.sales_quotation_id,
         "sales_quotation_number": invoice.sales_quotation.quotation_number if invoice.sales_quotation else None,
+        "source_document_kind": (
+            (invoice.sales_quotation.document_kind or "quotation")
+            if invoice.sales_quotation
+            else None
+        ),
+        "source_document_status": invoice.sales_quotation.status if invoice.sales_quotation else None,
         "work_order": invoice.sales_quotation.work_order if invoice.sales_quotation else None,
         "customer_name": invoice.customer_name,
         "customer_email": invoice.customer_email,
@@ -499,6 +513,7 @@ def _quotation_response(quotation: SalesQuotation) -> dict[str, Any]:
         "customer_email": quotation.customer_email,
         "customer_phone": quotation.customer_phone,
         "customer_address": quotation.customer_address,
+        "document_kind": quotation.document_kind or "quotation",
         "quotation_type": quotation.quotation_type,
         "selection_status": quotation.selection_status or "pending",
         "selection_channel": quotation.selection_channel,
@@ -541,6 +556,7 @@ def _quotation_response(quotation: SalesQuotation) -> dict[str, Any]:
         ),
         "converted_invoice_amount_paid": quotation.converted_invoice.amount_paid if quotation.converted_invoice else None,
         "converted_invoice_balance_due": quotation.converted_invoice.balance_due if quotation.converted_invoice else None,
+        "converted_invoice_due_date": quotation.converted_invoice.due_date if quotation.converted_invoice else None,
         "converted_invoice_payment_method": quotation.converted_invoice.payment_method if quotation.converted_invoice else quotation.payment_method,
         "created_at": quotation.created_at,
         "updated_at": quotation.updated_at,
@@ -981,8 +997,16 @@ def _create_invoice_for_accepted_quotation(
     quotation: SalesQuotation,
     accepted_lines: list[SalesQuotationLineItem],
     accepted_by: Optional[User],
+    *,
+    reserve_inventory_now: bool = True,
+    mark_accepted: bool = True,
+    due_date: Optional[date] = None,
 ) -> Invoice:
-    """Create the single pending-approval invoice for a portal acceptance."""
+    """Create one Sales invoice from its pricing source.
+
+    Accepted quotations reserve immediately. Direct invoices are initially
+    drafts and reserve only when sent, so abandoned drafts never block stock.
+    """
     if quotation.converted_invoice:
         return quotation.converted_invoice
 
@@ -1045,11 +1069,15 @@ def _create_invoice_for_accepted_quotation(
         balance_due=total_amount,
         status=InvoiceStatus.PENDING,
         issue_date=date.today(),
-        due_date=date.today() + timedelta(days=30),
+        due_date=due_date or (date.today() + timedelta(days=30)),
         payment_terms="Net 30",
         notes=compose_invoice_edit_notes(
             None,
-            f"Sales invoice generated from accepted quotation {quotation.quotation_number}.",
+            (
+                f"Direct Sales invoice created from {quotation.work_order}."
+                if (quotation.document_kind or "quotation") == "direct_invoice"
+                else f"Sales invoice generated from accepted quotation {quotation.quotation_number}."
+            ),
             {
                 "line_items": invoice_line_items,
                 "labels": {
@@ -1064,15 +1092,22 @@ def _create_invoice_for_accepted_quotation(
     )
     db.add(invoice)
     db.flush()
+    is_direct_invoice = (quotation.document_kind or "quotation") == "direct_invoice"
     record_invoice_created(
         db,
         invoice,
         accepted_by,
-        f"Sales invoice created from accepted quotation {quotation.quotation_number}",
+        (
+            f"Direct Sales invoice {invoice.invoice_number} created"
+            if is_direct_invoice
+            else f"Sales invoice created from accepted quotation {quotation.quotation_number}"
+        ),
     )
-    reserve_sales_inventory(db, quotation, invoice, accepted_lines, accepted_by)
+    if reserve_inventory_now:
+        reserve_sales_inventory(db, quotation, invoice, accepted_lines, accepted_by)
     quotation.converted_invoice_id = invoice.id
-    quotation.status = "accepted"
+    if mark_accepted:
+        quotation.status = "accepted"
     quotation.updated_at = datetime.utcnow()
     return invoice
 
@@ -1412,6 +1447,7 @@ def list_quotations(
         query = query.filter(SalesQuotation.status.in_(COMPLETED_QUOTATION_STATUSES))
     elif view == "quotations":
         query = query.filter(
+            SalesQuotation.document_kind == "quotation",
             SalesQuotation.status.notin_(IN_PROGRESS_QUOTATION_STATUSES + COMPLETED_QUOTATION_STATUSES)
         )
     search_term = normalize_list_search(search)
@@ -1479,6 +1515,182 @@ def get_quotation(
     if not quotation:
         raise HTTPException(status_code=404, detail="Sales quotation not found")
     return _quotation_response(quotation)
+
+
+@router.post("/direct-invoices", status_code=status.HTTP_201_CREATED)
+def create_direct_invoice(
+    payload: SalesDirectInvoiceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Create a direct Sales invoice draft without a quotation approval step."""
+    if current_user.role not in INTERNAL_SALES_ROLES:
+        raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can create Sales invoices")
+    if payload.facility_id is not None:
+        facility = db.query(Facility).filter(Facility.id == payload.facility_id).first()
+        if not facility:
+            raise HTTPException(status_code=404, detail="Facility not found")
+        require_facility_access(db, current_user, payload.facility_id)
+
+    source = SalesQuotation(
+        quotation_number=_next_number(db, SalesQuotation, "quotation_number", "SQ"),
+        work_order=_next_number(db, SalesQuotation, "work_order", "WO"),
+        facility_id=payload.facility_id,
+        created_by_id=current_user.id,
+        customer_name=payload.customer_name,
+        customer_email=str(payload.customer_email) if payload.customer_email else None,
+        customer_phone=payload.customer_phone,
+        customer_address=payload.customer_address,
+        document_kind="direct_invoice",
+        quotation_type="standard",
+        status="draft",
+        paid_status="unpaid",
+        requested_date=payload.requested_date or date.today(),
+        notes=payload.notes,
+        tax_amount=payload.tax_amount,
+        discount_amount=payload.discount_amount,
+        history=[],
+    )
+    _append_history(source, "direct_invoice_created", current_user)
+    db.add(source)
+    db.flush()
+    _sync_quotation_recipients(
+        db,
+        source,
+        payload.primary_recipient_user_id,
+        payload.additional_recipient_user_ids,
+    )
+    _apply_items(db, source, payload.items, current_user)
+    invoice = _create_invoice_for_accepted_quotation(
+        db,
+        source,
+        _effective_quotation_lines(source),
+        current_user,
+        reserve_inventory_now=False,
+        mark_accepted=False,
+        due_date=payload.due_date,
+    )
+    invoice.issue_date = payload.requested_date or date.today()
+    log_activity(
+        db,
+        "sales_invoices",
+        invoice.id,
+        "CREATE_DIRECT",
+        current_user,
+        {"invoice_number": invoice.invoice_number, "work_order": source.work_order},
+    )
+    db.commit()
+    db.refresh(source)
+    return _quotation_response(source)
+
+
+@router.put("/direct-invoices/{invoice_id}")
+def update_direct_invoice(
+    invoice_id: int,
+    payload: SalesDirectInvoiceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    invoice = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.sales_quotation).joinedload(SalesQuotation.facility),
+            joinedload(Invoice.sales_quotation).joinedload(SalesQuotation.line_items).joinedload(SalesQuotationLineItem.part),
+            joinedload(Invoice.sales_quotation).selectinload(SalesQuotation.recipients).joinedload(SalesQuotationRecipient.user),
+        )
+        .filter(Invoice.id == invoice_id, Invoice.invoice_type == InvoiceType.SALES)
+        .with_for_update(of=Invoice)
+        .first()
+    )
+    source = invoice.sales_quotation if invoice else None
+    if not invoice or not source or (source.document_kind or "quotation") != "direct_invoice":
+        raise HTTPException(status_code=404, detail="Direct Sales invoice not found")
+    if source.facility_id is not None:
+        require_facility_access(db, current_user, source.facility_id)
+    if source.status != "draft" or source.acceptance:
+        raise HTTPException(status_code=409, detail="Only an unsigned direct Sales invoice draft can be edited")
+    if payload.facility_id is not None:
+        require_facility_access(db, current_user, payload.facility_id)
+
+    update_data = payload.model_dump(
+        exclude_unset=True,
+        exclude={
+            "items",
+            "primary_recipient_user_id",
+            "additional_recipient_user_ids",
+            "status",
+            "paid_status",
+            "due_date",
+            "quotation_type",
+        },
+    )
+    for field, value in update_data.items():
+        if field == "customer_email" and value is not None:
+            value = str(value)
+        setattr(source, field, value)
+    source.quotation_type = "standard"
+    if payload.items is not None:
+        _apply_items(db, source, payload.items, current_user)
+    else:
+        _apply_quotation_pricing(source, _effective_quotation_lines(source))
+    if {"primary_recipient_user_id", "additional_recipient_user_ids"}.intersection(payload.model_fields_set):
+        _sync_quotation_recipients(
+            db,
+            source,
+            payload.primary_recipient_user_id,
+            payload.additional_recipient_user_ids or [],
+        )
+
+    lines = _effective_quotation_lines(source)
+    subtotal, _, tax_amount, total_amount = _apply_quotation_pricing(source, lines)
+    invoice.customer_name = source.customer_name
+    invoice.customer_email = source.customer_email or "billing@example.com"
+    invoice.customer_phone = source.customer_phone
+    invoice.customer_address = source.customer_address
+    invoice.facility_id = source.facility_id
+    if "requested_date" in payload.model_fields_set and payload.requested_date:
+        invoice.issue_date = payload.requested_date
+    invoice.subtotal = subtotal
+    invoice.tax_amount = tax_amount
+    invoice.discount_amount = _money(source.discount_amount)
+    invoice.total_amount = total_amount
+    invoice.balance_due = max(total_amount - _money(invoice.amount_paid), Decimal("0"))
+    if "due_date" in payload.model_fields_set and payload.due_date:
+        invoice.due_date = payload.due_date
+    invoice.notes = compose_invoice_edit_notes(
+        invoice.notes,
+        f"Direct Sales invoice created from {source.work_order}.",
+        {
+            "line_items": [
+                {
+                    "id": f"sales-line-{line.id}",
+                    "item_number": _sales_line_item_number(line),
+                    "description": line.description,
+                    "quantity": line.quantity,
+                    "unit_price": float(line.unit_price),
+                    "shipping_fee": float(line.shipping_fee),
+                    "setup_fee": float(line.setup_fee),
+                    "labor_fee": float(line.labor_fee),
+                    "condition": line.condition,
+                    "total": float(line.total),
+                    "item_kind": line.item_kind or "product",
+                    "item_metadata": line.item_metadata or {},
+                }
+                for line in lines
+            ],
+            "labels": {
+                "shipping": "Shipping & Packing",
+                "setup": "Delivery & Setup",
+                "tax": "Sales Tax (8.25%)",
+            },
+        },
+    )
+    source.updated_at = datetime.utcnow()
+    _append_history(source, "direct_invoice_updated", current_user, update_data)
+    log_activity(db, "sales_invoices", invoice.id, "UPDATE_DIRECT", current_user, update_data)
+    db.commit()
+    db.refresh(source)
+    return _quotation_response(source)
 
 
 @router.post("/quotations", status_code=status.HTTP_201_CREATED)
@@ -1743,9 +1955,24 @@ def send_quotation(
         raise HTTPException(status_code=404, detail="Sales quotation not found")
     if quotation.facility_id is not None:
         require_facility_access(db, current_user, quotation.facility_id)
-    if quotation.converted_invoice_id or quotation.status in {"accepted", "completed", "cancelled", "declined"}:
-        raise HTTPException(status_code=409, detail="This quotation can no longer be sent")
+    is_direct_invoice = (quotation.document_kind or "quotation") == "direct_invoice"
+    if (
+        (quotation.converted_invoice_id and not is_direct_invoice)
+        or quotation.status in {"accepted", "completed", "cancelled", "declined"}
+    ):
+        raise HTTPException(status_code=409, detail="This sales document can no longer be sent")
     _validate_saved_quotation_stock(db, quotation)
+
+    if is_direct_invoice:
+        if not quotation.converted_invoice:
+            raise HTTPException(status_code=409, detail="The direct Sales invoice record is missing")
+        reserve_sales_inventory(
+            db,
+            quotation,
+            quotation.converted_invoice,
+            _effective_quotation_lines(quotation),
+            current_user,
+        )
 
     primary = next(
         (item for item in quotation.recipients if item.recipient_type == "primary"),
@@ -1793,8 +2020,12 @@ def send_quotation(
             create_notifications(
                 db,
                 user_ids=[recipient.user_id],
-                title="Sales quotation received",
-                message=f"{quotation.quotation_number} is ready for your review.",
+                title="Sales invoice received" if is_direct_invoice else "Sales quotation received",
+                message=(
+                    f"{quotation.converted_invoice.invoice_number} is ready to sign and pay."
+                    if is_direct_invoice
+                    else f"{quotation.quotation_number} is ready for your review."
+                ),
                 notification_type="billing",
                 link_url=relative_url,
                 actor_id=current_user.id,
@@ -1802,15 +2033,23 @@ def send_quotation(
         background_tasks.add_task(
             send_html_email,
             [recipient.email],
-            f"Quotation {quotation.quotation_number}",
+            (
+                f"Invoice {quotation.converted_invoice.invoice_number}"
+                if is_direct_invoice
+                else f"Quotation {quotation.quotation_number}"
+            ),
             (
                 f"<p>Hello {recipient.name},</p>"
-                f"<p>Quotation <strong>{quotation.quotation_number}</strong> is ready for review.</p>"
-                f"<p><a href=\"{public_url}\">View quotation</a></p>"
+                f"<p>{'Invoice' if is_direct_invoice else 'Quotation'} <strong>"
+                f"{quotation.converted_invoice.invoice_number if is_direct_invoice else quotation.quotation_number}"
+                f"</strong> is ready for {'signature and payment' if is_direct_invoice else 'review'}.</p>"
+                f"<p><a href=\"{public_url}\">View {'invoice' if is_direct_invoice else 'quotation'}</a></p>"
                 f"<p>This secure link expires on {expires_at.strftime('%B %d, %Y')}.</p>"
             ),
             (
-                f"Hello {recipient.name},\n\nQuotation {quotation.quotation_number} is ready for review.\n"
+                f"Hello {recipient.name},\n\n{'Invoice' if is_direct_invoice else 'Quotation'} "
+                f"{quotation.converted_invoice.invoice_number if is_direct_invoice else quotation.quotation_number} "
+                f"is ready for {'signature and payment' if is_direct_invoice else 'review'}.\n"
                 f"{public_url}\n\nThis link expires on {expires_at.strftime('%B %d, %Y')}."
             ),
         )
@@ -2702,7 +2941,8 @@ def sales_summary(
     in_progress = base.filter(SalesQuotation.status.in_(IN_PROGRESS_QUOTATION_STATUSES)).count()
     completed = base.filter(SalesQuotation.status.in_(COMPLETED_QUOTATION_STATUSES)).count()
     quotations = base.filter(
-        SalesQuotation.status.notin_(IN_PROGRESS_QUOTATION_STATUSES + COMPLETED_QUOTATION_STATUSES)
+        SalesQuotation.document_kind == "quotation",
+        SalesQuotation.status.notin_(IN_PROGRESS_QUOTATION_STATUSES + COMPLETED_QUOTATION_STATUSES),
     ).count()
     invoices = scope_invoice_approval_visibility(
         scope_query_to_user_facilities(db.query(Invoice), Invoice.facility_id, db, current_user)

@@ -45,6 +45,7 @@ from app.utils.invoice_ledger import (
 from app.utils.sales_inventory import (
     ensure_sales_inventory_available,
     fulfill_sales_invoice_inventory,
+    release_sales_inventory_reservations,
 )
 
 
@@ -113,6 +114,7 @@ def _portal_response(recipient: SalesQuotationRecipient) -> dict[str, Any]:
         "quotation": {
             "id": quotation.id,
             "quotation_number": quotation.quotation_number,
+            "document_kind": quotation.document_kind or "quotation",
             "work_order": quotation.work_order,
             "revision": quotation.revision or 1,
             "quotation_type": quotation.quotation_type,
@@ -630,7 +632,8 @@ def _accept_recipient_quotation(
     signature_name = payload.signature_name.strip()
     if not signature_name:
         raise HTTPException(status_code=400, detail="Signature name is required")
-    if quotation.acceptance or quotation.converted_invoice:
+    is_direct_invoice = (quotation.document_kind or "quotation") == "direct_invoice"
+    if quotation.acceptance:
         return _portal_response(recipient)
     if quotation.status not in {"sent", "viewed"}:
         raise HTTPException(status_code=409, detail="This quotation cannot be accepted in its current status")
@@ -671,10 +674,15 @@ def _accept_recipient_quotation(
     quotation.status = "accepted"
     recipient.status = "accepted"
     recipient.accepted_at = accepted_at
-    invoice = _create_invoice_for_accepted_quotation(db, quotation, accepted_lines, actor or recipient.user)
+    invoice = _create_invoice_for_accepted_quotation(
+        db,
+        quotation,
+        accepted_lines,
+        actor or recipient.user,
+    )
     _append_history(
         quotation,
-        "invoice_generated",
+        "direct_invoice_signed" if is_direct_invoice else "invoice_generated",
         actor,
         {
             "invoice_id": invoice.id,
@@ -685,9 +693,11 @@ def _accept_recipient_quotation(
     )
     notify_admins(
         db,
-        title="Sales quotation accepted",
+        title="Sales invoice signed" if is_direct_invoice else "Sales quotation accepted",
         message=(
-            f"{quotation.quotation_number} was accepted by {recipient.name}; "
+            f"{invoice.invoice_number} was signed by {recipient.name} and is ready for payment."
+            if is_direct_invoice
+            else f"{quotation.quotation_number} was accepted by {recipient.name}; "
             f"{invoice.invoice_number} is ready for payment."
         ),
         notification_type="billing",
@@ -697,8 +707,12 @@ def _accept_recipient_quotation(
     create_notifications(
         db,
         user_ids=[item.user_id for item in quotation.recipients if item.user_id],
-        title="Quotation accepted",
-        message=f"{quotation.quotation_number} was accepted and its invoice is ready for payment.",
+        title="Invoice signed" if is_direct_invoice else "Quotation accepted",
+        message=(
+            f"{invoice.invoice_number} was signed and is ready for payment."
+            if is_direct_invoice
+            else f"{quotation.quotation_number} was accepted and its invoice is ready for payment."
+        ),
         notification_type="billing",
         link_url=f"/quotation/account/{quotation.id}",
         actor_id=actor.id if actor else recipient.user_id,
@@ -762,9 +776,21 @@ def decide_public_quotation(
     if action not in {"decline", "request_changes"}:
         raise HTTPException(status_code=400, detail="Action must be decline or request_changes")
     quotation = recipient.quotation
-    if quotation.selection_status == "accepted" or quotation.converted_invoice_id:
+    is_direct_invoice = (quotation.document_kind or "quotation") == "direct_invoice"
+    if quotation.selection_status == "accepted" or (
+        quotation.converted_invoice_id and not is_direct_invoice
+    ):
         raise HTTPException(status_code=409, detail="An accepted quotation can no longer be changed")
     quotation.status = "declined" if action == "decline" else "changes_requested"
+    if is_direct_invoice and quotation.converted_invoice:
+        quotation.converted_invoice.status = InvoiceStatus.CANCELLED
+        quotation.converted_invoice.balance_due = 0
+        release_sales_inventory_reservations(
+            db,
+            quotation.converted_invoice,
+            recipient.user,
+            f"Direct Sales invoice {quotation.converted_invoice.invoice_number} was {quotation.status.replace('_', ' ')}",
+        )
     recipient.status = quotation.status
     _append_history(
         quotation,
@@ -1038,9 +1064,21 @@ def decide_client_quotation(
     if action not in {"decline", "request_changes"}:
         raise HTTPException(status_code=400, detail="Action must be decline or request_changes")
     quotation = recipient.quotation
-    if quotation.selection_status == "accepted" or quotation.converted_invoice_id:
+    is_direct_invoice = (quotation.document_kind or "quotation") == "direct_invoice"
+    if quotation.selection_status == "accepted" or (
+        quotation.converted_invoice_id and not is_direct_invoice
+    ):
         raise HTTPException(status_code=409, detail="An accepted quotation can no longer be changed")
     quotation.status = "declined" if action == "decline" else "changes_requested"
+    if is_direct_invoice and quotation.converted_invoice:
+        quotation.converted_invoice.status = InvoiceStatus.CANCELLED
+        quotation.converted_invoice.balance_due = 0
+        release_sales_inventory_reservations(
+            db,
+            quotation.converted_invoice,
+            current_user,
+            f"Direct Sales invoice {quotation.converted_invoice.invoice_number} was {quotation.status.replace('_', ' ')}",
+        )
     recipient.status = quotation.status
     _append_history(
         quotation,

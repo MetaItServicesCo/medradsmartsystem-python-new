@@ -39,6 +39,7 @@ import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import {
   completeSalesQuotation,
   convertSalesQuotationToInvoice,
+  createDirectSalesInvoice,
   createSalesQuotation,
   deleteSalesQuotation,
   fetchSalesHistory,
@@ -53,6 +54,7 @@ import {
   reviseSalesQuotation,
   sendSalesQuotation,
   updateSalesInvoice,
+  updateDirectSalesInvoice,
   updateSalesQuotation,
   type SalesInvoice,
   type SalesInvoiceCreatePayload,
@@ -169,6 +171,7 @@ const emptyQuotation = (): SalesQuotationPayload => ({
   customer_address: '',
   quotation_type: 'standard',
   requested_date: new Date().toISOString().slice(0, 10),
+  due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   notes: '',
   tax_amount: 0,
   discount_amount: 0,
@@ -249,6 +252,7 @@ const Sales = () => {
   const [search, setSearch] = useState(routeSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [quotationDialog, setQuotationDialog] = useState(false)
+  const [salesDocumentMode, setSalesDocumentMode] = useState<'quotation' | 'invoice'>('quotation')
   const [editingQuotation, setEditingQuotation] = useState<SalesQuotation | null>(null)
   const [viewQuotation, setViewQuotation] = useState<SalesQuotation | null>(null)
   const [quotationForm, setQuotationForm] = useState<SalesQuotationPayload>(emptyQuotation())
@@ -596,7 +600,11 @@ const Sales = () => {
 
   const saveQuotationMut = useMutation({
     mutationFn: async (action: 'draft' | 'send') => {
-      const quotation = editingQuotation
+      const quotation = salesDocumentMode === 'invoice'
+        ? editingQuotation?.converted_invoice_id
+          ? await updateDirectSalesInvoice(editingQuotation.converted_invoice_id, { ...quotationForm, quotation_type: 'standard' })
+          : await createDirectSalesInvoice({ ...quotationForm, quotation_type: 'standard' })
+        : editingQuotation
         ? await updateSalesQuotation(editingQuotation.id, quotationForm)
         : await createSalesQuotation(quotationForm)
       const delivered = action === 'send'
@@ -605,7 +613,14 @@ const Sales = () => {
       return { quotation: delivered, sent: action === 'send' }
     },
     onSuccess: ({ quotation, sent }) => {
-      toast.success(sent ? 'Sales quotation sent to its recipients' : editingQuotation ? 'Sales quotation draft updated' : 'Sales quotation saved as draft')
+      const isInvoice = quotation.document_kind === 'direct_invoice'
+      toast.success(
+        sent
+          ? `Sales ${isInvoice ? 'invoice' : 'quotation'} sent to its recipients`
+          : editingQuotation
+            ? 'Sales quotation draft updated'
+            : `Sales ${isInvoice ? 'invoice' : 'quotation'} saved as draft`,
+      )
       if (sent && 'primary_share_url' in quotation && typeof quotation.primary_share_url === 'string' && quotation.primary_share_url) {
         setDeliveryLink(quotation.primary_share_url)
       }
@@ -622,10 +637,14 @@ const Sales = () => {
       setRefundAdjustmentValue(0)
       invalidateSales()
       locateSalesRecord(
-        '/sales/quotations',
-        `sales-quotation-${quotation.id}`,
-        quotation.work_order || quotation.quotation_number,
-        sent ? 'Sent quotation located' : editingQuotation ? 'Updated draft located' : 'New draft located',
+        isInvoice ? '/sales/invoices' : '/sales/quotations',
+        isInvoice ? `sales-invoice-${quotation.converted_invoice_id}` : `sales-quotation-${quotation.id}`,
+        (isInvoice ? quotation.converted_invoice_number : quotation.work_order) || quotation.quotation_number,
+        sent
+          ? `Sent ${isInvoice ? 'invoice' : 'quotation'} located`
+          : editingQuotation
+            ? 'Updated draft located'
+            : `New ${isInvoice ? 'invoice' : 'draft'} located`,
       )
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save sales quotation'),
@@ -644,15 +663,16 @@ const Sales = () => {
   const sendQuotationMut = useMutation({
     mutationFn: (id: number) => sendSalesQuotation(id),
     onSuccess: quotation => {
-      toast.success('Sales quotation sent to its recipients')
+      const isInvoice = quotation.document_kind === 'direct_invoice'
+      toast.success(`Sales ${isInvoice ? 'invoice' : 'quotation'} sent to its recipients`)
       if (quotation.primary_share_url) setDeliveryLink(quotation.primary_share_url)
       closeActions()
       invalidateSales()
       locateSalesRecord(
-        '/sales/quotations',
-        `sales-quotation-${quotation.id}`,
-        quotation.work_order || quotation.quotation_number,
-        'Sent quotation located',
+        isInvoice ? '/sales/invoices' : '/sales/quotations',
+        isInvoice ? `sales-invoice-${quotation.converted_invoice_id}` : `sales-quotation-${quotation.id}`,
+        (isInvoice ? quotation.converted_invoice_number : quotation.work_order) || quotation.quotation_number,
+        `Sent ${isInvoice ? 'invoice' : 'quotation'} located`,
       )
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not send quotation'),
@@ -755,7 +775,8 @@ const Sales = () => {
     candidate => quotationForm.additional_recipient_user_ids?.includes(candidate.id),
   )
 
-  const openCreate = () => {
+  const openCreate = (mode: 'quotation' | 'invoice' = 'quotation') => {
+    setSalesDocumentMode(mode)
     setEditingQuotation(null)
     setSelectedPart(null)
     setQuotationForm(emptyQuotation())
@@ -772,6 +793,7 @@ const Sales = () => {
 
   const openEdit = (quotation: SalesQuotation) => {
     closeActions()
+    setSalesDocumentMode(quotation.document_kind === 'direct_invoice' ? 'invoice' : 'quotation')
     setEditingQuotation(quotation)
     setSelectedPart(null)
     setQuotationForm({
@@ -784,6 +806,7 @@ const Sales = () => {
         ? quotation.quotation_type
         : 'standard',
       requested_date: quotation.requested_date || new Date().toISOString().slice(0, 10),
+      due_date: quotation.converted_invoice_due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       notes: quotation.notes || '',
       tax_amount: Number(quotation.tax_amount || 0),
       discount_amount: Number(quotation.discount_amount || 0),
@@ -813,6 +836,23 @@ const Sales = () => {
     setRefundAdjustmentReference('')
     setRefundAdjustmentValue(0)
     setQuotationDialog(true)
+  }
+
+  const openInvoiceForEdit = async (invoice: SalesInvoice) => {
+    if (invoice.source_document_kind === 'direct_invoice') {
+      if (invoice.source_document_status !== 'draft') {
+        toast.info('A sent Sales invoice is locked to preserve the customer signature and payment record')
+        return
+      }
+      const source = await ensureQuotation(invoice.sales_quotation_id)
+      if (!source) {
+        toast.error('Could not load the Sales invoice draft')
+        return
+      }
+      openEdit(source)
+      return
+    }
+    openInvoiceEdit(invoice)
   }
 
   const addLineItem = () => {
@@ -1591,8 +1631,8 @@ const Sales = () => {
             <Typography variant="h4" sx={{ color: '#1E1B4B', fontWeight: 900 }}>Sales Module</Typography>
             <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Create quotations from inventory parts marked for Sales, convert them to invoices, and track progress through completion.</Typography>
           </Box>
-          <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
-            New Quotation
+          <Button startIcon={<AddIcon />} variant="contained" onClick={() => openCreate(tab === 1 ? 'invoice' : 'quotation')} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
+            {tab === 1 ? 'New Invoice' : 'New Quotation'}
           </Button>
         </Box>
       </Card>
@@ -1819,6 +1859,20 @@ const Sales = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>
           Print Documents
         </MenuItem>
+        {actionInvoice?.source_document_kind === 'direct_invoice' && actionInvoice.source_document_status === 'draft' && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            onClick={async () => {
+              const source = await ensureQuotation(actionInvoice.sales_quotation_id)
+              if (source) sendQuotationMut.mutate(source.id)
+              else toast.error('Could not load the invoice delivery record')
+              closeInvoiceActions()
+            }}
+          >
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><AssignmentIcon fontSize="small" /></ListItemIcon>
+            Send to Customer
+          </MenuItem>
+        )}
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
           if (actionInvoice) {
             openInvoiceEdit(actionInvoice)
@@ -1829,7 +1883,7 @@ const Sales = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PaymentIcon fontSize="small" /></ListItemIcon>
           Pay
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) openInvoiceEdit(actionInvoice); closeInvoiceActions() }}>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) void openInvoiceForEdit(actionInvoice); closeInvoiceActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
         </MenuItem>
@@ -1963,7 +2017,11 @@ const Sales = () => {
       />
 
       <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{editingQuotation ? 'Edit Sales Quotation' : 'Create Sales Quotation'}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          {editingQuotation
+            ? `Edit Sales ${salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'}`
+            : salesDocumentMode === 'invoice' ? 'Create Sales Invoice' : 'Create Sales Quotation'}
+        </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
             <FacilitySearchAutocomplete
@@ -2001,7 +2059,7 @@ const Sales = () => {
                       label="Primary Recipient"
                       helperText={recipientCandidates.length === 0 && !recipientCandidatesQ.isLoading
                         ? 'No facility admin, manager, or client is attached to this facility'
-                        : 'This person can accept or decline the quotation'}
+                        : salesDocumentMode === 'invoice' ? 'This person can sign and pay the invoice' : 'This person can accept or decline the quotation'}
                     />
                   )}
                 />
@@ -2020,7 +2078,7 @@ const Sales = () => {
                     <TextField
                       {...params}
                       label="Additional Recipients"
-                      helperText="Optional; copied recipients can view the quotation"
+                      helperText={`Optional; copied recipients can view the ${salesDocumentMode === 'invoice' ? 'invoice' : 'quotation'}`}
                     />
                   )}
                 />
@@ -2029,7 +2087,7 @@ const Sales = () => {
             <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
             <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
-            <TextField
+            {salesDocumentMode === 'quotation' && <TextField
               select
               label="Quotation Type"
               value={quotationForm.quotation_type || 'standard'}
@@ -2048,8 +2106,11 @@ const Sales = () => {
               <MenuItem value="standard">Standard</MenuItem>
               <MenuItem value="choice_single">Choice Single</MenuItem>
               <MenuItem value="choice_multiple">Choice Multiple</MenuItem>
-            </TextField>
-            <TextField label="Requested Date" type="date" value={quotationForm.requested_date || ''} onChange={e => setQuotationForm(prev => ({ ...prev, requested_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
+            </TextField>}
+            <TextField label={salesDocumentMode === 'invoice' ? 'Invoice Date' : 'Requested Date'} type="date" value={quotationForm.requested_date || ''} onChange={e => setQuotationForm(prev => ({ ...prev, requested_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
+            {salesDocumentMode === 'invoice' && (
+              <TextField label="Due Date" type="date" value={quotationForm.due_date || ''} onChange={e => setQuotationForm(prev => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
+            )}
             <TextField label="Customer Address" value={quotationForm.customer_address || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_address: e.target.value }))} sx={{ gridColumn: '1 / -1' }} />
           </Box>
 
@@ -2446,16 +2507,16 @@ const Sales = () => {
             variant="contained"
             sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
           >
-            Send Quotation
+            Send {salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation Sent</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} Sent</DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ color: '#4B5563', mb: 2 }}>
-            Recipients were notified. You can also copy this secure quotation link.
+            Recipients were notified. You can also copy this secure {salesDocumentMode === 'invoice' ? 'invoice' : 'quotation'} link.
           </Typography>
           <TextField fullWidth value={deliveryLink} InputProps={{ readOnly: true }} />
         </DialogContent>
@@ -2465,7 +2526,7 @@ const Sales = () => {
             variant="contained"
             onClick={() => {
               navigator.clipboard.writeText(deliveryLink)
-                .then(() => toast.success('Quotation link copied'))
+                .then(() => toast.success(`${salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} link copied`))
                 .catch(() => toast.error('Copy the link from the field'))
             }}
             sx={{ fontWeight: 900 }}
