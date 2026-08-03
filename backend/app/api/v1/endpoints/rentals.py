@@ -46,6 +46,12 @@ from app.utils.invoice_approval import (
     validate_requested_payment_status,
 )
 from app.utils.logging import log_activity
+from app.utils.square_payments import (
+    square_is_configured,
+    create_square_card_on_file,
+    SquareRequestError,
+)
+from app.utils.rental_billing import run_rental_recurring_billing
 from app.utils.permissions import has_module_permission
 from app.utils.list_search import (
     contains_ci,
@@ -613,6 +619,60 @@ def upsert_product_rate(
     db.commit()
     db.refresh(rate)
     return _rate_card_response(rate, part_id)
+
+
+class RentalCardOnFilePayload(BaseModel):
+    source_id: str  # Square Web-SDK card nonce
+
+
+@router.post("/{rental_id}/save-card")
+def save_rental_card(
+    rental_id: int,
+    payload: RentalCardOnFilePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Vault a card on file (via Square) so the agreement can be auto-charged each period."""
+    if not square_is_configured():
+        raise HTTPException(status_code=400, detail="Square payments are not configured")
+    rental = (
+        db.query(Rental)
+        .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part))
+        .filter(Rental.id == rental_id)
+        .first()
+    )
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    try:
+        result = create_square_card_on_file(
+            source_id=payload.source_id,
+            idempotency_key=f"rental-card-{rental_id}-{int(datetime.utcnow().timestamp())}",
+            customer_name=rental.customer_name,
+            customer_email=rental.customer_email,
+        )
+    except SquareRequestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+    rental.square_card_id = result["card_id"]
+    rental.square_customer_id = result["customer_id"]
+    rental.failed_charge_count = 0
+    rental.updated_at = datetime.utcnow()
+    _append_history(rental, "card_saved", current_user, {"brand": result.get("card_brand"), "last_4": result.get("last_4")})
+    log_activity(db, "rentals", rental.id, "SAVE_CARD", current_user, {"last_4": result.get("last_4")})
+    db.commit()
+    db.refresh(rental)
+    return _rental_response(rental)
+
+
+@router.post("/run-recurring-billing")
+def run_recurring_billing(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Raise due period invoices and auto-charge/notify. Intended for a daily cron."""
+    if current_user.role not in {UserRole.ADMIN, UserRole.SUPERADMIN}:
+        raise HTTPException(status_code=403, detail="Only an admin can run recurring rental billing")
+    return run_rental_recurring_billing(db)
 
 
 @router.get("")

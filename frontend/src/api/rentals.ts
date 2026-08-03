@@ -352,3 +352,13 @@ export const upsertRentalProductRate = async (
   const res = await apiClient.put(`/rentals/product-rates/${partId}`, data)
   return res.data
 }
+
+export const runRecurringBilling = async (): Promise<Record<string, number>> => {
+  const res = await apiClient.post('/rentals/run-recurring-billing')
+  return res.data
+}
+
+export const saveRentalCard = async (id: number, sourceId: string): Promise<Rental> => {
+  const res = await apiClient.post(`/rentals/${id}/save-card`, { source_id: sourceId })
+  return res.data
+}

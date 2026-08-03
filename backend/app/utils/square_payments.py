@@ -142,6 +142,57 @@ def create_square_payment(
     return payment
 
 
+def _square_post(path: str, body: dict[str, Any], fallback: str) -> dict[str, Any]:
+    try:
+        response = httpx.post(f"{_square_base_url()}{path}", headers=_headers(), json=body, timeout=25)
+    except httpx.RequestError as exc:
+        raise SquareRequestError("Square could not be reached. Please try again.") from exc
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    if response.status_code >= 400:
+        message, errors = _error_message(payload, fallback)
+        public_status = 400 if 400 <= response.status_code < 500 else 502
+        raise SquareRequestError(message, status_code=public_status, errors=errors)
+    return payload
+
+
+def create_square_card_on_file(
+    *,
+    source_id: str,
+    idempotency_key: str,
+    customer_name: str,
+    customer_email: str | None = None,
+) -> dict[str, Any]:
+    """Store a card on file for recurring auto-charge: create (or reuse) a Square
+    customer, then vault the card. Returns the customer id + card id + card summary."""
+    customer_body: dict[str, Any] = {"given_name": customer_name or "Rental customer"}
+    if customer_email:
+        customer_body["email_address"] = customer_email
+    customer = _square_post("/customers", customer_body, "Square could not create the customer").get("customer") or {}
+    customer_id = customer.get("id")
+    if not customer_id:
+        raise SquareRequestError("Square returned an invalid customer response")
+
+    card_body = {
+        "idempotency_key": idempotency_key,
+        "source_id": source_id,
+        "card": {"customer_id": customer_id},
+    }
+    card = _square_post("/cards", card_body, "Square could not save the card").get("card") or {}
+    if not card.get("id"):
+        raise SquareRequestError("Square returned an invalid card response")
+    return {
+        "customer_id": customer_id,
+        "card_id": card["id"],
+        "card_brand": card.get("card_brand"),
+        "last_4": card.get("last_4"),
+        "exp_month": card.get("exp_month"),
+        "exp_year": card.get("exp_year"),
+    }
+
+
 def verify_square_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
     key = settings.SQUARE_WEBHOOK_SIGNATURE_KEY.strip()
     notification_url = settings.SQUARE_WEBHOOK_NOTIFICATION_URL.strip()

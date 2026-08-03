@@ -59,6 +59,11 @@ class Rental(Base):
     # Soft reference to the saved card-on-file authorization; wired to Square in
     # the recurring-billing phase.
     payment_authorization_id = Column(Integer, nullable=True)
+    # Square stored-card id used to auto-charge each period, and how many
+    # consecutive auto-charge attempts have failed (the customer is notified after 3).
+    square_card_id = Column(String, nullable=True)
+    square_customer_id = Column(String, nullable=True)
+    failed_charge_count = Column(Integer, nullable=False, default=0)
     committed_periods = Column(Integer, nullable=True)
     periods_billed = Column(Integer, nullable=False, default=0)
     next_bill_date = Column(Date, nullable=True)

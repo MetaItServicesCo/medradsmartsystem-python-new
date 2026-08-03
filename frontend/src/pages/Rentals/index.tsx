@@ -47,6 +47,7 @@ import {
   fetchRentalHistory,
   fetchRentalProductRate,
   upsertRentalProductRate,
+  runRecurringBilling,
   type Rental,
   type RentalItem,
   type RentalInvoice,
@@ -716,6 +717,15 @@ const Rentals = () => {
     onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not save rate card')),
   })
 
+  const billingMut = useMutation({
+    mutationFn: runRecurringBilling,
+    onSuccess: (result) => {
+      toast.success(`Recurring billing ran: ${result.billed || 0} invoiced, ${result.charged || 0} charged, ${result.emailed || 0} emailed`)
+      invalidateRentals()
+    },
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not run recurring billing')),
+  })
+
   const openRentalPartInfo = (
     part?: Partial<RentalPart> | null,
     fallback?: { part_id?: number | null; part_number?: string | null; part_description?: string | null; quantity?: number | null; rental_rate?: number | null; item_condition?: string | null },
@@ -1365,9 +1375,20 @@ const Rentals = () => {
             <Typography variant="h4" sx={{ color: '#1E3A8A', fontWeight: 900 }}>Rental Management</Typography>
             <Typography sx={{ color: '#4B5563', fontWeight: 700 }}>Create agreements for rental products from inventory, process periodic billing invoices, track equipment handovers, returns and history logs.</Typography>
           </Box>
-          <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: SYSTEM_GRADIENT }}>
-            New Agreement
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+            <Button
+              startIcon={billingMut.isPending ? <CircularProgress size={16} /> : <PaymentIcon />}
+              variant="outlined"
+              onClick={() => billingMut.mutate()}
+              disabled={billingMut.isPending}
+              sx={{ borderRadius: '14px', px: 2.5, py: 1.4, textTransform: 'none', fontWeight: 900, borderColor: '#BFDBFE', color: '#1D4ED8' }}
+            >
+              Run Recurring Billing
+            </Button>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: SYSTEM_GRADIENT }}>
+              New Agreement
+            </Button>
+          </Box>
         </Box>
       </Card>
 
