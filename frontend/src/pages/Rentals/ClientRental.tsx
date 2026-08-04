@@ -138,9 +138,18 @@ const ClientRental = () => {
   )
   const autoChargeStatus = agreement.auto_charge_authorized
     ? 'Authorized'
+    : authorizeFuturePayments
+      ? 'Selected — activates after payment'
     : initialPaymentComplete
       ? 'Not authorized'
       : 'Choose during payment'
+  const documentLabel = acceptance ? 'Rental Invoice' : 'Rental Agreement'
+  const documentNumber = acceptance && initialInvoice
+    ? initialInvoice.invoice_number
+    : agreement.rental_number
+  const documentMeta = acceptance && initialInvoice
+    ? `${company_name} · Agreement ${agreement.rental_number}`
+    : `${company_name} · Revision ${agreement.revision}`
 
   return (
     <Box sx={{ height: '100dvh', overflowY: 'auto', overscrollBehavior: 'contain', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: 2 }}>
@@ -149,9 +158,9 @@ const ClientRental = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 90, height: 58, objectFit: 'contain' }} />
             <Box>
-              <Typography sx={{ color: '#2563EB', fontWeight: 900, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' }}>Rental Agreement</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 950, color: '#1E3A8A', letterSpacing: '-0.5px' }}>{agreement.rental_number}</Typography>
-              <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{company_name} · Revision {agreement.revision}</Typography>
+              <Typography sx={{ color: '#2563EB', fontWeight: 900, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' }}>{documentLabel}</Typography>
+              <Typography variant="h4" sx={{ fontWeight: 950, color: '#1E3A8A', letterSpacing: '-0.5px' }}>{documentNumber}</Typography>
+              <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{documentMeta}</Typography>
             </Box>
           </Box>
           <Chip label={agreement.status} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: statusStyle(agreement.status).bg, color: statusStyle(agreement.status).color }} />
