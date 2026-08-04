@@ -31,6 +31,18 @@ const statusStyle = (status: string) => (
       : { bg: '#DBEAFE', color: '#1D4ED8' }
 )
 
+const consentLabelSx = {
+  m: 0,
+  alignItems: 'flex-start',
+  '& .MuiCheckbox-root': {
+    p: 0.25,
+    mr: 1.25,
+  },
+  '& .MuiFormControlLabel-label': {
+    lineHeight: 1.5,
+  },
+}
+
 const Centered = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#F5F3FF', p: 3 }}>
     {children}
@@ -215,7 +227,7 @@ const ClientRental = () => {
             <TextField fullWidth label="Full legal name" value={signatureName} onChange={event => setSignatureName(event.target.value)} />
             {signatureName.trim() && <Typography sx={{ mt: 1.5, px: 2, py: 1, borderBottom: '1px solid #94A3B8', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 28, color: '#1E1B4B' }}>{signatureName.trim()}</Typography>}
             <FormControlLabel
-              sx={{ mt: 1.5, alignItems: 'flex-start' }}
+              sx={{ ...consentLabelSx, mt: 1.5 }}
               control={<Checkbox checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} />}
               label="I have reviewed this rental agreement and agree to its terms and initial payment obligations."
             />
@@ -258,7 +270,7 @@ const ClientRental = () => {
                           </Alert>
                         ) : (
                           <FormControlLabel
-                            sx={{ alignItems: 'flex-start', mb: 0.5 }}
+                            sx={{ ...consentLabelSx, mb: 0.5 }}
                             control={<Checkbox checked={authorizeFuturePayments} onChange={event => setAuthorizeFuturePayments(event.target.checked)} />}
                             label={`Save this card securely and authorize automatic ${frequencyLabel(agreement.billing_frequency).toLowerCase()} payments for future billing periods`}
                           />
