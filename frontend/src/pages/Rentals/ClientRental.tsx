@@ -167,9 +167,16 @@ const ClientRental = () => {
           overflow: 'visible',
           bgcolor: '#FFFFFF',
           p: 0,
-          '& .rental-agreement-content': { display: 'none' },
           '& .rental-screen-only': { display: 'none !important' },
-          '& .rental-invoice-card': { breakInside: 'avoid', boxShadow: 'none' },
+          '& .rental-invoice-card': {
+            breakInside: 'auto',
+            pageBreakInside: 'auto',
+            boxShadow: 'none',
+          },
+          '& .rental-invoice-card tr': {
+            breakInside: 'avoid',
+            pageBreakInside: 'avoid',
+          },
         },
       } : {}),
     }}>
