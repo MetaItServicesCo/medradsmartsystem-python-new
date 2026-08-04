@@ -65,6 +65,9 @@ interface Props {
   payerName: string
   payerEmail?: string | null
   processing?: boolean
+  // 'CHARGE' collects a one-time payment; 'STORE' vaults a card on file for later.
+  intent?: 'CHARGE' | 'STORE'
+  submitLabel?: string
   onPaymentToken: (token: string, idempotencyKey: string) => void
 }
 
@@ -77,6 +80,8 @@ const SquareCardCheckout = ({
   payerName,
   payerEmail,
   processing = false,
+  intent = 'CHARGE',
+  submitLabel,
   onPaymentToken,
 }: Props) => {
   const containerId = useRef(`square-card-${Math.random().toString(36).slice(2)}`)
@@ -122,19 +127,16 @@ const SquareCardCheckout = ({
     setError('')
     try {
       const nameParts = payerName.trim().split(/\s+/)
-      const result = await cardRef.current.tokenize({
-        amount: Number(amount).toFixed(2),
-        currencyCode: currency,
-        intent: 'CHARGE',
-        customerInitiated: true,
-        sellerKeyedIn: false,
-        billingContact: {
-          givenName: nameParts[0] || payerName,
-          familyName: nameParts.slice(1).join(' ') || undefined,
-          email: payerEmail || undefined,
-          countryCode: 'US',
-        },
-      })
+      const billingContact = {
+        givenName: nameParts[0] || payerName,
+        familyName: nameParts.slice(1).join(' ') || undefined,
+        email: payerEmail || undefined,
+        countryCode: 'US',
+      }
+      const details: Record<string, unknown> = intent === 'STORE'
+        ? { intent: 'STORE', customerInitiated: true, sellerKeyedIn: false, billingContact }
+        : { amount: Number(amount).toFixed(2), currencyCode: currency, intent: 'CHARGE', customerInitiated: true, sellerKeyedIn: false, billingContact }
+      const result = await cardRef.current.tokenize(details)
       if (result.status !== 'OK' || !result.token) {
         const message = result.errors
           ?.map(item => item.message || item.detail)
@@ -183,7 +185,7 @@ const SquareCardCheckout = ({
         onClick={tokenize}
         sx={{ mt: 2, py: 1.4, fontWeight: 950 }}
       >
-        Pay ${Number(amount || 0).toFixed(2)} securely
+        {submitLabel || `Pay $${Number(amount || 0).toFixed(2)} securely`}
       </Button>
     </Box>
   )

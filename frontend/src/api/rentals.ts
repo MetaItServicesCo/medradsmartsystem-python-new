@@ -355,6 +355,92 @@ export const upsertRentalProductRate = async (
   return res.data
 }
 
+export interface RentalPortalItem {
+  id: number
+  part_number: string | null
+  part_description: string | null
+  quantity: number
+  rental_rate: number
+  shipping_fee: number
+  setup_fee: number
+  labor_fee: number
+  item_condition: string | null
+  item_status: RentalItemStatus
+}
+
+export interface RentalPortalInvoice {
+  id: number
+  invoice_number: string
+  subtotal: number
+  tax_amount: number
+  discount_amount: number
+  total_amount: number
+  amount_paid: number
+  balance_due: number
+  status: RentalInvoiceStatus
+  issue_date: string
+  due_date: string
+  notes: string | null
+  line_items: Array<{ item_number?: string; description?: string; quantity?: number; unit_price?: number; total_amount?: number }>
+}
+
+export interface RentalPortal {
+  company_name: string
+  agreement: {
+    rental_number: string
+    customer_name: string
+    customer_email: string
+    customer_address: string
+    billing_frequency: BillingFrequency
+    start_date: string
+    end_date: string
+    security_deposit: number
+    status: RentalStatus
+    auto_charge: boolean
+    terms_and_conditions: string | null
+    items: RentalPortalItem[]
+    has_card_on_file: boolean
+  }
+  invoices: RentalPortalInvoice[]
+  square: {
+    enabled: boolean
+    environment: string
+    application_id: string | null
+    location_id: string | null
+    currency: string
+    sdk_url: string
+  }
+}
+
+export const sendRentalPortalLink = async (id: number): Promise<{ detail: string; link: string }> => {
+  const res = await apiClient.post(`/rentals/${id}/send`)
+  return res.data
+}
+
+export const fetchRentalPortal = async (token: string): Promise<RentalPortal> => {
+  const res = await apiClient.get(`/rentals/public/${token}`)
+  return res.data
+}
+
+export const savePublicRentalCard = async (token: string, sourceId: string): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/save-card`, { source_id: sourceId })
+  return res.data
+}
+
+export const payPublicRentalInvoice = async (
+  token: string,
+  invoiceId: number,
+  sourceId: string,
+  idempotencyKey: string,
+): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/pay-invoice`, {
+    invoice_id: invoiceId,
+    source_id: sourceId,
+    idempotency_key: idempotencyKey,
+  })
+  return res.data
+}
+
 export const runRecurringBilling = async (): Promise<Record<string, number>> => {
   const res = await apiClient.post('/rentals/run-recurring-billing')
   return res.data

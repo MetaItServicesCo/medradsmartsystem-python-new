@@ -2,15 +2,19 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 from math import ceil
+import secrets
+import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
+from app.core.config import settings
 from app.core.deps import get_current_user
+from app.utils.email import send_html_email
 from app.utils.permission_deps import require_module_access
 from app.models.facility import Facility
 from app.models.inventory import InventoryPart
@@ -671,6 +675,59 @@ def save_rental_card(
     db.commit()
     db.refresh(rental)
     return _rental_response(rental)
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+@router.post("/{rental_id}/send")
+def send_rental_portal_link(
+    rental_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Email the customer a secure link to view the agreement and save a card / pay."""
+    rental = (
+        db.query(Rental)
+        .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part))
+        .filter(Rental.id == rental_id)
+        .first()
+    )
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    if not rental.customer_email:
+        raise HTTPException(status_code=400, detail="A customer email is required to send the portal link")
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+    rental.access_token_hash = _token_hash(token)
+    rental.token_expires_at = now + timedelta(days=90)
+    rental.portal_sent_at = now
+    rental.updated_at = now
+    link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/rental/{token}"
+    _append_history(rental, "portal_link_sent", current_user, {"expires_at": rental.token_expires_at.isoformat()})
+    log_activity(db, "rentals", rental.id, "SEND_PORTAL", current_user, {})
+    db.commit()
+
+    background_tasks.add_task(
+        send_html_email,
+        [rental.customer_email],
+        f"Your rental agreement {rental.rental_number}",
+        (
+            f"<p>Hello {rental.customer_name},</p>"
+            f"<p>Your rental agreement <strong>{rental.rental_number}</strong> is ready.</p>"
+            f"<p><a href=\"{link}\">View your agreement, save a card on file, and pay invoices</a></p>"
+            f"<p>This secure link expires on {rental.token_expires_at.strftime('%B %d, %Y')}.</p>"
+        ),
+        (
+            f"Hello {rental.customer_name},\n\nYour rental agreement {rental.rental_number} is ready.\n"
+            f"{link}\n\nThis link expires on {rental.token_expires_at.strftime('%B %d, %Y')}."
+        ),
+    )
+    return {"detail": "Portal link sent", "link": link}
 
 
 @router.post("/run-recurring-billing")

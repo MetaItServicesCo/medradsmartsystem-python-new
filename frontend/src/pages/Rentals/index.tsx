@@ -49,6 +49,7 @@ import {
   fetchRentalProductRate,
   upsertRentalProductRate,
   runRecurringBilling,
+  sendRentalPortalLink,
   type Rental,
   type RentalItem,
   type RentalInvoice,
@@ -729,6 +730,16 @@ const Rentals = () => {
       invalidateRentals()
     },
     onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not run recurring billing')),
+  })
+
+  const sendMut = useMutation({
+    mutationFn: (id: number) => sendRentalPortalLink(id),
+    onSuccess: () => {
+      toast.success('Secure link emailed to the customer')
+      closeActions()
+      invalidateRentals()
+    },
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not send the customer link')),
   })
 
   const openRentalPartInfo = (
@@ -1529,6 +1540,10 @@ const Rentals = () => {
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionAgreement) setViewAgreement(actionAgreement); closeActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View Details
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || sendMut.isPending} onClick={() => actionAgreement && sendMut.mutate(actionAgreement.id)}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
+          Send Link to Customer
         </MenuItem>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionAgreement) setPrintAgreement(actionAgreement); closeActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>

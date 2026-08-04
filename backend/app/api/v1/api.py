@@ -21,6 +21,7 @@ from app.api.v1.endpoints import (
     sales,
     sales_portal,
     rentals,
+    rental_portal,
     attendance,
     hr,
     reports,
@@ -51,6 +52,7 @@ api_router.include_router(test_equipment.router, prefix="/test-equipment", tags=
 api_router.include_router(sales.router, prefix="/sales", tags=["sales"])
 api_router.include_router(sales_portal.router, tags=["sales-portal"])
 api_router.include_router(rentals.router, prefix="/rentals", tags=["rentals"])
+api_router.include_router(rental_portal.router, tags=["rental-portal"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["attendance"])
 api_router.include_router(hr.router, prefix="/hr", tags=["hr"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])

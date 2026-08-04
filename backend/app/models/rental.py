@@ -68,6 +68,11 @@ class Rental(Base):
     periods_billed = Column(Integer, nullable=False, default=0)
     next_bill_date = Column(Date, nullable=True)
 
+    # Customer-facing portal: a hashed access token for the public agreement link.
+    access_token_hash = Column(String, nullable=True, unique=True, index=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    portal_sent_at = Column(DateTime, nullable=True)
+
     # Commitment discount, applied once a payment milestone is reached (e.g. a
     # 4-month deal's discount lands on the 4th invoice after 3 periods are paid).
     # Stored as plain strings (RentalDiscountType values) per the house convention.
