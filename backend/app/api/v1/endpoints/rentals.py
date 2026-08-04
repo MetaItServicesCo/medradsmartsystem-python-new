@@ -51,7 +51,13 @@ from app.utils.square_payments import (
     create_square_card_on_file,
     SquareRequestError,
 )
-from app.utils.rental_billing import run_rental_recurring_billing, generate_deposit_invoice, period_days
+from app.utils.rental_billing import (
+    run_rental_recurring_billing,
+    generate_deposit_invoice,
+    period_days,
+    RENTAL_TAX_RATE,
+    RENTAL_TAX_FACTOR,
+)
 from app.utils.permissions import has_module_permission
 from app.utils.list_search import (
     contains_ci,
@@ -72,6 +78,7 @@ class RentalItemIn(BaseModel):
     item_condition: Optional[str] = None
     shipping_fee: Decimal = Decimal("0")
     setup_fee: Decimal = Decimal("0")
+    labor_fee: Decimal = Decimal("0")
     initial_condition: Optional[str] = None
     initial_meter_reading: Optional[str] = None
 
@@ -282,6 +289,7 @@ def _rental_item_response(item: RentalItem) -> dict[str, Any]:
         "item_condition": item.item_condition,
         "shipping_fee": item.shipping_fee,
         "setup_fee": item.setup_fee,
+        "labor_fee": item.labor_fee,
         "initial_condition": item.initial_condition,
         "return_condition": item.return_condition,
         "initial_meter_reading": item.initial_meter_reading,
@@ -460,6 +468,7 @@ def _build_rental_items(db: Session, current_user: User, items: list["RentalItem
             item_condition=item.item_condition or (part.condition if part else None),
             shipping_fee=item.shipping_fee or Decimal("0"),
             setup_fee=item.setup_fee or Decimal("0"),
+            labor_fee=item.labor_fee or Decimal("0"),
             initial_condition=item.initial_condition,
             initial_meter_reading=item.initial_meter_reading,
             item_status=RentalItemStatus.OUT.value,
@@ -1071,10 +1080,12 @@ def convert_to_invoice(
     base_rental_amount = Decimal("0")
     items_shipping = Decimal("0")
     items_setup = Decimal("0")
+    items_labor = Decimal("0")
     for item in items:
         base_rental_amount += Decimal(periods) * _money(item.rental_rate) * Decimal(max(1, int(item.quantity or 1)))
         items_shipping += _money(item.shipping_fee)
         items_setup += _money(item.setup_fee)
+        items_labor += _money(item.labor_fee)
 
     worked_hours = _money(payload.worked_hours)
     setup_fee = _money(payload.setup_fee) + items_setup
@@ -1082,10 +1093,12 @@ def convert_to_invoice(
     shipping_fee = _money(payload.shipping_fee) + items_shipping
     application_fee = _money(payload.application_fee)
     raw_discount = _money(payload.discount_amount)
-    tax_rate = _money(payload.tax_rate)
-    tax_amount = (base_rental_amount * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
-    
-    subtotal = base_rental_amount + worked_hours + setup_fee + service_fee + shipping_fee + application_fee
+    # Same tax rule as Sales: 8.25% on rent + shipping & packing + delivery & setup.
+    # Labor and other service fees are non-taxable.
+    taxable_base = base_rental_amount + shipping_fee + setup_fee
+    tax_amount = (taxable_base * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
+
+    subtotal = base_rental_amount + worked_hours + setup_fee + service_fee + shipping_fee + application_fee + items_labor
     discount_amount = (subtotal * raw_discount / Decimal("100")).quantize(Decimal("0.01")) if payload.discount_type == "percent" else raw_discount
     total_amount = subtotal + tax_amount - discount_amount
 

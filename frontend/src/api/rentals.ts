@@ -51,6 +51,7 @@ export interface RentalItem {
   item_condition: string | null
   shipping_fee: number
   setup_fee: number
+  labor_fee: number
   initial_condition: string | null
   return_condition: string | null
   initial_meter_reading: string | null
@@ -185,6 +186,7 @@ export interface RentalItemPayload {
   item_condition?: string | null
   shipping_fee?: number
   setup_fee?: number
+  labor_fee?: number
   initial_condition?: string | null
   initial_meter_reading?: string | null
 }

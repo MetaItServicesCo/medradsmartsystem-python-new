@@ -128,6 +128,7 @@ class RentalItem(Base):
     item_condition = Column(String, nullable=True)
     shipping_fee = Column(Numeric(10, 2), nullable=False, default=0)
     setup_fee = Column(Numeric(10, 2), nullable=False, default=0)
+    labor_fee = Column(Numeric(10, 2), nullable=False, default=0)
 
     initial_condition = Column(Text, nullable=True)
     return_condition = Column(Text, nullable=True)

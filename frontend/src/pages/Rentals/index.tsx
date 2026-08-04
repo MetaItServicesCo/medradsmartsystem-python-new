@@ -33,6 +33,7 @@ import DateRangeFilter from '@/components/DateRangeFilter'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
+import { SALES_TAX_RATE, SALES_TAX_FACTOR, roundSalesMoney } from '@/utils/salesPricing'
 import {
   fetchRentalParts,
   fetchRentals,
@@ -199,6 +200,7 @@ interface RentalItemForm {
   item_condition: string
   shipping_fee: number
   setup_fee: number
+  labor_fee: number
   initial_condition: string
   initial_meter_reading: string
 }
@@ -249,6 +251,7 @@ const newRentalItem = (): RentalItemForm => ({
   item_condition: 'New',
   shipping_fee: 0,
   setup_fee: 0,
+  labor_fee: 0,
   initial_condition: '',
   initial_meter_reading: '',
 })
@@ -489,6 +492,7 @@ const Rentals = () => {
     item_condition: item.item_condition || null,
     shipping_fee: normalizeMoneyInput(item.shipping_fee),
     setup_fee: normalizeMoneyInput(item.setup_fee),
+    labor_fee: normalizeMoneyInput(item.labor_fee),
     initial_condition: item.initial_condition?.trim() || null,
     initial_meter_reading: item.initial_meter_reading?.trim() || null,
   }))
@@ -610,6 +614,7 @@ const Rentals = () => {
         item_condition: item.item_condition || 'New',
         shipping_fee: Number(item.shipping_fee || 0),
         setup_fee: Number(item.setup_fee || 0),
+        labor_fee: Number(item.labor_fee || 0),
         initial_condition: item.initial_condition || '',
         initial_meter_reading: item.initial_meter_reading || '',
       })),
@@ -862,14 +867,20 @@ const Rentals = () => {
   const itemsShippingTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.shipping_fee || 0), 0), [convertItems])
   const itemsSetupTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.setup_fee || 0), 0), [convertItems])
 
-  const convertTaxAmount = calculatedBaseRental * Number(invoiceDetails.tax_rate || 0) / 100
+  const itemsLaborTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.labor_fee || 0), 0), [convertItems])
+  const convertShippingTotal = Number(invoiceDetails.shipping_fee || 0) + itemsShippingTotal
+  const convertSetupTotal = Number(invoiceDetails.setup_fee || 0) + itemsSetupTotal
+  // Same tax rule as Sales: 8.25% on rent + shipping & packing + delivery & setup. Labor is non-taxable.
+  const convertTaxableBase = calculatedBaseRental + convertShippingTotal + convertSetupTotal
+  const convertTaxAmount = roundSalesMoney(convertTaxableBase * SALES_TAX_FACTOR)
   const convertSubtotal =
     calculatedBaseRental +
     Number(invoiceDetails.worked_hours || 0) +
-    Number(invoiceDetails.setup_fee || 0) + itemsSetupTotal +
+    convertSetupTotal +
     Number(invoiceDetails.service_fee || 0) +
-    Number(invoiceDetails.shipping_fee || 0) + itemsShippingTotal +
-    Number(invoiceDetails.application_fee || 0)
+    convertShippingTotal +
+    Number(invoiceDetails.application_fee || 0) +
+    itemsLaborTotal
   const convertDiscountAmount = invoiceDetails.discount_type === 'percent'
     ? convertSubtotal * Number(invoiceDetails.discount_amount || 0) / 100
     : Number(invoiceDetails.discount_amount || 0)
@@ -1672,7 +1683,7 @@ const Rentals = () => {
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Rental Products</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(220px, 1.6fr) 84px 120px 130px 100px 100px auto' }, gap: 2, mb: 2, alignItems: 'start' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(220px, 1.5fr) 78px 110px 120px 96px 96px 96px auto' }, gap: 2, mb: 2, alignItems: 'start' }}>
             <Box sx={{ gridColumn: { xs: '1 / -1', lg: 'auto' } }}>
               <PartSearchAutocomplete<RentalPart>
                 label="Rental product"
@@ -1693,6 +1704,7 @@ const Rentals = () => {
             </TextField>
             <TextField label="Shipping & Packing" type="number" value={itemDraft.shipping_fee} onChange={e => setItemDraft(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
             <TextField label="Delivery & Setup" type="number" value={itemDraft.setup_fee} onChange={e => setItemDraft(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
+            <TextField label="Labor" type="number" value={itemDraft.labor_fee} onChange={e => setItemDraft(prev => ({ ...prev, labor_fee: Number(e.target.value) }))} />
             <Button startIcon={<AddIcon />} variant="contained" onClick={addRentalItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, height: 56, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add</Button>
           </Box>
 
@@ -1899,11 +1911,12 @@ const Rentals = () => {
                         ['Base Rental Total', calculatedBaseRental],
                         ['Security Deposit (held separately)', Number(convertAgreement.security_deposit || 0)],
                         ['Working Hours Fee', Number(invoiceDetails.worked_hours || 0)],
-                        ['Setup Fees', Number(invoiceDetails.setup_fee || 0) + itemsSetupTotal],
+                        ['Shipping & Packing', convertShippingTotal],
+                        ['Delivery & Setup', convertSetupTotal],
+                        ['Labor', itemsLaborTotal],
                         ['Service Fee', Number(invoiceDetails.service_fee || 0)],
-                        ['Shipping & Delivery', Number(invoiceDetails.shipping_fee || 0) + itemsShippingTotal],
                         ['Application Fee', Number(invoiceDetails.application_fee || 0)],
-                        [`Tax (${Number(invoiceDetails.tax_rate || 0)}%)`, convertTaxAmount],
+                        [`Tax (${SALES_TAX_RATE}%)`, convertTaxAmount],
                         ['Discount', -convertDiscountAmount],
                       ].map(([label, value]) => (
                         <TableRow key={String(label)}>
@@ -1940,7 +1953,7 @@ const Rentals = () => {
                 <TextField label="Setup Fee" type="number" size="small" value={invoiceDetails.setup_fee} onChange={e => setInvoiceDetails(p => ({ ...p, setup_fee: Number(e.target.value) }))} />
                 <TextField label="Shipping / Delivery Fee" type="number" size="small" value={invoiceDetails.shipping_fee} onChange={e => setInvoiceDetails(p => ({ ...p, shipping_fee: Number(e.target.value) }))} />
                 <TextField label="Application / Training Fee" type="number" size="small" value={invoiceDetails.application_fee} onChange={e => setInvoiceDetails(p => ({ ...p, application_fee: Number(e.target.value) }))} />
-                <TextField label="Tax Rate (%)" type="number" size="small" value={invoiceDetails.tax_rate} onChange={e => setInvoiceDetails(p => ({ ...p, tax_rate: Number(e.target.value) }))} />
+                <TextField label="Tax Rate" size="small" value={`${SALES_TAX_RATE}% (auto, taxes rent + shipping + setup)`} InputProps={{ readOnly: true }} disabled />
                 <TextField select label="Discount Type" size="small" value={invoiceDetails.discount_type || 'fixed'} onChange={e => setInvoiceDetails(p => ({ ...p, discount_type: e.target.value as 'fixed' | 'percent' }))}>
                   <MenuItem value="fixed">Fixed ($)</MenuItem>
                   <MenuItem value="percent">Percent (%)</MenuItem>

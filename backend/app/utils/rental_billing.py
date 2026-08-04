@@ -34,6 +34,11 @@ from app.utils.square_payments import (
 
 MAX_CHARGE_ATTEMPTS = 3
 
+# Same tax rule as Sales: 8.25% on the taxable base (rent + shipping & packing +
+# delivery & setup). Labor and the refundable deposit are non-taxable.
+RENTAL_TAX_RATE = Decimal("8.25")
+RENTAL_TAX_FACTOR = RENTAL_TAX_RATE / Decimal("100")
+
 _PERIOD_DAYS = {"weekly": 7, "biweekly": 14, "monthly": 30, "quarterly": 91, "daily": 1}
 
 
@@ -117,7 +122,8 @@ def _period_amounts(rental: Rental, period_index: int) -> tuple[Decimal, Decimal
 def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
     period_index = int(rental.periods_billed or 0) + 1
     base, discount = _period_amounts(rental, period_index)
-    total = max(Decimal("0"), base - discount)
+    tax = (base * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
+    total = max(Decimal("0"), base - discount + tax)
 
     line_items = [
         _line(item.part_number or "Rental", item.part_description or "Rental product", _money(item.rental_rate), int(item.quantity or 1))
@@ -138,7 +144,7 @@ def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
         facility_id=_facility_id(db, rental),
         rental_id=rental.id,
         subtotal=base,
-        tax_amount=Decimal("0"),
+        tax_amount=tax,
         discount_amount=discount,
         total_amount=total,
         amount_paid=Decimal("0"),
@@ -148,7 +154,7 @@ def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
         due_date=date.today() + timedelta(days=14),
         payment_terms="Net 14",
         payment_method="credit_card" if rental.auto_charge else None,
-        notes=compose_invoice_edit_notes(None, visible, {"line_items": line_items}),
+        notes=compose_invoice_edit_notes(None, visible, {"line_items": line_items, "labels": {"tax": f"Tax ({RENTAL_TAX_RATE}%)"}}),
     )
     db.add(invoice)
     db.flush()
@@ -230,8 +236,12 @@ def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
     deposit = _money(rental.security_deposit)
     shipping_total = sum((_money(item.shipping_fee) for item in rental.items or []), Decimal("0"))
     setup_total = sum((_money(item.setup_fee) for item in rental.items or []), Decimal("0"))
-    total = deposit + shipping_total + setup_total
-    if total <= 0:
+    labor_total = sum((_money(item.labor_fee) for item in rental.items or []), Decimal("0"))
+    # Deposit + labor are non-taxable; shipping & packing + delivery & setup are taxable.
+    subtotal = deposit + shipping_total + setup_total + labor_total
+    tax = ((shipping_total + setup_total) * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
+    total = subtotal + tax
+    if subtotal <= 0:
         return None
 
     line_items: list[dict[str, Any]] = []
@@ -241,6 +251,8 @@ def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
         line_items.append(_line("SHIP-PACK", "Shipping & Packing", shipping_total))
     if setup_total > 0:
         line_items.append(_line("DEL-SETUP", "Delivery & Setup", setup_total))
+    if labor_total > 0:
+        line_items.append(_line("LABOR", "Labor", labor_total))
 
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
@@ -251,8 +263,8 @@ def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
         customer_address=rental.customer_address,
         facility_id=_facility_id(db, rental),
         rental_id=rental.id,
-        subtotal=total,
-        tax_amount=Decimal("0"),
+        subtotal=subtotal,
+        tax_amount=tax,
         discount_amount=Decimal("0"),
         total_amount=total,
         amount_paid=Decimal("0"),
@@ -262,7 +274,7 @@ def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
         due_date=date.today(),
         payment_terms="Due on receipt",
         payment_method="credit_card" if rental.auto_charge else None,
-        notes=compose_invoice_edit_notes(None, f"Security deposit & one-time fees for rental {rental.rental_number}", {"line_items": line_items}),
+        notes=compose_invoice_edit_notes(None, f"Security deposit & one-time fees for rental {rental.rental_number}", {"line_items": line_items, "labels": {"tax": f"Tax ({RENTAL_TAX_RATE}%)"}}),
     )
     db.add(invoice)
     db.flush()
