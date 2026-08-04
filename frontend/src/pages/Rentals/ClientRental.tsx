@@ -190,7 +190,7 @@ const ClientRental = () => {
   const initialInvoiceId = invoices[0]?.id
 
   return (
-    <Box sx={{ minHeight: '100dvh', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: 2 }}>
+    <Box sx={{ height: '100dvh', overflowY: 'auto', overscrollBehavior: 'contain', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: 2 }}>
       <Card sx={{ width: 'min(980px, 100%)', mx: 'auto', p: { xs: 2, md: 4 }, borderRadius: '24px', boxShadow: '0 24px 70px rgba(30,58,138,0.14)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -205,6 +205,37 @@ const ClientRental = () => {
         </Box>
 
         <Box sx={{ height: 4, borderRadius: 999, my: 3, background: 'linear-gradient(90deg, #2563EB 0%, #7C3AED 60%, #EC4899 100%)' }} />
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', mb: 3, border: '1px solid #DDD6FE', borderRadius: '14px', overflow: 'hidden' }}>
+          {[
+            { number: '1', label: 'Review agreement', complete: true },
+            { number: '2', label: acceptance ? 'Agreement signed' : 'Sign agreement', complete: Boolean(acceptance) },
+            { number: '3', label: invoices.every(invoice => Number(invoice.balance_due || 0) <= 0) ? 'Payment complete' : 'Pay initial invoice', complete: invoices.length > 0 && invoices.every(invoice => Number(invoice.balance_due || 0) <= 0) },
+          ].map((step, index) => (
+            <Box key={step.number} sx={{ px: { xs: 1, md: 2 }, py: 1.5, textAlign: 'center', bgcolor: step.complete ? '#F0FDF4' : '#FAF9FF', borderLeft: index ? '1px solid #DDD6FE' : 0 }}>
+              <Typography sx={{ fontWeight: 950, color: step.complete ? '#15803D' : '#7C3AED', fontSize: { xs: 12, md: 14 } }}>{step.complete ? '✓' : step.number} {step.label}</Typography>
+            </Box>
+          ))}
+        </Box>
+
+        {!acceptance && (
+          <Alert
+            severity="info"
+            action={(
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => document.getElementById('rental-acceptance')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                sx={{ fontWeight: 900, whiteSpace: 'nowrap' }}
+              >
+                Continue to signature
+              </Button>
+            )}
+            sx={{ mb: 3, borderRadius: '14px', alignItems: 'center' }}
+          >
+            Review the agreement and calculation, then sign before making the initial payment.
+          </Alert>
+        )}
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5, mb: 3 }}>
           <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
@@ -250,7 +281,7 @@ const ClientRental = () => {
         )}
 
         {!acceptance ? (
-          <Card variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', mb: 3, borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
+          <Card id="rental-acceptance" variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', mb: 3, borderColor: '#C4B5FD', bgcolor: '#FAF9FF', scrollMarginTop: 24 }}>
             <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 20 }}>Sign and approve this rental agreement</Typography>
             <Typography sx={{ color: '#64748B', mt: 0.5, mb: 2 }}>Review the agreement, type your full legal name, and accept the terms before paying.</Typography>
             <TextField fullWidth label="Full legal name" value={signatureName} onChange={event => setSignatureName(event.target.value)} />
