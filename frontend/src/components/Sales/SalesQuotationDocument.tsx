@@ -17,8 +17,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import PrintIcon from '@mui/icons-material/Print'
 
 import type { SalesQuotationLineItem } from '@/api/sales'
-import { calculateSalesPricing } from '@/utils/salesPricing'
-import SalesPricingBreakdown from './SalesPricingBreakdown'
+import { calculateSalesPricing, SALES_TAX_RATE } from '@/utils/salesPricing'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 const dateLabel = (value?: string | null) => value
@@ -71,6 +70,8 @@ interface SalesQuotationDocumentProps {
   // document header from "Quotation" to "Invoice".
   invoiceNumber?: string | null
   invoicePaid?: boolean
+  invoiceAmountPaid?: number | string | null
+  invoiceBalanceDue?: number | string | null
   // Internal surfaces (the admin View dialog) set this to surface the revision
   // number; the customer-facing document leaves it off so revisions stay internal.
   showRevision?: boolean
@@ -88,6 +89,8 @@ const SalesQuotationDocument = ({
   onPrint,
   invoiceNumber,
   invoicePaid = false,
+  invoiceAmountPaid,
+  invoiceBalanceDue,
   showRevision = false,
 }: SalesQuotationDocumentProps) => {
   const productLines = quotation.line_items.filter(line => line.item_kind === 'product')
@@ -134,7 +137,7 @@ const SalesQuotationDocument = ({
               {isInvoice ? 'Sales Invoice' : 'Sales Quotation'}
             </Typography>
             <Typography variant="h4" sx={{ fontWeight: 950, color: '#1E1B4B', lineHeight: 1.05, letterSpacing: '-0.5px' }}>
-              {documentLabel}
+              {isInvoice ? invoiceNumber || quotation.quotation_number : quotation.quotation_number}
             </Typography>
             <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{companyName}</Typography>
           </Box>
@@ -267,7 +270,55 @@ const SalesQuotationDocument = ({
       </TableContainer>
 
       <Box sx={{ mb: 4 }}>
-        <SalesPricingBreakdown pricing={pricing} />
+        <Typography sx={{ mb: 1, color: '#1E1B4B', fontWeight: 900 }}>
+          {isInvoice ? 'Invoice Summary' : 'Quotation Summary'}
+        </Typography>
+        <TableContainer
+          sx={{
+            width: '100%',
+            maxWidth: 620,
+            ml: 'auto',
+            border: '1px solid #E5E7EB',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            bgcolor: '#FFFFFF',
+          }}
+        >
+          <Table size="small" aria-label={`${documentLabel} summary`}>
+            <TableBody>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 800 }}>Subtotal</TableCell>
+                <TableCell align="right" sx={numSx}>{money(pricing.subtotal)}</TableCell>
+              </TableRow>
+              {pricing.discountAmount > 0 && (
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 800, color: '#DC2626' }}>Discount</TableCell>
+                  <TableCell align="right" sx={{ ...numSx, color: '#DC2626' }}>-{money(pricing.discountAmount)}</TableCell>
+                </TableRow>
+              )}
+              <TableRow>
+                <TableCell sx={{ fontWeight: 800 }}>Tax ({SALES_TAX_RATE}%)</TableCell>
+                <TableCell align="right" sx={numSx}>{money(pricing.taxAmount)}</TableCell>
+              </TableRow>
+              <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                <TableCell sx={{ fontWeight: 950 }}>{documentLabel} Total</TableCell>
+                <TableCell align="right" sx={{ ...numSx, fontWeight: 950, color: '#1E1B4B' }}>{money(pricing.total)}</TableCell>
+              </TableRow>
+              {isInvoice && invoiceAmountPaid !== undefined && invoiceAmountPaid !== null && Number(invoiceAmountPaid) > 0 && (
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 800, color: '#059669' }}>Paid</TableCell>
+                  <TableCell align="right" sx={{ ...numSx, color: '#059669', fontWeight: 800 }}>{money(invoiceAmountPaid)}</TableCell>
+                </TableRow>
+              )}
+              {isInvoice && invoiceBalanceDue !== undefined && invoiceBalanceDue !== null && (
+                <TableRow sx={{ bgcolor: '#EEF2FF' }}>
+                  <TableCell sx={{ fontWeight: 950 }}>Balance Due</TableCell>
+                  <TableCell align="right" sx={{ ...numSx, fontWeight: 950 }}>{money(invoiceBalanceDue)}</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
       </Box>
 
       {quotation.notes && (

@@ -179,13 +179,11 @@ def _portal_response(db: Session, rental: Rental) -> dict[str, Any]:
         .order_by(Invoice.id.asc())
         .all()
     )
-    initial_invoice = invoices[0] if invoices else None
     return {
         "company_name": "Mr. BioMed Tech Services",
         "agreement": _agreement_view(rental),
         "acceptance": _acceptance_view(rental.acceptance),
         "can_sign": rental.acceptance is None,
-        "pricing": _pricing_view(rental, initial_invoice),
         "invoices": [_invoice_view(invoice) for invoice in invoices],
         "square": square_public_config(),
     }

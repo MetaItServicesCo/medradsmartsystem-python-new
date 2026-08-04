@@ -266,6 +266,63 @@ const rateForFrequency = (card: RentalProductRate | null, freq: BillingFrequency
   return null
 }
 
+// Python Decimal uses half-even rounding for invoice values. Mirror it in the
+// live preview so a .005 tax boundary never differs by one cent from the saved
+// backend invoice.
+const roundRentalMoney = (value: number) => {
+  const sign = value < 0 ? -1 : 1
+  const scaled = Math.abs(value) * 100
+  const lower = Math.floor(scaled)
+  const fraction = scaled - lower
+  if (Math.abs(fraction - 0.5) < 1e-9) {
+    return sign * ((lower % 2 === 0 ? lower : lower + 1) / 100)
+  }
+  return sign * (Math.round(scaled) / 100)
+}
+
+const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
+  const rental = roundRentalMoney(agreement.items.reduce(
+    (sum, item) => sum + Number(item.rental_rate || 0) * Math.max(1, Number(item.quantity || 1)),
+    0,
+  ))
+  const shipping = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.shipping_fee || 0), 0))
+  const setup = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.setup_fee || 0), 0))
+  const labor = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.labor_fee || 0), 0))
+  const deposit = roundRentalMoney(Number(agreement.security_deposit || 0))
+
+  // The commitment discount reaches period one only when it is explicitly
+  // configured to apply after zero paid periods, matching backend billing.
+  let discount = 0
+  if (agreement.discount_type && agreement.discount_apply_after_periods !== '' && Number(agreement.discount_apply_after_periods) === 0) {
+    discount = agreement.discount_type === 'percent'
+      ? roundRentalMoney(rental * Number(agreement.discount_value || 0) / 100)
+      : Math.min(rental, roundRentalMoney(Number(agreement.discount_value || 0)))
+  }
+
+  const taxableRental = Math.max(0, rental - discount)
+  const taxableTotal = taxableRental + shipping + setup
+  const tax = roundRentalMoney(taxableTotal * SALES_TAX_FACTOR)
+  const rentalTax = taxableTotal > 0 ? roundRentalMoney(tax * taxableRental / taxableTotal) : 0
+  const shippingTax = taxableTotal > 0 ? roundRentalMoney(tax * shipping / taxableTotal) : 0
+  const setupTax = roundRentalMoney(tax - rentalTax - shippingTax)
+  const subtotal = roundRentalMoney(rental + deposit + shipping + setup + labor)
+
+  return {
+    rental,
+    deposit,
+    shipping,
+    setup,
+    labor,
+    discount,
+    tax,
+    rentalTax,
+    shippingTax,
+    setupTax,
+    subtotal,
+    total: roundRentalMoney(Math.max(0, subtotal - discount + tax)),
+  }
+}
+
 const emptyInvoiceDetails = (): RentalInvoiceCreatePayload => ({
   labour_hours: 0,
   worked_hours: 0,
@@ -478,6 +535,11 @@ const Rentals = () => {
     products: summaryQ.data?.products ?? parts.length,
     history: historyQ.data?.total || 0,
   }), [totalRentals, activeRentalsCountQ.data?.total, totalInvoiced, summaryQ.data?.products, parts.length, historyQ.data?.total])
+
+  const initialAgreementPricing = useMemo(
+    () => calculateInitialRentalPricing(agreementForm),
+    [agreementForm],
+  )
 
   const invalidateRentals = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-agreements'] })
@@ -1814,6 +1876,60 @@ const Rentals = () => {
             )}
             <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
           </Box>
+
+          <Divider sx={{ my: 3 }} />
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 1.5, flexWrap: 'wrap' }}>
+            <Box>
+              <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Initial Invoice Calculation</Typography>
+              <Typography sx={{ color: '#64748B', fontSize: 13 }}>Internal live preview. This calculation is not shown on the customer agreement.</Typography>
+            </Box>
+            <Chip label="Internal preview" size="small" sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 900 }} />
+          </Box>
+          <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '16px', overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 600 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                  <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 900 }}>Cost</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 900 }}>Tax {SALES_TAX_RATE}%</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 900 }}>Total</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {[
+                  { label: `First ${agreementForm.billing_frequency === 'biweekly' ? 'bi-weekly' : agreementForm.billing_frequency} rental period`, cost: initialAgreementPricing.rental, tax: initialAgreementPricing.rentalTax, color: '#1D4ED8' },
+                  { label: 'Security Deposit', cost: initialAgreementPricing.deposit, tax: 0, color: '#334155' },
+                  { label: 'Shipping & Packing', cost: initialAgreementPricing.shipping, tax: initialAgreementPricing.shippingTax, color: '#7C3AED' },
+                  { label: 'Delivery & Setup', cost: initialAgreementPricing.setup, tax: initialAgreementPricing.setupTax, color: '#7C3AED' },
+                  { label: 'Labor', cost: initialAgreementPricing.labor, tax: 0, color: '#334155' },
+                ].map(row => (
+                  <TableRow key={row.label}>
+                    <TableCell sx={{ fontWeight: 850, color: row.color }}>{row.label}</TableCell>
+                    <TableCell align="right">{money(row.cost)}</TableCell>
+                    <TableCell align="right">{money(row.tax)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 900 }}>{money(row.cost + row.tax)}</TableCell>
+                  </TableRow>
+                ))}
+                {initialAgreementPricing.discount > 0 && (
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 850, color: '#DC2626' }}>Initial Period Discount</TableCell>
+                    <TableCell align="right" sx={{ color: '#DC2626' }}>-{money(initialAgreementPricing.discount)}</TableCell>
+                    <TableCell align="right">{money(0)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 900, color: '#DC2626' }}>-{money(initialAgreementPricing.discount)}</TableCell>
+                  </TableRow>
+                )}
+                <TableRow sx={{ bgcolor: '#FAF9FF' }}>
+                  <TableCell colSpan={2} sx={{ fontWeight: 950 }}>Total Tax</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 950 }}>{money(initialAgreementPricing.tax)}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 950 }}>{money(initialAgreementPricing.tax)}</TableCell>
+                </TableRow>
+                <TableRow sx={{ bgcolor: '#EEF2FF' }}>
+                  <TableCell colSpan={3} sx={{ fontWeight: 950, fontSize: 16 }}>Initial Amount Due</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 950, color: '#059669', fontSize: 18 }}>{money(initialAgreementPricing.total)}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setAgreementDialog(false)} sx={{ fontWeight: 900 }}>Cancel</Button>

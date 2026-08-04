@@ -428,21 +428,6 @@ export interface RentalPortal {
     accepted_at: string
   } | null
   can_sign: boolean
-  pricing: {
-    rental: number
-    deposit: number
-    shipping: number
-    setup: number
-    labor: number
-    discount: number
-    tax: number
-    subtotal: number
-    total: number
-    rental_tax: number
-    shipping_tax: number
-    setup_tax: number
-    grand_total: number
-  }
   invoices: RentalPortalInvoice[]
   square: {
     enabled: boolean

@@ -317,6 +317,8 @@ const ClientQuotation = () => {
           onPrint={() => window.print()}
           invoiceNumber={isDirectInvoice || quotation.selection_status === 'accepted' ? data.invoice?.invoice_number : undefined}
           invoicePaid={data.invoice?.status === 'paid'}
+          invoiceAmountPaid={data.invoice?.amount_paid}
+          invoiceBalanceDue={data.invoice?.balance_due}
         />
 
         {data.acceptance ? (

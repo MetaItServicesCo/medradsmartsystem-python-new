@@ -16,8 +16,6 @@ import {
   acceptPublicRental,
   fetchRentalPortal,
   payPublicRentalInvoice,
-  savePublicRentalCard,
-  type RentalPortal,
   type RentalPortalInvoice,
 } from '@/api/rentals'
 
@@ -38,60 +36,6 @@ const Centered = ({ children }: { children: React.ReactNode }) => (
     {children}
   </Box>
 )
-
-const DetailTable = ({ portal }: { portal: RentalPortal }) => {
-  const { agreement, pricing } = portal
-  const rows = [
-    {
-      label: `First ${frequencyLabel(agreement.billing_frequency).toLowerCase()} rental period`,
-      cost: pricing.rental,
-      tax: pricing.rental_tax,
-      total: Number(pricing.rental) + Number(pricing.rental_tax),
-      color: '#1D4ED8',
-    },
-    { label: 'Security Deposit', cost: pricing.deposit, tax: 0, total: pricing.deposit, color: '#475569' },
-    { label: 'Shipping & Packing', cost: pricing.shipping, tax: pricing.shipping_tax, total: Number(pricing.shipping) + Number(pricing.shipping_tax), color: '#7C3AED' },
-    { label: 'Delivery & Setup', cost: pricing.setup, tax: pricing.setup_tax, total: Number(pricing.setup) + Number(pricing.setup_tax), color: '#7C3AED' },
-    { label: 'Labor', cost: pricing.labor, tax: 0, total: pricing.labor, color: '#475569' },
-  ]
-  if (Number(pricing.discount || 0) > 0) {
-    rows.push({ label: 'Discount', cost: -Number(pricing.discount), tax: 0, total: -Number(pricing.discount), color: '#DC2626' })
-  }
-
-  return (
-    <Box sx={{ border: '1px solid #D8DEE9', borderRadius: '14px', overflowX: 'auto', mb: 3 }}>
-      <Table size="small" sx={{ minWidth: 580 }}>
-        <TableHead>
-          <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Cost</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Tax 8.25%</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Total</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map(row => (
-            <TableRow key={row.label}>
-              <TableCell sx={{ fontWeight: 850, color: row.color }}>{row.label}</TableCell>
-              <TableCell align="right">{money(row.cost)}</TableCell>
-              <TableCell align="right">{money(row.tax)}</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 800 }}>{money(row.total)}</TableCell>
-            </TableRow>
-          ))}
-          <TableRow sx={{ bgcolor: '#FAF9FF' }}>
-            <TableCell colSpan={2} sx={{ fontWeight: 950 }}>Total Tax</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 950 }}>{money(pricing.tax)}</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 950 }}>{money(pricing.tax)}</TableCell>
-          </TableRow>
-          <TableRow sx={{ bgcolor: '#EEF2FF' }}>
-            <TableCell colSpan={3} sx={{ fontWeight: 950, fontSize: 16 }}>Initial Amount Due</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 950, color: '#059669', fontSize: 18 }}>{money(pricing.grand_total)}</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </Box>
-  )
-}
 
 const InvoiceBreakdown = ({ invoice }: { invoice: RentalPortalInvoice }) => (
   <Box sx={{ mt: 1.5, border: '1px solid #E5E7EB', borderRadius: '12px', overflowX: 'auto' }}>
@@ -134,9 +78,7 @@ const ClientRental = () => {
   const [signatureName, setSignatureName] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [payTarget, setPayTarget] = useState<RentalPortalInvoice | null>(null)
-  const [showCardSave, setShowCardSave] = useState(false)
-  const [saveCardForFuture, setSaveCardForFuture] = useState(false)
-  const [authorizeAutoCharge, setAuthorizeAutoCharge] = useState(false)
+  const [authorizeFuturePayments, setAuthorizeFuturePayments] = useState(false)
   const [thankYouInvoice, setThankYouInvoice] = useState('')
 
   const portalQ = useQuery({
@@ -155,25 +97,14 @@ const ClientRental = () => {
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not approve the agreement'),
   })
 
-  const saveCardMut = useMutation({
-    mutationFn: (sourceId: string) => savePublicRentalCard(token, sourceId, authorizeAutoCharge),
-    onSuccess: (data) => {
-      queryClient.setQueryData(['rental-portal', token], data)
-      setShowCardSave(false)
-      toast.success(authorizeAutoCharge ? 'Card saved and recurring charges authorized' : 'Card saved securely')
-    },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not save the card'),
-  })
-
   const payMut = useMutation({
     mutationFn: ({ invoiceId, sourceId, idempotencyKey }: { invoiceId: number; sourceId: string; idempotencyKey: string }) =>
-      payPublicRentalInvoice(token, invoiceId, sourceId, idempotencyKey, saveCardForFuture, authorizeAutoCharge),
+      payPublicRentalInvoice(token, invoiceId, sourceId, idempotencyKey, authorizeFuturePayments, authorizeFuturePayments),
     onSuccess: (data) => {
       queryClient.setQueryData(['rental-portal', token], data)
       setThankYouInvoice(payTarget?.invoice_number || '')
       setPayTarget(null)
-      setSaveCardForFuture(false)
-      setAuthorizeAutoCharge(false)
+      setAuthorizeFuturePayments(false)
       toast.success('Payment successful — thank you!')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Payment could not be completed'),
@@ -233,7 +164,7 @@ const ClientRental = () => {
             )}
             sx={{ mb: 3, borderRadius: '14px', alignItems: 'center' }}
           >
-            Review the agreement and calculation, then sign before making the initial payment.
+            Review the agreement and its terms, then sign before making the initial payment.
           </Alert>
         )}
 
@@ -270,9 +201,6 @@ const ClientRental = () => {
           </Table>
         </Box>
 
-        <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Initial Invoice Calculation</Typography>
-        <DetailTable portal={portal} />
-
         {agreement.terms_and_conditions && (
           <Box sx={{ mb: 3, p: 2, borderRadius: '14px', bgcolor: '#FAF9FF', border: '1px solid #EDE9FE' }}>
             <Typography sx={{ color: '#7C3AED', fontWeight: 900, fontSize: 11, textTransform: 'uppercase', mb: 0.5 }}>Terms &amp; Conditions</Typography>
@@ -289,7 +217,7 @@ const ClientRental = () => {
             <FormControlLabel
               sx={{ mt: 1.5, alignItems: 'flex-start' }}
               control={<Checkbox checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} />}
-              label="I have reviewed this rental agreement and agree to its terms and initial invoice calculation."
+              label="I have reviewed this rental agreement and agree to its terms and initial payment obligations."
             />
             <Button variant="contained" startIcon={<DrawIcon />} disabled={!termsAccepted || signatureName.trim().length < 2 || acceptMut.isPending} onClick={() => acceptMut.mutate()} sx={{ mt: 1, fontWeight: 900, textTransform: 'none' }}>
               Sign &amp; Approve Agreement
@@ -303,43 +231,12 @@ const ClientRental = () => {
           </Alert>
         )}
 
-        {acceptance && canPay && (
-          <Card variant="outlined" sx={{ p: 2, borderRadius: '16px', mb: 3, borderColor: '#BFDBFE', bgcolor: '#F8FBFF' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-              <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>Saved payment method</Typography>
-                <Typography sx={{ color: '#6B7280', fontSize: 13 }}>
-                  {agreement.saved_card
-                    ? `${agreement.saved_card.brand || 'Card'} ending in ${agreement.saved_card.last4 || '••••'}${agreement.saved_card.exp_month && agreement.saved_card.exp_year ? ` · expires ${String(agreement.saved_card.exp_month).padStart(2, '0')}/${agreement.saved_card.exp_year}` : ''}`
-                    : 'No card is saved. Saving a card is optional unless you authorize recurring auto-charge.'}
-                </Typography>
-                {agreement.auto_charge_authorized && <Typography sx={{ color: '#059669', fontSize: 13, fontWeight: 800 }}>Recurring {frequencyLabel(agreement.billing_frequency).toLowerCase()} charges are authorized.</Typography>}
-              </Box>
-              <Chip label={agreement.has_card_on_file ? 'Card saved' : 'Not saved'} sx={{ fontWeight: 900, bgcolor: agreement.has_card_on_file ? '#DCFCE7' : '#FEF3C7', color: agreement.has_card_on_file ? '#15803D' : '#B45309' }} />
-            </Box>
-            {!showCardSave ? (
-              <Button startIcon={<CreditCardIcon />} variant="outlined" onClick={() => setShowCardSave(true)} sx={{ mt: 1.5, borderRadius: '12px', fontWeight: 800, textTransform: 'none' }}>
-                {agreement.has_card_on_file ? 'Replace saved card' : 'Save a card for future payments'}
-              </Button>
-            ) : (
-              <Box sx={{ mt: 2 }}>
-                <FormControlLabel control={<Checkbox checked={authorizeAutoCharge} onChange={event => setAuthorizeAutoCharge(event.target.checked)} />} label={`I authorize automatic ${frequencyLabel(agreement.billing_frequency).toLowerCase()} charges under this agreement.`} />
-                <SquareCardCheckout
-                  applicationId={square.application_id!} locationId={square.location_id!} sdkUrl={square.sdk_url}
-                  amount={0} currency={square.currency} payerName={agreement.customer_name} payerEmail={agreement.customer_email}
-                  intent="STORE" submitLabel="Save card securely" processing={saveCardMut.isPending}
-                  onPaymentToken={(sourceId) => saveCardMut.mutate(sourceId)}
-                />
-                <Button onClick={() => setShowCardSave(false)} sx={{ mt: 1, fontWeight: 800 }}>Cancel</Button>
-              </Box>
-            )}
-          </Card>
-        )}
-
-        <Divider sx={{ my: 3 }} />
-        <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Rental Invoices</Typography>
-        {thankYouInvoice && <Alert severity="success" sx={{ mb: 2, borderRadius: '14px' }}><strong>Thank you.</strong> Payment for {thankYouInvoice} was received successfully.</Alert>}
-        {invoices.length === 0 ? <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>No invoices yet.</Typography> : (
+        {acceptance && (
+          <>
+            <Divider sx={{ my: 3 }} />
+            <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Rental Invoices</Typography>
+            {thankYouInvoice && <Alert severity="success" sx={{ mb: 2, borderRadius: '14px' }}><strong>Thank you.</strong> Payment for {thankYouInvoice} was received successfully.</Alert>}
+            {invoices.length === 0 ? <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>No invoices yet.</Typography> : (
           <Box sx={{ display: 'grid', gap: 1.5 }}>
             {invoices.map(invoice => {
               const style = statusStyle(invoice.status)
@@ -355,14 +252,25 @@ const ClientRental = () => {
                   {unpaid && acceptance && canPay && (
                     payTarget?.id === invoice.id ? (
                       <Box sx={{ mt: 2 }}>
-                        <FormControlLabel control={<Checkbox checked={saveCardForFuture} onChange={event => { setSaveCardForFuture(event.target.checked); if (!event.target.checked) setAuthorizeAutoCharge(false) }} />} label="Save this card securely for future rental payments" />
-                        <FormControlLabel disabled={!saveCardForFuture} control={<Checkbox checked={authorizeAutoCharge} onChange={event => setAuthorizeAutoCharge(event.target.checked)} />} label={`Authorize automatic ${frequencyLabel(agreement.billing_frequency).toLowerCase()} charges under this agreement`} />
-                        <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1 }}>Saving a card and recurring authorization are optional and recorded separately. Full card details are never stored by MedRad.</Typography>
+                        {agreement.auto_charge_authorized && agreement.saved_card ? (
+                          <Alert severity="success" sx={{ mb: 1.5, borderRadius: '12px' }}>
+                            Automatic {frequencyLabel(agreement.billing_frequency).toLowerCase()} payments are authorized using {agreement.saved_card.brand || 'the saved card'} ending in {agreement.saved_card.last4 || '••••'}.
+                          </Alert>
+                        ) : (
+                          <FormControlLabel
+                            sx={{ alignItems: 'flex-start', mb: 0.5 }}
+                            control={<Checkbox checked={authorizeFuturePayments} onChange={event => setAuthorizeFuturePayments(event.target.checked)} />}
+                            label={`Save this card securely and authorize automatic ${frequencyLabel(agreement.billing_frequency).toLowerCase()} payments for future billing periods`}
+                          />
+                        )}
+                        <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1 }}>
+                          Leave the option unchecked for a one-time payment. MedRad never stores the full card number or security code.
+                        </Typography>
                         <SquareCardCheckout applicationId={square.application_id!} locationId={square.location_id!} sdkUrl={square.sdk_url} amount={Number(invoice.balance_due || 0)} currency={square.currency} payerName={agreement.customer_name} payerEmail={agreement.customer_email} processing={payMut.isPending} onPaymentToken={(sourceId, idempotencyKey) => payMut.mutate({ invoiceId: invoice.id, sourceId, idempotencyKey })} />
-                        <Button onClick={() => setPayTarget(null)} sx={{ mt: 1, fontWeight: 800 }}>Cancel</Button>
+                        <Button onClick={() => { setPayTarget(null); setAuthorizeFuturePayments(false) }} sx={{ mt: 1, fontWeight: 800 }}>Cancel</Button>
                       </Box>
                     ) : (
-                      <Button variant="contained" startIcon={<CreditCardIcon />} onClick={() => setPayTarget(invoice)} sx={{ mt: 1.5, borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+                      <Button variant="contained" startIcon={<CreditCardIcon />} onClick={() => { setAuthorizeFuturePayments(false); setPayTarget(invoice) }} sx={{ mt: 1.5, borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
                         {invoice.id === initialInvoiceId ? 'Pay Initial Invoice' : 'Pay Invoice'} · {money(invoice.balance_due)}
                       </Button>
                     )
@@ -371,6 +279,8 @@ const ClientRental = () => {
               )
             })}
           </Box>
+            )}
+          </>
         )}
       </Card>
     </Box>
