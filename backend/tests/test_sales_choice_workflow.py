@@ -434,6 +434,123 @@ def test_send_validation_aggregates_duplicate_part_line_quantities() -> None:
         db.close()
 
 
+def test_apply_items_binds_inventory_part_for_direct_invoice_creation() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        part = InventoryPart(
+            part_number="DIRECT-INVOICE-001",
+            part_type="sales",
+            description="Direct invoice stock",
+            unit_price=Decimal("25"),
+            condition="new",
+            quantity_on_hand=5,
+            reorder_level=0,
+            status="active",
+        )
+        db.add(part)
+        db.flush()
+        quotation = SalesQuotation(
+            quotation_type="standard",
+            document_kind="direct_invoice",
+            tax_amount=Decimal("0"),
+            discount_amount=Decimal("0"),
+            history=[],
+        )
+
+        _apply_items(
+            db,
+            quotation,
+            [SalesQuotationItemIn(part_id=part.id, quantity=1)],
+            _user(),
+        )
+
+        assert len(quotation.line_items) == 1
+        assert quotation.line_items[0].part_id == part.id
+        assert quotation.line_items[0].part is part
+        assert quotation.line_items[0].part.quantity_on_hand == 5
+    finally:
+        db.close()
+
+
+def test_send_validation_does_not_count_its_own_active_reservation() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        part = InventoryPart(
+            part_number="DIRECT-RESEND-001",
+            part_type="sales",
+            description="Direct invoice resend stock",
+            unit_price=Decimal("25"),
+            condition="new",
+            quantity_on_hand=1,
+            reorder_level=0,
+            status="active",
+        )
+        quotation = SalesQuotation(
+            quotation_number="SQ-DIRECT-RESEND-001",
+            work_order="SO-DIRECT-RESEND-001",
+            customer_name="Direct Customer",
+            customer_email="direct@example.com",
+            quotation_type="standard",
+            document_kind="direct_invoice",
+            status="sent",
+            paid_status="unpaid",
+            history=[],
+        )
+        line = SalesQuotationLineItem(
+            part=part,
+            item_kind="product",
+            is_default=True,
+            is_selected=True,
+            description=part.description,
+            quantity=1,
+            unit_price=Decimal("25"),
+            shipping_fee=Decimal("0"),
+            setup_fee=Decimal("0"),
+            labor_fee=Decimal("0"),
+            total=Decimal("25"),
+        )
+        quotation.line_items.append(line)
+        db.add(quotation)
+        db.flush()
+        invoice = Invoice(
+            invoice_number="INV-SALES-DIRECT-RESEND-001",
+            invoice_type=InvoiceType.SALES,
+            customer_name=quotation.customer_name,
+            customer_email=quotation.customer_email,
+            sales_quotation_id=quotation.id,
+            subtotal=Decimal("25"),
+            tax_amount=Decimal("0"),
+            discount_amount=Decimal("0"),
+            total_amount=Decimal("25"),
+            amount_paid=Decimal("0"),
+            balance_due=Decimal("25"),
+            status=InvoiceStatus.PENDING,
+            issue_date=date.today(),
+            due_date=date.today(),
+        )
+        db.add(invoice)
+        db.flush()
+        quotation.converted_invoice_id = invoice.id
+        db.add(
+            SalesInventoryReservation(
+                quotation_id=quotation.id,
+                invoice_id=invoice.id,
+                part_id=part.id,
+                quantity=1,
+                status="active",
+            )
+        )
+        db.flush()
+
+        _validate_saved_quotation_stock(db, quotation)
+    finally:
+        db.close()
+
+
 def test_sent_quotation_revision_snapshots_and_invalidates_delivery_links() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

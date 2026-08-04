@@ -861,18 +861,26 @@ def _required_stock(lines: list[SalesQuotationLineItem]) -> dict[int, int]:
 def _active_reserved_quantity_map(
     db: Session,
     part_ids: set[int],
+    *,
+    exclude_quotation_id: Optional[int] = None,
 ) -> dict[int, int]:
     if not part_ids:
         return {}
+    query = db.query(
+        SalesInventoryReservation.part_id,
+        func.coalesce(func.sum(SalesInventoryReservation.quantity), 0),
+    ).filter(
+        SalesInventoryReservation.part_id.in_(sorted(part_ids)),
+        SalesInventoryReservation.status == ACTIVE_RESERVATION,
+    )
+    if exclude_quotation_id is not None:
+        # Resending a direct invoice must not treat its own idempotent stock
+        # reservation as inventory committed to a different sale.
+        query = query.filter(
+            SalesInventoryReservation.quotation_id != exclude_quotation_id,
+        )
     rows = (
-        db.query(
-            SalesInventoryReservation.part_id,
-            func.coalesce(func.sum(SalesInventoryReservation.quantity), 0),
-        )
-        .filter(
-            SalesInventoryReservation.part_id.in_(sorted(part_ids)),
-            SalesInventoryReservation.status == ACTIVE_RESERVATION,
-        )
+        query
         .group_by(SalesInventoryReservation.part_id)
         .all()
     )
@@ -971,7 +979,11 @@ def _validate_saved_quotation_stock(
                 detail="A quotation product no longer has a valid inventory part",
             )
 
-    reserved_by_part = _active_reserved_quantity_map(db, set(parts_by_id))
+    reserved_by_part = _active_reserved_quantity_map(
+        db,
+        set(parts_by_id),
+        exclude_quotation_id=quotation.id,
+    )
     required_by_part: dict[int, int] = {}
     for line in product_lines:
         required_by_part[line.part_id] = (
@@ -1217,6 +1229,10 @@ def _apply_items(db: Session, quotation: SalesQuotation, items: list[SalesQuotat
             item_metadata["inventory_part"] = trade_in_part
         line = SalesQuotationLineItem(
                 part_id=part.id if part else None,
+                # Bind the relationship as well as the FK. Direct invoices are
+                # generated in the same unit of work, before a relationship
+                # reload; leaving this unset made valid stock look missing.
+                part=part,
                 item_kind=item_kind,
                 is_default=is_default,
                 is_selected=is_default,
