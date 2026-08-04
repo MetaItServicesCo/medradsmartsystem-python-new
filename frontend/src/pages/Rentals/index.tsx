@@ -356,6 +356,7 @@ const Rentals = () => {
 
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
+  const [deliveryLink, setDeliveryLink] = useState('')
   const [partInfo, setPartInfo] = useState<RentalPartInfo | null>(null)
   const [rateCardPart, setRateCardPart] = useState<RentalPart | null>(null)
   const [rateCardForm, setRateCardForm] = useState({ weekly_rate: '', biweekly_rate: '', monthly_rate: '', quarterly_rate: '', default_deposit: '' })
@@ -734,7 +735,8 @@ const Rentals = () => {
 
   const sendMut = useMutation({
     mutationFn: (id: number) => sendRentalPortalLink(id),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      setDeliveryLink(result.link)
       toast.success('Secure link emailed to the customer')
       closeActions()
       invalidateRentals()
@@ -1558,6 +1560,35 @@ const Rentals = () => {
           Delete
         </MenuItem>
       </Menu>
+
+      <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental Link Sent</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: '#4B5563', mb: 2 }}>
+            The customer was notified. You can also copy this secure rental agreement link.
+          </Typography>
+          <TextField
+            fullWidth
+            value={deliveryLink}
+            InputProps={{ readOnly: true }}
+            onFocus={event => event.target.select()}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setDeliveryLink('')}>Close</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              navigator.clipboard.writeText(deliveryLink)
+                .then(() => toast.success('Rental link copied'))
+                .catch(() => toast.error('Copy the link from the field'))
+            }}
+            sx={{ fontWeight: 900 }}
+          >
+            Copy Link
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setPrintInvoice(actionInvoice); closeInvoiceActions() }}>

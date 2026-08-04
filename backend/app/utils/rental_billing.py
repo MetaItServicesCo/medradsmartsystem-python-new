@@ -119,6 +119,36 @@ def _period_amounts(rental: Rental, period_index: int) -> tuple[Decimal, Decimal
     return base, discount
 
 
+def _initial_invoice_amounts(rental: Rental) -> dict[str, Decimal]:
+    """Calculate the upfront invoice, including rental period one.
+
+    Rent, shipping, and delivery/setup are taxable. The refundable deposit and
+    labor are not. Keeping this calculation centralized prevents the public
+    portal, invoice ledger, and recurring scheduler from drifting apart.
+    """
+    rental_total, discount = _period_amounts(rental, 1)
+    deposit = _money(rental.security_deposit)
+    shipping_total = sum((_money(item.shipping_fee) for item in rental.items or []), Decimal("0"))
+    setup_total = sum((_money(item.setup_fee) for item in rental.items or []), Decimal("0"))
+    labor_total = sum((_money(item.labor_fee) for item in rental.items or []), Decimal("0"))
+    taxable_rental = max(Decimal("0"), rental_total - discount)
+    taxable_total = taxable_rental + shipping_total + setup_total
+    tax = (taxable_total * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
+    subtotal = rental_total + deposit + shipping_total + setup_total + labor_total
+    total = max(Decimal("0"), subtotal - discount + tax)
+    return {
+        "rental": rental_total,
+        "deposit": deposit,
+        "shipping": shipping_total,
+        "setup": setup_total,
+        "labor": labor_total,
+        "discount": discount,
+        "tax": tax,
+        "subtotal": subtotal,
+        "total": total,
+    }
+
+
 def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
     period_index = int(rental.periods_billed or 0) + 1
     base, discount = _period_amounts(rental, period_index)
@@ -231,28 +261,32 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
 
 
 def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
-    """The agreement's first invoice, raised upfront at creation: the security
-    deposit plus the one-time Shipping & Packing and Delivery & Setup fees."""
-    deposit = _money(rental.security_deposit)
-    shipping_total = sum((_money(item.shipping_fee) for item in rental.items or []), Decimal("0"))
-    setup_total = sum((_money(item.setup_fee) for item in rental.items or []), Decimal("0"))
-    labor_total = sum((_money(item.labor_fee) for item in rental.items or []), Decimal("0"))
-    # Deposit + labor are non-taxable; shipping & packing + delivery & setup are taxable.
-    subtotal = deposit + shipping_total + setup_total + labor_total
-    tax = ((shipping_total + setup_total) * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
-    total = subtotal + tax
-    if subtotal <= 0:
+    """Raise period one, the deposit, and one-time fees at agreement creation."""
+    amounts = _initial_invoice_amounts(rental)
+    if amounts["subtotal"] <= 0:
         return None
 
     line_items: list[dict[str, Any]] = []
-    if deposit > 0:
-        line_items.append(_line("DEPOSIT", "Security Deposit", deposit))
-    if shipping_total > 0:
-        line_items.append(_line("SHIP-PACK", "Shipping & Packing", shipping_total))
-    if setup_total > 0:
-        line_items.append(_line("DEL-SETUP", "Delivery & Setup", setup_total))
-    if labor_total > 0:
-        line_items.append(_line("LABOR", "Labor", labor_total))
+    frequency = _freq(rental)
+    for item in rental.items or []:
+        item_total = _money(item.rental_rate) * int(item.quantity or 1)
+        if item_total > 0:
+            line_items.append(
+                _line(
+                    item.part_number or "Rental",
+                    f"{item.part_description or 'Rental product'} - first {frequency} rental period",
+                    _money(item.rental_rate),
+                    int(item.quantity or 1),
+                )
+            )
+    if amounts["deposit"] > 0:
+        line_items.append(_line("DEPOSIT", "Security Deposit", amounts["deposit"]))
+    if amounts["shipping"] > 0:
+        line_items.append(_line("SHIP-PACK", "Shipping & Packing", amounts["shipping"]))
+    if amounts["setup"] > 0:
+        line_items.append(_line("DEL-SETUP", "Delivery & Setup", amounts["setup"]))
+    if amounts["labor"] > 0:
+        line_items.append(_line("LABOR", "Labor", amounts["labor"]))
 
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
@@ -263,23 +297,23 @@ def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
         customer_address=rental.customer_address,
         facility_id=_facility_id(db, rental),
         rental_id=rental.id,
-        subtotal=subtotal,
-        tax_amount=tax,
-        discount_amount=Decimal("0"),
-        total_amount=total,
+        subtotal=amounts["subtotal"],
+        tax_amount=amounts["tax"],
+        discount_amount=amounts["discount"],
+        total_amount=amounts["total"],
         amount_paid=Decimal("0"),
-        balance_due=total,
+        balance_due=amounts["total"],
         status=InvoiceStatus.PENDING,
         issue_date=date.today(),
         due_date=date.today(),
         payment_terms="Due on receipt",
         payment_method="credit_card" if rental.auto_charge else None,
-        notes=compose_invoice_edit_notes(None, f"Security deposit & one-time fees for rental {rental.rental_number}", {"line_items": line_items, "labels": {"tax": f"Tax ({RENTAL_TAX_RATE}%)"}}),
+        notes=compose_invoice_edit_notes(None, f"Initial rental period, security deposit & one-time fees for rental {rental.rental_number}", {"line_items": line_items, "labels": {"tax": f"Tax ({RENTAL_TAX_RATE}%)"}}),
     )
     db.add(invoice)
     db.flush()
-    record_invoice_created(db, invoice, None, f"Deposit & fees invoice for {rental.rental_number}")
-    _append_history(rental, "deposit_invoiced", {"invoice": invoice.invoice_number, "amount": str(total)})
+    record_invoice_created(db, invoice, None, f"Initial rental invoice for {rental.rental_number}")
+    _append_history(rental, "deposit_invoiced", {"invoice": invoice.invoice_number, "amount": str(amounts["total"]), "rental_period": 1})
     return invoice
 
 

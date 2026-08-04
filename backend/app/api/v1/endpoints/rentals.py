@@ -891,9 +891,11 @@ def create_rental(
     db.add(rental)
     db.flush()
 
-    # The first invoice is the security deposit, raised upfront. Rental cycles then
-    # bill in arrears: the first cycle's invoice is raised once that cycle completes.
-    generate_deposit_invoice(db, rental)
+    # Period one, the deposit, and one-time fees are raised upfront. Mark that
+    # rental period as billed so the recurring scheduler starts with period two.
+    initial_invoice = generate_deposit_invoice(db, rental)
+    if initial_invoice is not None:
+        rental.periods_billed = 1
     rental.next_bill_date = payload.start_date + timedelta(days=period_days(_frequency_value(payload.billing_frequency)))
 
     log_activity(db, "rentals", rental.id, "CREATE", current_user, {"rental_number": rental.rental_number})
