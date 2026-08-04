@@ -1729,7 +1729,7 @@ const Rentals = () => {
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Rental Products</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(220px, 1.5fr) 78px 110px 120px 96px 96px 96px auto' }, gap: 2, mb: 2, alignItems: 'start' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(190px, 1.5fr) 60px minmax(95px, .7fr) minmax(105px, .8fr) minmax(110px, .9fr) minmax(110px, .9fr) minmax(90px, .7fr) auto' }, gap: 2, mb: 2, alignItems: 'start' }}>
             <Box sx={{ gridColumn: { xs: '1 / -1', lg: 'auto' } }}>
               <PartSearchAutocomplete<RentalPart>
                 label="Rental product"
@@ -1755,7 +1755,7 @@ const Rentals = () => {
           </Box>
 
           <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '16px', overflowX: 'auto' }}>
-            <Table size="small" sx={{ minWidth: 640 }}>
+            <Table size="small" sx={{ minWidth: 760 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
@@ -1764,12 +1764,13 @@ const Rentals = () => {
                   <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Ship &amp; Pack</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Deliv &amp; Setup</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Labor</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {agreementForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
                 ) : agreementForm.items.map(item => (
                   <TableRow key={item.key}>
                     <TableCell>
@@ -1781,6 +1782,7 @@ const Rentals = () => {
                     <TableCell>{item.item_condition}</TableCell>
                     <TableCell align="right">{money(item.shipping_fee)}</TableCell>
                     <TableCell align="right">{money(item.setup_fee)}</TableCell>
+                    <TableCell align="right">{money(item.labor_fee)}</TableCell>
                     <TableCell align="right">
                       <IconButton size="small" onClick={() => removeRentalItem(item.key)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
@@ -1792,22 +1794,22 @@ const Rentals = () => {
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Billing &amp; Discount</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, alignItems: 'center' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(6, minmax(0, 1fr))' }, gap: 2, alignItems: 'start' }}>
             <FormControlLabel
               control={<Switch checked={agreementForm.auto_charge} onChange={e => setAgreementForm(prev => ({ ...prev, auto_charge: e.target.checked }))} />}
               label="Auto-charge saved card each period"
-              sx={{ gridColumn: { xs: '1 / -1', md: 'auto' } }}
+              sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1', md: 'span 2' }, minHeight: 56, m: 0, alignItems: 'center' }}
             />
-            <TextField label="Committed periods" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="e.g. 4 for a 4-period deal" inputProps={{ min: 0 }} />
-            <TextField select label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent' }))}>
+            <TextField sx={{ gridColumn: { md: 'span 2' } }} label="Committed periods" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="e.g. 4 for a 4-period deal" inputProps={{ min: 0 }} />
+            <TextField sx={{ gridColumn: { md: 'span 2' } }} select label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent' }))}>
               <MenuItem value="">No discount</MenuItem>
               <MenuItem value="flat">Flat amount</MenuItem>
               <MenuItem value="percent">Percent</MenuItem>
             </TextField>
             {agreementForm.discount_type && (
               <>
-                <TextField label={agreementForm.discount_type === 'percent' ? 'Discount %' : 'Discount amount'} type="number" value={agreementForm.discount_value} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} />
-                <TextField label="Apply after N periods" type="number" value={agreementForm.discount_apply_after_periods} onChange={e => setAgreementForm(prev => ({ ...prev, discount_apply_after_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="e.g. after 3 paid periods" inputProps={{ min: 0 }} />
+                <TextField sx={{ gridColumn: { md: 'span 3' } }} label={agreementForm.discount_type === 'percent' ? 'Discount %' : 'Discount amount'} type="number" value={agreementForm.discount_value} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} />
+                <TextField sx={{ gridColumn: { md: 'span 3' } }} label="Apply after N periods" type="number" value={agreementForm.discount_apply_after_periods} onChange={e => setAgreementForm(prev => ({ ...prev, discount_apply_after_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="e.g. after 3 paid periods" inputProps={{ min: 0 }} />
               </>
             )}
             <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
@@ -1934,6 +1936,7 @@ const Rentals = () => {
                         <TableCell sx={{ fontWeight: 900 }}>Quantity</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Ship &amp; Pack</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Deliv &amp; Setup</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Labor</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Periods</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900 }}>Rental Base Total</TableCell>
@@ -1948,6 +1951,7 @@ const Rentals = () => {
                           <TableCell>{item.quantity || 1}</TableCell>
                           <TableCell>{money(item.shipping_fee)}</TableCell>
                           <TableCell>{money(item.setup_fee)}</TableCell>
+                          <TableCell>{money(item.labor_fee)}</TableCell>
                           <TableCell>{item.item_condition || '-'}</TableCell>
                           <TableCell>{billingPeriods}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 900, color: '#047857' }}>{money(billingPeriods * Number(item.rental_rate || 0) * Number(item.quantity || 1))}</TableCell>
@@ -1966,12 +1970,12 @@ const Rentals = () => {
                         ['Discount', -convertDiscountAmount],
                       ].map(([label, value]) => (
                         <TableRow key={String(label)}>
-                          <TableCell colSpan={8} align="right" sx={{ fontWeight: 900, color: '#4B5563' }}>{label}</TableCell>
+                          <TableCell colSpan={9} align="right" sx={{ fontWeight: 900, color: '#4B5563' }}>{label}</TableCell>
                           <TableCell align="right">{money(value as number)}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow sx={{ bgcolor: '#EFF6FF' }}>
-                        <TableCell colSpan={8} align="right" sx={{ fontWeight: 900, fontSize: 15 }}>Grand Total Due</TableCell>
+                        <TableCell colSpan={9} align="right" sx={{ fontWeight: 900, fontSize: 15 }}>Grand Total Due</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900, fontSize: 16, color: '#1E3A8A' }}>{money(convertGrandTotal)}</TableCell>
                       </TableRow>
                     </TableBody>
@@ -2179,7 +2183,7 @@ const Rentals = () => {
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Items</Typography>
                 <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '12px', overflowX: 'auto' }}>
-                  <Table size="small" sx={{ minWidth: 640 }}>
+                  <Table size="small" sx={{ minWidth: 720 }}>
                     <TableHead>
                       <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                         <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
@@ -2188,6 +2192,7 @@ const Rentals = () => {
                         <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Shipping</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Setup</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }} align="right">Labor</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
                       </TableRow>
                     </TableHead>
@@ -2203,6 +2208,7 @@ const Rentals = () => {
                           <TableCell>{item.item_condition || '-'}</TableCell>
                           <TableCell align="right">{money(item.shipping_fee)}</TableCell>
                           <TableCell align="right">{money(item.setup_fee)}</TableCell>
+                          <TableCell align="right">{money(item.labor_fee)}</TableCell>
                           <TableCell>
                             <Chip size="small" label={item.item_status === 'returned' ? 'Returned' : 'Out'} sx={{ fontWeight: 800, bgcolor: item.item_status === 'returned' ? '#DCFCE7' : '#DBEAFE', color: item.item_status === 'returned' ? '#15803D' : '#1D4ED8' }} />
                           </TableCell>
