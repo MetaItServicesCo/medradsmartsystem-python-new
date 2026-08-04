@@ -1,7 +1,7 @@
 """rental item labor fee (matches sales line fee structure)
 
-Revision ID: o4d5e6f7a8b9
-Revises: n3c4d5e6f7a8
+Revision ID: q6f7a8b9c0d1
+Revises: o4d5e6f7a8b9
 Create Date: 2026-08-04
 """
 
@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "o4d5e6f7a8b9"
-down_revision: Union[str, Sequence[str], None] = "n3c4d5e6f7a8"
+revision: str = "q6f7a8b9c0d1"
+down_revision: Union[str, Sequence[str], None] = "o4d5e6f7a8b9"
 branch_labels = None
 depends_on = None
 

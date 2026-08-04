@@ -1,7 +1,7 @@
 """rental customer-portal access token
 
 Revision ID: p5e6f7a8b9c0
-Revises: o4d5e6f7a8b9
+Revises: q6f7a8b9c0d1
 Create Date: 2026-08-04
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = "p5e6f7a8b9c0"
-down_revision: Union[str, Sequence[str], None] = "o4d5e6f7a8b9"
+down_revision: Union[str, Sequence[str], None] = "q6f7a8b9c0d1"
 branch_labels = None
 depends_on = None
 
