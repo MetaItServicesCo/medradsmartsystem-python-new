@@ -5,7 +5,6 @@ import {
   FormControlLabel, Table, TableBody, TableCell, TableHead, TableRow,
   TextField, Typography,
 } from '@mui/material'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import DrawIcon from '@mui/icons-material/Draw'
 import PrintIcon from '@mui/icons-material/Print'
@@ -13,6 +12,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 
 import SquareCardCheckout from '@/components/Billing/SquareCardCheckout'
+import {
+  CustomerDetailsCard,
+  CustomerDocumentHeader,
+  CustomerDocumentProgress,
+  CustomerRecipientCard,
+  CustomerSignaturePreview,
+  CustomerSignatureRecord,
+  customerConsentLabelSx,
+  customerDocumentCardSx,
+  customerDocumentStatusStyle,
+  customerPortalSx,
+} from '@/components/Documents/CustomerDocumentUI'
 import {
   acceptPublicRental,
   fetchRentalPortal,
@@ -25,24 +36,6 @@ const dateLabel = (value?: string | null) => (value
   ? new Date(`${value}${value.length === 10 ? 'T00:00:00' : ''}`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   : '—')
 const frequencyLabel = (value: string) => value === 'biweekly' ? 'Bi-weekly' : `${value.charAt(0).toUpperCase()}${value.slice(1)}`
-
-const statusStyle = (status: string) => (
-  status === 'paid' ? { bg: '#DCFCE7', color: '#15803D' }
-    : status === 'overdue' ? { bg: '#FEE2E2', color: '#B91C1C' }
-      : { bg: '#DBEAFE', color: '#1D4ED8' }
-)
-
-const consentLabelSx = {
-  m: 0,
-  alignItems: 'flex-start',
-  '& .MuiCheckbox-root': {
-    p: 0.25,
-    mr: 1.25,
-  },
-  '& .MuiFormControlLabel-label': {
-    lineHeight: 1.5,
-  },
-}
 
 const Centered = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#F5F3FF', p: 3 }}>
@@ -158,9 +151,6 @@ const ClientRental = () => {
   const documentNumber = acceptance && displayedInvoice
     ? displayedInvoice.invoice_number
     : agreement.rental_number
-  const documentMeta = acceptance && displayedInvoice
-    ? `${company_name} · Agreement ${agreement.rental_number}`
-    : `${company_name} · Revision ${agreement.revision}`
   const documentStatus = acceptance && displayedInvoice ? displayedInvoice.status : agreement.status
 
   const printInvoice = (invoiceId: number) => {
@@ -170,12 +160,7 @@ const ClientRental = () => {
 
   return (
     <Box sx={{
-      height: '100dvh',
-      overflowY: 'auto',
-      overscrollBehavior: 'contain',
-      bgcolor: '#F5F3FF',
-      py: { xs: 2, md: 5 },
-      px: 2,
+      ...customerPortalSx,
       ...(printInvoiceId ? {
         '@media print': {
           height: 'auto',
@@ -188,40 +173,21 @@ const ClientRental = () => {
         },
       } : {}),
     }}>
-      <Card sx={{
-        width: 'min(980px, 100%)',
-        mx: 'auto',
-        p: { xs: 2, md: 4 },
-        borderRadius: '24px',
-        boxShadow: '0 24px 70px rgba(30,58,138,0.14)',
-        '@media print': { width: '100%', p: 2, borderRadius: 0, boxShadow: 'none' },
-      }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 90, height: 58, objectFit: 'contain' }} />
-            <Box>
-              <Typography sx={{ color: '#2563EB', fontWeight: 900, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' }}>{documentLabel}</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 950, color: '#1E3A8A', letterSpacing: '-0.5px' }}>{documentNumber}</Typography>
-              <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{documentMeta}</Typography>
-            </Box>
-          </Box>
-          <Chip label={documentStatus} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: statusStyle(documentStatus).bg, color: statusStyle(documentStatus).color }} />
-        </Box>
-
-        <Box sx={{ height: 4, borderRadius: 999, my: 3, background: 'linear-gradient(90deg, #2563EB 0%, #7C3AED 60%, #EC4899 100%)' }} />
+      <Card sx={customerDocumentCardSx}>
+        <CustomerDocumentHeader
+          label={documentLabel}
+          number={documentNumber}
+          companyName={company_name}
+          meta={acceptance && displayedInvoice ? `Agreement ${agreement.rental_number}` : `Revision ${agreement.revision}`}
+          status={documentStatus}
+        />
 
         <Box className="rental-agreement-content">
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', mb: 3, border: '1px solid #DDD6FE', borderRadius: '14px', overflow: 'hidden' }}>
-          {[
-            { number: '1', label: 'Review agreement', complete: true },
-            { number: '2', label: acceptance ? 'Agreement signed' : 'Sign agreement', complete: Boolean(acceptance) },
-            { number: '3', label: invoices.every(invoice => Number(invoice.balance_due || 0) <= 0) ? 'Payment complete' : 'Pay initial invoice', complete: invoices.length > 0 && invoices.every(invoice => Number(invoice.balance_due || 0) <= 0) },
-          ].map((step, index) => (
-            <Box key={step.number} sx={{ px: { xs: 1, md: 2 }, py: 1.5, textAlign: 'center', bgcolor: step.complete ? '#F0FDF4' : '#FAF9FF', borderLeft: index ? '1px solid #DDD6FE' : 0 }}>
-              <Typography sx={{ fontWeight: 950, color: step.complete ? '#15803D' : '#7C3AED', fontSize: { xs: 12, md: 14 } }}>{step.complete ? '✓' : step.number} {step.label}</Typography>
-            </Box>
-          ))}
-        </Box>
+        <CustomerDocumentProgress steps={[
+          { label: 'Review agreement', complete: true },
+          { label: acceptance ? 'Agreement signed' : 'Sign agreement', complete: Boolean(acceptance) },
+          { label: initialPaymentComplete ? 'Payment complete' : 'Pay initial invoice', complete: initialPaymentComplete },
+        ]} />
 
         {!acceptance && (
           <Alert
@@ -243,18 +209,13 @@ const ClientRental = () => {
         )}
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5, mb: 3 }}>
-          <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-            <Typography sx={{ color: '#2563EB', fontWeight: 900, fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px' }}>Prepared for</Typography>
-            <Typography sx={{ color: '#1E3A8A', fontWeight: 900, fontSize: 20, mt: 0.4 }}>{agreement.customer_name}</Typography>
-            <Typography sx={{ color: '#4B5563' }}>{agreement.customer_email}</Typography>
-            <Typography sx={{ color: '#4B5563' }}>{agreement.customer_address}</Typography>
-          </Box>
-          <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 2, rowGap: 0.8, alignContent: 'start' }}>
-            <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Billing</Typography><Typography sx={{ textAlign: 'right' }}>{frequencyLabel(agreement.billing_frequency)}</Typography>
-            <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Rental period</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(agreement.start_date)} – {dateLabel(agreement.end_date)}</Typography>
-            <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Next billing</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(agreement.next_bill_date)}</Typography>
-            <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Auto-charge</Typography><Typography sx={{ textAlign: 'right' }}>{autoChargeStatus}</Typography>
-          </Box>
+          <CustomerRecipientCard name={agreement.customer_name} email={agreement.customer_email} address={agreement.customer_address} />
+          <CustomerDetailsCard rows={[
+            { label: 'Billing', value: frequencyLabel(agreement.billing_frequency) },
+            { label: 'Rental period', value: `${dateLabel(agreement.start_date)} – ${dateLabel(agreement.end_date)}` },
+            { label: 'Next billing', value: dateLabel(agreement.next_bill_date) },
+            { label: 'Auto-charge', value: autoChargeStatus },
+          ]} />
         </Box>
 
         <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Rented Products</Typography>
@@ -281,15 +242,16 @@ const ClientRental = () => {
             <Typography sx={{ color: '#475569', whiteSpace: 'pre-wrap', fontSize: 13 }}>{agreement.terms_and_conditions}</Typography>
           </Box>
         )}
+        </Box>
 
         {!acceptance ? (
-          <Card id="rental-acceptance" variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', mb: 3, borderColor: '#C4B5FD', bgcolor: '#FAF9FF', scrollMarginTop: 24 }}>
+          <Card id="rental-acceptance" className="rental-agreement-content" variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', mb: 3, borderColor: '#C4B5FD', bgcolor: '#FAF9FF', scrollMarginTop: 24 }}>
             <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 20 }}>Sign and approve this rental agreement</Typography>
             <Typography sx={{ color: '#64748B', mt: 0.5, mb: 2 }}>Review the agreement, type your full legal name, and accept the terms before paying.</Typography>
-            <TextField fullWidth label="Full legal name" value={signatureName} onChange={event => setSignatureName(event.target.value)} />
-            {signatureName.trim() && <Typography sx={{ mt: 1.5, px: 2, py: 1, borderBottom: '1px solid #94A3B8', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 28, color: '#1E1B4B' }}>{signatureName.trim()}</Typography>}
+            <TextField fullWidth label="Type your full legal name" value={signatureName} onChange={event => setSignatureName(event.target.value)} helperText="Your typed name will be rendered as your electronic signature." sx={{ mb: 2 }} />
+            <CustomerSignaturePreview name={signatureName} />
             <FormControlLabel
-              sx={{ ...consentLabelSx, mt: 1.5 }}
+              sx={{ ...customerConsentLabelSx, mt: 1.5 }}
               control={<Checkbox checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} />}
               label="I have reviewed this rental agreement and agree to its terms and initial payment obligations."
             />
@@ -297,14 +259,7 @@ const ClientRental = () => {
               Sign &amp; Approve Agreement
             </Button>
           </Card>
-        ) : (
-          <Alert icon={<CheckCircleOutlineIcon />} severity="success" sx={{ mb: 3, borderRadius: '14px', alignItems: 'center' }}>
-            <Typography sx={{ fontWeight: 900 }}>Agreement signed by {acceptance.accepted_by_name}</Typography>
-            <Typography sx={{ fontSize: 13 }}>Accepted {dateLabel(acceptance.accepted_at)} · Revision {acceptance.agreement_revision}</Typography>
-            <Typography sx={{ fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 25, mt: 0.5 }}>{acceptance.signature_name}</Typography>
-          </Alert>
-        )}
-        </Box>
+        ) : <CustomerSignatureRecord context="Agreement" acceptedBy={acceptance.accepted_by_name} acceptedAt={dateLabel(acceptance.accepted_at)} signature={acceptance.signature_name} detail={`Revision ${acceptance.agreement_revision}`} />}
 
         {acceptance && (
           <>
@@ -314,7 +269,7 @@ const ClientRental = () => {
             {invoices.length === 0 ? <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>No invoices yet.</Typography> : (
           <Box sx={{ display: 'grid', gap: 1.5 }}>
             {invoices.map(invoice => {
-              const style = statusStyle(invoice.status)
+              const style = customerDocumentStatusStyle(invoice.status)
               const unpaid = Number(invoice.balance_due || 0) > 0 && invoice.status !== 'paid'
               return (
                 <Card
@@ -353,7 +308,7 @@ const ClientRental = () => {
                           </Alert>
                         ) : (
                           <FormControlLabel
-                            sx={{ ...consentLabelSx, mb: 0.5 }}
+                            sx={{ ...customerConsentLabelSx, mb: 0.5 }}
                             control={<Checkbox checked={authorizeFuturePayments} onChange={event => setAuthorizeFuturePayments(event.target.checked)} />}
                             label={`Save this card securely and authorize automatic ${frequencyLabel(agreement.billing_frequency).toLowerCase()} payments for future billing periods`}
                           />

@@ -44,6 +44,13 @@ import {
   type SalesQuotationLineItem,
 } from '@/api/sales'
 import SquareCardCheckout from '@/components/Billing/SquareCardCheckout'
+import {
+  CustomerSignaturePreview,
+  CustomerSignatureRecord,
+  customerConsentLabelSx,
+  customerDocumentCardSx,
+  customerPortalSx,
+} from '@/components/Documents/CustomerDocumentUI'
 import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
@@ -267,23 +274,7 @@ const ClientQuotation = () => {
   return (
     <Box
       sx={{
-        height: '100dvh',
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        scrollBehavior: 'smooth',
-        scrollbarGutter: 'stable',
-        WebkitOverflowScrolling: 'touch',
-        bgcolor: '#F5F3FF',
-        py: { xs: 2, md: 5 },
-        px: 2,
-        '&::-webkit-scrollbar': { width: 10 },
-        '&::-webkit-scrollbar-track': { bgcolor: '#EEEAFE' },
-        '&::-webkit-scrollbar-thumb': {
-          bgcolor: '#B9A8F5',
-          borderRadius: 999,
-          border: '2px solid #EEEAFE',
-        },
-        '&::-webkit-scrollbar-thumb:hover': { bgcolor: '#8B6FE8' },
+        ...customerPortalSx,
         '@media print': {
           height: 'auto',
           overflow: 'visible',
@@ -295,12 +286,8 @@ const ClientQuotation = () => {
       <Card
         ref={printRef}
         sx={{
-          width: 'min(1120px, 100%)',
-          mx: 'auto',
-          p: { xs: 2, md: 5 },
-          borderRadius: '24px',
-          boxShadow: '0 24px 70px rgba(49,46,129,0.14)',
-          '@media print': { boxShadow: 'none', borderRadius: 0, p: 1 },
+          ...customerDocumentCardSx,
+          '@media print': { boxShadow: 'none', borderRadius: 0, p: 1, width: '100%' },
         }}
       >
         <SalesQuotationDocument
@@ -409,12 +396,12 @@ const ClientQuotation = () => {
                 {data.invoice ? ` Invoice ${data.invoice.invoice_number} is ready for payment.` : ''}
               </Alert>
             )}
-            <Box sx={{ mt: 1.5, p: 2, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
-              <Typography sx={{ color: '#64748B', fontWeight: 800, fontSize: 12 }}>SIGNED ACCEPTANCE</Typography>
-              <Typography sx={{ mt: 1, pb: 0.5, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Bradley Hand", "Brush Script MT", cursive', fontSize: { xs: 28, md: 36 }, fontStyle: 'italic' }}>
-                {data.acceptance.signature_name}
-              </Typography>
-            </Box>
+            <CustomerSignatureRecord
+              context={isDirectInvoice ? 'Invoice' : 'Quotation'}
+              acceptedBy={data.acceptance.accepted_by_name}
+              acceptedAt={dateLabel(data.acceptance.accepted_at)}
+              signature={data.acceptance.signature_name}
+            />
             {data.square_payment.enabled && data.invoice && data.invoice.status !== 'paid' && (
               <Box
                 sx={{
@@ -502,44 +489,9 @@ const ClientQuotation = () => {
               helperText="Your typed name will be rendered as your electronic signature."
               sx={{ mb: 2 }}
             />
-            <Box
-              role="img"
-              aria-label={signatureName.trim() ? `Electronic signature: ${signatureName.trim()}` : 'Electronic signature preview'}
-              sx={{
-                minHeight: 112,
-                mb: 2,
-                px: { xs: 2, md: 3 },
-                py: 2,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'flex-end',
-                borderRadius: '14px',
-                bgcolor: '#FFFFFF',
-                border: '1px solid #E5E7EB',
-              }}
-            >
-              <Typography sx={{ color: '#8B95A7', fontWeight: 800, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                Electronic signature preview
-              </Typography>
-              <Typography
-                sx={{
-                  minHeight: 54,
-                  display: 'flex',
-                  alignItems: 'center',
-                  color: signatureName.trim() ? '#1E1B4B' : '#A1A1AA',
-                  fontFamily: '"Segoe Script", "Bradley Hand", "Brush Script MT", cursive',
-                  fontSize: { xs: 30, md: 40 },
-                  fontWeight: 500,
-                  fontStyle: 'italic',
-                  lineHeight: 1.25,
-                  overflowWrap: 'anywhere',
-                }}
-              >
-                {signatureName.trim() || 'Your signature will appear here'}
-              </Typography>
-              <Box sx={{ borderBottom: '1px solid #9CA3AF' }} />
-            </Box>
+            <CustomerSignaturePreview name={signatureName} />
             <FormControlLabel
+              sx={customerConsentLabelSx}
               control={<Checkbox checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} />}
               label={`I confirm the selected products, pricing, and ${isDirectInvoice ? 'invoice' : 'quotation'} terms.`}
             />

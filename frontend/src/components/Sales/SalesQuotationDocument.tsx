@@ -17,6 +17,12 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import PrintIcon from '@mui/icons-material/Print'
 
 import type { SalesQuotationLineItem } from '@/api/sales'
+import {
+  CustomerDetailsCard,
+  CustomerDocumentHeader,
+  CustomerDocumentProgress,
+  CustomerRecipientCard,
+} from '@/components/Documents/CustomerDocumentUI'
 import { calculateSalesPricing, SALES_TAX_RATE } from '@/utils/salesPricing'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
@@ -24,24 +30,13 @@ const dateLabel = (value?: string | null) => value
   ? new Date(value).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   : '—'
 
-const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
-  accepted: { bg: '#DCFCE7', color: '#15803D' },
-  completed: { bg: '#DCFCE7', color: '#15803D' },
-  paid: { bg: '#DCFCE7', color: '#15803D' },
-  sent: { bg: '#EDE9FE', color: '#6D28D9' },
-  viewed: { bg: '#DBEAFE', color: '#1D4ED8' },
-  changes_requested: { bg: '#FEF3C7', color: '#B45309' },
-  declined: { bg: '#FEE2E2', color: '#B91C1C' },
-  cancelled: { bg: '#FEE2E2', color: '#B91C1C' },
-  pending: { bg: '#F1F5F9', color: '#475569' },
-}
-
 export interface SalesQuotationDocumentData {
   quotation_number: string
   document_kind?: 'quotation' | 'direct_invoice'
   work_order?: string | null
   quotation_type: string
   status: string
+  selection_status?: string | null
   revision?: number | null
   facility_name?: string | null
   customer_name: string
@@ -108,8 +103,7 @@ const SalesQuotationDocument = ({
   const isInvoice = isDirectInvoice || Boolean(invoiceNumber)
   const documentLabel = isInvoice ? 'Invoice' : 'Quotation'
   const statusKey = invoicePaid ? 'paid' : quotation.status
-  const statusLabel = statusKey.replace(/_/g, ' ')
-  const statusStyle = STATUS_STYLES[statusKey] ?? STATUS_STYLES.pending
+  const isAccepted = quotation.selection_status === 'accepted' || quotation.status === 'accepted'
 
   const headCellSx = {
     fontWeight: 800,
@@ -124,68 +118,54 @@ const SalesQuotationDocument = ({
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start', mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.2 }}>
-          <Box
-            component="img"
-            src="/mr-biomed-logo.jpeg"
-            alt="Mr. BioMed Tech Services"
-            sx={{ width: 92, height: 60, display: 'block', objectFit: 'contain' }}
-          />
-          <Box>
-            <Typography sx={{ color: '#8B5CF6', fontWeight: 900, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' }}>
-              {isInvoice ? 'Sales Invoice' : 'Sales Quotation'}
-            </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 950, color: '#1E1B4B', lineHeight: 1.05, letterSpacing: '-0.5px' }}>
-              {isInvoice ? invoiceNumber || quotation.quotation_number : quotation.quotation_number}
-            </Typography>
-            <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{companyName}</Typography>
-          </Box>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Chip
-            label={statusLabel}
-            sx={{ textTransform: 'capitalize', fontWeight: 900, bgcolor: statusStyle.bg, color: statusStyle.color }}
-          />
+      <CustomerDocumentHeader
+        label={isInvoice ? 'Sales Invoice' : 'Sales Quotation'}
+        number={isInvoice ? invoiceNumber || quotation.quotation_number : quotation.quotation_number}
+        companyName={companyName}
+        meta={isInvoice && !isDirectInvoice ? `Quotation ${quotation.quotation_number}` : undefined}
+        status={statusKey}
+        actions={(
+          <Box sx={{ display: 'flex', gap: 1, '@media print': { display: 'none' } }}>
           {showRevision && Number(quotation.revision || 1) > 1 && (
             <Chip
               label={`Rev ${quotation.revision}`}
               sx={{ fontWeight: 900, bgcolor: '#EDE9FE', color: '#6D28D9' }}
             />
           )}
-          <Box sx={{ display: 'flex', gap: 1, '@media print': { display: 'none' } }}>
-            {onSignAndApprove && (
-              <Button variant="contained" onClick={onSignAndApprove} sx={{ fontWeight: 900, whiteSpace: 'nowrap', borderRadius: '12px' }}>
-                Sign & Approve
-              </Button>
-            )}
-            {onPrint && <Button startIcon={<PrintIcon />} variant="outlined" onClick={onPrint} sx={{ borderRadius: '12px' }}>Print</Button>}
+          {onSignAndApprove && (
+            <Button variant="contained" onClick={onSignAndApprove} sx={{ fontWeight: 900, whiteSpace: 'nowrap', borderRadius: '12px' }}>
+              Sign &amp; Approve
+            </Button>
+          )}
+          {onPrint && <Button startIcon={<PrintIcon />} variant="outlined" onClick={onPrint} sx={{ borderRadius: '12px' }}>Print / Save PDF</Button>}
           </Box>
-        </Box>
-      </Box>
+        )}
+      />
 
-      <Box sx={{ height: 4, borderRadius: 999, mb: 3.5, background: 'linear-gradient(90deg, #7C3AED 0%, #EC4899 58%, #F59E0B 100%)' }} />
+      <CustomerDocumentProgress steps={[
+        { label: `Review ${isInvoice ? 'invoice' : 'quotation'}`, complete: true },
+        { label: isAccepted ? `${isInvoice ? 'Invoice' : 'Quotation'} signed` : `Sign ${isInvoice ? 'invoice' : 'quotation'}`, complete: isAccepted },
+        { label: invoicePaid ? 'Payment complete' : 'Pay invoice', complete: invoicePaid },
+      ]} />
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2.5, mb: 4 }}>
-        <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#FAF9FF', border: '1px solid #EDE9FE' }}>
-          <Typography sx={{ color: '#8B5CF6', fontWeight: 900, fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px' }}>Prepared for</Typography>
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 20, mt: 0.4 }}>{recipientName || quotation.customer_name}</Typography>
-          {(recipientEmail || quotation.customer_email) && <Typography sx={{ color: '#4B5563' }}>{recipientEmail || quotation.customer_email}</Typography>}
-          <Typography sx={{ color: '#4B5563' }}>{quotation.facility_name || quotation.customer_name}</Typography>
-          {quotation.customer_address && <Typography sx={{ color: '#4B5563' }}>{quotation.customer_address}</Typography>}
-        </Box>
-        <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 2, rowGap: 0.8, alignContent: 'start' }}>
-          <Typography sx={{ fontWeight: 900, color: '#64748B' }}>{isInvoice ? 'Invoice #' : 'Quote #'}</Typography>
-          <Typography sx={{ fontWeight: 900, textAlign: 'right', color: '#1E1B4B' }}>{isInvoice ? invoiceNumber : quotation.quotation_number}</Typography>
-          {isInvoice && !isDirectInvoice && <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Quote #</Typography><Typography sx={{ textAlign: 'right' }}>{quotation.quotation_number}</Typography></>}
-          {quotation.work_order && <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Work Order</Typography><Typography sx={{ textAlign: 'right' }}>{quotation.work_order}</Typography></>}
-          <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Issued</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(quotation.sent_at || quotation.created_at)}</Typography>
-          {quotation.expires_at ? (
-            <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>{isInvoice ? 'Due' : 'Expires'}</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(quotation.expires_at)}</Typography></>
-          ) : quotation.requested_date ? (
-            <><Typography sx={{ fontWeight: 900, color: '#64748B' }}>Requested</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(quotation.requested_date)}</Typography></>
-          ) : null}
-        </Box>
+        <CustomerRecipientCard
+          name={recipientName || quotation.customer_name}
+          email={recipientEmail || quotation.customer_email}
+          organization={quotation.facility_name || quotation.customer_name}
+          address={quotation.customer_address}
+        />
+        <CustomerDetailsCard rows={[
+          { label: isInvoice ? 'Invoice #' : 'Quote #', value: isInvoice ? invoiceNumber || quotation.quotation_number : quotation.quotation_number },
+          ...(isInvoice && !isDirectInvoice ? [{ label: 'Quote #', value: quotation.quotation_number }] : []),
+          ...(quotation.work_order ? [{ label: 'Work Order', value: quotation.work_order }] : []),
+          { label: 'Issued', value: dateLabel(quotation.sent_at || quotation.created_at) },
+          ...(quotation.expires_at
+            ? [{ label: isInvoice ? 'Due' : 'Expires', value: dateLabel(quotation.expires_at) }]
+            : quotation.requested_date
+              ? [{ label: 'Requested', value: dateLabel(quotation.requested_date) }]
+              : []),
+        ]} />
       </Box>
 
       {hasSelection && (
