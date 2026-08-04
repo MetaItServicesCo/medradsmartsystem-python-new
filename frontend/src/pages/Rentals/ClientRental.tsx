@@ -130,7 +130,17 @@ const ClientRental = () => {
   const portal = portalQ.data
   const { agreement, acceptance, invoices, square, company_name } = portal
   const canPay = square.enabled && Boolean(square.application_id) && Boolean(square.location_id)
-  const initialInvoiceId = invoices[0]?.id
+  const initialInvoice = invoices[0]
+  const initialInvoiceId = initialInvoice?.id
+  const initialPaymentComplete = Boolean(
+    initialInvoice
+    && (initialInvoice.status === 'paid' || Number(initialInvoice.balance_due || 0) <= 0),
+  )
+  const autoChargeStatus = agreement.auto_charge_authorized
+    ? 'Authorized'
+    : initialPaymentComplete
+      ? 'Not authorized'
+      : 'Choose during payment'
 
   return (
     <Box sx={{ height: '100dvh', overflowY: 'auto', overscrollBehavior: 'contain', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: 2 }}>
@@ -191,7 +201,7 @@ const ClientRental = () => {
             <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Billing</Typography><Typography sx={{ textAlign: 'right' }}>{frequencyLabel(agreement.billing_frequency)}</Typography>
             <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Rental period</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(agreement.start_date)} – {dateLabel(agreement.end_date)}</Typography>
             <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Next billing</Typography><Typography sx={{ textAlign: 'right' }}>{dateLabel(agreement.next_bill_date)}</Typography>
-            <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Auto-charge</Typography><Typography sx={{ textAlign: 'right' }}>{agreement.auto_charge_authorized ? 'Customer authorized' : agreement.auto_charge ? 'Requested; consent pending' : 'Off'}</Typography>
+            <Typography sx={{ fontWeight: 900, color: '#64748B' }}>Auto-charge</Typography><Typography sx={{ textAlign: 'right' }}>{autoChargeStatus}</Typography>
           </Box>
         </Box>
 
