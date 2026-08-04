@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Alert, Box, Button, Card, Checkbox, Chip, CircularProgress, Divider,
@@ -8,6 +8,7 @@ import {
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import DrawIcon from '@mui/icons-material/Draw'
+import PrintIcon from '@mui/icons-material/Print'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 
@@ -92,6 +93,13 @@ const ClientRental = () => {
   const [payTarget, setPayTarget] = useState<RentalPortalInvoice | null>(null)
   const [authorizeFuturePayments, setAuthorizeFuturePayments] = useState(false)
   const [thankYouInvoice, setThankYouInvoice] = useState('')
+  const [printInvoiceId, setPrintInvoiceId] = useState<number | null>(null)
+
+  useEffect(() => {
+    const clearPrintSelection = () => setPrintInvoiceId(null)
+    window.addEventListener('afterprint', clearPrintSelection)
+    return () => window.removeEventListener('afterprint', clearPrintSelection)
+  }, [])
 
   const portalQ = useQuery({
     queryKey: ['rental-portal', token],
@@ -132,6 +140,9 @@ const ClientRental = () => {
   const canPay = square.enabled && Boolean(square.application_id) && Boolean(square.location_id)
   const initialInvoice = invoices[0]
   const initialInvoiceId = initialInvoice?.id
+  const displayedInvoice = printInvoiceId
+    ? invoices.find(invoice => invoice.id === printInvoiceId) || initialInvoice
+    : initialInvoice
   const initialPaymentComplete = Boolean(
     initialInvoice
     && (initialInvoice.status === 'paid' || Number(initialInvoice.balance_due || 0) <= 0),
@@ -143,17 +154,48 @@ const ClientRental = () => {
     : initialPaymentComplete
       ? 'Not authorized'
       : 'Choose during payment'
-  const documentLabel = acceptance ? 'Rental Invoice' : 'Rental Agreement'
-  const documentNumber = acceptance && initialInvoice
-    ? initialInvoice.invoice_number
+  const documentLabel = acceptance && displayedInvoice ? 'Rental Invoice' : 'Rental Agreement'
+  const documentNumber = acceptance && displayedInvoice
+    ? displayedInvoice.invoice_number
     : agreement.rental_number
-  const documentMeta = acceptance && initialInvoice
+  const documentMeta = acceptance && displayedInvoice
     ? `${company_name} · Agreement ${agreement.rental_number}`
     : `${company_name} · Revision ${agreement.revision}`
+  const documentStatus = acceptance && displayedInvoice ? displayedInvoice.status : agreement.status
+
+  const printInvoice = (invoiceId: number) => {
+    setPrintInvoiceId(invoiceId)
+    window.setTimeout(() => window.print(), 50)
+  }
 
   return (
-    <Box sx={{ height: '100dvh', overflowY: 'auto', overscrollBehavior: 'contain', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: 2 }}>
-      <Card sx={{ width: 'min(980px, 100%)', mx: 'auto', p: { xs: 2, md: 4 }, borderRadius: '24px', boxShadow: '0 24px 70px rgba(30,58,138,0.14)' }}>
+    <Box sx={{
+      height: '100dvh',
+      overflowY: 'auto',
+      overscrollBehavior: 'contain',
+      bgcolor: '#F5F3FF',
+      py: { xs: 2, md: 5 },
+      px: 2,
+      ...(printInvoiceId ? {
+        '@media print': {
+          height: 'auto',
+          overflow: 'visible',
+          bgcolor: '#FFFFFF',
+          p: 0,
+          '& .rental-agreement-content': { display: 'none' },
+          '& .rental-screen-only': { display: 'none !important' },
+          '& .rental-invoice-card': { breakInside: 'avoid', boxShadow: 'none' },
+        },
+      } : {}),
+    }}>
+      <Card sx={{
+        width: 'min(980px, 100%)',
+        mx: 'auto',
+        p: { xs: 2, md: 4 },
+        borderRadius: '24px',
+        boxShadow: '0 24px 70px rgba(30,58,138,0.14)',
+        '@media print': { width: '100%', p: 2, borderRadius: 0, boxShadow: 'none' },
+      }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 90, height: 58, objectFit: 'contain' }} />
@@ -163,11 +205,12 @@ const ClientRental = () => {
               <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{documentMeta}</Typography>
             </Box>
           </Box>
-          <Chip label={agreement.status} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: statusStyle(agreement.status).bg, color: statusStyle(agreement.status).color }} />
+          <Chip label={documentStatus} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: statusStyle(documentStatus).bg, color: statusStyle(documentStatus).color }} />
         </Box>
 
         <Box sx={{ height: 4, borderRadius: 999, my: 3, background: 'linear-gradient(90deg, #2563EB 0%, #7C3AED 60%, #EC4899 100%)' }} />
 
+        <Box className="rental-agreement-content">
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', mb: 3, border: '1px solid #DDD6FE', borderRadius: '14px', overflow: 'hidden' }}>
           {[
             { number: '1', label: 'Review agreement', complete: true },
@@ -261,6 +304,7 @@ const ClientRental = () => {
             <Typography sx={{ fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 25, mt: 0.5 }}>{acceptance.signature_name}</Typography>
           </Alert>
         )}
+        </Box>
 
         {acceptance && (
           <>
@@ -273,16 +317,36 @@ const ClientRental = () => {
               const style = statusStyle(invoice.status)
               const unpaid = Number(invoice.balance_due || 0) > 0 && invoice.status !== 'paid'
               return (
-                <Card key={invoice.id} variant="outlined" sx={{ p: 2, borderRadius: '14px' }}>
+                <Card
+                  key={invoice.id}
+                  className="rental-invoice-card"
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    borderRadius: '14px',
+                    '@media print': { display: printInvoiceId === null || printInvoiceId === invoice.id ? 'block' : 'none' },
+                  }}
+                >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                     <Box><Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>{invoice.invoice_number}</Typography><Typography sx={{ color: '#6B7280', fontSize: 13 }}>{invoice.id === initialInvoiceId ? 'Initial rental invoice' : invoice.notes || 'Recurring rental invoice'} · due {dateLabel(invoice.due_date)}</Typography></Box>
-                    <Box sx={{ textAlign: 'right' }}><Typography sx={{ fontWeight: 950, color: '#1E3A8A', fontSize: 18 }}>{money(invoice.total_amount)}</Typography><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: style.bg, color: style.color }} /></Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                      <Box sx={{ textAlign: 'right' }}><Typography sx={{ fontWeight: 950, color: '#1E3A8A', fontSize: 18 }}>{money(invoice.total_amount)}</Typography><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: style.bg, color: style.color }} /></Box>
+                      <Button
+                        className="rental-screen-only"
+                        variant="outlined"
+                        startIcon={<PrintIcon />}
+                        onClick={() => printInvoice(invoice.id)}
+                        sx={{ borderRadius: '10px', fontWeight: 900, textTransform: 'none', whiteSpace: 'nowrap' }}
+                      >
+                        Print / Save PDF
+                      </Button>
+                    </Box>
                   </Box>
                   <InvoiceBreakdown invoice={invoice} />
-                  {unpaid && !acceptance && <Alert severity="info" sx={{ mt: 1.5 }}>Sign and approve the agreement above to unlock payment.</Alert>}
+                  {unpaid && !acceptance && <Alert className="rental-screen-only" severity="info" sx={{ mt: 1.5 }}>Sign and approve the agreement above to unlock payment.</Alert>}
                   {unpaid && acceptance && canPay && (
                     payTarget?.id === invoice.id ? (
-                      <Box sx={{ mt: 2 }}>
+                      <Box className="rental-screen-only" sx={{ mt: 2 }}>
                         {agreement.auto_charge_authorized && agreement.saved_card ? (
                           <Alert severity="success" sx={{ mb: 1.5, borderRadius: '12px' }}>
                             Automatic {frequencyLabel(agreement.billing_frequency).toLowerCase()} payments are authorized using {agreement.saved_card.brand || 'the saved card'} ending in {agreement.saved_card.last4 || '••••'}.
@@ -301,7 +365,7 @@ const ClientRental = () => {
                         <Button onClick={() => { setPayTarget(null); setAuthorizeFuturePayments(false) }} sx={{ mt: 1, fontWeight: 800 }}>Cancel</Button>
                       </Box>
                     ) : (
-                      <Button variant="contained" startIcon={<CreditCardIcon />} onClick={() => { setAuthorizeFuturePayments(false); setPayTarget(invoice) }} sx={{ mt: 1.5, borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+                      <Button className="rental-screen-only" variant="contained" startIcon={<CreditCardIcon />} onClick={() => { setAuthorizeFuturePayments(false); setPayTarget(invoice) }} sx={{ mt: 1.5, borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
                         {invoice.id === initialInvoiceId ? 'Pay Initial Invoice' : 'Pay Invoice'} · {money(invoice.balance_due)}
                       </Button>
                     )
