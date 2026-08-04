@@ -19,6 +19,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.rental import Rental, RentalStatus, RentalItemStatus, RentalDiscountType
 from app.utils.email import send_html_email
@@ -46,8 +47,21 @@ def _freq(rental: Rental) -> str:
     return (freq.value if hasattr(freq, "value") else str(freq)).lower()
 
 
+def period_days(freq: str) -> int:
+    return _PERIOD_DAYS.get(freq, 30)
+
+
 def _advance(day: date, freq: str) -> date:
-    return day + timedelta(days=_PERIOD_DAYS.get(freq, 30))
+    return day + timedelta(days=period_days(freq))
+
+
+def _facility_id(db: Session, rental: Rental) -> Optional[int]:
+    for item in rental.items or []:
+        if item.part_id:
+            part = db.query(InventoryPart).filter(InventoryPart.id == item.part_id).first()
+            if part and part.facility_id is not None:
+                return part.facility_id
+    return None
 
 
 def _next_invoice_number(db: Session) -> str:
@@ -97,12 +111,6 @@ def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
     subtotal = base + fees
     total = max(Decimal("0"), subtotal - discount)
 
-    facility_id = None
-    for item in rental.items or []:
-        if item.part and item.part.facility_id is not None:
-            facility_id = item.part.facility_id
-            break
-
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
         invoice_type=InvoiceType.RENTAL,
@@ -110,7 +118,7 @@ def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
         customer_email=rental.customer_email or "billing@example.com",
         customer_phone=rental.customer_phone,
         customer_address=rental.customer_address,
-        facility_id=facility_id,
+        facility_id=_facility_id(db, rental),
         rental_id=rental.id,
         subtotal=subtotal,
         tax_amount=Decimal("0"),
@@ -199,6 +207,40 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     rental.failed_charge_count = 0
     _append_history(rental, "auto_charged", {"invoice": invoice.invoice_number, "amount": str(invoice.total_amount)})
     return "charged"
+
+
+def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
+    """The agreement's first invoice: the security deposit, raised upfront at creation."""
+    deposit = _money(rental.security_deposit)
+    if deposit <= 0:
+        return None
+    invoice = Invoice(
+        invoice_number=_next_invoice_number(db),
+        invoice_type=InvoiceType.RENTAL,
+        customer_name=rental.customer_name,
+        customer_email=rental.customer_email or "billing@example.com",
+        customer_phone=rental.customer_phone,
+        customer_address=rental.customer_address,
+        facility_id=_facility_id(db, rental),
+        rental_id=rental.id,
+        subtotal=deposit,
+        tax_amount=Decimal("0"),
+        discount_amount=Decimal("0"),
+        total_amount=deposit,
+        amount_paid=Decimal("0"),
+        balance_due=deposit,
+        status=InvoiceStatus.PENDING,
+        issue_date=date.today(),
+        due_date=date.today(),
+        payment_terms="Due on receipt",
+        payment_method="credit_card" if rental.auto_charge else None,
+        notes=f"Security deposit for rental {rental.rental_number}",
+    )
+    db.add(invoice)
+    db.flush()
+    record_invoice_created(db, invoice, None, f"Security deposit invoice for {rental.rental_number}")
+    _append_history(rental, "deposit_invoiced", {"invoice": invoice.invoice_number, "amount": str(deposit)})
+    return invoice
 
 
 def run_rental_recurring_billing(db: Session, today: Optional[date] = None) -> dict[str, int]:

@@ -51,7 +51,7 @@ from app.utils.square_payments import (
     create_square_card_on_file,
     SquareRequestError,
 )
-from app.utils.rental_billing import run_rental_recurring_billing
+from app.utils.rental_billing import run_rental_recurring_billing, generate_deposit_invoice, period_days
 from app.utils.permissions import has_module_permission
 from app.utils.list_search import (
     contains_ci,
@@ -824,6 +824,11 @@ def create_rental(
     _append_history(rental, "created", current_user, {"items": len(item_rows)})
     db.add(rental)
     db.flush()
+
+    # The first invoice is the security deposit, raised upfront. Rental cycles then
+    # bill in arrears: the first cycle's invoice is raised once that cycle completes.
+    generate_deposit_invoice(db, rental)
+    rental.next_bill_date = payload.start_date + timedelta(days=period_days(_frequency_value(payload.billing_frequency)))
 
     log_activity(db, "rentals", rental.id, "CREATE", current_user, {"rental_number": rental.rental_number})
     db.commit()
