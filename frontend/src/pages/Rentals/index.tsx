@@ -914,6 +914,20 @@ const Rentals = () => {
 
   const invoiceLineItems = (invoice: RentalInvoice | null): PrintableLineItem[] => {
     if (!invoice) return []
+    // Prefer the invoice's own stored line items (deposit invoice shows deposit +
+    // shipping & packing + delivery & setup; cycle invoices show the period rental).
+    if (invoice.line_items && invoice.line_items.length > 0) {
+      return invoice.line_items.map((li: any) => ({
+        item_number: li.item_number || '-',
+        description: li.description || '',
+        quantity: Number(li.quantity || 1),
+        unit_price: Number(li.unit_price || 0),
+        shipping_fee: Number(li.shipping_fee || 0),
+        setup_fee: Number(li.setup_fee || 0),
+        condition: li.condition ?? null,
+        total_amount: Number(li.total_amount || 0),
+      }))
+    }
     const rental = rentals.find(item => item.id === invoice.rental_id)
     if (rental) return agreementLineItems(rental)
     return [{
@@ -1677,8 +1691,8 @@ const Rentals = () => {
             <TextField select label="Condition" value={itemDraft.item_condition} onChange={e => setItemDraft(prev => ({ ...prev, item_condition: e.target.value }))}>
               {['New', 'Used', 'Refurbished', 'Damaged'].map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
             </TextField>
-            <TextField label="Shipping" type="number" value={itemDraft.shipping_fee} onChange={e => setItemDraft(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
-            <TextField label="Setup" type="number" value={itemDraft.setup_fee} onChange={e => setItemDraft(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
+            <TextField label="Shipping & Packing" type="number" value={itemDraft.shipping_fee} onChange={e => setItemDraft(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
+            <TextField label="Delivery & Setup" type="number" value={itemDraft.setup_fee} onChange={e => setItemDraft(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
             <Button startIcon={<AddIcon />} variant="contained" onClick={addRentalItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, height: 56, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add</Button>
           </Box>
 
@@ -1690,8 +1704,8 @@ const Rentals = () => {
                   <TableCell sx={{ fontWeight: 900 }} align="right">Qty</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Rate</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }} align="right">Shipping</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }} align="right">Setup</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Ship &amp; Pack</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Deliv &amp; Setup</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -1860,8 +1874,8 @@ const Rentals = () => {
                         <TableCell sx={{ fontWeight: 900 }}>Billing Cycle</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Rental Rate</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Quantity</TableCell>
-                        <TableCell sx={{ fontWeight: 900 }}>Shipping Fee</TableCell>
-                        <TableCell sx={{ fontWeight: 900 }}>Setup Fee</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Ship &amp; Pack</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Deliv &amp; Setup</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Periods</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 900 }}>Rental Base Total</TableCell>

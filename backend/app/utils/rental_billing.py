@@ -23,6 +23,7 @@ from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.rental import Rental, RentalStatus, RentalItemStatus, RentalDiscountType
 from app.utils.email import send_html_email
+from app.utils.invoice_editing import compose_invoice_edit_notes
 from app.utils.invoice_ledger import record_invoice_created, record_payment_delta
 from app.utils.logging import log_activity
 from app.utils.square_payments import (
@@ -40,6 +41,20 @@ def _money(value: Any) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
     return Decimal(str(value))
+
+
+def _line(item_number: str, description: str, unit_price: Any, quantity: int = 1) -> dict[str, Any]:
+    total = _money(unit_price) * quantity
+    return {
+        "item_number": item_number,
+        "description": description,
+        "quantity": quantity,
+        "unit_price": float(_money(unit_price)),
+        "shipping_fee": 0,
+        "setup_fee": 0,
+        "condition": None,
+        "total_amount": float(total),
+    }
 
 
 def _freq(rental: Rental) -> str:
@@ -81,36 +96,38 @@ def _append_history(rental: Rental, action: str, details: Optional[dict[str, Any
     rental.history = history
 
 
-def _period_amounts(rental: Rental, period_index: int) -> tuple[Decimal, Decimal, Decimal]:
-    """Returns (base_rental, one_time_fees, discount) for the given 1-based period.
-
-    Base rental = one period's rate x qty across items. Shipping/setup fees are
-    one-time (billed only on the first period). The commitment discount lands on
-    the invoice immediately after the configured milestone."""
+def _period_amounts(rental: Rental, period_index: int) -> tuple[Decimal, Decimal]:
+    """Returns (base_rental, discount) for the given 1-based period. One-time
+    shipping/setup fees are billed on the deposit invoice, not on the cycles. The
+    commitment discount lands on the invoice immediately after the milestone."""
     base = Decimal("0")
-    fees = Decimal("0")
     for item in rental.items or []:
         base += _money(item.rental_rate) * int(item.quantity or 1)
-        if period_index == 1:
-            fees += _money(item.shipping_fee) + _money(item.setup_fee)
 
     discount = Decimal("0")
     apply_after = rental.discount_apply_after_periods
     if rental.discount_type and apply_after is not None and period_index == int(apply_after) + 1:
-        subtotal = base + fees
         if rental.discount_type == RentalDiscountType.PERCENT.value:
-            discount = (subtotal * _money(rental.discount_value) / Decimal("100")).quantize(Decimal("0.01"))
+            discount = (base * _money(rental.discount_value) / Decimal("100")).quantize(Decimal("0.01"))
         else:
-            discount = min(subtotal, _money(rental.discount_value))
-    return base, fees, discount
+            discount = min(base, _money(rental.discount_value))
+    return base, discount
 
 
 def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
     period_index = int(rental.periods_billed or 0) + 1
-    base, fees, discount = _period_amounts(rental, period_index)
-    subtotal = base + fees
-    total = max(Decimal("0"), subtotal - discount)
+    base, discount = _period_amounts(rental, period_index)
+    total = max(Decimal("0"), base - discount)
 
+    line_items = [
+        _line(item.part_number or "Rental", item.part_description or "Rental product", _money(item.rental_rate), int(item.quantity or 1))
+        for item in rental.items or []
+    ]
+    visible = (
+        f"Rental {rental.rental_number} — period {period_index}"
+        + (f" of {rental.committed_periods}" if rental.committed_periods else "")
+        + (f" (commitment discount {discount} applied)" if discount > 0 else "")
+    )
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
         invoice_type=InvoiceType.RENTAL,
@@ -120,7 +137,7 @@ def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
         customer_address=rental.customer_address,
         facility_id=_facility_id(db, rental),
         rental_id=rental.id,
-        subtotal=subtotal,
+        subtotal=base,
         tax_amount=Decimal("0"),
         discount_amount=discount,
         total_amount=total,
@@ -131,9 +148,7 @@ def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
         due_date=date.today() + timedelta(days=14),
         payment_terms="Net 14",
         payment_method="credit_card" if rental.auto_charge else None,
-        notes=f"Rental {rental.rental_number} — period {period_index}"
-        + (f" of {rental.committed_periods}" if rental.committed_periods else "")
-        + (f" (commitment discount applied: {discount})" if discount > 0 else ""),
+        notes=compose_invoice_edit_notes(None, visible, {"line_items": line_items}),
     )
     db.add(invoice)
     db.flush()
@@ -210,10 +225,23 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
 
 
 def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
-    """The agreement's first invoice: the security deposit, raised upfront at creation."""
+    """The agreement's first invoice, raised upfront at creation: the security
+    deposit plus the one-time Shipping & Packing and Delivery & Setup fees."""
     deposit = _money(rental.security_deposit)
-    if deposit <= 0:
+    shipping_total = sum((_money(item.shipping_fee) for item in rental.items or []), Decimal("0"))
+    setup_total = sum((_money(item.setup_fee) for item in rental.items or []), Decimal("0"))
+    total = deposit + shipping_total + setup_total
+    if total <= 0:
         return None
+
+    line_items: list[dict[str, Any]] = []
+    if deposit > 0:
+        line_items.append(_line("DEPOSIT", "Security Deposit", deposit))
+    if shipping_total > 0:
+        line_items.append(_line("SHIP-PACK", "Shipping & Packing", shipping_total))
+    if setup_total > 0:
+        line_items.append(_line("DEL-SETUP", "Delivery & Setup", setup_total))
+
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),
         invoice_type=InvoiceType.RENTAL,
@@ -223,23 +251,23 @@ def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
         customer_address=rental.customer_address,
         facility_id=_facility_id(db, rental),
         rental_id=rental.id,
-        subtotal=deposit,
+        subtotal=total,
         tax_amount=Decimal("0"),
         discount_amount=Decimal("0"),
-        total_amount=deposit,
+        total_amount=total,
         amount_paid=Decimal("0"),
-        balance_due=deposit,
+        balance_due=total,
         status=InvoiceStatus.PENDING,
         issue_date=date.today(),
         due_date=date.today(),
         payment_terms="Due on receipt",
         payment_method="credit_card" if rental.auto_charge else None,
-        notes=f"Security deposit for rental {rental.rental_number}",
+        notes=compose_invoice_edit_notes(None, f"Security deposit & one-time fees for rental {rental.rental_number}", {"line_items": line_items}),
     )
     db.add(invoice)
     db.flush()
-    record_invoice_created(db, invoice, None, f"Security deposit invoice for {rental.rental_number}")
-    _append_history(rental, "deposit_invoiced", {"invoice": invoice.invoice_number, "amount": str(deposit)})
+    record_invoice_created(db, invoice, None, f"Deposit & fees invoice for {rental.rental_number}")
+    _append_history(rental, "deposit_invoiced", {"invoice": invoice.invoice_number, "amount": str(total)})
     return invoice
 
 
