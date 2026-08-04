@@ -329,6 +329,32 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "items": [_rental_item_response(item) for item in items],
         # Recurring billing / commitment discount / deposit settlement.
         "auto_charge": rental.auto_charge,
+        "auto_charge_authorized_at": rental.auto_charge_authorized_at,
+        "auto_charge_authorized_by": rental.auto_charge_authorized_by,
+        "saved_card": (
+            {
+                "brand": rental.square_card_brand,
+                "last4": rental.square_card_last4,
+                "exp_month": rental.square_card_exp_month,
+                "exp_year": rental.square_card_exp_year,
+            }
+            if rental.square_card_id
+            else None
+        ),
+        "revision": rental.revision or 1,
+        "acceptance": (
+            {
+                "accepted_by_name": rental.acceptance.accepted_by_name,
+                "signature_name": rental.acceptance.signature_name,
+                "terms_accepted": rental.acceptance.terms_accepted,
+                "agreement_revision": rental.acceptance.agreement_revision,
+                "accepted_at": rental.acceptance.accepted_at,
+                "ip_address": rental.acceptance.ip_address,
+                "user_agent": rental.acceptance.user_agent,
+            }
+            if rental.acceptance
+            else None
+        ),
         "committed_periods": rental.committed_periods,
         "periods_billed": rental.periods_billed,
         "next_bill_date": rental.next_bill_date,
@@ -668,6 +694,13 @@ def save_rental_card(
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
     rental.square_card_id = result["card_id"]
     rental.square_customer_id = result["customer_id"]
+    rental.square_card_brand = result.get("card_brand")
+    rental.square_card_last4 = result.get("last_4")
+    rental.square_card_exp_month = result.get("exp_month")
+    rental.square_card_exp_year = result.get("exp_year")
+    if rental.auto_charge:
+        rental.auto_charge_authorized_at = datetime.utcnow()
+        rental.auto_charge_authorized_by = f"{current_user.full_name} (recorded by staff)"
     rental.failed_charge_count = 0
     rental.updated_at = datetime.utcnow()
     _append_history(rental, "card_saved", current_user, {"brand": result.get("card_brand"), "last_4": result.get("last_4")})
@@ -926,6 +959,16 @@ def update_rental(
         _reject_daily(payload.billing_frequency)
 
     update_data = payload.model_dump(exclude_unset=True, exclude={"items"})
+
+    # A signed contract must remain identical to the snapshot accepted by the
+    # customer. Operational status can still be managed through the normal
+    # rental workflow, but financial/customer/item edits require a new agreement.
+    contract_changes = set(update_data) - {"status"}
+    if rental.acceptance and (contract_changes or payload.items is not None):
+        raise HTTPException(
+            status_code=409,
+            detail="This rental agreement is signed and locked. Create a new agreement for contractual changes.",
+        )
 
     # Replace the item set (and reconcile reserved stock) when items are supplied.
     if payload.items is not None:

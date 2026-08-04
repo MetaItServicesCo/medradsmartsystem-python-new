@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Boolean, ForeignKey, Enum as SQLEnum, Index, Numeric, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Boolean, ForeignKey, Enum as SQLEnum, Index, Numeric, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -72,6 +72,15 @@ class Rental(Base):
     access_token_hash = Column(String, nullable=True, unique=True, index=True)
     token_expires_at = Column(DateTime, nullable=True)
     portal_sent_at = Column(DateTime, nullable=True)
+    revision = Column(Integer, nullable=False, default=1)
+
+    # PCI-minimized display metadata. The card number/CVV are never stored.
+    square_card_brand = Column(String, nullable=True)
+    square_card_last4 = Column(String, nullable=True)
+    square_card_exp_month = Column(Integer, nullable=True)
+    square_card_exp_year = Column(Integer, nullable=True)
+    auto_charge_authorized_at = Column(DateTime, nullable=True)
+    auto_charge_authorized_by = Column(String, nullable=True)
 
     # Commitment discount, applied once a payment milestone is reached (e.g. a
     # 4-month deal's discount lands on the 4th invoice after 3 periods are paid).
@@ -111,6 +120,13 @@ class Rental(Base):
     )
     converted_invoice = relationship("Invoice", foreign_keys=[converted_invoice_id])
     created_by = relationship("User")
+    acceptance = relationship(
+        "RentalAgreementAcceptance",
+        back_populates="rental",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="selectin",
+    )
     # Legacy single-item relationships (deprecated).
     equipment = relationship("Equipment")
     part = relationship("InventoryPart", foreign_keys=[part_id])
@@ -168,3 +184,25 @@ class RentalProductRate(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     part = relationship("InventoryPart")
+
+
+class RentalAgreementAcceptance(Base):
+    """Immutable evidence of the customer-visible agreement revision accepted."""
+    __tablename__ = "rental_agreement_acceptances"
+    __table_args__ = (
+        UniqueConstraint("rental_id", name="uq_rental_acceptance_rental"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    rental_id = Column(Integer, ForeignKey("rentals.id", ondelete="CASCADE"), nullable=False, index=True)
+    accepted_by_name = Column(String, nullable=False)
+    signature_name = Column(String, nullable=False)
+    terms_accepted = Column(Boolean, nullable=False, default=False)
+    agreement_revision = Column(Integer, nullable=False, default=1)
+    agreement_snapshot = Column(JSON, nullable=False)
+    pricing_snapshot = Column(JSON, nullable=False)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    accepted_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    rental = relationship("Rental", back_populates="acceptance")

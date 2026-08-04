@@ -2180,6 +2180,34 @@ const Rentals = () => {
                 </Box>
               </Box>
 
+              <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: viewAgreement.acceptance ? '#86EFAC' : '#FDE68A', bgcolor: viewAgreement.acceptance ? '#F0FDF4' : '#FFFBEB' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>Customer Acceptance</Typography>
+                    {viewAgreement.acceptance ? (
+                      <>
+                        <Typography sx={{ fontWeight: 800, color: '#166534' }}>Signed by {viewAgreement.acceptance.accepted_by_name} on {formatDate(viewAgreement.acceptance.accepted_at)}</Typography>
+                        <Typography sx={{ fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 24, mt: 0.5 }}>{viewAgreement.acceptance.signature_name}</Typography>
+                        <Typography sx={{ fontSize: 12, color: '#64748B' }}>Agreement revision {viewAgreement.acceptance.agreement_revision}</Typography>
+                      </>
+                    ) : <Typography sx={{ color: '#92400E', fontWeight: 800 }}>Awaiting customer signature</Typography>}
+                  </Box>
+                  <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
+                    <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>Saved Payment Method</Typography>
+                    <Typography sx={{ fontWeight: 800 }}>
+                      {viewAgreement.saved_card
+                        ? `${viewAgreement.saved_card.brand || 'Card'} ending in ${viewAgreement.saved_card.last4 || '••••'}`
+                        : 'No card saved'}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, color: viewAgreement.auto_charge_authorized_at ? '#047857' : '#64748B', fontWeight: 700 }}>
+                      {viewAgreement.auto_charge_authorized_at
+                        ? `Auto-charge authorized by ${viewAgreement.auto_charge_authorized_by || 'customer'}`
+                        : 'Recurring auto-charge not authorized'}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Card>
+
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Items</Typography>
                 <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '12px', overflowX: 'auto' }}>

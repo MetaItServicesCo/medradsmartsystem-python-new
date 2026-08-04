@@ -235,6 +235,7 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
             amount=invoice.total_amount,
             invoice_number=invoice.invoice_number,
             customer_email=rental.customer_email,
+            customer_id=rental.square_customer_id,
         )
     except SquareRequestError:
         rental.failed_charge_count = int(rental.failed_charge_count or 0) + 1
@@ -349,7 +350,12 @@ def run_rental_recurring_billing(db: Session, today: Optional[date] = None) -> d
         rental.next_bill_date = _advance(rental.next_bill_date, _freq(rental))
         results["billed"] += 1
 
-        can_auto_charge = bool(rental.auto_charge and rental.square_card_id and square_is_configured())
+        can_auto_charge = bool(
+            rental.auto_charge
+            and rental.auto_charge_authorized_at
+            and rental.square_card_id
+            and square_is_configured()
+        )
         if can_auto_charge:
             outcome = _try_auto_charge(db, rental, invoice)
             results[{"charged": "charged", "declined": "declined", "exhausted": "exhausted"}[outcome]] += 1

@@ -16,6 +16,7 @@ from app.models.rental import (
     RentalDiscountType,
     RentalDepositStatus,
     RentalItemStatus,
+    RentalAgreementAcceptance,
 )
 from app.models.inspection_form import InspectionForm
 from app.models.audit_log import AuditLog

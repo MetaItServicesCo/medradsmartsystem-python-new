@@ -66,6 +66,19 @@ export interface Rental {
   is_overdue: boolean
   items: RentalItem[]
   auto_charge: boolean
+  auto_charge_authorized_at: string | null
+  auto_charge_authorized_by: string | null
+  saved_card: { brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null } | null
+  revision: number
+  acceptance: {
+    accepted_by_name: string
+    signature_name: string
+    terms_accepted: boolean
+    agreement_revision: number
+    accepted_at: string
+    ip_address: string | null
+    user_agent: string | null
+  } | null
   committed_periods: number | null
   periods_billed: number
   next_bill_date: string | null
@@ -388,18 +401,47 @@ export interface RentalPortal {
   company_name: string
   agreement: {
     rental_number: string
+    revision: number
     customer_name: string
     customer_email: string
     customer_address: string
     billing_frequency: BillingFrequency
     start_date: string
     end_date: string
+    next_bill_date: string | null
     security_deposit: number
     status: RentalStatus
     auto_charge: boolean
+    auto_charge_authorized: boolean
+    auto_charge_authorized_at: string | null
+    auto_charge_authorized_by: string | null
     terms_and_conditions: string | null
     items: RentalPortalItem[]
     has_card_on_file: boolean
+    saved_card: { brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null } | null
+  }
+  acceptance: {
+    accepted_by_name: string
+    signature_name: string
+    terms_accepted: boolean
+    agreement_revision: number
+    accepted_at: string
+  } | null
+  can_sign: boolean
+  pricing: {
+    rental: number
+    deposit: number
+    shipping: number
+    setup: number
+    labor: number
+    discount: number
+    tax: number
+    subtotal: number
+    total: number
+    rental_tax: number
+    shipping_tax: number
+    setup_tax: number
+    grand_total: number
   }
   invoices: RentalPortalInvoice[]
   square: {
@@ -422,8 +464,19 @@ export const fetchRentalPortal = async (token: string): Promise<RentalPortal> =>
   return res.data
 }
 
-export const savePublicRentalCard = async (token: string, sourceId: string): Promise<RentalPortal> => {
-  const res = await apiClient.post(`/rentals/public/${token}/save-card`, { source_id: sourceId })
+export const acceptPublicRental = async (token: string, signatureName: string): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/accept`, {
+    signature_name: signatureName,
+    terms_accepted: true,
+  })
+  return res.data
+}
+
+export const savePublicRentalCard = async (token: string, sourceId: string, authorizeAutoCharge = false): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/save-card`, {
+    source_id: sourceId,
+    authorize_auto_charge: authorizeAutoCharge,
+  })
   return res.data
 }
 
@@ -432,11 +485,15 @@ export const payPublicRentalInvoice = async (
   invoiceId: number,
   sourceId: string,
   idempotencyKey: string,
+  saveCard = false,
+  authorizeAutoCharge = false,
 ): Promise<RentalPortal> => {
   const res = await apiClient.post(`/rentals/public/${token}/pay-invoice`, {
     invoice_id: invoiceId,
     source_id: sourceId,
     idempotency_key: idempotencyKey,
+    save_card: saveCard,
+    authorize_auto_charge: authorizeAutoCharge,
   })
   return res.data
 }

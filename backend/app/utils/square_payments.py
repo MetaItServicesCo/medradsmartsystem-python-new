@@ -94,6 +94,7 @@ def create_square_payment(
     amount: Any,
     invoice_number: str,
     customer_email: str | None = None,
+    customer_id: str | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "source_id": source_id,
@@ -109,6 +110,8 @@ def create_square_payment(
     }
     if customer_email:
         body["buyer_email_address"] = customer_email
+    if customer_id:
+        body["customer_id"] = customer_id
 
     try:
         response = httpx.post(

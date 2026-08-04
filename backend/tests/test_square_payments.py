@@ -68,6 +68,7 @@ def test_square_create_payment_uses_server_token_and_exact_invoice_reference(mon
         amount="73.50",
         invoice_number="INV-SALES-000123",
         customer_email="client@example.com",
+        customer_id="square-customer-123",
     )
 
     assert payment["id"] == "square-payment-123"
@@ -76,6 +77,7 @@ def test_square_create_payment_uses_server_token_and_exact_invoice_reference(mon
     assert captured["json"]["amount_money"] == {"amount": 7350, "currency": "USD"}
     assert captured["json"]["reference_id"] == "INV-SALES-000123"
     assert captured["json"]["buyer_email_address"] == "client@example.com"
+    assert captured["json"]["customer_id"] == "square-customer-123"
 
 
 def test_square_webhook_signature_uses_exact_notification_url_and_body(monkeypatch) -> None:
