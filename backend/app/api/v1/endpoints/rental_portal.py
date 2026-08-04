@@ -343,7 +343,9 @@ def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = D
     invoice.balance_due = Decimal("0")
     invoice.status = InvoiceStatus.PAID
     invoice.payment_method = "credit_card"
-    record_payment_delta(db, invoice, previous_paid, invoice.total_amount, None, "credit_card", f"Online card payment ({payment.get('id')})")
+    payment_txn = record_payment_delta(db, invoice, previous_paid, invoice.total_amount, None, "credit_card", f"Online card payment ({payment.get('id')})")
+    if payment_txn is not None:
+        payment_txn.reference_number = payment.get("id")
     if saved_card:
         _store_card_result(rental, saved_card, payload.authorize_auto_charge, acceptance.accepted_by_name)
     first_invoice = (

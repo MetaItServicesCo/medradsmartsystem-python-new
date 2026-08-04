@@ -1993,6 +1993,21 @@ const Rentals = () => {
                     helperText={`Refunds ${money(Math.max(0, Number(returnDialog?.security_deposit || 0) - Number(returnForm.deposit_deduction || 0)))} to the customer`}
                   />
                 )}
+                {(() => {
+                  const refundAmt = returnForm.deposit_action === 'refund'
+                    ? Number(returnDialog?.security_deposit || 0)
+                    : returnForm.deposit_action === 'deduct'
+                      ? Math.max(0, Number(returnDialog?.security_deposit || 0) - Number(returnForm.deposit_deduction || 0))
+                      : 0
+                  if (refundAmt <= 0) return null
+                  return (
+                    <Typography sx={{ mt: 1.25, fontSize: 12.5, fontWeight: 700, color: '#1E3A8A' }}>
+                      {returnDialog?.saved_card?.last4
+                        ? `${money(refundAmt)} is refunded to the card ending ••••${returnDialog.saved_card.last4} if the deposit was paid by card — otherwise recorded for a manual refund.`
+                        : `${money(refundAmt)} is refunded to the card that paid the deposit, or recorded for a manual refund if it was paid offline.`}
+                    </Typography>
+                  )
+                })()}
               </Box>
             )}
           </Box>

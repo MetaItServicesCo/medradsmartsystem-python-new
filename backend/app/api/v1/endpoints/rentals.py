@@ -36,7 +36,7 @@ from app.utils.facility_access import (
     get_user_facility_ids,
 )
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
     approval_response,
     ensure_financial_edit_allowed,
@@ -53,6 +53,7 @@ from app.utils.logging import log_activity
 from app.utils.square_payments import (
     square_is_configured,
     create_square_card_on_file,
+    create_square_refund,
     SquareRequestError,
 )
 from app.utils.rental_billing import (
@@ -459,6 +460,84 @@ def _apply_stock_delta(db: Session, delta: dict[int, int]) -> None:
             raise HTTPException(status_code=400, detail=f"Not enough stock for {part.part_number}")
         part.quantity_on_hand = (part.quantity_on_hand or 0) - qty
         part.updated_at = datetime.utcnow()
+
+
+def _settle_deposit_refund(
+    db: Session,
+    rental: Rental,
+    refund_amount: Decimal,
+    user: Optional[User],
+) -> dict[str, Any]:
+    """Return `refund_amount` of the security deposit to the card that paid the deposit
+    invoice. Records the refund against that invoice and mirrors the webhook's ledger so
+    the later Square refund event is de-duplicated. Never aborts the return: if the deposit
+    was paid offline, Square is unconfigured, or the refund is declined, it falls back to a
+    manual-refund outcome that the caller records in history."""
+    result: dict[str, Any] = {
+        "amount": str(refund_amount),
+        "method": "manual",
+        "square_refund_id": None,
+        "error": None,
+    }
+    if refund_amount <= 0:
+        result["method"] = "none"
+        return result
+
+    deposit_invoice = (
+        db.query(Invoice)
+        .filter(Invoice.rental_id == rental.id)
+        .order_by(Invoice.id.asc())
+        .first()
+    )
+    payment_txn = None
+    if deposit_invoice is not None:
+        payment_txn = (
+            db.query(InvoiceTransaction)
+            .filter(
+                InvoiceTransaction.invoice_id == deposit_invoice.id,
+                InvoiceTransaction.transaction_type == "payment",
+                InvoiceTransaction.reference_number.isnot(None),
+            )
+            .order_by(InvoiceTransaction.id.desc())
+            .first()
+        )
+    if deposit_invoice is None or payment_txn is None or not square_is_configured():
+        # Deposit was paid offline / is unpaid, or Square is not configured: refund manually.
+        return result
+
+    try:
+        refund = create_square_refund(
+            payment_id=payment_txn.reference_number,
+            idempotency_key=f"rental-deposit-refund-{rental.id}-{deposit_invoice.id}-{int(datetime.utcnow().timestamp())}",
+            amount=refund_amount,
+            reason=f"Security deposit settlement · {rental.rental_number}",
+        )
+    except SquareRequestError as exc:
+        result["error"] = str(exc)
+        return result
+
+    refund_id = refund.get("id")
+    deposit_invoice.refunded_amount = _money(deposit_invoice.refunded_amount) + _money(refund_amount)
+    deposit_invoice.refund_status = (
+        "refunded"
+        if _money(deposit_invoice.refunded_amount) >= _money(deposit_invoice.amount_paid)
+        else "partially_refunded"
+    )
+    deposit_invoice.updated_at = datetime.utcnow()
+    refund_txn = add_invoice_transaction(
+        db,
+        deposit_invoice,
+        "refund",
+        refund_amount,
+        "square_card",
+        f"Security deposit refund ({refund_id})",
+        user,
+        "SQR",
+    )
+    refund_txn.reference_number = refund_id
+    result["method"] = "square_card"
+    result["square_refund_id"] = refund_id
+    return result
 
 
 def _resolve_create_items(payload: "RentalCreate") -> list["RentalItemIn"]:
@@ -1095,16 +1174,27 @@ def return_rental(
         deposit = _money(rental.security_deposit)
         if deposit > 0 and payload.deposit_action:
             action = payload.deposit_action.strip().lower()
+            refund_amount = Decimal("0")
             if action == "refund":
                 rental.deposit_status = RentalDepositStatus.REFUNDED.value
                 rental.deposit_settled_amount = deposit
+                refund_amount = deposit
             elif action == "deduct":
                 deduction = min(deposit, _money(payload.deposit_deduction))
                 rental.deposit_status = RentalDepositStatus.DEDUCTED.value
                 rental.deposit_settled_amount = deposit - deduction
+                refund_amount = deposit - deduction
             elif action == "waive":
                 rental.deposit_status = RentalDepositStatus.WAIVED.value
                 rental.deposit_settled_amount = Decimal("0")
+            if refund_amount > 0:
+                refund_result = _settle_deposit_refund(db, rental, refund_amount, current_user)
+                _append_history(rental, "deposit_refunded", current_user, {
+                    "amount": str(refund_amount),
+                    "method": refund_result["method"],
+                    "square_refund_id": refund_result["square_refund_id"],
+                    "error": refund_result["error"],
+                })
     rental.updated_at = datetime.utcnow()
 
     _append_history(

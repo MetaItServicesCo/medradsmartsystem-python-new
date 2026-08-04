@@ -252,10 +252,12 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     invoice.balance_due = Decimal("0")
     invoice.status = InvoiceStatus.PAID
     invoice.payment_method = "credit_card"
-    record_payment_delta(
+    payment_txn = record_payment_delta(
         db, invoice, previous_paid, invoice.total_amount, None, "credit_card",
         f"Auto-charged card on file ({payment.get('id')})",
     )
+    if payment_txn is not None:
+        payment_txn.reference_number = payment.get("id")
     rental.failed_charge_count = 0
     _append_history(rental, "auto_charged", {"invoice": invoice.invoice_number, "amount": str(invoice.total_amount)})
     return "charged"

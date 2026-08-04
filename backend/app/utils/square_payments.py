@@ -196,6 +196,31 @@ def create_square_card_on_file(
     }
 
 
+def create_square_refund(
+    *,
+    payment_id: str,
+    idempotency_key: str,
+    amount: Any,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Refund `amount` against a completed Square payment (partial refunds allowed)."""
+    body: dict[str, Any] = {
+        "idempotency_key": idempotency_key,
+        "payment_id": payment_id,
+        "amount_money": {
+            "amount": amount_to_minor_units(amount),
+            "currency": settings.SQUARE_CURRENCY.strip().upper() or "USD",
+        },
+    }
+    if reason:
+        body["reason"] = reason[:192]
+    payload = _square_post("/refunds", body, "Square could not process the refund")
+    refund = payload.get("refund")
+    if not isinstance(refund, dict) or not refund.get("id"):
+        raise SquareRequestError("Square returned an invalid refund response")
+    return refund
+
+
 def verify_square_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
     key = settings.SQUARE_WEBHOOK_SIGNATURE_KEY.strip()
     notification_url = settings.SQUARE_WEBHOOK_NOTIFICATION_URL.strip()
