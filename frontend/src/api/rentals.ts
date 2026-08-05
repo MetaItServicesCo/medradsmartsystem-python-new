@@ -559,6 +559,37 @@ export const payPublicRentalInvoice = async (
   return res.data
 }
 
+export const fetchAccountRental = async (rentalId: number): Promise<RentalPortal> => {
+  const res = await apiClient.get(`/rentals/account/${rentalId}`)
+  return res.data
+}
+
+export const acceptAccountRental = async (rentalId: number, signatureName: string): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/account/${rentalId}/accept`, {
+    signature_name: signatureName,
+    terms_accepted: true,
+  })
+  return res.data
+}
+
+export const payAccountRentalInvoice = async (
+  rentalId: number,
+  invoiceId: number,
+  sourceId: string,
+  idempotencyKey: string,
+  saveCard = false,
+  authorizeAutoCharge = false,
+): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/account/${rentalId}/pay-invoice`, {
+    invoice_id: invoiceId,
+    source_id: sourceId,
+    idempotency_key: idempotencyKey,
+    save_card: saveCard,
+    authorize_auto_charge: authorizeAutoCharge,
+  })
+  return res.data
+}
+
 export const runRecurringBilling = async (): Promise<Record<string, number>> => {
   const res = await apiClient.post('/rentals/run-recurring-billing')
   return res.data

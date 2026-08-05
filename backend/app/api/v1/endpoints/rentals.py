@@ -21,6 +21,7 @@ from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.rental import (
     Rental,
+    RentalAgreementAcceptance,
     RentalItem,
     RentalProductRate,
     RentalStatus,
@@ -33,7 +34,6 @@ from app.models.user_facility import UserFacility
 from app.utils.facility_access import (
     require_facility_access,
     scope_query_to_user_facilities,
-    is_facility_scoped_user,
     get_user_facility_ids,
 )
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
@@ -82,6 +82,27 @@ RENTAL_CUSTOMER_ROLES = {
     UserRole.FACILITY_MANAGER,
     UserRole.CLIENT,
 }
+
+
+def _is_rental_customer_user(current_user: User) -> bool:
+    """Return whether this account belongs on the customer rental journey."""
+    return current_user.role in RENTAL_CUSTOMER_ROLES or (
+        current_user.role == UserRole.ADMIN and current_user.facility_id is not None
+    )
+
+
+def _require_internal_rental_operator(current_user: User) -> None:
+    """Keep rental contract, stock, billing, and collection operations internal.
+
+    Facility admins/managers and clients are customer-side users even when a
+    custom permission exposes the Rentals module. They review, sign, and pay
+    through the customer document endpoints; they do not mutate staff records.
+    """
+    if not is_invoice_approver(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This rental operation is available only to an Admin or Super Admin",
+        )
 
 
 class RentalItemIn(BaseModel):
@@ -696,8 +717,12 @@ def _stock_delta(old: dict[int, int], new: dict[int, int]) -> dict[int, int]:
 
 
 def _require_rental_facility_access(db: Session, current_user: User, rental: Rental) -> None:
+    if not _is_rental_customer_user(current_user):
+        return
+    accessible = get_user_facility_ids(db, current_user)
     if rental.facility_id is not None:
-        require_facility_access(db, current_user, rental.facility_id)
+        if rental.facility_id not in accessible:
+            raise HTTPException(status_code=403, detail="You do not have access to this facility")
         return
     # Legacy fallback for agreements created before customer-facility identity
     # was stored directly on rentals.
@@ -707,8 +732,8 @@ def _require_rental_facility_access(db: Session, current_user: User, rental: Ren
     for item in rental.items or []:
         if item.part and item.part.facility_id is not None:
             facility_ids.add(item.part.facility_id)
-    for facility_id in facility_ids:
-        require_facility_access(db, current_user, facility_id)
+    if not facility_ids or facility_ids.isdisjoint(accessible):
+        raise HTTPException(status_code=403, detail="You do not have access to this facility")
 
 
 def _eligible_rental_customer_query(db: Session, facility_id: int):
@@ -886,6 +911,7 @@ def upsert_product_rate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    _require_internal_rental_operator(current_user)
     part = _rental_part_query(db, current_user).filter(InventoryPart.id == part_id).first()
     if not part:
         raise HTTPException(status_code=404, detail="Rental product not found in active inventory")
@@ -917,6 +943,7 @@ def save_rental_card(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Vault a card on file (via Square) so the agreement can be auto-charged each period."""
+    _require_internal_rental_operator(current_user)
     if not square_is_configured():
         raise HTTPException(status_code=400, detail="Square payments are not configured")
     rental = (
@@ -978,6 +1005,7 @@ def send_rental_portal_link(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Email the customer a secure link to view the agreement and save a card / pay."""
+    _require_internal_rental_operator(current_user)
     rental = (
         db.query(Rental)
         .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part))
@@ -1064,7 +1092,7 @@ def list_rentals(
 
     # New agreements are scoped by their customer facility. Item-location scope
     # remains only as a compatibility fallback for legacy unlinked agreements.
-    if is_facility_scoped_user(current_user):
+    if _is_rental_customer_user(current_user):
         accessible = get_user_facility_ids(db, current_user)
         legacy_scope = (
             select(RentalItem.rental_id)
@@ -1154,6 +1182,7 @@ def create_rental(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    _require_internal_rental_operator(current_user)
     _reject_daily(payload.billing_frequency)
     _validate_billing_term(payload.start_date, payload.end_date, payload.billing_frequency, payload.committed_periods)
     items_in = _resolve_create_items(payload)
@@ -1224,6 +1253,7 @@ def update_rental(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    _require_internal_rental_operator(current_user)
     rental = (
         db.query(Rental)
         .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part), joinedload(Rental.converted_invoice))
@@ -1317,6 +1347,7 @@ def delete_rental(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    _require_internal_rental_operator(current_user)
     rental = (
         db.query(Rental)
         .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part))
@@ -1351,6 +1382,7 @@ def return_rental(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    _require_internal_rental_operator(current_user)
     rental = (
         db.query(Rental)
         .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part), joinedload(Rental.converted_invoice))
@@ -1457,6 +1489,7 @@ def convert_to_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    _require_internal_rental_operator(current_user)
     rental = (
         db.query(Rental)
         .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part), joinedload(Rental.converted_invoice))
@@ -1609,6 +1642,14 @@ def list_rental_invoices(
         )
         .filter(Invoice.invoice_type == InvoiceType.RENTAL)
     )
+    # The initial invoice is prepared with the agreement for accurate stock and
+    # ledger continuity, but it becomes a customer-facing invoice only after the
+    # agreement is signed. Internal staff retain pre-sign visibility.
+    if _is_rental_customer_user(current_user):
+        accessible = get_user_facility_ids(db, current_user)
+        query = query.filter(Invoice.facility_id.in_(accessible))
+        signed_rentals = select(RentalAgreementAcceptance.rental_id)
+        query = query.filter(Invoice.rental_id.in_(signed_rentals))
     if date_from:
         query = query.filter(Invoice.issue_date >= date_from)
     if date_to:
@@ -1679,6 +1720,7 @@ def update_rental_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    _require_internal_rental_operator(current_user)
     invoice = (
         db.query(Invoice)
         .options(
@@ -1868,7 +1910,7 @@ def list_rental_history(
             joinedload(Rental.facility),
         )
     )
-    if is_facility_scoped_user(current_user):
+    if _is_rental_customer_user(current_user):
         accessible = get_user_facility_ids(db, current_user)
         legacy_scope = (
             select(RentalItem.rental_id)
@@ -1992,6 +2034,11 @@ def rental_summary(
         .filter(Invoice.invoice_type == InvoiceType.RENTAL),
         current_user,
     )
+    if _is_rental_customer_user(current_user):
+        accessible = get_user_facility_ids(db, current_user)
+        invoice_query = invoice_query.filter(Invoice.facility_id.in_(accessible))
+        signed_rentals = select(RentalAgreementAcceptance.rental_id)
+        invoice_query = invoice_query.filter(Invoice.rental_id.in_(signed_rentals))
     total_invoiced = invoice_query.with_entities(func.coalesce(func.sum(Invoice.total_amount), 0)).scalar()
     total_collected = invoice_query.with_entities(func.coalesce(func.sum(Invoice.amount_paid), 0)).scalar()
     products = _rental_part_query(db, current_user).count()

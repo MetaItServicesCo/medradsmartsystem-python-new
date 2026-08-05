@@ -71,6 +71,7 @@ import {
 } from '@/api/rentals'
 import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { digitsOnly, formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
+import { useAuthStore } from '@/stores/authStore'
 
 const ROUTE_TABS = ['/rentals/agreements', '/rentals/invoices', '/rentals/products', '/rentals/history']
 const PAGE_SIZE = 20
@@ -383,6 +384,11 @@ interface RentalPartInfo {
 const Rentals = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const currentUser = useAuthStore(state => state.user)
+  const isRentalCustomer = ['facility_admin', 'facility_manager', 'client'].includes(currentUser?.role || '')
+    || (currentUser?.role === 'admin' && Boolean(currentUser.facility_id))
+  const isInternalRentalOperator = currentUser?.role === 'superadmin'
+    || (currentUser?.role === 'admin' && !currentUser.facility_id)
   const queryClient = useQueryClient()
   const theme = useTheme()
   const fullScreenDialog = useMediaQuery(theme.breakpoints.down('sm'))
@@ -456,6 +462,10 @@ const Rentals = () => {
   }, [location.pathname, navigate])
 
   useEffect(() => {
+    if (isRentalCustomer && tab > 1) navigate('/rentals/agreements', { replace: true })
+  }, [isRentalCustomer, navigate, tab])
+
+  useEffect(() => {
     setSearch(routeSearch)
     setDebouncedSearch(routeSearch)
   }, [routeSearch])
@@ -488,7 +498,7 @@ const Rentals = () => {
       dateFrom || undefined,
       dateTo || undefined,
     ),
-    enabled: tab === 2 && !invalidDateRange,
+    enabled: isInternalRentalOperator && tab === 2 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const rentalsQ = useQuery({
@@ -526,7 +536,7 @@ const Rentals = () => {
       skip: historyPage * PAGE_SIZE,
       limit: PAGE_SIZE,
     }),
-    enabled: tab === 3 && !invalidDateRange,
+    enabled: isInternalRentalOperator && tab === 3 && !invalidDateRange,
     placeholderData: previousData => previousData,
   })
   const summaryQ = useQuery({ queryKey: ['rental-summary'], queryFn: fetchRentalSummary, placeholderData: previousData => previousData })
@@ -579,7 +589,16 @@ const Rentals = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-parts'] })
   }
 
+  const openCustomerRentalDocument = (rentalId: number | null | undefined) => {
+    if (!rentalId) return toast.error('This invoice is not linked to a rental agreement')
+    navigate(`/rentals/account/${rentalId}`)
+  }
+
   const openAgreementDetails = async (agreement: Rental) => {
+    if (isRentalCustomer) {
+      openCustomerRentalDocument(agreement.id)
+      return
+    }
     setViewAgreement(agreement)
     try {
       setViewAgreement(await fetchRentalDetail(agreement.id))
@@ -1274,13 +1293,25 @@ const Rentals = () => {
                   {highlighted && (
                     <Chip size="small" label="Selected" sx={{ mr: 1, bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 900 }} />
                   )}
-                  <IconButton
-                    size="small"
-                    onClick={(event) => openActions(event, item)}
-                    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#2563EB', '&:hover': { bgcolor: '#DBEAFE' } }}
-                  >
-                    <MoreVertIcon fontSize="small" />
-                  </IconButton>
+                  {isRentalCustomer ? (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => openCustomerRentalDocument(item.id)}
+                      sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap' }}
+                    >
+                      Open
+                    </Button>
+                  ) : isInternalRentalOperator ? (
+                    <IconButton
+                      size="small"
+                      onClick={(event) => openActions(event, item)}
+                      sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#2563EB', '&:hover': { bgcolor: '#DBEAFE' } }}
+                    >
+                      <MoreVertIcon fontSize="small" />
+                    </IconButton>
+                  ) : null}
                 </TableCell>
               </ContextTableRow>
             )
@@ -1341,7 +1372,10 @@ const Rentals = () => {
                   '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setPrintInvoice(invoice)} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => {
+                  if (isRentalCustomer) openCustomerRentalDocument(invoice.rental_id)
+                  else setPrintInvoice(invoice)
+                }} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.rental_number || '-'} monospace fontWeight={800} onClick={() => {
                   const agreement = rentals.find(item => item.id === invoice.rental_id)
                   if (agreement) void openAgreementDetails(agreement)
@@ -1355,13 +1389,25 @@ const Rentals = () => {
                   {highlighted && (
                     <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 900 }} />
                   )}
-                  <IconButton
-                    size="small"
-                    onClick={(event) => openInvoiceActions(event, invoice)}
-                    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#2563EB', '&:hover': { bgcolor: '#DBEAFE' } }}
-                  >
-                    <MoreVertIcon fontSize="small" />
-                  </IconButton>
+                  {isRentalCustomer ? (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => openCustomerRentalDocument(invoice.rental_id)}
+                      sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900, whiteSpace: 'nowrap' }}
+                    >
+                      Open
+                    </Button>
+                  ) : isInternalRentalOperator ? (
+                    <IconButton
+                      size="small"
+                      onClick={(event) => openInvoiceActions(event, invoice)}
+                      sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#2563EB', '&:hover': { bgcolor: '#DBEAFE' } }}
+                    >
+                      <MoreVertIcon fontSize="small" />
+                    </IconButton>
+                  ) : null}
                 </TableCell>
               </ContextTableRow>
             )
@@ -1537,9 +1583,13 @@ const Rentals = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <Box>
             <Typography variant="h4" sx={{ color: '#1E3A8A', fontWeight: 900 }}>Rental Management</Typography>
-            <Typography sx={{ color: '#4B5563', fontWeight: 700 }}>Create agreements for rental products from inventory, process periodic billing invoices, track equipment handovers, returns and history logs.</Typography>
+            <Typography sx={{ color: '#4B5563', fontWeight: 700 }}>
+              {isRentalCustomer
+                ? 'Review and sign your facility rental agreements, view invoices, and complete secure payments.'
+                : 'Create agreements for rental products from inventory, process periodic billing invoices, track equipment handovers, returns and history logs.'}
+            </Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+          {isInternalRentalOperator && <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
             <Button
               startIcon={billingMut.isPending ? <CircularProgress size={16} /> : <PaymentIcon />}
               variant="outlined"
@@ -1552,24 +1602,24 @@ const Rentals = () => {
             <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: SYSTEM_GRADIENT }}>
               New Agreement
             </Button>
-          </Box>
+          </Box>}
         </Box>
       </Card>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: `repeat(${isInternalRentalOperator ? 5 : 3}, 1fr)` }, gap: 2, mb: 3 }}>
         {renderKpi('Total Agreements', stats.agreements, <AssignmentIcon />, '#3B82F6')}
         {renderKpi('Active Rentals', stats.active, <LocalShippingIcon />, '#2563EB')}
         {renderKpi('Total Invoiced', money(stats.invoiced), <ReceiptLongIcon />, '#059669')}
-        {renderKpi('Rental Products', stats.products, <InfoIcon />, '#8B5CF6')}
-        {renderKpi('History Entries', stats.history, <HistoryIcon />, '#6B7280')}
+        {isInternalRentalOperator && renderKpi('Rental Products', stats.products, <InfoIcon />, '#8B5CF6')}
+        {isInternalRentalOperator && renderKpi('History Entries', stats.history, <HistoryIcon />, '#6B7280')}
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
         <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Agreements" />
           <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Invoices" />
-          <Tab icon={<InfoIcon />} iconPosition="start" label="Rental Products" />
-          <Tab icon={<HistoryIcon />} iconPosition="start" label="History" />
+          {isInternalRentalOperator && <Tab icon={<InfoIcon />} iconPosition="start" label="Rental Products" />}
+          {isInternalRentalOperator && <Tab icon={<HistoryIcon />} iconPosition="start" label="History" />}
         </Tabs>
 
         {tab === 0 && (
@@ -1621,7 +1671,7 @@ const Rentals = () => {
           </Box>
         )}
 
-        {tab === 2 && (
+        {isInternalRentalOperator && tab === 2 && (
           <Box>
             <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6' }}>
               <Box>
@@ -1637,7 +1687,7 @@ const Rentals = () => {
           </Box>
         )}
 
-        {tab === 3 && (
+        {isInternalRentalOperator && tab === 3 && (
           <Box>
             <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
               <Box>
@@ -1653,6 +1703,7 @@ const Rentals = () => {
       </Card>
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
+        {isInternalRentalOperator ? (<>
         <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || actionAgreement.status === 'completed'} onClick={() => actionAgreement && openReturnDialog(actionAgreement)}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CheckCircleIcon fontSize="small" /></ListItemIcon>
           Return Equipment
@@ -1685,6 +1736,7 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><DeleteIcon fontSize="small" /></ListItemIcon>
           Delete
         </MenuItem>
+        </>) : null}
       </Menu>
 
       <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
@@ -1717,6 +1769,7 @@ const Rentals = () => {
       </Dialog>
 
       <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
+        {isInternalRentalOperator ? (<>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionInvoice) setPrintInvoice(actionInvoice); closeInvoiceActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View
@@ -1754,6 +1807,7 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><LocalShippingIcon fontSize="small" /></ListItemIcon>
           Sale
         </MenuItem>
+        </>) : null}
       </Menu>
 
       <CreditCardAuthorizationDialog

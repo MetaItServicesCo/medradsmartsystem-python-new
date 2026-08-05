@@ -25,8 +25,11 @@ import {
   customerPortalSx,
 } from '@/components/Documents/CustomerDocumentUI'
 import {
+  acceptAccountRental,
   acceptPublicRental,
+  fetchAccountRental,
   fetchRentalPortal,
+  payAccountRentalInvoice,
   payPublicRentalInvoice,
   type RentalPortalInvoice,
 } from '@/api/rentals'
@@ -79,7 +82,9 @@ const InvoiceBreakdown = ({ invoice }: { invoice: RentalPortalInvoice }) => (
 )
 
 const ClientRental = () => {
-  const { token = '' } = useParams()
+  const { token = '', rentalId = '' } = useParams()
+  const accountRentalId = Number(rentalId || 0)
+  const isAccountView = accountRentalId > 0
   const queryClient = useQueryClient()
   const [signatureName, setSignatureName] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
@@ -95,16 +100,24 @@ const ClientRental = () => {
   }, [])
 
   const portalQ = useQuery({
-    queryKey: ['rental-portal', token],
-    queryFn: () => fetchRentalPortal(token),
-    enabled: Boolean(token),
+    queryKey: isAccountView ? ['rental-account', accountRentalId] : ['rental-portal', token],
+    queryFn: () => isAccountView ? fetchAccountRental(accountRentalId) : fetchRentalPortal(token),
+    enabled: isAccountView || Boolean(token),
     retry: false,
   })
 
   const acceptMut = useMutation({
-    mutationFn: () => acceptPublicRental(token, signatureName.trim()),
+    mutationFn: () => isAccountView
+      ? acceptAccountRental(accountRentalId, signatureName.trim())
+      : acceptPublicRental(token, signatureName.trim()),
     onSuccess: (data) => {
-      queryClient.setQueryData(['rental-portal', token], data)
+      queryClient.setQueryData(
+        isAccountView ? ['rental-account', accountRentalId] : ['rental-portal', token],
+        data,
+      )
+      queryClient.invalidateQueries({ queryKey: ['rentals'] })
+      queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['rental-summary'] })
       toast.success('Rental agreement signed and approved')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not approve the agreement'),
@@ -112,9 +125,17 @@ const ClientRental = () => {
 
   const payMut = useMutation({
     mutationFn: ({ invoiceId, sourceId, idempotencyKey }: { invoiceId: number; sourceId: string; idempotencyKey: string }) =>
-      payPublicRentalInvoice(token, invoiceId, sourceId, idempotencyKey, authorizeFuturePayments, authorizeFuturePayments),
+      isAccountView
+        ? payAccountRentalInvoice(accountRentalId, invoiceId, sourceId, idempotencyKey, authorizeFuturePayments, authorizeFuturePayments)
+        : payPublicRentalInvoice(token, invoiceId, sourceId, idempotencyKey, authorizeFuturePayments, authorizeFuturePayments),
     onSuccess: (data) => {
-      queryClient.setQueryData(['rental-portal', token], data)
+      queryClient.setQueryData(
+        isAccountView ? ['rental-account', accountRentalId] : ['rental-portal', token],
+        data,
+      )
+      queryClient.invalidateQueries({ queryKey: ['rentals'] })
+      queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['rental-summary'] })
       setThankYouInvoice(payTarget?.invoice_number || '')
       setPayTarget(null)
       setAuthorizeFuturePayments(false)
@@ -125,7 +146,9 @@ const ClientRental = () => {
 
   if (portalQ.isLoading) return <Centered><CircularProgress /></Centered>
   if (portalQ.isError || !portalQ.data) {
-    return <Centered><Alert severity="error" sx={{ borderRadius: '14px' }}>This rental link is invalid or has expired.</Alert></Centered>
+    return <Centered><Alert severity="error" sx={{ borderRadius: '14px' }}>
+      {isAccountView ? 'This rental agreement is unavailable or outside your facility access.' : 'This rental link is invalid or has expired.'}
+    </Alert></Centered>
   }
 
   const portal = portalQ.data

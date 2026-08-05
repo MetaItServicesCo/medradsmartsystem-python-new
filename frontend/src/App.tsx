@@ -117,6 +117,7 @@ function App() {
           <Route path="service-requests/*" element={<ProtectedPage module="service-requests"><ServiceRequests /></ProtectedPage>} />
           <Route path="inspections/*" element={<ProtectedPage module="inspections"><Inspections /></ProtectedPage>} />
           <Route path="sales/*" element={<ProtectedPage module="sales"><Sales /></ProtectedPage>} />
+          <Route path="rentals/account/:rentalId" element={<ProtectedPage module="rentals"><ClientRental /></ProtectedPage>} />
           <Route path="rentals/*" element={<ProtectedPage module="rentals"><Rentals /></ProtectedPage>} />
           <Route path="inventory/*" element={<ProtectedPage module="inventory"><Inventory /></ProtectedPage>} />
           <Route path="test-equipment/*" element={<ProtectedPage module="test-equipment"><TestEquipment /></ProtectedPage>} />

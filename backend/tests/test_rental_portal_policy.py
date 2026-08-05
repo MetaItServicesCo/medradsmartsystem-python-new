@@ -4,7 +4,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.endpoints.rental_portal import _pricing_view, _require_signed
+from app.api.v1.endpoints.rental_portal import _is_rental_account_user, _pricing_view, _require_signed
+from app.api.v1.endpoints.rentals import _is_rental_customer_user, _require_internal_rental_operator
+from app.models.user import UserRole
 
 
 def _item(rate: str, quantity: int, shipping: str, setup: str, labor: str):
@@ -46,3 +48,19 @@ def test_pricing_table_allocates_exact_invoice_tax_without_taxing_deposit_or_lab
     assert pricing["rental_tax"] + pricing["shipping_tax"] + pricing["setup_tax"] == Decimal("12.38")
     assert pricing["grand_total"] == Decimal("252.38")
 
+
+def test_customer_roles_cannot_invoke_internal_rental_operations() -> None:
+    _require_internal_rental_operator(SimpleNamespace(role=UserRole.SUPERADMIN, facility_id=None))
+    _require_internal_rental_operator(SimpleNamespace(role=UserRole.ADMIN, facility_id=None))
+
+    for role in (UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT):
+        with pytest.raises(HTTPException) as error:
+            _require_internal_rental_operator(SimpleNamespace(role=role, facility_id=42))
+        assert error.value.status_code == 403
+
+    facility_admin_account = SimpleNamespace(role=UserRole.ADMIN, facility_id=42)
+    with pytest.raises(HTTPException) as error:
+        _require_internal_rental_operator(facility_admin_account)
+    assert error.value.status_code == 403
+    assert _is_rental_customer_user(facility_admin_account)
+    assert _is_rental_account_user(facility_admin_account)

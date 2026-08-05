@@ -16,8 +16,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload, joinedload
 
 from app.db.base import get_db
+from app.core.deps import get_current_user
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.rental import Rental, RentalItem, RentalAgreementAcceptance
+from app.models.user import User, UserRole
+from app.utils.facility_access import get_user_facility_ids
 from app.utils.invoice_editing import editable_line_items, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import add_invoice_transaction, record_payment_delta
 from app.utils.rental_billing import _initial_invoice_amounts, effective_period_count, projected_billing_schedule
@@ -30,6 +33,18 @@ from app.utils.square_payments import (
 )
 
 router = APIRouter()
+
+RENTAL_ACCOUNT_ROLES = {
+    UserRole.FACILITY_ADMIN,
+    UserRole.FACILITY_MANAGER,
+    UserRole.CLIENT,
+}
+
+
+def _is_rental_account_user(current_user: User) -> bool:
+    return current_user.role in RENTAL_ACCOUNT_ROLES or (
+        current_user.role == UserRole.ADMIN and current_user.facility_id is not None
+    )
 
 
 def _token_hash(token: str) -> str:
@@ -49,6 +64,45 @@ def _find_rental_by_token(db: Session, token: str, for_update: bool = False) -> 
         raise HTTPException(status_code=404, detail="This rental link is invalid")
     if rental.token_expires_at and rental.token_expires_at < datetime.utcnow():
         raise HTTPException(status_code=410, detail="This rental link has expired")
+    return rental
+
+
+def _find_rental_for_account(
+    db: Session,
+    rental_id: int,
+    current_user: User,
+    for_update: bool = False,
+) -> Rental:
+    """Load a rental for the signed-in customer portal.
+
+    This is intentionally role and facility scoped. Rental module permissions
+    grant access to the page, but never grant a customer internal rental
+    operations or visibility into another facility's agreement.
+    """
+    if not _is_rental_account_user(current_user):
+        raise HTTPException(status_code=403, detail="Customer rental access is limited to facility accounts")
+    accessible_facilities = get_user_facility_ids(db, current_user)
+    query = (
+        db.query(Rental)
+        .options(selectinload(Rental.items).joinedload(RentalItem.part))
+        .filter(Rental.id == rental_id)
+    )
+    if for_update:
+        query = query.with_for_update(of=Rental)
+    rental = query.first()
+    legacy_item_access = bool(
+        rental
+        and rental.facility_id is None
+        and any(
+            item.part and item.part.facility_id in accessible_facilities
+            for item in (rental.items or [])
+        )
+    )
+    if not rental or (
+        rental.facility_id not in accessible_facilities
+        and not legacy_item_access
+    ):
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
     return rental
 
 
@@ -331,16 +385,15 @@ class AcceptRentalIn(BaseModel):
     terms_accepted: bool
 
 
-@router.post("/rentals/public/{token}/accept")
-def public_accept_rental(
-    token: str,
+def _accept_rental(
+    rental: Rental,
     payload: AcceptRentalIn,
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session,
+    current_user: Optional[User] = None,
 ) -> Any:
     if not payload.terms_accepted:
         raise HTTPException(status_code=422, detail="Accept the rental terms before signing")
-    rental = _find_rental_by_token(db, token, for_update=True)
     if rental.acceptance:
         if rental.acceptance.agreement_revision == (rental.revision or 1):
             return _portal_response(db, rental)
@@ -369,7 +422,7 @@ def public_accept_rental(
     history.append({
         "action": "customer_signed",
         "by": signer,
-        "user_id": None,
+        "user_id": current_user.id if current_user else None,
         "at": datetime.utcnow().isoformat(),
         "details": {"revision": rental.revision or 1},
     })
@@ -378,6 +431,7 @@ def public_accept_rental(
         add_invoice_transaction(
             db, initial_invoice, "agreement_signed", 0, None,
             f"Rental agreement revision {rental.revision or 1} signed by {signer}",
+            current_user,
             reference_prefix="SIGN",
         )
     db.commit()
@@ -385,12 +439,16 @@ def public_accept_rental(
     return _portal_response(db, rental)
 
 
-@router.post("/rentals/public/{token}/pay-invoice")
-def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = Depends(get_db)) -> Any:
+def _pay_rental_invoice(
+    rental: Rental,
+    payload: PayInvoiceIn,
+    db: Session,
+    current_user: Optional[User] = None,
+) -> Any:
     if not square_is_configured():
         raise HTTPException(status_code=400, detail="Card payments are not available")
-    rental = _find_rental_by_token(db, token, for_update=True)
     acceptance = _require_signed(rental)
+    actor_name = current_user.full_name if current_user else acceptance.accepted_by_name
     if payload.authorize_auto_charge and not payload.save_card:
         raise HTTPException(status_code=422, detail="Save the card before authorizing automatic charges")
     invoice = (
@@ -410,7 +468,7 @@ def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = D
     invoice.last_payment_attempt_at = datetime.utcnow()
     add_invoice_transaction(
         db, invoice, "payment_attempt", invoice.balance_due, "credit_card",
-        f"Customer online payment attempt {attempt}", reference_prefix="ATT",
+        f"Customer online payment attempt {attempt} by {actor_name}", current_user, reference_prefix="ATT",
     )
     try:
         if payload.save_card:
@@ -435,13 +493,13 @@ def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = D
     except SquareRequestError as exc:
         add_invoice_transaction(
             db, invoice, "payment_failed", invoice.balance_due, "credit_card",
-            f"Customer online payment attempt {attempt} failed: {exc}", reference_prefix="DEC",
+            f"Customer online payment attempt {attempt} by {actor_name} failed: {exc}", current_user, reference_prefix="DEC",
         )
         history = list(rental.history or [])
         history.append({
             "action": "invoice_payment_failed",
-            "by": acceptance.accepted_by_name,
-            "user_id": None,
+            "by": actor_name,
+            "user_id": current_user.id if current_user else None,
             "at": datetime.utcnow().isoformat(),
             "details": {"invoice": invoice.invoice_number, "attempt": attempt},
         })
@@ -455,17 +513,18 @@ def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = D
     invoice.payment_method = "credit_card"
     invoice.next_payment_retry_at = None
     rental.failed_charge_count = 0
-    payment_txn = record_payment_delta(db, invoice, previous_paid, invoice.total_amount, None, "credit_card", f"Online card payment ({payment.get('id')})")
+    payment_txn = record_payment_delta(db, invoice, previous_paid, invoice.total_amount, current_user, "credit_card", f"Online card payment by {actor_name} ({payment.get('id')})")
     if payment_txn is not None:
         payment_txn.reference_number = payment.get("id")
     if saved_card:
-        _store_card_result(rental, saved_card, payload.authorize_auto_charge, acceptance.accepted_by_name)
+        _store_card_result(rental, saved_card, payload.authorize_auto_charge, actor_name)
         add_invoice_transaction(
             db, invoice,
             "auto_charge_authorized" if payload.authorize_auto_charge else "card_saved",
             0, "credit_card",
             f"Card ending {saved_card.get('last_4') or 'unknown'} saved"
-            + (f"; automatic charges authorized by {acceptance.accepted_by_name}" if payload.authorize_auto_charge else ""),
+            + (f"; automatic charges authorized by {actor_name}" if payload.authorize_auto_charge else ""),
+            current_user,
             reference_prefix="AUTH" if payload.authorize_auto_charge else "CARD",
         )
     first_invoice = (
@@ -477,8 +536,8 @@ def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = D
     history = list(rental.history or [])
     history.append({
         "action": "initial_invoice_paid" if first_invoice and invoice.id == first_invoice[0] else "invoice_paid",
-        "by": acceptance.accepted_by_name,
-        "user_id": None,
+        "by": actor_name,
+        "user_id": current_user.id if current_user else None,
         "at": datetime.utcnow().isoformat(),
         "details": {
             "invoice": invoice.invoice_number,
@@ -492,3 +551,53 @@ def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = D
     db.commit()
     db.refresh(rental)
     return _portal_response(db, rental)
+
+
+@router.post("/rentals/public/{token}/accept")
+def public_accept_rental(
+    token: str,
+    payload: AcceptRentalIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    rental = _find_rental_by_token(db, token, for_update=True)
+    return _accept_rental(rental, payload, request, db)
+
+
+@router.post("/rentals/public/{token}/pay-invoice")
+def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = Depends(get_db)) -> Any:
+    rental = _find_rental_by_token(db, token, for_update=True)
+    return _pay_rental_invoice(rental, payload, db)
+
+
+@router.get("/rentals/account/{rental_id}")
+def account_view_rental(
+    rental_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    rental = _find_rental_for_account(db, rental_id, current_user)
+    return _portal_response(db, rental)
+
+
+@router.post("/rentals/account/{rental_id}/accept")
+def account_accept_rental(
+    rental_id: int,
+    payload: AcceptRentalIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    return _accept_rental(rental, payload, request, db, current_user)
+
+
+@router.post("/rentals/account/{rental_id}/pay-invoice")
+def account_pay_rental_invoice(
+    rental_id: int,
+    payload: PayInvoiceIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    return _pay_rental_invoice(rental, payload, db, current_user)
