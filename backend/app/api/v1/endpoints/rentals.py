@@ -36,7 +36,7 @@ from app.utils.facility_access import (
     get_user_facility_ids,
 )
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_refunds import execute_square_invoice_refund, issue_invoice_refund
 from app.utils.invoice_approval import (
     approval_response,
@@ -59,7 +59,8 @@ from app.utils.square_payments import (
 from app.utils.rental_billing import (
     run_rental_recurring_billing,
     generate_deposit_invoice,
-    period_days,
+    advance_billing_date,
+    projected_period,
     RENTAL_TAX_RATE,
     RENTAL_TAX_FACTOR,
 )
@@ -260,6 +261,12 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "invoice_type": invoice.invoice_type.value if hasattr(invoice.invoice_type, "value") else invoice.invoice_type,
         "rental_id": invoice.rental_id,
         "rental_number": invoice.rental.rental_number if invoice.rental else None,
+        "rental_period_number": invoice.rental_period_number,
+        "rental_period_start": invoice.rental_period_start,
+        "rental_period_end": invoice.rental_period_end,
+        "payment_attempt_count": invoice.payment_attempt_count,
+        "last_payment_attempt_at": invoice.last_payment_attempt_at,
+        "next_payment_retry_at": invoice.next_payment_retry_at,
         "customer_name": invoice.customer_name,
         "customer_email": invoice.customer_email,
         "customer_phone": invoice.customer_phone,
@@ -321,6 +328,18 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         and rental.end_date < date.today()
         and any(item.item_status != RentalItemStatus.RETURNED.value for item in items)
     )
+    next_period = int(rental.periods_billed or 0) + 1
+    projected_next = projected_period(rental, next_period)
+    next_payment = ({
+        "period": projected_next["period"],
+        "billing_date": projected_next["billing_date"],
+        "amount": projected_next["total"],
+        "tax": projected_next["tax"],
+        "discount": projected_next["discount"],
+        "status": "scheduled",
+        "invoice_id": None,
+        "invoice_number": None,
+    } if projected_next else None)
     return {
         "id": rental.id,
         "rental_number": rental.rental_number,
@@ -367,6 +386,7 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "committed_periods": rental.committed_periods,
         "periods_billed": rental.periods_billed,
         "next_bill_date": rental.next_bill_date,
+        "next_payment": next_payment,
         "discount_type": rental.discount_type,
         "discount_value": rental.discount_value,
         "discount_apply_after_periods": rental.discount_apply_after_periods,
@@ -429,6 +449,23 @@ def _reject_daily(freq: Any) -> None:
             status_code=400,
             detail="Daily billing is no longer offered; choose weekly, bi-weekly, monthly or quarterly.",
         )
+
+
+def _validate_billing_term(start: date, end: date, freq: Any, committed_periods: Optional[int]) -> None:
+    if end < start:
+        raise HTTPException(status_code=422, detail="Rental end date cannot be before the start date")
+    if committed_periods is not None:
+        if committed_periods < 1:
+            raise HTTPException(status_code=422, detail="Committed periods must be at least 1")
+        last_period_start = advance_billing_date(start, _frequency_value(freq), committed_periods - 1)
+        if last_period_start > end:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"The end date does not cover {committed_periods} {_frequency_value(freq)} periods. "
+                    f"Choose an end date on or after {last_period_start.isoformat()}."
+                ),
+            )
 
 
 def _period_count(days: int, freq: str) -> int:
@@ -763,6 +800,17 @@ def save_rental_card(
     rental.failed_charge_count = 0
     rental.updated_at = datetime.utcnow()
     _append_history(rental, "card_saved", current_user, {"brand": result.get("card_brand"), "last_4": result.get("last_4")})
+    first_invoice = db.query(Invoice).filter(Invoice.rental_id == rental.id).order_by(Invoice.id.asc()).first()
+    if first_invoice:
+        add_invoice_transaction(
+            db, first_invoice,
+            "auto_charge_authorized" if rental.auto_charge else "card_saved",
+            0, "credit_card",
+            f"Card ending {result.get('last_4') or 'unknown'} saved by {current_user.full_name}"
+            + (" with staff-recorded automatic charge authorization" if rental.auto_charge else ""),
+            current_user,
+            "AUTH" if rental.auto_charge else "CARD",
+        )
     log_activity(db, "rentals", rental.id, "SAVE_CARD", current_user, {"last_4": result.get("last_4")})
     db.commit()
     db.refresh(rental)
@@ -801,6 +849,12 @@ def send_rental_portal_link(
     rental.updated_at = now
     link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/rental/{token}"
     _append_history(rental, "portal_link_sent", current_user, {"expires_at": rental.token_expires_at.isoformat()})
+    first_invoice = db.query(Invoice).filter(Invoice.rental_id == rental.id).order_by(Invoice.id.asc()).first()
+    if first_invoice:
+        add_invoice_transaction(
+            db, first_invoice, "portal_link_sent", 0, None,
+            f"Rental portal link emailed to {rental.customer_email}", current_user, "SEND",
+        )
     log_activity(db, "rentals", rental.id, "SEND_PORTAL", current_user, {})
     db.commit()
 
@@ -947,6 +1001,7 @@ def create_rental(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     _reject_daily(payload.billing_frequency)
+    _validate_billing_term(payload.start_date, payload.end_date, payload.billing_frequency, payload.committed_periods)
     items_in = _resolve_create_items(payload)
     item_rows = _build_rental_items(db, current_user, items_in)
 
@@ -988,7 +1043,7 @@ def create_rental(
     initial_invoice = generate_deposit_invoice(db, rental)
     if initial_invoice is not None:
         rental.periods_billed = 1
-    rental.next_bill_date = payload.start_date + timedelta(days=period_days(_frequency_value(payload.billing_frequency)))
+    rental.next_bill_date = advance_billing_date(payload.start_date, _frequency_value(payload.billing_frequency))
 
     log_activity(db, "rentals", rental.id, "CREATE", current_user, {"rental_number": rental.rental_number})
     db.commit()
@@ -1017,6 +1072,12 @@ def update_rental(
     if payload.billing_frequency is not None:
         _reject_daily(payload.billing_frequency)
 
+    resolved_start = payload.start_date if payload.start_date is not None else rental.start_date
+    resolved_end = payload.end_date if payload.end_date is not None else rental.end_date
+    resolved_frequency = payload.billing_frequency if payload.billing_frequency is not None else rental.billing_frequency
+    resolved_committed = payload.committed_periods if "committed_periods" in payload.model_fields_set else rental.committed_periods
+    _validate_billing_term(resolved_start, resolved_end, resolved_frequency, resolved_committed)
+
     update_data = payload.model_dump(exclude_unset=True, exclude={"items"})
 
     # A signed contract must remain identical to the snapshot accepted by the
@@ -1043,6 +1104,13 @@ def update_rental(
         if field == "customer_email" and value is not None:
             value = str(value)
         setattr(rental, field, value)
+
+    if {"start_date", "end_date", "billing_frequency", "committed_periods"} & set(update_data):
+        next_period = int(rental.periods_billed or 0) + 1
+        candidate = advance_billing_date(rental.start_date, _frequency_value(rental.billing_frequency), next_period - 1)
+        rental.next_bill_date = candidate if candidate <= rental.end_date and (
+            not rental.committed_periods or next_period <= int(rental.committed_periods)
+        ) else None
 
     rental.updated_at = datetime.utcnow()
     changed = {key: str(value) for key, value in update_data.items()}
@@ -1144,6 +1212,7 @@ def return_rental(
     fully_returned = all(item.item_status == RentalItemStatus.RETURNED.value for item in (rental.items or []))
     if fully_returned:
         rental.status = RentalStatus.COMPLETED
+        rental.next_bill_date = None
         rental.actual_return_date = payload.actual_return_date
         if payload.return_condition is not None:
             rental.return_condition = payload.return_condition

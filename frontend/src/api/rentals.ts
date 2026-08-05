@@ -8,6 +8,31 @@ export type RentalDiscountType = 'flat' | 'percent'
 export type RentalDepositStatus = 'held' | 'refunded' | 'deducted' | 'waived'
 export type RentalInvoiceStatus = 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled'
 
+export interface RentalProjectedPayment {
+  period: number | null
+  billing_date: string
+  amount: number
+  tax: number
+  discount: number
+  status: 'due' | 'scheduled'
+  invoice_id: number | null
+  invoice_number: string | null
+}
+
+export interface RentalBillingPeriod {
+  period: number
+  billing_date: string
+  period_end: string
+  rental_amount: number
+  discount: number
+  tax: number
+  total: number
+  balance_due: number
+  status: RentalInvoiceStatus | 'upcoming'
+  invoice_id: number | null
+  invoice_number: string | null
+}
+
 export interface RentalPart {
   id: number
   part_number: string
@@ -82,6 +107,7 @@ export interface Rental {
   committed_periods: number | null
   periods_billed: number
   next_bill_date: string | null
+  next_payment: RentalProjectedPayment | null
   discount_type: RentalDiscountType | null
   discount_value: number | null
   discount_apply_after_periods: number | null
@@ -394,6 +420,11 @@ export interface RentalPortalItem {
 export interface RentalPortalInvoice {
   id: number
   invoice_number: string
+  rental_period_number: number | null
+  rental_period_start: string | null
+  rental_period_end: string | null
+  payment_attempt_count: number
+  next_payment_retry_at: string | null
   subtotal: number
   tax_amount: number
   discount_amount: number
@@ -419,6 +450,9 @@ export interface RentalPortal {
     start_date: string
     end_date: string
     next_bill_date: string | null
+    committed_periods: number | null
+    periods_billed: number
+    effective_periods: number
     security_deposit: number
     status: RentalStatus
     auto_charge: boolean
@@ -439,6 +473,8 @@ export interface RentalPortal {
   } | null
   can_sign: boolean
   invoices: RentalPortalInvoice[]
+  billing_schedule: RentalBillingPeriod[]
+  next_payment: RentalProjectedPayment | null
   square: {
     enabled: boolean
     environment: string

@@ -2373,6 +2373,14 @@ const Rentals = () => {
                   <Typography sx={{ fontWeight: 900, color: '#047857', textTransform: 'capitalize' }}>{viewAgreement.billing_frequency}{viewAgreement.auto_charge ? ' · auto-charge' : ''}</Typography>
                 </Box>
                 <Box>
+                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>NEXT PAYMENT</Typography>
+                  <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>
+                    {viewAgreement.next_payment
+                      ? `${money(viewAgreement.next_payment.amount)} · ${formatDate(viewAgreement.next_payment.billing_date)} · Period ${viewAgreement.next_payment.period}`
+                      : 'Schedule complete'}
+                  </Typography>
+                </Box>
+                <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>DISCOUNT</Typography>
                   <Typography sx={{ fontWeight: 900 }}>
                     {viewAgreement.discount_type

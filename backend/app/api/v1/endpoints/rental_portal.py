@@ -19,8 +19,8 @@ from app.db.base import get_db
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.rental import Rental, RentalItem, RentalAgreementAcceptance
 from app.utils.invoice_editing import editable_line_items, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import record_payment_delta
-from app.utils.rental_billing import _initial_invoice_amounts
+from app.utils.invoice_ledger import add_invoice_transaction, record_payment_delta
+from app.utils.rental_billing import _initial_invoice_amounts, effective_period_count, projected_billing_schedule
 from app.utils.square_payments import (
     square_public_config,
     square_is_configured,
@@ -71,6 +71,11 @@ def _invoice_view(invoice: Invoice) -> dict[str, Any]:
     return {
         "id": invoice.id,
         "invoice_number": invoice.invoice_number,
+        "rental_period_number": invoice.rental_period_number,
+        "rental_period_start": invoice.rental_period_start,
+        "rental_period_end": invoice.rental_period_end,
+        "payment_attempt_count": invoice.payment_attempt_count,
+        "next_payment_retry_at": invoice.next_payment_retry_at,
         "subtotal": invoice.subtotal,
         "tax_amount": invoice.tax_amount,
         "discount_amount": invoice.discount_amount,
@@ -108,6 +113,9 @@ def _agreement_view(rental: Rental) -> dict[str, Any]:
         "start_date": rental.start_date,
         "end_date": rental.end_date,
         "next_bill_date": rental.next_bill_date,
+        "committed_periods": rental.committed_periods,
+        "periods_billed": rental.periods_billed,
+        "effective_periods": effective_period_count(rental),
         "security_deposit": rental.security_deposit,
         "status": rental.status.value if hasattr(rental.status, "value") else rental.status,
         "auto_charge": rental.auto_charge,
@@ -179,12 +187,77 @@ def _portal_response(db: Session, rental: Rental) -> dict[str, Any]:
         .order_by(Invoice.id.asc())
         .all()
     )
+    invoice_by_period = {
+        int(invoice.rental_period_number): invoice
+        for invoice in invoices
+        if invoice.rental_period_number is not None
+    }
+    # Old invoices predate explicit period identity. Preserve their records and
+    # map them by creation order only for display; new invoices carry immutable
+    # period numbers enforced by the database.
+    unassigned_periods = iter(
+        period for period in range(1, effective_period_count(rental) + 1)
+        if period not in invoice_by_period
+    )
+    invoice_period_by_id = {invoice.id: int(invoice.rental_period_number) for invoice in invoices if invoice.rental_period_number is not None}
+    for invoice in invoices:
+        if invoice.rental_period_number is None:
+            inferred_period = next(unassigned_periods, None)
+            if inferred_period is not None:
+                invoice_by_period[inferred_period] = invoice
+                invoice_period_by_id[invoice.id] = inferred_period
+    schedule = []
+    for projected in projected_billing_schedule(rental):
+        invoice = invoice_by_period.get(int(projected["period"]))
+        schedule.append({
+            **projected,
+            "status": (
+                invoice.status.value if invoice and hasattr(invoice.status, "value") else invoice.status
+            ) if invoice else "upcoming",
+            "invoice_id": invoice.id if invoice else None,
+            "invoice_number": invoice.invoice_number if invoice else None,
+            "balance_due": invoice.balance_due if invoice else projected["total"],
+        })
+
+    outstanding = next(
+        (
+            invoice for invoice in invoices
+            if invoice.status != InvoiceStatus.PAID and Decimal(str(invoice.balance_due or 0)) > 0
+        ),
+        None,
+    )
+    if outstanding:
+        next_payment = {
+            "period": invoice_period_by_id.get(outstanding.id),
+            "billing_date": outstanding.due_date,
+            "amount": outstanding.balance_due,
+            "tax": outstanding.tax_amount,
+            "discount": outstanding.discount_amount,
+            "status": "due",
+            "invoice_id": outstanding.id,
+            "invoice_number": outstanding.invoice_number,
+        }
+    else:
+        upcoming = next((period for period in schedule if period["status"] == "upcoming"), None)
+        next_payment = ({
+            "period": upcoming["period"],
+            "billing_date": upcoming["billing_date"],
+            "amount": upcoming["total"],
+            "tax": upcoming["tax"],
+            "discount": upcoming["discount"],
+            "status": "scheduled",
+            "invoice_id": None,
+            "invoice_number": None,
+        } if upcoming else None)
+
     return {
         "company_name": "Mr. BioMed Tech Services",
         "agreement": _agreement_view(rental),
         "acceptance": _acceptance_view(rental.acceptance),
         "can_sign": rental.acceptance is None,
         "invoices": [_invoice_view(invoice) for invoice in invoices],
+        "billing_schedule": schedule,
+        "next_payment": next_payment,
         "square": square_public_config(),
     }
 
@@ -230,6 +303,16 @@ def public_save_rental_card(token: str, payload: SaveCardIn, db: Session = Depen
         },
     })
     rental.history = history
+    first_invoice = db.query(Invoice).filter(Invoice.rental_id == rental.id).order_by(Invoice.id.asc()).first()
+    if first_invoice:
+        add_invoice_transaction(
+            db, first_invoice,
+            "auto_charge_authorized" if payload.authorize_auto_charge else "card_saved",
+            0, "credit_card",
+            f"Card ending {result.get('last_4') or 'unknown'} saved"
+            + (f"; automatic charges authorized by {acceptance.accepted_by_name}" if payload.authorize_auto_charge else ""),
+            reference_prefix="AUTH" if payload.authorize_auto_charge else "CARD",
+        )
     db.commit()
     db.refresh(rental)
     return _portal_response(db, rental)
@@ -291,6 +374,12 @@ def public_accept_rental(
         "details": {"revision": rental.revision or 1},
     })
     rental.history = history
+    if initial_invoice:
+        add_invoice_transaction(
+            db, initial_invoice, "agreement_signed", 0, None,
+            f"Rental agreement revision {rental.revision or 1} signed by {signer}",
+            reference_prefix="SIGN",
+        )
     db.commit()
     db.refresh(rental)
     return _portal_response(db, rental)
@@ -316,6 +405,13 @@ def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = D
         raise HTTPException(status_code=400, detail="This invoice is already paid")
     payment_source = payload.source_id
     saved_card: Optional[dict[str, Any]] = None
+    attempt = int(invoice.payment_attempt_count or 0) + 1
+    invoice.payment_attempt_count = attempt
+    invoice.last_payment_attempt_at = datetime.utcnow()
+    add_invoice_transaction(
+        db, invoice, "payment_attempt", invoice.balance_due, "credit_card",
+        f"Customer online payment attempt {attempt}", reference_prefix="ATT",
+    )
     try:
         if payload.save_card:
             card_key = hashlib.sha256(
@@ -337,17 +433,41 @@ def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = D
             customer_id=saved_card.get("customer_id") if saved_card else None,
         )
     except SquareRequestError as exc:
+        add_invoice_transaction(
+            db, invoice, "payment_failed", invoice.balance_due, "credit_card",
+            f"Customer online payment attempt {attempt} failed: {exc}", reference_prefix="DEC",
+        )
+        history = list(rental.history or [])
+        history.append({
+            "action": "invoice_payment_failed",
+            "by": acceptance.accepted_by_name,
+            "user_id": None,
+            "at": datetime.utcnow().isoformat(),
+            "details": {"invoice": invoice.invoice_number, "attempt": attempt},
+        })
+        rental.history = history
+        db.commit()
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
     previous_paid = invoice.amount_paid
     invoice.amount_paid = invoice.total_amount
     invoice.balance_due = Decimal("0")
     invoice.status = InvoiceStatus.PAID
     invoice.payment_method = "credit_card"
+    invoice.next_payment_retry_at = None
+    rental.failed_charge_count = 0
     payment_txn = record_payment_delta(db, invoice, previous_paid, invoice.total_amount, None, "credit_card", f"Online card payment ({payment.get('id')})")
     if payment_txn is not None:
         payment_txn.reference_number = payment.get("id")
     if saved_card:
         _store_card_result(rental, saved_card, payload.authorize_auto_charge, acceptance.accepted_by_name)
+        add_invoice_transaction(
+            db, invoice,
+            "auto_charge_authorized" if payload.authorize_auto_charge else "card_saved",
+            0, "credit_card",
+            f"Card ending {saved_card.get('last_4') or 'unknown'} saved"
+            + (f"; automatic charges authorized by {acceptance.accepted_by_name}" if payload.authorize_auto_charge else ""),
+            reference_prefix="AUTH" if payload.authorize_auto_charge else "CARD",
+        )
     first_invoice = (
         db.query(Invoice.id)
         .filter(Invoice.rental_id == rental.id)

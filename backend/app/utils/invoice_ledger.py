@@ -15,7 +15,11 @@ def _money(value: Any) -> Decimal:
 
 def _reference(db: Session, invoice: Invoice, prefix: str) -> str:
     count = db.query(InvoiceTransaction.id).filter(InvoiceTransaction.invoice_id == invoice.id).count()
-    return f"{prefix}-{invoice.invoice_number}-{count + 1:02d}"
+    pending = sum(
+        1 for item in getattr(db, "new", ())
+        if isinstance(item, InvoiceTransaction) and item.invoice_id == invoice.id
+    )
+    return f"{prefix}-{invoice.invoice_number}-{count + pending + 1:02d}"
 
 
 def transaction_response(transaction: InvoiceTransaction) -> dict[str, Any]:

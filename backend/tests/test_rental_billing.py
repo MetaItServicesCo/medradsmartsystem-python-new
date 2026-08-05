@@ -1,7 +1,13 @@
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-from app.utils.rental_billing import _initial_invoice_amounts
+from app.utils.rental_billing import (
+    _initial_invoice_amounts,
+    _recurring_invoice_amounts,
+    advance_billing_date,
+    projected_billing_schedule,
+)
 
 
 def _item(rate: str, quantity: int, shipping: str, setup: str, labor: str):
@@ -44,3 +50,47 @@ def test_initial_invoice_does_not_tax_deposit_or_labor():
 
     assert amounts["tax"] == Decimal("0.00")
     assert amounts["total"] == Decimal("625.00")
+
+
+def test_monthly_schedule_uses_calendar_months_and_preserves_month_end_anchor():
+    assert advance_billing_date(date(2026, 1, 31), "monthly", 1) == date(2026, 2, 28)
+    assert advance_billing_date(date(2026, 1, 31), "monthly", 2) == date(2026, 3, 31)
+    assert advance_billing_date(date(2026, 11, 30), "quarterly", 1) == date(2027, 2, 28)
+
+
+def test_recurring_discount_reduces_taxable_rent_before_tax():
+    rental = SimpleNamespace(
+        items=[_item("1000", 1, "0", "0", "0")],
+        discount_type="flat",
+        discount_value=Decimal("100"),
+        discount_apply_after_periods=1,
+    )
+
+    amounts = _recurring_invoice_amounts(rental, 2)
+
+    assert amounts["discount"] == Decimal("100")
+    assert amounts["taxable_rental"] == Decimal("900")
+    assert amounts["tax"] == Decimal("74.25")
+    assert amounts["total"] == Decimal("974.25")
+
+
+def test_projected_schedule_contains_first_invoice_and_remaining_periods():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "10", "20", "30")],
+        security_deposit=Decimal("50"),
+        discount_type=None,
+        discount_value=Decimal("0"),
+        discount_apply_after_periods=None,
+        billing_frequency="monthly",
+        start_date=date(2026, 1, 31),
+        end_date=date(2026, 4, 30),
+        committed_periods=4,
+    )
+
+    schedule = projected_billing_schedule(rental)
+
+    assert [period["billing_date"] for period in schedule] == [
+        date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31), date(2026, 4, 30),
+    ]
+    assert schedule[0]["total"] == Decimal("220.72")
+    assert schedule[1]["total"] == Decimal("108.25")

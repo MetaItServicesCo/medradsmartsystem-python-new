@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Date, Index
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Date, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -25,6 +25,7 @@ class Invoice(Base):
         Index("ix_invoices_type_approval_created", "invoice_type", "billing_approval_status", "created_at"),
         Index("ix_invoices_type_status_created", "invoice_type", "status", "created_at"),
         Index("ix_invoices_type_issue", "invoice_type", "issue_date"),
+        UniqueConstraint("rental_id", "rental_period_number", name="uq_invoice_rental_period"),
     )
     
     id = Column(Integer, primary_key=True, index=True)
@@ -39,6 +40,14 @@ class Invoice(Base):
     inspection_id = Column(Integer, ForeignKey("inspections.id"), nullable=True)
     inspection_batch_id = Column(Integer, ForeignKey("inspection_batches.id"), nullable=True, index=True)
     rental_id = Column(Integer, ForeignKey("rentals.id"), nullable=True)
+    # Immutable rental-cycle identity. This makes recurring generation
+    # idempotent even when schedulers overlap or retry after a process failure.
+    rental_period_number = Column(Integer, nullable=True)
+    rental_period_start = Column(Date, nullable=True)
+    rental_period_end = Column(Date, nullable=True)
+    payment_attempt_count = Column(Integer, nullable=False, default=0)
+    last_payment_attempt_at = Column(DateTime, nullable=True)
+    next_payment_retry_at = Column(DateTime, nullable=True, index=True)
     sales_quotation_id = Column(Integer, ForeignKey("sales_quotations.id"), nullable=True)
     subtotal = Column(Numeric(10, 2), nullable=False)
     tax_amount = Column(Numeric(10, 2), default=0)

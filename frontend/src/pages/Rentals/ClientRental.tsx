@@ -129,7 +129,7 @@ const ClientRental = () => {
   }
 
   const portal = portalQ.data
-  const { agreement, acceptance, invoices, square, company_name } = portal
+  const { agreement, acceptance, invoices, billing_schedule, next_payment, square, company_name } = portal
   const canPay = square.enabled && Boolean(square.application_id) && Boolean(square.location_id)
   const initialInvoice = invoices[0]
   const initialInvoiceId = initialInvoice?.id
@@ -221,6 +221,7 @@ const ClientRental = () => {
             { label: 'Billing', value: frequencyLabel(agreement.billing_frequency) },
             { label: 'Rental period', value: `${dateLabel(agreement.start_date)} – ${dateLabel(agreement.end_date)}` },
             { label: 'Next billing', value: dateLabel(agreement.next_bill_date) },
+            { label: 'Next payment', value: next_payment ? `${money(next_payment.amount)} · ${next_payment.status === 'due' ? 'Due now' : `Period ${next_payment.period}`}` : 'Schedule complete' },
             { label: 'Auto-charge', value: autoChargeStatus },
           ]} />
         </Box>
@@ -240,6 +241,35 @@ const ClientRental = () => {
                 <TableCell align="right">{money(item.shipping_fee)}</TableCell><TableCell align="right">{money(item.setup_fee)}</TableCell><TableCell align="right">{money(item.labor_fee)}</TableCell>
               </TableRow>
             ))}</TableBody>
+          </Table>
+        </Box>
+
+        <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Billing Schedule</Typography>
+        <Box sx={{ overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: '14px', mb: 3 }}>
+          <Table size="small" sx={{ minWidth: 720 }}>
+            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+              <TableCell sx={{ fontWeight: 900 }}>Period</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Billing Date</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Rent</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Discount</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Tax</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Expected Total</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Status</TableCell>
+            </TableRow></TableHead>
+            <TableBody>{billing_schedule.map(period => {
+              const style = customerDocumentStatusStyle(period.status)
+              return (
+                <TableRow key={period.period} sx={{ bgcolor: next_payment?.period === period.period ? '#FAF9FF' : undefined }}>
+                  <TableCell sx={{ fontWeight: 850 }}>{period.period} of {agreement.effective_periods}</TableCell>
+                  <TableCell>{dateLabel(period.billing_date)}</TableCell>
+                  <TableCell align="right">{money(period.rental_amount)}</TableCell>
+                  <TableCell align="right">{Number(period.discount || 0) > 0 ? `-${money(period.discount)}` : '—'}</TableCell>
+                  <TableCell align="right">{money(period.tax)}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 900 }}>{money(period.total)}</TableCell>
+                  <TableCell align="right"><Chip size="small" label={period.status.replace('_', ' ')} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: style.bg, color: style.color }} /></TableCell>
+                </TableRow>
+              )
+            })}</TableBody>
           </Table>
         </Box>
 
@@ -305,6 +335,13 @@ const ClientRental = () => {
                     </Box>
                   </Box>
                   <InvoiceBreakdown invoice={invoice} />
+                  {invoice.payment_attempt_count > 0 && unpaid && (
+                    <Alert severity={invoice.next_payment_retry_at ? 'warning' : 'error'} sx={{ mt: 1.5, borderRadius: '12px' }}>
+                      {invoice.next_payment_retry_at
+                        ? `Automatic payment attempt ${invoice.payment_attempt_count} was declined. The next retry is scheduled for ${dateLabel(invoice.next_payment_retry_at)}.`
+                        : `${invoice.payment_attempt_count} payment attempt${invoice.payment_attempt_count === 1 ? '' : 's'} recorded. Please pay manually or contact support to update the payment method.`}
+                    </Alert>
+                  )}
                   {unpaid && !acceptance && <Alert className="rental-screen-only" severity="info" sx={{ mt: 1.5 }}>Sign and approve the agreement above to unlock payment.</Alert>}
                   {unpaid && acceptance && canPay && (
                     payTarget?.id === invoice.id ? (
