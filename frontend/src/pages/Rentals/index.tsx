@@ -38,6 +38,7 @@ import { SALES_TAX_RATE, SALES_TAX_FACTOR, roundSalesMoney } from '@/utils/sales
 import {
   fetchRentalParts,
   fetchRentals,
+  fetchRentalDetail,
   createRental,
   updateRental,
   deleteRental,
@@ -158,6 +159,23 @@ const statusChip = (value: string) => {
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
+
+const auditDetailsText = (details: Record<string, any> | null | undefined) => {
+  const labels: Record<string, string> = {
+    invoice: 'Invoice', amount: 'Amount', rental_period: 'Period', period: 'Period',
+    items: 'Items', revision: 'Revision', card_saved: 'Card saved', auto_charge: 'Auto-charge',
+    expires_at: 'Link expires', billing_date: 'Billing date', reason: 'Reason', attempts: 'Attempts',
+  }
+  return Object.entries(details || {}).map(([key, value]) => {
+    const label = labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+    let display = String(value ?? '-')
+    if (key === 'amount') display = money(value)
+    else if (key.endsWith('_at') || key.endsWith('_date')) display = formatDate(String(value || ''))
+    else if (typeof value === 'boolean') display = value ? 'Yes' : 'No'
+    else if (typeof value === 'object' && value !== null) display = Object.values(value).join(', ')
+    return `${label}: ${display}`
+  }).join(' · ')
+}
 
 
 const formatDate = (value: string | null | undefined) => {
@@ -551,6 +569,15 @@ const Rentals = () => {
     queryClient.invalidateQueries({ queryKey: ['rental-history'] })
     queryClient.invalidateQueries({ queryKey: ['rental-summary'] })
     queryClient.invalidateQueries({ queryKey: ['rental-parts'] })
+  }
+
+  const openAgreementDetails = async (agreement: Rental) => {
+    setViewAgreement(agreement)
+    try {
+      setViewAgreement(await fetchRentalDetail(agreement.id))
+    } catch (error) {
+      toast.error(apiErrorMessage(error, 'Could not load the complete rental billing schedule'))
+    }
   }
 
   const buildAgreementItems = (): RentalItemPayload[] => agreementForm.items.map(item => ({
@@ -1214,7 +1241,7 @@ const Rentals = () => {
                   '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setViewAgreement(item)} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => { void openAgreementDetails(item) }} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field onClick={() => openRentalPartInfo(parts.find(part => part.id === item.part_id), item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ color: '#047857', fontWeight: 800 }}>{money(item.rental_rate)}</TableCell>
@@ -1303,7 +1330,7 @@ const Rentals = () => {
                 <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => setPrintInvoice(invoice)} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.rental_number || '-'} monospace fontWeight={800} onClick={() => {
                   const agreement = rentals.find(item => item.id === invoice.rental_id)
-                  if (agreement) setViewAgreement(agreement)
+                  if (agreement) void openAgreementDetails(agreement)
                 }} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
                 <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
@@ -1413,7 +1440,7 @@ const Rentals = () => {
               <TableCell>{formatDate(item.at)}</TableCell>
               <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => {
                 const agreement = rentals.find(rental => rental.id === item.rental_id)
-                if (agreement) setViewAgreement(agreement)
+                if (agreement) void openAgreementDetails(agreement)
               }} /></TableCell>
               <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
               <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
@@ -1624,7 +1651,7 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionAgreement) setViewAgreement(actionAgreement); closeActions() }}>
+        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionAgreement) void openAgreementDetails(actionAgreement); closeActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View Details
         </MenuItem>
@@ -2498,6 +2525,55 @@ const Rentals = () => {
               )}
 
               <Divider />
+              <Box>
+                <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 0.5 }}>Payment Schedule</Typography>
+                <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
+                  First payment includes upfront charges. Future periods contain recurring rent, applicable discount, and tax.
+                </Typography>
+                <TableContainer sx={{ border: '1px solid #DBEAFE', borderRadius: '14px', overflowX: 'auto' }}>
+                  <Table size="small" sx={{ minWidth: 700 }}>
+                    <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                      <TableCell sx={{ fontWeight: 900 }}>Period</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Billing Date</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }} align="right">Rent</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }} align="right">Discount</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }} align="right">Tax</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }} align="right">Expected Total</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
+                    </TableRow></TableHead>
+                    <TableBody>
+                      {(viewAgreement.billing_schedule || []).map(period => {
+                        const isNext = viewAgreement.next_payment?.period === period.period
+                        const style = statusChip(period.status)
+                        return (
+                          <TableRow key={period.period} sx={{ bgcolor: isNext ? '#F5F3FF' : undefined }}>
+                            <TableCell sx={{ fontWeight: 900, color: isNext ? '#7C3AED' : '#1E3A8A' }}>
+                              {period.period}{isNext ? ' · Next' : ''}
+                            </TableCell>
+                            <TableCell>{formatDate(period.billing_date)}</TableCell>
+                            <TableCell align="right">{money(period.rental_amount)}</TableCell>
+                            <TableCell align="right">{Number(period.discount || 0) ? `-${money(period.discount)}` : '-'}</TableCell>
+                            <TableCell align="right">{money(period.tax)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 900 }}>{money(period.total)}</TableCell>
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                label={period.invoice_number ? `${period.status} · ${period.invoice_number}` : period.status}
+                                sx={{ bgcolor: style.bg, color: style.color, fontWeight: 900, textTransform: 'capitalize' }}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                      {(viewAgreement.billing_schedule || []).length === 0 && (
+                        <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3, color: '#64748B', fontWeight: 700 }}>No future billing periods remain.</TableCell></TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+
+              <Divider />
               <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>Agreement Audit History</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 {viewAgreement.history?.map((h, i) => (
@@ -2506,8 +2582,8 @@ const Rentals = () => {
                       <Typography sx={{ fontWeight: 850, textTransform: 'capitalize', color: '#7C3AED' }}>{h.action.replace(/_/g, ' ')}</Typography>
                       <Typography sx={{ color: '#6B7280', fontSize: 12 }}>by {h.by} at {formatDate(h.at)}</Typography>
                     </Box>
-                    <Typography variant="body2" sx={{ color: '#4B5563', alignSelf: 'center', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {Object.keys(h.details || {}).length > 0 ? JSON.stringify(h.details) : ''}
+                    <Typography variant="body2" title={auditDetailsText(h.details)} sx={{ color: '#4B5563', alignSelf: 'center', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {auditDetailsText(h.details)}
                     </Typography>
                   </Box>
                 ))}

@@ -108,6 +108,7 @@ export interface Rental {
   periods_billed: number
   next_bill_date: string | null
   next_payment: RentalProjectedPayment | null
+  billing_schedule?: RentalBillingPeriod[]
   discount_type: RentalDiscountType | null
   discount_value: number | null
   discount_apply_after_periods: number | null
@@ -302,6 +303,11 @@ export const fetchRentals = async (
   params: { status?: string; search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: Rental[]; total: number }> => {
   const res = await apiClient.get('/rentals', { params })
+  return res.data
+}
+
+export const fetchRentalDetail = async (id: number): Promise<Rental> => {
+  const res = await apiClient.get(`/rentals/agreements/${id}/detail`)
   return res.data
 }
 

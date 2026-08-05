@@ -61,6 +61,7 @@ from app.utils.rental_billing import (
     generate_deposit_invoice,
     advance_billing_date,
     projected_period,
+    projected_billing_schedule,
     RENTAL_TAX_RATE,
     RENTAL_TAX_FACTOR,
 )
@@ -426,6 +427,66 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "updated_at": rental.updated_at,
         "history": rental.history or [],
     }
+
+
+def _rental_detail_response(db: Session, rental: Rental) -> dict[str, Any]:
+    """Staff detail payload with invoice-aware schedule; never used by list APIs."""
+    response = _rental_response(rental)
+    invoices = (
+        db.query(Invoice)
+        .filter(Invoice.rental_id == rental.id)
+        .order_by(Invoice.issue_date.asc(), Invoice.id.asc())
+        .all()
+    )
+    invoice_by_period = {
+        int(invoice.rental_period_number): invoice
+        for invoice in invoices
+        if invoice.rental_period_number is not None
+    }
+    # Preserve useful detail for rental invoices created before period identity
+    # was introduced, without mutating historical records during a read.
+    unassigned = [invoice for invoice in invoices if invoice.rental_period_number is None]
+    for period, invoice in enumerate(unassigned, start=1):
+        invoice_by_period.setdefault(period, invoice)
+
+    schedule: list[dict[str, Any]] = []
+    for projection in projected_billing_schedule(rental):
+        period = int(projection["period"])
+        invoice = invoice_by_period.get(period)
+        schedule.append({
+            **projection,
+            "total": invoice.total_amount if invoice else projection["total"],
+            "balance_due": invoice.balance_due if invoice else projection["total"],
+            "status": (
+                invoice.status.value if invoice and hasattr(invoice.status, "value")
+                else invoice.status if invoice
+                else "upcoming"
+            ),
+            "invoice_id": invoice.id if invoice else None,
+            "invoice_number": invoice.invoice_number if invoice else None,
+        })
+
+    outstanding = next(
+        (
+            invoice for invoice in invoices
+            if invoice.status not in (InvoiceStatus.PAID, InvoiceStatus.CANCELLED)
+            and Decimal(str(invoice.balance_due or 0)) > 0
+        ),
+        None,
+    )
+    if outstanding:
+        response["next_payment"] = {
+            "period": outstanding.rental_period_number,
+            "billing_date": outstanding.due_date,
+            "amount": outstanding.balance_due,
+            "tax": outstanding.tax_amount,
+            "discount": outstanding.discount_amount,
+            "status": "due",
+            "invoice_id": outstanding.id,
+            "invoice_number": outstanding.invoice_number,
+        }
+    response["billing_schedule"] = schedule
+    return response
 
 
 def _rental_part_query(db: Session, current_user: User):
@@ -1799,3 +1860,27 @@ def rental_summary(
         "total_collected": float(total_collected or 0),
         "products": products,
     }
+
+
+@router.get("/agreements/{rental_id}/detail")
+def rental_agreement_detail(
+    rental_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return one agreement with its projected and generated billing periods."""
+    rental = (
+        db.query(Rental)
+        .options(
+            selectinload(Rental.items).joinedload(RentalItem.part),
+            joinedload(Rental.part),
+            joinedload(Rental.converted_invoice),
+            joinedload(Rental.created_by),
+        )
+        .filter(Rental.id == rental_id)
+        .first()
+    )
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    return _rental_detail_response(db, rental)
