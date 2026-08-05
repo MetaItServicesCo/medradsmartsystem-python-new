@@ -41,6 +41,8 @@ class Rental(Base):
     rental_number = Column(String, unique=True, nullable=False, index=True)
     converted_invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    facility_id = Column(Integer, ForeignKey("facilities.id", ondelete="SET NULL"), nullable=True, index=True)
+    customer_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
     customer_name = Column(String, nullable=False)
     customer_email = Column(String, nullable=False)
@@ -119,7 +121,9 @@ class Rental(Base):
         order_by="RentalItem.id",
     )
     converted_invoice = relationship("Invoice", foreign_keys=[converted_invoice_id])
-    created_by = relationship("User")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    customer_user = relationship("User", foreign_keys=[customer_user_id])
+    facility = relationship("Facility")
     acceptance = relationship(
         "RentalAgreementAcceptance",
         back_populates="rental",

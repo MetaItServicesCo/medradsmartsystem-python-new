@@ -3,6 +3,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from app.utils.rental_billing import (
+    _facility_id,
     _initial_invoice_amounts,
     _recurring_invoice_amounts,
     advance_billing_date,
@@ -50,6 +51,12 @@ def test_initial_invoice_does_not_tax_deposit_or_labor():
 
     assert amounts["tax"] == Decimal("0.00")
     assert amounts["total"] == Decimal("625.00")
+
+
+def test_agreement_customer_facility_is_authoritative_for_billing():
+    rental = SimpleNamespace(facility_id=321, items=[])
+
+    assert _facility_id(None, rental) == 321
 
 
 def test_monthly_schedule_uses_calendar_months_and_preserves_month_end_anchor():

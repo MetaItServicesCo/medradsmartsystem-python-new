@@ -2,7 +2,7 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  Autocomplete, Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, IconButton, ListItemIcon, Menu, MenuItem,
   LinearProgress, Skeleton, Switch, FormControlLabel, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TablePagination, TextField, Typography, useMediaQuery, useTheme,
@@ -25,12 +25,13 @@ import InfoIcon from '@mui/icons-material/Info'
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange'
 import { toast } from 'react-toastify'
 
-import { fetchFacilities } from '@/api/facilities'
+import type { Facility } from '@/api/facilities'
 import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import DateRangeFilter from '@/components/DateRangeFilter'
+import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
@@ -39,6 +40,7 @@ import {
   fetchRentalParts,
   fetchRentals,
   fetchRentalDetail,
+  fetchRentalFacilityCustomers,
   createRental,
   updateRental,
   deleteRental,
@@ -62,6 +64,7 @@ import {
   type RentalItemPayload,
   type RentalReturnPayload,
   type RentalProductRate,
+  type RentalFacilityCustomer,
   type BillingFrequency,
   type RentalStatus,
   type RentalInvoiceStatus,
@@ -227,6 +230,8 @@ interface RentalItemForm {
 }
 
 interface RentalAgreementFormState {
+  facility_id: number | null
+  customer_user_id: number | null
   customer_name: string
   customer_email: string
   customer_phone: string
@@ -245,6 +250,8 @@ interface RentalAgreementFormState {
 }
 
 const emptyAgreement = (): RentalAgreementFormState => ({
+  facility_id: null,
+  customer_user_id: null,
   customer_name: '',
   customer_email: '',
   customer_phone: '',
@@ -465,13 +472,11 @@ const Rentals = () => {
     return () => window.clearTimeout(handle)
   }, [search])
 
-  // Facilities are only needed inside the agreement dialog. The products tab
-  // uses bounded server pages and the picker searches remotely on demand.
-  const facilitiesQ = useQuery({
-    queryKey: ['rental-facilities'],
-    queryFn: () => fetchFacilities({ limit: 500 }),
-    enabled: agreementDialog,
-    staleTime: 5 * 60_000,
+  const facilityCustomersQ = useQuery({
+    queryKey: ['rental-facility-customers', agreementForm.facility_id],
+    queryFn: () => fetchRentalFacilityCustomers(Number(agreementForm.facility_id)),
+    enabled: agreementDialog && Boolean(agreementForm.facility_id),
+    staleTime: 60_000,
   })
   const partsQ = useQuery({
     queryKey: ['rental-parts', debouncedSearch, searchField, dateFrom, dateTo, productsPage],
@@ -526,7 +531,10 @@ const Rentals = () => {
   })
   const summaryQ = useQuery({ queryKey: ['rental-summary'], queryFn: fetchRentalSummary, placeholderData: previousData => previousData })
 
-  const facilities = facilitiesQ.data?.items || []
+  const facilityCustomers = facilityCustomersQ.data?.items || []
+  const selectedFacilityCustomer = facilityCustomers.find(
+    customer => customer.id === agreementForm.customer_user_id,
+  ) || null
   const parts = partsQ.data?.items || []
   const rentals = rentalsQ.data?.items || []
   const totalRentals = rentalsQ.data?.total || 0
@@ -593,6 +601,8 @@ const Rentals = () => {
   }))
 
   const buildAgreementCreatePayload = (): RentalPayload => ({
+    facility_id: agreementForm.facility_id,
+    customer_user_id: agreementForm.customer_user_id,
     customer_name: agreementForm.customer_name.trim(),
     customer_email: agreementForm.customer_email.trim(),
     customer_phone: digitsOnly(agreementForm.customer_phone),
@@ -704,6 +714,8 @@ const Rentals = () => {
     setSelectedRentalPart(null)
     setItemDraft(newRentalItem())
     setAgreementForm({
+      facility_id: rental.facility_id,
+      customer_user_id: rental.customer_user_id,
       customer_name: rental.customer_name,
       customer_email: rental.customer_email,
       customer_phone: formatUSPhoneInput(rental.customer_phone),
@@ -736,21 +748,21 @@ const Rentals = () => {
     setAgreementDialog(true)
   }
 
-  const applyFacilityToCustomer = (facilityId: number | null) => {
-    if (!facilityId) return
-    const fac = facilities.find(f => f.id === facilityId)
-    if (!fac) return
+  const syncCustomerFromFacility = (facility: Facility | null) => {
     setAgreementForm(prev => ({
       ...prev,
-      customer_name: prev.customer_name || fac.billing_name || fac.name || '',
-      customer_email: prev.customer_email || fac.billing_email || fac.email || '',
-      customer_phone: prev.customer_phone || (fac.phone ? formatUSPhoneInput(fac.phone) : ''),
-      customer_address: prev.customer_address || [
-        fac.billing_street || fac.address,
-        fac.billing_city || fac.city,
-        fac.billing_state || fac.state,
-        fac.billing_zip_code || fac.zip_code,
-      ].filter(Boolean).join(', '),
+      facility_id: facility?.id || null,
+      customer_user_id: null,
+      customer_name: facility ? (facility.billing_name || facility.name || '') : prev.customer_name,
+      customer_email: facility ? (facility.billing_email || facility.email || '') : prev.customer_email,
+      customer_phone: facility?.phone ? formatUSPhoneInput(facility.phone) : (facility ? '' : prev.customer_phone),
+      customer_address: facility ? [
+        facility.billing_street || facility.address,
+        facility.billing_suite || facility.suite,
+        facility.billing_city || facility.city,
+        facility.billing_state || facility.state,
+        facility.billing_zip_code || facility.zip_code,
+      ].filter(Boolean).join(', ') : prev.customer_address,
     }))
   }
 
@@ -776,7 +788,6 @@ const Rentals = () => {
     } catch {
       /* no rate card configured yet — keep the unit price as the default */
     }
-    applyFacilityToCustomer(part.facility_id)
   }
 
   const addRentalItem = () => {
@@ -792,6 +803,9 @@ const Rentals = () => {
   }
 
   const submitAgreement = () => {
+    if (agreementForm.facility_id && !agreementForm.customer_user_id) {
+      return toast.error('Select an attached facility admin, manager, or client')
+    }
     if (!agreementForm.customer_name.trim()) return toast.error('Customer name is required')
     if (!agreementForm.customer_email.trim()) return toast.error('Customer email is required')
     if (agreementForm.items.length === 0) return toast.error('Add at least one rental product')
@@ -1760,7 +1774,7 @@ const Rentals = () => {
           reference_number: printAgreement.converted_invoice_number,
           customer_name: printAgreement.customer_name,
           customer_email: printAgreement.customer_email,
-          facility_name: null,
+          facility_name: printAgreement.facility_name,
           subtotal: agreementLineItems(printAgreement).reduce((sum, item) => sum + item.total_amount, 0),
           tax_amount: 0,
           discount_amount: 0,
@@ -1828,6 +1842,45 @@ const Rentals = () => {
         <DialogContent dividers>
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Customer &amp; Agreement Details</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
+            <FacilitySearchAutocomplete
+              label="Facility"
+              value={agreementForm.facility_id || ''}
+              enabled={agreementDialog}
+              allowClear
+              helperText="Leave empty for an independent customer"
+              onChange={facilityId => setAgreementForm(previous => ({
+                ...previous,
+                facility_id: facilityId ? Number(facilityId) : null,
+                customer_user_id: null,
+              }))}
+              onFacilityChange={syncCustomerFromFacility}
+            />
+            {agreementForm.facility_id ? (
+              <Autocomplete<RentalFacilityCustomer>
+                options={facilityCustomers}
+                value={selectedFacilityCustomer}
+                loading={facilityCustomersQ.isLoading}
+                getOptionLabel={option => `${option.full_name} · ${option.email}`}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                onChange={(_, customer) => setAgreementForm(previous => ({
+                  ...previous,
+                  customer_user_id: customer?.id || null,
+                  customer_name: customer?.full_name || previous.customer_name,
+                  customer_email: customer?.email || previous.customer_email,
+                  customer_phone: customer?.phone ? formatUSPhoneInput(customer.phone) : previous.customer_phone,
+                }))}
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    required
+                    label="Facility Customer / Primary Contact"
+                    helperText={facilityCustomers.length === 0 && !facilityCustomersQ.isLoading
+                      ? 'No active facility admin, manager, or client is attached to this facility'
+                      : 'This person receives, signs, and pays the rental agreement'}
+                  />
+                )}
+              />
+            ) : null}
             <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
             <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
@@ -2382,6 +2435,14 @@ const Rentals = () => {
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>CUSTOMER NAME</Typography>
                   <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_name}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>FACILITY</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>{viewAgreement.facility_name || 'Independent customer'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>PRIMARY FACILITY CONTACT</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_user_name || 'External customer'}</Typography>
                 </Box>
                 <Box>
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>CUSTOMER CONTACT</Typography>

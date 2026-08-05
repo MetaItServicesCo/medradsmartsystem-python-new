@@ -105,6 +105,10 @@ def billing_period_end(rental: Rental, period_index: int) -> date:
 
 
 def _facility_id(db: Session, rental: Rental) -> Optional[int]:
+    # The agreement's customer facility is authoritative. Rental products are
+    # global inventory and their storage location must not decide who is billed.
+    if rental.facility_id is not None:
+        return rental.facility_id
     for item in rental.items or []:
         if item.part_id:
             part = db.query(InventoryPart).filter(InventoryPart.id == item.part_id).first()

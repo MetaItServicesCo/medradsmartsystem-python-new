@@ -8,7 +8,7 @@ import hashlib
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
@@ -29,6 +29,7 @@ from app.models.rental import (
     BillingFrequency,
 )
 from app.models.user import User, UserRole
+from app.models.user_facility import UserFacility
 from app.utils.facility_access import (
     require_facility_access,
     scope_query_to_user_facilities,
@@ -76,6 +77,12 @@ from app.utils.list_search import (
 
 router = APIRouter(dependencies=[Depends(require_module_access("rentals"))])
 
+RENTAL_CUSTOMER_ROLES = {
+    UserRole.FACILITY_ADMIN,
+    UserRole.FACILITY_MANAGER,
+    UserRole.CLIENT,
+}
+
 
 class RentalItemIn(BaseModel):
     part_id: Optional[int] = None
@@ -91,6 +98,8 @@ class RentalItemIn(BaseModel):
 
 
 class RentalCreate(BaseModel):
+    facility_id: Optional[int] = None
+    customer_user_id: Optional[int] = None
     customer_name: str
     customer_email: EmailStr
     customer_phone: str
@@ -120,6 +129,8 @@ class RentalCreate(BaseModel):
 
 
 class RentalUpdate(BaseModel):
+    facility_id: Optional[int] = None
+    customer_user_id: Optional[int] = None
     customer_name: Optional[str] = None
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
@@ -345,6 +356,10 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "id": rental.id,
         "rental_number": rental.rental_number,
         "is_overdue": is_overdue,
+        "facility_id": rental.facility_id,
+        "facility_name": rental.facility.name if rental.facility else None,
+        "customer_user_id": rental.customer_user_id,
+        "customer_user_name": rental.customer_user.full_name if rental.customer_user else None,
         "customer_name": rental.customer_name,
         "customer_email": rental.customer_email,
         "customer_phone": rental.customer_phone,
@@ -681,6 +696,11 @@ def _stock_delta(old: dict[int, int], new: dict[int, int]) -> dict[int, int]:
 
 
 def _require_rental_facility_access(db: Session, current_user: User, rental: Rental) -> None:
+    if rental.facility_id is not None:
+        require_facility_access(db, current_user, rental.facility_id)
+        return
+    # Legacy fallback for agreements created before customer-facility identity
+    # was stored directly on rentals.
     facility_ids: set[int] = set()
     if rental.part and rental.part.facility_id is not None:
         facility_ids.add(rental.part.facility_id)
@@ -689,6 +709,74 @@ def _require_rental_facility_access(db: Session, current_user: User, rental: Ren
             facility_ids.add(item.part.facility_id)
     for facility_id in facility_ids:
         require_facility_access(db, current_user, facility_id)
+
+
+def _eligible_rental_customer_query(db: Session, facility_id: int):
+    attached_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id == facility_id)
+    return db.query(User).filter(
+        User.is_active.is_(True),
+        User.role.in_(RENTAL_CUSTOMER_ROLES),
+        or_(User.facility_id == facility_id, User.id.in_(attached_ids)),
+    )
+
+
+def _resolve_rental_customer(
+    db: Session,
+    current_user: User,
+    facility_id: Optional[int],
+    customer_user_id: Optional[int],
+) -> tuple[Optional[Facility], Optional[User]]:
+    if facility_id is None:
+        if customer_user_id is not None:
+            raise HTTPException(status_code=400, detail="Choose a facility before selecting a facility customer")
+        return None, None
+    facility = db.query(Facility).filter(Facility.id == facility_id).first()
+    if not facility:
+        raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, facility_id)
+    if customer_user_id is None:
+        return facility, None
+    customer = (
+        _eligible_rental_customer_query(db, facility_id)
+        .filter(User.id == customer_user_id)
+        .first()
+    )
+    if not customer:
+        raise HTTPException(
+            status_code=400,
+            detail="The selected customer is not an active admin, manager, or client attached to this facility",
+        )
+    return facility, customer
+
+
+@router.get("/facilities/{facility_id}/customers")
+def list_rental_facility_customers(
+    facility_id: int,
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    facility, _ = _resolve_rental_customer(db, current_user, facility_id, None)
+    query = _eligible_rental_customer_query(db, facility.id)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(User.full_name.ilike(term), User.email.ilike(term), User.username.ilike(term)))
+    total = query.count()
+    customers = query.order_by(User.full_name.asc(), User.id.asc()).limit(limit).all()
+    return {
+        "items": [
+            {
+                "id": customer.id,
+                "full_name": customer.full_name,
+                "email": customer.email,
+                "phone": customer.phone,
+                "role": customer.role.value if hasattr(customer.role, "value") else customer.role,
+            }
+            for customer in customers
+        ],
+        "total": total,
+    }
 
 
 @router.get("/parts")
@@ -968,21 +1056,25 @@ def list_rentals(
             selectinload(Rental.items).joinedload(RentalItem.part).joinedload(InventoryPart.facility),
             joinedload(Rental.part).joinedload(InventoryPart.facility),
             joinedload(Rental.created_by),
+            joinedload(Rental.facility),
+            joinedload(Rental.customer_user),
             joinedload(Rental.converted_invoice),
         )
     )
 
-    # Facility scoping: a scoped user sees an agreement when any of its items'
-    # parts belong to an accessible facility. Every agreement has items (the
-    # migration backfilled them), so item-based scoping covers all records.
+    # New agreements are scoped by their customer facility. Item-location scope
+    # remains only as a compatibility fallback for legacy unlinked agreements.
     if is_facility_scoped_user(current_user):
         accessible = get_user_facility_ids(db, current_user)
-        scope = (
+        legacy_scope = (
             select(RentalItem.rental_id)
             .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
             .where(InventoryPart.facility_id.in_(accessible))
         )
-        query = query.filter(Rental.id.in_(scope))
+        query = query.filter(or_(
+            Rental.facility_id.in_(accessible),
+            and_(Rental.facility_id.is_(None), Rental.id.in_(legacy_scope)),
+        ))
 
     if date_from:
         query = query.filter(Rental.start_date >= date_from)
@@ -1008,12 +1100,13 @@ def list_rentals(
                 contains_ci(RentalItem.part_description, search_term),
             ))
         )
-        facility_scope = (
+        legacy_facility_scope = (
             select(RentalItem.rental_id)
             .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
             .join(Facility, InventoryPart.facility_id == Facility.id)
             .where(contains_ci(Facility.name, search_term))
         )
+        matching_facilities = select(Facility.id).where(contains_ci(Facility.name, search_term))
         condition_scope = (
             select(RentalItem.rental_id).where(contains_ci(RentalItem.item_condition, search_term))
         )
@@ -1028,7 +1121,7 @@ def list_rentals(
                 contains_ci(Rental.customer_phone, search_term),
             ],
             "product": [Rental.id.in_(product_scope)],
-            "facility": [Rental.id.in_(facility_scope)],
+            "facility": [or_(Rental.facility_id.in_(matching_facilities), Rental.id.in_(legacy_facility_scope))],
             "created_by": [contains_ci(User.full_name, search_term)],
             "billing": [
                 value_contains_ci(Rental.billing_frequency, normalized_value),
@@ -1065,11 +1158,19 @@ def create_rental(
     _validate_billing_term(payload.start_date, payload.end_date, payload.billing_frequency, payload.committed_periods)
     items_in = _resolve_create_items(payload)
     item_rows = _build_rental_items(db, current_user, items_in)
+    facility, customer_user = _resolve_rental_customer(
+        db,
+        current_user,
+        payload.facility_id,
+        payload.customer_user_id,
+    )
 
     deposit = payload.security_deposit or Decimal("0")
     rental = Rental(
         rental_number=_next_number(db, Rental, "rental_number", "RNT"),
         created_by_id=current_user.id,
+        facility_id=facility.id if facility else None,
+        customer_user_id=customer_user.id if customer_user else None,
         customer_name=payload.customer_name,
         customer_email=str(payload.customer_email),
         customer_phone=payload.customer_phone,
@@ -1095,7 +1196,11 @@ def create_rental(
     # Reserve stock across all items.
     _apply_stock_delta(db, _required_stock(items_in))
 
-    _append_history(rental, "created", current_user, {"items": len(item_rows)})
+    _append_history(rental, "created", current_user, {
+        "items": len(item_rows),
+        "facility_id": rental.facility_id,
+        "customer_user_id": rental.customer_user_id,
+    })
     db.add(rental)
     db.flush()
 
@@ -1151,6 +1256,28 @@ def update_rental(
             detail="This rental agreement is signed and locked. Create a new agreement for contractual changes.",
         )
 
+    facility_changed = "facility_id" in payload.model_fields_set
+    customer_changed = "customer_user_id" in payload.model_fields_set
+    resolved_facility_id = payload.facility_id if facility_changed else rental.facility_id
+    # Changing the facility invalidates the previous contact unless the request
+    # explicitly supplies a contact attached to the new facility.
+    resolved_customer_id = (
+        payload.customer_user_id
+        if customer_changed
+        else (None if facility_changed else rental.customer_user_id)
+    )
+    facility, customer_user = _resolve_rental_customer(
+        db,
+        current_user,
+        resolved_facility_id,
+        resolved_customer_id,
+    )
+    if facility_changed:
+        update_data["facility_id"] = facility.id if facility else None
+        if not customer_changed:
+            update_data["customer_user_id"] = None
+    if customer_changed:
+        update_data["customer_user_id"] = customer_user.id if customer_user else None
     # Replace the item set (and reconcile reserved stock) when items are supplied.
     if payload.items is not None:
         if not payload.items:
@@ -1412,7 +1539,11 @@ def convert_to_invoice(
         customer_email=rental.customer_email or "billing@example.com",
         customer_phone=rental.customer_phone,
         customer_address=rental.customer_address,
-        facility_id=(items[0].part.facility_id if items and items[0].part else (rental.part.facility_id if rental.part else None)),
+        facility_id=(
+            rental.facility_id
+            if rental.facility_id is not None
+            else (items[0].part.facility_id if items and items[0].part else (rental.part.facility_id if rental.part else None))
+        ),
         rental_id=rental.id,
         subtotal=subtotal,
         tax_amount=tax_amount,
@@ -1734,16 +1865,20 @@ def list_rental_history(
         .options(
             selectinload(Rental.items).joinedload(RentalItem.part).joinedload(InventoryPart.facility),
             joinedload(Rental.part).joinedload(InventoryPart.facility),
+            joinedload(Rental.facility),
         )
     )
     if is_facility_scoped_user(current_user):
         accessible = get_user_facility_ids(db, current_user)
-        scope = (
+        legacy_scope = (
             select(RentalItem.rental_id)
             .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
             .where(InventoryPart.facility_id.in_(accessible))
         )
-        rentals_query = rentals_query.filter(Rental.id.in_(scope))
+        rentals_query = rentals_query.filter(or_(
+            Rental.facility_id.in_(accessible),
+            and_(Rental.facility_id.is_(None), Rental.id.in_(legacy_scope)),
+        ))
     search_term = normalize_list_search(search)
     searched_date = parsed_date_value(search_term) if search_term else None
     if search_term:
@@ -1757,17 +1892,21 @@ def list_rental_history(
                 contains_ci(RentalItem.part_description, search_term),
             ))
         )
-        facility_scope = (
+        legacy_facility_scope = (
             select(RentalItem.rental_id)
             .join(InventoryPart, RentalItem.part_id == InventoryPart.id)
             .join(Facility, InventoryPart.facility_id == Facility.id)
             .where(contains_ci(Facility.name, search_term))
         )
+        matching_facilities = select(Facility.id).where(contains_ci(Facility.name, search_term))
         history_search_by_field = {
             "agreement": [contains_ci(Rental.rental_number, search_term)],
             "customer": [contains_ci(Rental.customer_name, search_term)],
             "product": [Rental.id.in_(product_scope)],
-            "facility": [Rental.id.in_(facility_scope)],
+            "facility": [or_(
+                Rental.facility_id.in_(matching_facilities),
+                Rental.id.in_(legacy_facility_scope),
+            )],
             "activity": [value_contains_ci(Rental.history, search_term)],
             "date": [value_contains_ci(Rental.history, search_term)],
         }
@@ -1783,7 +1922,8 @@ def list_rental_history(
     for rental in rentals:
         first_item = (rental.items or [None])[0]
         facility_name = (
-            (rental.part.facility.name if rental.part and rental.part.facility else None)
+            (rental.facility.name if rental.facility else None)
+            or (rental.part.facility.name if rental.part and rental.part.facility else None)
             or (first_item.part.facility.name if first_item and first_item.part and first_item.part.facility else None)
         )
         part_number = (rental.part.part_number if rental.part else None) or (first_item.part_number if first_item else None)
@@ -1876,6 +2016,8 @@ def rental_agreement_detail(
             joinedload(Rental.part),
             joinedload(Rental.converted_invoice),
             joinedload(Rental.created_by),
+            joinedload(Rental.facility),
+            joinedload(Rental.customer_user),
         )
         .filter(Rental.id == rental_id)
         .first()

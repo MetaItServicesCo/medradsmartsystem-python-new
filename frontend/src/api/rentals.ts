@@ -88,6 +88,10 @@ export interface RentalItem {
 export interface Rental {
   id: number
   rental_number: string
+  facility_id: number | null
+  facility_name: string | null
+  customer_user_id: number | null
+  customer_user_name: string | null
   is_overdue: boolean
   items: RentalItem[]
   auto_charge: boolean
@@ -234,6 +238,8 @@ export interface RentalItemPayload {
 }
 
 export interface RentalPayload {
+  facility_id?: number | null
+  customer_user_id?: number | null
   customer_name: string
   customer_email: string
   customer_phone: string
@@ -259,6 +265,14 @@ export interface RentalPayload {
   discount_type?: RentalDiscountType | null
   discount_value?: number | null
   discount_apply_after_periods?: number | null
+}
+
+export interface RentalFacilityCustomer {
+  id: number
+  full_name: string
+  email: string
+  phone: string | null
+  role: 'facility_admin' | 'facility_manager' | 'client'
 }
 
 export interface RentalProductRate {
@@ -303,6 +317,16 @@ export const fetchRentals = async (
   params: { status?: string; search?: string; search_field?: string; date_from?: string; date_to?: string; skip?: number; limit?: number } = {}
 ): Promise<{ items: Rental[]; total: number }> => {
   const res = await apiClient.get('/rentals', { params })
+  return res.data
+}
+
+export const fetchRentalFacilityCustomers = async (
+  facilityId: number,
+  search?: string,
+): Promise<{ items: RentalFacilityCustomer[]; total: number }> => {
+  const res = await apiClient.get(`/rentals/facilities/${facilityId}/customers`, {
+    params: { search, limit: 100 },
+  })
   return res.data
 }
 
