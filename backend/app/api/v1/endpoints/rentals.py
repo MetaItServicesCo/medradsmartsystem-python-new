@@ -36,7 +36,8 @@ from app.utils.facility_access import (
     get_user_facility_ids,
 )
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_refunds import execute_square_invoice_refund, issue_invoice_refund
 from app.utils.invoice_approval import (
     approval_response,
     ensure_financial_edit_allowed,
@@ -53,7 +54,6 @@ from app.utils.logging import log_activity
 from app.utils.square_payments import (
     square_is_configured,
     create_square_card_on_file,
-    create_square_refund,
     SquareRequestError,
 )
 from app.utils.rental_billing import (
@@ -190,6 +190,12 @@ class RentalInvoiceUpdate(BaseModel):
     summary_rows: Optional[list[dict[str, Any]]] = None
 
 
+class RentalInvoiceRefundCreate(BaseModel):
+    amount: Decimal
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+
+
 def _money(value: Any) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
@@ -266,6 +272,8 @@ def _invoice_response(invoice: Invoice) -> dict[str, Any]:
         "total_amount": invoice.total_amount,
         "amount_paid": invoice.amount_paid,
         "balance_due": invoice.balance_due,
+        "refunded_amount": invoice.refunded_amount,
+        "refund_status": invoice.refund_status,
         "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
         "issue_date": invoice.issue_date,
         "due_date": invoice.due_date,
@@ -469,10 +477,10 @@ def _settle_deposit_refund(
     user: Optional[User],
 ) -> dict[str, Any]:
     """Return `refund_amount` of the security deposit to the card that paid the deposit
-    invoice. Records the refund against that invoice and mirrors the webhook's ledger so
-    the later Square refund event is de-duplicated. Never aborts the return: if the deposit
-    was paid offline, Square is unconfigured, or the refund is declined, it falls back to a
-    manual-refund outcome that the caller records in history."""
+    invoice, through the shared refund engine. Never aborts the return: if the deposit was
+    paid offline, Square is unconfigured, or the refund is declined, it falls back to a
+    manual-refund outcome that the caller records in history (no ledger entry is written for
+    the manual case — staff completes that refund out of band)."""
     result: dict[str, Any] = {
         "amount": str(refund_amount),
         "method": "manual",
@@ -483,60 +491,32 @@ def _settle_deposit_refund(
         result["method"] = "none"
         return result
 
+    # The deposit is always the first invoice raised for the agreement.
     deposit_invoice = (
         db.query(Invoice)
         .filter(Invoice.rental_id == rental.id)
         .order_by(Invoice.id.asc())
         .first()
     )
-    payment_txn = None
-    if deposit_invoice is not None:
-        payment_txn = (
-            db.query(InvoiceTransaction)
-            .filter(
-                InvoiceTransaction.invoice_id == deposit_invoice.id,
-                InvoiceTransaction.transaction_type == "payment",
-                InvoiceTransaction.reference_number.isnot(None),
-            )
-            .order_by(InvoiceTransaction.id.desc())
-            .first()
-        )
-    if deposit_invoice is None or payment_txn is None or not square_is_configured():
-        # Deposit was paid offline / is unpaid, or Square is not configured: refund manually.
+    if deposit_invoice is None:
         return result
 
     try:
-        refund = create_square_refund(
-            payment_id=payment_txn.reference_number,
-            idempotency_key=f"rental-deposit-refund-{rental.id}-{deposit_invoice.id}-{int(datetime.utcnow().timestamp())}",
-            amount=refund_amount,
+        refund_id = execute_square_invoice_refund(
+            db,
+            deposit_invoice,
+            refund_amount,
+            user=user,
             reason=f"Security deposit settlement · {rental.rental_number}",
+            description="Security deposit refund",
         )
     except SquareRequestError as exc:
         result["error"] = str(exc)
         return result
 
-    refund_id = refund.get("id")
-    deposit_invoice.refunded_amount = _money(deposit_invoice.refunded_amount) + _money(refund_amount)
-    deposit_invoice.refund_status = (
-        "refunded"
-        if _money(deposit_invoice.refunded_amount) >= _money(deposit_invoice.amount_paid)
-        else "partially_refunded"
-    )
-    deposit_invoice.updated_at = datetime.utcnow()
-    refund_txn = add_invoice_transaction(
-        db,
-        deposit_invoice,
-        "refund",
-        refund_amount,
-        "square_card",
-        f"Security deposit refund ({refund_id})",
-        user,
-        "SQR",
-    )
-    refund_txn.reference_number = refund_id
-    result["method"] = "square_card"
-    result["square_refund_id"] = refund_id
+    if refund_id:
+        result["method"] = "square_card"
+        result["square_refund_id"] = refund_id
     return result
 
 
@@ -1524,6 +1504,83 @@ def update_rental_invoice(
     record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
     record_status_change(db, invoice, previous_status, current_user)
     log_activity(db, "invoices", invoice.id, "UPDATE_RENTAL_INVOICE", current_user, update_data)
+    db.commit()
+    db.refresh(invoice)
+    return _invoice_response(invoice)
+
+
+@router.post("/invoices/{invoice_id}/refunds")
+def refund_rental_invoice(
+    invoice_id: int,
+    payload: RentalInvoiceRefundCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Record a full or partial refund against a rental invoice. Executes a real Square
+    refund when the invoice was card-paid online, otherwise records a manual/offline refund.
+    Shares the exact engine used by Sales refunds and the deposit refund on return."""
+    if not is_invoice_approver(current_user):
+        raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can issue a refund")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
+    amount = _money(payload.amount)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Refund amount must be greater than zero")
+
+    invoice = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.rental),
+            joinedload(Invoice.facility),
+            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
+        )
+        .filter(invoice_id == Invoice.id, Invoice.invoice_type == InvoiceType.RENTAL)
+        .with_for_update(of=Invoice)
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Rental invoice not found")
+    if invoice.facility_id is not None:
+        require_facility_access(db, current_user, invoice.facility_id)
+    require_invoice_approved(invoice)
+
+    refundable = max(_money(invoice.amount_paid) - _money(invoice.refunded_amount), Decimal("0"))
+    if amount > refundable:
+        raise HTTPException(status_code=400, detail="Refund cannot exceed the remaining paid amount")
+
+    try:
+        result = issue_invoice_refund(
+            db,
+            invoice,
+            amount,
+            payment_method=payload.payment_method,
+            notes=payload.notes,
+            user=current_user,
+        )
+    except SquareRequestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+
+    if invoice.rental:
+        _append_history(
+            invoice.rental,
+            "refund_issued",
+            current_user,
+            {
+                "invoice_id": invoice.id,
+                "amount": str(amount),
+                "method": result["method"],
+                "square_refund_id": result["square_refund_id"],
+                "refund_status": invoice.refund_status,
+            },
+        )
+    log_activity(
+        db,
+        "invoices",
+        invoice.id,
+        "REFUND_RENTAL_INVOICE",
+        current_user,
+        {"amount": str(amount), "method": result["method"], "refund_status": invoice.refund_status},
+    )
     db.commit()
     db.refresh(invoice)
     return _invoice_response(invoice)

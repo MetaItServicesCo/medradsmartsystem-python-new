@@ -142,6 +142,8 @@ export interface RentalInvoice {
   total_amount: number
   amount_paid: number
   balance_due: number
+  refunded_amount?: number
+  refund_status?: 'none' | 'partially_refunded' | 'refunded'
   status: RentalInvoiceStatus
   issue_date: string
   due_date: string
@@ -345,6 +347,14 @@ export const updateRentalInvoice = async (
   }
 ): Promise<RentalInvoice> => {
   const res = await apiClient.put(`/rentals/invoices/${id}`, data)
+  return res.data
+}
+
+export const refundRentalInvoice = async (
+  id: number,
+  data: { amount: number; payment_method?: string; notes?: string }
+): Promise<RentalInvoice> => {
+  const res = await apiClient.post(`/rentals/invoices/${id}/refunds`, data)
   return res.data
 }
 

@@ -3006,8 +3006,17 @@ const Sales = () => {
                   Refundable: {money(Math.max(0, Number(refundInvoice.amount_paid || 0) - Number(refundInvoice.refunded_amount || 0)))}
                 </Typography>
                 <Typography sx={{ color: '#6B7280', fontSize: 12 }}>
-                  Refunds are ledger entries and do not automatically restock a sold part.
+                  Refunds do not automatically restock a sold part.
                 </Typography>
+                {(refundInvoice.transactions || []).some(t => t.transaction_type === 'payment' && Boolean(t.reference_number)) ? (
+                  <Typography sx={{ color: '#047857', fontSize: 12, fontWeight: 800, mt: 0.5 }}>
+                    This will refund the amount to the customer's card through Square.
+                  </Typography>
+                ) : (
+                  <Typography sx={{ color: '#92400E', fontSize: 12, fontWeight: 800, mt: 0.5 }}>
+                    Paid offline — recorded as a manual refund (return the money via the original method).
+                  </Typography>
+                )}
               </Card>
               <TextField label="Refund Amount" type="number" value={refundForm.amount} onChange={e => setRefundForm(prev => ({ ...prev, amount: Number(e.target.value) }))} />
               <TextField select label="Refund Method" value={refundForm.payment_method} onChange={e => setRefundForm(prev => ({ ...prev, payment_method: e.target.value }))}>

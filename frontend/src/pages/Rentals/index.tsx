@@ -22,6 +22,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import InfoIcon from '@mui/icons-material/Info'
+import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange'
 import { toast } from 'react-toastify'
 
 import { fetchFacilities } from '@/api/facilities'
@@ -45,6 +46,7 @@ import {
   fetchRentalInvoices,
   fetchRentalSummary,
   updateRentalInvoice,
+  refundRentalInvoice,
   fetchRentalHistory,
   fetchRentalProductRate,
   upsertRentalProductRate,
@@ -405,6 +407,8 @@ const Rentals = () => {
   const [invoiceEdit, setInvoiceEdit] = useState<RentalInvoice | null>(null)
   const [invoiceForm, setInvoiceForm] = useState({ amount_paid: 0, due_date: '', status: 'pending', payment_method: '', notes: '' })
   const [viewInvoice, setViewInvoice] = useState<RentalInvoice | null>(null)
+  const [refundInvoice, setRefundInvoice] = useState<RentalInvoice | null>(null)
+  const [refundForm, setRefundForm] = useState({ amount: 0, payment_method: '', notes: '' })
   const [printAgreement, setPrintAgreement] = useState<Rental | null>(null)
   const [printInvoice, setPrintInvoice] = useState<RentalInvoice | null>(null)
   const [invoiceActionAnchor, setInvoiceActionAnchor] = useState<HTMLElement | null>(null)
@@ -639,6 +643,25 @@ const Rentals = () => {
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update invoice'),
   })
+
+  const refundMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { amount: number; payment_method?: string; notes?: string } }) => refundRentalInvoice(id, data),
+    onSuccess: (invoice) => {
+      const refunded = (invoice.transactions || []).filter(t => t.transaction_type === 'refund').slice(-1)[0]
+      toast.success(refunded?.payment_method === 'square_card' ? 'Refund issued to card and recorded' : 'Refund recorded in the invoice ledger')
+      setRefundInvoice(null)
+      invalidateRentals()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not record refund'),
+  })
+
+  const refundableOf = (invoice: RentalInvoice | null) =>
+    Math.max(0, Number(invoice?.amount_paid || 0) - Number(invoice?.refunded_amount || 0))
+
+  const openInvoiceRefund = (invoice: RentalInvoice) => {
+    setRefundForm({ amount: refundableOf(invoice), payment_method: invoice.payment_method || '', notes: '' })
+    setRefundInvoice(invoice)
+  }
 
   const openCreate = () => {
     setEditingAgreement(null)
@@ -1675,6 +1698,10 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
         </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={refundableOf(actionInvoice) <= 0} onClick={() => { if (actionInvoice) openInvoiceRefund(actionInvoice); closeInvoiceActions() }}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CurrencyExchangeIcon fontSize="small" /></ListItemIcon>
+          Record Refund
+        </MenuItem>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionInvoice && openCardAuthorization({ invoice: actionInvoice })}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
           Request Card Authorization
@@ -2173,6 +2200,58 @@ const Rentals = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setViewInvoice(null)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, background: SYSTEM_GRADIENT }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Record Refund Dialog */}
+      <Dialog open={Boolean(refundInvoice)} onClose={() => setRefundInvoice(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 460, width: '100%' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>Record Refund</DialogTitle>
+        <DialogContent dividers>
+          {refundInvoice && (() => {
+            const refundable = refundableOf(refundInvoice)
+            const cardPaid = (refundInvoice.transactions || []).some(t => t.transaction_type === 'payment' && Boolean(t.reference_number))
+            return (
+              <Box sx={{ display: 'grid', gap: 2, pt: 1 }}>
+                <Typography sx={{ fontWeight: 800 }}>Invoice #: {refundInvoice.invoice_number}</Typography>
+                <Typography sx={{ color: '#4B5563', fontWeight: 700 }}>Refundable (paid − already refunded): {money(refundable)}</Typography>
+                <TextField
+                  label="Refund amount" type="number" size="small"
+                  value={refundForm.amount}
+                  onChange={e => setRefundForm(p => ({ ...p, amount: Number(e.target.value) }))}
+                  inputProps={{ min: 0, max: refundable, step: '0.01' }}
+                />
+                <TextField select label="Refund method" size="small"
+                  value={refundForm.payment_method}
+                  onChange={e => setRefundForm(p => ({ ...p, payment_method: e.target.value }))}
+                >
+                  <MenuItem value="credit_card">Credit Card</MenuItem>
+                  <MenuItem value="cheque">Cheque</MenuItem>
+                  <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+                  <MenuItem value="cash">Cash</MenuItem>
+                </TextField>
+                <TextField label="Notes" size="small" multiline rows={2}
+                  value={refundForm.notes}
+                  onChange={e => setRefundForm(p => ({ ...p, notes: e.target.value }))}
+                />
+                <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: cardPaid ? '#047857' : '#92400E' }}>
+                  {cardPaid
+                    ? `${money(refundForm.amount)} will be refunded to the customer's card through Square.`
+                    : `This invoice was paid offline — ${money(refundForm.amount)} is recorded as a manual refund (return the money via the original method).`}
+                </Typography>
+              </Box>
+            )
+          })()}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRefundInvoice(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
+          <Button
+            variant="contained" color="error"
+            disabled={!refundInvoice || refundMut.isPending || refundForm.amount <= 0 || refundForm.amount > refundableOf(refundInvoice)}
+            onClick={() => refundInvoice && refundMut.mutate({ id: refundInvoice.id, data: { amount: refundForm.amount, payment_method: refundForm.payment_method || undefined, notes: refundForm.notes || undefined } })}
+            sx={{ borderRadius: '12px', fontWeight: 900 }}
+          >
+            {refundMut.isPending ? 'Processing…' : 'Record Refund'}
+          </Button>
         </DialogActions>
       </Dialog>
 

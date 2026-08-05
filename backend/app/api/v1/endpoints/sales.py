@@ -30,6 +30,8 @@ from app.models.user_facility import UserFacility
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_refunds import issue_invoice_refund
+from app.utils.square_payments import SquareRequestError
 from app.utils.invoice_approval import (
     approval_response,
     ensure_financial_edit_allowed,
@@ -2804,26 +2806,17 @@ def refund_sales_invoice(
     if payload.amount > refundable:
         raise HTTPException(status_code=400, detail="Refund cannot exceed the remaining paid amount")
 
-    invoice.refunded_amount = _money(invoice.refunded_amount) + payload.amount
-    invoice.refund_status = "refunded" if invoice.refunded_amount >= _money(invoice.amount_paid) else "partially_refunded"
-    invoice.updated_at = datetime.utcnow()
-    source_payment = next(
-        (item for item in invoice.transactions or [] if item.transaction_type == "payment"),
-        None,
-    )
-    refund_description = payload.notes or f"Sales refund issued for {invoice.invoice_number}"
-    if source_payment and source_payment.reference_number:
-        refund_description = f"{refund_description} (against {source_payment.reference_number})"
-    transaction = add_invoice_transaction(
-        db,
-        invoice,
-        "refund",
-        payload.amount,
-        payload.payment_method or invoice.payment_method,
-        refund_description,
-        current_user,
-        "REF",
-    )
+    try:
+        result = issue_invoice_refund(
+            db,
+            invoice,
+            payload.amount,
+            payment_method=payload.payment_method,
+            notes=payload.notes,
+            user=current_user,
+        )
+    except SquareRequestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     if invoice.sales_quotation:
         _append_history(
             invoice.sales_quotation,
@@ -2833,7 +2826,8 @@ def refund_sales_invoice(
                 "invoice_id": invoice.id,
                 "amount": str(payload.amount),
                 "refund_status": invoice.refund_status,
-                "transaction_reference": transaction.reference_number,
+                "method": result["method"],
+                "square_refund_id": result["square_refund_id"],
             },
         )
     log_activity(
