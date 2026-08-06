@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.base import get_db
@@ -617,7 +617,12 @@ def _eligible_quotation_recipient_query(db: Session, facility_id: int):
     linked_user_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id == facility_id)
     return db.query(User).filter(
         User.is_active.is_(True),
-        User.role.in_(QUOTATION_RECIPIENT_ROLES),
+        # Facility-side roles plus facility-scoped admins (ADMIN attached to a facility).
+        # Global/internal admins (no facility) are intentionally excluded.
+        or_(
+            User.role.in_(QUOTATION_RECIPIENT_ROLES),
+            and_(User.role == UserRole.ADMIN, User.facility_id.isnot(None)),
+        ),
         or_(User.facility_id == facility_id, User.id.in_(linked_user_ids)),
     )
 

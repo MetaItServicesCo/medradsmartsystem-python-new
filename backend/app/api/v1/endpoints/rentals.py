@@ -799,7 +799,12 @@ def _eligible_rental_customer_query(db: Session, facility_id: int):
     attached_ids = db.query(UserFacility.user_id).filter(UserFacility.facility_id == facility_id)
     return db.query(User).filter(
         User.is_active.is_(True),
-        User.role.in_(RENTAL_CUSTOMER_ROLES),
+        # Facility-side roles plus facility-scoped admins (ADMIN attached to a facility).
+        # Global/internal admins (no facility) are intentionally excluded.
+        or_(
+            User.role.in_(RENTAL_CUSTOMER_ROLES),
+            and_(User.role == UserRole.ADMIN, User.facility_id.isnot(None)),
+        ),
         or_(User.facility_id == facility_id, User.id.in_(attached_ids)),
     )
 
