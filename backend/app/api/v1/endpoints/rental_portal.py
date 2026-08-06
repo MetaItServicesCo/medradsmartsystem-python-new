@@ -124,6 +124,7 @@ def _item_view(item: RentalItem) -> dict[str, Any]:
         "shipping_fee": item.shipping_fee,
         "setup_fee": item.setup_fee,
         "labor_fee": item.labor_fee,
+        "removal_fee": item.removal_fee,
         "item_condition": item.item_condition,
         "item_status": item.item_status,
     }
@@ -204,19 +205,21 @@ def _pricing_view(rental: Rental, initial_invoice: Optional[Invoice]) -> dict[st
     amounts = _initial_invoice_amounts(rental)
     tax = Decimal(str(initial_invoice.tax_amount if initial_invoice else amounts["tax"]))
     taxable_rental = max(Decimal("0"), amounts["rental"] - amounts["discount"])
-    taxable_total = taxable_rental + amounts["shipping"] + amounts["setup"]
+    taxable_total = taxable_rental + amounts["shipping"] + amounts["setup"] + amounts["removal"]
     if taxable_total > 0:
         rental_tax = (tax * taxable_rental / taxable_total).quantize(Decimal("0.01"))
         shipping_tax = (tax * amounts["shipping"] / taxable_total).quantize(Decimal("0.01"))
-        setup_tax = tax - rental_tax - shipping_tax
+        removal_tax = (tax * amounts["removal"] / taxable_total).quantize(Decimal("0.01"))
+        setup_tax = tax - rental_tax - shipping_tax - removal_tax
     else:
-        rental_tax = shipping_tax = setup_tax = Decimal("0")
+        rental_tax = shipping_tax = setup_tax = removal_tax = Decimal("0")
     return {
         **amounts,
         "tax": tax,
         "rental_tax": rental_tax,
         "shipping_tax": shipping_tax,
         "setup_tax": setup_tax,
+        "removal_tax": removal_tax,
         "grand_total": Decimal(str(initial_invoice.total_amount if initial_invoice else amounts["total"])),
     }
 

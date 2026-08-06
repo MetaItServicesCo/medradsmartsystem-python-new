@@ -325,6 +325,7 @@ const ClientRental = () => {
           <CustomerDetailsCard rows={[
             { label: 'Billing', value: frequencyLabel(agreement.billing_frequency) },
             { label: 'Rental period', value: `${dateLabel(agreement.start_date)} – ${dateLabel(agreement.end_date)}` },
+            { label: 'Security deposit', value: money(agreement.security_deposit) },
             { label: 'Next billing', value: dateLabel(agreement.next_bill_date) },
             { label: 'Next payment', value: next_payment ? `${money(next_payment.amount)} · ${next_payment.status === 'due' ? 'Due now' : `Period ${next_payment.period}`}` : 'Schedule complete' },
             { label: 'Auto-charge', value: autoChargeStatus },
@@ -337,13 +338,13 @@ const ClientRental = () => {
             <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
               <TableCell sx={{ fontWeight: 900 }}>Product</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Qty</TableCell>
               <TableCell align="right" sx={{ fontWeight: 900 }}>Rental Rate</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Ship &amp; Pack</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 900 }}>Delivery &amp; Setup</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Labor</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Delivery &amp; Setup</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Removal</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Labor</TableCell>
             </TableRow></TableHead>
             <TableBody>{agreement.items.map(item => (
               <TableRow key={item.id}>
                 <TableCell><Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.part_number}</Typography><Typography sx={{ fontSize: 12, color: '#6B7280' }}>{item.part_description}</Typography></TableCell>
                 <TableCell align="right">{item.quantity}</TableCell><TableCell align="right">{money(item.rental_rate)}</TableCell>
-                <TableCell align="right">{money(item.shipping_fee)}</TableCell><TableCell align="right">{money(item.setup_fee)}</TableCell><TableCell align="right">{money(item.labor_fee)}</TableCell>
+                <TableCell align="right">{money(item.shipping_fee)}</TableCell><TableCell align="right">{money(item.setup_fee)}</TableCell><TableCell align="right">{money(item.removal_fee)}</TableCell><TableCell align="right">{money(item.labor_fee)}</TableCell>
               </TableRow>
             ))}</TableBody>
           </Table>

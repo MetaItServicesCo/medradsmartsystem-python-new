@@ -224,10 +224,12 @@ def _initial_invoice_amounts(rental: Rental) -> dict[str, Decimal]:
     shipping_total = sum((_money(item.shipping_fee) for item in rental.items or []), Decimal("0"))
     setup_total = sum((_money(item.setup_fee) for item in rental.items or []), Decimal("0"))
     labor_total = sum((_money(item.labor_fee) for item in rental.items or []), Decimal("0"))
+    removal_total = sum((_money(item.removal_fee) for item in rental.items or []), Decimal("0"))
     taxable_rental = max(Decimal("0"), rental_total - discount)
-    taxable_total = taxable_rental + shipping_total + setup_total
+    # Removal/pickup is a logistics charge and is taxed like shipping & delivery/setup.
+    taxable_total = taxable_rental + shipping_total + setup_total + removal_total
     tax = (taxable_total * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
-    subtotal = rental_total + deposit + shipping_total + setup_total + labor_total
+    subtotal = rental_total + deposit + shipping_total + setup_total + labor_total + removal_total
     total = max(Decimal("0"), subtotal - discount + tax)
     return {
         "rental": rental_total,
@@ -235,6 +237,7 @@ def _initial_invoice_amounts(rental: Rental) -> dict[str, Decimal]:
         "shipping": shipping_total,
         "setup": setup_total,
         "labor": labor_total,
+        "removal": removal_total,
         "discount": discount,
         "tax": tax,
         "subtotal": subtotal,
@@ -453,6 +456,8 @@ def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
         line_items.append(_line("SHIP-PACK", "Shipping & Packing", amounts["shipping"]))
     if amounts["setup"] > 0:
         line_items.append(_line("DEL-SETUP", "Delivery & Setup", amounts["setup"]))
+    if amounts["removal"] > 0:
+        line_items.append(_line("REMOVAL", "Removal & Pickup", amounts["removal"]))
     if amounts["labor"] > 0:
         line_items.append(_line("LABOR", "Labor", amounts["labor"]))
 

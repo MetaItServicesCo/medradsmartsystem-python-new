@@ -169,6 +169,7 @@ class RentalItem(Base):
     shipping_fee = Column(Numeric(10, 2), nullable=False, default=0)
     setup_fee = Column(Numeric(10, 2), nullable=False, default=0)
     labor_fee = Column(Numeric(10, 2), nullable=False, default=0)
+    removal_fee = Column(Numeric(10, 2), nullable=False, default=0)
 
     initial_condition = Column(Text, nullable=True)
     return_condition = Column(Text, nullable=True)

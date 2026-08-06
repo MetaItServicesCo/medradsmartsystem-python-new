@@ -11,13 +11,14 @@ from app.utils.rental_billing import (
 )
 
 
-def _item(rate: str, quantity: int, shipping: str, setup: str, labor: str):
+def _item(rate: str, quantity: int, shipping: str, setup: str, labor: str, removal: str = "0"):
     return SimpleNamespace(
         rental_rate=Decimal(rate),
         quantity=quantity,
         shipping_fee=Decimal(shipping),
         setup_fee=Decimal(setup),
         labor_fee=Decimal(labor),
+        removal_fee=Decimal(removal),
     )
 
 
@@ -51,6 +52,23 @@ def test_initial_invoice_does_not_tax_deposit_or_labor():
 
     assert amounts["tax"] == Decimal("0.00")
     assert amounts["total"] == Decimal("625.00")
+
+
+def test_removal_fee_is_billed_upfront_and_taxed_like_shipping():
+    rental = SimpleNamespace(
+        items=[_item("0", 1, "0", "0", "0", removal="100")],
+        security_deposit=Decimal("0"),
+        discount_type=None,
+        discount_value=Decimal("0"),
+        discount_apply_after_periods=None,
+    )
+
+    amounts = _initial_invoice_amounts(rental)
+
+    assert amounts["removal"] == Decimal("100")
+    assert amounts["subtotal"] == Decimal("100")
+    assert amounts["tax"] == Decimal("8.25")
+    assert amounts["total"] == Decimal("108.25")
 
 
 def test_agreement_customer_facility_is_authoritative_for_billing():

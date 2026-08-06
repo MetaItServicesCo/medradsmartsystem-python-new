@@ -230,6 +230,7 @@ interface RentalItemForm {
   shipping_fee: number
   setup_fee: number
   labor_fee: number
+  removal_fee: number
   initial_condition: string
   initial_meter_reading: string
 }
@@ -264,7 +265,7 @@ const emptyAgreement = (): RentalAgreementFormState => ({
   billing_frequency: 'monthly',
   security_deposit: 0,
   start_date: new Date().toISOString().slice(0, 10),
-  end_date: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().slice(0, 10),
+  end_date: '',
   terms_and_conditions: '',
   auto_charge: false,
   committed_periods: '',
@@ -285,6 +286,7 @@ const newRentalItem = (): RentalItemForm => ({
   shipping_fee: 0,
   setup_fee: 0,
   labor_fee: 0,
+  removal_fee: 0,
   initial_condition: '',
   initial_meter_reading: '',
 })
@@ -312,6 +314,34 @@ const roundRentalMoney = (value: number) => {
   return sign * (Math.round(scaled) / 100)
 }
 
+// Mirror the backend billing calendar so the previewed end date matches how periods
+// are actually advanced (rental_billing.advance_billing_date).
+const RENTAL_PERIOD_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3 }
+const RENTAL_PERIOD_DAYS: Record<string, number> = { weekly: 7, biweekly: 14, daily: 1 }
+
+const addClampedMonths = (start: Date, months: number): Date => {
+  const day = start.getDate()
+  const shifted = new Date(start.getFullYear(), start.getMonth() + months, 1)
+  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate()
+  shifted.setDate(Math.min(day, lastDay))
+  return shifted
+}
+
+const deriveRentalEndDate = (startISO: string, frequency: BillingFrequency, periods: number | ''): string => {
+  const count = Number(periods)
+  if (!startISO || !count || count < 1) return ''
+  const start = new Date(`${startISO}T00:00:00`)
+  if (Number.isNaN(start.getTime())) return ''
+  let end: Date
+  if (frequency in RENTAL_PERIOD_MONTHS) {
+    end = addClampedMonths(start, RENTAL_PERIOD_MONTHS[frequency] * count)
+  } else {
+    end = new Date(start)
+    end.setDate(end.getDate() + (RENTAL_PERIOD_DAYS[frequency] ?? 30) * count)
+  }
+  return end.toISOString().slice(0, 10)
+}
+
 const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
   const rental = roundRentalMoney(agreement.items.reduce(
     (sum, item) => sum + Number(item.rental_rate || 0) * Math.max(1, Number(item.quantity || 1)),
@@ -320,6 +350,7 @@ const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
   const shipping = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.shipping_fee || 0), 0))
   const setup = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.setup_fee || 0), 0))
   const labor = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.labor_fee || 0), 0))
+  const removal = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.removal_fee || 0), 0))
   const deposit = roundRentalMoney(Number(agreement.security_deposit || 0))
 
   // The commitment discount reaches period one only when it is explicitly
@@ -332,12 +363,13 @@ const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
   }
 
   const taxableRental = Math.max(0, rental - discount)
-  const taxableTotal = taxableRental + shipping + setup
+  const taxableTotal = taxableRental + shipping + setup + removal
   const tax = roundRentalMoney(taxableTotal * SALES_TAX_FACTOR)
   const rentalTax = taxableTotal > 0 ? roundRentalMoney(tax * taxableRental / taxableTotal) : 0
   const shippingTax = taxableTotal > 0 ? roundRentalMoney(tax * shipping / taxableTotal) : 0
-  const setupTax = roundRentalMoney(tax - rentalTax - shippingTax)
-  const subtotal = roundRentalMoney(rental + deposit + shipping + setup + labor)
+  const removalTax = taxableTotal > 0 ? roundRentalMoney(tax * removal / taxableTotal) : 0
+  const setupTax = roundRentalMoney(tax - rentalTax - shippingTax - removalTax)
+  const subtotal = roundRentalMoney(rental + deposit + shipping + setup + labor + removal)
 
   return {
     rental,
@@ -345,11 +377,13 @@ const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
     shipping,
     setup,
     labor,
+    removal,
     discount,
     tax,
     rentalTax,
     shippingTax,
     setupTax,
+    removalTax,
     subtotal,
     total: roundRentalMoney(Math.max(0, subtotal - discount + tax)),
   }
@@ -473,6 +507,16 @@ const Rentals = () => {
   useEffect(() => {
     if (location.pathname === '/rentals') navigate('/rentals/agreements', { replace: true })
   }, [location.pathname, navigate])
+
+  // The agreement end date is derived from start date, billing frequency, and committed
+  // periods — never hand-entered — so the term always matches the billing calendar.
+  useEffect(() => {
+    const computed = deriveRentalEndDate(agreementForm.start_date, agreementForm.billing_frequency, agreementForm.committed_periods)
+    if (computed && computed !== agreementForm.end_date) {
+      setAgreementForm(prev => ({ ...prev, end_date: computed }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agreementForm.start_date, agreementForm.billing_frequency, agreementForm.committed_periods])
 
   useEffect(() => {
     if (isRentalCustomer && tab > 1) navigate('/rentals/agreements', { replace: true })
@@ -633,6 +677,7 @@ const Rentals = () => {
     shipping_fee: normalizeMoneyInput(item.shipping_fee),
     setup_fee: normalizeMoneyInput(item.setup_fee),
     labor_fee: normalizeMoneyInput(item.labor_fee),
+    removal_fee: normalizeMoneyInput(item.removal_fee),
     initial_condition: item.initial_condition?.trim() || null,
     initial_meter_reading: item.initial_meter_reading?.trim() || null,
   }))
@@ -778,6 +823,7 @@ const Rentals = () => {
         shipping_fee: Number(item.shipping_fee || 0),
         setup_fee: Number(item.setup_fee || 0),
         labor_fee: Number(item.labor_fee || 0),
+        removal_fee: Number(item.removal_fee || 0),
         initial_condition: item.initial_condition || '',
         initial_meter_reading: item.initial_meter_reading || '',
       })),
@@ -806,7 +852,7 @@ const Rentals = () => {
   const handlePartSelect = async (part: RentalPart | null) => {
     setSelectedRentalPart(part)
     if (!part) {
-      setItemDraft(prev => ({ ...prev, part_id: null, part_number: '', part_description: '' }))
+      setItemDraft(prev => ({ ...prev, part_id: null, part_number: '', part_description: '', item_condition: '' }))
       return
     }
     setItemDraft(prev => ({
@@ -814,7 +860,8 @@ const Rentals = () => {
       part_id: part.id,
       part_number: part.part_number,
       part_description: part.description,
-      item_condition: part.condition || prev.item_condition || 'New',
+      // Condition is sourced directly from parts/inventory, not entered by the operator.
+      item_condition: part.condition || '',
       rental_rate: Number(part.unit_price || 0),
     }))
     // Auto-fill the rate from the product's tiered rate card for the chosen frequency.
@@ -847,6 +894,10 @@ const Rentals = () => {
     if (!agreementForm.customer_email.trim()) return toast.error('Customer email is required')
     if (agreementForm.items.length === 0) return toast.error('Add at least one rental product')
     if (agreementForm.billing_frequency === 'daily') return toast.error('Daily billing is no longer offered')
+    if (agreementForm.committed_periods === '' || Number(agreementForm.committed_periods) < 1) {
+      return toast.error('Enter the committed billing periods — this sets the agreement term and end date')
+    }
+    if (!agreementForm.end_date) return toast.error('Set a start date and committed periods so the end date can be calculated')
     saveAgreementMut.mutate()
   }
 
@@ -1094,6 +1145,8 @@ const Rentals = () => {
       item_condition: convertAgreement.item_condition,
       shipping_fee: convertAgreement.shipping_fee || 0,
       setup_fee: convertAgreement.setup_fee || 0,
+      labor_fee: 0,
+      removal_fee: 0,
       initial_condition: null,
       return_condition: null,
       initial_meter_reading: null,
@@ -1112,10 +1165,12 @@ const Rentals = () => {
   const itemsSetupTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.setup_fee || 0), 0), [convertItems])
 
   const itemsLaborTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.labor_fee || 0), 0), [convertItems])
+  const itemsRemovalTotal = useMemo(() => convertItems.reduce((sum, item) => sum + Number(item.removal_fee || 0), 0), [convertItems])
   const convertShippingTotal = Number(invoiceDetails.shipping_fee || 0) + itemsShippingTotal
   const convertSetupTotal = Number(invoiceDetails.setup_fee || 0) + itemsSetupTotal
-  // Same tax rule as Sales: 8.25% on rent + shipping & packing + delivery & setup. Labor is non-taxable.
-  const convertTaxableBase = calculatedBaseRental + convertShippingTotal + convertSetupTotal
+  // Same tax rule as Sales: 8.25% on rent + shipping & packing + delivery & setup + removal.
+  // Labor is non-taxable.
+  const convertTaxableBase = calculatedBaseRental + convertShippingTotal + convertSetupTotal + itemsRemovalTotal
   const convertTaxAmount = roundSalesMoney(convertTaxableBase * SALES_TAX_FACTOR)
   const convertSubtotal =
     calculatedBaseRental +
@@ -1123,6 +1178,7 @@ const Rentals = () => {
     convertSetupTotal +
     Number(invoiceDetails.service_fee || 0) +
     convertShippingTotal +
+    itemsRemovalTotal +
     Number(invoiceDetails.application_fee || 0) +
     itemsLaborTotal
   const convertDiscountAmount = invoiceDetails.discount_type === 'percent'
@@ -2038,7 +2094,7 @@ const Rentals = () => {
               <MenuItem value="quarterly">Quarterly</MenuItem>
             </TextField>
             <TextField label="Start Date" type="date" value={agreementForm.start_date} onChange={e => setAgreementForm(prev => ({ ...prev, start_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-            <TextField label="End Date" type="date" value={agreementForm.end_date} onChange={e => setAgreementForm(prev => ({ ...prev, end_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
+            <TextField label="End Date" type="date" value={agreementForm.end_date} InputProps={{ readOnly: true }} InputLabelProps={{ shrink: true }} helperText="Auto-set from frequency × committed periods" />
             <TextField label="Security Deposit" type="number" value={agreementForm.security_deposit} onChange={e => setAgreementForm(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} />
           </Box>
 
@@ -2060,12 +2116,11 @@ const Rentals = () => {
             </Box>
             <TextField label="Qty" type="number" value={itemDraft.quantity} onChange={e => setItemDraft(prev => ({ ...prev, quantity: Number(e.target.value) }))} inputProps={{ min: 1 }} />
             <TextField label={`Rate / ${agreementForm.billing_frequency}`} type="number" value={itemDraft.rental_rate} onChange={e => setItemDraft(prev => ({ ...prev, rental_rate: Number(e.target.value) }))} />
-            <TextField select label="Condition" value={itemDraft.item_condition} onChange={e => setItemDraft(prev => ({ ...prev, item_condition: e.target.value }))}>
-              {['New', 'Used', 'Refurbished', 'Damaged'].map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-            </TextField>
+            <TextField label="Condition" value={itemDraft.item_condition || ''} InputProps={{ readOnly: true }} helperText="From parts inventory" placeholder={selectedRentalPart ? '—' : 'Select a product'} />
             <TextField label="Shipping & Packing" type="number" value={itemDraft.shipping_fee} onChange={e => setItemDraft(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
             <TextField label="Delivery & Setup" type="number" value={itemDraft.setup_fee} onChange={e => setItemDraft(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
             <TextField label="Labor" type="number" value={itemDraft.labor_fee} onChange={e => setItemDraft(prev => ({ ...prev, labor_fee: Number(e.target.value) }))} />
+            <TextField label="Removal / Pickup" type="number" value={itemDraft.removal_fee} onChange={e => setItemDraft(prev => ({ ...prev, removal_fee: Number(e.target.value) }))} />
             <Button startIcon={<AddIcon />} variant="contained" onClick={addRentalItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, height: 56, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add</Button>
           </Box>
 
@@ -2080,12 +2135,13 @@ const Rentals = () => {
                   <TableCell sx={{ fontWeight: 900 }} align="right">Ship &amp; Pack</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Deliv &amp; Setup</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Labor</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Removal</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {agreementForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
                 ) : agreementForm.items.map(item => (
                   <TableRow key={item.key}>
                     <TableCell>
@@ -2098,6 +2154,7 @@ const Rentals = () => {
                     <TableCell align="right">{money(item.shipping_fee)}</TableCell>
                     <TableCell align="right">{money(item.setup_fee)}</TableCell>
                     <TableCell align="right">{money(item.labor_fee)}</TableCell>
+                    <TableCell align="right">{money(item.removal_fee)}</TableCell>
                     <TableCell align="right">
                       <IconButton size="small" onClick={() => removeRentalItem(item.key)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
@@ -2115,7 +2172,7 @@ const Rentals = () => {
               label="Auto-charge saved card each period"
               sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1', md: 'span 2' }, minHeight: 56, m: 0, alignItems: 'center' }}
             />
-            <TextField sx={{ gridColumn: { md: 'span 2' } }} label="Committed periods" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="e.g. 4 for a 4-period deal" inputProps={{ min: 0 }} />
+            <TextField sx={{ gridColumn: { md: 'span 2' } }} label="Committed periods" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="Sets the term & end date (e.g. 4 for a 4-period deal)" inputProps={{ min: 1 }} />
             <TextField sx={{ gridColumn: { md: 'span 2' } }} select label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent' }))}>
               <MenuItem value="">No discount</MenuItem>
               <MenuItem value="flat">Flat amount</MenuItem>
@@ -2154,6 +2211,7 @@ const Rentals = () => {
                   { label: 'Security Deposit', cost: initialAgreementPricing.deposit, tax: 0, color: '#334155' },
                   { label: 'Shipping & Packing', cost: initialAgreementPricing.shipping, tax: initialAgreementPricing.shippingTax, color: '#7C3AED' },
                   { label: 'Delivery & Setup', cost: initialAgreementPricing.setup, tax: initialAgreementPricing.setupTax, color: '#7C3AED' },
+                  { label: 'Removal & Pickup', cost: initialAgreementPricing.removal, tax: initialAgreementPricing.removalTax, color: '#7C3AED' },
                   { label: 'Labor', cost: initialAgreementPricing.labor, tax: 0, color: '#334155' },
                 ].map(row => (
                   <TableRow key={row.label}>
@@ -2347,6 +2405,7 @@ const Rentals = () => {
                         ['Working Hours Fee', Number(invoiceDetails.worked_hours || 0)],
                         ['Shipping & Packing', convertShippingTotal],
                         ['Delivery & Setup', convertSetupTotal],
+                        ['Removal & Pickup', itemsRemovalTotal],
                         ['Labor', itemsLaborTotal],
                         ['Service Fee', Number(invoiceDetails.service_fee || 0)],
                         ['Application Fee', Number(invoiceDetails.application_fee || 0)],
@@ -2746,6 +2805,7 @@ const Rentals = () => {
                         <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Shipping</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Setup</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }} align="right">Removal</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Labor</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
                       </TableRow>
@@ -2762,6 +2822,7 @@ const Rentals = () => {
                           <TableCell>{item.item_condition || '-'}</TableCell>
                           <TableCell align="right">{money(item.shipping_fee)}</TableCell>
                           <TableCell align="right">{money(item.setup_fee)}</TableCell>
+                          <TableCell align="right">{money(item.removal_fee)}</TableCell>
                           <TableCell align="right">{money(item.labor_fee)}</TableCell>
                           <TableCell>
                             <Chip size="small" label={item.item_status === 'returned' ? 'Returned' : 'Out'} sx={{ fontWeight: 800, bgcolor: item.item_status === 'returned' ? '#DCFCE7' : '#DBEAFE', color: item.item_status === 'returned' ? '#15803D' : '#1D4ED8' }} />
