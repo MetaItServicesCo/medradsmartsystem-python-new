@@ -31,6 +31,14 @@ class RentalItemStatus(str, enum.Enum):
     OUT = "out"
     RETURNED = "returned"
 
+
+class RentalExtensionStatus(str, enum.Enum):
+    REQUESTED = "requested"
+    OFFERED = "offered"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
 class Rental(Base):
     __tablename__ = "rentals"
     __table_args__ = (
@@ -131,6 +139,13 @@ class Rental(Base):
         uselist=False,
         lazy="selectin",
     )
+    extensions = relationship(
+        "RentalExtensionRequest",
+        back_populates="rental",
+        cascade="all, delete-orphan",
+        order_by="RentalExtensionRequest.sequence",
+        lazy="selectin",
+    )
     # Legacy single-item relationships (deprecated).
     equipment = relationship("Equipment")
     part = relationship("InventoryPart", foreign_keys=[part_id])
@@ -210,3 +225,56 @@ class RentalAgreementAcceptance(Base):
     accepted_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     rental = relationship("Rental", back_populates="acceptance")
+
+
+class RentalExtensionRequest(Base):
+    """Auditable amendment request that can extend, but never rewrite, an agreement."""
+    __tablename__ = "rental_extension_requests"
+    __table_args__ = (
+        UniqueConstraint("rental_id", "sequence", name="uq_rental_extension_sequence"),
+        Index("ix_rental_extensions_rental_status", "rental_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    rental_id = Column(Integer, ForeignKey("rentals.id", ondelete="CASCADE"), nullable=False, index=True)
+    sequence = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, default=RentalExtensionStatus.REQUESTED.value, index=True)
+
+    requested_end_date = Column(Date, nullable=True)
+    requested_additional_periods = Column(Integer, nullable=True)
+    request_reason = Column(Text, nullable=True)
+    requested_by_name = Column(String, nullable=False)
+    requested_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    original_end_date = Column(Date, nullable=False)
+    original_committed_periods = Column(Integer, nullable=True)
+    offered_end_date = Column(Date, nullable=True)
+    offered_total_periods = Column(Integer, nullable=True)
+    offered_terms = Column(Text, nullable=True)
+    offered_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    offered_at = Column(DateTime, nullable=True)
+    rejected_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    decision_notes = Column(Text, nullable=True)
+
+    access_token_hash = Column(String, nullable=True, unique=True, index=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    portal_sent_at = Column(DateTime, nullable=True)
+
+    accepted_by_name = Column(String, nullable=True)
+    signature_name = Column(String, nullable=True)
+    terms_accepted = Column(Boolean, nullable=False, default=False)
+    continue_auto_charge = Column(Boolean, nullable=False, default=False)
+    amendment_snapshot = Column(JSON, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+    activated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    rental = relationship("Rental", back_populates="extensions")
+    requested_by_user = relationship("User", foreign_keys=[requested_by_user_id])
+    offered_by = relationship("User", foreign_keys=[offered_by_id])
+    rejected_by = relationship("User", foreign_keys=[rejected_by_id])

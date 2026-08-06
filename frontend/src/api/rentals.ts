@@ -153,6 +153,8 @@ export interface Rental {
   created_at: string
   updated_at: string
   history: RentalHistoryItem[]
+  extension: RentalExtension | null
+  extension_history: Array<RentalExtension | null>
 }
 
 export interface RentalInvoice {
@@ -468,6 +470,31 @@ export interface RentalPortalInvoice {
   line_items: Array<{ item_number?: string; description?: string; quantity?: number; unit_price?: number; total_amount?: number }>
 }
 
+export interface RentalExtension {
+  id: number
+  sequence: number
+  status: 'requested' | 'offered' | 'accepted' | 'rejected' | 'cancelled'
+  requested_end_date: string | null
+  requested_additional_periods: number | null
+  request_reason: string | null
+  requested_by_name: string
+  requested_at: string
+  original_end_date: string
+  original_committed_periods: number | null
+  offered_end_date: string | null
+  offered_total_periods: number | null
+  offered_terms: string | null
+  offered_at: string | null
+  decision_notes: string | null
+  accepted_by_name: string | null
+  signature_name: string | null
+  terms_accepted: boolean
+  continue_auto_charge: boolean
+  accepted_at: string | null
+  activated_at: string | null
+  rejected_at: string | null
+}
+
 export interface RentalPortal {
   company_name: string
   agreement: {
@@ -505,6 +532,8 @@ export interface RentalPortal {
   invoices: RentalPortalInvoice[]
   billing_schedule: RentalBillingPeriod[]
   next_payment: RentalProjectedPayment | null
+  extension: RentalExtension | null
+  can_request_extension: boolean
   square: {
     enabled: boolean
     environment: string
@@ -522,6 +551,126 @@ export const sendRentalPortalLink = async (id: number): Promise<{ detail: string
 
 export const fetchRentalPortal = async (token: string): Promise<RentalPortal> => {
   const res = await apiClient.get(`/rentals/public/${token}`)
+  return res.data
+}
+
+export const fetchRentalExtensionPortal = async (token: string): Promise<RentalPortal> => {
+  const res = await apiClient.get(`/rentals/extensions/public/${token}`)
+  return res.data
+}
+
+export interface RentalExtensionRequestInput {
+  requested_end_date?: string | null
+  additional_periods?: number | null
+  reason?: string | null
+}
+
+export const requestPublicRentalExtension = async (token: string, data: RentalExtensionRequestInput): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/extensions`, data)
+  return res.data
+}
+
+export const requestAccountRentalExtension = async (rentalId: number, data: RentalExtensionRequestInput): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/account/${rentalId}/extensions`, data)
+  return res.data
+}
+
+export const acceptPublicRentalExtension = async (
+  token: string,
+  signatureName: string,
+  continueAutoCharge: boolean,
+): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/extensions/public/${token}/accept`, {
+    signature_name: signatureName,
+    terms_accepted: true,
+    continue_auto_charge: continueAutoCharge,
+  })
+  return res.data
+}
+
+export const acceptRentalLinkExtension = async (
+  token: string,
+  extensionId: number,
+  signatureName: string,
+  continueAutoCharge: boolean,
+): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/extensions/${extensionId}/accept`, {
+    signature_name: signatureName,
+    terms_accepted: true,
+    continue_auto_charge: continueAutoCharge,
+  })
+  return res.data
+}
+
+export const acceptAccountRentalExtension = async (
+  rentalId: number,
+  extensionId: number,
+  signatureName: string,
+  continueAutoCharge: boolean,
+): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/account/${rentalId}/extensions/${extensionId}/accept`, {
+    signature_name: signatureName,
+    terms_accepted: true,
+    continue_auto_charge: continueAutoCharge,
+  })
+  return res.data
+}
+
+export interface RentalExtensionOfferInput {
+  end_date: string
+  total_periods?: number | null
+  terms?: string | null
+  decision_notes?: string | null
+}
+
+export const createRentalExtension = async (
+  rentalId: number,
+  data: RentalExtensionOfferInput,
+): Promise<{ detail: string; link: string; extension: RentalExtension }> => {
+  const res = await apiClient.post(`/rentals/${rentalId}/extensions`, data)
+  return res.data
+}
+
+export const offerRentalExtension = async (
+  rentalId: number,
+  extensionId: number,
+  data: RentalExtensionOfferInput,
+): Promise<{ detail: string; link: string; extension: RentalExtension }> => {
+  const res = await apiClient.post(`/rentals/${rentalId}/extensions/${extensionId}/offer`, data)
+  return res.data
+}
+
+export const rejectRentalExtension = async (
+  rentalId: number,
+  extensionId: number,
+  decisionNotes?: string,
+): Promise<{ detail: string; extension: RentalExtension }> => {
+  const res = await apiClient.post(`/rentals/${rentalId}/extensions/${extensionId}/reject`, { decision_notes: decisionNotes || null })
+  return res.data
+}
+
+export const cancelRentalExtension = async (
+  rentalId: number,
+  extensionId: number,
+  decisionNotes?: string,
+): Promise<{ detail: string; extension: RentalExtension }> => {
+  const res = await apiClient.post(`/rentals/${rentalId}/extensions/${extensionId}/cancel`, { decision_notes: decisionNotes || null })
+  return res.data
+}
+
+// Customer-side withdraw of a pending extension (their own request, or an offer they decline).
+export const cancelExtensionByToken = async (token: string): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/extensions/public/${token}/cancel`)
+  return res.data
+}
+
+export const cancelRentalLinkExtension = async (token: string, extensionId: number): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/extensions/${extensionId}/cancel`)
+  return res.data
+}
+
+export const cancelAccountRentalExtension = async (rentalId: number, extensionId: number): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/account/${rentalId}/extensions/${extensionId}/cancel`)
   return res.data
 }
 

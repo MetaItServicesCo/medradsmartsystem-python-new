@@ -101,3 +101,27 @@ def test_projected_schedule_contains_first_invoice_and_remaining_periods():
     ]
     assert schedule[0]["total"] == Decimal("220.72")
     assert schedule[1]["total"] == Decimal("108.25")
+
+
+def test_extending_term_adds_only_recurring_periods_and_never_repeats_upfront_fees():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "10", "20", "30")],
+        security_deposit=Decimal("50"),
+        discount_type=None,
+        discount_value=Decimal("0"),
+        discount_apply_after_periods=None,
+        billing_frequency="monthly",
+        start_date=date(2026, 1, 31),
+        end_date=date(2026, 4, 30),
+        committed_periods=4,
+    )
+    original = projected_billing_schedule(rental)
+
+    rental.end_date = date(2026, 6, 30)
+    rental.committed_periods = 6
+    extended = projected_billing_schedule(rental)
+
+    assert [period["billing_date"] for period in extended[:4]] == [period["billing_date"] for period in original]
+    assert [period["total"] for period in extended[:4]] == [period["total"] for period in original]
+    assert [period["billing_date"] for period in extended[4:]] == [date(2026, 5, 31), date(2026, 6, 30)]
+    assert [period["total"] for period in extended[4:]] == [Decimal("108.25"), Decimal("108.25")]

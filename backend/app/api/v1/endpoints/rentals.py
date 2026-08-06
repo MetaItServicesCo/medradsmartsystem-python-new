@@ -28,6 +28,8 @@ from app.models.rental import (
     RentalItemStatus,
     RentalDepositStatus,
     BillingFrequency,
+    RentalExtensionRequest,
+    RentalExtensionStatus,
 )
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
@@ -63,9 +65,13 @@ from app.utils.rental_billing import (
     advance_billing_date,
     projected_period,
     projected_billing_schedule,
+    billing_period_date,
+    effective_period_count,
     RENTAL_TAX_RATE,
     RENTAL_TAX_FACTOR,
 )
+from app.utils.rental_extensions import current_extension, extension_response
+from app.utils.notifications import create_notification
 from app.utils.permissions import has_module_permission
 from app.utils.list_search import (
     contains_ci,
@@ -228,6 +234,17 @@ class RentalInvoiceRefundCreate(BaseModel):
     amount: Decimal
     payment_method: Optional[str] = None
     notes: Optional[str] = None
+
+
+class RentalExtensionOfferIn(BaseModel):
+    end_date: date
+    total_periods: Optional[int] = None
+    terms: Optional[str] = None
+    decision_notes: Optional[str] = None
+
+
+class RentalExtensionRejectIn(BaseModel):
+    decision_notes: Optional[str] = None
 
 
 def _money(value: Any) -> Decimal:
@@ -462,6 +479,8 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "created_at": rental.created_at,
         "updated_at": rental.updated_at,
         "history": rental.history or [],
+        "extension": extension_response(current_extension(rental)),
+        "extension_history": [extension_response(item) for item in (rental.extensions or [])],
     }
 
 
@@ -491,6 +510,8 @@ def _rental_detail_response(db: Session, rental: Rental) -> dict[str, Any]:
         invoice = invoice_by_period.get(period)
         schedule.append({
             **projection,
+            "billing_date": invoice.rental_period_start if invoice and invoice.rental_period_start else projection["billing_date"],
+            "period_end": invoice.rental_period_end if invoice and invoice.rental_period_end else projection["period_end"],
             "total": invoice.total_amount if invoice else projection["total"],
             "balance_due": invoice.balance_due if invoice else projection["total"],
             "status": (
@@ -1051,6 +1072,256 @@ def send_rental_portal_link(
         ),
     )
     return {"detail": "Portal link sent", "link": link}
+
+
+def _apply_extension_offer(
+    db: Session,
+    rental: Rental,
+    extension: RentalExtensionRequest,
+    payload: RentalExtensionOfferIn,
+    current_user: User,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    """Turn `extension` into a customer-signable offer without touching the live agreement.
+
+    Shared by the staff 'start extension' path (which creates the row first) and the
+    'offer' path (which responds to a customer request). The agreement is never mutated
+    here — only the offered terms + a fresh signing token are set.
+    """
+    if rental.status != RentalStatus.ACTIVE:
+        raise HTTPException(status_code=409, detail="Only an active rental agreement can be extended")
+    if payload.end_date <= rental.end_date:
+        raise HTTPException(status_code=422, detail="The extension end date must be after the current end date")
+
+    natural_periods = 0
+    while natural_periods < 1200 and billing_period_date(rental, natural_periods + 1) <= payload.end_date:
+        natural_periods += 1
+    total_periods = payload.total_periods or natural_periods
+    current_periods = effective_period_count(rental)
+    if total_periods <= current_periods or total_periods < int(rental.periods_billed or 0):
+        raise HTTPException(status_code=422, detail="The extension must add at least one future billing period")
+    if billing_period_date(rental, total_periods) > payload.end_date:
+        raise HTTPException(status_code=422, detail="The proposed end date does not include all offered periods")
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+    extension.status = RentalExtensionStatus.OFFERED.value
+    extension.offered_end_date = payload.end_date
+    extension.offered_total_periods = total_periods
+    extension.offered_terms = (payload.terms or "").strip() or None
+    extension.decision_notes = (payload.decision_notes or "").strip() or None
+    extension.offered_by_id = current_user.id
+    extension.offered_at = now
+    extension.access_token_hash = _token_hash(token)
+    extension.token_expires_at = now + timedelta(days=30)
+    extension.portal_sent_at = now
+    extension.updated_at = now
+    link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/rental-extension/{token}"
+    _append_history(rental, "extension_offered", current_user, {
+        "extension_id": extension.id,
+        "new_end_date": payload.end_date.isoformat(),
+        "total_periods": total_periods,
+    })
+    if rental.customer_user_id:
+        create_notification(
+            db,
+            user_id=rental.customer_user_id,
+            title=f"Rental extension ready: {rental.rental_number}",
+            message="Review and sign the proposed extension.",
+            notification_type="rental_extension",
+            link_url=f"/rentals/account/{rental.id}",
+            actor_id=current_user.id,
+        )
+    db.commit()
+
+    background_tasks.add_task(
+        send_html_email,
+        [rental.customer_email],
+        f"Review your rental extension {rental.rental_number}",
+        (
+            f"<p>Hello {rental.customer_name},</p>"
+            f"<p>Your extension offer for <strong>{rental.rental_number}</strong> is ready.</p>"
+            f"<p><a href=\"{link}\">Review and sign the rental extension</a></p>"
+            f"<p>The current agreement remains unchanged until you sign. This link expires in 30 days.</p>"
+        ),
+        (
+            f"Hello {rental.customer_name},\n\nYour rental extension for {rental.rental_number} is ready.\n"
+            f"{link}\n\nThe current agreement remains unchanged until you sign."
+        ),
+    )
+    return {"detail": "Extension offer sent", "link": link, "extension": extension_response(extension)}
+
+
+@router.post("/{rental_id}/extensions")
+def create_rental_extension(
+    rental_id: int,
+    payload: RentalExtensionOfferIn,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Staff-initiated extension: propose terms directly and send the signing link,
+    without waiting for the customer to request one first."""
+    _require_internal_rental_operator(current_user)
+    rental = (
+        db.query(Rental)
+        .options(selectinload(Rental.items), selectinload(Rental.extensions))
+        .filter(Rental.id == rental_id)
+        .with_for_update(of=Rental)
+        .first()
+    )
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    if rental.status != RentalStatus.ACTIVE:
+        raise HTTPException(status_code=409, detail="Only an active rental agreement can be extended")
+    if any(item.status in {RentalExtensionStatus.REQUESTED.value, RentalExtensionStatus.OFFERED.value} for item in (rental.extensions or [])):
+        raise HTTPException(status_code=409, detail="An extension is already in progress for this agreement")
+
+    sequence = max((item.sequence for item in (rental.extensions or [])), default=0) + 1
+    extension = RentalExtensionRequest(
+        rental_id=rental.id,
+        sequence=sequence,
+        status=RentalExtensionStatus.OFFERED.value,
+        requested_end_date=payload.end_date,
+        request_reason=None,
+        requested_by_name=current_user.full_name or current_user.username,
+        requested_by_user_id=current_user.id,
+        original_end_date=rental.end_date,
+        original_committed_periods=rental.committed_periods,
+    )
+    db.add(extension)
+    db.flush()
+    return _apply_extension_offer(db, rental, extension, payload, current_user, background_tasks)
+
+
+@router.post("/{rental_id}/extensions/{extension_id}/offer")
+def offer_rental_extension(
+    rental_id: int,
+    extension_id: int,
+    payload: RentalExtensionOfferIn,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Respond to a customer-requested extension with signable terms."""
+    _require_internal_rental_operator(current_user)
+    rental = (
+        db.query(Rental)
+        .options(selectinload(Rental.items), selectinload(Rental.extensions))
+        .filter(Rental.id == rental_id)
+        .with_for_update(of=Rental)
+        .first()
+    )
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    extension = (
+        db.query(RentalExtensionRequest)
+        .filter(RentalExtensionRequest.id == extension_id, RentalExtensionRequest.rental_id == rental.id)
+        .with_for_update()
+        .first()
+    )
+    if not extension:
+        raise HTTPException(status_code=404, detail="Rental extension request not found")
+    if extension.status not in {RentalExtensionStatus.REQUESTED.value, RentalExtensionStatus.OFFERED.value}:
+        raise HTTPException(status_code=409, detail="This extension request has already been closed")
+    return _apply_extension_offer(db, rental, extension, payload, current_user, background_tasks)
+
+
+@router.post("/{rental_id}/extensions/{extension_id}/reject")
+def reject_rental_extension(
+    rental_id: int,
+    extension_id: int,
+    payload: RentalExtensionRejectIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_internal_rental_operator(current_user)
+    rental = db.query(Rental).options(selectinload(Rental.extensions)).filter(Rental.id == rental_id).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    extension = (
+        db.query(RentalExtensionRequest)
+        .filter(RentalExtensionRequest.id == extension_id, RentalExtensionRequest.rental_id == rental.id)
+        .with_for_update()
+        .first()
+    )
+    if not extension:
+        raise HTTPException(status_code=404, detail="Rental extension request not found")
+    if extension.status not in {RentalExtensionStatus.REQUESTED.value, RentalExtensionStatus.OFFERED.value}:
+        raise HTTPException(status_code=409, detail="This extension request has already been closed")
+    extension.status = RentalExtensionStatus.REJECTED.value
+    extension.rejected_by_id = current_user.id
+    extension.rejected_at = datetime.utcnow()
+    extension.decision_notes = (payload.decision_notes or "").strip() or None
+    extension.access_token_hash = None
+    _append_history(rental, "extension_rejected", current_user, {
+        "extension_id": extension.id,
+        "notes": extension.decision_notes,
+    })
+    if rental.customer_user_id:
+        create_notification(
+            db,
+            user_id=rental.customer_user_id,
+            title=f"Rental extension update: {rental.rental_number}",
+            message=extension.decision_notes or "The extension request was not approved.",
+            notification_type="rental_extension",
+            link_url=f"/rentals/account/{rental.id}",
+            actor_id=current_user.id,
+        )
+    db.commit()
+    return {"detail": "Extension request rejected", "extension": extension_response(extension)}
+
+
+@router.post("/{rental_id}/extensions/{extension_id}/cancel")
+def cancel_rental_extension(
+    rental_id: int,
+    extension_id: int,
+    payload: RentalExtensionRejectIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Staff backs out of a pending extension (a proposal they no longer want to stand by).
+    Distinct from reject, which declines a customer's request; both close the amendment
+    without touching the live agreement, and the signing link stops working immediately."""
+    _require_internal_rental_operator(current_user)
+    rental = db.query(Rental).options(selectinload(Rental.extensions)).filter(Rental.id == rental_id).first()
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    extension = (
+        db.query(RentalExtensionRequest)
+        .filter(RentalExtensionRequest.id == extension_id, RentalExtensionRequest.rental_id == rental.id)
+        .with_for_update()
+        .first()
+    )
+    if not extension:
+        raise HTTPException(status_code=404, detail="Rental extension request not found")
+    if extension.status not in {RentalExtensionStatus.REQUESTED.value, RentalExtensionStatus.OFFERED.value}:
+        raise HTTPException(status_code=409, detail="This extension request has already been closed")
+    extension.status = RentalExtensionStatus.CANCELLED.value
+    extension.decision_notes = (payload.decision_notes or "").strip() or None
+    extension.access_token_hash = None
+    extension.updated_at = datetime.utcnow()
+    _append_history(rental, "extension_cancelled", current_user, {
+        "extension_id": extension.id,
+        "by_role": "staff",
+        "notes": extension.decision_notes,
+    })
+    if rental.customer_user_id:
+        create_notification(
+            db,
+            user_id=rental.customer_user_id,
+            title=f"Rental extension update: {rental.rental_number}",
+            message=extension.decision_notes or "The proposed extension was withdrawn.",
+            notification_type="rental_extension",
+            link_url=f"/rentals/account/{rental.id}",
+            actor_id=current_user.id,
+        )
+    db.commit()
+    return {"detail": "Extension cancelled", "extension": extension_response(extension)}
 
 
 @router.post("/run-recurring-billing")

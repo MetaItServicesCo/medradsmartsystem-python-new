@@ -2,7 +2,7 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Autocomplete, Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  Alert, Autocomplete, Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, IconButton, ListItemIcon, Menu, MenuItem,
   LinearProgress, Skeleton, Switch, FormControlLabel, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TablePagination, TextField, Typography, useMediaQuery, useTheme,
@@ -55,6 +55,10 @@ import {
   upsertRentalProductRate,
   runRecurringBilling,
   sendRentalPortalLink,
+  createRentalExtension,
+  offerRentalExtension,
+  rejectRentalExtension,
+  cancelRentalExtension,
   type Rental,
   type RentalItem,
   type RentalInvoice,
@@ -449,6 +453,15 @@ const Rentals = () => {
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
   const [deliveryLink, setDeliveryLink] = useState('')
+  const [deliveryLinkKind, setDeliveryLinkKind] = useState<'agreement' | 'extension'>('agreement')
+  const [extensionOfferEnd, setExtensionOfferEnd] = useState('')
+  const [extensionOfferPeriods, setExtensionOfferPeriods] = useState('')
+  const [extensionOfferTerms, setExtensionOfferTerms] = useState('')
+  const [extensionDecisionNotes, setExtensionDecisionNotes] = useState('')
+  const [startExtEnd, setStartExtEnd] = useState('')
+  const [startExtPeriods, setStartExtPeriods] = useState('')
+  const [startExtTerms, setStartExtTerms] = useState('')
+  const [startExtNotes, setStartExtNotes] = useState('')
   const [partInfo, setPartInfo] = useState<RentalPartInfo | null>(null)
   const [rateCardPart, setRateCardPart] = useState<RentalPart | null>(null)
   const [rateCardForm, setRateCardForm] = useState({ weekly_rate: '', biweekly_rate: '', monthly_rate: '', quarterly_rate: '', default_deposit: '' })
@@ -601,7 +614,12 @@ const Rentals = () => {
     }
     setViewAgreement(agreement)
     try {
-      setViewAgreement(await fetchRentalDetail(agreement.id))
+      const detail = await fetchRentalDetail(agreement.id)
+      setViewAgreement(detail)
+      setExtensionOfferEnd(detail.extension?.offered_end_date || detail.extension?.requested_end_date || '')
+      setExtensionOfferPeriods(detail.extension?.offered_total_periods ? String(detail.extension.offered_total_periods) : '')
+      setExtensionOfferTerms(detail.extension?.offered_terms || '')
+      setExtensionDecisionNotes(detail.extension?.decision_notes || '')
     } catch (error) {
       toast.error(apiErrorMessage(error, 'Could not load the complete rental billing schedule'))
     }
@@ -881,12 +899,80 @@ const Rentals = () => {
   const sendMut = useMutation({
     mutationFn: (id: number) => sendRentalPortalLink(id),
     onSuccess: (result) => {
+      setDeliveryLinkKind('agreement')
       setDeliveryLink(result.link)
       toast.success('Secure link emailed to the customer')
       closeActions()
       invalidateRentals()
     },
     onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not send the customer link')),
+  })
+
+  const extensionOfferMut = useMutation({
+    mutationFn: () => {
+      if (!viewAgreement?.extension) return Promise.reject(new Error('No extension request selected'))
+      return offerRentalExtension(viewAgreement.id, viewAgreement.extension.id, {
+        end_date: extensionOfferEnd,
+        total_periods: extensionOfferPeriods ? Number(extensionOfferPeriods) : null,
+        terms: extensionOfferTerms.trim() || null,
+        decision_notes: extensionDecisionNotes.trim() || null,
+      })
+    },
+    onSuccess: async (result) => {
+      setDeliveryLinkKind('extension')
+      setDeliveryLink(result.link)
+      toast.success('Extension offer emailed to the customer')
+      invalidateRentals()
+      if (viewAgreement) setViewAgreement(await fetchRentalDetail(viewAgreement.id))
+    },
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not send the extension offer')),
+  })
+
+  const extensionRejectMut = useMutation({
+    mutationFn: () => {
+      if (!viewAgreement?.extension) return Promise.reject(new Error('No extension request selected'))
+      return rejectRentalExtension(viewAgreement.id, viewAgreement.extension.id, extensionDecisionNotes)
+    },
+    onSuccess: async () => {
+      toast.success('Extension request rejected')
+      invalidateRentals()
+      if (viewAgreement) setViewAgreement(await fetchRentalDetail(viewAgreement.id))
+    },
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not reject the extension request')),
+  })
+
+  const extensionCreateMut = useMutation({
+    mutationFn: () => {
+      if (!viewAgreement) return Promise.reject(new Error('No agreement selected'))
+      return createRentalExtension(viewAgreement.id, {
+        end_date: startExtEnd,
+        total_periods: startExtPeriods ? Number(startExtPeriods) : null,
+        terms: startExtTerms.trim() || null,
+        decision_notes: startExtNotes.trim() || null,
+      })
+    },
+    onSuccess: async (result) => {
+      setDeliveryLinkKind('extension')
+      setDeliveryLink(result.link)
+      toast.success('Extension offer emailed to the customer')
+      setStartExtEnd(''); setStartExtPeriods(''); setStartExtTerms(''); setStartExtNotes('')
+      invalidateRentals()
+      if (viewAgreement) setViewAgreement(await fetchRentalDetail(viewAgreement.id))
+    },
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not start the extension')),
+  })
+
+  const extensionCancelMut = useMutation({
+    mutationFn: () => {
+      if (!viewAgreement?.extension) return Promise.reject(new Error('No extension request selected'))
+      return cancelRentalExtension(viewAgreement.id, viewAgreement.extension.id, extensionDecisionNotes)
+    },
+    onSuccess: async () => {
+      toast.success('Extension withdrawn')
+      invalidateRentals()
+      if (viewAgreement) setViewAgreement(await fetchRentalDetail(viewAgreement.id))
+    },
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not cancel the extension')),
   })
 
   const openRentalPartInfo = (
@@ -1716,6 +1802,12 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><EditIcon fontSize="small" /></ListItemIcon>
           Edit
         </MenuItem>
+        {actionAgreement?.extension && ['requested', 'offered'].includes(actionAgreement.extension.status) && (
+          <MenuItem sx={{ ...ACTION_MENU_ITEM, bgcolor: '#F5F3FF', color: '#7C3AED' }} onClick={() => { if (actionAgreement) void openAgreementDetails(actionAgreement); closeActions() }}>
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CalendarMonthIcon fontSize="small" /></ListItemIcon>
+            Review Extension Request
+          </MenuItem>
+        )}
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionAgreement) void openAgreementDetails(actionAgreement); closeActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View Details
@@ -1740,10 +1832,10 @@ const Rentals = () => {
       </Menu>
 
       <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental Link Sent</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{deliveryLinkKind === 'extension' ? 'Extension Offer Sent' : 'Rental Link Sent'}</DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ color: '#4B5563', mb: 2 }}>
-            The customer was notified. You can also copy this secure rental agreement link.
+            The customer was notified. You can also copy this secure {deliveryLinkKind === 'extension' ? 'extension amendment' : 'rental agreement'} link.
           </Typography>
           <TextField
             fullWidth
@@ -2567,6 +2659,80 @@ const Rentals = () => {
                   </Box>
                 </Box>
               </Card>
+
+              {viewAgreement.extension && (
+                <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1.5 }}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 950, color: '#1E3A8A' }}>Extension Amendment #{viewAgreement.extension.sequence}</Typography>
+                      <Typography sx={{ color: '#64748B', fontSize: 13 }}>
+                        Requested by {viewAgreement.extension.requested_by_name} on {formatDate(viewAgreement.extension.requested_at)}
+                      </Typography>
+                    </Box>
+                    <Chip label={viewAgreement.extension.status} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: statusChip(viewAgreement.extension.status).bg, color: statusChip(viewAgreement.extension.status).color }} />
+                  </Box>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 1.5, mb: 1.5 }}>
+                    <TextField label="Current end date" value={viewAgreement.extension.original_end_date || ''} InputProps={{ readOnly: true }} InputLabelProps={{ shrink: true }} />
+                    <TextField type="date" label="Offered end date" value={extensionOfferEnd} onChange={event => setExtensionOfferEnd(event.target.value)} InputLabelProps={{ shrink: true }} disabled={!['requested', 'offered'].includes(viewAgreement.extension.status)} />
+                    <TextField type="number" label="Total billing periods" value={extensionOfferPeriods} onChange={event => setExtensionOfferPeriods(event.target.value)} inputProps={{ min: 1, max: 1200 }} disabled={!['requested', 'offered'].includes(viewAgreement.extension.status)} />
+                    <TextField label="Customer request" value={viewAgreement.extension.request_reason || 'No reason supplied'} InputProps={{ readOnly: true }} />
+                  </Box>
+                  {['requested', 'offered'].includes(viewAgreement.extension.status) ? (
+                    <>
+                      <TextField fullWidth multiline minRows={2} label="Extension terms shown to customer" value={extensionOfferTerms} onChange={event => setExtensionOfferTerms(event.target.value)} sx={{ mb: 1.5 }} />
+                      <TextField fullWidth multiline minRows={2} label="Internal decision notes" value={extensionDecisionNotes} onChange={event => setExtensionDecisionNotes(event.target.value)} sx={{ mb: 1.5 }} />
+                      <Alert severity="info" sx={{ mb: 1.5, borderRadius: '12px' }}>
+                        Sending the offer does not alter billing. The end date and future schedule update only after the customer signs.
+                      </Alert>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Button variant="contained" disabled={!extensionOfferEnd || extensionOfferMut.isPending} onClick={() => extensionOfferMut.mutate()} sx={{ fontWeight: 900, textTransform: 'none' }}>
+                          {viewAgreement.extension.status === 'offered' ? 'Resend Extension' : 'Send Signable Extension'}
+                        </Button>
+                        {viewAgreement.extension.status === 'offered' ? (
+                          <Button color="error" variant="outlined" disabled={extensionCancelMut.isPending} onClick={() => extensionCancelMut.mutate()} sx={{ fontWeight: 900, textTransform: 'none' }}>
+                            Cancel Offer
+                          </Button>
+                        ) : (
+                          <Button color="error" variant="outlined" disabled={extensionRejectMut.isPending} onClick={() => extensionRejectMut.mutate()} sx={{ fontWeight: 900, textTransform: 'none' }}>
+                            Reject Request
+                          </Button>
+                        )}
+                      </Box>
+                    </>
+                  ) : viewAgreement.extension.status === 'accepted' ? (
+                    <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#ECFDF5', border: '1px solid #A7F3D0' }}>
+                      <Typography sx={{ fontWeight: 900, color: '#047857' }}>
+                        Signed by {viewAgreement.extension.accepted_by_name} · extended through {formatDate(viewAgreement.extension.offered_end_date)}
+                      </Typography>
+                      <Typography sx={{ fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 24 }}>{viewAgreement.extension.signature_name}</Typography>
+                    </Box>
+                  ) : (
+                    <Typography sx={{ color: '#64748B', fontWeight: 700 }}>{viewAgreement.extension.decision_notes || 'This extension request is closed.'}</Typography>
+                  )}
+                </Card>
+              )}
+
+              {viewAgreement.status === 'active' && !['requested', 'offered'].includes(viewAgreement.extension?.status || '') && (
+                <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
+                  <Typography sx={{ fontWeight: 950, color: '#1E3A8A', mb: 0.25 }}>Start a new extension</Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: 13, mb: 1.5 }}>
+                    Propose new terms and email the customer a signing link. Billing changes only after they sign.
+                  </Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 1.5, mb: 1.5 }}>
+                    <TextField label="Current end date" value={viewAgreement.end_date || ''} InputProps={{ readOnly: true }} InputLabelProps={{ shrink: true }} />
+                    <TextField type="date" label="New end date" value={startExtEnd} onChange={event => setStartExtEnd(event.target.value)} InputLabelProps={{ shrink: true }} />
+                    <TextField type="number" label="Total billing periods (optional)" value={startExtPeriods} onChange={event => setStartExtPeriods(event.target.value)} inputProps={{ min: 1, max: 1200 }} />
+                  </Box>
+                  <TextField fullWidth multiline minRows={2} label="Extension terms shown to customer" value={startExtTerms} onChange={event => setStartExtTerms(event.target.value)} sx={{ mb: 1.5 }} />
+                  <TextField fullWidth multiline minRows={2} label="Internal decision notes" value={startExtNotes} onChange={event => setStartExtNotes(event.target.value)} sx={{ mb: 1.5 }} />
+                  <Alert severity="info" sx={{ mb: 1.5, borderRadius: '12px' }}>
+                    Leave periods blank to bill every period up to the new end date. The current agreement is unchanged until the customer signs.
+                  </Alert>
+                  <Button variant="contained" disabled={!startExtEnd || extensionCreateMut.isPending} onClick={() => extensionCreateMut.mutate()} sx={{ fontWeight: 900, textTransform: 'none' }}>
+                    Start Extension &amp; Send Link
+                  </Button>
+                </Card>
+              )}
 
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Items</Typography>

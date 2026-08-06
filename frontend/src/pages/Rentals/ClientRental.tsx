@@ -26,11 +26,20 @@ import {
 } from '@/components/Documents/CustomerDocumentUI'
 import {
   acceptAccountRental,
+  acceptAccountRentalExtension,
   acceptPublicRental,
+  acceptPublicRentalExtension,
+  acceptRentalLinkExtension,
+  cancelAccountRentalExtension,
+  cancelExtensionByToken,
+  cancelRentalLinkExtension,
   fetchAccountRental,
+  fetchRentalExtensionPortal,
   fetchRentalPortal,
   payAccountRentalInvoice,
   payPublicRentalInvoice,
+  requestAccountRentalExtension,
+  requestPublicRentalExtension,
   type RentalPortalInvoice,
 } from '@/api/rentals'
 
@@ -82,9 +91,10 @@ const InvoiceBreakdown = ({ invoice }: { invoice: RentalPortalInvoice }) => (
 )
 
 const ClientRental = () => {
-  const { token = '', rentalId = '' } = useParams()
+  const { token = '', rentalId = '', extensionToken = '' } = useParams()
   const accountRentalId = Number(rentalId || 0)
   const isAccountView = accountRentalId > 0
+  const isExtensionView = Boolean(extensionToken)
   const queryClient = useQueryClient()
   const [signatureName, setSignatureName] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
@@ -92,6 +102,19 @@ const ClientRental = () => {
   const [authorizeFuturePayments, setAuthorizeFuturePayments] = useState(false)
   const [thankYouInvoice, setThankYouInvoice] = useState('')
   const [printInvoiceId, setPrintInvoiceId] = useState<number | null>(null)
+  const [showExtensionRequest, setShowExtensionRequest] = useState(false)
+  const [extensionEndDate, setExtensionEndDate] = useState('')
+  const [extensionPeriods, setExtensionPeriods] = useState('')
+  const [extensionReason, setExtensionReason] = useState('')
+  const [extensionSignature, setExtensionSignature] = useState('')
+  const [extensionTermsAccepted, setExtensionTermsAccepted] = useState(false)
+  const [continueAutoCharge, setContinueAutoCharge] = useState(false)
+
+  const portalKey = isAccountView
+    ? ['rental-account', accountRentalId]
+    : isExtensionView
+      ? ['rental-extension', extensionToken]
+      : ['rental-portal', token]
 
   useEffect(() => {
     const clearPrintSelection = () => setPrintInvoiceId(null)
@@ -100,9 +123,13 @@ const ClientRental = () => {
   }, [])
 
   const portalQ = useQuery({
-    queryKey: isAccountView ? ['rental-account', accountRentalId] : ['rental-portal', token],
-    queryFn: () => isAccountView ? fetchAccountRental(accountRentalId) : fetchRentalPortal(token),
-    enabled: isAccountView || Boolean(token),
+    queryKey: portalKey,
+    queryFn: () => isAccountView
+      ? fetchAccountRental(accountRentalId)
+      : isExtensionView
+        ? fetchRentalExtensionPortal(extensionToken)
+        : fetchRentalPortal(token),
+    enabled: isAccountView || isExtensionView || Boolean(token),
     retry: false,
   })
 
@@ -112,7 +139,7 @@ const ClientRental = () => {
       : acceptPublicRental(token, signatureName.trim()),
     onSuccess: (data) => {
       queryClient.setQueryData(
-        isAccountView ? ['rental-account', accountRentalId] : ['rental-portal', token],
+        portalKey,
         data,
       )
       queryClient.invalidateQueries({ queryKey: ['rentals'] })
@@ -121,6 +148,61 @@ const ClientRental = () => {
       toast.success('Rental agreement signed and approved')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not approve the agreement'),
+  })
+
+  const requestExtensionMut = useMutation({
+    mutationFn: () => {
+      const payload = {
+        requested_end_date: extensionEndDate || null,
+        additional_periods: extensionPeriods ? Number(extensionPeriods) : null,
+        reason: extensionReason.trim() || null,
+      }
+      return isAccountView
+        ? requestAccountRentalExtension(accountRentalId, payload)
+        : requestPublicRentalExtension(token, payload)
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(portalKey, data)
+      queryClient.invalidateQueries({ queryKey: ['rentals'] })
+      setShowExtensionRequest(false)
+      toast.success('Extension request sent for review')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not request the extension'),
+  })
+
+  const acceptExtensionMut = useMutation({
+    mutationFn: () => {
+      if (!portalQ.data?.extension) throw new Error('Extension is unavailable')
+      return isAccountView
+        ? acceptAccountRentalExtension(accountRentalId, portalQ.data.extension.id, extensionSignature.trim(), continueAutoCharge)
+        : isExtensionView
+          ? acceptPublicRentalExtension(extensionToken, extensionSignature.trim(), continueAutoCharge)
+          : acceptRentalLinkExtension(token, portalQ.data.extension.id, extensionSignature.trim(), continueAutoCharge)
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(portalKey, data)
+      queryClient.invalidateQueries({ queryKey: ['rentals'] })
+      queryClient.invalidateQueries({ queryKey: ['rental-summary'] })
+      toast.success('Rental extension signed and activated')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not accept the extension'),
+  })
+
+  const withdrawExtensionMut = useMutation({
+    mutationFn: () => {
+      if (!portalQ.data?.extension) throw new Error('Extension is unavailable')
+      return isAccountView
+        ? cancelAccountRentalExtension(accountRentalId, portalQ.data.extension.id)
+        : isExtensionView
+          ? cancelExtensionByToken(extensionToken)
+          : cancelRentalLinkExtension(token, portalQ.data.extension.id)
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(portalKey, data)
+      queryClient.invalidateQueries({ queryKey: ['rentals'] })
+      toast.success('Extension withdrawn')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not withdraw the extension'),
   })
 
   const payMut = useMutation({
@@ -152,8 +234,8 @@ const ClientRental = () => {
   }
 
   const portal = portalQ.data
-  const { agreement, acceptance, invoices, billing_schedule, next_payment, square, company_name } = portal
-  const canPay = square.enabled && Boolean(square.application_id) && Boolean(square.location_id)
+  const { agreement, acceptance, invoices, billing_schedule, next_payment, square, company_name, extension } = portal
+  const canPay = !isExtensionView && square.enabled && Boolean(square.application_id) && Boolean(square.location_id)
   const initialInvoice = invoices[0]
   const initialInvoiceId = initialInvoice?.id
   const displayedInvoice = printInvoiceId
@@ -301,6 +383,89 @@ const ClientRental = () => {
             <Typography sx={{ color: '#7C3AED', fontWeight: 900, fontSize: 11, textTransform: 'uppercase', mb: 0.5 }}>Terms &amp; Conditions</Typography>
             <Typography sx={{ color: '#475569', whiteSpace: 'pre-wrap', fontSize: 13 }}>{agreement.terms_and_conditions}</Typography>
           </Box>
+        )}
+
+        {acceptance && (
+          <Card className="rental-screen-only" variant="outlined" sx={{ mb: 3, p: { xs: 2, md: 2.5 }, borderRadius: '16px', borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
+            <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 19 }}>Agreement Extension</Typography>
+            {extension?.status === 'requested' && (
+              <Box sx={{ mt: 1.5 }}>
+                <Alert severity="info" sx={{ borderRadius: '12px' }}>
+                  Your extension request is under review. The current agreement and billing schedule remain unchanged.
+                </Alert>
+                <Button variant="outlined" color="error" disabled={withdrawExtensionMut.isPending} onClick={() => withdrawExtensionMut.mutate()} sx={{ mt: 1.5, fontWeight: 900, textTransform: 'none' }}>
+                  Withdraw Request
+                </Button>
+              </Box>
+            )}
+            {extension?.status === 'rejected' && (
+              <Alert severity="warning" sx={{ mt: 1.5, borderRadius: '12px' }}>
+                The latest extension request was not approved{extension.decision_notes ? `: ${extension.decision_notes}` : '.'}
+              </Alert>
+            )}
+            {extension?.status === 'accepted' && (
+              <CustomerSignatureRecord
+                context={`Extension #${extension.sequence}`}
+                acceptedBy={extension.accepted_by_name || ''}
+                acceptedAt={dateLabel(extension.accepted_at)}
+                signature={extension.signature_name || ''}
+                detail={`Extended through ${dateLabel(extension.offered_end_date)}`}
+              />
+            )}
+            {extension?.status === 'offered' && (
+              <Box sx={{ mt: 1.5 }}>
+                <Alert severity="success" sx={{ mb: 2, borderRadius: '12px' }}>
+                  Extension #{extension.sequence} is ready for your review. Your live schedule changes only after you sign.
+                </Alert>
+                <CustomerDetailsCard rows={[
+                  { label: 'Current end date', value: dateLabel(extension.original_end_date) },
+                  { label: 'New end date', value: dateLabel(extension.offered_end_date) },
+                  { label: 'Total billing periods', value: String(extension.offered_total_periods || '—') },
+                  { label: 'Future billing', value: 'Rental charges only; upfront fees are not repeated' },
+                ]} />
+                {extension.offered_terms && <Typography sx={{ mt: 1.5, color: '#475569', whiteSpace: 'pre-wrap' }}>{extension.offered_terms}</Typography>}
+                <TextField fullWidth label="Type your full legal name" value={extensionSignature} onChange={event => setExtensionSignature(event.target.value)} sx={{ mt: 2, mb: 1.5 }} />
+                <CustomerSignaturePreview name={extensionSignature} />
+                <FormControlLabel
+                  sx={{ ...customerConsentLabelSx, mt: 1.5 }}
+                  control={<Checkbox checked={extensionTermsAccepted} onChange={event => setExtensionTermsAccepted(event.target.checked)} />}
+                  label="I accept this extension amendment and its updated rental term."
+                />
+                {agreement.auto_charge_authorized && agreement.has_card_on_file && (
+                  <FormControlLabel
+                    sx={customerConsentLabelSx}
+                    control={<Checkbox checked={continueAutoCharge} onChange={event => setContinueAutoCharge(event.target.checked)} />}
+                    label="Continue authorized automatic payments for the extended billing periods."
+                  />
+                )}
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                  <Button variant="contained" startIcon={<DrawIcon />} disabled={!extensionTermsAccepted || extensionSignature.trim().length < 2 || acceptExtensionMut.isPending} onClick={() => acceptExtensionMut.mutate()} sx={{ fontWeight: 900, textTransform: 'none' }}>
+                    Sign &amp; Accept Extension
+                  </Button>
+                  <Button variant="outlined" color="error" disabled={withdrawExtensionMut.isPending} onClick={() => withdrawExtensionMut.mutate()} sx={{ fontWeight: 900, textTransform: 'none' }}>
+                    Decline Extension
+                  </Button>
+                </Box>
+              </Box>
+            )}
+            {portal.can_request_extension && !isExtensionView && !showExtensionRequest && (
+              <Button variant="outlined" onClick={() => setShowExtensionRequest(true)} sx={{ mt: 1.5, fontWeight: 900, textTransform: 'none' }}>Request Extension</Button>
+            )}
+            {portal.can_request_extension && !isExtensionView && showExtensionRequest && (
+              <Box sx={{ mt: 2, display: 'grid', gap: 1.5 }}>
+                <Typography sx={{ color: '#64748B' }}>Enter a desired end date, additional periods, or both. Staff will review and send a signable amendment.</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                  <TextField type="date" label="Requested end date" InputLabelProps={{ shrink: true }} value={extensionEndDate} onChange={event => setExtensionEndDate(event.target.value)} inputProps={{ min: agreement.end_date }} />
+                  <TextField type="number" label="Additional billing periods" value={extensionPeriods} onChange={event => setExtensionPeriods(event.target.value)} inputProps={{ min: 1, max: 1200 }} />
+                </Box>
+                <TextField multiline minRows={2} label="Reason or notes (optional)" value={extensionReason} onChange={event => setExtensionReason(event.target.value)} />
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button variant="contained" disabled={(!extensionEndDate && !extensionPeriods) || requestExtensionMut.isPending} onClick={() => requestExtensionMut.mutate()} sx={{ fontWeight: 900, textTransform: 'none' }}>Submit Request</Button>
+                  <Button onClick={() => setShowExtensionRequest(false)} sx={{ fontWeight: 800 }}>Cancel</Button>
+                </Box>
+              </Box>
+            )}
+          </Card>
         )}
         </Box>
 

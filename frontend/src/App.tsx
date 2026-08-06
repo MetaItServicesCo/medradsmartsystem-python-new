@@ -100,6 +100,7 @@ function App() {
         <Route path="/quotation/account/:quotationId" element={isAuthenticated ? <ClientQuotation /> : <Navigate to="/login" replace />} />
         <Route path="/payment/sales/:token" element={<PublicSalesPayment />} />
         <Route path="/rental/:token" element={<ClientRental />} />
+        <Route path="/rental-extension/:extensionToken" element={<ClientRental />} />
         <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
 
         <Route
