@@ -225,6 +225,7 @@ interface RentalItemForm {
   part_number: string
   part_description: string
   quantity: number
+  available_on_hand: number
   rental_rate: number
   item_condition: string
   shipping_fee: number
@@ -289,6 +290,7 @@ const newRentalItem = (): RentalItemForm => ({
   part_number: '',
   part_description: '',
   quantity: 1,
+  available_on_hand: 0,
   rental_rate: 0,
   item_condition: 'New',
   shipping_fee: 0,
@@ -847,6 +849,7 @@ const Rentals = () => {
         part_number: item.part_number || '',
         part_description: item.part_description || '',
         quantity: Number(item.quantity || 1),
+        available_on_hand: Number(item.part_stock || 0),
         rental_rate: Number(item.rental_rate || 0),
         item_condition: item.item_condition || 'New',
         shipping_fee: Number(item.shipping_fee || 0),
@@ -949,10 +952,28 @@ const Rentals = () => {
         // Same part → one line with a combined quantity, never a duplicate line.
         return { ...prev, items: prev.items.map(item => item.part_id === itemDraft.part_id ? { ...item, quantity: Math.max(1, Number(item.quantity || 1)) + qty } : item) }
       }
-      return { ...prev, items: [...prev.items, { ...itemDraft, quantity: qty, key: Math.random().toString(36).slice(2) }] }
+      return { ...prev, items: [...prev.items, { ...itemDraft, quantity: qty, available_on_hand: Number(selectedRentalPart?.quantity_on_hand || 0), key: Math.random().toString(36).slice(2) }] }
     })
     setSelectedRentalPart(null)
     setItemDraft(newRentalItem())
+  }
+
+  // Largest quantity a line may hold: current on-hand for its part plus what this
+  // agreement already reserved for it (released first on save). A part appears once,
+  // so no other lines compete for the same stock.
+  const lineMax = (item: RentalItemForm) =>
+    Math.max(1, Number(item.available_on_hand || 0) + (item.part_id ? qtyReservedByThisAgreement(item.part_id) : 0))
+
+  const setLineQuantity = (key: string, raw: number) => {
+    setAgreementForm(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.key !== key) return item
+        const cap = lineMax(item)
+        const next = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), cap) : raw
+        return { ...item, quantity: next }
+      }),
+    }))
   }
 
   const removeRentalItem = (key: string) => {
@@ -2233,7 +2254,16 @@ const Rentals = () => {
                       <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.part_number}</Typography>
                       <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{item.part_description}</Typography>
                     </TableCell>
-                    <TableCell align="right">{item.quantity}</TableCell>
+                    <TableCell align="right">
+                      <TextField
+                        type="number" size="small" value={item.quantity}
+                        onChange={e => setLineQuantity(item.key, Number(e.target.value))}
+                        inputProps={{ min: 1, max: lineMax(item), style: { textAlign: 'right', width: 56 } }}
+                        error={Number(item.quantity || 0) < 1 || Number(item.quantity || 0) > lineMax(item)}
+                        helperText={`of ${lineMax(item)}`}
+                        FormHelperTextProps={{ sx: { m: 0, textAlign: 'right', fontSize: 10 } }}
+                      />
+                    </TableCell>
                     <TableCell align="right">{money(item.rental_rate)}</TableCell>
                     <TableCell>{item.item_condition}</TableCell>
                     <TableCell align="right">{money(item.shipping_fee)}</TableCell>

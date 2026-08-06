@@ -71,6 +71,7 @@ export interface RentalItem {
   part_number: string | null
   part_description: string | null
   default_picture_url: string | null
+  part_stock?: number | null
   quantity: number
   rental_rate: number
   item_condition: string | null

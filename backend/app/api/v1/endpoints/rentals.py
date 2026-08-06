@@ -386,6 +386,8 @@ def _rental_item_response(item: RentalItem) -> dict[str, Any]:
         "part_number": item.part_number or (item.part.part_number if item.part else None),
         "part_description": item.part_description or (item.part.description if item.part else None),
         "default_picture_url": item.part.default_picture_url if item.part else None,
+        # Current on-hand stock for this line's part, so the edit form can cap quantities.
+        "part_stock": item.part.quantity_on_hand if item.part else None,
         "quantity": item.quantity,
         "rental_rate": item.rental_rate,
         "item_condition": item.item_condition,
