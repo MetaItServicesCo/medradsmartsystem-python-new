@@ -127,6 +127,10 @@ export interface Rental {
   customer_email: string
   customer_phone: string
   customer_address: string
+  delivery_street: string | null
+  delivery_city: string | null
+  delivery_state: string | null
+  delivery_zip: string | null
   billing_frequency: BillingFrequency
   rental_rate: number
   security_deposit: number
@@ -248,6 +252,10 @@ export interface RentalPayload {
   customer_email: string
   customer_phone: string
   customer_address: string
+  delivery_street: string | null
+  delivery_city: string | null
+  delivery_state: string | null
+  delivery_zip: string | null
   billing_frequency: BillingFrequency
   security_deposit: number
   start_date: string

@@ -55,7 +55,14 @@ class Rental(Base):
     customer_name = Column(String, nullable=False)
     customer_email = Column(String, nullable=False)
     customer_phone = Column(String, nullable=False)
+    # customer_address is the composed single-line delivery address (also used on the
+    # invoice). The structured parts below are the source of truth; customer_address is
+    # rebuilt from them on save so every existing reader keeps working unchanged.
     customer_address = Column(Text, nullable=False)
+    delivery_street = Column(String, nullable=True)
+    delivery_city = Column(String, nullable=True)
+    delivery_state = Column(String, nullable=True)
+    delivery_zip = Column(String, nullable=True)
     billing_frequency = Column(SQLEnum(BillingFrequency), nullable=False)
     security_deposit = Column(Numeric(10, 2), nullable=False)
     start_date = Column(Date, nullable=False)

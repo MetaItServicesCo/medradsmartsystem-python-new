@@ -242,6 +242,10 @@ interface RentalAgreementFormState {
   customer_email: string
   customer_phone: string
   customer_address: string
+  delivery_street: string
+  delivery_city: string
+  delivery_state: string
+  delivery_zip: string
   billing_frequency: BillingFrequency
   security_deposit: number
   start_date: string
@@ -262,6 +266,10 @@ const emptyAgreement = (): RentalAgreementFormState => ({
   customer_email: '',
   customer_phone: '',
   customer_address: '',
+  delivery_street: '',
+  delivery_city: '',
+  delivery_state: '',
+  delivery_zip: '',
   billing_frequency: 'monthly',
   security_deposit: 0,
   start_date: new Date().toISOString().slice(0, 10),
@@ -325,6 +333,19 @@ const addClampedMonths = (start: Date, months: number): Date => {
   const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate()
   shifted.setDate(Math.min(day, lastDay))
   return shifted
+}
+
+// Compose the single-line delivery address from its parts (mirrors the backend), e.g.
+// "123 Main St, Springfield, IL 62704".
+const composeDeliveryAddress = (street: string, city: string, state: string, zip: string): string => {
+  const s = (street || '').trim()
+  const c = (city || '').trim()
+  const st = (state || '').trim()
+  const z = (zip || '').trim()
+  if (![s, c, st, z].some(Boolean)) return ''
+  let locality = [c, st].filter(Boolean).join(', ')
+  if (z) locality = `${locality} ${z}`.trim()
+  return [s, locality].filter(Boolean).join(', ')
 }
 
 const deriveRentalEndDate = (startISO: string, frequency: BillingFrequency, periods: number | ''): string => {
@@ -688,7 +709,11 @@ const Rentals = () => {
     customer_name: agreementForm.customer_name.trim(),
     customer_email: agreementForm.customer_email.trim(),
     customer_phone: digitsOnly(agreementForm.customer_phone),
-    customer_address: agreementForm.customer_address.trim(),
+    customer_address: composeDeliveryAddress(agreementForm.delivery_street, agreementForm.delivery_city, agreementForm.delivery_state, agreementForm.delivery_zip) || agreementForm.customer_address.trim(),
+    delivery_street: agreementForm.delivery_street.trim() || null,
+    delivery_city: agreementForm.delivery_city.trim() || null,
+    delivery_state: agreementForm.delivery_state.trim() || null,
+    delivery_zip: agreementForm.delivery_zip.trim() || null,
     billing_frequency: agreementForm.billing_frequency,
     security_deposit: normalizeMoneyInput(agreementForm.security_deposit),
     start_date: normalizeDateInput(agreementForm.start_date),
@@ -802,6 +827,10 @@ const Rentals = () => {
       customer_email: rental.customer_email,
       customer_phone: formatUSPhoneInput(rental.customer_phone),
       customer_address: rental.customer_address,
+      delivery_street: rental.delivery_street || '',
+      delivery_city: rental.delivery_city || '',
+      delivery_state: rental.delivery_state || '',
+      delivery_zip: rental.delivery_zip || '',
       billing_frequency: rental.billing_frequency,
       security_deposit: Number(rental.security_deposit || 0),
       start_date: rental.start_date || '',
@@ -832,21 +861,33 @@ const Rentals = () => {
   }
 
   const syncCustomerFromFacility = (facility: Facility | null) => {
-    setAgreementForm(prev => ({
-      ...prev,
-      facility_id: facility?.id || null,
-      customer_user_id: null,
-      customer_name: facility ? (facility.billing_name || facility.name || '') : prev.customer_name,
-      customer_email: facility ? (facility.billing_email || facility.email || '') : prev.customer_email,
-      customer_phone: facility?.phone ? formatUSPhoneInput(facility.phone) : (facility ? '' : prev.customer_phone),
-      customer_address: facility ? [
-        facility.billing_street || facility.address,
-        facility.billing_suite || facility.suite,
-        facility.billing_city || facility.city,
-        facility.billing_state || facility.state,
-        facility.billing_zip_code || facility.zip_code,
-      ].filter(Boolean).join(', ') : prev.customer_address,
-    }))
+    setAgreementForm(prev => {
+      if (!facility) return { ...prev, facility_id: null, customer_user_id: null }
+      const street = [facility.billing_street || facility.address, facility.billing_suite || facility.suite].filter(Boolean).join(', ')
+      const city = facility.billing_city || facility.city || ''
+      const state = facility.billing_state || facility.state || ''
+      const zip = facility.billing_zip_code || facility.zip_code || ''
+      return {
+        ...prev,
+        facility_id: facility.id || null,
+        customer_user_id: null,
+        customer_name: facility.billing_name || facility.name || '',
+        customer_email: facility.billing_email || facility.email || '',
+        customer_phone: facility.phone ? formatUSPhoneInput(facility.phone) : '',
+        delivery_street: street,
+        delivery_city: city,
+        delivery_state: state,
+        delivery_zip: zip,
+        customer_address: composeDeliveryAddress(street, city, state, zip),
+      }
+    })
+  }
+
+  const setDeliveryField = (field: 'delivery_street' | 'delivery_city' | 'delivery_state' | 'delivery_zip', value: string) => {
+    setAgreementForm(prev => {
+      const next = { ...prev, [field]: value }
+      return { ...next, customer_address: composeDeliveryAddress(next.delivery_street, next.delivery_city, next.delivery_state, next.delivery_zip) }
+    })
   }
 
   const handlePartSelect = async (part: RentalPart | null) => {
@@ -892,6 +933,9 @@ const Rentals = () => {
     }
     if (!agreementForm.customer_name.trim()) return toast.error('Customer name is required')
     if (!agreementForm.customer_email.trim()) return toast.error('Customer email is required')
+    if (!agreementForm.delivery_street.trim() || !agreementForm.delivery_city.trim() || !agreementForm.delivery_state.trim() || !agreementForm.delivery_zip.trim()) {
+      return toast.error('Enter the full delivery address — street, city, state, and ZIP')
+    }
     if (agreementForm.items.length === 0) return toast.error('Add at least one rental product')
     if (agreementForm.billing_frequency === 'daily') return toast.error('Daily billing is no longer offered')
     if (agreementForm.committed_periods === '' || Number(agreementForm.committed_periods) < 1) {
@@ -2086,7 +2130,10 @@ const Rentals = () => {
             <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
             <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
-            <TextField label="Delivery Address" value={agreementForm.customer_address} onChange={e => setAgreementForm(prev => ({ ...prev, customer_address: e.target.value }))} sx={{ gridColumn: '1 / -1' }} />
+            <TextField label="Delivery Street Address *" value={agreementForm.delivery_street} onChange={e => setDeliveryField('delivery_street', e.target.value)} sx={{ gridColumn: '1 / -1' }} />
+            <TextField label="City *" value={agreementForm.delivery_city} onChange={e => setDeliveryField('delivery_city', e.target.value)} />
+            <TextField label="State *" value={agreementForm.delivery_state} onChange={e => setDeliveryField('delivery_state', e.target.value)} />
+            <TextField label="ZIP Code *" value={agreementForm.delivery_zip} onChange={e => setDeliveryField('delivery_zip', e.target.value)} />
             <TextField select label="Billing Frequency" value={agreementForm.billing_frequency} onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}>
               <MenuItem value="weekly">Weekly</MenuItem>
               <MenuItem value="biweekly">Bi-weekly</MenuItem>

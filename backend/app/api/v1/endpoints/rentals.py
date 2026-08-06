@@ -131,7 +131,12 @@ class RentalCreate(BaseModel):
     customer_name: str
     customer_email: EmailStr
     customer_phone: str
-    customer_address: str
+    # Legacy single-line address is still accepted; structured parts (preferred) compose it.
+    customer_address: Optional[str] = None
+    delivery_street: Optional[str] = None
+    delivery_city: Optional[str] = None
+    delivery_state: Optional[str] = None
+    delivery_zip: Optional[str] = None
     billing_frequency: BillingFrequency
     security_deposit: Decimal = Decimal("0")
     start_date: date
@@ -163,6 +168,10 @@ class RentalUpdate(BaseModel):
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
     customer_address: Optional[str] = None
+    delivery_street: Optional[str] = None
+    delivery_city: Optional[str] = None
+    delivery_state: Optional[str] = None
+    delivery_zip: Optional[str] = None
     billing_frequency: Optional[BillingFrequency] = None
     security_deposit: Optional[Decimal] = None
     start_date: Optional[date] = None
@@ -252,6 +261,28 @@ def _money(value: Any) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
     return Decimal(str(value))
+
+
+def _compose_delivery_address(
+    street: Optional[str],
+    city: Optional[str],
+    state: Optional[str],
+    zip_code: Optional[str],
+    fallback: Optional[str] = None,
+) -> str:
+    """Build the single-line delivery address from its parts, e.g.
+    "123 Main St, Springfield, IL 62704". Falls back to the legacy single-line value when
+    no parts are supplied (older clients / existing records)."""
+    street = (street or "").strip()
+    city = (city or "").strip()
+    state = (state or "").strip()
+    zip_code = (zip_code or "").strip()
+    if not any([street, city, state, zip_code]):
+        return (fallback or "").strip()
+    locality = ", ".join(part for part in [city, state] if part)
+    if zip_code:
+        locality = f"{locality} {zip_code}".strip()
+    return ", ".join(part for part in [street, locality] if part)
 
 
 def _next_number(db: Session, model: Any, field: str, prefix: str, start: int = 1) -> str:
@@ -404,6 +435,10 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "customer_email": rental.customer_email,
         "customer_phone": rental.customer_phone,
         "customer_address": rental.customer_address,
+        "delivery_street": rental.delivery_street,
+        "delivery_city": rental.delivery_city,
+        "delivery_state": rental.delivery_state,
+        "delivery_zip": rental.delivery_zip,
         "billing_frequency": rental.billing_frequency.value if hasattr(rental.billing_frequency, "value") else rental.billing_frequency,
         "security_deposit": rental.security_deposit,
         "start_date": rental.start_date,
@@ -1469,6 +1504,12 @@ def create_rental(
     )
 
     deposit = payload.security_deposit or Decimal("0")
+    delivery_address = _compose_delivery_address(
+        payload.delivery_street, payload.delivery_city, payload.delivery_state, payload.delivery_zip,
+        fallback=payload.customer_address,
+    )
+    if not delivery_address:
+        raise HTTPException(status_code=422, detail="A delivery address is required")
     rental = Rental(
         rental_number=_next_number(db, Rental, "rental_number", "RNT"),
         created_by_id=current_user.id,
@@ -1477,7 +1518,11 @@ def create_rental(
         customer_name=payload.customer_name,
         customer_email=str(payload.customer_email),
         customer_phone=payload.customer_phone,
-        customer_address=payload.customer_address,
+        customer_address=delivery_address,
+        delivery_street=(payload.delivery_street or "").strip() or None,
+        delivery_city=(payload.delivery_city or "").strip() or None,
+        delivery_state=(payload.delivery_state or "").strip() or None,
+        delivery_zip=(payload.delivery_zip or "").strip() or None,
         billing_frequency=payload.billing_frequency,
         security_deposit=deposit,
         start_date=payload.start_date,
@@ -1596,6 +1641,16 @@ def update_rental(
         if field == "customer_email" and value is not None:
             value = str(value)
         setattr(rental, field, value)
+
+    # Keep the composed single-line delivery address in sync when any structured part
+    # (or the facility auto-fill) changes, so invoices and the portal stay consistent.
+    if {"delivery_street", "delivery_city", "delivery_state", "delivery_zip"} & set(update_data):
+        composed = _compose_delivery_address(
+            rental.delivery_street, rental.delivery_city, rental.delivery_state, rental.delivery_zip,
+            fallback=rental.customer_address,
+        )
+        if composed:
+            rental.customer_address = composed
 
     if {"start_date", "end_date", "billing_frequency", "committed_periods"} & set(update_data):
         next_period = int(rental.periods_billed or 0) + 1
