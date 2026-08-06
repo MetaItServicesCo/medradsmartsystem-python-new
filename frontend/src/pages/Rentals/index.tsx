@@ -915,10 +915,42 @@ const Rentals = () => {
     }
   }
 
+  // Units of a part already placed on lines in the current form.
+  const qtyUsedInForm = (partId: number) =>
+    agreementForm.items.filter(item => item.part_id === partId).reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1)), 0)
+
+  // Units this agreement already reserved before editing. Renting decrements on-hand stock
+  // directly, so while editing we add the agreement's own reservation back (save reconciles
+  // by delta), otherwise a part it already holds would look out of stock.
+  const qtyReservedByThisAgreement = (partId: number) =>
+    (editingAgreement?.items || []).filter(item => item.part_id === partId).reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1)), 0)
+
+  // How many more units of a part can still be placed on this agreement.
+  const partRemaining = (partId: number, onHand: number) =>
+    Math.max(0, Number(onHand || 0) + qtyReservedByThisAgreement(partId) - qtyUsedInForm(partId))
+
+  const selectedPartRemaining = selectedRentalPart
+    ? partRemaining(selectedRentalPart.id, Number(selectedRentalPart.quantity_on_hand || 0))
+    : undefined
+
   const addRentalItem = () => {
     if (!itemDraft.part_id) return toast.error('Select a rental product to add')
-    if (!itemDraft.quantity || itemDraft.quantity < 1) return toast.error('Quantity must be greater than zero')
-    setAgreementForm(prev => ({ ...prev, items: [...prev.items, { ...itemDraft, key: Math.random().toString(36).slice(2) }] }))
+    const qty = Math.max(0, Number(itemDraft.quantity || 0))
+    if (qty < 1) return toast.error('Quantity must be greater than zero')
+    const remaining = partRemaining(itemDraft.part_id, Number(selectedRentalPart?.quantity_on_hand || 0))
+    if (qty > remaining) {
+      return toast.error(remaining > 0
+        ? `Only ${remaining} more unit(s) of ${itemDraft.part_number} are in stock`
+        : `${itemDraft.part_number || 'This product'} has no available stock left`)
+    }
+    setAgreementForm(prev => {
+      const existing = prev.items.find(item => item.part_id === itemDraft.part_id)
+      if (existing) {
+        // Same part → one line with a combined quantity, never a duplicate line.
+        return { ...prev, items: prev.items.map(item => item.part_id === itemDraft.part_id ? { ...item, quantity: Math.max(1, Number(item.quantity || 1)) + qty } : item) }
+      }
+      return { ...prev, items: [...prev.items, { ...itemDraft, quantity: qty, key: Math.random().toString(36).slice(2) }] }
+    })
     setSelectedRentalPart(null)
     setItemDraft(newRentalItem())
   }
@@ -2158,10 +2190,16 @@ const Rentals = () => {
                 icon={<LocalShippingIcon fontSize="small" />}
                 avatarBg="#EFF6FF"
                 avatarColor="#2563EB"
-                getOptionDisabled={option => option.quantity_on_hand <= 0}
+                getOptionDisabled={option => partRemaining(option.id, Number(option.quantity_on_hand || 0)) <= 0}
               />
             </Box>
-            <TextField label="Qty" type="number" value={itemDraft.quantity} onChange={e => setItemDraft(prev => ({ ...prev, quantity: Number(e.target.value) }))} inputProps={{ min: 1 }} />
+            <TextField
+              label="Qty" type="number" value={itemDraft.quantity}
+              onChange={e => setItemDraft(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+              inputProps={{ min: 1, max: selectedPartRemaining }}
+              error={Boolean(selectedRentalPart) && Number(itemDraft.quantity || 0) > (selectedPartRemaining ?? 0)}
+              helperText={selectedRentalPart ? `${selectedPartRemaining} available` : undefined}
+            />
             <TextField label={`Rate / ${agreementForm.billing_frequency}`} type="number" value={itemDraft.rental_rate} onChange={e => setItemDraft(prev => ({ ...prev, rental_rate: Number(e.target.value) }))} />
             <TextField label="Condition" value={itemDraft.item_condition || ''} InputProps={{ readOnly: true }} helperText="From parts inventory" placeholder={selectedRentalPart ? '—' : 'Select a product'} />
             <TextField label="Shipping & Packing" type="number" value={itemDraft.shipping_fee} onChange={e => setItemDraft(prev => ({ ...prev, shipping_fee: Number(e.target.value) }))} />
