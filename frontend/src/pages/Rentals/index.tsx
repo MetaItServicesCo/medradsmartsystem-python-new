@@ -1283,8 +1283,31 @@ const Rentals = () => {
     : Number(invoiceDetails.discount_amount || 0)
   const convertGrandTotal = convertSubtotal + convertTaxAmount - convertDiscountAmount
 
-  const renderKpi = (label: string, value: string | number, icon: JSX.Element, color: string) => (
-    <Card sx={{ p: 2.2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(59,130,246,0.07)' }}>
+  const renderKpi = (label: string, value: string | number, icon: JSX.Element, color: string, targetTab: number) => (
+    <Card
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${label}`}
+      aria-pressed={tab === targetTab}
+      onClick={() => handleTabChange(targetTab)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          handleTabChange(targetTab)
+        }
+      }}
+      sx={{
+        p: 2.2,
+        borderRadius: '18px',
+        border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
+        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(59,130,246,0.07)',
+        cursor: 'pointer',
+        transform: tab === targetTab ? 'translateY(-2px)' : 'none',
+        transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
+        '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 18px 40px ${color}20` },
+        '&:focus-visible': { outline: `3px solid ${color}35`, outlineOffset: 2 },
+      }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
         <Avatar sx={{ bgcolor: `${color}18`, color, borderRadius: '14px' }}>{icon}</Avatar>
         <Box>
@@ -1846,11 +1869,11 @@ const Rentals = () => {
       </Card>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: `repeat(${isInternalRentalOperator ? 5 : 3}, 1fr)` }, gap: 2, mb: 3 }}>
-        {renderKpi('Total Agreements', stats.agreements, <AssignmentIcon />, '#3B82F6')}
-        {renderKpi('Active Rentals', stats.active, <LocalShippingIcon />, '#2563EB')}
-        {renderKpi('Total Invoiced', money(stats.invoiced), <ReceiptLongIcon />, '#059669')}
-        {isInternalRentalOperator && renderKpi('Rental Products', stats.products, <InfoIcon />, '#8B5CF6')}
-        {isInternalRentalOperator && renderKpi('History Entries', stats.history, <HistoryIcon />, '#6B7280')}
+        {renderKpi('Total Agreements', stats.agreements, <AssignmentIcon />, '#3B82F6', 0)}
+        {renderKpi('Active Rentals', stats.active, <LocalShippingIcon />, '#2563EB', 0)}
+        {renderKpi('Total Invoiced', money(stats.invoiced), <ReceiptLongIcon />, '#059669', 1)}
+        {isInternalRentalOperator && renderKpi('Rental Products', stats.products, <InfoIcon />, '#8B5CF6', 2)}
+        {isInternalRentalOperator && renderKpi('History Entries', stats.history, <HistoryIcon />, '#6B7280', 3)}
       </Box>
 
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
