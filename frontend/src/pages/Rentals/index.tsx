@@ -1861,11 +1861,11 @@ const Rentals = () => {
                 : 'Create agreements for rental products from inventory, process periodic billing invoices, track equipment handovers, returns and history logs.'}
             </Typography>
           </Box>
-          {isInternalRentalOperator && <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.5, flexWrap: 'wrap' }}>
+          {isInternalRentalOperator && (
             <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
               New Agreement
             </Button>
-          </Box>}
+          )}
         </Box>
       </Card>
 
