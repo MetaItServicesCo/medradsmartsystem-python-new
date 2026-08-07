@@ -5,6 +5,10 @@ import Sidebar from './Sidebar'
 import Header from './Header'
 import WorkingContextBar from '../WorkingContextBar'
 import { ListContextProvider } from '@/contexts/ListContext'
+import { useIdleLogout } from '@/hooks/useIdleLogout'
+
+// Sign the user out after this much inactivity.
+const SESSION_IDLE_TIMEOUT_MS = 180_000 // 180 seconds
 
 // Safety net for a known class of MUI bug: a Menu/Select/Popover whose anchor or
 // parent re-renders while it is open can be left "orphaned" — its component still
@@ -60,6 +64,7 @@ const pageTitles: Record<string, string> = {
 const Layout = () => {
   const location = useLocation()
   useDismissOrphanedOverlays(location.pathname)
+  useIdleLogout(SESSION_IDLE_TIMEOUT_MS)
   const title = Object.entries(pageTitles).find(([path]) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
   )?.[1] ?? 'Medrad'
