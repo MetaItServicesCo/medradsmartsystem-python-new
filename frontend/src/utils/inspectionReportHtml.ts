@@ -454,7 +454,7 @@ export const buildInspectionBatchReportHtml = (batch: ReportBatchLike, facility:
   ].join('')
 }
 
-// A single inspection is a complete document too: cover, contents, its report, billing.
+// A single asset: just its Clinical Engineering Report page followed by its own billing.
 // contextInvoice lets callers supply the batch invoice for a batch-invoiced asset, whose
 // per-asset charge lives in that invoice's line items rather than a per-inspection invoice.
 export const buildInspectionSingleReportHtml = (
@@ -464,8 +464,6 @@ export const buildInspectionSingleReportHtml = (
 ): string => {
   const facilityName = facility?.name || inspection.facility_name || ''
   return [
-    coverPageHtml(facility, inspection, 'Inspection Report', coverDateRange(null, inspection)),
-    listTableHtml([inspection], 'Table of Contents', facilityName, 'No asset on this report.'),
     cePageHtml(inspection, facility, { break: true }),
     billingPageHtml([inspection], facilityName, contextInvoice ?? inspection.invoice),
   ].join('')
@@ -508,6 +506,18 @@ const facilityFor = async (facilityId?: number | null): Promise<Facility | null>
 export const printInspectionReportSheet = async (inspection: InspectionReportLike) => {
   const [facility, invoice] = await Promise.all([facilityFor(inspection.facility_id), resolveReportInvoice(inspection)])
   printDocument(`${inspection.inspection_number} Inspection Report`, buildInspectionSingleReportHtml(inspection, facility, invoice))
+}
+
+// Reports module: a completed inspection belongs to a batch, so its "report" is the whole
+// batch document; a standalone/instant inspection prints just its own single report.
+export const printInspectionRecord = async (inspection: InspectionReportLike) => {
+  if (inspection.batch_id) {
+    try {
+      const batch = await fetchInspectionBatch(inspection.batch_id)
+      return await printInspectionBatchReport(batch)
+    } catch { /* fall back to the single report below */ }
+  }
+  return printInspectionReportSheet(inspection)
 }
 
 export const printInspectionBatchReport = async (batch: ReportBatchLike) => {

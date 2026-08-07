@@ -18,8 +18,9 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
-import { buildInspectionReportDocumentHtml, buildInspectionSingleReportHtml, printInspectionReportSheet, resolveReportInvoice } from '@/utils/inspectionReportHtml'
+import { buildInspectionReportDocumentHtml, buildInspectionSingleReportHtml, buildInspectionBatchReportHtml, printInspectionRecord, resolveReportInvoice } from '@/utils/inspectionReportHtml'
 import { fetchFacility } from '@/api/facilities'
+import { fetchInspectionBatch } from '@/api/inspections'
 import {
   fetchInspectionReports,
   fetchReportsSummary,
@@ -190,7 +191,7 @@ const printServiceReport = (report: ServiceReport) => {
 }
 
 const printInspectionReport = (report: InspectionReport) => {
-  printInspectionReportSheet(report)
+  void printInspectionRecord(report)
 }
 
 const historyActionLabel = (action?: string) =>
@@ -682,17 +683,28 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
   const invoiceQ = useQuery({
     queryKey: ['report-invoice', report?.id, report?.batch_id],
     queryFn: () => resolveReportInvoice(report!),
-    enabled: Boolean(report),
+    enabled: Boolean(report) && !report?.batch_id,
   })
-  const reportHtml = useMemo(
-    () => (report
-      ? buildInspectionReportDocumentHtml(
-          buildInspectionSingleReportHtml(report, facilityQ.data ?? null, invoiceQ.data ?? report.invoice),
-          `${report.inspection_number} Inspection Report`,
-        )
-      : ''),
-    [report, facilityQ.data, invoiceQ.data],
-  )
+  // A batched inspection's report is the complete batch document; a standalone one is single.
+  const batchQ = useQuery({
+    queryKey: ['inspection-batch', report?.batch_id],
+    queryFn: () => fetchInspectionBatch(report!.batch_id!),
+    enabled: Boolean(report?.batch_id),
+  })
+  const reportHtml = useMemo(() => {
+    if (!report) return ''
+    if (report.batch_id) {
+      if (!batchQ.data) return '' // wait for the batch so we never flash the single report
+      return buildInspectionReportDocumentHtml(
+        buildInspectionBatchReportHtml(batchQ.data, facilityQ.data ?? null),
+        `${report.batch_number || report.inspection_number} Inspection Report`,
+      )
+    }
+    return buildInspectionReportDocumentHtml(
+      buildInspectionSingleReportHtml(report, facilityQ.data ?? null, invoiceQ.data ?? report.invoice),
+      `${report.inspection_number} Inspection Report`,
+    )
+  }, [report, facilityQ.data, invoiceQ.data, batchQ.data])
   return (
     <Dialog open={Boolean(report)} onClose={onClose} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
       <DialogTitle sx={{ p: 0 }}>
