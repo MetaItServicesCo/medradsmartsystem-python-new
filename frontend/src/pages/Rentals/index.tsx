@@ -2255,6 +2255,7 @@ const Rentals = () => {
                 avatarBg="#EFF6FF"
                 avatarColor="#2563EB"
                 getOptionDisabled={option => partRemaining(option.id, Number(option.quantity_on_hand || 0)) <= 0}
+                getOptionAvailability={option => partRemaining(option.id, Number(option.quantity_on_hand || 0))}
               />
             </Box>
             <TextField

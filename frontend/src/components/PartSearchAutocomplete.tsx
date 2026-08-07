@@ -28,6 +28,10 @@ interface PartSearchAutocompleteProps<T extends PickerPart> {
   avatarBg?: string
   avatarColor?: string
   getOptionDisabled?: (part: T) => boolean
+  // Optional override for the "available" badge. When provided it drives the badge instead
+  // of the part's raw stock, so callers with extra context (e.g. how much the current
+  // agreement already reserved / has on the form) can show the true remaining count.
+  getOptionAvailability?: (part: T) => number
   required?: boolean
   disabled?: boolean
 }
@@ -46,6 +50,7 @@ export default function PartSearchAutocomplete<T extends PickerPart>({
   avatarBg = '#F5F3FF',
   avatarColor = '#7C3AED',
   getOptionDisabled,
+  getOptionAvailability,
   required,
   disabled,
 }: PartSearchAutocompleteProps<T>) {
@@ -91,7 +96,7 @@ export default function PartSearchAutocomplete<T extends PickerPart>({
       getOptionDisabled={getOptionDisabled}
       noOptionsText={partsQ.isFetching ? 'Searching…' : debounced ? 'No matching parts' : 'Start typing to search parts'}
       renderOption={(props, option) => {
-        const available = option.quantity_available ?? option.quantity_on_hand
+        const available = getOptionAvailability ? getOptionAvailability(option) : (option.quantity_available ?? option.quantity_on_hand)
         const reserved = option.quantity_reserved ?? 0
         const openQuoted = option.quantity_in_open_quotations ?? 0
         return (
