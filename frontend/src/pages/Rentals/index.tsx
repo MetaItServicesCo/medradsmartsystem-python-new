@@ -1862,7 +1862,7 @@ const Rentals = () => {
             </Typography>
           </Box>
           {isInternalRentalOperator && (
-            <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ ml: 'auto', borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
               New Agreement
             </Button>
           )}
