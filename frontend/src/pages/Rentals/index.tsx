@@ -531,6 +531,19 @@ const Rentals = () => {
     if (location.pathname === '/rentals') navigate('/rentals/agreements', { replace: true })
   }, [location.pathname, navigate])
 
+  // Scrolling over a focused number input must never change its value. Blur it on wheel so
+  // the page scrolls instead and the entered amount stays put (covers every number field).
+  useEffect(() => {
+    const onWheel = (event: globalThis.WheelEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target instanceof HTMLInputElement && target.type === 'number' && document.activeElement === target) {
+        target.blur()
+      }
+    }
+    document.addEventListener('wheel', onWheel, { passive: true })
+    return () => document.removeEventListener('wheel', onWheel)
+  }, [])
+
   // The agreement end date is derived from start date, billing frequency, and committed
   // periods — never hand-entered — so the term always matches the billing calendar.
   useEffect(() => {
@@ -973,6 +986,13 @@ const Rentals = () => {
         const next = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), cap) : raw
         return { ...item, quantity: next }
       }),
+    }))
+  }
+
+  const setLineNumber = (key: string, field: 'rental_rate' | 'shipping_fee' | 'setup_fee' | 'labor_fee' | 'removal_fee', value: number) => {
+    setAgreementForm(prev => ({
+      ...prev,
+      items: prev.items.map(item => item.key === key ? { ...item, [field]: Number.isFinite(value) ? Math.max(0, value) : 0 } : item),
     }))
   }
 
@@ -2287,12 +2307,32 @@ const Rentals = () => {
                         FormHelperTextProps={{ sx: { m: 0, textAlign: 'right', fontSize: 10 } }}
                       />
                     </TableCell>
-                    <TableCell align="right">{money(item.rental_rate)}</TableCell>
+                    <TableCell align="right">
+                      <TextField type="number" size="small" value={item.rental_rate}
+                        onChange={e => setLineNumber(item.key, 'rental_rate', Number(e.target.value))}
+                        inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
+                    </TableCell>
                     <TableCell>{item.item_condition}</TableCell>
-                    <TableCell align="right">{money(item.shipping_fee)}</TableCell>
-                    <TableCell align="right">{money(item.setup_fee)}</TableCell>
-                    <TableCell align="right">{money(item.labor_fee)}</TableCell>
-                    <TableCell align="right">{money(item.removal_fee)}</TableCell>
+                    <TableCell align="right">
+                      <TextField type="number" size="small" value={item.shipping_fee}
+                        onChange={e => setLineNumber(item.key, 'shipping_fee', Number(e.target.value))}
+                        inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <TextField type="number" size="small" value={item.setup_fee}
+                        onChange={e => setLineNumber(item.key, 'setup_fee', Number(e.target.value))}
+                        inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <TextField type="number" size="small" value={item.labor_fee}
+                        onChange={e => setLineNumber(item.key, 'labor_fee', Number(e.target.value))}
+                        inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <TextField type="number" size="small" value={item.removal_fee}
+                        onChange={e => setLineNumber(item.key, 'removal_fee', Number(e.target.value))}
+                        inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
+                    </TableCell>
                     <TableCell align="right">
                       <IconButton size="small" onClick={() => removeRentalItem(item.key)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
