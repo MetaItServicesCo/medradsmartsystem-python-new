@@ -75,6 +75,7 @@ import {
   printInspectionBatchReport,
   buildInspectionSingleReportHtml,
   buildInspectionReportDocumentHtml,
+  resolveReportInvoice,
 } from '@/utils/inspectionReportHtml'
 import { fetchModalities, type Modality } from '@/api/modalities'
 import { fetchUsers, resolveUploadUrl, type UserData } from '@/api/users'
@@ -999,14 +1000,19 @@ const Inspections = () => {
     queryFn: () => fetchFacility(viewReport!.facility_id),
     enabled: Boolean(viewReport?.facility_id),
   })
+  const viewReportInvoiceQ = useQuery({
+    queryKey: ['report-invoice', viewReport?.id, viewReport?.batch_id],
+    queryFn: () => resolveReportInvoice(viewReport!),
+    enabled: Boolean(viewReport),
+  })
   const viewReportHtml = useMemo(
     () => (viewReport
       ? buildInspectionReportDocumentHtml(
-          buildInspectionSingleReportHtml(viewReport, viewReportFacilityQ.data ?? null),
+          buildInspectionSingleReportHtml(viewReport, viewReportFacilityQ.data ?? null, viewReportInvoiceQ.data ?? viewReport.invoice),
           `${viewReport.inspection_number} Inspection Report`,
         )
       : ''),
-    [viewReport, viewReportFacilityQ.data],
+    [viewReport, viewReportFacilityQ.data, viewReportInvoiceQ.data],
   )
   const [infoEditing, setInfoEditing] = useState(false)
   const [infoDraft, setInfoDraft] = useState<InspectionDetailsDraft | null>(null)

@@ -1,4 +1,5 @@
 import { fetchFacility, type Facility } from '@/api/facilities'
+import { fetchInspectionBatch } from '@/api/inspections'
 
 // Presentation only. The report copies the customer rental-agreement look
 // (CustomerDocumentUI palette + gradient divider + rounded cards + status chips)
@@ -36,12 +37,20 @@ export type InspectionReportLike = {
   inspection_frequency?: string | null
   compliance_requirement?: string | null
   corrective_actions?: string | null
+  id?: number | null
+  batch_id?: number | null
   form_data?: Record<string, any> | null
-  invoice?: { invoice_number?: string | null; total_amount?: number | string | null } | null
+  invoice?: ReportInvoiceLike | null
   parts_amount?: number | string | null
   inspection_charge?: number | string | null
   other_charges?: number | string | null
 }
+
+type ReportInvoiceLike = {
+  invoice_number?: string | null
+  total_amount?: number | string | null
+  batch_items?: Array<{ inspection_id: number; total_amount: number | string | null }>
+} | null | undefined
 
 export type ReportBatchLike = {
   batch_number: string
@@ -50,6 +59,7 @@ export type ReportBatchLike = {
   scheduled_date?: string | null
   completed_at?: string | null
   assets?: InspectionReportLike[]
+  batch_invoice?: ReportInvoiceLike
 }
 
 const LEFT_CHECKS: Array<[string, string]> = [
@@ -162,8 +172,25 @@ const assetLabel = (inspection: InspectionReportLike) =>
 const assetTag = (inspection: InspectionReportLike) =>
   inspection.asset_tag || inspection.part_number || reportData(inspection).identity?.asset_number || '-'
 
-const assetAmount = (inspection: InspectionReportLike): number => {
-  if (inspection.invoice && inspection.invoice.total_amount != null) return Number(inspection.invoice.total_amount || 0)
+// The billable amount for one asset. A batch invoice carries a per-asset line item
+// (batch_items); a single invoice carries the total. Fall back to the report's stored
+// billing figures, then to any raw charge fields.
+const amountFromInvoice = (invoice: ReportInvoiceLike, inspectionId?: number | null): number => {
+  if (!invoice) return 0
+  if (invoice.batch_items?.length && inspectionId != null) {
+    const item = invoice.batch_items.find(entry => entry.inspection_id === inspectionId)
+    if (item) return Number(item.total_amount || 0)
+    return 0
+  }
+  return Number(invoice.total_amount || 0)
+}
+
+const assetAmount = (inspection: InspectionReportLike, contextInvoice?: ReportInvoiceLike): number => {
+  const id = inspection.id
+  const fromContext = amountFromInvoice(contextInvoice, id)
+  if (fromContext > 0) return fromContext
+  const fromOwn = amountFromInvoice(inspection.invoice, id)
+  if (fromOwn > 0) return fromOwn
   const data = reportData(inspection)
   const billed = Number(data.billing?.parts || 0) + Number(data.billing?.inspection_charges || 0) + Number(data.billing?.others || 0)
   if (billed > 0) return billed
@@ -389,14 +416,17 @@ const cePageHtml = (inspection: InspectionReportLike, facility: Facility | null 
   `, opts)
 }
 
-const billingPageHtml = (assets: InspectionReportLike[], facilityName: string) => {
-  const total = assets.reduce((sum, asset) => sum + assetAmount(asset), 0)
+const billingPageHtml = (assets: InspectionReportLike[], facilityName: string, invoice?: ReportInvoiceLike) => {
+  const lineTotal = assets.reduce((sum, asset) => sum + assetAmount(asset, invoice), 0)
+  // Prefer the invoice's own total (it already includes tax/discount); else sum the lines.
+  const invoiceTotal = Number(invoice?.total_amount || 0)
+  const total = invoiceTotal > 0 ? invoiceTotal : lineTotal
   const rows = assets.map((asset, index) => `
     <tr>
       <td class="center">${index + 1}</td>
       <td>${esc(assetTag(asset))}</td>
       <td>${esc(assetLabel(asset))}</td>
-      <td class="right amount">${esc(money(assetAmount(asset)))}</td>
+      <td class="right amount">${esc(money(assetAmount(asset, invoice)))}</td>
     </tr>`).join('')
   return page(`
     <h2 class="sec" style="text-align:center;font-size:22px;color:#1E3A8A">Billing Page</h2>
@@ -420,13 +450,35 @@ export const buildInspectionBatchReportHtml = (batch: ReportBatchLike, facility:
     listTableHtml(assets, 'Table of Contents', facilityName, 'No assets in this batch.'),
     ...assets.map(asset => cePageHtml(asset, facility, { break: true })),
     listTableHtml(failed, 'Inspection Failed Equipment Sheet', facilityName, 'No failed equipment in this batch.'),
-    billingPageHtml(assets, facilityName),
+    billingPageHtml(assets, facilityName, batch.batch_invoice),
   ].join('')
 }
 
-// A single inspection prints its report page followed by its billing page.
-export const buildInspectionSingleReportHtml = (inspection: InspectionReportLike, facility: Facility | null | undefined): string =>
-  [cePageHtml(inspection, facility, { break: true }), billingPageHtml([inspection], facility?.name || inspection.facility_name || '')].join('')
+// A single inspection is a complete document too: cover, contents, its report, billing.
+// contextInvoice lets callers supply the batch invoice for a batch-invoiced asset, whose
+// per-asset charge lives in that invoice's line items rather than a per-inspection invoice.
+export const buildInspectionSingleReportHtml = (
+  inspection: InspectionReportLike,
+  facility: Facility | null | undefined,
+  contextInvoice?: ReportInvoiceLike,
+): string => {
+  const facilityName = facility?.name || inspection.facility_name || ''
+  return [
+    coverPageHtml(facility, inspection, 'Inspection Report', coverDateRange(null, inspection)),
+    listTableHtml([inspection], 'Table of Contents', facilityName, 'No asset on this report.'),
+    cePageHtml(inspection, facility, { break: true }),
+    billingPageHtml([inspection], facilityName, contextInvoice ?? inspection.invoice),
+  ].join('')
+}
+
+// Resolve the invoice that carries this asset's charge: its own, else its batch's.
+export const resolveReportInvoice = async (inspection: InspectionReportLike): Promise<ReportInvoiceLike> => {
+  if (inspection.invoice) return inspection.invoice
+  if (inspection.batch_id) {
+    try { return (await fetchInspectionBatch(inspection.batch_id)).batch_invoice as ReportInvoiceLike } catch { /* ignore */ }
+  }
+  return inspection.invoice
+}
 
 export const buildInspectionReportDocumentHtml = (bodyHtml: string, title = 'Inspection Report'): string =>
   `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${INSPECTION_REPORT_CSS}</style></head><body>${bodyHtml}</body></html>`
@@ -454,8 +506,8 @@ const facilityFor = async (facilityId?: number | null): Promise<Facility | null>
 
 // Backwards-compatible single-inspection print (used by the Reports page).
 export const printInspectionReportSheet = async (inspection: InspectionReportLike) => {
-  const facility = await facilityFor(inspection.facility_id)
-  printDocument(`${inspection.inspection_number} Inspection Report`, buildInspectionSingleReportHtml(inspection, facility))
+  const [facility, invoice] = await Promise.all([facilityFor(inspection.facility_id), resolveReportInvoice(inspection)])
+  printDocument(`${inspection.inspection_number} Inspection Report`, buildInspectionSingleReportHtml(inspection, facility, invoice))
 }
 
 export const printInspectionBatchReport = async (batch: ReportBatchLike) => {

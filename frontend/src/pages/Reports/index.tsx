@@ -18,7 +18,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
-import { buildInspectionReportDocumentHtml, buildInspectionSingleReportHtml, printInspectionReportSheet } from '@/utils/inspectionReportHtml'
+import { buildInspectionReportDocumentHtml, buildInspectionSingleReportHtml, printInspectionReportSheet, resolveReportInvoice } from '@/utils/inspectionReportHtml'
 import { fetchFacility } from '@/api/facilities'
 import {
   fetchInspectionReports,
@@ -679,14 +679,19 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
     queryFn: () => fetchFacility(report!.facility_id),
     enabled: Boolean(report?.facility_id),
   })
+  const invoiceQ = useQuery({
+    queryKey: ['report-invoice', report?.id, report?.batch_id],
+    queryFn: () => resolveReportInvoice(report!),
+    enabled: Boolean(report),
+  })
   const reportHtml = useMemo(
     () => (report
       ? buildInspectionReportDocumentHtml(
-          buildInspectionSingleReportHtml(report, facilityQ.data ?? null),
+          buildInspectionSingleReportHtml(report, facilityQ.data ?? null, invoiceQ.data ?? report.invoice),
           `${report.inspection_number} Inspection Report`,
         )
       : ''),
-    [report, facilityQ.data],
+    [report, facilityQ.data, invoiceQ.data],
   )
   return (
     <Dialog open={Boolean(report)} onClose={onClose} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
