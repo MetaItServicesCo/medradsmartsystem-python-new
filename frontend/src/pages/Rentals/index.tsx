@@ -53,7 +53,6 @@ import {
   fetchRentalHistory,
   fetchRentalProductRate,
   upsertRentalProductRate,
-  runRecurringBilling,
   sendRentalPortalLink,
   createRentalExtension,
   offerRentalExtension,
@@ -1055,15 +1054,6 @@ const Rentals = () => {
     onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not save rate card')),
   })
 
-  const billingMut = useMutation({
-    mutationFn: runRecurringBilling,
-    onSuccess: (result) => {
-      toast.success(`Recurring billing ran: ${result.billed || 0} invoiced, ${result.charged || 0} charged, ${result.emailed || 0} emailed`)
-      invalidateRentals()
-    },
-    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not run recurring billing')),
-  })
-
   const sendMut = useMutation({
     mutationFn: (id: number) => sendRentalPortalLink(id),
     onSuccess: (result) => {
@@ -1871,17 +1861,8 @@ const Rentals = () => {
                 : 'Create agreements for rental products from inventory, process periodic billing invoices, track equipment handovers, returns and history logs.'}
             </Typography>
           </Box>
-          {isInternalRentalOperator && <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-            <Button
-              startIcon={billingMut.isPending ? <CircularProgress size={16} /> : <PaymentIcon />}
-              variant="outlined"
-              onClick={() => billingMut.mutate()}
-              disabled={billingMut.isPending}
-              sx={{ borderRadius: '14px', px: 2.5, py: 1.4, textTransform: 'none', fontWeight: 900, borderColor: '#BFDBFE', color: '#1D4ED8' }}
-            >
-              Run Recurring Billing
-            </Button>
-            <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: SYSTEM_GRADIENT }}>
+          {isInternalRentalOperator && <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.5, flexWrap: 'wrap' }}>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
               New Agreement
             </Button>
           </Box>}
