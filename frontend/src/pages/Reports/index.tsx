@@ -18,7 +18,8 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
-import { buildInspectionReportDocumentHtml, printInspectionReportSheet } from '@/utils/inspectionReportHtml'
+import { buildInspectionReportDocumentHtml, buildInspectionSingleReportHtml, printInspectionReportSheet } from '@/utils/inspectionReportHtml'
+import { fetchFacility } from '@/api/facilities'
 import {
   fetchInspectionReports,
   fetchReportsSummary,
@@ -673,6 +674,20 @@ const ServiceReportDialog = ({ report, onClose }: { report: ServiceReport | null
 )
 
 const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport | null; onClose: () => void }) => {
+  const facilityQ = useQuery({
+    queryKey: ['facility', report?.facility_id],
+    queryFn: () => fetchFacility(report!.facility_id),
+    enabled: Boolean(report?.facility_id),
+  })
+  const reportHtml = useMemo(
+    () => (report
+      ? buildInspectionReportDocumentHtml(
+          buildInspectionSingleReportHtml(report, facilityQ.data ?? null),
+          `${report.inspection_number} Inspection Report`,
+        )
+      : ''),
+    [report, facilityQ.data],
+  )
   return (
     <Dialog open={Boolean(report)} onClose={onClose} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
       <DialogTitle sx={{ p: 0 }}>
@@ -686,7 +701,7 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
           <Box
             component="iframe"
             title={`${report.inspection_number} inspection report preview`}
-            srcDoc={buildInspectionReportDocumentHtml(report)}
+            srcDoc={reportHtml}
             sx={{
               display: 'block',
               width: '100%',
