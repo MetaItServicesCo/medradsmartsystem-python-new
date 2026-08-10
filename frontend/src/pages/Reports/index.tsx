@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Avatar, Box, Button, Card, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  Divider, IconButton, Menu, MenuItem, Pagination, Skeleton, Tab, Table, TableBody,
+  IconButton, Menu, MenuItem, Pagination, Skeleton, Tab, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material'
 import AssessmentIcon from '@mui/icons-material/Assessment'
@@ -19,6 +19,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
 import { buildInspectionReportDocumentHtml, buildInspectionSingleReportHtml, buildInspectionBatchReportHtml, printInspectionRecord, resolveReportInvoice } from '@/utils/inspectionReportHtml'
+import { buildServiceReportDocument, printServiceReportSheet } from '@/utils/serviceReportHtml'
 import { fetchFacility } from '@/api/facilities'
 import { fetchInspectionBatch } from '@/api/inspections'
 import {
@@ -38,8 +39,6 @@ type ReportTab = typeof TABS[number]
 const LIMIT = 25
 const GRADIENT = 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 52%, #EC4899 100%)'
 
-const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
-
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -55,13 +54,6 @@ const formatDateTime = (value: string | null | undefined) => {
     minute: '2-digit',
   })
 }
-
-const escapeHtml = (value: unknown) => String(value ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#039;')
 
 const statusChip = (value?: string | null) => {
   const key = String(value || '').toLowerCase()
@@ -92,102 +84,8 @@ const downloadCsv = (filename: string, headers: string[], rows: unknown[][]) => 
   URL.revokeObjectURL(url)
 }
 
-const printHtml = (title: string, body: string) => {
-  const frame = document.createElement('iframe')
-  frame.style.position = 'fixed'
-  frame.style.right = '0'
-  frame.style.bottom = '0'
-  frame.style.width = '0'
-  frame.style.height = '0'
-  frame.style.border = '0'
-  document.body.appendChild(frame)
-  const doc = frame.contentWindow?.document
-  if (!doc) return
-  doc.open()
-  doc.write(`<!doctype html>
-    <html>
-      <head>
-        <title>${escapeHtml(title)}</title>
-        <style>
-          * { box-sizing: border-box; }
-          body { margin: 0; background: #eef2f7; color: #111827; font-family: Arial, sans-serif; }
-          .sheet { width: 8.5in; min-height: 11in; margin: 24px auto; background: #fff; box-shadow: 0 20px 60px rgba(15,23,42,0.16); overflow: hidden; }
-          .hero { padding: 30px 38px; color: #fff; background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%); }
-          .hero h1 { margin: 0; font-size: 30px; }
-          .hero .sub { margin-top: 8px; color: rgba(255,255,255,0.84); font-weight: 700; }
-          .content { padding: 34px 38px 38px; }
-          .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-          .box { border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px; background: #F8FAFC; }
-          .box small { display: block; color: #64748B; font-weight: 900; text-transform: uppercase; margin-bottom: 6px; }
-          .box strong { color: #1E1B4B; }
-          .section { border: 1px solid #E5E7EB; border-radius: 16px; padding: 18px; margin-top: 16px; page-break-inside: avoid; }
-          h2 { margin: 0 0 10px; color: #1E1B4B; font-size: 18px; }
-          h4 { margin: 12px 0 5px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
-          p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
-          .pill { display: inline-block; margin: 8px 8px 0 0; padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
-          .muted { color: #64748B; }
-          @media print {
-            body { background: #fff; }
-            .sheet { margin: 0; width: 100%; min-height: 0; box-shadow: none; }
-            .hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          }
-        </style>
-      </head>
-      <body><main class="sheet">${body}</main></body>
-    </html>`)
-  doc.close()
-  frame.onload = () => {
-    frame.contentWindow?.focus()
-    frame.contentWindow?.print()
-    window.setTimeout(() => frame.remove(), 800)
-  }
-}
-
 const printServiceReport = (report: ServiceReport) => {
-  const sessions = report.sessions.length ? report.sessions.map((session, index) => `
-    <section class="section">
-      <h2>Session ${index + 1} — ${escapeHtml(Number(session.duration_hours || 0).toFixed(2))} hrs</h2>
-      <div class="grid">
-        <div class="box"><small>Start</small><strong>${escapeHtml(formatDateTime(session.start_time))}</strong></div>
-        <div class="box"><small>End</small><strong>${escapeHtml(formatDateTime(session.end_time || session.timestamp))}</strong></div>
-        <div class="box"><small>Break</small><strong>${escapeHtml(session.break_minutes ?? 0)} min</strong></div>
-        <div class="box"><small>Mileage</small><strong>${escapeHtml(Number(session.total_mileage || 0).toFixed(2))} mi</strong></div>
-        <div class="box"><small>By</small><strong>${escapeHtml(session.user || report.technician_name || '-')}</strong></div>
-      </div>
-      <h4>Diagnosis</h4><p>${escapeHtml(session.diagnosis || '-')}</p>
-      <h4>Work Done</h4><p>${escapeHtml(session.work_done || '-')}</p>
-      ${session.notes ? `<h4>Notes</h4><p>${escapeHtml(session.notes)}</p>` : ''}
-      ${(session.test_equipment || []).length ? `
-        <h4>Test Equipment Used</h4>
-        ${(session.test_equipment || []).map((item: any) => `<span class="pill">${escapeHtml(item.tem || item.description || 'Test Equipment')}</span>`).join('')}
-      ` : ''}
-      ${(session.parts || []).length ? `
-        <h4>Parts Used</h4>
-        ${(session.parts || []).map((item: any) => `<span class="pill">${escapeHtml(item.part_number || 'Part')} · Qty ${escapeHtml(Number(item.quantity_used || 0))}</span>`).join('')}
-      ` : ''}
-    </section>
-  `).join('') : '<section class="section"><p class="muted">No technician sessions were recorded.</p></section>'
-  printHtml(`${report.request_number} Service Report`, `
-    <section class="hero"><h1>Service Report</h1><div class="sub">${escapeHtml(report.request_number)} - ${escapeHtml(report.facility_name || '-')}</div></section>
-    <section class="content">
-      <div class="grid">
-        <div class="box"><small>Facility</small><strong>${escapeHtml(report.facility_name || '-')}</strong></div>
-        <div class="box"><small>Equipment</small><strong>${escapeHtml(report.equipment_name || '-')}</strong></div>
-        <div class="box"><small>Technician</small><strong>${escapeHtml(report.technician_name || '-')}</strong></div>
-        <div class="box"><small>Completed</small><strong>${escapeHtml(formatDateTime(report.completed_at))}</strong></div>
-      </div>
-      <section class="section"><h2>Service Required</h2><p>${escapeHtml(report.service_required || report.problem_description || '-')}</p></section>
-      ${sessions}
-      <section class="section">
-        <h2>Completion Summary</h2>
-        <p>${escapeHtml(report.resolution_description || 'No final resolution summary was added.')}</p>
-        <span class="pill">Total Hours: ${escapeHtml(report.time_spent_hours.toFixed(2))}</span>
-        <span class="pill">Total Mileage: ${escapeHtml(report.sessions.reduce((sum, session) => sum + Number(session.total_mileage || 0), 0).toFixed(2))} mi</span>
-        <span class="pill">Total Cost: ${escapeHtml(money(report.total_cost))}</span>
-        <span class="pill">Invoice: ${escapeHtml(report.invoice?.invoice_number || '-')}</span>
-      </section>
-    </section>
-  `)
+  void printServiceReportSheet(report)
 }
 
 const printInspectionReport = (report: InspectionReport) => {
@@ -596,83 +494,41 @@ const ActionButton = ({ item, onOpen }: { item: ServiceReport | InspectionReport
   </IconButton>
 )
 
-const ServiceReportDialog = ({ report, onClose }: { report: ServiceReport | null; onClose: () => void }) => (
-  <Dialog open={Boolean(report)} onClose={onClose} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
-    <DialogTitle sx={{ p: 0 }}>
-      <Box sx={{ p: 3, color: '#fff', background: GRADIENT }}>
-        <Typography sx={{ fontWeight: 950, fontSize: 26 }}>Service Report</Typography>
-        <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{report?.request_number} - {report?.facility_name || 'Facility'}</Typography>
-      </Box>
-    </DialogTitle>
-    <DialogContent sx={{ bgcolor: '#F8FAFC', p: 3 }}>
-      {report && (
-        <Box sx={{ display: 'grid', gap: 2.5 }}>
-          <DetailGrid items={[
-            ['Facility', report.facility_name || '-'],
-            ['Equipment', report.equipment_name || '-'],
-            ['Technician', report.technician_name || 'Unassigned'],
-            ['Completed', formatDateTime(report.completed_at)],
-          ]} />
-          <DetailCard title="Service Required" value={report.service_required || report.problem_description || '-'} />
-          <Card sx={{ p: 2.5, borderRadius: '18px', border: '1px solid #E5E7EB' }}>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 950, mb: 1 }}>Technician Sessions</Typography>
-            {report.sessions.length === 0 ? <Typography sx={{ color: '#64748B' }}>No sessions recorded.</Typography> : (
-              <Box sx={{ display: 'grid', gap: 1.5 }}>
-                {report.sessions.map((session, index) => (
-                  <Box key={`${session.session_id || index}`} sx={{ p: 2, borderRadius: '16px', border: '1px solid #E5E7EB', bgcolor: '#fff' }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, gap: 1 }}>
-                      <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Session {index + 1}</Typography>
-                      <Chip size="small" label={`${Number(session.duration_hours || 0).toFixed(2)} hrs`} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 950 }} />
-                    </Box>
-                    <Typography sx={{ color: '#64748B', fontSize: 13 }}>Start: {formatDateTime(session.start_time)} · End: {formatDateTime(session.end_time || session.timestamp)} · Break: {session.break_minutes ?? 0} min</Typography>
-                    <Divider sx={{ my: 1.5 }} />
-                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, textTransform: 'uppercase' }}>Diagnosis</Typography>
-                    <Typography sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>{session.diagnosis || '-'}</Typography>
-                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, textTransform: 'uppercase' }}>Work Done</Typography>
-                    <Typography sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>{session.work_done || '-'}</Typography>
-                    {session.notes && <Typography sx={{ whiteSpace: 'pre-wrap', color: '#475569' }}>{session.notes}</Typography>}
-                    {(session.test_equipment || []).length > 0 && (
-                      <Box sx={{ mt: 1.5 }}>
-                        <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', mb: 0.75 }}>Test Equipment Used</Typography>
-                        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                          {(session.test_equipment || []).map((item: any, itemIndex: number) => (
-                            <Chip key={`${item.id || item.serial_number || itemIndex}`} size="small" label={item.tem || item.description || 'Test Equipment'} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 900 }} />
-                          ))}
-                        </Box>
-                      </Box>
-                    )}
-                    {(session.parts || []).length > 0 && (
-                      <Box sx={{ mt: 1.5 }}>
-                        <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, textTransform: 'uppercase', mb: 0.75 }}>Parts Used</Typography>
-                        <Box sx={{ display: 'grid', gap: 0.75 }}>
-                          {(session.parts || []).map((item: any, itemIndex: number) => (
-                            <Box key={`${item.id || item.part_number || itemIndex}`} sx={{ p: 1, borderRadius: '10px', bgcolor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                              <Typography sx={{ color: '#14532D', fontWeight: 900, fontSize: 13 }}>{item.part_number || 'Inventory Part'} - {item.description || 'No description'}</Typography>
-                              <Typography sx={{ color: '#166534', fontSize: 12 }}>Quantity used: {Number(item.quantity_used || 0)} · Stock remaining: {Number(item.balance_after || 0)}</Typography>
-                            </Box>
-                          ))}
-                        </Box>
-                      </Box>
-                    )}
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Card>
-          <DetailCard title="Completion Summary" value={report.resolution_description || 'No final resolution summary was added.'} footer={[
-            `Total Hours: ${report.time_spent_hours.toFixed(2)}`,
-            `Cost: ${money(report.total_cost)}`,
-            `Invoice: ${report.invoice?.invoice_number || '-'}`,
-          ]} />
+const ServiceReportDialog = ({ report, onClose }: { report: ServiceReport | null; onClose: () => void }) => {
+  const facilityQ = useQuery({
+    queryKey: ['facility', report?.facility_id],
+    queryFn: () => fetchFacility(report!.facility_id),
+    enabled: Boolean(report?.facility_id),
+  })
+  const reportHtml = useMemo(
+    () => (report ? buildServiceReportDocument(report, facilityQ.data ?? null) : ''),
+    [report, facilityQ.data],
+  )
+  return (
+    <Dialog open={Boolean(report)} onClose={onClose} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
+      <DialogTitle sx={{ p: 0 }}>
+        <Box sx={{ p: 3, color: '#fff', background: GRADIENT }}>
+          <Typography sx={{ fontWeight: 950, fontSize: 26 }}>Service Report</Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{report?.request_number} - {report?.facility_name || 'Facility'}</Typography>
         </Box>
-      )}
-    </DialogContent>
-    <DialogActions sx={{ px: 3, py: 2 }}>
-      <Button onClick={onClose} sx={{ fontWeight: 900 }}>Close</Button>
-      <Button variant="contained" startIcon={<PrintIcon />} onClick={() => report && printServiceReport(report)} sx={{ borderRadius: '12px', fontWeight: 900, background: GRADIENT }}>Print</Button>
-    </DialogActions>
-  </Dialog>
-)
+      </DialogTitle>
+      <DialogContent sx={{ bgcolor: '#E5E7EB', p: 0 }}>
+        {report && (
+          <Box
+            component="iframe"
+            title={`${report.request_number} service report preview`}
+            srcDoc={reportHtml}
+            sx={{ display: 'block', width: '100%', height: { xs: '70vh', md: '76vh' }, border: 0, bgcolor: '#E5E7EB' }}
+          />
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} sx={{ fontWeight: 900 }}>Close</Button>
+        <Button variant="contained" startIcon={<PrintIcon />} onClick={() => report && printServiceReport(report)} sx={{ borderRadius: '12px', fontWeight: 900, background: GRADIENT }}>Print</Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
 
 const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport | null; onClose: () => void }) => {
   const facilityQ = useQuery({

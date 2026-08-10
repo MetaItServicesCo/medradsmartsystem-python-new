@@ -1,139 +1,263 @@
-const esc = (v: unknown) =>
-  String(v ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+import { fetchFacility, type Facility } from '@/api/facilities'
+import { buildInspectionReportDocumentHtml, INSPECTION_REPORT_CSS } from '@/utils/inspectionReportHtml'
 
-const fmtDateTime = (v: string | null | undefined) => {
-  if (!v) return '-'
-  return new Date(v).toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+// Presentation only. The standalone service report reuses the customer rental-agreement
+// design (the same INSPECTION_REPORT_CSS chrome the inspection report uses); the invoice
+// append keeps the invoice document's own .doc-a styling so both flow together on one print.
+const COMPANY = {
+  name: 'Mr. BioMed Tech Services',
+  phone: '(469) 767-8853',
+  email: 'omar@mbmts.com',
+  address: '555 N. 5th Street Suite 109, Garland, TX 75040',
+  website: 'https://medradsmartsystem.com',
+  logo: '/mr-biomed-logo.jpeg',
 }
 
-const fmtMoney = (v: number | string | null | undefined) => `$${Number(v || 0).toFixed(2)}`
+const esc = (value: unknown) => String(value ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;')
 
-const getSessions = (sr: any) =>
-  (sr?.history || [])
-    .filter((e: any) => e.action === 'technician_clock_out' || e.action === 'technician_work_session')
-    .map((e: any) => ({ user: e.user || sr?.technician_name || 'Technician', timestamp: e.timestamp, ...e.changes }))
+const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 
-/** CSS classes used by the report sheet — add to InvoicePrintDialog.printStyles. */
-export const SERVICE_REPORT_EXTRA_CSS = `
-  .report-hero { background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%) !important; }
-  .report-section { border: 1px solid #E5E7EB; border-radius: 16px; padding: 18px; margin-top: 16px; }
-  .report-session { border: 1px solid #E5E7EB; border-left: 5px solid #7C3AED; border-radius: 14px; padding: 16px; margin-top: 12px; page-break-inside: avoid; }
-  .report-session-head { display: flex; justify-content: space-between; color: #1E1B4B; font-size: 16px; }
-  .report-session-head span { color: #047857; font-weight: 900; }
-  .report-times { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 14px 0; color: #475569; }
-  .report-h4 { margin: 12px 0 5px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
-  .report-equipment-list { display: grid; gap: 8px; margin-top: 8px; }
-  .report-equipment-item { border: 1px solid #EDE9FE; border-radius: 10px; padding: 8px 10px; background: #FAF5FF; color: #312E81; }
-  .report-equipment-item b { color: #1E1B4B; }
-  .report-part-item { border: 1px solid #BBF7D0; border-radius: 10px; padding: 8px 10px; background: #F0FDF4; color: #166534; }
-  .report-part-item b { color: #14532D; }
-  .report-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
-  .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
+const fmtDateTime = (value: string | null | undefined) => {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+const hasVal = (value: unknown) => {
+  const text = String(value ?? '').trim()
+  return text.length > 0 && text !== '-'
+}
+
+// Both shapes are accepted: the Reports ServiceReport (has .sessions) and the raw service
+// request used in Billing (sessions live in .history).
+const serviceSessions = (sr: any): any[] => {
+  if (Array.isArray(sr?.sessions) && sr.sessions.length) return sr.sessions
+  return (sr?.history || [])
+    .filter((entry: any) => entry.action === 'technician_clock_out' || entry.action === 'technician_work_session')
+    .map((entry: any) => ({ user: entry.user || sr?.technician_name || 'Technician', timestamp: entry.timestamp, ...entry.changes }))
+}
+
+const totalMileage = (sessions: any[]) => sessions.reduce((sum, s) => sum + Number(s.total_mileage || 0), 0)
+
+const facilityLines = (facility: Facility | null | undefined, sr: any) => {
+  const name = facility?.name || sr?.facility_name || ''
+  const cityState = [facility?.city, facility?.state].filter(hasVal).join(', ')
+  const line2 = [cityState, facility?.zip_code].filter(hasVal).join(' ')
+  return { name, address: facility?.address || '', line2, phone: facility?.phone || '', email: facility?.email || '' }
+}
+
+/* ------------------------------------------------------------------ *
+ * Standalone service report (Reports module) — shared rental design.  *
+ * ------------------------------------------------------------------ */
+
+const headerHtml = () => `
+  <div class="rhead">
+    <img src="${COMPANY.logo}" alt="${esc(COMPANY.name)}" />
+    <div class="co"><b>${esc(COMPANY.name)}</b>Ph# ${esc(COMPANY.phone)}<br>${esc(COMPANY.email)}</div>
+  </div>
+  <div class="divider"></div>
 `
 
-const buildSessionEquipmentHtml = (session: any) => {
-  const equipment = Array.isArray(session?.test_equipment) ? session.test_equipment : []
-  if (!equipment.length) return ''
+const footerHtml = () => `
+  <div class="rfoot">
+    <div><b>Serviced By</b>${esc(COMPANY.name)}<br>Ph# ${esc(COMPANY.phone)}<br>${esc(COMPANY.email)}</div>
+    <div class="r"><b>${esc(COMPANY.address)}</b>Ph# ${esc(COMPANY.phone)}<br>${esc(COMPANY.website)}</div>
+  </div>
+`
+
+const page = (inner: string) => `<section class="page">${headerHtml()}<div style="flex:1">${inner}</div>${footerHtml()}</section>`
+
+const idBox = (label: string, value: unknown) => (hasVal(value) ? `<div class="idbox"><small>${esc(label)}</small><strong>${esc(value)}</strong></div>` : '')
+
+const sessionEquipmentHtml = (session: any) => {
+  const items: any[] = (session.test_equipment || []).filter((item: any) => hasVal(item.tem) || hasVal(item.description) || hasVal(item.serial_number))
+  if (!items.length) return ''
   return `
-    <div class="report-h4">Test Equipment Used</div>
-    <div class="report-equipment-list">
-      ${equipment.map((item: any) => `
-        <div class="report-equipment-item">
-          <b>${esc(item.tem || item.description || 'Test Equipment')}</b>
-          <br>${esc([item.mrf, item.model, item.serial_number].filter(Boolean).join(' / ') || item.asset || '-')}
-        </div>
-      `).join('')}
-    </div>`
+    <h3 class="sub-h">Test Equipment Used</h3>
+    <table class="doc">
+      <thead><tr><th>Description</th><th>Make</th><th>SN#</th></tr></thead>
+      <tbody>${items.map((item: any) => `<tr><td>${esc(item.tem || item.description || '-')}</td><td>${esc(item.mrf || item.model || '-')}</td><td>${esc(item.serial_number || item.asset || '-')}</td></tr>`).join('')}</tbody>
+    </table>`
 }
 
-const buildSessionPartsHtml = (session: any) => {
-  const parts = Array.isArray(session?.parts) ? session.parts : []
-  if (!parts.length) return ''
+const sessionPartsHtml = (session: any) => {
+  const items: any[] = (session.parts || []).filter((item: any) => hasVal(item.part_number) || hasVal(item.description))
+  if (!items.length) return ''
   return `
-    <div class="report-h4">Parts Used</div>
-    <div class="report-equipment-list">
-      ${parts.map((item: any) => `
-        <div class="report-part-item">
-          <b>${esc(item.part_number || 'Inventory Part')} - ${esc(item.description || 'No description')}</b>
-          <br>Quantity used: ${esc(Number(item.quantity_used || 0))} · Stock remaining: ${esc(Number(item.balance_after || 0))}
-        </div>
-      `).join('')}
+    <h3 class="sub-h">Parts Used</h3>
+    <table class="doc">
+      <thead><tr><th>Part#</th><th>Description</th><th class="center">Qty Used</th><th class="center">Stock Remaining</th></tr></thead>
+      <tbody>${items.map((item: any) => `<tr><td>${esc(item.part_number || '-')}</td><td>${esc(item.description || '-')}</td><td class="center">${esc(Number(item.quantity_used || 0))}</td><td class="center">${esc(Number(item.balance_after || 0))}</td></tr>`).join('')}</tbody>
+    </table>`
+}
+
+const sessionCardHtml = (session: any, index: number) => `
+  <div class="card" style="margin-top:14px;page-break-inside:avoid">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <strong style="color:#1E1B4B;font-size:14px">Session ${index + 1} — ${esc(session.user || 'Technician')}</strong>
+      <span class="status pass">${esc(Number(session.duration_hours || 0).toFixed(2))} hrs</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0">
+      ${idBox('Start', fmtDateTime(session.start_time || session.clocked_in_at))}
+      ${idBox('End', fmtDateTime(session.end_time || session.clocked_out_at || session.timestamp))}
+      ${session.break_minutes !== undefined ? idBox('Break', `${esc(session.break_minutes)} min`) : ''}
+      ${session.total_mileage !== undefined ? idBox('Mileage', `${Number(session.total_mileage || 0).toFixed(2)} mi`) : ''}
+    </div>
+    ${hasVal(session.diagnosis) ? `<h3 class="sub-h">Diagnosis</h3><p>${esc(session.diagnosis)}</p>` : ''}
+    ${hasVal(session.work_done) ? `<h3 class="sub-h">Work Done</h3><p>${esc(session.work_done)}</p>` : ''}
+    ${hasVal(session.notes) ? `<h3 class="sub-h">Notes</h3><p>${esc(session.notes)}</p>` : ''}
+    ${sessionEquipmentHtml(session)}
+    ${sessionPartsHtml(session)}
+  </div>`
+
+export const buildServiceReportBody = (sr: any, facility: Facility | null | undefined): string => {
+  const sessions = serviceSessions(sr)
+  const fac = facilityLines(facility, sr)
+  const facInfo = [
+    fac.address && `${esc(fac.address)}`,
+    fac.line2 && `${esc(fac.line2)}`,
+    fac.phone && `<b>Phone#</b> ${esc(fac.phone)}`,
+    fac.email && `<b>Email</b> ${esc(fac.email)}`,
+  ].filter(Boolean).join('<br>')
+  const sessionsHtml = sessions.length
+    ? sessions.map((session, index) => sessionCardHtml(session, index)).join('')
+    : '<p class="muted">No technician sessions were recorded.</p>'
+  const summaryPills = [
+    `Total Hours: ${Number(sr.time_spent_hours || 0).toFixed(2)}`,
+    `Total Mileage: ${totalMileage(sessions).toFixed(2)} mi`,
+    `Total Cost: ${money(sr.total_cost)}`,
+    sr.invoice?.invoice_number ? `Invoice: ${sr.invoice.invoice_number}` : (sr.billing_status ? `Billing: ${String(sr.billing_status).replace(/_/g, ' ')}` : ''),
+  ].filter(Boolean)
+  return page(`
+    <div class="pass-flag"><span class="status pass">${esc((sr.status || sr.billing_status || 'Completed'))}</span></div>
+    <h2 class="sec" style="font-size:20px;color:#1E3A8A;margin-top:4px">Service Completion Report</h2>
+    <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:14px;align-items:start;margin-bottom:6px">
+      <div class="identity">
+        ${idBox('Request #', sr.request_number)}
+        ${idBox('Equipment', sr.equipment_name)}
+        ${idBox('Technician', sr.technician_name || 'Unassigned')}
+        ${idBox('Completed', fmtDateTime(sr.completed_at))}
+      </div>
+      ${fac.name ? `<div class="facbox"><div class="fac">${esc(fac.name)}</div><div>${facInfo}</div></div>` : ''}
+    </div>
+    ${hasVal(sr.service_required || sr.problem_description) ? `<h2 class="sec">Service Required</h2><p>${esc(sr.service_required || sr.problem_description)}</p>` : ''}
+    <h2 class="sec">Technician Sessions</h2>
+    ${sessionsHtml}
+    <h2 class="sec">Completion Summary</h2>
+    <p>${esc(sr.resolution_description || 'No final resolution summary was added.')}</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+      ${summaryPills.map(text => `<span class="pill">${esc(text)}</span>`).join('')}
+    </div>
+  `)
+}
+
+export const buildServiceReportDocument = (sr: any, facility: Facility | null | undefined): string =>
+  buildInspectionReportDocumentHtml(buildServiceReportBody(sr, facility), `${sr.request_number || 'Service'} Service Report`)
+
+const printDocument = (docHtml: string) => {
+  const frame = document.createElement('iframe')
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+  document.body.appendChild(frame)
+  const doc = frame.contentWindow?.document
+  if (!doc) return
+  doc.open()
+  doc.write(docHtml)
+  doc.close()
+  frame.onload = () => {
+    frame.contentWindow?.focus()
+    frame.contentWindow?.print()
+    window.setTimeout(() => frame.remove(), 800)
+  }
+}
+
+export const printServiceReportSheet = async (sr: any) => {
+  let facility: Facility | null = null
+  if (sr?.facility_id) { try { facility = await fetchFacility(sr.facility_id) } catch { /* ignore */ } }
+  printDocument(buildServiceReportDocument(sr, facility))
+}
+
+/* ------------------------------------------------------------------ *
+ * Invoice append — matches the invoice's .doc-a rental design so the  *
+ * service report flows on the same print as the invoice.              *
+ * ------------------------------------------------------------------ */
+
+// Kept for compatibility; the .report-* classes live in InvoicePrintDialog print styles.
+export const SERVICE_REPORT_EXTRA_CSS = INSPECTION_REPORT_CSS
+
+const appendSessionHtml = (session: any, index: number) => {
+  const equipment: any[] = (session.test_equipment || []).filter((i: any) => hasVal(i.tem) || hasVal(i.description) || hasVal(i.serial_number))
+  const parts: any[] = (session.parts || []).filter((i: any) => hasVal(i.part_number) || hasVal(i.description))
+  return `
+    <div class="report-session">
+      <div class="report-session-head">
+        <strong>Session ${index + 1} — ${esc(session.user || 'Technician')}</strong>
+        <span>${esc(Number(session.duration_hours || 0).toFixed(2))} hrs</span>
+      </div>
+      <div class="report-times">
+        <div><b>Start Time</b><br>${esc(fmtDateTime(session.start_time || session.clocked_in_at) || '-')}</div>
+        <div><b>End Time</b><br>${esc(fmtDateTime(session.end_time || session.clocked_out_at || session.timestamp) || '-')}</div>
+        ${session.break_minutes !== undefined ? `<div><b>Break Time</b><br>${esc(String(session.break_minutes))} min</div>` : ''}
+        ${session.total_mileage !== undefined ? `<div><b>Total Mileage</b><br>${esc(Number(session.total_mileage || 0).toFixed(2))} mi</div>` : ''}
+      </div>
+      ${hasVal(session.diagnosis) ? `<div class="report-h4">Diagnosis</div><p>${esc(session.diagnosis)}</p>` : ''}
+      ${hasVal(session.work_done) ? `<div class="report-h4">Work Done</div><p>${esc(session.work_done)}</p>` : ''}
+      ${hasVal(session.notes) ? `<div class="report-h4">Notes</div><p>${esc(session.notes)}</p>` : ''}
+      ${equipment.length ? `<div class="report-h4">Test Equipment Used</div><div class="report-summary" style="margin-top:6px">${equipment.map((i: any) => `<span class="report-pill">${esc(i.tem || i.description || 'Test Equipment')}</span>`).join('')}</div>` : ''}
+      ${parts.length ? `<div class="report-h4">Parts Used</div><div class="report-summary" style="margin-top:6px">${parts.map((i: any) => `<span class="report-pill">${esc(i.part_number || 'Part')} · Qty ${esc(Number(i.quantity_used || 0))}</span>`).join('')}</div>` : ''}
     </div>`
 }
 
 /**
- * Returns a self-contained <main class="sheet"> block for the service report.
- * Append this after the invoice HTML body when printing invoice + report together.
- * Requires SERVICE_REPORT_EXTRA_CSS to be present in the print document's <style>.
+ * Self-contained <main class="sheet doc-a"> block for the service report, appended after
+ * an invoice when printing invoice + report together. Uses the invoice document's own
+ * .doc-a / .report-* classes (defined in InvoicePrintDialog print styles).
  */
 export const buildServiceReportSheet = (sr: any): string => {
-  const sessions = getSessions(sr)
-  const sessionRows = sessions.length
-    ? sessions.map((s: any, i: number) => `
-        <div class="report-session">
-          <div class="report-session-head">
-            <strong>Session ${i + 1} — ${esc(s.user)}</strong>
-            <span>${esc(Number(s.duration_hours || 0).toFixed(2))} hrs</span>
-          </div>
-          <div class="report-times">
-            <div><b>Start Time</b><br>${esc(fmtDateTime(s.start_time || s.clocked_in_at))}</div>
-            <div><b>End Time</b><br>${esc(fmtDateTime(s.end_time || s.clocked_out_at || s.timestamp))}</div>
-            ${s.break_minutes !== undefined ? `<div><b>Break Time</b><br>${esc(String(s.break_minutes))} min</div>` : ''}
-            ${s.total_mileage !== undefined ? `<div><b>Total Mileage</b><br>${esc(Number(s.total_mileage || 0).toFixed(2))} mi</div>` : ''}
-          </div>
-          <div class="report-h4">Diagnosis</div><p>${esc(s.diagnosis || '-')}</p>
-          <div class="report-h4">Work Done</div><p>${esc(s.work_done || '-')}</p>
-          ${s.notes ? `<div class="report-h4">Notes</div><p>${esc(s.notes)}</p>` : ''}
-          ${buildSessionEquipmentHtml(s)}
-          ${buildSessionPartsHtml(s)}
-        </div>`).join('')
-    : '<p class="muted">No technician sessions recorded.</p>'
-
+  const sessions = serviceSessions(sr)
+  const sessionRows = sessions.length ? sessions.map((session, index) => appendSessionHtml(session, index)).join('') : '<p class="muted">No technician sessions recorded.</p>'
   return `
-    <main class="sheet" style="break-before:page;page-break-before:always;">
-      <section class="hero report-hero">
+    <main class="sheet doc-a" style="--accent:#2563EB;--accent-soft:#EFF6FF;break-before:page;page-break-before:always;">
+      <section class="head">
         <div class="brand">
-          <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
-          <div>Mr. BioMed Tech Services<br><small>Biomedical Equipment Repair &amp; Rental Services</small></div>
+          <img src="${COMPANY.logo}" alt="${esc(COMPANY.name)}" />
+          <div>
+            <div class="eyebrow">Service Report</div>
+            <h1 class="doc-title">${esc(sr.request_number)}</h1>
+            <div class="doc-company">${esc(COMPANY.name)}</div>
+            <div class="doc-address">${esc(COMPANY.address)}</div>
+          </div>
         </div>
-        <div class="title">
-          <h1>Service Completion Report</h1>
-          <div class="module">${esc(sr.request_number)} — ${esc(sr.facility_name || 'Facility')}</div>
-        </div>
+        <div class="head-right"><span class="status-pill">${esc((sr.status || sr.billing_status || 'Completed'))}</span></div>
       </section>
+      <div class="accent-bar"></div>
       <section class="content">
-        <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
-          <div class="box"><h3>Facility</h3>${esc(sr.facility_name || '-')}</div>
-          <div class="box"><h3>Equipment</h3>${esc(sr.equipment_name || '-')}</div>
-          <div class="box"><h3>Technician</h3>${esc(sr.technician_name || 'Unassigned')}</div>
-          <div class="box"><h3>Completed</h3>${esc(fmtDateTime(sr.completed_at))}</div>
-        </div>
+        <section class="grid">
+          <div class="box"><h3>Facility</h3><strong class="customer">${esc(sr.facility_name || '-')}</strong></div>
+          <div class="box meta">
+            <strong>Equipment</strong><span>${esc(sr.equipment_name || '-')}</span>
+            <strong>Technician</strong><span>${esc(sr.technician_name || 'Unassigned')}</span>
+            <strong>Completed</strong><span>${esc(fmtDateTime(sr.completed_at) || '-')}</span>
+          </div>
+        </section>
         <div class="report-section">
-          <h2 style="margin:0 0 10px;color:#1E1B4B;font-size:18px;">Service Required</h2>
+          <h2 style="margin:0 0 10px;color:#1E3A8A;font-size:16px;font-weight:900">Service Required</h2>
           <p>${esc(sr.service_required || sr.problem_description || '-')}</p>
         </div>
         <div class="report-section">
-          <h2 style="margin:0 0 10px;color:#1E1B4B;font-size:18px;">Technician Sessions</h2>
+          <h2 style="margin:0 0 10px;color:#1E3A8A;font-size:16px;font-weight:900">Technician Sessions</h2>
           ${sessionRows}
         </div>
         <div class="report-section">
-          <h2 style="margin:0 0 10px;color:#1E1B4B;font-size:18px;">Completion Summary</h2>
+          <h2 style="margin:0 0 10px;color:#1E3A8A;font-size:16px;font-weight:900">Completion Summary</h2>
           <p>${esc(sr.resolution_description || 'No final resolution summary was added.')}</p>
           <div class="report-summary">
             <span class="report-pill">Total Hours: ${esc(Number(sr.time_spent_hours || 0).toFixed(2))}</span>
-            <span class="report-pill">Total Mileage: ${esc(sessions.reduce((sum: number, s: any) => sum + Number(s.total_mileage || 0), 0).toFixed(2))} mi</span>
-            <span class="report-pill">Total Cost: ${esc(fmtMoney(sr.total_cost))}</span>
+            <span class="report-pill">Total Mileage: ${esc(totalMileage(sessions).toFixed(2))} mi</span>
+            <span class="report-pill">Total Cost: ${esc(money(sr.total_cost))}</span>
             <span class="report-pill">Billing: ${esc((sr.billing_status || 'pending').replace(/_/g, ' '))}</span>
           </div>
-        </div>
-        <div class="footer">
-          <span>Mr. BioMed Tech Services</span>
-          <span>Generated from Medrad Admin Panel</span>
         </div>
       </section>
     </main>`

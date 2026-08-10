@@ -92,6 +92,7 @@ export const INSPECTION_REPORT_CSS = `
   .title { color: #1E3A8A; font-weight: 900; font-size: 26px; text-align: center; margin: 8px 0 2px; }
   .subtitle { color: #64748B; font-weight: 800; text-align: center; }
   h2.sec { color: #1E1B4B; font-size: 15px; font-weight: 900; margin: 20px 0 10px; }
+  h3.sub-h { color: #64748B; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 5px; }
   .muted { color: #64748B; }
   .cover-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; }
   .cover-logo { width: 190px; height: 120px; object-fit: contain; }
