@@ -133,6 +133,45 @@ const ACTION_MENU_DANGER = {
   '&:hover': { bgcolor: '#FEF2F2', color: '#B91C1C' },
 }
 
+const SALES_LIST_TABLE_SX = {
+  width: '100%',
+  tableLayout: 'fixed',
+  '& .MuiTableCell-root': {
+    px: { xs: 1.1, lg: 1.35 },
+    py: 1.15,
+    minWidth: 0,
+    boxSizing: 'border-box',
+    whiteSpace: 'normal',
+    verticalAlign: 'middle',
+  },
+  '& .MuiTableCell-head': {
+    py: 1.05,
+    color: '#64748B',
+    fontSize: 11.5,
+    fontWeight: 900,
+    textTransform: 'uppercase',
+  },
+}
+
+const SALES_PAGINATION_SX = {
+  borderTop: '1px solid #EEF0F6',
+  '& .MuiTablePagination-toolbar': {
+    minHeight: 48,
+    px: { xs: 0.5, sm: 1 },
+  },
+  '& .MuiTablePagination-selectLabel': { display: { xs: 'none', sm: 'block' } },
+  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: '#64748B' },
+}
+
+const SALES_ACTION_BUTTON_SX = {
+  width: 34,
+  height: 34,
+  borderRadius: '10px',
+  bgcolor: '#F3F4F6',
+  color: '#4F46E5',
+  '&:hover': { bgcolor: '#EDE9FE' },
+}
+
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
     draft: { bg: '#F3F4F6', color: '#4B5563' },
@@ -155,6 +194,29 @@ const statusChip = (value: string) => {
     cancelled: { bg: '#F3F4F6', color: '#6B7280' },
   }
   return map[value] || { bg: '#F3F4F6', color: '#374151' }
+}
+
+const SalesStatusChip = ({ value, label }: { value: string; label?: string }) => {
+  const colors = statusChip(value)
+  const display = label || value.replace(/_/g, ' ')
+  return (
+    <Chip
+      size="small"
+      label={display}
+      title={display}
+      sx={{
+        height: 26,
+        maxWidth: 126,
+        bgcolor: colors.bg,
+        color: colors.color,
+        borderRadius: '8px',
+        fontSize: 11,
+        fontWeight: 900,
+        textTransform: 'uppercase',
+        '& .MuiChip-label': { px: 1.05, overflow: 'hidden', textOverflow: 'ellipsis' },
+      }}
+    />
+  )
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
@@ -1213,8 +1275,9 @@ const Sales = () => {
         }
       }}
       sx={{
-        p: 2.2,
-        borderRadius: '18px',
+        p: { xs: 1.35, sm: 1.6, lg: 1.8 },
+        minWidth: 0,
+        borderRadius: '16px',
         border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
         boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(49,46,129,0.07)',
         cursor: 'pointer',
@@ -1224,11 +1287,11 @@ const Sales = () => {
         '&:focus-visible': { outline: `3px solid ${color}35`, outlineOffset: 2 },
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
-        <Avatar sx={{ bgcolor: `${color}18`, color, borderRadius: '14px' }}>{icon}</Avatar>
-        <Box>
-          <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography sx={{ color: '#1E1B4B', fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{value}</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, minWidth: 0 }}>
+        <Avatar sx={{ width: 40, height: 40, bgcolor: `${color}18`, color, borderRadius: '12px', flexShrink: 0 }}>{icon}</Avatar>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography noWrap title={label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+          <Typography noWrap title={String(value)} sx={{ color: '#1E1B4B', fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>{value}</Typography>
         </Box>
       </Box>
     </Card>
@@ -1411,25 +1474,25 @@ const Sales = () => {
         onPageChange={(_, next) => setPage(next)}
         rowsPerPage={PAGE_SIZE}
         rowsPerPageOptions={[PAGE_SIZE]}
-        sx={{ borderTop: '1px solid #EEF0F6' }}
+        sx={SALES_PAGINATION_SX}
       />
     ) : null
   )
 
   const renderQuotationTable = (items: SalesQuotation[], emptyText: string) => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ ...SALES_LIST_TABLE_SX, minWidth: { xs: 920, lg: 1060 } }}>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>#</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Facility Name</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Quotation Type</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Created By</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Requested Date</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Paid</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+            <TableCell sx={{ width: 58 }}>#</TableCell>
+            <TableCell sx={{ width: 138 }}>Work Order</TableCell>
+            <TableCell sx={{ width: 185 }}>Facility Name</TableCell>
+            <TableCell sx={{ width: 128 }}>Quotation Type</TableCell>
+            <TableCell sx={{ width: 130 }}>Created By</TableCell>
+            <TableCell sx={{ width: 116 }}>Requested Date</TableCell>
+            <TableCell sx={{ width: 150 }}>Status</TableCell>
+            <TableCell sx={{ width: 105 }}>Paid</TableCell>
+            <TableCell align="right" sx={{ width: 66 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -1438,8 +1501,6 @@ const Sales = () => {
           )) : items.length === 0 ? (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
           ) : items.map(item => {
-            const status = statusChip(item.status)
-            const paid = statusChip(item.paid_status)
             const highlighted = highlightQuotationId === item.id
             return (
               <ContextTableRow
@@ -1455,41 +1516,42 @@ const Sales = () => {
                   '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
                 } : undefined}
               >
-                <TableCell>{item.id}</TableCell>
+                <TableCell><ClippedTooltipText value={item.id} monospace fontWeight={800} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.work_order} monospace color="#1E40AF" fontWeight={900} onClick={() => setViewQuotation(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.facility_name || item.customer_name} fontWeight={800} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
-                <TableCell sx={{ textTransform: 'capitalize' }}>{item.quotation_type.replace(/_/g, ' ')}</TableCell>
-                <TableCell>{item.created_by_name || '-'}</TableCell>
+                <TableCell><ClippedTooltipText value={item.quotation_type.replace(/_/g, ' ')} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.created_by_name || '-'} /></TableCell>
                 <TableCell>{formatDate(item.requested_date)}</TableCell>
                 <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexWrap: 'wrap' }}>
-                    <Chip size="small" label={item.status.replace('_', ' ')} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} />
-                    {item.revision > 1 && <Chip size="small" label={`Rev ${item.revision}`} sx={{ bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.55, flexWrap: 'wrap', minWidth: 0 }}>
+                    <SalesStatusChip value={item.status} />
+                    {item.revision > 1 && <SalesStatusChip value="viewed" label={`Rev ${item.revision}`} />}
                   </Box>
-                </TableCell>
-                <TableCell><Chip size="small" label={item.paid_status === 'unpaid' ? 'Unpaid' : item.paid_status.replace(/_/g, ' ')} sx={{ bgcolor: paid.bg, color: paid.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
-                <TableCell align="right">
-                  {highlighted && (
-                    <Chip size="small" label="Selected" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
-                  )}
                   {item.status === 'in_progress' && (
-                    <Box sx={{ minWidth: 150, mb: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
-                        <Typography sx={{ color: '#6B7280', fontSize: 11, fontWeight: 800 }}>Payment progress</Typography>
-                        <Typography sx={{ color: '#1E1B4B', fontSize: 11, fontWeight: 900 }}>{quotationPaymentPercent(item)}%</Typography>
+                    <Box sx={{ mt: 0.75, maxWidth: 128 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.35 }}>
+                        <Typography sx={{ color: '#64748B', fontSize: 10, fontWeight: 800 }}>Payment</Typography>
+                        <Typography sx={{ color: '#1E1B4B', fontSize: 10, fontWeight: 900 }}>{quotationPaymentPercent(item)}%</Typography>
                       </Box>
-                      <LinearProgress variant="determinate" value={quotationPaymentPercent(item)} sx={{ height: 8, borderRadius: 10, bgcolor: '#EEF2FF', '& .MuiLinearProgress-bar': { borderRadius: 10, bgcolor: '#7C3AED' } }} />
+                      <LinearProgress variant="determinate" value={quotationPaymentPercent(item)} sx={{ height: 6, borderRadius: 6, bgcolor: '#EEF2FF', '& .MuiLinearProgress-bar': { borderRadius: 6, bgcolor: '#7C3AED' } }} />
                     </Box>
                   )}
+                </TableCell>
+                <TableCell>
+                  <SalesStatusChip value={item.paid_status} label={item.paid_status === 'unpaid' ? 'Unpaid' : undefined} />
                   {item.status === 'completed' && (
-                    <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 800, mb: 1 }}>
-                      {paymentMethodLabel(item.converted_invoice_payment_method || item.payment_method)}
-                    </Typography>
+                    <ClippedTooltipText value={paymentMethodLabel(item.converted_invoice_payment_method || item.payment_method)} variant="caption" color="#64748B" fontWeight={700} />
+                  )}
+                </TableCell>
+                <TableCell align="right">
+                  {highlighted && (
+                    <Box sx={{ mb: 0.5 }}><SalesStatusChip value="viewed" label="Selected" /></Box>
                   )}
                   <IconButton
                     size="small"
+                    aria-label={`Actions for ${item.work_order || item.quotation_number}`}
                     onClick={(event) => openActions(event, item)}
-                    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#4F46E5', '&:hover': { bgcolor: '#EDE9FE' } }}
+                    sx={SALES_ACTION_BUTTON_SX}
                   >
                     <MoreVertIcon fontSize="small" />
                   </IconButton>
@@ -1504,18 +1566,18 @@ const Sales = () => {
 
   const renderInvoices = () => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ ...SALES_LIST_TABLE_SX, minWidth: { xs: 960, lg: 1100 } }}>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Invoice #</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Customer</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Paid</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Due</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+            <TableCell sx={{ width: 150 }}>Invoice #</TableCell>
+            <TableCell sx={{ width: 140 }}>Work Order</TableCell>
+            <TableCell sx={{ width: 160 }}>Customer</TableCell>
+            <TableCell sx={{ width: 160 }}>Facility</TableCell>
+            <TableCell sx={{ width: 112 }}>Amount</TableCell>
+            <TableCell sx={{ width: 110 }}>Paid</TableCell>
+            <TableCell sx={{ width: 132 }}>Status</TableCell>
+            <TableCell sx={{ width: 112 }}>Due</TableCell>
+            <TableCell align="right" sx={{ width: 66 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -1524,7 +1586,6 @@ const Sales = () => {
           )) : invoices.length === 0 ? (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No sales invoices yet.</TableCell></TableRow>
           ) : invoices.map(invoice => {
-            const chip = statusChip(invoice.status)
             const highlighted = highlightInvoiceId === invoice.id
             return (
               <ContextTableRow
@@ -1547,17 +1608,18 @@ const Sales = () => {
                 <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
                 <TableCell>{money(invoice.net_paid ?? invoice.amount_paid)}</TableCell>
                 <TableCell>
-                  <Chip size="small" label={(invoice.refund_status !== 'none' ? invoice.refund_status : invoice.status).replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} />
+                  <SalesStatusChip value={invoice.refund_status !== 'none' ? invoice.refund_status : invoice.status} />
                 </TableCell>
                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
                 <TableCell align="right">
                   {highlighted && (
-                    <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />
+                    <Box sx={{ mb: 0.5 }}><SalesStatusChip value="viewed" label="Selected" /></Box>
                   )}
                   <IconButton
                     size="small"
+                    aria-label={`Actions for ${invoice.invoice_number}`}
                     onClick={(event) => openInvoiceActions(event, invoice)}
-                    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#4F46E5', '&:hover': { bgcolor: '#EDE9FE' } }}
+                    sx={SALES_ACTION_BUTTON_SX}
                   >
                     <MoreVertIcon fontSize="small" />
                   </IconButton>
@@ -1598,12 +1660,13 @@ const Sales = () => {
   }
 
   const renderSearchControl = (label: string) => (
-    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap' }}>
+    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', width: { xs: '100%', xl: 'auto' }, justifyContent: { xl: 'flex-end' } }}>
       <SearchFieldSelect
         value={searchField}
         options={activeSearchFields}
         onChange={handleSearchFieldChange}
         ariaLabel="Sales search field"
+        sx={{ width: { xs: '100%', sm: 160 }, minWidth: { xs: '100%', sm: 160 } }}
       />
       <TextField
         size="small"
@@ -1611,7 +1674,7 @@ const Sales = () => {
         placeholder={`Search ${activeSearchFields.find((field) => field.value === searchField)?.label.toLowerCase() || 'sales'}...`}
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        sx={{ minWidth: 280, bgcolor: '#fff' }}
+        sx={{ flex: '1 1 220px', minWidth: { xs: '100%', sm: 220 }, maxWidth: { xl: 320 }, bgcolor: '#fff' }}
       />
       <DateRangeFilter
         dateFrom={dateFrom}
@@ -1624,8 +1687,8 @@ const Sales = () => {
   )
 
   return (
-    <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
-      <Card sx={{ p: 3, mb: 3, borderRadius: '24px', border: '1px solid #E6E8F2', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+    <Box className="page-enter" sx={{ width: '100%', maxWidth: 'none', mx: 'auto' }}>
+      <Card sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, borderRadius: '22px', border: '1px solid #E9D5FF', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <Box>
             <Typography variant="h4" sx={{ color: '#1E1B4B', fontWeight: 900 }}>Sales Module</Typography>
@@ -1637,7 +1700,7 @@ const Sales = () => {
         </Box>
       </Card>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(5, 1fr)' }, gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(5, minmax(0, 1fr))' }, gap: { xs: 1.25, md: 1.75 }, mb: 2.5 }}>
         {renderKpi('Quotations', stats.quotations, <AssignmentIcon />, '#4F46E5', 0)}
         {renderKpi('Invoices', stats.invoices, <ReceiptLongIcon />, '#2563EB', 1)}
         {renderKpi('In Progress', stats.inProgress, <ShoppingCartIcon />, '#F59E0B', 2)}
@@ -1655,14 +1718,14 @@ const Sales = () => {
 
         {tab === 0 && (
           <Box>
-            <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation Parts List</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>{summary?.parts ?? 0} sales part{(summary?.parts ?? 0) === 1 ? '' : 's'} available from inventory.</Typography>
               </Box>
               {renderSearchControl('Search quotations')}
             </Box>
-            <Box sx={{ p: 3 }}>
+            <Box sx={{ p: { xs: 1.25, md: 2 } }}>
               <Box sx={{ display: 'flex', gap: 2, mb: 2, color: '#2434B6', fontWeight: 900, flexWrap: 'wrap' }}>
                 {['None', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')].map(letter => <Typography key={letter} sx={{ fontWeight: 900, fontSize: 14 }}>{letter}</Typography>)}
               </Box>
@@ -1673,7 +1736,7 @@ const Sales = () => {
         )}
         {tab === 1 && (
           <Box>
-            <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Invoices</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by invoice, customer, facility, quotation, status, amount, or date.</Typography>
@@ -1685,7 +1748,7 @@ const Sales = () => {
           </Box>
         )}
         {tab === 2 && (
-          <Box sx={{ p: 3 }}>
+          <Box sx={{ p: { xs: 1.25, md: 2 } }}>
             <Card sx={{ p: 2.5, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', bgcolor: '#F8FAFF' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 1 }}>
                 <Box>
@@ -1706,7 +1769,7 @@ const Sales = () => {
           </Box>
         )}
         {tab === 3 && (
-          <Box sx={{ p: 3 }}>
+          <Box sx={{ p: { xs: 1.25, md: 2 } }}>
             <Card sx={{ p: 2.5, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', bgcolor: '#F7FEF9' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                 <Box>
@@ -1731,7 +1794,7 @@ const Sales = () => {
         )}
         {tab === 3 && (
           <Box>
-          <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
+          <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
             <Box>
               <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales History</Typography>
               <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by work order, quotation, customer, facility, activity, user, or date.</Typography>
@@ -1741,16 +1804,16 @@ const Sales = () => {
             </Typography>
           </Box>
           <TableContainer className="list-scroll-panel">
-            <Table stickyHeader>
+            <Table stickyHeader sx={{ ...SALES_LIST_TABLE_SX, minWidth: { xs: 820, lg: 1040 } }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-                  <TableCell sx={{ fontWeight: 900 }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Quotation</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Customer</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Activity</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>By</TableCell>
+                  <TableCell sx={{ width: 116 }}>Date</TableCell>
+                  <TableCell sx={{ width: 142 }}>Work Order</TableCell>
+                  <TableCell sx={{ width: 142 }}>Quotation</TableCell>
+                  <TableCell sx={{ width: 160 }}>Customer</TableCell>
+                  <TableCell sx={{ width: 160 }}>Facility</TableCell>
+                  <TableCell sx={{ width: 188 }}>Activity</TableCell>
+                  <TableCell sx={{ width: 132 }}>By</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1770,8 +1833,8 @@ const Sales = () => {
                     <TableCell><ClippedTooltipText value={item.quotation_number} monospace color="#7161D8" fontWeight={900} onClick={() => openLinkedQuotation(item.quotation_id)} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.customer_name} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
-                    <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
-                    <TableCell>{item.by}</TableCell>
+                    <TableCell><ClippedTooltipText value={item.action.replace(/_/g, ' ')} fontWeight={800} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.by} /></TableCell>
                   </ContextTableRow>
                 ))}
               </TableBody>
