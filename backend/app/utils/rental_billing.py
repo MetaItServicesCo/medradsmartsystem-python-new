@@ -96,10 +96,20 @@ def advance_billing_date(day: date, freq: str, periods: int = 1) -> date:
 
 def billing_period_date(rental: Rental, period_index: int) -> date:
     """Return the anchored start date for a 1-based agreement period."""
+    if _freq(rental) == "custom":
+        count = max(1, int(rental.committed_periods or 1))
+        total_days = max(1, (rental.end_date - rental.start_date).days + 1)
+        offset = ((max(1, period_index) - 1) * total_days) // count
+        return rental.start_date + timedelta(days=offset)
     return advance_billing_date(rental.start_date, _freq(rental), max(0, period_index - 1))
 
 
 def billing_period_end(rental: Rental, period_index: int) -> date:
+    if _freq(rental) == "custom":
+        count = max(1, int(rental.committed_periods or 1))
+        if period_index >= count:
+            return rental.end_date
+        return billing_period_date(rental, period_index + 1) - timedelta(days=1)
     natural_end = billing_period_date(rental, period_index + 1) - timedelta(days=1)
     return min(natural_end, rental.end_date) if rental.end_date else natural_end
 
@@ -134,27 +144,63 @@ def _append_history(rental: Rental, action: str, details: Optional[dict[str, Any
     rental.history = history
 
 
-def _period_amounts(rental: Rental, period_index: int) -> tuple[Decimal, Decimal]:
-    """Returns (base_rental, discount) for the given 1-based period. One-time
-    shipping/setup fees are billed on the deposit invoice, not on the cycles. The
-    commitment discount lands on the invoice immediately after the milestone."""
+def _discount_invoice_number(rental: Rental) -> Optional[int]:
+    explicit = getattr(rental, "discount_invoice_number", None)
+    if explicit is not None:
+        return max(1, int(explicit))
+    legacy = getattr(rental, "discount_apply_after_periods", None)
+    return int(legacy) + 1 if legacy is not None else None
+
+
+def _discount_value_for_base(rental: Rental, base: Decimal) -> Decimal:
+    if rental.discount_type == RentalDiscountType.PERCENT.value:
+        return (base * _money(rental.discount_value) / Decimal("100")).quantize(Decimal("0.01"))
+    return min(base, _money(rental.discount_value))
+
+
+def _offered_period_discount(rental: Rental, period_index: int, base: Decimal) -> Decimal:
+    target = _discount_invoice_number(rental)
+    if not rental.discount_type or target is None:
+        return Decimal("0")
+    unit_discount = _discount_value_for_base(rental, base)
+    mode = getattr(rental, "discount_application_mode", None) or "single_invoice"
+    if mode == "commitment":
+        if period_index == target:
+            return min(base, unit_discount * target)
+        if period_index > target and bool(getattr(rental, "discount_continue", False)):
+            return unit_discount
+        return Decimal("0")
+    return unit_discount if period_index == target else Decimal("0")
+
+
+def _discount_authorized(rental: Rental) -> bool:
+    return not bool(getattr(rental, "discount_requires_card", False)) or bool(rental.auto_charge_authorized_at)
+
+
+def _period_amounts(
+    rental: Rental,
+    period_index: int,
+    *,
+    include_conditional: bool = False,
+) -> tuple[Decimal, Decimal, bool]:
+    """Return base rent, applicable discount, and whether it is conditional.
+
+    One-time fees stay on invoice one. A card-conditioned discount is visible in
+    projections but is not posted to an invoice until auto-charge is authorized.
+    """
     base = Decimal("0")
     for item in rental.items or []:
         base += _money(item.rental_rate) * int(item.quantity or 1)
 
-    discount = Decimal("0")
-    apply_after = rental.discount_apply_after_periods
-    if rental.discount_type and apply_after is not None and period_index == int(apply_after) + 1:
-        if rental.discount_type == RentalDiscountType.PERCENT.value:
-            discount = (base * _money(rental.discount_value) / Decimal("100")).quantize(Decimal("0.01"))
-        else:
-            discount = min(base, _money(rental.discount_value))
-    return base, discount
+    offered = _offered_period_discount(rental, period_index, base)
+    conditional = offered > 0 and not _discount_authorized(rental)
+    discount = offered if (include_conditional or not conditional) else Decimal("0")
+    return base, discount, conditional
 
 
-def _recurring_invoice_amounts(rental: Rental, period_index: int) -> dict[str, Decimal]:
+def _recurring_invoice_amounts(rental: Rental, period_index: int, *, include_conditional: bool = False) -> dict[str, Any]:
     """Calculate a recurring period with discount reducing the taxable base."""
-    rental_total, discount = _period_amounts(rental, period_index)
+    rental_total, discount, conditional = _period_amounts(rental, period_index, include_conditional=include_conditional)
     taxable_rental = max(Decimal("0"), rental_total - discount)
     tax = (taxable_rental * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
     total = taxable_rental + tax
@@ -164,11 +210,14 @@ def _recurring_invoice_amounts(rental: Rental, period_index: int) -> dict[str, D
         "taxable_rental": taxable_rental,
         "tax": tax,
         "total": total,
+        "discount_conditional": conditional,
     }
 
 
 def effective_period_count(rental: Rental) -> int:
     """Number of billable periods, bounded by commitment and agreement end."""
+    if _freq(rental) == "custom":
+        return max(1, int(rental.committed_periods or 1))
     count = 0
     maximum = int(rental.committed_periods) if rental.committed_periods else 1200
     while count < maximum and billing_period_date(rental, count + 1) <= rental.end_date:
@@ -181,9 +230,9 @@ def projected_billing_schedule(rental: Rental) -> list[dict[str, Any]]:
     schedule: list[dict[str, Any]] = []
     for period_index in range(1, effective_period_count(rental) + 1):
         if period_index == 1:
-            amounts = _initial_invoice_amounts(rental)
+            amounts = _initial_invoice_amounts(rental, include_conditional=True)
         else:
-            amounts = _recurring_invoice_amounts(rental, period_index)
+            amounts = _recurring_invoice_amounts(rental, period_index, include_conditional=True)
         schedule.append({
             "period": period_index,
             "billing_date": billing_period_date(rental, period_index),
@@ -192,6 +241,7 @@ def projected_billing_schedule(rental: Rental) -> list[dict[str, Any]]:
             "discount": amounts["discount"],
             "tax": amounts["tax"],
             "total": amounts["total"],
+            "discount_conditional": amounts.get("discount_conditional", False),
         })
     return schedule
 
@@ -200,7 +250,7 @@ def projected_period(rental: Rental, period_index: int) -> Optional[dict[str, An
     """Return one projected period without constructing the complete schedule."""
     if period_index < 1 or period_index > effective_period_count(rental):
         return None
-    amounts = _initial_invoice_amounts(rental) if period_index == 1 else _recurring_invoice_amounts(rental, period_index)
+    amounts = _initial_invoice_amounts(rental, include_conditional=True) if period_index == 1 else _recurring_invoice_amounts(rental, period_index, include_conditional=True)
     return {
         "period": period_index,
         "billing_date": billing_period_date(rental, period_index),
@@ -209,22 +259,29 @@ def projected_period(rental: Rental, period_index: int) -> Optional[dict[str, An
         "discount": amounts["discount"],
         "tax": amounts["tax"],
         "total": amounts["total"],
+        "discount_conditional": amounts.get("discount_conditional", False),
     }
 
 
-def _initial_invoice_amounts(rental: Rental) -> dict[str, Decimal]:
+def _initial_invoice_amounts(rental: Rental, *, include_conditional: bool = False) -> dict[str, Any]:
     """Calculate the upfront invoice, including rental period one.
 
     Rent, shipping, and delivery/setup are taxable. The refundable deposit and
     labor are not. Keeping this calculation centralized prevents the public
     portal, invoice ledger, and recurring scheduler from drifting apart.
     """
-    rental_total, discount = _period_amounts(rental, 1)
-    deposit = _money(rental.security_deposit)
-    shipping_total = sum((_money(item.shipping_fee) for item in rental.items or []), Decimal("0"))
-    setup_total = sum((_money(item.setup_fee) for item in rental.items or []), Decimal("0"))
-    labor_total = sum((_money(item.labor_fee) for item in rental.items or []), Decimal("0"))
-    removal_total = sum((_money(item.removal_fee) for item in rental.items or []), Decimal("0"))
+    rental_total, discount, conditional = _period_amounts(rental, 1, include_conditional=include_conditional)
+    item_deposit = sum(
+        (_money(getattr(item, "security_deposit", 0)) * int(item.quantity or 1) for item in rental.items or []),
+        Decimal("0"),
+    )
+    deposit = item_deposit if item_deposit > 0 else _money(rental.security_deposit)
+    # getattr keeps migrated/legacy item snapshots compatible with fees that
+    # were introduced after the original rental record was created.
+    shipping_total = sum((_money(getattr(item, "shipping_fee", 0)) for item in rental.items or []), Decimal("0"))
+    setup_total = sum((_money(getattr(item, "setup_fee", 0)) for item in rental.items or []), Decimal("0"))
+    labor_total = sum((_money(getattr(item, "labor_fee", 0)) for item in rental.items or []), Decimal("0"))
+    removal_total = sum((_money(getattr(item, "removal_fee", 0)) for item in rental.items or []), Decimal("0"))
     taxable_rental = max(Decimal("0"), rental_total - discount)
     # Removal/pickup is a logistics charge and is taxed like shipping & delivery/setup.
     taxable_total = taxable_rental + shipping_total + setup_total + removal_total
@@ -242,7 +299,105 @@ def _initial_invoice_amounts(rental: Rental) -> dict[str, Decimal]:
         "tax": tax,
         "subtotal": subtotal,
         "total": total,
+        "discount_conditional": conditional,
     }
+
+
+def invoice_amounts_for_period(
+    rental: Rental,
+    period_index: int,
+    *,
+    include_conditional: bool = False,
+) -> dict[str, Any]:
+    """Public, shared amount source for previews and payment-time repricing."""
+    if period_index == 1:
+        return _initial_invoice_amounts(rental, include_conditional=include_conditional)
+    return _recurring_invoice_amounts(rental, period_index, include_conditional=include_conditional)
+
+
+def _initial_invoice_line_items(rental: Rental) -> list[dict[str, Any]]:
+    """Build period-one invoice lines from the agreement snapshots."""
+    line_items: list[dict[str, Any]] = []
+    frequency = _freq(rental)
+    for item in rental.items or []:
+        item_total = _money(item.rental_rate) * int(item.quantity or 1)
+        if item_total > 0:
+            line_items.append(
+                _line(
+                    item.part_number or "Rental",
+                    f"{item.part_description or 'Rental product'} - first {frequency} rental period",
+                    _money(item.rental_rate),
+                    int(item.quantity or 1),
+                )
+            )
+    for item in rental.items or []:
+        item_deposit = _money(getattr(item, "security_deposit", 0))
+        if item_deposit > 0:
+            line_items.append(
+                _line(
+                    f"DEP-{item.part_number or item.id}",
+                    f"Security Deposit - {item.part_description or item.part_number or 'Rental product'}",
+                    item_deposit,
+                    int(item.quantity or 1),
+                )
+            )
+    amounts = _initial_invoice_amounts(rental)
+    if amounts["deposit"] > 0 and not any(
+        _money(getattr(item, "security_deposit", 0)) > 0 for item in rental.items or []
+    ):
+        line_items.append(_line("DEPOSIT", "Security Deposit", amounts["deposit"]))
+    if amounts["shipping"] > 0:
+        line_items.append(_line("SHIP-PACK", "Shipping & Packing", amounts["shipping"]))
+    if amounts["setup"] > 0:
+        line_items.append(_line("DEL-SETUP", "Delivery & Setup", amounts["setup"]))
+    if amounts["removal"] > 0:
+        line_items.append(_line("REMOVAL", "Removal & Pickup", amounts["removal"]))
+    if amounts["labor"] > 0:
+        line_items.append(_line("LABOR", "Labor", amounts["labor"]))
+    return line_items
+
+
+def reprice_unpaid_rental_invoice(
+    invoice: Invoice,
+    rental: Rental,
+    *,
+    include_conditional: bool = False,
+) -> bool:
+    """Recalculate an unsettled rental invoice from the authoritative agreement.
+
+    Paid or partially paid invoices remain immutable. This is used when an
+    unsigned agreement is edited and when a saved-card discount is activated.
+    """
+    if _money(invoice.amount_paid) > 0 or invoice.status == InvoiceStatus.PAID:
+        return False
+    period_index = max(1, int(invoice.rental_period_number or 1))
+    amounts = invoice_amounts_for_period(
+        rental,
+        period_index,
+        include_conditional=include_conditional,
+    )
+    invoice.subtotal = amounts.get("subtotal", amounts["rental"])
+    invoice.tax_amount = amounts["tax"]
+    invoice.discount_amount = amounts["discount"]
+    invoice.total_amount = amounts["total"]
+    invoice.balance_due = amounts["total"]
+    invoice.rental_period_start = billing_period_date(rental, period_index)
+    invoice.rental_period_end = billing_period_end(rental, period_index)
+    if period_index == 1:
+        invoice.notes = compose_invoice_edit_notes(
+            invoice.notes,
+            f"Initial rental period, security deposit & one-time fees for rental {rental.rental_number}",
+            {
+                "line_items": _initial_invoice_line_items(rental),
+                "labels": {"tax": f"Tax ({RENTAL_TAX_RATE}%)"},
+            },
+        )
+    return True
+
+
+def apply_projected_discount_to_unpaid_invoice(invoice: Invoice, rental: Rental) -> bool:
+    """Activate a card-conditioned discount without touching settled invoices."""
+    return reprice_unpaid_rental_invoice(invoice, rental, include_conditional=True)
 
 
 def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
@@ -437,29 +592,7 @@ def generate_deposit_invoice(db: Session, rental: Rental) -> Optional[Invoice]:
     if amounts["subtotal"] <= 0:
         return None
 
-    line_items: list[dict[str, Any]] = []
-    frequency = _freq(rental)
-    for item in rental.items or []:
-        item_total = _money(item.rental_rate) * int(item.quantity or 1)
-        if item_total > 0:
-            line_items.append(
-                _line(
-                    item.part_number or "Rental",
-                    f"{item.part_description or 'Rental product'} - first {frequency} rental period",
-                    _money(item.rental_rate),
-                    int(item.quantity or 1),
-                )
-            )
-    if amounts["deposit"] > 0:
-        line_items.append(_line("DEPOSIT", "Security Deposit", amounts["deposit"]))
-    if amounts["shipping"] > 0:
-        line_items.append(_line("SHIP-PACK", "Shipping & Packing", amounts["shipping"]))
-    if amounts["setup"] > 0:
-        line_items.append(_line("DEL-SETUP", "Delivery & Setup", amounts["setup"]))
-    if amounts["removal"] > 0:
-        line_items.append(_line("REMOVAL", "Removal & Pickup", amounts["removal"]))
-    if amounts["labor"] > 0:
-        line_items.append(_line("LABOR", "Labor", amounts["labor"]))
+    line_items = _initial_invoice_line_items(rental)
 
     invoice = Invoice(
         invoice_number=_next_invoice_number(db),

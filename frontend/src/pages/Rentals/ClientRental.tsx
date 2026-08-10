@@ -338,13 +338,13 @@ const ClientRental = () => {
             <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
               <TableCell sx={{ fontWeight: 900 }}>Product</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Qty</TableCell>
               <TableCell align="right" sx={{ fontWeight: 900 }}>Rental Rate</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Ship &amp; Pack</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 900 }}>Delivery &amp; Setup</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Removal</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Labor</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 900 }}>Delivery &amp; Setup</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Removal</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Labor</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Deposit / unit</TableCell>
             </TableRow></TableHead>
             <TableBody>{agreement.items.map(item => (
               <TableRow key={item.id}>
                 <TableCell><Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.part_number}</Typography><Typography sx={{ fontSize: 12, color: '#6B7280' }}>{item.part_description}</Typography></TableCell>
                 <TableCell align="right">{item.quantity}</TableCell><TableCell align="right">{money(item.rental_rate)}</TableCell>
-                <TableCell align="right">{money(item.shipping_fee)}</TableCell><TableCell align="right">{money(item.setup_fee)}</TableCell><TableCell align="right">{money(item.removal_fee)}</TableCell><TableCell align="right">{money(item.labor_fee)}</TableCell>
+                <TableCell align="right">{money(item.shipping_fee)}</TableCell><TableCell align="right">{money(item.setup_fee)}</TableCell><TableCell align="right">{money(item.removal_fee)}</TableCell><TableCell align="right">{money(item.labor_fee)}</TableCell><TableCell align="right">{money(item.security_deposit)}</TableCell>
               </TableRow>
             ))}</TableBody>
           </Table>
@@ -355,7 +355,7 @@ const ClientRental = () => {
           <Table size="small" sx={{ minWidth: 720 }}>
             <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
               <TableCell sx={{ fontWeight: 900 }}>Period</TableCell>
-              <TableCell sx={{ fontWeight: 900 }}>Billing Date</TableCell>
+              <TableCell sx={{ fontWeight: 900 }}>Billing Period</TableCell>
               <TableCell align="right" sx={{ fontWeight: 900 }}>Rent</TableCell>
               <TableCell align="right" sx={{ fontWeight: 900 }}>Discount</TableCell>
               <TableCell align="right" sx={{ fontWeight: 900 }}>Tax</TableCell>
@@ -367,9 +367,12 @@ const ClientRental = () => {
               return (
                 <TableRow key={period.period} sx={{ bgcolor: next_payment?.period === period.period ? '#FAF9FF' : undefined }}>
                   <TableCell sx={{ fontWeight: 850 }}>{period.period} of {agreement.effective_periods}</TableCell>
-                  <TableCell>{dateLabel(period.billing_date)}</TableCell>
+                  <TableCell>{dateLabel(period.billing_date)} – {dateLabel(period.period_end)}</TableCell>
                   <TableCell align="right">{money(period.rental_amount)}</TableCell>
-                  <TableCell align="right">{Number(period.discount || 0) > 0 ? `-${money(period.discount)}` : '—'}</TableCell>
+                  <TableCell align="right">
+                    {Number(period.discount || 0) > 0 ? `-${money(period.discount)}` : '—'}
+                    {period.discount_conditional ? <Typography component="span" sx={{ display: 'block', fontSize: 10, color: '#B45309', fontWeight: 800 }}>with saved-card authorization</Typography> : null}
+                  </TableCell>
                   <TableCell align="right">{money(period.tax)}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 900 }}>{money(period.total)}</TableCell>
                   <TableCell align="right"><Chip size="small" label={period.status.replace('_', ' ')} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: style.bg, color: style.color }} /></TableCell>

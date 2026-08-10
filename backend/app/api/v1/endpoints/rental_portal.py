@@ -29,6 +29,7 @@ from app.utils.invoice_ledger import add_invoice_transaction, record_payment_del
 from app.utils.rental_billing import (
     _initial_invoice_amounts, advance_billing_date, billing_period_date,
     effective_period_count, projected_billing_schedule,
+    invoice_amounts_for_period, apply_projected_discount_to_unpaid_invoice,
 )
 from app.utils.rental_extensions import OPEN_EXTENSION_STATUSES, current_extension, extension_response
 from app.utils.notifications import notify_admins
@@ -125,6 +126,9 @@ def _item_view(item: RentalItem) -> dict[str, Any]:
         "setup_fee": item.setup_fee,
         "labor_fee": item.labor_fee,
         "removal_fee": item.removal_fee,
+        "security_deposit": item.security_deposit,
+        "deposit_status": item.deposit_status,
+        "deposit_settled_amount": item.deposit_settled_amount,
         "item_condition": item.item_condition,
         "item_status": item.item_status,
     }
@@ -178,6 +182,12 @@ def _agreement_view(rental: Rental) -> dict[str, Any]:
         "next_bill_date": rental.next_bill_date,
         "committed_periods": rental.committed_periods,
         "periods_billed": rental.periods_billed,
+        "discount_type": rental.discount_type,
+        "discount_value": rental.discount_value,
+        "discount_application_mode": rental.discount_application_mode,
+        "discount_invoice_number": rental.discount_invoice_number,
+        "discount_continue": rental.discount_continue,
+        "discount_requires_card": rental.discount_requires_card,
         "effective_periods": effective_period_count(rental),
         "security_deposit": rental.security_deposit,
         "status": rental.status.value if hasattr(rental.status, "value") else rental.status,
@@ -653,6 +663,9 @@ def public_save_rental_card(token: str, payload: SaveCardIn, db: Session = Depen
     except SquareRequestError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
     _store_card_result(rental, result, payload.authorize_auto_charge, acceptance.accepted_by_name)
+    if payload.authorize_auto_charge:
+        for invoice in db.query(Invoice).filter(Invoice.rental_id == rental.id).all():
+            apply_projected_discount_to_unpaid_invoice(invoice, rental)
     rental.updated_at = datetime.utcnow()
     history = list(rental.history or [])
     history.append({
@@ -773,6 +786,19 @@ def _pay_rental_invoice(
         raise HTTPException(status_code=400, detail="This invoice is already paid")
     payment_source = payload.source_id
     saved_card: Optional[dict[str, Any]] = None
+    conditional_discount = bool(
+        payload.save_card
+        and payload.authorize_auto_charge
+        and getattr(rental, "discount_requires_card", False)
+    )
+    payment_amount = Decimal(str(invoice.balance_due or 0))
+    if conditional_discount:
+        period_index = max(1, int(invoice.rental_period_number or 1))
+        projected_amounts = invoice_amounts_for_period(rental, period_index, include_conditional=True)
+        payment_amount = max(
+            Decimal("0"),
+            Decimal(str(projected_amounts["total"])) - Decimal(str(invoice.amount_paid or 0)),
+        )
     attempt = int(invoice.payment_attempt_count or 0) + 1
     invoice.payment_attempt_count = attempt
     invoice.last_payment_attempt_at = datetime.utcnow()
@@ -792,13 +818,20 @@ def _pay_rental_invoice(
                 customer_email=rental.customer_email,
             )
             payment_source = saved_card["card_id"]
-        payment = create_square_payment(
-            source_id=payment_source,
-            idempotency_key=payload.idempotency_key or f"rental-pay-{invoice.id}-{int(datetime.utcnow().timestamp())}",
-            amount=invoice.balance_due,
-            invoice_number=invoice.invoice_number,
-            customer_email=rental.customer_email,
-            customer_id=saved_card.get("customer_id") if saved_card else None,
+        # A commitment catch-up discount can legitimately reduce a milestone
+        # invoice to zero. Square rejects zero-dollar payments, but the saved
+        # card authorization is still valid and the invoice must be settled.
+        payment = (
+            create_square_payment(
+                source_id=payment_source,
+                idempotency_key=payload.idempotency_key or f"rental-pay-{invoice.id}-{int(datetime.utcnow().timestamp())}",
+                amount=payment_amount,
+                invoice_number=invoice.invoice_number,
+                customer_email=rental.customer_email,
+                customer_id=saved_card.get("customer_id") if saved_card else None,
+            )
+            if payment_amount > 0
+            else {"id": f"discount-settled-{invoice.id}"}
         )
     except SquareRequestError as exc:
         add_invoice_transaction(
@@ -817,6 +850,10 @@ def _pay_rental_invoice(
         db.commit()
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
     previous_paid = invoice.amount_paid
+    if saved_card:
+        _store_card_result(rental, saved_card, payload.authorize_auto_charge, actor_name)
+        if payload.authorize_auto_charge:
+            apply_projected_discount_to_unpaid_invoice(invoice, rental)
     invoice.amount_paid = invoice.total_amount
     invoice.balance_due = Decimal("0")
     invoice.status = InvoiceStatus.PAID
@@ -827,7 +864,6 @@ def _pay_rental_invoice(
     if payment_txn is not None:
         payment_txn.reference_number = payment.get("id")
     if saved_card:
-        _store_card_result(rental, saved_card, payload.authorize_auto_charge, actor_name)
         add_invoice_transaction(
             db, invoice,
             "auto_charge_authorized" if payload.authorize_auto_charge else "card_saved",

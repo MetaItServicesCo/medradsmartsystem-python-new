@@ -4,6 +4,7 @@ from typing import Any, Optional
 from math import ceil
 import secrets
 import hashlib
+from types import SimpleNamespace
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
@@ -67,6 +68,7 @@ from app.utils.rental_billing import (
     projected_billing_schedule,
     billing_period_date,
     effective_period_count,
+    reprice_unpaid_rental_invoice,
     RENTAL_TAX_RATE,
     RENTAL_TAX_FACTOR,
 )
@@ -121,6 +123,7 @@ class RentalItemIn(BaseModel):
     setup_fee: Decimal = Decimal("0")
     labor_fee: Decimal = Decimal("0")
     removal_fee: Decimal = Decimal("0")
+    security_deposit: Decimal = Decimal("0")
     initial_condition: Optional[str] = None
     initial_meter_reading: Optional[str] = None
 
@@ -159,6 +162,10 @@ class RentalCreate(BaseModel):
     discount_type: Optional[str] = None       # 'flat' | 'percent'
     discount_value: Optional[Decimal] = None
     discount_apply_after_periods: Optional[int] = None
+    discount_application_mode: str = "single_invoice"
+    discount_invoice_number: Optional[int] = None
+    discount_continue: bool = False
+    discount_requires_card: bool = True
 
 
 class RentalUpdate(BaseModel):
@@ -184,12 +191,32 @@ class RentalUpdate(BaseModel):
     discount_type: Optional[str] = None
     discount_value: Optional[Decimal] = None
     discount_apply_after_periods: Optional[int] = None
+    discount_application_mode: Optional[str] = None
+    discount_invoice_number: Optional[int] = None
+    discount_continue: Optional[bool] = None
+    discount_requires_card: Optional[bool] = None
+
+
+class RentalSchedulePreview(BaseModel):
+    billing_frequency: BillingFrequency
+    start_date: date
+    end_date: date
+    committed_periods: int
+    discount_type: Optional[str] = None
+    discount_value: Optional[Decimal] = None
+    discount_application_mode: str = "single_invoice"
+    discount_invoice_number: Optional[int] = None
+    discount_continue: bool = False
+    discount_requires_card: bool = True
+    items: list[RentalItemIn]
 
 
 class RentalItemReturn(BaseModel):
     item_id: int
     return_condition: Optional[str] = None
     final_meter_reading: Optional[int] = None
+    deposit_action: Optional[str] = None
+    deposit_deduction: Optional[Decimal] = None
 
 
 class RentalReturnPayload(BaseModel):
@@ -395,6 +422,9 @@ def _rental_item_response(item: RentalItem) -> dict[str, Any]:
         "setup_fee": item.setup_fee,
         "labor_fee": item.labor_fee,
         "removal_fee": item.removal_fee,
+        "security_deposit": item.security_deposit,
+        "deposit_status": item.deposit_status,
+        "deposit_settled_amount": item.deposit_settled_amount,
         "initial_condition": item.initial_condition,
         "return_condition": item.return_condition,
         "initial_meter_reading": item.initial_meter_reading,
@@ -483,6 +513,10 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "discount_type": rental.discount_type,
         "discount_value": rental.discount_value,
         "discount_apply_after_periods": rental.discount_apply_after_periods,
+        "discount_application_mode": rental.discount_application_mode,
+        "discount_invoice_number": rental.discount_invoice_number,
+        "discount_continue": rental.discount_continue,
+        "discount_requires_card": rental.discount_requires_card,
         "deposit_status": rental.deposit_status,
         "deposit_settled_amount": rental.deposit_settled_amount,
         # Legacy top-level fields, derived from the first item so older clients
@@ -600,20 +634,17 @@ def _frequency_value(freq: Any) -> str:
     return (freq.value if hasattr(freq, "value") else str(freq)).lower()
 
 
-def _reject_daily(freq: Any) -> None:
-    if _frequency_value(freq) == "daily":
-        raise HTTPException(
-            status_code=400,
-            detail="Daily billing is no longer offered; choose weekly, bi-weekly, monthly or quarterly.",
-        )
-
-
 def _validate_billing_term(start: date, end: date, freq: Any, committed_periods: Optional[int]) -> None:
     if end < start:
         raise HTTPException(status_code=422, detail="Rental end date cannot be before the start date")
-    if committed_periods is not None:
-        if committed_periods < 1:
-            raise HTTPException(status_code=422, detail="Committed periods must be at least 1")
+    if committed_periods is None or committed_periods < 1:
+        raise HTTPException(status_code=422, detail="Committed periods must be at least 1")
+    normalized = _frequency_value(freq)
+    if normalized == "custom":
+        available_days = (end - start).days + 1
+        if committed_periods > available_days:
+            raise HTTPException(status_code=422, detail="Custom billing periods cannot exceed the number of rental days")
+    else:
         last_period_start = advance_billing_date(start, _frequency_value(freq), committed_periods - 1)
         if last_period_start > end:
             raise HTTPException(
@@ -623,6 +654,27 @@ def _validate_billing_term(start: date, end: date, freq: Any, committed_periods:
                     f"Choose an end date on or after {last_period_start.isoformat()}."
                 ),
             )
+
+
+def _validate_discount_schedule(
+    discount_type: Optional[str],
+    discount_value: Optional[Decimal],
+    mode: Optional[str],
+    invoice_number: Optional[int],
+    committed_periods: Optional[int],
+) -> None:
+    if not discount_type:
+        return
+    if discount_type not in {"flat", "percent"}:
+        raise HTTPException(status_code=422, detail="Discount type must be flat or percent")
+    if _money(discount_value) < 0:
+        raise HTTPException(status_code=422, detail="Discount cannot be negative")
+    if mode not in {"single_invoice", "commitment"}:
+        raise HTTPException(status_code=422, detail="Discount mode must be single invoice or commitment")
+    if invoice_number is None or invoice_number < 1:
+        raise HTTPException(status_code=422, detail="Select the invoice number where the discount applies")
+    if committed_periods and invoice_number > committed_periods:
+        raise HTTPException(status_code=422, detail="Discount invoice cannot exceed the committed periods")
 
 
 def _period_count(days: int, freq: str) -> int:
@@ -753,11 +805,39 @@ def _build_rental_items(db: Session, current_user: User, items: list["RentalItem
             setup_fee=item.setup_fee or Decimal("0"),
             labor_fee=item.labor_fee or Decimal("0"),
             removal_fee=item.removal_fee or Decimal("0"),
+            security_deposit=item.security_deposit or Decimal("0"),
+            deposit_status=(
+                RentalDepositStatus.HELD.value
+                if (item.security_deposit or Decimal("0")) > 0
+                else None
+            ),
             initial_condition=item.initial_condition,
             initial_meter_reading=item.initial_meter_reading,
             item_status=RentalItemStatus.OUT.value,
         ))
     return rows
+
+
+def _apply_legacy_agreement_deposit(rows: list[RentalItem], legacy_deposit: Any) -> None:
+    """Preserve old clients while making deposits item-owned.
+
+    New clients send a unit deposit on each item. If an older client sends only
+    the agreement-level value, allocate the exact aggregate to the first line.
+    """
+    amount = _money(legacy_deposit)
+    if amount <= 0 or not rows or any(_money(row.security_deposit) > 0 for row in rows):
+        return
+    first = rows[0]
+    quantity = max(1, int(first.quantity or 1))
+    first.security_deposit = amount / quantity
+    first.deposit_status = RentalDepositStatus.HELD.value
+
+
+def _aggregate_item_deposits(rows: list[RentalItem]) -> Decimal:
+    return sum(
+        (_money(row.security_deposit) * max(1, int(row.quantity or 1)) for row in rows),
+        Decimal("0"),
+    )
 
 
 def _required_stock_from_rows(rows: list[RentalItem]) -> dict[int, int]:
@@ -939,6 +1019,7 @@ def list_rental_parts(
 
 
 class RentalProductRatePayload(BaseModel):
+    daily_rate: Optional[Decimal] = None
     weekly_rate: Optional[Decimal] = None
     biweekly_rate: Optional[Decimal] = None
     monthly_rate: Optional[Decimal] = None
@@ -949,6 +1030,7 @@ class RentalProductRatePayload(BaseModel):
 def _rate_card_response(rate: Optional[RentalProductRate], part_id: int) -> dict[str, Any]:
     return {
         "part_id": part_id,
+        "daily_rate": rate.daily_rate if rate else None,
         "weekly_rate": rate.weekly_rate if rate else None,
         "biweekly_rate": rate.biweekly_rate if rate else None,
         "monthly_rate": rate.monthly_rate if rate else None,
@@ -988,7 +1070,7 @@ def upsert_product_rate(
     if not rate:
         rate = RentalProductRate(part_id=part_id)
         db.add(rate)
-    for field in ("weekly_rate", "biweekly_rate", "monthly_rate", "quarterly_rate", "default_deposit"):
+    for field in ("daily_rate", "weekly_rate", "biweekly_rate", "monthly_rate", "quarterly_rate", "default_deposit"):
         setattr(rate, field, getattr(payload, field))
     rate.updated_at = datetime.utcnow()
     log_activity(db, "rental_product_rates", part_id, "UPSERT", current_user, {})
@@ -1492,6 +1574,49 @@ def list_rentals(
     return {"items": [_rental_response(item) for item in rentals], "total": total, "skip": skip, "limit": limit}
 
 
+@router.post("/preview-schedule")
+def preview_rental_schedule(
+    payload: RentalSchedulePreview,
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Preview the exact schedule the billing engine will persist and charge."""
+    _require_internal_rental_operator(current_user)
+    _validate_billing_term(
+        payload.start_date,
+        payload.end_date,
+        payload.billing_frequency,
+        payload.committed_periods,
+    )
+    _validate_discount_schedule(
+        payload.discount_type,
+        payload.discount_value,
+        payload.discount_application_mode,
+        payload.discount_invoice_number,
+        payload.committed_periods,
+    )
+    rental = SimpleNamespace(
+        billing_frequency=payload.billing_frequency,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        committed_periods=payload.committed_periods,
+        discount_type=payload.discount_type,
+        discount_value=payload.discount_value,
+        discount_application_mode=payload.discount_application_mode,
+        discount_invoice_number=payload.discount_invoice_number,
+        discount_apply_after_periods=(
+            payload.discount_invoice_number - 1
+            if payload.discount_invoice_number
+            else None
+        ),
+        discount_continue=payload.discount_continue,
+        discount_requires_card=payload.discount_requires_card,
+        auto_charge_authorized_at=None,
+        security_deposit=Decimal("0"),
+        items=[SimpleNamespace(**item.model_dump()) for item in payload.items],
+    )
+    return {"billing_schedule": projected_billing_schedule(rental)}
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_rental(
     payload: RentalCreate,
@@ -1499,10 +1624,26 @@ def create_rental(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     _require_internal_rental_operator(current_user)
-    _reject_daily(payload.billing_frequency)
     _validate_billing_term(payload.start_date, payload.end_date, payload.billing_frequency, payload.committed_periods)
+    discount_invoice_number = (
+        payload.discount_invoice_number
+        if payload.discount_invoice_number is not None
+        else (
+            int(payload.discount_apply_after_periods) + 1
+            if payload.discount_apply_after_periods is not None
+            else None
+        )
+    )
+    _validate_discount_schedule(
+        payload.discount_type,
+        payload.discount_value,
+        payload.discount_application_mode,
+        discount_invoice_number,
+        payload.committed_periods,
+    )
     items_in = _resolve_create_items(payload)
     item_rows = _build_rental_items(db, current_user, items_in)
+    _apply_legacy_agreement_deposit(item_rows, payload.security_deposit)
     facility, customer_user = _resolve_rental_customer(
         db,
         current_user,
@@ -1510,7 +1651,7 @@ def create_rental(
         payload.customer_user_id,
     )
 
-    deposit = payload.security_deposit or Decimal("0")
+    deposit = _aggregate_item_deposits(item_rows)
     delivery_address = _compose_delivery_address(
         payload.delivery_street, payload.delivery_city, payload.delivery_state, payload.delivery_zip,
         fallback=payload.customer_address,
@@ -1540,7 +1681,11 @@ def create_rental(
         committed_periods=payload.committed_periods,
         discount_type=payload.discount_type,
         discount_value=payload.discount_value,
-        discount_apply_after_periods=payload.discount_apply_after_periods,
+        discount_apply_after_periods=(discount_invoice_number - 1 if discount_invoice_number else None),
+        discount_application_mode=payload.discount_application_mode,
+        discount_invoice_number=discount_invoice_number,
+        discount_continue=bool(payload.discount_continue),
+        discount_requires_card=bool(payload.discount_requires_card),
         deposit_status=RentalDepositStatus.HELD.value if deposit > 0 else None,
         periods_billed=0,
         next_bill_date=payload.start_date,
@@ -1564,7 +1709,11 @@ def create_rental(
     initial_invoice = generate_deposit_invoice(db, rental)
     if initial_invoice is not None:
         rental.periods_billed = 1
-    rental.next_bill_date = advance_billing_date(payload.start_date, _frequency_value(payload.billing_frequency))
+    rental.next_bill_date = (
+        billing_period_date(rental, 2)
+        if effective_period_count(rental) >= 2
+        else None
+    )
 
     log_activity(db, "rentals", rental.id, "CREATE", current_user, {"rental_number": rental.rental_number})
     db.commit()
@@ -1591,14 +1740,38 @@ def update_rental(
 
     _require_rental_facility_access(db, current_user, rental)
 
-    if payload.billing_frequency is not None:
-        _reject_daily(payload.billing_frequency)
-
     resolved_start = payload.start_date if payload.start_date is not None else rental.start_date
     resolved_end = payload.end_date if payload.end_date is not None else rental.end_date
     resolved_frequency = payload.billing_frequency if payload.billing_frequency is not None else rental.billing_frequency
     resolved_committed = payload.committed_periods if "committed_periods" in payload.model_fields_set else rental.committed_periods
     _validate_billing_term(resolved_start, resolved_end, resolved_frequency, resolved_committed)
+
+    resolved_discount_type = payload.discount_type if "discount_type" in payload.model_fields_set else rental.discount_type
+    resolved_discount_value = payload.discount_value if "discount_value" in payload.model_fields_set else rental.discount_value
+    resolved_discount_mode = (
+        payload.discount_application_mode
+        if "discount_application_mode" in payload.model_fields_set
+        else (rental.discount_application_mode or "single_invoice")
+    )
+    resolved_discount_invoice = (
+        payload.discount_invoice_number
+        if "discount_invoice_number" in payload.model_fields_set
+        else rental.discount_invoice_number
+    )
+    if resolved_discount_invoice is None:
+        legacy_after = (
+            payload.discount_apply_after_periods
+            if "discount_apply_after_periods" in payload.model_fields_set
+            else rental.discount_apply_after_periods
+        )
+        resolved_discount_invoice = int(legacy_after) + 1 if legacy_after is not None else None
+    _validate_discount_schedule(
+        resolved_discount_type,
+        resolved_discount_value,
+        resolved_discount_mode,
+        resolved_discount_invoice,
+        resolved_committed,
+    )
 
     update_data = payload.model_dump(exclude_unset=True, exclude={"items"})
 
@@ -1639,10 +1812,22 @@ def update_rental(
         if not payload.items:
             raise HTTPException(status_code=400, detail="At least one rental item is required")
         new_rows = _build_rental_items(db, current_user, payload.items)
+        _apply_legacy_agreement_deposit(
+            new_rows,
+            payload.security_deposit if "security_deposit" in payload.model_fields_set else 0,
+        )
         if rental.status == RentalStatus.ACTIVE:
             delta = _stock_delta(_required_stock_from_rows(rental.items or []), _required_stock(payload.items))
             _apply_stock_delta(db, delta)
         rental.items = new_rows
+        update_data["security_deposit"] = _aggregate_item_deposits(new_rows)
+
+    if resolved_discount_type:
+        update_data["discount_application_mode"] = resolved_discount_mode
+        update_data["discount_invoice_number"] = resolved_discount_invoice
+        update_data["discount_apply_after_periods"] = (
+            resolved_discount_invoice - 1 if resolved_discount_invoice else None
+        )
 
     for field, value in update_data.items():
         if field == "customer_email" and value is not None:
@@ -1661,10 +1846,40 @@ def update_rental(
 
     if {"start_date", "end_date", "billing_frequency", "committed_periods"} & set(update_data):
         next_period = int(rental.periods_billed or 0) + 1
-        candidate = advance_billing_date(rental.start_date, _frequency_value(rental.billing_frequency), next_period - 1)
-        rental.next_bill_date = candidate if candidate <= rental.end_date and (
-            not rental.committed_periods or next_period <= int(rental.committed_periods)
-        ) else None
+        rental.next_bill_date = (
+            billing_period_date(rental, next_period)
+            if next_period <= effective_period_count(rental)
+            else None
+        )
+
+    # The first invoice is created with the draft agreement. Until the customer
+    # signs or pays, keep that invoice synchronized with agreement edits using
+    # the same calculator that powers the staff and customer schedules.
+    unpaid_invoices = (
+        db.query(Invoice)
+        .filter(Invoice.rental_id == rental.id)
+        .order_by(Invoice.id.asc())
+        .all()
+    )
+    for invoice in unpaid_invoices:
+        previous_total = _money(invoice.total_amount)
+        if reprice_unpaid_rental_invoice(invoice, rental):
+            invoice.customer_name = rental.customer_name
+            invoice.customer_email = rental.customer_email
+            invoice.customer_phone = rental.customer_phone
+            invoice.customer_address = rental.customer_address
+            invoice.facility_id = rental.facility_id
+            if previous_total != _money(invoice.total_amount):
+                add_invoice_transaction(
+                    db,
+                    invoice,
+                    "agreement_repriced",
+                    _money(invoice.total_amount) - previous_total,
+                    None,
+                    f"Unsigned rental agreement {rental.rental_number} updated",
+                    current_user,
+                    reference_prefix="RPR",
+                )
 
     rental.updated_at = datetime.utcnow()
     changed = {key: str(value) for key, value in update_data.items()}
@@ -1745,12 +1960,25 @@ def return_rental(
             item = by_id.get(ret.item_id)
             if not item:
                 raise HTTPException(status_code=400, detail=f"Item {ret.item_id} is not an outstanding item on this agreement")
-            targets.append((item, ret.return_condition, ret.final_meter_reading))
+            targets.append((
+                item,
+                ret.return_condition,
+                ret.final_meter_reading,
+                ret.deposit_action,
+                ret.deposit_deduction,
+            ))
     else:
-        targets = [(item, payload.return_condition, payload.final_meter_reading) for item in outstanding]
+        targets = [(
+            item,
+            payload.return_condition,
+            payload.final_meter_reading,
+            payload.deposit_action,
+            payload.deposit_deduction,
+        ) for item in outstanding]
 
     released: dict[int, int] = {}
-    for item, condition, meter in targets:
+    item_refund_total = Decimal("0")
+    for item, condition, meter, deposit_action, deposit_deduction in targets:
         item.item_status = RentalItemStatus.RETURNED.value
         item.returned_at = payload.actual_return_date
         resolved_condition = condition if condition is not None else payload.return_condition
@@ -1761,9 +1989,60 @@ def return_rental(
             item.final_meter_reading = resolved_meter
         if item.part_id:
             released[item.part_id] = released.get(item.part_id, 0) + max(1, int(item.quantity or 1))
+        item_deposit = _money(item.security_deposit) * max(1, int(item.quantity or 1))
+        action = (deposit_action or payload.deposit_action or "").strip().lower()
+        if item_deposit > 0 and not action:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Choose how to settle the security deposit for {item.part_number or f'item {item.id}'}",
+            )
+        if item_deposit > 0:
+            if action == "refund":
+                item.deposit_status = RentalDepositStatus.REFUNDED.value
+                item.deposit_settled_amount = item_deposit
+                item_refund_total += item_deposit
+            elif action == "deduct":
+                deduction = min(item_deposit, _money(deposit_deduction))
+                item.deposit_status = RentalDepositStatus.DEDUCTED.value
+                item.deposit_settled_amount = item_deposit - deduction
+                item_refund_total += item_deposit - deduction
+            elif action == "waive":
+                item.deposit_status = RentalDepositStatus.WAIVED.value
+                item.deposit_settled_amount = Decimal("0")
+            else:
+                raise HTTPException(status_code=422, detail="Deposit action must be refund, deduct, or waive")
 
     # Return the released stock to inventory.
     _apply_stock_delta(db, {part_id: -qty for part_id, qty in released.items()})
+
+    # Item deposits are independent of the agreement lifecycle. Settle them as
+    # soon as the corresponding item is returned, including partial returns.
+    # This keeps the deposit ledger aligned with the physical handover instead
+    # of delaying every refund until the final item comes back.
+    has_item_deposits = any(_money(item.security_deposit) > 0 for item in rental.items or [])
+    if has_item_deposits:
+        rental.deposit_settled_amount = sum(
+            (_money(item.deposit_settled_amount) for item in rental.items or []),
+            Decimal("0"),
+        )
+        statuses = {item.deposit_status for item in rental.items or [] if _money(item.security_deposit) > 0}
+        if RentalDepositStatus.HELD.value in statuses:
+            rental.deposit_status = RentalDepositStatus.HELD.value
+        elif statuses == {RentalDepositStatus.REFUNDED.value}:
+            rental.deposit_status = RentalDepositStatus.REFUNDED.value
+        elif statuses:
+            rental.deposit_status = RentalDepositStatus.DEDUCTED.value
+
+        if item_refund_total > 0:
+            refund_result = _settle_deposit_refund(db, rental, item_refund_total, current_user)
+            _append_history(rental, "deposit_refunded", current_user, {
+                "amount": str(item_refund_total),
+                "method": refund_result["method"],
+                "square_refund_id": refund_result["square_refund_id"],
+                "error": refund_result["error"],
+                "item_level": True,
+                "returned_items": [item.id for item, _, _, _, _ in targets],
+            })
 
     fully_returned = all(item.item_status == RentalItemStatus.RETURNED.value for item in (rental.items or []))
     if fully_returned:
@@ -1774,10 +2053,10 @@ def return_rental(
             rental.return_condition = payload.return_condition
         if payload.final_meter_reading is not None:
             rental.final_meter_reading = payload.final_meter_reading
-        # Settle the security deposit. deposit_settled_amount is the amount refunded
-        # to the customer (full deposit for a refund, deposit minus damages for a deduction).
+        # Legacy agreements may have only an agreement-level deposit. New
+        # agreements settle each returned item's deposit independently above.
         deposit = _money(rental.security_deposit)
-        if deposit > 0 and payload.deposit_action:
+        if deposit > 0 and payload.deposit_action and not has_item_deposits:
             action = payload.deposit_action.strip().lower()
             refund_amount = Decimal("0")
             if action == "refund":
@@ -1808,7 +2087,7 @@ def return_rental(
         current_user,
         {
             "actual_return_date": str(payload.actual_return_date),
-            "returned_items": [item.id for item, _, _ in targets],
+            "returned_items": [item.id for item, _, _, _, _ in targets],
             "fully_returned": fully_returned,
         },
     )

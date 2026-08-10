@@ -1,8 +1,7 @@
 import apiClient from './client'
 
 export type RentalStatus = 'active' | 'completed' | 'cancelled'
-// 'daily' is retained only for legacy agreements; new agreements use the tiers below.
-export type BillingFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
+export type BillingFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom'
 export type RentalItemStatus = 'out' | 'returned'
 export type RentalDiscountType = 'flat' | 'percent'
 export type RentalDepositStatus = 'held' | 'refunded' | 'deducted' | 'waived'
@@ -17,6 +16,7 @@ export interface RentalProjectedPayment {
   status: 'due' | 'scheduled'
   invoice_id: number | null
   invoice_number: string | null
+  discount_conditional?: boolean
 }
 
 export interface RentalBillingPeriod {
@@ -31,6 +31,7 @@ export interface RentalBillingPeriod {
   status: RentalInvoiceStatus | 'upcoming'
   invoice_id: number | null
   invoice_number: string | null
+  discount_conditional?: boolean
 }
 
 export interface RentalPart {
@@ -79,6 +80,9 @@ export interface RentalItem {
   setup_fee: number
   labor_fee: number
   removal_fee: number
+  security_deposit: number
+  deposit_status: RentalDepositStatus | null
+  deposit_settled_amount: number | null
   initial_condition: string | null
   return_condition: string | null
   initial_meter_reading: string | null
@@ -118,6 +122,10 @@ export interface Rental {
   discount_type: RentalDiscountType | null
   discount_value: number | null
   discount_apply_after_periods: number | null
+  discount_application_mode: 'single_invoice' | 'commitment'
+  discount_invoice_number: number | null
+  discount_continue: boolean
+  discount_requires_card: boolean
   deposit_status: RentalDepositStatus | null
   deposit_settled_amount: number | null
   equipment_id: number | null
@@ -242,6 +250,7 @@ export interface RentalItemPayload {
   setup_fee?: number
   labor_fee?: number
   removal_fee?: number
+  security_deposit?: number
   initial_condition?: string | null
   initial_meter_reading?: string | null
 }
@@ -278,6 +287,10 @@ export interface RentalPayload {
   discount_type?: RentalDiscountType | null
   discount_value?: number | null
   discount_apply_after_periods?: number | null
+  discount_application_mode?: 'single_invoice' | 'commitment'
+  discount_invoice_number?: number | null
+  discount_continue?: boolean
+  discount_requires_card?: boolean
 }
 
 export interface RentalFacilityCustomer {
@@ -290,6 +303,7 @@ export interface RentalFacilityCustomer {
 
 export interface RentalProductRate {
   part_id: number
+  daily_rate: number | null
   weekly_rate: number | null
   biweekly_rate: number | null
   monthly_rate: number | null
@@ -301,6 +315,8 @@ export interface RentalItemReturnPayload {
   item_id: number
   return_condition?: string | null
   final_meter_reading?: number | null
+  deposit_action?: 'refund' | 'deduct' | 'waive' | null
+  deposit_deduction?: number | null
 }
 
 export interface RentalReturnPayload {
@@ -434,6 +450,27 @@ export const fetchRentalHistory = async (
   return res.data
 }
 
+export interface RentalSchedulePreviewPayload {
+  billing_frequency: BillingFrequency
+  start_date: string
+  end_date: string
+  committed_periods: number
+  discount_type?: RentalDiscountType | null
+  discount_value?: number | null
+  discount_application_mode?: 'single_invoice' | 'commitment'
+  discount_invoice_number?: number | null
+  discount_continue?: boolean
+  discount_requires_card?: boolean
+  items: RentalItemPayload[]
+}
+
+export const previewRentalSchedule = async (
+  data: RentalSchedulePreviewPayload,
+): Promise<{ billing_schedule: RentalBillingPeriod[] }> => {
+  const res = await apiClient.post('/rentals/preview-schedule', data)
+  return res.data
+}
+
 export const fetchRentalProductRate = async (partId: number): Promise<RentalProductRate> => {
   const res = await apiClient.get(`/rentals/product-rates/${partId}`)
   return res.data
@@ -457,6 +494,9 @@ export interface RentalPortalItem {
   setup_fee: number
   labor_fee: number
   removal_fee: number
+  security_deposit: number
+  deposit_status: RentalDepositStatus | null
+  deposit_settled_amount: number | null
   item_condition: string | null
   item_status: RentalItemStatus
 }
@@ -521,6 +561,12 @@ export interface RentalPortal {
     next_bill_date: string | null
     committed_periods: number | null
     periods_billed: number
+    discount_type: RentalDiscountType | null
+    discount_value: number | null
+    discount_application_mode: 'single_invoice' | 'commitment'
+    discount_invoice_number: number | null
+    discount_continue: boolean
+    discount_requires_card: boolean
     effective_periods: number
     security_deposit: number
     status: RentalStatus

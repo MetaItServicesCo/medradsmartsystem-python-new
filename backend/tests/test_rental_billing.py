@@ -19,6 +19,7 @@ def _item(rate: str, quantity: int, shipping: str, setup: str, labor: str, remov
         setup_fee=Decimal(setup),
         labor_fee=Decimal(labor),
         removal_fee=Decimal(removal),
+        security_deposit=Decimal("0"),
     )
 
 
@@ -143,3 +144,89 @@ def test_extending_term_adds_only_recurring_periods_and_never_repeats_upfront_fe
     assert [period["total"] for period in extended[:4]] == [period["total"] for period in original]
     assert [period["billing_date"] for period in extended[4:]] == [date(2026, 5, 31), date(2026, 6, 30)]
     assert [period["total"] for period in extended[4:]] == [Decimal("108.25"), Decimal("108.25")]
+
+
+def test_custom_schedule_evenly_partitions_the_inclusive_date_range():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "0", "0", "0")],
+        security_deposit=Decimal("0"),
+        discount_type=None,
+        discount_value=Decimal("0"),
+        discount_apply_after_periods=None,
+        billing_frequency="custom",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 10),
+        committed_periods=3,
+    )
+
+    schedule = projected_billing_schedule(rental)
+
+    assert [(row["billing_date"], row["period_end"]) for row in schedule] == [
+        (date(2026, 1, 1), date(2026, 1, 3)),
+        (date(2026, 1, 4), date(2026, 1, 6)),
+        (date(2026, 1, 7), date(2026, 1, 10)),
+    ]
+
+
+def test_commitment_discount_catches_up_on_invoice_n_and_can_continue():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "0", "0", "0")],
+        discount_type="percent",
+        discount_value=Decimal("20"),
+        discount_application_mode="commitment",
+        discount_invoice_number=3,
+        discount_apply_after_periods=2,
+        discount_continue=True,
+        discount_requires_card=False,
+        auto_charge_authorized_at=None,
+    )
+
+    assert _recurring_invoice_amounts(rental, 2)["total"] == Decimal("108.25")
+    # Invoice three catches up three $20 discounts: $100 - $60 + tax.
+    assert _recurring_invoice_amounts(rental, 3)["total"] == Decimal("43.30")
+    # Future invoices retain the normal 20% discount when continuation is on.
+    assert _recurring_invoice_amounts(rental, 4)["total"] == Decimal("86.60")
+
+
+def test_card_conditioned_discount_is_previewed_but_not_billed_before_authorization():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "0", "0", "0")],
+        discount_type="percent",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=2,
+        discount_apply_after_periods=1,
+        discount_continue=False,
+        discount_requires_card=True,
+        auto_charge_authorized_at=None,
+    )
+
+    posted = _recurring_invoice_amounts(rental, 2)
+    preview = _recurring_invoice_amounts(rental, 2, include_conditional=True)
+
+    assert posted["discount"] == Decimal("0")
+    assert posted["total"] == Decimal("108.25")
+    assert preview["discount"] == Decimal("20.00")
+    assert preview["total"] == Decimal("86.60")
+    assert preview["discount_conditional"] is True
+
+
+def test_security_deposit_is_per_item_and_only_appears_upfront():
+    first = _item("100", 2, "0", "0", "0")
+    first.security_deposit = Decimal("75")
+    second = _item("25", 1, "0", "0", "0")
+    second.security_deposit = Decimal("10")
+    rental = SimpleNamespace(
+        items=[first, second],
+        security_deposit=Decimal("160"),
+        discount_type=None,
+        discount_value=Decimal("0"),
+        discount_apply_after_periods=None,
+    )
+
+    initial = _initial_invoice_amounts(rental)
+    recurring = _recurring_invoice_amounts(rental, 2)
+
+    assert initial["deposit"] == Decimal("160")
+    assert initial["subtotal"] == Decimal("385")
+    assert recurring["total"] == Decimal("243.56")

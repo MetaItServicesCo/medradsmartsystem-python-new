@@ -52,6 +52,7 @@ import {
   refundRentalInvoice,
   fetchRentalHistory,
   fetchRentalProductRate,
+  previewRentalSchedule,
   upsertRentalProductRate,
   sendRentalPortalLink,
   createRentalExtension,
@@ -231,6 +232,7 @@ interface RentalItemForm {
   setup_fee: number
   labor_fee: number
   removal_fee: number
+  security_deposit: number
   initial_condition: string
   initial_meter_reading: string
 }
@@ -256,6 +258,10 @@ interface RentalAgreementFormState {
   discount_type: '' | 'flat' | 'percent'
   discount_value: number
   discount_apply_after_periods: number | ''
+  discount_application_mode: 'single_invoice' | 'commitment'
+  discount_invoice_number: number | ''
+  discount_continue: boolean
+  discount_requires_card: boolean
   items: RentalItemForm[]
 }
 
@@ -280,6 +286,10 @@ const emptyAgreement = (): RentalAgreementFormState => ({
   discount_type: '',
   discount_value: 0,
   discount_apply_after_periods: '',
+  discount_application_mode: 'single_invoice',
+  discount_invoice_number: '',
+  discount_continue: false,
+  discount_requires_card: true,
   items: [],
 })
 
@@ -296,12 +306,14 @@ const newRentalItem = (): RentalItemForm => ({
   setup_fee: 0,
   labor_fee: 0,
   removal_fee: 0,
+  security_deposit: 0,
   initial_condition: '',
   initial_meter_reading: '',
 })
 
 const rateForFrequency = (card: RentalProductRate | null, freq: BillingFrequency): number | null => {
   if (!card) return null
+  if (freq === 'daily') return card.daily_rate
   if (freq === 'weekly') return card.weekly_rate
   if (freq === 'biweekly') return card.biweekly_rate
   if (freq === 'monthly') return card.monthly_rate
@@ -352,6 +364,7 @@ const composeDeliveryAddress = (street: string, city: string, state: string, zip
 const deriveRentalEndDate = (startISO: string, frequency: BillingFrequency, periods: number | ''): string => {
   const count = Number(periods)
   if (!startISO || !count || count < 1) return ''
+  if (frequency === 'custom') return ''
   const start = new Date(`${startISO}T00:00:00`)
   if (Number.isNaN(start.getTime())) return ''
   let end: Date
@@ -361,6 +374,7 @@ const deriveRentalEndDate = (startISO: string, frequency: BillingFrequency, peri
     end = new Date(start)
     end.setDate(end.getDate() + (RENTAL_PERIOD_DAYS[frequency] ?? 30) * count)
   }
+  end.setDate(end.getDate() - 1)
   return end.toISOString().slice(0, 10)
 }
 
@@ -373,12 +387,15 @@ const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
   const setup = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.setup_fee || 0), 0))
   const labor = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.labor_fee || 0), 0))
   const removal = roundRentalMoney(agreement.items.reduce((sum, item) => sum + Number(item.removal_fee || 0), 0))
-  const deposit = roundRentalMoney(Number(agreement.security_deposit || 0))
+  const deposit = roundRentalMoney(agreement.items.reduce(
+    (sum, item) => sum + Number(item.security_deposit || 0) * Math.max(1, Number(item.quantity || 1)),
+    0,
+  ))
 
   // The commitment discount reaches period one only when it is explicitly
   // configured to apply after zero paid periods, matching backend billing.
   let discount = 0
-  if (agreement.discount_type && agreement.discount_apply_after_periods !== '' && Number(agreement.discount_apply_after_periods) === 0) {
+  if (agreement.discount_type && agreement.discount_invoice_number !== '' && Number(agreement.discount_invoice_number) === 1) {
     discount = agreement.discount_type === 'percent'
       ? roundRentalMoney(rental * Number(agreement.discount_value || 0) / 100)
       : Math.min(rental, roundRentalMoney(Number(agreement.discount_value || 0)))
@@ -520,7 +537,7 @@ const Rentals = () => {
   const [startExtNotes, setStartExtNotes] = useState('')
   const [partInfo, setPartInfo] = useState<RentalPartInfo | null>(null)
   const [rateCardPart, setRateCardPart] = useState<RentalPart | null>(null)
-  const [rateCardForm, setRateCardForm] = useState({ weekly_rate: '', biweekly_rate: '', monthly_rate: '', quarterly_rate: '', default_deposit: '' })
+  const [rateCardForm, setRateCardForm] = useState({ daily_rate: '', weekly_rate: '', biweekly_rate: '', monthly_rate: '', quarterly_rate: '', default_deposit: '' })
 
   const tab = Math.max(0, ROUTE_TABS.findIndex(path => location.pathname === path || location.pathname.startsWith(`${path}/`)))
   const highlightInvoiceId = Number(new URLSearchParams(location.search).get('highlightInvoice') || 0)
@@ -546,6 +563,7 @@ const Rentals = () => {
   // The agreement end date is derived from start date, billing frequency, and committed
   // periods — never hand-entered — so the term always matches the billing calendar.
   useEffect(() => {
+    if (agreementForm.billing_frequency === 'custom') return
     const computed = deriveRentalEndDate(agreementForm.start_date, agreementForm.billing_frequency, agreementForm.committed_periods)
     if (computed && computed !== agreementForm.end_date) {
       setAgreementForm(prev => ({ ...prev, end_date: computed }))
@@ -713,6 +731,7 @@ const Rentals = () => {
     setup_fee: normalizeMoneyInput(item.setup_fee),
     labor_fee: normalizeMoneyInput(item.labor_fee),
     removal_fee: normalizeMoneyInput(item.removal_fee),
+    security_deposit: normalizeMoneyInput(item.security_deposit),
     initial_condition: item.initial_condition?.trim() || null,
     initial_meter_reading: item.initial_meter_reading?.trim() || null,
   }))
@@ -739,9 +758,51 @@ const Rentals = () => {
     discount_type: agreementForm.discount_type || null,
     discount_value: agreementForm.discount_type ? normalizeMoneyInput(agreementForm.discount_value) : null,
     discount_apply_after_periods: agreementForm.discount_apply_after_periods === '' ? null : Number(agreementForm.discount_apply_after_periods),
+    discount_application_mode: agreementForm.discount_application_mode,
+    discount_invoice_number: agreementForm.discount_invoice_number === '' ? null : Number(agreementForm.discount_invoice_number),
+    discount_continue: agreementForm.discount_continue,
+    discount_requires_card: agreementForm.discount_requires_card,
   })
 
   const buildAgreementUpdatePayload = (): Partial<RentalPayload> => buildAgreementCreatePayload()
+
+  const schedulePreviewQ = useQuery({
+    queryKey: ['rental-schedule-preview', {
+      frequency: agreementForm.billing_frequency,
+      start: agreementForm.start_date,
+      end: agreementForm.end_date,
+      periods: agreementForm.committed_periods,
+      discountType: agreementForm.discount_type,
+      discountValue: agreementForm.discount_value,
+      discountMode: agreementForm.discount_application_mode,
+      discountInvoice: agreementForm.discount_invoice_number,
+      discountContinue: agreementForm.discount_continue,
+      items: buildAgreementItems(),
+    }],
+    queryFn: () => previewRentalSchedule({
+      billing_frequency: agreementForm.billing_frequency,
+      start_date: normalizeDateInput(agreementForm.start_date),
+      end_date: normalizeDateInput(agreementForm.end_date),
+      committed_periods: Number(agreementForm.committed_periods),
+      discount_type: agreementForm.discount_type || null,
+      discount_value: agreementForm.discount_type ? normalizeMoneyInput(agreementForm.discount_value) : null,
+      discount_application_mode: agreementForm.discount_application_mode,
+      discount_invoice_number: agreementForm.discount_invoice_number === '' ? null : Number(agreementForm.discount_invoice_number),
+      discount_continue: agreementForm.discount_continue,
+      discount_requires_card: true,
+      items: buildAgreementItems(),
+    }),
+    enabled: Boolean(
+      agreementDialog
+      && agreementForm.items.length
+      && agreementForm.start_date
+      && agreementForm.end_date
+      && Number(agreementForm.committed_periods) > 0
+      && (!agreementForm.discount_type || Number(agreementForm.discount_invoice_number) > 0)
+    ),
+    staleTime: 10_000,
+    retry: false,
+  })
 
   const saveAgreementMut = useMutation({
     mutationFn: () => (
@@ -855,6 +916,10 @@ const Rentals = () => {
       discount_type: (rental.discount_type as '' | 'flat' | 'percent') || '',
       discount_value: Number(rental.discount_value || 0),
       discount_apply_after_periods: rental.discount_apply_after_periods ?? '',
+      discount_application_mode: rental.discount_application_mode || 'single_invoice',
+      discount_invoice_number: rental.discount_invoice_number ?? '',
+      discount_continue: Boolean(rental.discount_continue),
+      discount_requires_card: rental.discount_requires_card !== false,
       items: (rental.items || []).map(item => ({
         key: `existing-${item.id}`,
         part_id: item.part_id,
@@ -868,6 +933,7 @@ const Rentals = () => {
         setup_fee: Number(item.setup_fee || 0),
         labor_fee: Number(item.labor_fee || 0),
         removal_fee: Number(item.removal_fee || 0),
+        security_deposit: Number(item.security_deposit || 0),
         initial_condition: item.initial_condition || '',
         initial_meter_reading: item.initial_meter_reading || '',
       })),
@@ -924,7 +990,11 @@ const Rentals = () => {
     try {
       const card = await fetchRentalProductRate(part.id)
       const tierRate = rateForFrequency(card, agreementForm.billing_frequency)
-      if (tierRate != null) setItemDraft(prev => ({ ...prev, rental_rate: Number(tierRate) }))
+      setItemDraft(prev => ({
+        ...prev,
+        ...(tierRate != null ? { rental_rate: Number(tierRate) } : {}),
+        ...(card.default_deposit != null ? { security_deposit: Number(card.default_deposit) } : {}),
+      }))
     } catch {
       /* no rate card configured yet — keep the unit price as the default */
     }
@@ -988,7 +1058,7 @@ const Rentals = () => {
     }))
   }
 
-  const setLineNumber = (key: string, field: 'rental_rate' | 'shipping_fee' | 'setup_fee' | 'labor_fee' | 'removal_fee', value: number) => {
+  const setLineNumber = (key: string, field: 'rental_rate' | 'shipping_fee' | 'setup_fee' | 'labor_fee' | 'removal_fee' | 'security_deposit', value: number) => {
     setAgreementForm(prev => ({
       ...prev,
       items: prev.items.map(item => item.key === key ? { ...item, [field]: Number.isFinite(value) ? Math.max(0, value) : 0 } : item),
@@ -1009,21 +1079,24 @@ const Rentals = () => {
       return toast.error('Enter the full delivery address — street, city, state, and ZIP')
     }
     if (agreementForm.items.length === 0) return toast.error('Add at least one rental product')
-    if (agreementForm.billing_frequency === 'daily') return toast.error('Daily billing is no longer offered')
     if (agreementForm.committed_periods === '' || Number(agreementForm.committed_periods) < 1) {
       return toast.error('Enter the committed billing periods — this sets the agreement term and end date')
     }
-    if (!agreementForm.end_date) return toast.error('Set a start date and committed periods so the end date can be calculated')
+    if (!agreementForm.end_date) return toast.error(agreementForm.billing_frequency === 'custom' ? 'Select the custom agreement end date' : 'Set a start date and committed periods so the end date can be calculated')
+    if (agreementForm.discount_type && (agreementForm.discount_invoice_number === '' || Number(agreementForm.discount_invoice_number) < 1)) {
+      return toast.error('Select the invoice number where the discount applies')
+    }
     saveAgreementMut.mutate()
   }
 
   const openRateCard = async (part: RentalPart) => {
     setRateCardPart(part)
-    setRateCardForm({ weekly_rate: '', biweekly_rate: '', monthly_rate: '', quarterly_rate: '', default_deposit: '' })
+    setRateCardForm({ daily_rate: '', weekly_rate: '', biweekly_rate: '', monthly_rate: '', quarterly_rate: '', default_deposit: '' })
     try {
       const card = await fetchRentalProductRate(part.id)
       const s = (v: number | null) => (v != null ? String(v) : '')
       setRateCardForm({
+        daily_rate: s(card.daily_rate),
         weekly_rate: s(card.weekly_rate),
         biweekly_rate: s(card.biweekly_rate),
         monthly_rate: s(card.monthly_rate),
@@ -1040,6 +1113,7 @@ const Rentals = () => {
       if (!rateCardPart) return Promise.reject(new Error('No product selected'))
       const num = (v: string) => (v.trim() === '' ? null : Number(v))
       return upsertRentalProductRate(rateCardPart.id, {
+        daily_rate: num(rateCardForm.daily_rate),
         weekly_rate: num(rateCardForm.weekly_rate),
         biweekly_rate: num(rateCardForm.biweekly_rate),
         monthly_rate: num(rateCardForm.monthly_rate),
@@ -1211,6 +1285,15 @@ const Rentals = () => {
       actual_return_date: new Date().toISOString().slice(0, 10),
       return_condition: rental.initial_condition || '',
       final_meter_reading: Number(rental.initial_meter_reading) || 0,
+      items: (rental.items || [])
+        .filter(item => item.item_status !== 'returned')
+        .map(item => ({
+          item_id: item.id,
+          return_condition: item.initial_condition || rental.initial_condition || '',
+          final_meter_reading: item.initial_meter_reading ? Number(item.initial_meter_reading) : null,
+          deposit_action: null,
+          deposit_deduction: 0,
+        })),
     })
   }
 
@@ -2212,19 +2295,20 @@ const Rentals = () => {
             <TextField label="State *" value={agreementForm.delivery_state} onChange={e => setDeliveryField('delivery_state', e.target.value)} />
             <TextField label="ZIP Code *" value={agreementForm.delivery_zip} onChange={e => setDeliveryField('delivery_zip', e.target.value)} />
             <TextField select label="Billing Frequency" value={agreementForm.billing_frequency} onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}>
+              <MenuItem value="daily">Daily</MenuItem>
               <MenuItem value="weekly">Weekly</MenuItem>
               <MenuItem value="biweekly">Bi-weekly</MenuItem>
               <MenuItem value="monthly">Monthly</MenuItem>
               <MenuItem value="quarterly">Quarterly</MenuItem>
+              <MenuItem value="custom">Customized periods</MenuItem>
             </TextField>
             <TextField label="Start Date" type="date" value={agreementForm.start_date} onChange={e => setAgreementForm(prev => ({ ...prev, start_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
-            <TextField label="End Date" type="date" value={agreementForm.end_date} InputProps={{ readOnly: true }} InputLabelProps={{ shrink: true }} helperText="Auto-set from frequency × committed periods" />
-            <TextField label="Security Deposit" type="number" value={agreementForm.security_deposit} onChange={e => setAgreementForm(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} />
+            <TextField label="End Date" type="date" value={agreementForm.end_date} onChange={e => setAgreementForm(prev => ({ ...prev, end_date: e.target.value }))} InputProps={{ readOnly: agreementForm.billing_frequency !== 'custom' }} InputLabelProps={{ shrink: true }} helperText={agreementForm.billing_frequency === 'custom' ? 'Choose the end date; the system divides the term into the committed periods' : 'Auto-set from frequency × committed periods'} />
           </Box>
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Rental Products</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(190px, 1.5fr) 60px minmax(95px, .7fr) minmax(105px, .8fr) minmax(110px, .9fr) minmax(110px, .9fr) minmax(90px, .7fr) auto' }, gap: 2, mb: 2, alignItems: 'start' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(210px, 1.5fr) 65px repeat(7, minmax(95px, .72fr)) auto' }, gap: 1.5, mb: 2, alignItems: 'start' }}>
             <Box sx={{ gridColumn: { xs: '1 / -1', lg: 'auto' } }}>
               <PartSearchAutocomplete<RentalPart>
                 label="Rental product"
@@ -2252,11 +2336,12 @@ const Rentals = () => {
             <TextField label="Delivery & Setup" type="number" value={itemDraft.setup_fee} onChange={e => setItemDraft(prev => ({ ...prev, setup_fee: Number(e.target.value) }))} />
             <TextField label="Labor" type="number" value={itemDraft.labor_fee} onChange={e => setItemDraft(prev => ({ ...prev, labor_fee: Number(e.target.value) }))} />
             <TextField label="Removal / Pickup" type="number" value={itemDraft.removal_fee} onChange={e => setItemDraft(prev => ({ ...prev, removal_fee: Number(e.target.value) }))} />
+            <TextField label="Security Deposit" type="number" value={itemDraft.security_deposit} onChange={e => setItemDraft(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} helperText="Per unit" />
             <Button startIcon={<AddIcon />} variant="contained" onClick={addRentalItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, height: 56, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add</Button>
           </Box>
 
           <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '16px', overflowX: 'auto' }}>
-            <Table size="small" sx={{ minWidth: 760 }}>
+            <Table size="small" sx={{ minWidth: 980 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
@@ -2267,12 +2352,13 @@ const Rentals = () => {
                   <TableCell sx={{ fontWeight: 900 }} align="right">Deliv &amp; Setup</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Labor</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Removal</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }} align="right">Deposit / unit</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {agreementForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
                 ) : agreementForm.items.map(item => (
                   <TableRow key={item.key}>
                     <TableCell>
@@ -2316,6 +2402,11 @@ const Rentals = () => {
                         inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
                     </TableCell>
                     <TableCell align="right">
+                      <TextField type="number" size="small" value={item.security_deposit}
+                        onChange={e => setLineNumber(item.key, 'security_deposit', Number(e.target.value))}
+                        inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
+                    </TableCell>
+                    <TableCell align="right">
                       <IconButton size="small" onClick={() => removeRentalItem(item.key)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
@@ -2332,7 +2423,7 @@ const Rentals = () => {
               label="Auto-charge saved card each period"
               sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1', md: 'span 2' }, minHeight: 56, m: 0, alignItems: 'center' }}
             />
-            <TextField sx={{ gridColumn: { md: 'span 2' } }} label="Committed periods" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="Sets the term & end date (e.g. 4 for a 4-period deal)" inputProps={{ min: 1 }} />
+            <TextField sx={{ gridColumn: { md: 'span 2' } }} label={agreementForm.billing_frequency === 'custom' ? 'Number of billing periods' : 'Committed periods'} type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText={agreementForm.billing_frequency === 'custom' ? 'The selected date range is divided evenly into this many invoices' : 'Sets the term and end date (e.g. 4 for a 4-period deal)'} inputProps={{ min: 1 }} />
             <TextField sx={{ gridColumn: { md: 'span 2' } }} select label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent' }))}>
               <MenuItem value="">No discount</MenuItem>
               <MenuItem value="flat">Flat amount</MenuItem>
@@ -2340,8 +2431,22 @@ const Rentals = () => {
             </TextField>
             {agreementForm.discount_type && (
               <>
-                <TextField sx={{ gridColumn: { md: 'span 3' } }} label={agreementForm.discount_type === 'percent' ? 'Discount %' : 'Discount amount'} type="number" value={agreementForm.discount_value} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} />
-                <TextField sx={{ gridColumn: { md: 'span 3' } }} label="Apply after N periods" type="number" value={agreementForm.discount_apply_after_periods} onChange={e => setAgreementForm(prev => ({ ...prev, discount_apply_after_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText="e.g. after 3 paid periods" inputProps={{ min: 0 }} />
+                <TextField sx={{ gridColumn: { md: 'span 2' } }} label={agreementForm.discount_type === 'percent' ? 'Discount %' : 'Discount amount'} type="number" value={agreementForm.discount_value} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} />
+                <TextField sx={{ gridColumn: { md: 'span 2' } }} select label="Discount schedule" value={agreementForm.discount_application_mode} onChange={e => setAgreementForm(prev => ({ ...prev, discount_application_mode: e.target.value as 'single_invoice' | 'commitment' }))}>
+                  <MenuItem value="single_invoice">Only invoice N</MenuItem>
+                  <MenuItem value="commitment">Commitment catch-up on invoice N</MenuItem>
+                </TextField>
+                <TextField sx={{ gridColumn: { md: 'span 2' } }} label="Apply on invoice #" type="number" value={agreementForm.discount_invoice_number} onChange={e => setAgreementForm(prev => ({ ...prev, discount_invoice_number: e.target.value === '' ? '' : Number(e.target.value), discount_apply_after_periods: e.target.value === '' ? '' : Math.max(0, Number(e.target.value) - 1) }))} helperText="Invoice number in this agreement" inputProps={{ min: 1, max: agreementForm.committed_periods || undefined }} />
+                {agreementForm.discount_application_mode === 'commitment' && (
+                  <FormControlLabel
+                    control={<Switch checked={agreementForm.discount_continue} onChange={e => setAgreementForm(prev => ({ ...prev, discount_continue: e.target.checked }))} />}
+                    label="Continue discount after the catch-up invoice"
+                    sx={{ gridColumn: '1 / -1', m: 0 }}
+                  />
+                )}
+                <Alert severity="info" sx={{ gridColumn: '1 / -1', borderRadius: '12px' }}>
+                  This discount becomes active only when the customer saves a card and authorizes automatic payments. Until then it is shown as conditional in the schedule.
+                </Alert>
               </>
             )}
             <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
@@ -2401,6 +2506,48 @@ const Rentals = () => {
               </TableBody>
             </Table>
           </TableContainer>
+
+          <Box sx={{ mt: 3, mb: 1.5 }}>
+            <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Complete Billing Schedule</Typography>
+            <Typography sx={{ color: '#64748B', fontSize: 13 }}>Every billing cycle is calculated by the same engine used to generate invoices.</Typography>
+          </Box>
+          {schedulePreviewQ.isFetching ? <LinearProgress sx={{ borderRadius: 999, mb: 1 }} /> : null}
+          {schedulePreviewQ.isError ? (
+            <Alert severity="warning" sx={{ borderRadius: '12px' }}>{apiErrorMessage(schedulePreviewQ.error, 'Complete the agreement dates and discount settings to preview the schedule.')}</Alert>
+          ) : (
+            <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '16px', overflowX: 'auto' }}>
+              <Table size="small" sx={{ minWidth: 760 }}>
+                <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                  <TableCell sx={{ fontWeight: 900 }}>Invoice</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Period</TableCell>
+                  <TableCell sx={{ fontWeight: 900 }}>Billing date</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 900 }}>Rent</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 900 }}>Discount</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 900 }}>Tax</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 900 }}>Total</TableCell>
+                </TableRow></TableHead>
+                <TableBody>
+                  {(schedulePreviewQ.data?.billing_schedule || []).map(period => (
+                    <TableRow key={period.period}>
+                      <TableCell sx={{ fontWeight: 900 }}>#{period.period}</TableCell>
+                      <TableCell>{formatDate(period.billing_date)} – {formatDate(period.period_end)}</TableCell>
+                      <TableCell>{formatDate(period.billing_date)}</TableCell>
+                      <TableCell align="right">{money(period.rental_amount)}</TableCell>
+                      <TableCell align="right" sx={{ color: period.discount ? '#DC2626' : '#64748B' }}>
+                        {period.discount ? `-${money(period.discount)}` : money(0)}
+                        {period.discount_conditional ? <Chip label="Requires saved card" size="small" sx={{ ml: 1, fontWeight: 800 }} /> : null}
+                      </TableCell>
+                      <TableCell align="right">{money(period.tax)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 950, color: '#047857' }}>{money(period.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!schedulePreviewQ.isFetching && !(schedulePreviewQ.data?.billing_schedule || []).length ? (
+                    <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3, color: '#64748B' }}>Add products and complete the term to preview every invoice.</TableCell></TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setAgreementDialog(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
@@ -2420,6 +2567,7 @@ const Rentals = () => {
         </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2, pt: 1 }}>
+            <TextField label="Daily rate" type="number" value={rateCardForm.daily_rate} onChange={e => setRateCardForm(prev => ({ ...prev, daily_rate: e.target.value }))} />
             <TextField label="Weekly rate" type="number" value={rateCardForm.weekly_rate} onChange={e => setRateCardForm(prev => ({ ...prev, weekly_rate: e.target.value }))} />
             <TextField label="Bi-weekly rate" type="number" value={rateCardForm.biweekly_rate} onChange={e => setRateCardForm(prev => ({ ...prev, biweekly_rate: e.target.value }))} />
             <TextField label="Monthly rate" type="number" value={rateCardForm.monthly_rate} onChange={e => setRateCardForm(prev => ({ ...prev, monthly_rate: e.target.value }))} />
@@ -2436,56 +2584,71 @@ const Rentals = () => {
       </Dialog>
 
       {/* Return Dialog */}
-      <Dialog open={Boolean(returnDialog)} onClose={() => setReturnDialog(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 500, width: '100%' } }}>
+      <Dialog open={Boolean(returnDialog)} onClose={() => setReturnDialog(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 680, width: '100%' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>Handover / Return Equipment</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gap: 2, pt: 1 }}>
             <TextField label="Actual Return Date" type="date" value={returnForm.actual_return_date} onChange={e => setReturnForm(prev => ({ ...prev, actual_return_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
             <TextField label="Return Condition *" value={returnForm.return_condition} onChange={e => setReturnForm(prev => ({ ...prev, return_condition: e.target.value }))} placeholder="E.g. Returned clean and functioning" />
             <TextField label="Final Meter Reading" type="number" value={returnForm.final_meter_reading || 0} onChange={e => setReturnForm(prev => ({ ...prev, final_meter_reading: Number(e.target.value) }))} />
-            {Number(returnDialog?.security_deposit || 0) > 0 && (
-              <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F0F9FF', border: '1px solid #BFDBFE' }}>
-                <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Security Deposit — {money(returnDialog?.security_deposit)}</Typography>
-                <TextField
-                  select fullWidth size="small" label="Deposit settlement"
-                  value={returnForm.deposit_action || ''}
-                  onChange={e => setReturnForm(prev => ({ ...prev, deposit_action: (e.target.value || null) as 'refund' | 'deduct' | 'waive' | null }))}
-                >
-                  <MenuItem value="">Decide later</MenuItem>
-                  <MenuItem value="refund">Refund the full deposit</MenuItem>
-                  <MenuItem value="deduct">Deduct damages / fees</MenuItem>
-                  <MenuItem value="waive">Waive (keep full deposit)</MenuItem>
-                </TextField>
-                {returnForm.deposit_action === 'deduct' && (
-                  <TextField
-                    fullWidth size="small" type="number" label="Amount to deduct" sx={{ mt: 1.5 }}
-                    value={returnForm.deposit_deduction || 0}
-                    onChange={e => setReturnForm(prev => ({ ...prev, deposit_deduction: Number(e.target.value) }))}
-                    helperText={`Refunds ${money(Math.max(0, Number(returnDialog?.security_deposit || 0) - Number(returnForm.deposit_deduction || 0)))} to the customer`}
-                  />
-                )}
-                {(() => {
-                  const refundAmt = returnForm.deposit_action === 'refund'
-                    ? Number(returnDialog?.security_deposit || 0)
-                    : returnForm.deposit_action === 'deduct'
-                      ? Math.max(0, Number(returnDialog?.security_deposit || 0) - Number(returnForm.deposit_deduction || 0))
-                      : 0
-                  if (refundAmt <= 0) return null
-                  return (
-                    <Typography sx={{ mt: 1.25, fontSize: 12.5, fontWeight: 700, color: '#1E3A8A' }}>
-                      {returnDialog?.saved_card?.last4
-                        ? `${money(refundAmt)} is refunded to the card ending ••••${returnDialog.saved_card.last4} if the deposit was paid by card — otherwise recorded for a manual refund.`
-                        : `${money(refundAmt)} is refunded to the card that paid the deposit, or recorded for a manual refund if it was paid offline.`}
-                    </Typography>
-                  )
-                })()}
-              </Box>
-            )}
+            {(returnDialog?.items || []).filter(item => item.item_status !== 'returned').map(item => {
+              const itemReturn = returnForm.items?.find(entry => entry.item_id === item.id)
+              const deposit = Number(item.security_deposit || 0) * Math.max(1, Number(item.quantity || 1))
+              return (
+                <Box key={item.id} sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F0F9FF', border: '1px solid #BFDBFE' }}>
+                  <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>{item.part_number} · {item.part_description}</Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: 12, mb: deposit > 0 ? 1.25 : 0 }}>Qty {item.quantity}{deposit > 0 ? ` · Deposit ${money(deposit)}` : ' · No security deposit'}</Typography>
+                  {deposit > 0 ? (
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: itemReturn?.deposit_action === 'deduct' ? '1fr 1fr' : '1fr' }, gap: 1.25 }}>
+                      <TextField
+                        select fullWidth size="small" label="Deposit settlement"
+                        value={itemReturn?.deposit_action || ''}
+                        onChange={e => setReturnForm(prev => ({
+                          ...prev,
+                          items: (prev.items || []).map(entry => entry.item_id === item.id ? { ...entry, deposit_action: (e.target.value || null) as 'refund' | 'deduct' | 'waive' | null } : entry),
+                        }))}
+                      >
+                        <MenuItem value="" disabled>Select settlement</MenuItem>
+                        <MenuItem value="refund">Refund full item deposit</MenuItem>
+                        <MenuItem value="deduct">Deduct damages / fees</MenuItem>
+                        <MenuItem value="waive">Waive / retain deposit</MenuItem>
+                      </TextField>
+                      {itemReturn?.deposit_action === 'deduct' ? (
+                        <TextField
+                          fullWidth size="small" type="number" label="Amount to deduct"
+                          value={itemReturn.deposit_deduction || 0}
+                          onChange={e => setReturnForm(prev => ({
+                            ...prev,
+                            items: (prev.items || []).map(entry => entry.item_id === item.id ? { ...entry, deposit_deduction: Number(e.target.value) } : entry),
+                          }))}
+                          inputProps={{ min: 0, max: deposit, step: '0.01' }}
+                          helperText={`Refund: ${money(Math.max(0, deposit - Number(itemReturn.deposit_deduction || 0)))}`}
+                        />
+                      ) : null}
+                    </Box>
+                  ) : null}
+                </Box>
+              )
+            })}
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setReturnDialog(null)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button variant="contained" color="success" onClick={() => returnDialog && returnMut.mutate({ id: returnDialog.id, data: returnForm })} sx={{ borderRadius: '12px', fontWeight: 900 }}>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={() => returnDialog && returnMut.mutate({ id: returnDialog.id, data: returnForm })}
+            disabled={
+              returnMut.isPending
+              || !returnForm.return_condition?.trim()
+              || Boolean((returnDialog?.items || []).some(item => (
+                item.item_status !== 'returned'
+                && Number(item.security_deposit || 0) > 0
+                && !returnForm.items?.find(entry => entry.item_id === item.id)?.deposit_action
+              )))
+            }
+            sx={{ borderRadius: '12px', fontWeight: 900 }}
+          >
             Submit Return
           </Button>
         </DialogActions>
@@ -2837,7 +3000,7 @@ const Rentals = () => {
                   <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>DISCOUNT</Typography>
                   <Typography sx={{ fontWeight: 900 }}>
                     {viewAgreement.discount_type
-                      ? `${viewAgreement.discount_type === 'percent' ? `${viewAgreement.discount_value}%` : money(viewAgreement.discount_value)}${viewAgreement.discount_apply_after_periods ? ` after ${viewAgreement.discount_apply_after_periods} periods` : ''}`
+                      ? `${viewAgreement.discount_type === 'percent' ? `${viewAgreement.discount_value}%` : money(viewAgreement.discount_value)} · ${viewAgreement.discount_application_mode === 'commitment' ? 'catch-up on' : 'only on'} invoice #${viewAgreement.discount_invoice_number || 1}${viewAgreement.discount_continue ? ' · continues afterward' : ''}${viewAgreement.discount_requires_card ? ' · saved card required' : ''}`
                       : 'None'}
                   </Typography>
                 </Box>
@@ -2956,7 +3119,7 @@ const Rentals = () => {
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Items</Typography>
                 <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '12px', overflowX: 'auto' }}>
-                  <Table size="small" sx={{ minWidth: 720 }}>
+                  <Table size="small" sx={{ minWidth: 920 }}>
                     <TableHead>
                       <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                         <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
@@ -2967,6 +3130,8 @@ const Rentals = () => {
                         <TableCell sx={{ fontWeight: 900 }} align="right">Setup</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Removal</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Labor</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }} align="right">Deposit / unit</TableCell>
+                        <TableCell sx={{ fontWeight: 900 }}>Deposit status</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
                       </TableRow>
                     </TableHead>
@@ -2984,6 +3149,10 @@ const Rentals = () => {
                           <TableCell align="right">{money(item.setup_fee)}</TableCell>
                           <TableCell align="right">{money(item.removal_fee)}</TableCell>
                           <TableCell align="right">{money(item.labor_fee)}</TableCell>
+                          <TableCell align="right">{money(item.security_deposit)}</TableCell>
+                          <TableCell sx={{ textTransform: 'capitalize' }}>
+                            {item.deposit_status || (Number(item.security_deposit || 0) > 0 ? 'held' : '-')}
+                          </TableCell>
                           <TableCell>
                             <Chip size="small" label={item.item_status === 'returned' ? 'Returned' : 'Out'} sx={{ fontWeight: 800, bgcolor: item.item_status === 'returned' ? '#DCFCE7' : '#DBEAFE', color: item.item_status === 'returned' ? '#15803D' : '#1D4ED8' }} />
                           </TableCell>
@@ -3036,7 +3205,7 @@ const Rentals = () => {
                   <Table size="small" sx={{ minWidth: 700 }}>
                     <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
                       <TableCell sx={{ fontWeight: 900 }}>Period</TableCell>
-                      <TableCell sx={{ fontWeight: 900 }}>Billing Date</TableCell>
+                      <TableCell sx={{ fontWeight: 900 }}>Billing Period</TableCell>
                       <TableCell sx={{ fontWeight: 900 }} align="right">Rent</TableCell>
                       <TableCell sx={{ fontWeight: 900 }} align="right">Discount</TableCell>
                       <TableCell sx={{ fontWeight: 900 }} align="right">Tax</TableCell>
@@ -3052,9 +3221,12 @@ const Rentals = () => {
                             <TableCell sx={{ fontWeight: 900, color: isNext ? '#7C3AED' : '#1E3A8A' }}>
                               {period.period}{isNext ? ' · Next' : ''}
                             </TableCell>
-                            <TableCell>{formatDate(period.billing_date)}</TableCell>
+                            <TableCell>{formatDate(period.billing_date)} – {formatDate(period.period_end)}</TableCell>
                             <TableCell align="right">{money(period.rental_amount)}</TableCell>
-                            <TableCell align="right">{Number(period.discount || 0) ? `-${money(period.discount)}` : '-'}</TableCell>
+                            <TableCell align="right">
+                              {Number(period.discount || 0) ? `-${money(period.discount)}` : '-'}
+                              {period.discount_conditional ? <Typography sx={{ fontSize: 10, color: '#B45309', fontWeight: 800 }}>requires saved-card authorization</Typography> : null}
+                            </TableCell>
                             <TableCell align="right">{money(period.tax)}</TableCell>
                             <TableCell align="right" sx={{ fontWeight: 900 }}>{money(period.total)}</TableCell>
                             <TableCell>

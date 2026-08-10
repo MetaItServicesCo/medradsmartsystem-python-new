@@ -10,12 +10,12 @@ class RentalStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 class BillingFrequency(str, enum.Enum):
-    # `daily` is retained for legacy rows only; the UI no longer offers it.
     DAILY = "daily"
     WEEKLY = "weekly"
     BIWEEKLY = "biweekly"
     MONTHLY = "monthly"
     QUARTERLY = "quarterly"
+    CUSTOM = "custom"
 
 class RentalDiscountType(str, enum.Enum):
     FLAT = "flat"
@@ -105,6 +105,12 @@ class Rental(Base):
     discount_type = Column(String, nullable=True)  # 'flat' | 'percent'
     discount_value = Column(Numeric(10, 2), nullable=True)
     discount_apply_after_periods = Column(Integer, nullable=True)
+    # Explicit, customer-visible discount schedule. The legacy
+    # discount_apply_after_periods field remains readable for old agreements.
+    discount_application_mode = Column(String, nullable=False, default="single_invoice")  # single_invoice | commitment
+    discount_invoice_number = Column(Integer, nullable=True)
+    discount_continue = Column(Boolean, nullable=False, default=False)
+    discount_requires_card = Column(Boolean, nullable=False, default=False)
 
     # Security-deposit settlement, resolved on final return.
     deposit_status = Column(String, nullable=True)  # RentalDepositStatus values
@@ -177,6 +183,9 @@ class RentalItem(Base):
     setup_fee = Column(Numeric(10, 2), nullable=False, default=0)
     labor_fee = Column(Numeric(10, 2), nullable=False, default=0)
     removal_fee = Column(Numeric(10, 2), nullable=False, default=0)
+    security_deposit = Column(Numeric(10, 2), nullable=False, default=0)
+    deposit_status = Column(String, nullable=True)
+    deposit_settled_amount = Column(Numeric(10, 2), nullable=True)
 
     initial_condition = Column(Text, nullable=True)
     return_condition = Column(Text, nullable=True)
@@ -201,6 +210,7 @@ class RentalProductRate(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     part_id = Column(Integer, ForeignKey("inventory_parts.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    daily_rate = Column(Numeric(10, 2), nullable=True)
     weekly_rate = Column(Numeric(10, 2), nullable=True)
     biweekly_rate = Column(Numeric(10, 2), nullable=True)
     monthly_rate = Column(Numeric(10, 2), nullable=True)
