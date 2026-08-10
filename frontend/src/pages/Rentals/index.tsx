@@ -466,7 +466,10 @@ const deriveRentalEndDate = (startISO: string, frequency: BillingFrequency, peri
   return end.toISOString().slice(0, 10)
 }
 
-const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
+const calculateInitialRentalPricing = (
+  agreement: RentalAgreementFormState,
+  cardAuthorizedScenario: boolean,
+) => {
   const rental = roundRentalMoney(agreement.items.reduce(
     (sum, item) => sum + Number(item.rental_rate || 0) * Math.max(1, Number(item.quantity || 1)),
     0,
@@ -482,14 +485,18 @@ const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
 
   // The commitment discount reaches period one only when it is explicitly
   // configured to apply after zero paid periods, matching backend billing.
-  let discount = 0
+  let offeredDiscount = 0
   if (agreement.discount_type && agreement.discount_invoice_number !== '' && Number(agreement.discount_invoice_number) === 1) {
-    discount = agreement.discount_type === 'percent'
+    offeredDiscount = agreement.discount_type === 'percent'
       ? roundRentalMoney(rental * Number(agreement.discount_value || 0) / 100)
       : Math.min(rental, roundRentalMoney(Number(agreement.discount_value || 0)))
   }
+  const discountEligible = !agreement.discount_requires_card || cardAuthorizedScenario
+  const discount = discountEligible ? offeredDiscount : 0
 
-  const taxableRental = Math.max(0, rental - discount)
+  // Match the authoritative backend and Sales: tax the full eligible rental
+  // and logistics amounts first, then subtract the discount from the total.
+  const taxableRental = Math.max(0, rental)
   const taxableTotal = taxableRental + shipping + setup + removal
   const tax = roundRentalMoney(taxableTotal * SALES_TAX_FACTOR)
   const rentalTax = taxableTotal > 0 ? roundRentalMoney(tax * taxableRental / taxableTotal) : 0
@@ -506,13 +513,15 @@ const calculateInitialRentalPricing = (agreement: RentalAgreementFormState) => {
     labor,
     removal,
     discount,
+    offeredDiscount,
+    discountEligible,
     tax,
     rentalTax,
     shippingTax,
     setupTax,
     removalTax,
     subtotal,
-    total: roundRentalMoney(Math.max(0, subtotal - discount + tax)),
+    total: roundRentalMoney(Math.max(0, subtotal + tax - discount)),
   }
 }
 
@@ -586,6 +595,7 @@ const Rentals = () => {
   const [editingAgreement, setEditingAgreement] = useState<Rental | null>(null)
   const [viewAgreement, setViewAgreement] = useState<Rental | null>(null)
   const [agreementForm, setAgreementForm] = useState<RentalAgreementFormState>(emptyAgreement())
+  const [previewCardAuthorized, setPreviewCardAuthorized] = useState(false)
   const [selectedDiscountPackageId, setSelectedDiscountPackageId] = useState<number | null>(null)
   const [discountPackageDialog, setDiscountPackageDialog] = useState(false)
   const [discountPackageName, setDiscountPackageName] = useState('')
@@ -786,8 +796,8 @@ const Rentals = () => {
   }), [totalRentals, activeRentalsCountQ.data?.total, totalInvoiced, summaryQ.data?.products, parts.length, historyQ.data?.total])
 
   const initialAgreementPricing = useMemo(
-    () => calculateInitialRentalPricing(agreementForm),
-    [agreementForm],
+    () => calculateInitialRentalPricing(agreementForm, previewCardAuthorized),
+    [agreementForm, previewCardAuthorized],
   )
 
   const invalidateRentals = () => {
@@ -877,6 +887,7 @@ const Rentals = () => {
       discountInvoice: agreementForm.discount_invoice_number,
       discountContinue: agreementForm.discount_continue,
       discountRequiresCard: agreementForm.discount_requires_card,
+      cardAuthorizedScenario: previewCardAuthorized,
       items: buildAgreementItems(),
     }],
     queryFn: () => previewRentalSchedule({
@@ -890,6 +901,7 @@ const Rentals = () => {
       discount_invoice_number: agreementForm.discount_invoice_number === '' ? null : Number(agreementForm.discount_invoice_number),
       discount_continue: agreementForm.discount_continue,
       discount_requires_card: agreementForm.discount_requires_card,
+      card_authorized_scenario: previewCardAuthorized,
       items: buildAgreementItems(),
     }),
     enabled: Boolean(
@@ -1053,6 +1065,7 @@ const Rentals = () => {
     setSelectedDiscountPackageId(null)
     setSelectedRentalPart(null)
     setItemDraft(newRentalItem())
+    setPreviewCardAuthorized(false)
     setAgreementForm(emptyAgreement())
     setAgreementDialog(true)
   }
@@ -1063,6 +1076,7 @@ const Rentals = () => {
     setSelectedDiscountPackageId(null)
     setSelectedRentalPart(null)
     setItemDraft(newRentalItem())
+    setPreviewCardAuthorized(Boolean(rental.auto_charge_authorized_at))
     setAgreementForm({
       facility_id: rental.facility_id,
       customer_user_id: rental.customer_user_id,
@@ -2724,6 +2738,82 @@ const Rentals = () => {
             </Box>
             <Chip label="Internal preview" size="small" sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 900 }} />
           </Box>
+          {agreementForm.discount_type && agreementForm.discount_requires_card ? (
+            <Box
+              sx={{
+                mb: 2,
+                p: { xs: 1.5, md: 2 },
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                alignItems: { xs: 'stretch', md: 'center' },
+                justifyContent: 'space-between',
+                gap: 1.5,
+                border: '1px solid #DDD6FE',
+                bgcolor: '#FAF9FF',
+                borderRadius: '16px',
+              }}
+            >
+              <Box>
+                <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 14 }}>Preview payment scenario</Typography>
+                <Typography sx={{ color: '#64748B', fontSize: 12.5 }}>
+                  Compare exact invoice totals before and after saved-card authorization. This switch does not save authorization.
+                </Typography>
+              </Box>
+              <Box
+                role="group"
+                aria-label="Rental discount preview scenario"
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 0.75,
+                  p: 0.5,
+                  flexShrink: 0,
+                  bgcolor: '#FFFFFF',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '12px',
+                }}
+              >
+                <Button
+                  aria-pressed={!previewCardAuthorized}
+                  startIcon={<PaymentIcon />}
+                  onClick={() => setPreviewCardAuthorized(false)}
+                  variant={!previewCardAuthorized ? 'contained' : 'text'}
+                  sx={{
+                    minHeight: 40,
+                    px: 1.5,
+                    borderRadius: '9px',
+                    textTransform: 'none',
+                    fontWeight: 900,
+                    whiteSpace: 'nowrap',
+                    ...(!previewCardAuthorized ? { bgcolor: '#475569', '&:hover': { bgcolor: '#334155' } } : { color: '#64748B' }),
+                  }}
+                >
+                  Without saved card
+                </Button>
+                <Button
+                  aria-pressed={previewCardAuthorized}
+                  startIcon={<CreditCardIcon />}
+                  onClick={() => setPreviewCardAuthorized(true)}
+                  variant={previewCardAuthorized ? 'contained' : 'text'}
+                  sx={{
+                    minHeight: 40,
+                    px: 1.5,
+                    borderRadius: '9px',
+                    textTransform: 'none',
+                    fontWeight: 900,
+                    whiteSpace: 'nowrap',
+                    ...(previewCardAuthorized ? { background: SYSTEM_GRADIENT } : { color: '#6D28D9' }),
+                  }}
+                >
+                  Card saved &amp; authorized
+                </Button>
+              </Box>
+            </Box>
+          ) : agreementForm.discount_type ? (
+            <Alert severity="success" sx={{ mb: 2, borderRadius: '12px' }}>
+              This discount does not require a saved card and applies in every payment scenario.
+            </Alert>
+          ) : null}
           <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '16px', overflowX: 'auto' }}>
             <Table size="small" sx={{ minWidth: 600 }}>
               <TableHead>
@@ -2750,12 +2840,21 @@ const Rentals = () => {
                     <TableCell align="right" sx={{ fontWeight: 900 }}>{money(row.cost + row.tax)}</TableCell>
                   </TableRow>
                 ))}
-                {initialAgreementPricing.discount > 0 && (
+                {initialAgreementPricing.offeredDiscount > 0 && (
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 850, color: '#DC2626' }}>Initial Period Discount</TableCell>
-                    <TableCell align="right" sx={{ color: '#DC2626' }}>-{money(initialAgreementPricing.discount)}</TableCell>
+                    <TableCell sx={{ fontWeight: 850, color: initialAgreementPricing.discountEligible ? '#DC2626' : '#64748B' }}>
+                      {initialAgreementPricing.discountEligible ? 'Initial Period Discount' : 'Conditional Discount'}
+                      {!initialAgreementPricing.discountEligible ? (
+                        <Chip label={`${money(initialAgreementPricing.offeredDiscount)} available with saved card`} size="small" sx={{ ml: 1, fontWeight: 800 }} />
+                      ) : null}
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: initialAgreementPricing.discountEligible ? '#DC2626' : '#64748B' }}>
+                      {initialAgreementPricing.discount ? `-${money(initialAgreementPricing.discount)}` : money(0)}
+                    </TableCell>
                     <TableCell align="right">{money(0)}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 900, color: '#DC2626' }}>-{money(initialAgreementPricing.discount)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 900, color: initialAgreementPricing.discountEligible ? '#DC2626' : '#64748B' }}>
+                      {initialAgreementPricing.discount ? `-${money(initialAgreementPricing.discount)}` : money(0)}
+                    </TableCell>
                   </TableRow>
                 )}
                 <TableRow sx={{ bgcolor: '#FAF9FF' }}>
@@ -2799,7 +2898,7 @@ const Rentals = () => {
                       <TableCell align="right">{money(period.rental_amount)}</TableCell>
                       <TableCell align="right" sx={{ color: period.discount ? '#DC2626' : '#64748B' }}>
                         {period.discount ? `-${money(period.discount)}` : money(0)}
-                        {period.discount_conditional ? <Chip label="Requires saved card" size="small" sx={{ ml: 1, fontWeight: 800 }} /> : null}
+                        {period.discount_conditional ? <Chip label="Available with saved card" size="small" sx={{ ml: 1, fontWeight: 800 }} /> : null}
                       </TableCell>
                       <TableCell align="right">{money(period.tax)}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 950, color: '#047857' }}>{money(period.total)}</TableCell>

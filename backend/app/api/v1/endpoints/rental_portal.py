@@ -214,7 +214,10 @@ def _agreement_view(rental: Rental) -> dict[str, Any]:
 def _pricing_view(rental: Rental, initial_invoice: Optional[Invoice]) -> dict[str, Any]:
     amounts = _initial_invoice_amounts(rental)
     tax = Decimal(str(initial_invoice.tax_amount if initial_invoice else amounts["tax"]))
-    taxable_rental = max(Decimal("0"), amounts["rental"] - amounts["discount"])
+    # Rental discounts are applied after tax, matching Sales. Use the full
+    # taxable rental amount when allocating the authoritative invoice tax
+    # across the customer-facing breakdown.
+    taxable_rental = max(Decimal("0"), amounts["rental"])
     taxable_total = taxable_rental + amounts["shipping"] + amounts["setup"] + amounts["removal"]
     if taxable_total > 0:
         rental_tax = (tax * taxable_rental / taxable_total).quantize(Decimal("0.01"))

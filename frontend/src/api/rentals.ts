@@ -500,6 +500,7 @@ export interface RentalSchedulePreviewPayload {
   discount_invoice_number?: number | null
   discount_continue?: boolean
   discount_requires_card?: boolean
+  card_authorized_scenario?: boolean
   items: RentalItemPayload[]
 }
 

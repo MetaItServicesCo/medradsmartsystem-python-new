@@ -209,6 +209,7 @@ class RentalSchedulePreview(BaseModel):
     discount_invoice_number: Optional[int] = None
     discount_continue: bool = False
     discount_requires_card: bool = True
+    card_authorized_scenario: bool = False
     items: list[RentalItemIn]
 
 
@@ -1766,11 +1767,16 @@ def preview_rental_schedule(
         ),
         discount_continue=payload.discount_continue,
         discount_requires_card=payload.discount_requires_card,
-        auto_charge_authorized_at=None,
+        auto_charge_authorized_at=(datetime.utcnow() if payload.card_authorized_scenario else None),
         security_deposit=Decimal("0"),
         items=[SimpleNamespace(**item.model_dump()) for item in payload.items],
     )
-    return {"billing_schedule": projected_billing_schedule(rental)}
+    return {
+        "billing_schedule": projected_billing_schedule(
+            rental,
+            include_conditional=False,
+        )
+    }
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

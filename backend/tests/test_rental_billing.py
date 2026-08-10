@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -84,7 +84,7 @@ def test_monthly_schedule_uses_calendar_months_and_preserves_month_end_anchor():
     assert advance_billing_date(date(2026, 11, 30), "quarterly", 1) == date(2027, 2, 28)
 
 
-def test_recurring_discount_reduces_taxable_rent_before_tax():
+def test_recurring_discount_is_applied_after_tax():
     rental = SimpleNamespace(
         items=[_item("1000", 1, "0", "0", "0")],
         discount_type="flat",
@@ -95,9 +95,33 @@ def test_recurring_discount_reduces_taxable_rent_before_tax():
     amounts = _recurring_invoice_amounts(rental, 2)
 
     assert amounts["discount"] == Decimal("100")
-    assert amounts["taxable_rental"] == Decimal("900")
-    assert amounts["tax"] == Decimal("74.25")
-    assert amounts["total"] == Decimal("974.25")
+    assert amounts["taxable_rental"] == Decimal("1000")
+    assert amounts["tax"] == Decimal("82.50")
+    assert amounts["total"] == Decimal("982.50")
+
+
+def test_initial_invoice_discount_is_applied_after_tax():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "10", "20", "30")],
+        security_deposit=Decimal("50"),
+        discount_type="flat",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=1,
+        discount_apply_after_periods=0,
+        discount_continue=False,
+        discount_requires_card=False,
+        auto_charge_authorized_at=None,
+    )
+
+    amounts = _initial_invoice_amounts(rental)
+
+    # Taxable base is the full $100 rent + $10 shipping + $20 setup. Deposit
+    # and labor stay non-taxable; the $20 discount is subtracted afterward.
+    assert amounts["discount"] == Decimal("20")
+    assert amounts["tax"] == Decimal("10.72")
+    assert amounts["subtotal"] == Decimal("210")
+    assert amounts["total"] == Decimal("200.72")
 
 
 def test_projected_schedule_contains_first_invoice_and_remaining_periods():
@@ -206,10 +230,10 @@ def test_commitment_discount_catches_up_on_invoice_n_and_can_continue():
     )
 
     assert _recurring_invoice_amounts(rental, 2)["total"] == Decimal("108.25")
-    # Invoice three catches up three $20 discounts: $100 - $60 + tax.
-    assert _recurring_invoice_amounts(rental, 3)["total"] == Decimal("43.30")
+    # Invoice three catches up three $20 discounts after tax: $100 + $8.25 - $60.
+    assert _recurring_invoice_amounts(rental, 3)["total"] == Decimal("48.25")
     # Future invoices retain the normal 20% discount when continuation is on.
-    assert _recurring_invoice_amounts(rental, 4)["total"] == Decimal("86.60")
+    assert _recurring_invoice_amounts(rental, 4)["total"] == Decimal("88.25")
 
 
 def test_card_conditioned_discount_is_previewed_but_not_billed_before_authorization():
@@ -231,8 +255,40 @@ def test_card_conditioned_discount_is_previewed_but_not_billed_before_authorizat
     assert posted["discount"] == Decimal("0")
     assert posted["total"] == Decimal("108.25")
     assert preview["discount"] == Decimal("20.00")
-    assert preview["total"] == Decimal("86.60")
+    assert preview["total"] == Decimal("88.25")
     assert preview["discount_conditional"] is True
+
+
+def test_internal_schedule_scenarios_match_actual_card_discount_eligibility():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "0", "0", "0")],
+        security_deposit=Decimal("0"),
+        discount_type="percent",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=2,
+        discount_apply_after_periods=1,
+        discount_continue=False,
+        discount_requires_card=True,
+        auto_charge_authorized_at=None,
+        billing_frequency="monthly",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 2, 28),
+        committed_periods=2,
+    )
+
+    without_card = projected_billing_schedule(rental, include_conditional=False)
+    assert without_card[1]["discount"] == Decimal("0")
+    assert without_card[1]["tax"] == Decimal("8.25")
+    assert without_card[1]["total"] == Decimal("108.25")
+    assert without_card[1]["discount_conditional"] is True
+
+    rental.auto_charge_authorized_at = datetime(2026, 1, 1)
+    with_card = projected_billing_schedule(rental, include_conditional=False)
+    assert with_card[1]["discount"] == Decimal("20.00")
+    assert with_card[1]["tax"] == Decimal("8.25")
+    assert with_card[1]["total"] == Decimal("88.25")
+    assert with_card[1]["discount_conditional"] is False
 
 
 def test_security_deposit_is_per_item_and_only_appears_upfront():

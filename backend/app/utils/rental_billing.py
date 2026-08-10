@@ -35,8 +35,9 @@ from app.utils.square_payments import (
 
 MAX_CHARGE_ATTEMPTS = 3
 
-# Same tax rule as Sales: 8.25% on the taxable base (rent + shipping & packing +
-# delivery & setup). Labor and the refundable deposit are non-taxable.
+# Same tax rule and ordering as Sales: 8.25% on rent, shipping & packing,
+# delivery & setup, and removal & pickup. Labor and the refundable deposit are
+# non-taxable, and any rental discount is subtracted only after tax is computed.
 RENTAL_TAX_RATE = Decimal("8.25")
 RENTAL_TAX_FACTOR = RENTAL_TAX_RATE / Decimal("100")
 
@@ -199,11 +200,17 @@ def _period_amounts(
 
 
 def _recurring_invoice_amounts(rental: Rental, period_index: int, *, include_conditional: bool = False) -> dict[str, Any]:
-    """Calculate a recurring period with discount reducing the taxable base."""
+    """Calculate a recurring period with discount applied after tax.
+
+    Rental tax follows the Sales ordering rule: calculate tax from the full
+    taxable rental charge, then subtract the applicable discount from the
+    invoice total.  Discount eligibility and scheduling are handled separately
+    by ``_period_amounts`` and remain unchanged.
+    """
     rental_total, discount, conditional = _period_amounts(rental, period_index, include_conditional=include_conditional)
-    taxable_rental = max(Decimal("0"), rental_total - discount)
+    taxable_rental = max(Decimal("0"), rental_total)
     tax = (taxable_rental * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
-    total = taxable_rental + tax
+    total = max(Decimal("0"), rental_total + tax - discount)
     return {
         "rental": rental_total,
         "discount": discount,
@@ -225,14 +232,23 @@ def effective_period_count(rental: Rental) -> int:
     return count
 
 
-def projected_billing_schedule(rental: Rental) -> list[dict[str, Any]]:
-    """Deterministic schedule used by APIs, UI, and the billing engine."""
+def projected_billing_schedule(
+    rental: Rental,
+    *,
+    include_conditional: bool = True,
+) -> list[dict[str, Any]]:
+    """Deterministic schedule used by APIs, UI, and the billing engine.
+
+    ``include_conditional`` keeps the existing customer projection behavior by
+    default. Internal scenario previews can disable it so their totals match
+    what would actually be invoiced without saved-card authorization.
+    """
     schedule: list[dict[str, Any]] = []
     for period_index in range(1, effective_period_count(rental) + 1):
         if period_index == 1:
-            amounts = _initial_invoice_amounts(rental, include_conditional=True)
+            amounts = _initial_invoice_amounts(rental, include_conditional=include_conditional)
         else:
-            amounts = _recurring_invoice_amounts(rental, period_index, include_conditional=True)
+            amounts = _recurring_invoice_amounts(rental, period_index, include_conditional=include_conditional)
         schedule.append({
             "period": period_index,
             "billing_date": billing_period_date(rental, period_index),
@@ -266,9 +282,10 @@ def projected_period(rental: Rental, period_index: int) -> Optional[dict[str, An
 def _initial_invoice_amounts(rental: Rental, *, include_conditional: bool = False) -> dict[str, Any]:
     """Calculate the upfront invoice, including rental period one.
 
-    Rent, shipping, and delivery/setup are taxable. The refundable deposit and
-    labor are not. Keeping this calculation centralized prevents the public
-    portal, invoice ledger, and recurring scheduler from drifting apart.
+    Rent, shipping, delivery/setup, and removal/pickup are taxable. The
+    refundable deposit and labor are not. Tax is calculated before the rental
+    discount, matching Sales. Keeping this calculation centralized prevents
+    the public portal, invoice ledger, and recurring scheduler from drifting.
     """
     rental_total, discount, conditional = _period_amounts(rental, 1, include_conditional=include_conditional)
     item_deposit = sum(
@@ -282,12 +299,12 @@ def _initial_invoice_amounts(rental: Rental, *, include_conditional: bool = Fals
     setup_total = sum((_money(getattr(item, "setup_fee", 0)) for item in rental.items or []), Decimal("0"))
     labor_total = sum((_money(getattr(item, "labor_fee", 0)) for item in rental.items or []), Decimal("0"))
     removal_total = sum((_money(getattr(item, "removal_fee", 0)) for item in rental.items or []), Decimal("0"))
-    taxable_rental = max(Decimal("0"), rental_total - discount)
+    taxable_rental = max(Decimal("0"), rental_total)
     # Removal/pickup is a logistics charge and is taxed like shipping & delivery/setup.
     taxable_total = taxable_rental + shipping_total + setup_total + removal_total
     tax = (taxable_total * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
     subtotal = rental_total + deposit + shipping_total + setup_total + labor_total + removal_total
-    total = max(Decimal("0"), subtotal - discount + tax)
+    total = max(Decimal("0"), subtotal + tax - discount)
     return {
         "rental": rental_total,
         "deposit": deposit,
