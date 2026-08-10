@@ -39,6 +39,31 @@ class RentalExtensionStatus(str, enum.Enum):
     REJECTED = "rejected"
     CANCELLED = "cancelled"
 
+
+class RentalDiscountPackage(Base):
+    """Reusable discount template for new rental agreements.
+
+    Agreements continue to store their own pricing fields. This table is only a
+    convenience template, so editing or retiring a package can never rewrite a
+    signed agreement or an existing billing schedule.
+    """
+    __tablename__ = "rental_discount_packages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False)
+    name_key = Column(String(120), nullable=False, unique=True, index=True)
+    discount_type = Column(String(20), nullable=False)  # flat | percent
+    discount_value = Column(Numeric(10, 2), nullable=False)
+    application_mode = Column(String(30), nullable=False, default="single_invoice")
+    invoice_number = Column(Integer, nullable=False, default=1)
+    continue_after = Column(Boolean, nullable=False, default=False)
+    requires_saved_card = Column(Boolean, nullable=False, default=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
 class Rental(Base):
     __tablename__ = "rentals"
     __table_args__ = (

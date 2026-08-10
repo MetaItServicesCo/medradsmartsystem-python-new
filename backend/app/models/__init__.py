@@ -19,6 +19,7 @@ from app.models.rental import (
     RentalAgreementAcceptance,
     RentalExtensionRequest,
     RentalExtensionStatus,
+    RentalDiscountPackage,
 )
 from app.models.inspection_form import InspectionForm
 from app.models.audit_log import AuditLog

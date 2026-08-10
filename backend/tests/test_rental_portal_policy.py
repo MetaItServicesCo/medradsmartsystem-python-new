@@ -5,7 +5,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1.endpoints.rental_portal import _is_rental_account_user, _pricing_view, _require_signed
-from app.api.v1.endpoints.rentals import _is_rental_customer_user, _require_internal_rental_operator
+from app.api.v1.endpoints.rentals import (
+    RentalDiscountPackageIn,
+    _discount_package_values,
+    _is_rental_customer_user,
+    _require_internal_rental_operator,
+)
 from app.models.user import UserRole
 
 
@@ -64,3 +69,47 @@ def test_customer_roles_cannot_invoke_internal_rental_operations() -> None:
     assert error.value.status_code == 403
     assert _is_rental_customer_user(facility_admin_account)
     assert _is_rental_account_user(facility_admin_account)
+
+
+def test_discount_package_normalizes_name_and_keeps_reusable_pricing_rules() -> None:
+    values = _discount_package_values(RentalDiscountPackageIn(
+        name="  Four   Period Card Deal  ",
+        discount_type="percent",
+        discount_value=Decimal("20"),
+        application_mode="commitment",
+        invoice_number=3,
+        continue_after=True,
+        requires_saved_card=True,
+    ))
+
+    assert values == {
+        "name": "Four Period Card Deal",
+        "name_key": "four period card deal",
+        "discount_type": "percent",
+        "discount_value": Decimal("20.00"),
+        "application_mode": "commitment",
+        "invoice_number": 3,
+        "continue_after": True,
+        "requires_saved_card": True,
+    }
+
+
+def test_discount_package_rejects_invalid_value_and_single_invoice_cannot_continue() -> None:
+    with pytest.raises(HTTPException) as error:
+        _discount_package_values(RentalDiscountPackageIn(
+            name="Invalid",
+            discount_type="flat",
+            discount_value=Decimal("0"),
+        ))
+    assert error.value.status_code == 422
+
+    values = _discount_package_values(RentalDiscountPackageIn(
+        name="One invoice",
+        discount_type="flat",
+        discount_value=Decimal("25"),
+        application_mode="single_invoice",
+        invoice_number=2,
+        continue_after=True,
+        requires_saved_card=False,
+    ))
+    assert values["continue_after"] is False

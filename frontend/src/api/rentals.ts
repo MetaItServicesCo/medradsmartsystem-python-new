@@ -311,6 +311,21 @@ export interface RentalProductRate {
   default_deposit: number | null
 }
 
+export interface RentalDiscountPackage {
+  id: number
+  name: string
+  discount_type: RentalDiscountType
+  discount_value: number
+  application_mode: 'single_invoice' | 'commitment'
+  invoice_number: number
+  continue_after: boolean
+  requires_saved_card: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type RentalDiscountPackagePayload = Omit<RentalDiscountPackage, 'id' | 'created_at' | 'updated_at'>
+
 export interface RentalItemReturnPayload {
   item_id: number
   return_condition?: string | null
@@ -340,6 +355,30 @@ export const fetchRentalParts = async (
 ): Promise<{ items: RentalPart[]; total: number }> => {
   const res = await apiClient.get('/rentals/parts', { params: { search, search_field: searchField, date_from: dateFrom, date_to: dateTo, limit, skip } })
   return res.data
+}
+
+export const fetchRentalDiscountPackages = async (): Promise<RentalDiscountPackage[]> => {
+  const res = await apiClient.get('/rentals/discount-packages')
+  return res.data.items
+}
+
+export const createRentalDiscountPackage = async (
+  data: RentalDiscountPackagePayload,
+): Promise<RentalDiscountPackage> => {
+  const res = await apiClient.post('/rentals/discount-packages', data)
+  return res.data
+}
+
+export const updateRentalDiscountPackage = async (
+  id: number,
+  data: RentalDiscountPackagePayload,
+): Promise<RentalDiscountPackage> => {
+  const res = await apiClient.put(`/rentals/discount-packages/${id}`, data)
+  return res.data
+}
+
+export const deleteRentalDiscountPackage = async (id: number): Promise<void> => {
+  await apiClient.delete(`/rentals/discount-packages/${id}`)
 }
 
 export const fetchRentals = async (

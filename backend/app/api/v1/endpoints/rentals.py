@@ -31,6 +31,7 @@ from app.models.rental import (
     BillingFrequency,
     RentalExtensionRequest,
     RentalExtensionStatus,
+    RentalDiscountPackage,
 )
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
@@ -209,6 +210,16 @@ class RentalSchedulePreview(BaseModel):
     discount_continue: bool = False
     discount_requires_card: bool = True
     items: list[RentalItemIn]
+
+
+class RentalDiscountPackageIn(BaseModel):
+    name: str
+    discount_type: str
+    discount_value: Decimal
+    application_mode: str = "single_invoice"
+    invoice_number: int = 1
+    continue_after: bool = False
+    requires_saved_card: bool = True
 
 
 class RentalItemReturn(BaseModel):
@@ -677,6 +688,49 @@ def _validate_discount_schedule(
         raise HTTPException(status_code=422, detail="Discount invoice cannot exceed the committed periods")
 
 
+def _discount_package_values(payload: RentalDiscountPackageIn) -> dict[str, Any]:
+    """Normalize and validate a reusable template without touching agreement data."""
+    name = " ".join((payload.name or "").strip().split())
+    if not name:
+        raise HTTPException(status_code=422, detail="Discount package name is required")
+    if len(name) > 120:
+        raise HTTPException(status_code=422, detail="Discount package name cannot exceed 120 characters")
+    if payload.discount_type not in {"flat", "percent"}:
+        raise HTTPException(status_code=422, detail="Discount type must be flat or percent")
+    value = _money(payload.discount_value)
+    if value <= 0:
+        raise HTTPException(status_code=422, detail="Discount value must be greater than zero")
+    if payload.application_mode not in {"single_invoice", "commitment"}:
+        raise HTTPException(status_code=422, detail="Discount schedule must be single invoice or commitment")
+    if payload.invoice_number < 1:
+        raise HTTPException(status_code=422, detail="Discount invoice number must be at least 1")
+    return {
+        "name": name,
+        "name_key": name.casefold(),
+        "discount_type": payload.discount_type,
+        "discount_value": value,
+        "application_mode": payload.application_mode,
+        "invoice_number": payload.invoice_number,
+        "continue_after": bool(payload.continue_after) if payload.application_mode == "commitment" else False,
+        "requires_saved_card": bool(payload.requires_saved_card),
+    }
+
+
+def _discount_package_response(package: RentalDiscountPackage) -> dict[str, Any]:
+    return {
+        "id": package.id,
+        "name": package.name,
+        "discount_type": package.discount_type,
+        "discount_value": package.discount_value,
+        "application_mode": package.application_mode,
+        "invoice_number": package.invoice_number,
+        "continue_after": package.continue_after,
+        "requires_saved_card": package.requires_saved_card,
+        "created_at": package.created_at,
+        "updated_at": package.updated_at,
+    }
+
+
 def _period_count(days: int, freq: str) -> int:
     """Number of billing periods covering `days` for the given frequency."""
     if days < 1:
@@ -918,6 +972,108 @@ def _resolve_rental_customer(
             detail="The selected customer is not an active admin, manager, or client attached to this facility",
         )
     return facility, customer
+
+
+@router.get("/discount-packages")
+def list_rental_discount_packages(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_internal_rental_operator(current_user)
+    packages = (
+        db.query(RentalDiscountPackage)
+        .filter(RentalDiscountPackage.is_active.is_(True))
+        .order_by(RentalDiscountPackage.name.asc(), RentalDiscountPackage.id.asc())
+        .all()
+    )
+    return {"items": [_discount_package_response(package) for package in packages]}
+
+
+@router.post("/discount-packages", status_code=status.HTTP_201_CREATED)
+def create_rental_discount_package(
+    payload: RentalDiscountPackageIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_internal_rental_operator(current_user)
+    values = _discount_package_values(payload)
+    existing = (
+        db.query(RentalDiscountPackage)
+        .filter(RentalDiscountPackage.name_key == values["name_key"])
+        .first()
+    )
+    if existing and existing.is_active:
+        raise HTTPException(status_code=409, detail="A discount package with this name already exists")
+    package = existing or RentalDiscountPackage(created_by_id=current_user.id)
+    for field, value in values.items():
+        setattr(package, field, value)
+    package.is_active = True
+    package.updated_by_id = current_user.id
+    package.updated_at = datetime.utcnow()
+    db.add(package)
+    db.flush()
+    log_activity(db, "rental_discount_packages", package.id, "CREATE", current_user, {"name": package.name})
+    db.commit()
+    db.refresh(package)
+    return _discount_package_response(package)
+
+
+@router.put("/discount-packages/{package_id}")
+def update_rental_discount_package(
+    package_id: int,
+    payload: RentalDiscountPackageIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_internal_rental_operator(current_user)
+    package = (
+        db.query(RentalDiscountPackage)
+        .filter(RentalDiscountPackage.id == package_id, RentalDiscountPackage.is_active.is_(True))
+        .first()
+    )
+    if not package:
+        raise HTTPException(status_code=404, detail="Discount package not found")
+    values = _discount_package_values(payload)
+    conflict = (
+        db.query(RentalDiscountPackage.id)
+        .filter(
+            RentalDiscountPackage.name_key == values["name_key"],
+            RentalDiscountPackage.id != package_id,
+        )
+        .first()
+    )
+    if conflict:
+        raise HTTPException(status_code=409, detail="A discount package with this name already exists")
+    for field, value in values.items():
+        setattr(package, field, value)
+    package.updated_by_id = current_user.id
+    package.updated_at = datetime.utcnow()
+    log_activity(db, "rental_discount_packages", package.id, "UPDATE", current_user, {"name": package.name})
+    db.commit()
+    db.refresh(package)
+    return _discount_package_response(package)
+
+
+@router.delete("/discount-packages/{package_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_rental_discount_package(
+    package_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    _require_internal_rental_operator(current_user)
+    package = (
+        db.query(RentalDiscountPackage)
+        .filter(RentalDiscountPackage.id == package_id, RentalDiscountPackage.is_active.is_(True))
+        .first()
+    )
+    if not package:
+        raise HTTPException(status_code=404, detail="Discount package not found")
+    package.is_active = False
+    package.updated_by_id = current_user.id
+    package.updated_at = datetime.utcnow()
+    log_activity(db, "rental_discount_packages", package.id, "DELETE", current_user, {"name": package.name})
+    db.commit()
+    return None
 
 
 @router.get("/facilities/{facility_id}/customers")

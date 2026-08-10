@@ -2,9 +2,9 @@ import { type MouseEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert, Autocomplete, Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  Alert, Autocomplete, Avatar, Box, Button, Card, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, IconButton, ListItemIcon, Menu, MenuItem,
-  LinearProgress, Skeleton, Switch, FormControlLabel, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
+  LinearProgress, Skeleton, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TablePagination, TextField, Typography, useMediaQuery, useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -41,6 +41,10 @@ import {
   fetchRentals,
   fetchRentalDetail,
   fetchRentalFacilityCustomers,
+  fetchRentalDiscountPackages,
+  createRentalDiscountPackage,
+  updateRentalDiscountPackage,
+  deleteRentalDiscountPackage,
   createRental,
   updateRental,
   deleteRental,
@@ -68,6 +72,8 @@ import {
   type RentalItemPayload,
   type RentalReturnPayload,
   type RentalProductRate,
+  type RentalDiscountPackage,
+  type RentalDiscountPackagePayload,
   type RentalFacilityCustomer,
   type BillingFrequency,
   type RentalStatus,
@@ -499,6 +505,9 @@ const Rentals = () => {
   const [editingAgreement, setEditingAgreement] = useState<Rental | null>(null)
   const [viewAgreement, setViewAgreement] = useState<Rental | null>(null)
   const [agreementForm, setAgreementForm] = useState<RentalAgreementFormState>(emptyAgreement())
+  const [selectedDiscountPackageId, setSelectedDiscountPackageId] = useState<number | null>(null)
+  const [discountPackageDialog, setDiscountPackageDialog] = useState(false)
+  const [discountPackageName, setDiscountPackageName] = useState('')
   // Item picker row state (add-an-item), separate from the committed items list.
   const [selectedRentalPart, setSelectedRentalPart] = useState<RentalPart | null>(null)
   const [itemDraft, setItemDraft] = useState<RentalItemForm>(newRentalItem())
@@ -599,6 +608,12 @@ const Rentals = () => {
     enabled: agreementDialog && Boolean(agreementForm.facility_id),
     staleTime: 60_000,
   })
+  const discountPackagesQ = useQuery({
+    queryKey: ['rental-discount-packages'],
+    queryFn: fetchRentalDiscountPackages,
+    enabled: agreementDialog && isInternalRentalOperator,
+    staleTime: 5 * 60_000,
+  })
   const partsQ = useQuery({
     queryKey: ['rental-parts', debouncedSearch, searchField, dateFrom, dateTo, productsPage],
     queryFn: () => fetchRentalParts(
@@ -653,6 +668,8 @@ const Rentals = () => {
   const summaryQ = useQuery({ queryKey: ['rental-summary'], queryFn: fetchRentalSummary, placeholderData: previousData => previousData })
 
   const facilityCustomers = facilityCustomersQ.data?.items || []
+  const discountPackages = discountPackagesQ.data || []
+  const selectedDiscountPackage = discountPackages.find(packageItem => packageItem.id === selectedDiscountPackageId) || null
   const selectedFacilityCustomer = facilityCustomers.find(
     customer => customer.id === agreementForm.customer_user_id,
   ) || null
@@ -778,6 +795,7 @@ const Rentals = () => {
       discountMode: agreementForm.discount_application_mode,
       discountInvoice: agreementForm.discount_invoice_number,
       discountContinue: agreementForm.discount_continue,
+      discountRequiresCard: agreementForm.discount_requires_card,
       items: buildAgreementItems(),
     }],
     queryFn: () => previewRentalSchedule({
@@ -790,7 +808,7 @@ const Rentals = () => {
       discount_application_mode: agreementForm.discount_application_mode,
       discount_invoice_number: agreementForm.discount_invoice_number === '' ? null : Number(agreementForm.discount_invoice_number),
       discount_continue: agreementForm.discount_continue,
-      discount_requires_card: true,
+      discount_requires_card: agreementForm.discount_requires_card,
       items: buildAgreementItems(),
     }),
     enabled: Boolean(
@@ -803,6 +821,72 @@ const Rentals = () => {
     ),
     staleTime: 10_000,
     retry: false,
+  })
+
+  const discountPackagePayload = (name: string): RentalDiscountPackagePayload => ({
+    name: name.trim(),
+    discount_type: agreementForm.discount_type as 'flat' | 'percent',
+    discount_value: normalizeMoneyInput(agreementForm.discount_value),
+    application_mode: agreementForm.discount_application_mode,
+    invoice_number: Number(agreementForm.discount_invoice_number || 1),
+    continue_after: agreementForm.discount_application_mode === 'commitment' && agreementForm.discount_continue,
+    requires_saved_card: agreementForm.discount_requires_card,
+  })
+
+  const applyDiscountPackage = (packageItem: RentalDiscountPackage | null) => {
+    setSelectedDiscountPackageId(packageItem?.id || null)
+    if (!packageItem) return
+    setAgreementForm(previous => ({
+      ...previous,
+      discount_type: packageItem.discount_type,
+      discount_value: Number(packageItem.discount_value),
+      discount_application_mode: packageItem.application_mode,
+      discount_invoice_number: packageItem.invoice_number,
+      discount_apply_after_periods: Math.max(0, packageItem.invoice_number - 1),
+      discount_continue: packageItem.continue_after,
+      discount_requires_card: packageItem.requires_saved_card,
+    }))
+  }
+
+  const createDiscountPackageMut = useMutation({
+    mutationFn: () => createRentalDiscountPackage(discountPackagePayload(discountPackageName)),
+    onSuccess: packageItem => {
+      queryClient.setQueryData<RentalDiscountPackage[]>(['rental-discount-packages'], previous => (
+        [...(previous || []).filter(item => item.id !== packageItem.id), packageItem]
+          .sort((left, right) => left.name.localeCompare(right.name))
+      ))
+      setSelectedDiscountPackageId(packageItem.id)
+      setDiscountPackageDialog(false)
+      setDiscountPackageName('')
+      toast.success('Discount package saved')
+    },
+    onError: (error: any) => toast.error(apiErrorMessage(error, 'Could not save discount package')),
+  })
+
+  const updateDiscountPackageMut = useMutation({
+    mutationFn: () => updateRentalDiscountPackage(
+      Number(selectedDiscountPackageId),
+      discountPackagePayload(selectedDiscountPackage?.name || ''),
+    ),
+    onSuccess: packageItem => {
+      queryClient.setQueryData<RentalDiscountPackage[]>(['rental-discount-packages'], previous => (
+        (previous || []).map(item => item.id === packageItem.id ? packageItem : item)
+      ))
+      toast.success('Discount package updated')
+    },
+    onError: (error: any) => toast.error(apiErrorMessage(error, 'Could not update discount package')),
+  })
+
+  const deleteDiscountPackageMut = useMutation({
+    mutationFn: (packageId: number) => deleteRentalDiscountPackage(packageId),
+    onSuccess: (_, packageId) => {
+      queryClient.setQueryData<RentalDiscountPackage[]>(['rental-discount-packages'], previous => (
+        (previous || []).filter(item => item.id !== packageId)
+      ))
+      setSelectedDiscountPackageId(null)
+      toast.success('Discount package removed')
+    },
+    onError: (error: any) => toast.error(apiErrorMessage(error, 'Could not remove discount package')),
   })
 
   const saveAgreementMut = useMutation({
@@ -885,6 +969,7 @@ const Rentals = () => {
 
   const openCreate = () => {
     setEditingAgreement(null)
+    setSelectedDiscountPackageId(null)
     setSelectedRentalPart(null)
     setItemDraft(newRentalItem())
     setAgreementForm(emptyAgreement())
@@ -894,6 +979,7 @@ const Rentals = () => {
   const openEdit = (rental: Rental) => {
     closeActions()
     setEditingAgreement(rental)
+    setSelectedDiscountPackageId(null)
     setSelectedRentalPart(null)
     setItemDraft(newRentalItem())
     setAgreementForm({
@@ -2295,14 +2381,6 @@ const Rentals = () => {
             <TextField label="City *" value={agreementForm.delivery_city} onChange={e => setDeliveryField('delivery_city', e.target.value)} />
             <TextField label="State *" value={agreementForm.delivery_state} onChange={e => setDeliveryField('delivery_state', e.target.value)} />
             <TextField label="ZIP Code *" value={agreementForm.delivery_zip} onChange={e => setDeliveryField('delivery_zip', e.target.value)} />
-            <TextField select label="Billing Frequency" value={agreementForm.billing_frequency} onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}>
-              <MenuItem value="daily">Daily</MenuItem>
-              <MenuItem value="weekly">Weekly</MenuItem>
-              <MenuItem value="biweekly">Bi-weekly</MenuItem>
-              <MenuItem value="monthly">Monthly</MenuItem>
-              <MenuItem value="quarterly">Quarterly</MenuItem>
-              <MenuItem value="custom">Customized periods</MenuItem>
-            </TextField>
             <TextField label="Start Date" type="date" value={agreementForm.start_date} onChange={e => setAgreementForm(prev => ({ ...prev, start_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
             <TextField label="End Date" type="date" value={agreementForm.end_date} onChange={e => setAgreementForm(prev => ({ ...prev, end_date: e.target.value }))} InputProps={{ readOnly: agreementForm.billing_frequency !== 'custom' }} InputLabelProps={{ shrink: true }} helperText={agreementForm.billing_frequency === 'custom' ? 'Choose the end date; the system divides the term into the committed periods' : 'Auto-set from frequency × committed periods'} />
           </Box>
@@ -2417,41 +2495,128 @@ const Rentals = () => {
           </TableContainer>
 
           <Divider sx={{ my: 3 }} />
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Billing &amp; Discount</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(6, minmax(0, 1fr))' }, gap: 2, alignItems: 'start' }}>
-            <FormControlLabel
-              control={<Switch checked={agreementForm.auto_charge} onChange={e => setAgreementForm(prev => ({ ...prev, auto_charge: e.target.checked }))} />}
-              label="Auto-charge saved card each period"
-              sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1', md: 'span 2' }, minHeight: 56, m: 0, alignItems: 'center' }}
-            />
-            <TextField sx={{ gridColumn: { md: 'span 2' } }} label={agreementForm.billing_frequency === 'custom' ? 'Number of billing periods' : 'Committed periods'} type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} helperText={agreementForm.billing_frequency === 'custom' ? 'The selected date range is divided evenly into this many invoices' : 'Sets the term and end date (e.g. 4 for a 4-period deal)'} inputProps={{ min: 1 }} />
-            <TextField sx={{ gridColumn: { md: 'span 2' } }} select label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent' }))}>
-              <MenuItem value="">No discount</MenuItem>
-              <MenuItem value="flat">Flat amount</MenuItem>
-              <MenuItem value="percent">Percent</MenuItem>
-            </TextField>
-            {agreementForm.discount_type && (
-              <>
-                <TextField sx={{ gridColumn: { md: 'span 2' } }} label={agreementForm.discount_type === 'percent' ? 'Discount %' : 'Discount amount'} type="number" value={agreementForm.discount_value} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} />
-                <TextField sx={{ gridColumn: { md: 'span 2' } }} select label="Discount schedule" value={agreementForm.discount_application_mode} onChange={e => setAgreementForm(prev => ({ ...prev, discount_application_mode: e.target.value as 'single_invoice' | 'commitment' }))}>
-                  <MenuItem value="single_invoice">Only invoice N</MenuItem>
-                  <MenuItem value="commitment">Commitment catch-up on invoice N</MenuItem>
-                </TextField>
-                <TextField sx={{ gridColumn: { md: 'span 2' } }} label="Apply on invoice #" type="number" value={agreementForm.discount_invoice_number} onChange={e => setAgreementForm(prev => ({ ...prev, discount_invoice_number: e.target.value === '' ? '' : Number(e.target.value), discount_apply_after_periods: e.target.value === '' ? '' : Math.max(0, Number(e.target.value) - 1) }))} helperText="Invoice number in this agreement" inputProps={{ min: 1, max: agreementForm.committed_periods || undefined }} />
-                {agreementForm.discount_application_mode === 'commitment' && (
-                  <FormControlLabel
-                    control={<Switch checked={agreementForm.discount_continue} onChange={e => setAgreementForm(prev => ({ ...prev, discount_continue: e.target.checked }))} />}
-                    label="Continue discount after the catch-up invoice"
-                    sx={{ gridColumn: '1 / -1', m: 0 }}
-                  />
-                )}
-                <Alert severity="info" sx={{ gridColumn: '1 / -1', borderRadius: '12px' }}>
-                  This discount becomes active only when the customer saves a card and authorizes automatic payments. Until then it is shown as conditional in the schedule.
-                </Alert>
-              </>
-            )}
-            <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} sx={{ gridColumn: '1 / -1' }} />
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'stretch', md: 'center' }, gap: 1.5, mb: 1.5, flexDirection: { xs: 'column', md: 'row' } }}>
+            <Box>
+              <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Billing &amp; Discount</Typography>
+              <Typography sx={{ color: '#64748B', fontSize: 13 }}>Configure the complete billing term in one row, or reuse a saved discount package.</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', minWidth: { md: 560 } }}>
+              <Autocomplete<RentalDiscountPackage>
+                size="small"
+                options={discountPackages}
+                value={selectedDiscountPackage}
+                loading={discountPackagesQ.isLoading}
+                onChange={(_, packageItem) => applyDiscountPackage(packageItem)}
+                getOptionLabel={packageItem => packageItem.name}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                sx={{ flex: '1 1 240px' }}
+                renderInput={params => <TextField {...params} label="Saved discount package" placeholder="Select a package" />}
+              />
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                disabled={!agreementForm.discount_type}
+                onClick={() => { setDiscountPackageName(''); setDiscountPackageDialog(true) }}
+                sx={{ minHeight: 40, borderRadius: '10px', fontWeight: 850, textTransform: 'none' }}
+              >Save as package</Button>
+              {selectedDiscountPackage ? (
+                <>
+                  <Button
+                    variant="text"
+                    disabled={!agreementForm.discount_type || updateDiscountPackageMut.isPending}
+                    onClick={() => updateDiscountPackageMut.mutate()}
+                    sx={{ fontWeight: 850, textTransform: 'none' }}
+                  >Update</Button>
+                  <IconButton
+                    aria-label="Delete discount package"
+                    disabled={deleteDiscountPackageMut.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Remove the saved package "${selectedDiscountPackage.name}"? Existing agreements will not change.`)) {
+                        deleteDiscountPackageMut.mutate(selectedDiscountPackage.id)
+                      }
+                    }}
+                    sx={{ color: '#DC2626' }}
+                  ><DeleteIcon /></IconButton>
+                </>
+              ) : null}
+            </Box>
           </Box>
+
+          <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '16px', overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 1420, tableLayout: 'fixed' }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                  <TableCell sx={{ width: 145, fontWeight: 900 }}>Billing frequency</TableCell>
+                  <TableCell sx={{ width: 125, fontWeight: 900 }}>Rental amount</TableCell>
+                  <TableCell sx={{ width: 130, fontWeight: 900 }}>Committed periods</TableCell>
+                  <TableCell sx={{ width: 140, fontWeight: 900 }}>Discount type</TableCell>
+                  <TableCell sx={{ width: 125, fontWeight: 900 }}>Discount value</TableCell>
+                  <TableCell sx={{ width: 185, fontWeight: 900 }}>Discount schedule</TableCell>
+                  <TableCell sx={{ width: 125, fontWeight: 900 }}>Apply on invoice</TableCell>
+                  <TableCell align="center" sx={{ width: 120, fontWeight: 900 }}>Continue</TableCell>
+                  <TableCell align="center" sx={{ width: 145, fontWeight: 900 }}>Saved card required</TableCell>
+                  <TableCell align="center" sx={{ width: 135, fontWeight: 900 }}>Auto-charge</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow sx={{ '& td': { verticalAlign: 'top', py: 1.5 } }}>
+                  <TableCell>
+                    <TextField fullWidth size="small" select value={agreementForm.billing_frequency} onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}>
+                      <MenuItem value="daily">Daily</MenuItem>
+                      <MenuItem value="weekly">Weekly</MenuItem>
+                      <MenuItem value="biweekly">Bi-weekly</MenuItem>
+                      <MenuItem value="monthly">Monthly</MenuItem>
+                      <MenuItem value="quarterly">Quarterly</MenuItem>
+                      <MenuItem value="custom">Customized</MenuItem>
+                    </TextField>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ minHeight: 40, px: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid #D8DEE9', bgcolor: '#F8FAFC', borderRadius: '8px', color: '#1E1B4B', fontWeight: 900 }}>{money(initialAgreementPricing.rental)}</Box>
+                  </TableCell>
+                  <TableCell>
+                    <TextField fullWidth size="small" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} inputProps={{ min: 1 }} />
+                  </TableCell>
+                  <TableCell>
+                    <TextField fullWidth size="small" select value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent', discount_value: e.target.value ? prev.discount_value : 0, discount_invoice_number: e.target.value ? (prev.discount_invoice_number || 1) : '', discount_apply_after_periods: e.target.value ? (prev.discount_apply_after_periods || 0) : '' }))}>
+                      <MenuItem value="">No discount</MenuItem>
+                      <MenuItem value="flat">Flat amount</MenuItem>
+                      <MenuItem value="percent">Percent</MenuItem>
+                    </TextField>
+                  </TableCell>
+                  <TableCell>
+                    <TextField fullWidth size="small" disabled={!agreementForm.discount_type} type="number" value={agreementForm.discount_type ? agreementForm.discount_value : ''} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} inputProps={{ min: 0, step: '0.01' }} />
+                  </TableCell>
+                  <TableCell>
+                    <TextField fullWidth size="small" disabled={!agreementForm.discount_type} select value={agreementForm.discount_application_mode} onChange={e => setAgreementForm(prev => ({ ...prev, discount_application_mode: e.target.value as 'single_invoice' | 'commitment', discount_continue: e.target.value === 'commitment' && prev.discount_continue }))}>
+                      <MenuItem value="single_invoice">Only invoice N</MenuItem>
+                      <MenuItem value="commitment">Apply accumulated discount on invoice N</MenuItem>
+                    </TextField>
+                  </TableCell>
+                  <TableCell>
+                    <TextField fullWidth size="small" disabled={!agreementForm.discount_type} type="number" value={agreementForm.discount_type ? agreementForm.discount_invoice_number : ''} onChange={e => setAgreementForm(prev => ({ ...prev, discount_invoice_number: e.target.value === '' ? '' : Number(e.target.value), discount_apply_after_periods: e.target.value === '' ? '' : Math.max(0, Number(e.target.value) - 1) }))} inputProps={{ min: 1, max: agreementForm.committed_periods || undefined }} />
+                  </TableCell>
+                  <TableCell align="center">
+                    <Checkbox disabled={!agreementForm.discount_type || agreementForm.discount_application_mode !== 'commitment'} checked={agreementForm.discount_continue} onChange={e => setAgreementForm(prev => ({ ...prev, discount_continue: e.target.checked }))} />
+                  </TableCell>
+                  <TableCell align="center">
+                    <Checkbox disabled={!agreementForm.discount_type} checked={agreementForm.discount_requires_card} onChange={e => setAgreementForm(prev => ({ ...prev, discount_requires_card: e.target.checked }))} />
+                  </TableCell>
+                  <TableCell align="center">
+                    <Checkbox checked={agreementForm.auto_charge} onChange={e => setAgreementForm(prev => ({ ...prev, auto_charge: e.target.checked }))} />
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Typography sx={{ mt: 1, color: '#64748B', fontSize: 12.5 }}>
+            {agreementForm.billing_frequency === 'custom'
+              ? 'Customized billing divides the selected start and end dates into the committed number of periods.'
+              : 'The end date is calculated automatically from the billing frequency and committed periods.'}
+            {agreementForm.discount_type && agreementForm.discount_requires_card
+              ? ' The discount remains conditional until the customer saves a card and authorizes automatic payments.'
+              : ''}
+          </Typography>
+          <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} fullWidth sx={{ mt: 2 }} />
 
           <Divider sx={{ my: 3 }} />
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 1.5, flexWrap: 'wrap' }}>
@@ -2555,6 +2720,33 @@ const Rentals = () => {
           <Button startIcon={saveAgreementMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitAgreement} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}>
             {editingAgreement ? 'Update Agreement' : 'Create Agreement'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={discountPackageDialog} onClose={() => !createDiscountPackageMut.isPending && setDiscountPackageDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Save Discount Package</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ color: '#64748B', fontSize: 13, mb: 2 }}>
+            Save the current discount settings as a reusable template. Agreements always retain their own pricing snapshot.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Package name"
+            value={discountPackageName}
+            onChange={event => setDiscountPackageName(event.target.value)}
+            placeholder="e.g. Four-period card discount"
+            inputProps={{ maxLength: 120 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setDiscountPackageDialog(false)} disabled={createDiscountPackageMut.isPending} sx={{ fontWeight: 850 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!discountPackageName.trim() || !agreementForm.discount_type || createDiscountPackageMut.isPending}
+            onClick={() => createDiscountPackageMut.mutate()}
+            sx={{ borderRadius: '10px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}
+          >{createDiscountPackageMut.isPending ? 'Saving...' : 'Save Package'}</Button>
         </DialogActions>
       </Dialog>
 
