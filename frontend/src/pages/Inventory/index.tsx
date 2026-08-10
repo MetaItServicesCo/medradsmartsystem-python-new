@@ -72,6 +72,36 @@ const ACTION_MENU_ITEM = {
   fontWeight: 800,
 }
 
+const INVENTORY_TABLE_SX = {
+  width: '100%',
+  tableLayout: 'fixed',
+  '& .MuiTableCell-root': {
+    px: { xs: 1.25, lg: 1.5 },
+    py: 1.15,
+    minWidth: 0,
+    boxSizing: 'border-box',
+    whiteSpace: 'normal',
+    verticalAlign: 'middle',
+  },
+  '& .MuiTableCell-head': { py: 1.1 },
+}
+
+const INVENTORY_PAGINATION_SX = {
+  borderTop: '1px solid #EEF0F6',
+  '& .MuiTablePagination-toolbar': { minHeight: 48, px: { xs: 0.5, sm: 1 } },
+  '& .MuiTablePagination-selectLabel': { display: { xs: 'none', sm: 'block' } },
+  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: '#64748B' },
+}
+
+const INVENTORY_ACTION_BUTTON_SX = {
+  width: 34,
+  height: 34,
+  borderRadius: '10px',
+  bgcolor: '#F1F5F9',
+  color: '#7C3AED',
+  '&:hover': { bgcolor: '#EDE9FE' },
+}
+
 const emptyPart: InventoryPartPayload = {
   facility_id: null,
   tier_id: null,
@@ -365,48 +395,48 @@ const Inventory = () => {
   }
 
   return (
-    <Box className="page-enter">
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <Box sx={{ flex: 1 }}>
+    <Box className="page-enter" sx={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, mb: 2.5, gap: 1.5, flexDirection: { xs: 'column', sm: 'row' } }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="body2" sx={{ color: '#9CA3AF' }}>
             Register parts, track batches and serials, and record stock movement with full transaction history.
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1.25 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {isSuperAdmin && (
             <Button variant="outlined" startIcon={<DownloadOutlinedIcon />} onClick={handleDownloadInventory}
-              sx={{ borderRadius: '12px', px: 2.5, fontWeight: 800 }}>
+              sx={{ minHeight: 40, borderRadius: '10px', px: 2, fontWeight: 850, whiteSpace: 'nowrap' }}>
               Download Inventory
             </Button>
           )}
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenNew}
-            sx={{ backgroundColor: '#7C3AED', borderRadius: '12px', px: 3, fontWeight: 800 }}>
+            sx={{ minHeight: 40, backgroundColor: '#7C3AED', borderRadius: '10px', px: 2.25, fontWeight: 850, whiteSpace: 'nowrap' }}>
             Register Part
           </Button>
         </Box>
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, md: 1.75 }, mb: 2.5 }}>
         {[
           ['Parts', totalParts, <InventoryIcon />],
           ['Units On Hand', stats.totalUnits, <ReceiptLongIcon />],
           ['Low Stock', stats.low, <LowPriorityIcon />],
           ['Stock Value', `$${stats.value.toFixed(2)}`, <MoveUpIcon />],
         ].map(([label, value, icon]) => (
-          <Card key={label as string} sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{ width: 42, height: 42, borderRadius: '12px', backgroundColor: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Card key={label as string} sx={{ p: { xs: 1.35, sm: 1.6, lg: 1.8 }, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1.1, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+            <Box sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: '12px', backgroundColor: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {icon}
             </Box>
-            <Box>
-              <Typography variant="caption" sx={{ color: '#6B7280', fontWeight: 800, textTransform: 'uppercase' }}>{label}</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 900, color: '#1E1B4B' }}>{value}</Typography>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography noWrap title={String(label)} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+              <Typography noWrap title={String(value)} sx={{ fontSize: { xs: 20, lg: 22 }, lineHeight: 1.2, fontWeight: 900, color: '#1E1B4B' }}>{value}</Typography>
             </Box>
           </Card>
         ))}
       </Box>
 
-      <Card sx={{ overflow: 'hidden' }}>
-        <Box sx={{ p: 2.5, borderBottom: '1px solid #E5E7EB' }}>
+      <Card sx={{ overflow: 'hidden', borderRadius: '22px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
+        <Box sx={{ p: { xs: 2, md: 2.5 }, borderBottom: '1px solid #E5E7EB' }}>
           <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E1B4B' }}>
             Parts And Consumables
           </Typography>
@@ -414,51 +444,50 @@ const Inventory = () => {
             Spare parts, consumables, stock operations, and transaction history.
           </Typography>
         </Box>
-        <Box sx={{ p: 2.5, display: 'flex', gap: 2, borderBottom: '1px solid #E5E7EB', alignItems: 'center', flexWrap: 'wrap' }}>
-          <SearchFieldSelect
-            value={searchField}
-            options={INVENTORY_SEARCH_FIELDS}
-            onChange={handleSearchFieldChange}
-            ariaLabel="Inventory search field"
-          />
+        <Box sx={{ p: { xs: 1.5, md: 2 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px minmax(220px, 1fr)', lg: '160px minmax(260px, 1fr) 190px 170px auto auto' }, gap: 1, borderBottom: '1px solid #E5E7EB', alignItems: 'center' }}>
+          <Box sx={{ minWidth: 0 }}><SearchFieldSelect
+              value={searchField}
+              options={INVENTORY_SEARCH_FIELDS}
+              onChange={handleSearchFieldChange}
+              ariaLabel="Inventory search field"
+            /></Box>
           <TextField size="small" placeholder={`Search ${INVENTORY_SEARCH_FIELDS.find((field) => field.value === searchField)?.label.toLowerCase() || 'inventory'}...`} value={search} onChange={(e) => setSearch(e.target.value)}
-            sx={{ minWidth: 300 }}
+            fullWidth sx={{ minWidth: 0 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#9CA3AF' }} /></InputAdornment> }}
           />
-          <TextField size="small" select label="Facility" value={facilityId} onChange={(e) => setFacilityId(e.target.value ? Number(e.target.value) : '')} sx={{ minWidth: 180 }}>
+          <TextField size="small" select label="Facility" value={facilityId} onChange={(e) => setFacilityId(e.target.value ? Number(e.target.value) : '')} fullWidth sx={{ minWidth: 0 }}>
             <MenuItem value="">All Facilities</MenuItem>
             {facilities.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
           </TextField>
-          <TextField size="small" select label="Tier" value={tierId} onChange={(e) => setTierId(e.target.value ? Number(e.target.value) : '')} sx={{ minWidth: 160 }}>
+          <TextField size="small" select label="Tier" value={tierId} onChange={(e) => setTierId(e.target.value ? Number(e.target.value) : '')} fullWidth sx={{ minWidth: 0 }}>
             <MenuItem value="">All Tiers</MenuItem>
             {tiers.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
           </TextField>
-          <FormControlLabel control={<Switch checked={lowStock} onChange={(e) => setLowStock(e.target.checked)} />} label="Low stock" />
+          <FormControlLabel sx={{ m: 0, whiteSpace: 'nowrap' }} control={<Switch size="small" checked={lowStock} onChange={(e) => setLowStock(e.target.checked)} />} label={<Typography sx={{ fontSize: 13, fontWeight: 750 }}>Low stock</Typography>} />
           {isFetching && !isLoading && (
             <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
           )}
         </Box>
 
         <TableContainer className="list-scroll-panel">
-          <Table stickyHeader>
+          <Table stickyHeader sx={{ ...INVENTORY_TABLE_SX, minWidth: { xs: 820, lg: 1040 } }}>
             <TableHead>
               <TableRow>
-                <TableCell>Image</TableCell>
-                <TableCell>Part</TableCell>
-                <TableCell>Assignment</TableCell>
-                <TableCell>Batch / Serial</TableCell>
-                <TableCell>Supplier</TableCell>
-                <TableCell>Stock</TableCell>
-                <TableCell>Expiry</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell sx={{ width: 300 }}>Part</TableCell>
+                <TableCell sx={{ width: 170 }}>Assignment</TableCell>
+                <TableCell sx={{ width: 175 }}>Batch / Serial</TableCell>
+                <TableCell sx={{ width: 190 }}>Supplier</TableCell>
+                <TableCell sx={{ width: 135 }}>Stock</TableCell>
+                <TableCell sx={{ width: 115 }}>Expiry</TableCell>
+                <TableCell align="right" sx={{ width: 62 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>{Array.from({ length: 8 }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
+                <TableRow key={i}>{Array.from({ length: 7 }).map((__, j) => <TableCell key={j}><Skeleton /></TableCell>)}</TableRow>
               )) : parts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                     <InventoryIcon sx={{ fontSize: 48, color: '#D1D5DB', mb: 1 }} />
                     <Typography color="text.secondary">No registered parts found</Typography>
                   </TableCell>
@@ -473,18 +502,22 @@ const Inventory = () => {
                     hover
                   >
                     <TableCell>
-                      <Avatar
-                        src={resolveUploadUrl(part.default_picture_url)}
-                        variant="rounded"
-                        sx={{ width: 48, height: 48, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '12px' }}
-                      >
-                        <InventoryIcon fontSize="small" />
-                      </Avatar>
-                    </TableCell>
-                    <TableCell>
-                      <ClippedTooltipText value={part.part_number} fontWeight={800} />
-                      <ClippedTooltipText value={`${part.part_type} - ${part.description}`} variant="caption" color="#6B7280" fontWeight={500} />
-                      {part.is_critical && <Chip label="Critical" size="small" sx={{ ml: 1, backgroundColor: '#FEF2F2', color: '#DC2626', fontWeight: 700 }} />}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, minWidth: 0 }}>
+                        <Avatar
+                          src={resolveUploadUrl(part.default_picture_url)}
+                          variant="rounded"
+                          sx={{ width: 42, height: 42, flexShrink: 0, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '11px' }}
+                        >
+                          <InventoryIcon fontSize="small" />
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, minWidth: 0 }}>
+                            <ClippedTooltipText value={part.part_number} fontWeight={850} />
+                            {part.is_critical && <Chip label="Critical" size="small" sx={{ height: 22, flexShrink: 0, borderRadius: '7px', backgroundColor: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 850, '& .MuiChip-label': { px: 0.8 } }} />}
+                          </Box>
+                          <ClippedTooltipText value={`${part.part_type} - ${part.description}`} variant="caption" color="#6B7280" fontWeight={550} />
+                        </Box>
+                      </Box>
                     </TableCell>
                     <TableCell>
                       <ClippedTooltipText value={part.facility_name || 'Independent part'} />
@@ -499,7 +532,7 @@ const Inventory = () => {
                       <ClippedTooltipText value={part.supplier_phone ? formatUSPhone(part.supplier_phone) : part.supplier_email || ''} variant="caption" color="#6B7280" fontWeight={500} />
                     </TableCell>
                     <TableCell>
-                      <Chip label={`${part.quantity_on_hand} on hand`} size="small" sx={{ backgroundColor: low ? '#FEF2F2' : '#ECFDF5', color: low ? '#DC2626' : '#059669', fontWeight: 800 }} />
+                      <Chip label={`${part.quantity_on_hand} on hand`} size="small" title={`${part.quantity_on_hand} on hand`} sx={{ height: 26, maxWidth: 120, borderRadius: '8px', backgroundColor: low ? '#FEF2F2' : '#ECFDF5', color: low ? '#DC2626' : '#059669', fontSize: 11, fontWeight: 900, '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' } }} />
                       <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: '#6B7280' }}>Reorder: {part.reorder_level}</Typography>
                     </TableCell>
                     <TableCell>{part.expiry_date || '-'}</TableCell>
@@ -507,8 +540,9 @@ const Inventory = () => {
                       <Tooltip title="Actions" arrow>
                         <IconButton
                           size="small"
+                          aria-label={`Actions for ${part.part_number}`}
                           onClick={(event) => openActions(event, part)}
-                          sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                          sx={INVENTORY_ACTION_BUTTON_SX}
                         >
                           <MoreVertIcon fontSize="small" />
                         </IconButton>
@@ -528,6 +562,7 @@ const Inventory = () => {
           rowsPerPage={PAGE_SIZE}
           rowsPerPageOptions={[PAGE_SIZE]}
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} of ${count}`}
+          sx={INVENTORY_PAGINATION_SX}
         />
       </Card>
 
@@ -558,17 +593,17 @@ const Inventory = () => {
         )}
       </Menu>
 
-      <Dialog open={partDialogOpen} onClose={() => setPartDialogOpen(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '14px', overflow: 'hidden' } }}>
+      <Dialog open={partDialogOpen} onClose={() => setPartDialogOpen(false)} maxWidth="xl" fullWidth PaperProps={{ sx: { borderRadius: '18px', overflow: 'hidden' } }}>
         <DialogTitle sx={{ fontWeight: 800, borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {editingPart ? 'Edit Part' : 'Add New Part'}
           <Button onClick={() => setPartDialogOpen(false)} variant="contained" sx={{ minWidth: 42, width: 42, height: 42, borderRadius: '8px', backgroundColor: '#4338CA' }}>
             <ArrowBackIcon />
           </Button>
         </DialogTitle>
-        <DialogContent sx={{ p: 3 }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 256px' }, gap: 3 }}>
-            <Box sx={{ display: 'grid', gap: 2.25 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+        <DialogContent sx={{ p: { xs: 2, md: 2.5 } }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 230px' }, gap: 2, '& .MuiInputBase-root:not(.MuiInputBase-multiline)': { minHeight: 40 }, '& .MuiOutlinedInput-input:not(textarea)': { py: 1.1 } }}>
+            <Box sx={{ display: 'grid', gap: 1.75, minWidth: 0 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
                 <TextField label="Part Number *" placeholder="Part number" value={partForm.part_number} onChange={(e) => setPartForm({ ...partForm, part_number: e.target.value })} />
                 <TextField select label="Part Type *" value={partForm.part_type} onChange={(e) => setPartForm({ ...partForm, part_type: e.target.value })}>
                   <MenuItem value="">Select part type(s)</MenuItem>
@@ -602,7 +637,7 @@ const Inventory = () => {
               </Box>
 
               <Typography sx={{ fontWeight: 900, color: '#1E293B', mt: 1 }}>Acquired From (Optional)</Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
                 <TextField label="Vendor Name" placeholder="Vendor Name" value={partForm.vendor_name || ''} onChange={(e) => setPartForm({ ...partForm, vendor_name: e.target.value })} />
                 <TextField label="Purchase Location" placeholder="Purchase Location" value={partForm.purchase_location || ''} onChange={(e) => setPartForm({ ...partForm, purchase_location: e.target.value })} />
                 <TextField label="Shipping Method" placeholder="Shipping Method" value={partForm.shipping_method || ''} onChange={(e) => setPartForm({ ...partForm, shipping_method: e.target.value })} />
@@ -611,7 +646,7 @@ const Inventory = () => {
               </Box>
             </Box>
 
-            <Box sx={{ height: 256, borderRadius: '8px', border: '1px solid #E2E8F0', backgroundColor: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <Box sx={{ height: 230, borderRadius: '14px', border: '1px solid #E2E8F0', backgroundColor: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               {partForm.default_picture_url ? (
                 <Box component="img" src={partForm.default_picture_url} alt="Part preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
@@ -620,7 +655,7 @@ const Inventory = () => {
             </Box>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3, justifyContent: 'flex-start' }}>
+        <DialogActions sx={{ px: { xs: 2, md: 3 }, pb: 2.5, justifyContent: 'flex-end' }}>
           <Button variant="contained" onClick={handleSavePart} disabled={createMut.isPending || updateMut.isPending} sx={{ backgroundColor: '#4338CA', borderRadius: '8px', px: 3, fontWeight: 900 }}>
             {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : (editingPart ? 'Update Part' : 'Add Part')}
           </Button>
@@ -629,8 +664,8 @@ const Inventory = () => {
 
       <Dialog open={!!transactionPart} onClose={() => setTransactionPart(null)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 800 }}>Stock Operation</DialogTitle>
-        <DialogContent sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, pt: 2 }}>
-          <Alert severity="info" sx={{ gridColumn: 'span 2' }}>
+        <DialogContent sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.5, pt: 2 }}>
+          <Alert severity="info" sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}>
             {transactionPart?.part_number}: current balance {transactionPart?.quantity_on_hand}
           </Alert>
           <TextField size="small" select label="Operation" value={transactionForm.transaction_type} onChange={(e) => setTransactionForm({ ...transactionForm, transaction_type: e.target.value as InventoryTransactionType })}>
@@ -646,13 +681,13 @@ const Inventory = () => {
               selectedFacility={facilities.find(facility => facility.id === Number(transactionForm.to_facility_id))}
               onChange={facilityId => setTransactionForm({ ...transactionForm, to_facility_id: String(facilityId || '') })}
               required
-              sx={{ gridColumn: 'span 2' }}
+              sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}
             />
           )}
           <TextField size="small" type="number" label="Unit Cost" value={transactionForm.unit_cost} onChange={(e) => setTransactionForm({ ...transactionForm, unit_cost: Number(e.target.value) })} />
           <TextField size="small" label="Authorization Ref" value={transactionForm.authorization_reference} onChange={(e) => setTransactionForm({ ...transactionForm, authorization_reference: e.target.value })} />
-          <TextField size="small" label="Authorization Details" value={transactionForm.authorization_details} onChange={(e) => setTransactionForm({ ...transactionForm, authorization_details: e.target.value })} sx={{ gridColumn: 'span 2' }} />
-          <TextField size="small" label="Notes" multiline rows={3} value={transactionForm.notes} onChange={(e) => setTransactionForm({ ...transactionForm, notes: e.target.value })} sx={{ gridColumn: 'span 2' }} />
+          <TextField size="small" label="Authorization Details" value={transactionForm.authorization_details} onChange={(e) => setTransactionForm({ ...transactionForm, authorization_details: e.target.value })} sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }} />
+          <TextField size="small" label="Notes" multiline rows={3} value={transactionForm.notes} onChange={(e) => setTransactionForm({ ...transactionForm, notes: e.target.value })} sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTransactionPart(null)}>Cancel</Button>
@@ -666,7 +701,7 @@ const Inventory = () => {
         <DialogTitle sx={{ fontWeight: 800 }}>Transaction History</DialogTitle>
         <DialogContent>
           {historyLoading ? <Skeleton height={120} /> : (
-            <Table size="small">
+            <Table size="small" sx={{ ...INVENTORY_TABLE_SX, minWidth: 720 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Type</TableCell>
