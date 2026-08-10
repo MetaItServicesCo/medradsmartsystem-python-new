@@ -63,33 +63,29 @@ const STAT_CARDS = [
     label: 'Total Facilities',
     key: 'total',
     icon: <BusinessIcon />,
-    accent: '#A78BFA',
+    color: '#7C3AED',
     caption: 'All records in scope',
-    bg: 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)',
   },
   {
     label: 'Active',
     key: 'active',
     icon: <CheckCircleOutlineIcon />,
-    accent: '#93C5FD',
+    color: '#2563EB',
     caption: 'Available facilities',
-    bg: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
   },
   {
     label: 'Countries',
     key: 'countries',
     icon: <PublicOutlinedIcon />,
-    accent: '#6EE7B7',
+    color: '#059669',
     caption: 'Visible on this page',
-    bg: 'linear-gradient(135deg, #10B981 0%, #047857 100%)',
   },
   {
     label: 'With Tiers',
     key: 'tiered',
     icon: <LayersOutlinedIcon />,
-    accent: '#F0ABFC',
+    color: '#8B5CF6',
     caption: 'Visible tiered records',
-    bg: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
   },
 ]
 
@@ -485,54 +481,52 @@ const FacilityList = () => {
   return (
     <Box className="page-enter">
       {/* Stat Cards */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', xl: 'repeat(4, 1fr)' }, gap: 2.25, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, md: 1.75 }, mb: 2.5 }}>
         {STAT_CARDS.map((card) => (
           <Card
             key={card.key}
             sx={{
-              p: 2.5,
-              background: card.bg,
-              color: '#fff',
-              position: 'relative',
-              overflow: 'hidden',
-              borderRadius: '26px',
-              minHeight: 126,
-              boxShadow: '0 20px 50px rgba(30,27,75,0.14)',
-              border: '1px solid rgba(255,255,255,0.16)',
-              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-              '&:hover': {
-                transform: 'translateY(-3px)',
-                boxShadow: '0 26px 60px rgba(30,27,75,0.2)',
-              },
+              p: { xs: 1.35, sm: 1.6, lg: 1.8 },
+              minWidth: 0,
+              borderRadius: '16px',
+              border: '1px solid #EEF0F6',
+              boxShadow: '0 14px 34px rgba(59,130,246,0.07)',
+              background: '#FFFFFF',
             }}
           >
             <Box sx={{
-              position: 'absolute', right: -28, top: -26, width: 132, height: 132,
-              borderRadius: '50%', background: 'rgba(255,255,255,0.12)',
-              opacity: 1,
-              '& svg': { position: 'absolute', right: 28, top: 28, fontSize: '4.8rem', opacity: 0.24 },
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.1,
+              minWidth: 0,
             }}>
-              {card.icon}
+              <Avatar sx={{
+                width: 40,
+                height: 40,
+                flexShrink: 0,
+                bgcolor: `${card.color}18`,
+                color: card.color,
+                borderRadius: '12px',
+                '& svg': { fontSize: '1.3rem' },
+              }}>
+                {card.icon}
+              </Avatar>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography noWrap title={card.label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+                  {card.label}
+                </Typography>
+                {isLoading ? (
+                  <Skeleton width={54} height={27} />
+                ) : (
+                  <Typography noWrap title={String(statsValues[card.key])} sx={{ color: '#1E1B4B', fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>
+                    {statsValues[card.key]}
+                  </Typography>
+                )}
+                <Typography noWrap title={card.caption} sx={{ color: '#94A3B8', fontSize: 10, fontWeight: 700, lineHeight: 1.25 }}>
+                  {card.caption}
+                </Typography>
+              </Box>
             </Box>
-            <Box sx={{
-              width: 36, height: 36, borderRadius: '13px',
-              background: 'rgba(255,255,255,0.18)',
-              border: '1px solid rgba(255,255,255,0.25)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              mb: 1.1,
-              '& svg': { fontSize: '1.2rem', color: '#fff' },
-            }}>
-              {card.icon}
-            </Box>
-            <Typography sx={{ position: 'relative', zIndex: 1, fontSize: '0.8rem', fontWeight: 900, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.35 }}>
-              {card.label}
-            </Typography>
-            <Typography sx={{ position: 'relative', zIndex: 1, fontSize: '0.72rem', fontWeight: 700, color: card.accent, mb: 0.7 }}>
-              {card.caption}
-            </Typography>
-            <Typography variant="h4" sx={{ position: 'relative', zIndex: 1, fontWeight: 900, color: '#fff', letterSpacing: '-0.04em' }}>
-              {isLoading ? '—' : statsValues[card.key]}
-            </Typography>
           </Card>
         ))}
       </Box>
