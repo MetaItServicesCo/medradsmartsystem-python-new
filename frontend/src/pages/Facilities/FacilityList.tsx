@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -193,6 +193,8 @@ const FacilityList = () => {
   
   const [search, setSearch] = useState(querySearch)
   const [searchInput, setSearchInput] = useState(querySearch)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const facilityListRef = useRef<HTMLDivElement | null>(null)
   const [page, setPage] = useState(1)
   const [limit] = useState(10)
   const [modalOpen, setModalOpen] = useState(false)
@@ -335,6 +337,44 @@ const FacilityList = () => {
     else next.set('search_field', value)
     setSearchParams(next, { replace: true })
     setPage(1)
+  }
+
+  const isStatCardSelected = (key: string) => {
+    if (key === 'total') return querySearchField === 'all' && !querySearch
+    if (key === 'active') return querySearchField === 'status' && querySearch.toLowerCase() === 'active'
+    if (key === 'countries') return querySearchField === 'location'
+    if (key === 'tiered') return querySearchField === 'tier'
+    return false
+  }
+
+  const handleStatCardClick = (key: string) => {
+    const next = new URLSearchParams(searchParams)
+    let nextSearch = ''
+    let nextField = 'all'
+
+    if (key === 'active') {
+      nextSearch = 'active'
+      nextField = 'status'
+    } else if (key === 'countries') {
+      nextField = 'location'
+    } else if (key === 'tiered') {
+      nextField = 'tier'
+    }
+
+    if (nextSearch) next.set('search', nextSearch)
+    else next.delete('search')
+    if (nextField === 'all') next.delete('search_field')
+    else next.set('search_field', nextField)
+
+    setSearch(nextSearch)
+    setSearchInput(nextSearch)
+    setSearchParams(next, { replace: true })
+    setPage(1)
+
+    window.setTimeout(() => {
+      facilityListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      if (key === 'countries' || key === 'tiered') searchInputRef.current?.focus()
+    }, 0)
   }
 
   const handleEdit = (f: Facility) => {
@@ -485,13 +525,29 @@ const FacilityList = () => {
         {STAT_CARDS.map((card) => (
           <Card
             key={card.key}
+            role="button"
+            tabIndex={0}
+            aria-label={card.key === 'total' ? 'Show all facilities' : card.key === 'active' ? 'Show active facilities' : card.key === 'countries' ? 'Search facilities by country' : 'Search facilities by tier'}
+            aria-pressed={isStatCardSelected(card.key)}
+            onClick={() => handleStatCardClick(card.key)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleStatCardClick(card.key)
+              }
+            }}
             sx={{
               p: { xs: 1.35, sm: 1.6, lg: 1.8 },
               minWidth: 0,
               borderRadius: '16px',
-              border: '1px solid #EEF0F6',
-              boxShadow: '0 14px 34px rgba(59,130,246,0.07)',
+              border: isStatCardSelected(card.key) ? `2px solid ${card.color}` : '1px solid #EEF0F6',
+              boxShadow: isStatCardSelected(card.key) ? `0 18px 40px ${card.color}24` : '0 14px 34px rgba(59,130,246,0.07)',
               background: '#FFFFFF',
+              cursor: 'pointer',
+              transform: isStatCardSelected(card.key) ? 'translateY(-2px)' : 'none',
+              transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 18px 40px ${card.color}20` },
+              '&:focus-visible': { outline: `3px solid ${card.color}35`, outlineOffset: 2 },
             }}
           >
             <Box sx={{
@@ -532,7 +588,7 @@ const FacilityList = () => {
       </Box>
 
       {/* Main table card */}
-      <Card sx={{ overflow: 'hidden' }}>
+      <Card ref={facilityListRef} sx={{ overflow: 'hidden', scrollMarginTop: 16 }}>
         {/* Toolbar */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2.5, borderBottom: '1px solid rgba(124,58,237,0.08)', flexWrap: 'wrap' }}>
           <SearchFieldSelect
@@ -552,6 +608,7 @@ const FacilityList = () => {
               <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
             </IconButton>
             <InputBase
+              inputRef={searchInputRef}
               placeholder={`Search ${FACILITY_SEARCH_FIELDS.find((field) => field.value === querySearchField)?.label.toLowerCase() || 'facilities'}...`}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
