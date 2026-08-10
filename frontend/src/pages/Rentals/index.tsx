@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useMemo, useState } from 'react'
+import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -158,6 +158,41 @@ const ACTION_MENU_DANGER = {
   '&:hover': { bgcolor: '#FEF2F2', color: '#B91C1C' },
 }
 
+const RENTAL_LIST_TABLE_SX = {
+  width: '100%',
+  tableLayout: 'fixed',
+  '& .MuiTableCell-root': {
+    px: { xs: 1.25, lg: 1.5 },
+    py: 1.2,
+    minWidth: 0,
+    boxSizing: 'border-box',
+    whiteSpace: 'normal',
+    verticalAlign: 'middle',
+  },
+  '& .MuiTableCell-head': {
+    py: 1.1,
+  },
+}
+
+const RENTAL_PAGINATION_SX = {
+  borderTop: '1px solid #EEF0F6',
+  '& .MuiTablePagination-toolbar': {
+    minHeight: 48,
+    px: { xs: 0.5, sm: 1 },
+  },
+  '& .MuiTablePagination-selectLabel': { display: { xs: 'none', sm: 'block' } },
+  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: '#64748B' },
+}
+
+const RENTAL_ACTION_BUTTON_SX = {
+  width: 34,
+  height: 34,
+  borderRadius: '10px',
+  bgcolor: '#F1F5F9',
+  color: '#2563EB',
+  '&:hover': { bgcolor: '#DBEAFE' },
+}
+
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
     active: { bg: '#E0F2FE', color: '#0369A1' },
@@ -171,6 +206,52 @@ const statusChip = (value: string) => {
   }
   return map[value] || { bg: '#F3F4F6', color: '#374151' }
 }
+
+const RentalStatusChip = ({ value, label }: { value: string; label?: string }) => {
+  const colors = statusChip(value)
+  const display = label || value.replace(/_/g, ' ')
+  return (
+    <Chip
+      size="small"
+      label={display}
+      title={display}
+      sx={{
+        height: 26,
+        maxWidth: 132,
+        bgcolor: colors.bg,
+        color: colors.color,
+        borderRadius: '8px',
+        fontSize: 11,
+        fontWeight: 900,
+        textTransform: 'uppercase',
+        '& .MuiChip-label': { px: 1.1, overflow: 'hidden', textOverflow: 'ellipsis' },
+      }}
+    />
+  )
+}
+
+const RentalCellStack = ({
+  primary,
+  secondary,
+  primaryColor = '#1E1B4B',
+  align = 'left',
+}: {
+  primary: ReactNode
+  secondary?: ReactNode
+  primaryColor?: string
+  align?: 'left' | 'right'
+}) => (
+  <Box sx={{ minWidth: 0, textAlign: align }}>
+    <Typography component="div" noWrap title={typeof primary === 'string' ? primary : undefined} sx={{ color: primaryColor, fontWeight: 850, fontSize: 13.5, lineHeight: 1.35 }}>
+      {primary}
+    </Typography>
+    {secondary !== undefined && secondary !== null && secondary !== '' ? (
+      <Typography component="div" noWrap title={typeof secondary === 'string' ? secondary : undefined} sx={{ mt: 0.25, color: '#64748B', fontWeight: 650, fontSize: 11.5, lineHeight: 1.35 }}>
+        {secondary}
+      </Typography>
+    ) : null}
+  </Box>
+)
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 
@@ -1477,8 +1558,9 @@ const Rentals = () => {
         }
       }}
       sx={{
-        p: 2.2,
-        borderRadius: '18px',
+        p: { xs: 1.35, sm: 1.6, lg: 1.8 },
+        minWidth: 0,
+        borderRadius: '16px',
         border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
         boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(59,130,246,0.07)',
         cursor: 'pointer',
@@ -1488,11 +1570,11 @@ const Rentals = () => {
         '&:focus-visible': { outline: `3px solid ${color}35`, outlineOffset: 2 },
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
-        <Avatar sx={{ bgcolor: `${color}18`, color, borderRadius: '14px' }}>{icon}</Avatar>
-        <Box>
-          <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography sx={{ color: '#1E1B4B', fontSize: 24, fontWeight: 900, lineHeight: 1.2 }}>{value}</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, minWidth: 0 }}>
+        <Avatar sx={{ width: 40, height: 40, bgcolor: `${color}18`, color, borderRadius: '12px', flexShrink: 0 }}>{icon}</Avatar>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography noWrap title={label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+          <Typography noWrap title={String(value)} sx={{ color: '#1E1B4B', fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>{value}</Typography>
         </Box>
       </Box>
     </Card>
@@ -1678,29 +1760,24 @@ const Rentals = () => {
 
   const renderAgreementsTable = (items: Rental[], emptyText: string) => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: { xs: 760, lg: 1020 } }}>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Agreement #</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Product / Part</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Customer</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Rate</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Qty</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Fees</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Frequency</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Start Date</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>End Date</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+            <TableCell sx={{ width: 142 }}>Agreement #</TableCell>
+            <TableCell sx={{ width: 245 }}>Product / Part</TableCell>
+            <TableCell sx={{ width: 170, display: { xs: 'none', md: 'table-cell' } }}>Customer</TableCell>
+            <TableCell sx={{ width: 142 }}>Billing</TableCell>
+            <TableCell sx={{ width: 190 }}>Term</TableCell>
+            <TableCell sx={{ width: 136 }}>Status</TableCell>
+            <TableCell align="right" sx={{ width: 62 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {rentalsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={index}><TableCell colSpan={11}><Skeleton /></TableCell></TableRow>
+            <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
           )) : items.length === 0 ? (
-            <TableRow><TableCell colSpan={11} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
           ) : items.map(item => {
-            const status = statusChip(item.status)
             const highlighted = highlightAgreementId === item.id
             return (
               <ContextTableRow
@@ -1717,23 +1794,32 @@ const Rentals = () => {
                 } : undefined}
               >
                 <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => { void openAgreementDetails(item) }} /></TableCell>
-                <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field onClick={() => openRentalPartInfo(parts.find(part => part.id === item.part_id), item)} /></TableCell>
-                <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
-                <TableCell sx={{ color: '#047857', fontWeight: 800 }}>{money(item.rental_rate)}</TableCell>
-                <TableCell>{item.quantity || 1}</TableCell>
-                <TableCell>{money(Number(item.shipping_fee || 0) + Number(item.setup_fee || 0))}</TableCell>
-                <TableCell sx={{ textTransform: 'capitalize' }}>{item.billing_frequency}</TableCell>
-                <TableCell>{formatDate(item.start_date)}</TableCell>
-                <TableCell>{formatDate(item.end_date)}</TableCell>
+                <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field maxWidth={225} onClick={() => openRentalPartInfo(parts.find(part => part.id === item.part_id), item)} /></TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                  <RentalCellStack primary={item.customer_name} secondary={item.facility_name || 'Independent customer'} />
+                </TableCell>
                 <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexWrap: 'wrap' }}>
-                    <Chip size="small" label={item.status} sx={{ bgcolor: status.bg, color: status.color, fontWeight: 900, textTransform: 'uppercase' }} />
-                    {item.is_overdue && <Chip size="small" label="Overdue" sx={{ bgcolor: '#FEE2E2', color: '#B91C1C', fontWeight: 900, textTransform: 'uppercase' }} />}
+                  <RentalCellStack
+                    primary={money(item.rental_rate)}
+                    primaryColor="#047857"
+                    secondary={`Qty ${item.quantity || 1} · Fees ${money(Number(item.shipping_fee || 0) + Number(item.setup_fee || 0))}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <RentalCellStack
+                    primary={String(item.billing_frequency || '').replace(/_/g, ' ')}
+                    secondary={`${formatDate(item.start_date)} – ${formatDate(item.end_date)}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, flexDirection: 'column' }}>
+                    <RentalStatusChip value={item.status} />
+                    {item.is_overdue && <RentalStatusChip value="overdue" />}
                   </Box>
                 </TableCell>
                 <TableCell align="right">
                   {highlighted && (
-                    <Chip size="small" label="Selected" sx={{ mr: 1, bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 900 }} />
+                    <Box sx={{ mb: 0.5 }}><RentalStatusChip value="pending" label="Selected" /></Box>
                   )}
                   {isRentalCustomer ? (
                     <Button
@@ -1748,8 +1834,9 @@ const Rentals = () => {
                   ) : isInternalRentalOperator ? (
                     <IconButton
                       size="small"
+                      aria-label={`Actions for ${item.rental_number}`}
                       onClick={(event) => openActions(event, item)}
-                      sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#2563EB', '&:hover': { bgcolor: '#DBEAFE' } }}
+                      sx={RENTAL_ACTION_BUTTON_SX}
                     >
                       <MoreVertIcon fontSize="small" />
                     </IconButton>
@@ -1772,33 +1859,31 @@ const Rentals = () => {
         onPageChange={(_, next) => setPage(next)}
         rowsPerPage={PAGE_SIZE}
         rowsPerPageOptions={[PAGE_SIZE]}
-        sx={{ borderTop: '1px solid #EEF0F6' }}
+        sx={RENTAL_PAGINATION_SX}
       />
     ) : null
   )
 
   const renderInvoices = () => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: { xs: 700, md: 860 } }}>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Invoice #</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Agreement #</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Customer</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Paid</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Due</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 900 }}>Actions</TableCell>
+            <TableCell sx={{ width: 150 }}>Invoice #</TableCell>
+            <TableCell sx={{ width: 145, display: { xs: 'none', md: 'table-cell' } }}>Agreement #</TableCell>
+            <TableCell sx={{ width: 200 }}>Customer</TableCell>
+            <TableCell sx={{ width: 145 }}>Payment</TableCell>
+            <TableCell sx={{ width: 130 }}>Status</TableCell>
+            <TableCell sx={{ width: 115 }}>Due</TableCell>
+            <TableCell align="right" sx={{ width: 62 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {invoicesQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={index}><TableCell colSpan={8}><Skeleton /></TableCell></TableRow>
+            <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
           )) : invoices.length === 0 ? (
-            <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental invoices yet.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental invoices yet.</TableCell></TableRow>
           ) : invoices.map(invoice => {
-            const chip = statusChip(invoice.status)
             const highlighted = highlightInvoiceId === invoice.id
             return (
               <ContextTableRow
@@ -1818,18 +1903,19 @@ const Rentals = () => {
                   if (isRentalCustomer) openCustomerRentalDocument(invoice.rental_id)
                   else setPrintInvoice(invoice)
                 }} /></TableCell>
-                <TableCell><ClippedTooltipText value={invoice.rental_number || '-'} monospace fontWeight={800} onClick={() => {
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}><ClippedTooltipText value={invoice.rental_number || '-'} monospace fontWeight={800} onClick={() => {
                   const agreement = rentals.find(item => item.id === invoice.rental_id)
                   if (agreement) void openAgreementDetails(agreement)
                 }} /></TableCell>
-                <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
-                <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
-                <TableCell>{money(invoice.amount_paid)}</TableCell>
-                <TableCell><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
+                <TableCell><RentalCellStack primary={invoice.customer_name} secondary={invoice.facility_name || 'Independent customer'} /></TableCell>
+                <TableCell>
+                  <RentalCellStack primary={money(invoice.total_amount)} primaryColor="#059669" secondary={`Paid ${money(invoice.amount_paid)}`} />
+                </TableCell>
+                <TableCell><RentalStatusChip value={invoice.status} /></TableCell>
                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
                 <TableCell align="right">
                   {highlighted && (
-                    <Chip size="small" label="Selected from Billing" sx={{ mr: 1, bgcolor: '#DBEAFE', color: '#1D4ED8', fontWeight: 900 }} />
+                    <Box sx={{ mb: 0.5 }}><RentalStatusChip value="pending" label="Selected" /></Box>
                   )}
                   {isRentalCustomer ? (
                     <Button
@@ -1844,8 +1930,9 @@ const Rentals = () => {
                   ) : isInternalRentalOperator ? (
                     <IconButton
                       size="small"
+                      aria-label={`Actions for ${invoice.invoice_number}`}
                       onClick={(event) => openInvoiceActions(event, invoice)}
-                      sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#2563EB', '&:hover': { bgcolor: '#DBEAFE' } }}
+                      sx={RENTAL_ACTION_BUTTON_SX}
                     >
                       <MoreVertIcon fontSize="small" />
                     </IconButton>
@@ -1861,26 +1948,23 @@ const Rentals = () => {
 
   const renderProducts = () => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: { xs: 720, md: 900 } }}>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Image</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Part Number</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Make/Model</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Standard Rate</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Qty Available</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Condition</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Status</TableCell>
-            <TableCell sx={{ fontWeight: 900 }} align="right">Rental Rates</TableCell>
+            <TableCell sx={{ width: 300 }}>Product</TableCell>
+            <TableCell sx={{ width: 180, display: { xs: 'none', lg: 'table-cell' } }}>Facility</TableCell>
+            <TableCell sx={{ width: 165, display: { xs: 'none', xl: 'table-cell' } }}>Make / Model</TableCell>
+            <TableCell sx={{ width: 145 }}>Inventory</TableCell>
+            <TableCell sx={{ width: 120 }}>Condition</TableCell>
+            <TableCell sx={{ width: 115 }}>Status</TableCell>
+            <TableCell sx={{ width: 105 }} align="right">Rates</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {partsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={index}><TableCell colSpan={10}><Skeleton /></TableCell></TableRow>
+            <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
           )) : parts.length === 0 ? (
-            <TableRow><TableCell colSpan={10} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
           ) : parts.map(part => (
             <ContextTableRow
               key={part.id}
@@ -1889,22 +1973,25 @@ const Rentals = () => {
               hover
             >
               <TableCell>
-                <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 46, height: 46, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '12px' }}>
-                  <LocalShippingIcon fontSize="small" />
-                </Avatar>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+                  <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 40, height: 40, flex: '0 0 auto', bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '10px' }}>
+                    <LocalShippingIcon fontSize="small" />
+                  </Avatar>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <ClippedTooltipText value={part.part_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => openRentalPartInfo(part)} />
+                    <ClippedTooltipText value={part.description} variant="caption" fontWeight={650} color="#64748B" />
+                  </Box>
+                </Box>
               </TableCell>
-              <TableCell><ClippedTooltipText value={part.part_number} monospace fontWeight={900} onClick={() => openRentalPartInfo(part)} /></TableCell>
-              <TableCell><ClippedTooltipText value={part.description} fontWeight={800} field /></TableCell>
-              <TableCell><ClippedTooltipText value={part.facility_name || 'Global / Independent'} onClick={part.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(part.facility_name!)}`) : undefined} /></TableCell>
-              <TableCell><ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' / ') || '-'} /></TableCell>
-              <TableCell sx={{ color: '#2563EB', fontWeight: 800 }}>{money(part.unit_price)}</TableCell>
-              <TableCell sx={{ fontWeight: 900, color: part.quantity_on_hand > 0 ? '#059669' : '#DC2626' }}>
-                {part.quantity_on_hand}
+              <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}><ClippedTooltipText value={part.facility_name || 'Global / Independent'} onClick={part.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(part.facility_name!)}`) : undefined} /></TableCell>
+              <TableCell sx={{ display: { xs: 'none', xl: 'table-cell' } }}><ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' / ') || '-'} /></TableCell>
+              <TableCell>
+                <RentalCellStack primary={money(part.unit_price)} primaryColor="#2563EB" secondary={`${part.quantity_on_hand} available`} />
               </TableCell>
-              <TableCell sx={{ textTransform: 'capitalize' }}>{part.condition}</TableCell>
-              <TableCell><Chip size="small" label={part.status} color={part.status === 'active' ? 'success' : 'default'} sx={{ fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
+              <TableCell sx={{ textTransform: 'capitalize' }}><ClippedTooltipText value={part.condition || '-'} /></TableCell>
+              <TableCell><RentalStatusChip value={part.status} /></TableCell>
               <TableCell align="right">
-                <Button size="small" startIcon={<CalendarMonthIcon fontSize="small" />} onClick={() => openRateCard(part)} sx={{ fontWeight: 800, textTransform: 'none', borderRadius: '10px' }}>Set Rates</Button>
+                <Button size="small" variant="outlined" onClick={() => openRateCard(part)} sx={{ minWidth: 76, minHeight: 34, px: 1.25, fontWeight: 850, borderRadius: '10px' }}>Rates</Button>
               </TableCell>
             </ContextTableRow>
           ))}
@@ -1915,23 +2002,21 @@ const Rentals = () => {
 
   const renderHistory = () => (
     <TableContainer className="list-scroll-panel">
-      <Table stickyHeader>
+      <Table stickyHeader sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: { xs: 720, md: 880 } }}>
         <TableHead>
           <TableRow sx={{ bgcolor: '#F9FAFB' }}>
-            <TableCell sx={{ fontWeight: 900 }}>Date</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Agreement #</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Customer</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Product / Part</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>Activity</TableCell>
-            <TableCell sx={{ fontWeight: 900 }}>By</TableCell>
+            <TableCell sx={{ width: 120 }}>Date</TableCell>
+            <TableCell sx={{ width: 145 }}>Agreement #</TableCell>
+            <TableCell sx={{ width: 205 }}>Customer</TableCell>
+            <TableCell sx={{ width: 245, display: { xs: 'none', md: 'table-cell' } }}>Product / Part</TableCell>
+            <TableCell sx={{ width: 210 }}>Activity</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {historyQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
+            <TableRow key={index}><TableCell colSpan={5}><Skeleton /></TableCell></TableRow>
           )) : (historyQ.data?.items || []).length === 0 ? (
-            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental history logs yet.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental history logs yet.</TableCell></TableRow>
           ) : historyQ.data!.items.map((item, index) => (
             <ContextTableRow
               key={`${item.rental_id}-${item.action}-${index}`}
@@ -1944,11 +2029,9 @@ const Rentals = () => {
                 const agreement = rentals.find(rental => rental.id === item.rental_id)
                 if (agreement) void openAgreementDetails(agreement)
               }} /></TableCell>
-              <TableCell><ClippedTooltipText value={item.customer_name} fontWeight={800} /></TableCell>
-              <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
-              <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field onClick={() => openRentalPartInfo(parts.find(part => part.part_number === item.part_number), item)} /></TableCell>
-              <TableCell sx={{ textTransform: 'capitalize', fontWeight: 800 }}>{item.action.replace(/_/g, ' ')}</TableCell>
-              <TableCell>{item.by}</TableCell>
+              <TableCell><RentalCellStack primary={item.customer_name} secondary={item.facility_name || 'Independent customer'} /></TableCell>
+              <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} field maxWidth={225} onClick={() => openRentalPartInfo(parts.find(part => part.part_number === item.part_number), item)} /></TableCell>
+              <TableCell><RentalCellStack primary={item.action.replace(/_/g, ' ')} secondary={`By ${item.by || 'System'}`} /></TableCell>
             </ContextTableRow>
           ))}
         </TableBody>
@@ -1994,12 +2077,13 @@ const Rentals = () => {
   }
 
   const renderSearchControl = (label: string) => (
-    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap' }}>
+    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap', width: { xs: '100%', xl: 'auto' }, justifyContent: { xl: 'flex-end' } }}>
       <SearchFieldSelect
         value={searchField}
         options={activeSearchFields}
         onChange={handleSearchFieldChange}
         ariaLabel="Rental search field"
+        sx={{ width: { xs: '100%', sm: 160 }, minWidth: { xs: '100%', sm: 160 } }}
       />
       <TextField
         size="small"
@@ -2007,7 +2091,7 @@ const Rentals = () => {
         placeholder={`Search ${activeSearchFields.find((field) => field.value === searchField)?.label.toLowerCase() || 'rentals'}...`}
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        sx={{ minWidth: 280, bgcolor: '#fff' }}
+        sx={{ flex: '1 1 220px', minWidth: { xs: '100%', sm: 220 }, maxWidth: { xl: 320 }, bgcolor: '#fff' }}
       />
       <DateRangeFilter
         dateFrom={dateFrom}
@@ -2020,8 +2104,8 @@ const Rentals = () => {
   )
 
   return (
-    <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
-      <Card sx={{ p: 3, mb: 3, borderRadius: '24px', border: '1px solid #BFDBFE', background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
+    <Box className="page-enter" sx={{ width: '100%', maxWidth: 'none', mx: 'auto' }}>
+      <Card sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, borderRadius: '22px', border: '1px solid #BFDBFE', background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <Box>
             <Typography variant="h4" sx={{ color: '#1E3A8A', fontWeight: 900 }}>Rental Management</Typography>
@@ -2039,7 +2123,7 @@ const Rentals = () => {
         </Box>
       </Card>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: `repeat(${isInternalRentalOperator ? 5 : 3}, 1fr)` }, gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: `repeat(${isInternalRentalOperator ? 5 : 3}, minmax(0, 1fr))` }, gap: { xs: 1.25, md: 1.75 }, mb: 2.5 }}>
         {renderKpi('Total Agreements', stats.agreements, <AssignmentIcon />, '#3B82F6', 0)}
         {renderKpi('Active Rentals', stats.active, <LocalShippingIcon />, '#2563EB', 0)}
         {renderKpi('Total Invoiced', money(stats.invoiced), <ReceiptLongIcon />, '#059669', 1)}
@@ -2057,14 +2141,14 @@ const Rentals = () => {
 
         {tab === 0 && (
           <Box>
-            <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Agreements List</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Track your active agreements and return schedules.</Typography>
               </Box>
               {renderSearchControl('Search agreements')}
             </Box>
-            <Box sx={{ p: 3 }}>
+            <Box sx={{ p: { xs: 1.25, md: 2 } }}>
               {renderAgreementsTable(rentals, 'No rental agreements found.')}
               <TablePagination
                 component="div"
@@ -2077,6 +2161,7 @@ const Rentals = () => {
                   setAgreementPage(0)
                 }}
                 rowsPerPageOptions={[10, 25, 50, 100]}
+                sx={RENTAL_PAGINATION_SX}
               />
             </Box>
           </Box>
@@ -2084,12 +2169,12 @@ const Rentals = () => {
 
         {tab === 1 && (
           <Box>
-            <Box sx={{ px: 3, py: 2.5, display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.55fr) minmax(720px, 2fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental Invoices</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Periodic invoices generated from rental durations.</Typography>
               </Box>
-              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', justifyContent: { xl: 'flex-end' }, flexWrap: 'wrap', minWidth: 0 }}>
                 {renderSearchControl('Search invoices')}
                 <Card sx={{ px: 2, py: 0.8, display: 'flex', alignItems: 'center', gap: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
                   <Typography sx={{ fontWeight: 850, fontSize: 12, color: '#4B5563' }}>Collections Progress: {collectionPercent}%</Typography>
@@ -2106,14 +2191,14 @@ const Rentals = () => {
 
         {isInternalRentalOperator && tab === 2 && (
           <Box>
-            <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental Products catalog</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Inventory parts marked as rental products.</Typography>
               </Box>
               {renderSearchControl('Search products')}
             </Box>
-            <Box sx={{ p: 3 }}>
+            <Box sx={{ p: { xs: 1.25, md: 2 } }}>
               {renderProducts()}
               {renderPagination(partsQ.data?.total || 0, productsPage, setProductsPage)}
             </Box>
@@ -2122,7 +2207,7 @@ const Rentals = () => {
 
         {isInternalRentalOperator && tab === 3 && (
           <Box>
-            <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', borderBottom: '1px solid #EEF0F6', flexWrap: 'wrap' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
               <Box>
                 <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental History</Typography>
                 <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by agreement, customer, facility, product, activity, user, or date.</Typography>
@@ -2328,13 +2413,13 @@ const Rentals = () => {
       />
 
       {/* Agreement Modal CREATE / EDIT */}
-      <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="lg" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
+      <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="xl" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           {editingAgreement ? 'Edit Rental Agreement' : 'Create Rental Agreement'}
         </DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Customer &amp; Agreement Details</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5, pt: 1, '& .MuiOutlinedInput-root': { minHeight: 44 }, '& .MuiInputBase-input': { py: 1.25 } }}>
             <FacilitySearchAutocomplete
               label="Facility"
               value={agreementForm.facility_id || ''}
@@ -2387,8 +2472,8 @@ const Rentals = () => {
 
           <Divider sx={{ my: 3 }} />
           <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Rental Products</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(210px, 1.5fr) 65px repeat(7, minmax(95px, .72fr)) auto' }, gap: 1.5, mb: 2, alignItems: 'start' }}>
-            <Box sx={{ gridColumn: { xs: '1 / -1', lg: 'auto' } }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25, mb: 2, alignItems: 'start', '& .MuiOutlinedInput-root': { minHeight: 44 }, '& .MuiInputBase-input': { py: 1.25 } }}>
+            <Box sx={{ gridColumn: { xs: '1 / -1', md: 'span 2' } }}>
               <PartSearchAutocomplete<RentalPart>
                 label="Rental product"
                 value={selectedRentalPart}
@@ -2416,11 +2501,11 @@ const Rentals = () => {
             <TextField label="Labor" type="number" value={itemDraft.labor_fee} onChange={e => setItemDraft(prev => ({ ...prev, labor_fee: Number(e.target.value) }))} />
             <TextField label="Removal / Pickup" type="number" value={itemDraft.removal_fee} onChange={e => setItemDraft(prev => ({ ...prev, removal_fee: Number(e.target.value) }))} />
             <TextField label="Security Deposit" type="number" value={itemDraft.security_deposit} onChange={e => setItemDraft(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} helperText="Per unit" />
-            <Button startIcon={<AddIcon />} variant="contained" onClick={addRentalItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, height: 56, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add</Button>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={addRentalItem} sx={{ borderRadius: '12px', fontWeight: 900, minHeight: 40, height: 40, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add product</Button>
           </Box>
 
           <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '16px', overflowX: 'auto' }}>
-            <Table size="small" sx={{ minWidth: 980 }}>
+            <Table size="small" sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: 940 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F9FAFB' }}>
                   <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
@@ -2543,19 +2628,16 @@ const Rentals = () => {
           </Box>
 
           <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '16px', overflowX: 'auto' }}>
-            <Table size="small" sx={{ minWidth: 1420, tableLayout: 'fixed' }}>
+            <Table size="small" sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: 1120 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-                  <TableCell sx={{ width: 145, fontWeight: 900 }}>Billing frequency</TableCell>
-                  <TableCell sx={{ width: 125, fontWeight: 900 }}>Rental amount</TableCell>
-                  <TableCell sx={{ width: 130, fontWeight: 900 }}>Committed periods</TableCell>
-                  <TableCell sx={{ width: 140, fontWeight: 900 }}>Discount type</TableCell>
-                  <TableCell sx={{ width: 125, fontWeight: 900 }}>Discount value</TableCell>
-                  <TableCell sx={{ width: 185, fontWeight: 900 }}>Discount schedule</TableCell>
-                  <TableCell sx={{ width: 125, fontWeight: 900 }}>Apply on invoice</TableCell>
-                  <TableCell align="center" sx={{ width: 120, fontWeight: 900 }}>Continue</TableCell>
-                  <TableCell align="center" sx={{ width: 145, fontWeight: 900 }}>Saved card required</TableCell>
-                  <TableCell align="center" sx={{ width: 135, fontWeight: 900 }}>Auto-charge</TableCell>
+                  <TableCell sx={{ width: 145 }}>Billing frequency</TableCell>
+                  <TableCell sx={{ width: 120 }}>Rental amount</TableCell>
+                  <TableCell sx={{ width: 125 }}>Committed periods</TableCell>
+                  <TableCell sx={{ width: 390 }}>Discount setup</TableCell>
+                  <TableCell sx={{ width: 115 }}>Apply on invoice</TableCell>
+                  <TableCell align="center" sx={{ width: 95 }}>Continue</TableCell>
+                  <TableCell sx={{ width: 220 }}>Payment conditions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -2577,20 +2659,18 @@ const Rentals = () => {
                     <TextField fullWidth size="small" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} inputProps={{ min: 1 }} />
                   </TableCell>
                   <TableCell>
-                    <TextField fullWidth size="small" select value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent', discount_value: e.target.value ? prev.discount_value : 0, discount_invoice_number: e.target.value ? (prev.discount_invoice_number || 1) : '', discount_apply_after_periods: e.target.value ? (prev.discount_apply_after_periods || 0) : '' }))}>
-                      <MenuItem value="">No discount</MenuItem>
-                      <MenuItem value="flat">Flat amount</MenuItem>
-                      <MenuItem value="percent">Percent</MenuItem>
-                    </TextField>
-                  </TableCell>
-                  <TableCell>
-                    <TextField fullWidth size="small" disabled={!agreementForm.discount_type} type="number" value={agreementForm.discount_type ? agreementForm.discount_value : ''} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} inputProps={{ min: 0, step: '0.01' }} />
-                  </TableCell>
-                  <TableCell>
-                    <TextField fullWidth size="small" disabled={!agreementForm.discount_type} select value={agreementForm.discount_application_mode} onChange={e => setAgreementForm(prev => ({ ...prev, discount_application_mode: e.target.value as 'single_invoice' | 'commitment', discount_continue: e.target.value === 'commitment' && prev.discount_continue }))}>
-                      <MenuItem value="single_invoice">Only invoice N</MenuItem>
-                      <MenuItem value="commitment">Apply accumulated discount on invoice N</MenuItem>
-                    </TextField>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '130px 90px minmax(150px, 1fr)', gap: 0.75 }}>
+                      <TextField fullWidth size="small" select aria-label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent', discount_value: e.target.value ? prev.discount_value : 0, discount_invoice_number: e.target.value ? (prev.discount_invoice_number || 1) : '', discount_apply_after_periods: e.target.value ? (prev.discount_apply_after_periods || 0) : '' }))}>
+                        <MenuItem value="">None</MenuItem>
+                        <MenuItem value="flat">Flat</MenuItem>
+                        <MenuItem value="percent">Percent</MenuItem>
+                      </TextField>
+                      <TextField fullWidth size="small" aria-label="Discount value" placeholder="Value" disabled={!agreementForm.discount_type} type="number" value={agreementForm.discount_type ? agreementForm.discount_value : ''} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} inputProps={{ min: 0, step: '0.01' }} />
+                      <TextField fullWidth size="small" aria-label="Discount schedule" disabled={!agreementForm.discount_type} select value={agreementForm.discount_application_mode} onChange={e => setAgreementForm(prev => ({ ...prev, discount_application_mode: e.target.value as 'single_invoice' | 'commitment', discount_continue: e.target.value === 'commitment' && prev.discount_continue }))}>
+                        <MenuItem value="single_invoice">Only invoice N</MenuItem>
+                        <MenuItem value="commitment">Accumulate through N</MenuItem>
+                      </TextField>
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <TextField fullWidth size="small" disabled={!agreementForm.discount_type} type="number" value={agreementForm.discount_type ? agreementForm.discount_invoice_number : ''} onChange={e => setAgreementForm(prev => ({ ...prev, discount_invoice_number: e.target.value === '' ? '' : Number(e.target.value), discount_apply_after_periods: e.target.value === '' ? '' : Math.max(0, Number(e.target.value) - 1) }))} inputProps={{ min: 1, max: agreementForm.committed_periods || undefined }} />
@@ -2598,11 +2678,17 @@ const Rentals = () => {
                   <TableCell align="center">
                     <Checkbox disabled={!agreementForm.discount_type || agreementForm.discount_application_mode !== 'commitment'} checked={agreementForm.discount_continue} onChange={e => setAgreementForm(prev => ({ ...prev, discount_continue: e.target.checked }))} />
                   </TableCell>
-                  <TableCell align="center">
-                    <Checkbox disabled={!agreementForm.discount_type} checked={agreementForm.discount_requires_card} onChange={e => setAgreementForm(prev => ({ ...prev, discount_requires_card: e.target.checked }))} />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Checkbox checked={agreementForm.auto_charge} onChange={e => setAgreementForm(prev => ({ ...prev, auto_charge: e.target.checked }))} />
+                  <TableCell>
+                    <Box sx={{ display: 'grid', gap: 0.25 }}>
+                      <Box component="label" sx={{ display: 'flex', alignItems: 'center', gap: 0.25, cursor: agreementForm.discount_type ? 'pointer' : 'default' }}>
+                        <Checkbox size="small" disabled={!agreementForm.discount_type} checked={agreementForm.discount_requires_card} onChange={e => setAgreementForm(prev => ({ ...prev, discount_requires_card: e.target.checked }))} />
+                        <Typography sx={{ fontSize: 12, fontWeight: 750 }}>Saved card required</Typography>
+                      </Box>
+                      <Box component="label" sx={{ display: 'flex', alignItems: 'center', gap: 0.25, cursor: 'pointer' }}>
+                        <Checkbox size="small" checked={agreementForm.auto_charge} onChange={e => setAgreementForm(prev => ({ ...prev, auto_charge: e.target.checked }))} />
+                        <Typography sx={{ fontSize: 12, fontWeight: 750 }}>Auto-charge periods</Typography>
+                      </Box>
+                    </Box>
                   </TableCell>
                 </TableRow>
               </TableBody>
