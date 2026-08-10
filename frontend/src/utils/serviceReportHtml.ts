@@ -131,8 +131,10 @@ export const buildServiceReportBody = (sr: any, facility: Facility | null | unde
     sr.invoice?.invoice_number ? `Invoice: ${sr.invoice.invoice_number}` : (sr.billing_status ? `Billing: ${String(sr.billing_status).replace(/_/g, ' ')}` : ''),
   ].filter(Boolean)
   return page(`
-    <div class="pass-flag"><span class="status pass">${esc((sr.status || sr.billing_status || 'Completed'))}</span></div>
-    <h2 class="sec" style="font-size:20px;color:#1E3A8A;margin-top:4px">Service Completion Report</h2>
+    <div class="rtitle">
+      <h2 class="sec" style="font-size:20px;color:#1E3A8A">Service Completion Report</h2>
+      <span class="status pass">${esc((sr.status || sr.billing_status || 'Completed'))}</span>
+    </div>
     <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:14px;align-items:start;margin-bottom:6px">
       <div class="identity">
         ${idBox('Request #', sr.request_number)}

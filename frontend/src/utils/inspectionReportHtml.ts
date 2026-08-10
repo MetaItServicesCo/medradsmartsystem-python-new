@@ -85,13 +85,13 @@ export const INSPECTION_REPORT_CSS = `
   .rhead img { width: 116px; height: 62px; object-fit: contain; }
   .rhead .co { text-align: right; font-size: 11px; color: #475569; line-height: 1.55; }
   .rhead .co b { color: #1E3A8A; display: block; }
-  .divider { height: 4px; border-radius: 999px; margin: 14px 0 22px; background: linear-gradient(90deg, #2563EB 0%, #7C3AED 60%, #EC4899 100%); }
+  .divider { height: 4px; border-radius: 999px; margin: 12px 0 16px; background: linear-gradient(90deg, #2563EB 0%, #7C3AED 60%, #EC4899 100%); }
   .rfoot { margin-top: auto; padding-top: 14px; border-top: 1px solid #E2E8F0; display: flex; justify-content: space-between; gap: 16px; font-size: 10px; color: #64748B; line-height: 1.55; }
   .rfoot b { color: #1E3A8A; display: block; }
   .rfoot .r { text-align: right; }
   .title { color: #1E3A8A; font-weight: 900; font-size: 26px; text-align: center; margin: 8px 0 2px; }
   .subtitle { color: #64748B; font-weight: 800; text-align: center; }
-  h2.sec { color: #1E1B4B; font-size: 15px; font-weight: 900; margin: 20px 0 10px; }
+  h2.sec { color: #1E1B4B; font-size: 15px; font-weight: 900; margin: 15px 0 8px; }
   h3.sub-h { color: #64748B; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 5px; }
   .muted { color: #64748B; }
   .cover-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; }
@@ -100,10 +100,12 @@ export const INSPECTION_REPORT_CSS = `
   .cover-card .fac { color: #1E3A8A; font-weight: 900; font-size: 18px; text-decoration: underline; margin-bottom: 8px; }
   .cover-card div { color: #475569; line-height: 1.7; }
   .cover-card b { color: #1E1B4B; }
-  .identity { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .idbox { border: 1px solid #E2E8F0; border-radius: 12px; padding: 10px 12px; background: #F8FAFC; }
+  .identity { border: 1px solid #E2E8F0; border-radius: 14px; background: #F8FAFC; padding: 12px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 22px; align-content: start; }
+  .idbox { min-width: 0; }
   .idbox small { display: block; color: #64748B; font-weight: 900; text-transform: uppercase; letter-spacing: .05em; font-size: 9px; }
   .idbox strong { color: #1E1B4B; font-size: 13px; }
+  .card { border: 1px solid #E2E8F0; border-left: 4px solid #7C3AED; border-radius: 12px; padding: 12px 14px; background: #fff; }
+  .card p { margin: 0; line-height: 1.5; color: #334155; }
   .facbox { border: 1px solid #BFDBFE; border-radius: 14px; padding: 12px 16px; background: #EFF6FF; }
   .facbox .fac { color: #1E3A8A; font-weight: 900; text-decoration: underline; margin-bottom: 4px; }
   .facbox div { color: #475569; line-height: 1.55; font-size: 11px; }
@@ -129,11 +131,12 @@ export const INSPECTION_REPORT_CSS = `
   .dot.on { border-color: #2563EB; background: #2563EB; box-shadow: inset 0 0 0 2px #fff; }
   .notes td.k { width: 190px; font-weight: 900; color: #64748B; background: #F8FAFC; }
   .pill { display: inline-block; padding: 6px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; font-size: 11px; }
-  .pass-flag { position: absolute; top: 30px; right: 40px; }
+  .rtitle { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 4px 0 8px; }
+  .rtitle h2 { margin: 0; }
   @media print {
     body { background: #fff; }
     .page { margin: 0; box-shadow: none; width: 100%; min-height: auto; }
-    .rhead, .divider, table.doc th, table.grid th, .status, .dot.on, .facbox, .idbox, .cover-card, .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rhead, .divider, table.doc th, table.grid th, .status, .dot.on, .facbox, .identity, .card, .cover-card, .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 `
 
@@ -402,8 +405,10 @@ const cePageHtml = (inspection: InspectionReportLike, facility: Facility | null 
     fac.email && `<b>Email</b> ${esc(fac.email)}`,
   ].filter(Boolean).join('<br>')
   return page(`
-    <div class="pass-flag"><span class="status ${statusClass(inspection.result)}">${esc(inspection.result || 'Pending')}</span></div>
-    <h2 class="sec" style="font-size:20px;color:#1E3A8A;margin-top:4px">Clinical Engineering Report</h2>
+    <div class="rtitle">
+      <h2 class="sec" style="font-size:20px;color:#1E3A8A">Clinical Engineering Report</h2>
+      <span class="status ${statusClass(inspection.result)}">${esc(inspection.result || 'Pending')}</span>
+    </div>
     <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:14px;align-items:start">
       ${identityHtml(inspection)}
       ${fac.name ? `<div class="facbox"><div class="fac">${esc(fac.name)}</div><div>${facInfo}</div></div>` : ''}
