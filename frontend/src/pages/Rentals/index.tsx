@@ -1779,6 +1779,18 @@ const Rentals = () => {
             <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
           ) : items.map(item => {
             const highlighted = highlightAgreementId === item.id
+            const agreementItems = item.items || []
+            const displayedQuantity = agreementItems.length > 0
+              ? agreementItems.reduce((total, rentalItem) => total + Math.max(1, Number(rentalItem.quantity || 1)), 0)
+              : Math.max(1, Number(item.quantity || 1))
+            const displayedFees = agreementItems.length > 0
+              ? agreementItems.reduce(
+                (total, rentalItem) => total
+                  + Number(rentalItem.shipping_fee || 0)
+                  + Number(rentalItem.setup_fee || 0),
+                0,
+              )
+              : Number(item.shipping_fee || 0) + Number(item.setup_fee || 0)
             return (
               <ContextTableRow
                 key={item.id}
@@ -1802,7 +1814,7 @@ const Rentals = () => {
                   <RentalCellStack
                     primary={money(item.rental_rate)}
                     primaryColor="#047857"
-                    secondary={`Qty ${item.quantity || 1} · Fees ${money(Number(item.shipping_fee || 0) + Number(item.setup_fee || 0))}`}
+                    secondary={`Qty ${displayedQuantity} · Fees ${money(displayedFees)}`}
                   />
                 </TableCell>
                 <TableCell>
