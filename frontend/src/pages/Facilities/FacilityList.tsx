@@ -37,6 +37,7 @@ import { toast } from 'react-toastify'
 
 import {
   fetchFacilities,
+  fetchFacilitySummary,
   deleteFacility,
   exportFacilitiesCsv,
   exportScopedFacility,
@@ -190,6 +191,9 @@ const FacilityList = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const querySearch = searchParams.get('search') || ''
   const querySearchField = searchParams.get('search_field') || 'all'
+  const statusFilter = searchParams.get('status') || undefined
+  const hasTierFilter = searchParams.get('has_tier') === 'true' ? true : undefined
+  const countryFilter = searchParams.get('country') || undefined
   
   const [search, setSearch] = useState(querySearch)
   const [searchInput, setSearchInput] = useState(querySearch)
@@ -214,7 +218,7 @@ const FacilityList = () => {
     setSearch(currentSearch)
     setSearchInput(currentSearch)
     setPage(1)
-  }, [searchParams.get('search')])
+  }, [searchParams.get('search'), searchParams.get('status'), searchParams.get('has_tier'), searchParams.get('country')])
 
   // Sync URL from local input (Debounced)
   useEffect(() => {
@@ -246,6 +250,7 @@ const FacilityList = () => {
 
   // Main Dropdown State
   const [mainMenuAnchor, setMainMenuAnchor] = useState<null | HTMLElement>(null)
+  const [countryCardAnchor, setCountryCardAnchor] = useState<null | HTMLElement>(null)
 
   // Actions menu state
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
@@ -254,14 +259,23 @@ const FacilityList = () => {
   const skip = (page - 1) * limit
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['facilities', search, querySearchField, skip, limit],
+    queryKey: ['facilities', 'list', search, querySearchField, statusFilter, hasTierFilter, countryFilter, skip, limit],
     queryFn: () => fetchFacilities({
       search,
       search_field: querySearchField === 'all' ? undefined : querySearchField,
+      status: statusFilter,
+      has_tier: hasTierFilter,
+      country: countryFilter,
       skip,
       limit,
     }),
     placeholderData: previousData => previousData,
+  })
+
+  const { data: facilitySummary, isLoading: isSummaryLoading } = useQuery({
+    queryKey: ['facilities', 'summary'],
+    queryFn: fetchFacilitySummary,
+    staleTime: 60_000,
   })
 
   const deleteMutation = useMutation({
@@ -281,15 +295,11 @@ const FacilityList = () => {
   const total = data?.total ?? 0
   const totalPages = Math.ceil(total / limit)
 
-  // Compute stats
-  const countries = new Set(facilities.map((f) => f.country)).size
-  const tiered = facilities.filter((f) => f.tier_id || (f.tier_ids && f.tier_ids.length > 0)).length
-
   const statsValues: Record<string, number | string> = {
-    total,
-    active: total,
-    countries,
-    tiered,
+    total: facilitySummary?.total ?? total,
+    active: facilitySummary?.active ?? 0,
+    countries: facilitySummary?.countries.length ?? 0,
+    tiered: facilitySummary?.tiered ?? 0,
   }
 
   const getInitials = (name: string) =>
@@ -340,41 +350,44 @@ const FacilityList = () => {
   }
 
   const isStatCardSelected = (key: string) => {
-    if (key === 'total') return querySearchField === 'all' && !querySearch
-    if (key === 'active') return querySearchField === 'status' && querySearch.toLowerCase() === 'active'
-    if (key === 'countries') return querySearchField === 'location'
-    if (key === 'tiered') return querySearchField === 'tier'
+    if (key === 'total') return !querySearch && !statusFilter && !hasTierFilter && !countryFilter
+    if (key === 'active') return statusFilter === 'active'
+    if (key === 'countries') return Boolean(countryFilter)
+    if (key === 'tiered') return hasTierFilter === true
     return false
   }
 
-  const handleStatCardClick = (key: string) => {
-    const next = new URLSearchParams(searchParams)
-    let nextSearch = ''
-    let nextField = 'all'
-
-    if (key === 'active') {
-      nextSearch = 'active'
-      nextField = 'status'
-    } else if (key === 'countries') {
-      nextField = 'location'
-    } else if (key === 'tiered') {
-      nextField = 'tier'
+  const handleStatCardClick = (key: string, anchor?: HTMLElement) => {
+    if (key === 'countries') {
+      setCountryCardAnchor(anchor || null)
+      return
     }
 
-    if (nextSearch) next.set('search', nextSearch)
-    else next.delete('search')
-    if (nextField === 'all') next.delete('search_field')
-    else next.set('search_field', nextField)
+    const next = new URLSearchParams(searchParams)
+    ;['search', 'search_field', 'status', 'has_tier', 'country'].forEach(param => next.delete(param))
+    if (key === 'active') next.set('status', 'active')
+    if (key === 'tiered') next.set('has_tier', 'true')
 
-    setSearch(nextSearch)
-    setSearchInput(nextSearch)
+    setSearch('')
+    setSearchInput('')
     setSearchParams(next, { replace: true })
     setPage(1)
 
     window.setTimeout(() => {
       facilityListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      if (key === 'countries' || key === 'tiered') searchInputRef.current?.focus()
     }, 0)
+  }
+
+  const handleCountryFilter = (country?: string) => {
+    const next = new URLSearchParams(searchParams)
+    ;['search', 'search_field', 'status', 'has_tier', 'country'].forEach(param => next.delete(param))
+    if (country) next.set('country', country)
+    setSearch('')
+    setSearchInput('')
+    setSearchParams(next, { replace: true })
+    setCountryCardAnchor(null)
+    setPage(1)
+    window.setTimeout(() => facilityListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
 
   const handleEdit = (f: Facility) => {
@@ -527,13 +540,13 @@ const FacilityList = () => {
             key={card.key}
             role="button"
             tabIndex={0}
-            aria-label={card.key === 'total' ? 'Show all facilities' : card.key === 'active' ? 'Show active facilities' : card.key === 'countries' ? 'Search facilities by country' : 'Search facilities by tier'}
+            aria-label={card.key === 'total' ? 'Show all facilities' : card.key === 'active' ? 'Show active facilities' : card.key === 'countries' ? 'Choose a country to filter facilities' : 'Show facilities with tiers'}
             aria-pressed={isStatCardSelected(card.key)}
-            onClick={() => handleStatCardClick(card.key)}
+            onClick={(event) => handleStatCardClick(card.key, event.currentTarget)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
-                handleStatCardClick(card.key)
+                handleStatCardClick(card.key, event.currentTarget)
               }
             }}
             sx={{
@@ -571,7 +584,7 @@ const FacilityList = () => {
                 <Typography noWrap title={card.label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
                   {card.label}
                 </Typography>
-                {isLoading ? (
+                {isSummaryLoading ? (
                   <Skeleton width={54} height={27} />
                 ) : (
                   <Typography noWrap title={String(statsValues[card.key])} sx={{ color: '#1E1B4B', fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>
@@ -586,6 +599,25 @@ const FacilityList = () => {
           </Card>
         ))}
       </Box>
+
+      <Menu
+        anchorEl={countryCardAnchor}
+        open={Boolean(countryCardAnchor)}
+        onClose={() => setCountryCardAnchor(null)}
+        PaperProps={{ sx: { mt: 1, minWidth: 250, maxHeight: 360, borderRadius: '14px' } }}
+      >
+        <MenuItem disabled sx={{ opacity: '1 !important', color: '#64748B', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+          Facilities by country
+        </MenuItem>
+        <MenuItem selected={!countryFilter} onClick={() => handleCountryFilter()}>
+          <ListItemText primary="All countries" secondary={`${facilitySummary?.total ?? 0} facilities`} />
+        </MenuItem>
+        {(facilitySummary?.countries || []).map(option => (
+          <MenuItem key={option.country} selected={countryFilter === option.country} onClick={() => handleCountryFilter(option.country)}>
+            <ListItemText primary={option.country} secondary={`${option.count} ${option.count === 1 ? 'facility' : 'facilities'}`} />
+          </MenuItem>
+        ))}
+      </Menu>
 
       {/* Main table card */}
       <Card ref={facilityListRef} sx={{ overflow: 'hidden', scrollMarginTop: 16 }}>

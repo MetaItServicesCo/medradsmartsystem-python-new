@@ -7,7 +7,7 @@ import re
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_, text
+from sqlalchemy import case, func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -388,10 +388,25 @@ def read_facilities(
     limit: int = Query(100, ge=1, le=500),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    has_tier: Optional[bool] = Query(None),
+    country: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Retrieve facilities (all authenticated users)."""
     query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
+    if status and status.strip():
+        query = query.filter(func.lower(Facility.status) == status.strip().lower())
+    if country and country.strip():
+        query = query.filter(func.lower(Facility.country) == country.strip().lower())
+    if has_tier is not None:
+        tier_assignment_exists = (
+            db.query(FacilityTier.id)
+            .filter(FacilityTier.facility_id == Facility.id)
+            .exists()
+        )
+        tier_assignment = or_(Facility.tier_id.isnot(None), tier_assignment_exists)
+        query = query.filter(tier_assignment if has_tier else ~tier_assignment)
     search_term = normalize_list_search(search)
     if search_term:
         identifier_term = search_term.lstrip("#")
@@ -499,6 +514,47 @@ def read_facilities(
     ]
 
     return {"items": results, "total": total, "skip": skip, "limit": limit}
+
+
+@router.get("/summary", response_model=schemas.FacilitySummaryResponse)
+def read_facility_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return access-scoped facility KPIs and country choices in one aggregate query."""
+    tier_assignment_exists = (
+        db.query(FacilityTier.id)
+        .filter(FacilityTier.facility_id == Facility.id)
+        .exists()
+    )
+    scoped_query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
+    rows = (
+        scoped_query.with_entities(
+            Facility.country,
+            func.count(Facility.id).label("facility_count"),
+            func.sum(case((func.lower(Facility.status) == "active", 1), else_=0)).label("active_count"),
+            func.sum(
+                case(
+                    (or_(Facility.tier_id.isnot(None), tier_assignment_exists), 1),
+                    else_=0,
+                )
+            ).label("tiered_count"),
+        )
+        .group_by(Facility.country)
+        .order_by(Facility.country.asc())
+        .all()
+    )
+    countries = [
+        {"country": row.country, "count": int(row.facility_count or 0)}
+        for row in rows
+        if row.country and row.country.strip()
+    ]
+    return {
+        "total": sum(int(row.facility_count or 0) for row in rows),
+        "active": sum(int(row.active_count or 0) for row in rows),
+        "tiered": sum(int(row.tiered_count or 0) for row in rows),
+        "countries": countries,
+    }
 
 
 

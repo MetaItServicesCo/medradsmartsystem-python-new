@@ -1,4 +1,11 @@
-from .facility import Facility, FacilityCreate, FacilityUpdate, FacilityListResponse, FacilityBrief
+from .facility import (
+    Facility,
+    FacilityCreate,
+    FacilityUpdate,
+    FacilityListResponse,
+    FacilityBrief,
+    FacilitySummaryResponse,
+)
 from .tier import Tier as TierSchema, TierCreate, TierUpdate, TierListResponse
 from .modality import ModalityCreate, ModalityUpdate, ModalityResponse, ModalityListResponse
 from .department import Department as DepartmentSchema, DepartmentCreate, DepartmentUpdate, DepartmentListResponse

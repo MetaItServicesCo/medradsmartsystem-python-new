@@ -133,3 +133,15 @@ class FacilityListResponse(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+class FacilityCountrySummary(BaseModel):
+    country: str
+    count: int
+
+
+class FacilitySummaryResponse(BaseModel):
+    total: int
+    active: int
+    tiered: int
+    countries: List[FacilityCountrySummary]

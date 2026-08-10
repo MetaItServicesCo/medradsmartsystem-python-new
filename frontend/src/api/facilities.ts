@@ -113,6 +113,16 @@ export interface FacilityListParams {
   limit?: number
   search?: string
   search_field?: string
+  status?: string
+  has_tier?: boolean
+  country?: string
+}
+
+export interface FacilitySummary {
+  total: number
+  active: number
+  tiered: number
+  countries: Array<{ country: string; count: number }>
 }
 
 export interface FacilityDocument {
@@ -146,6 +156,11 @@ export type FacilityScopedExportFormat = 'csv' | 'pdf'
 
 export const fetchFacilities = async (params: FacilityListParams = {}): Promise<FacilityListResponse> => {
   const res = await apiClient.get('/facilities/', { params })
+  return res.data
+}
+
+export const fetchFacilitySummary = async (): Promise<FacilitySummary> => {
+  const res = await apiClient.get('/facilities/summary')
   return res.data
 }
 
