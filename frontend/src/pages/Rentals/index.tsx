@@ -341,10 +341,10 @@ const RENTAL_PERIOD_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3 
 const RENTAL_PERIOD_DAYS: Record<string, number> = { weekly: 7, biweekly: 14, daily: 1 }
 
 const addClampedMonths = (start: Date, months: number): Date => {
-  const day = start.getDate()
-  const shifted = new Date(start.getFullYear(), start.getMonth() + months, 1)
-  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate()
-  shifted.setDate(Math.min(day, lastDay))
+  const day = start.getUTCDate()
+  const shifted = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, 1))
+  const lastDay = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)).getUTCDate()
+  shifted.setUTCDate(Math.min(day, lastDay))
   return shifted
 }
 
@@ -365,16 +365,17 @@ const deriveRentalEndDate = (startISO: string, frequency: BillingFrequency, peri
   const count = Number(periods)
   if (!startISO || !count || count < 1) return ''
   if (frequency === 'custom') return ''
-  const start = new Date(`${startISO}T00:00:00`)
+  const [year, month, day] = startISO.split('-').map(Number)
+  const start = new Date(Date.UTC(year, month - 1, day))
   if (Number.isNaN(start.getTime())) return ''
   let end: Date
   if (frequency in RENTAL_PERIOD_MONTHS) {
     end = addClampedMonths(start, RENTAL_PERIOD_MONTHS[frequency] * count)
   } else {
     end = new Date(start)
-    end.setDate(end.getDate() + (RENTAL_PERIOD_DAYS[frequency] ?? 30) * count)
+    end.setUTCDate(end.getUTCDate() + (RENTAL_PERIOD_DAYS[frequency] ?? 30) * count)
   }
-  end.setDate(end.getDate() - 1)
+  end.setUTCDate(end.getUTCDate() - 1)
   return end.toISOString().slice(0, 10)
 }
 
@@ -565,7 +566,7 @@ const Rentals = () => {
   useEffect(() => {
     if (agreementForm.billing_frequency === 'custom') return
     const computed = deriveRentalEndDate(agreementForm.start_date, agreementForm.billing_frequency, agreementForm.committed_periods)
-    if (computed && computed !== agreementForm.end_date) {
+    if (computed !== agreementForm.end_date) {
       setAgreementForm(prev => ({ ...prev, end_date: computed }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

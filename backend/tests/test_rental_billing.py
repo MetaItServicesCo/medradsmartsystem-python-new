@@ -168,6 +168,30 @@ def test_custom_schedule_evenly_partitions_the_inclusive_date_range():
     ]
 
 
+def test_daily_schedule_renders_every_committed_period_as_its_own_table_row():
+    rental = SimpleNamespace(
+        items=[_item("16.67", 1, "0", "0", "0")],
+        security_deposit=Decimal("0"),
+        discount_type=None,
+        discount_value=Decimal("0"),
+        discount_apply_after_periods=None,
+        billing_frequency="daily",
+        start_date=date(2026, 8, 9),
+        end_date=date(2026, 8, 13),
+        committed_periods=5,
+    )
+
+    schedule = projected_billing_schedule(rental)
+
+    assert [(row["billing_date"], row["period_end"]) for row in schedule] == [
+        (date(2026, 8, 9), date(2026, 8, 9)),
+        (date(2026, 8, 10), date(2026, 8, 10)),
+        (date(2026, 8, 11), date(2026, 8, 11)),
+        (date(2026, 8, 12), date(2026, 8, 12)),
+        (date(2026, 8, 13), date(2026, 8, 13)),
+    ]
+
+
 def test_commitment_discount_catches_up_on_invoice_n_and_can_continue():
     rental = SimpleNamespace(
         items=[_item("100", 1, "0", "0", "0")],
