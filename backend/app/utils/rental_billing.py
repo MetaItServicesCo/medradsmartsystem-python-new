@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.config import settings
 from app.models.inventory import InventoryPart
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
+from app.models.payment_operation import PaymentOperation
 from app.models.rental import Rental, RentalStatus, RentalItemStatus, RentalDiscountType
 from app.utils.email import send_html_email
 from app.utils.invoice_editing import compose_invoice_edit_notes
@@ -30,7 +31,15 @@ from app.utils.logging import log_activity
 from app.utils.square_payments import (
     SquareRequestError,
     create_square_payment,
+    minor_units_to_amount,
     square_is_configured,
+)
+from app.utils.payment_idempotency import (
+    get_or_create_operation,
+    mark_operation_failed,
+    mark_operation_succeeded,
+    payment_fingerprint,
+    replay_or_raise,
 )
 
 MAX_CHARGE_ATTEMPTS = 3
@@ -555,16 +564,57 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
         "credit_card", f"Automatic payment attempt {attempt} of {MAX_CHARGE_ATTEMPTS}",
         reference_prefix="ATT",
     )
+    operation_key = f"rental-invoice-{invoice.id}-attempt-{attempt}"
+    operation, replay = get_or_create_operation(
+        db,
+        idempotency_key=operation_key,
+        fingerprint=payment_fingerprint(
+            "rental_auto_charge",
+            invoice_id=invoice.id,
+            amount=invoice.total_amount,
+            currency=settings.SQUARE_CURRENCY,
+            attributes={"attempt": attempt, "rental_id": rental.id},
+        ),
+        operation_type="rental_auto_charge",
+        invoice_id=invoice.id,
+        amount=invoice.total_amount,
+        currency=settings.SQUARE_CURRENCY,
+        provider="square",
+    )
+    if replay:
+        replay_or_raise(operation)
+    rental_id = rental.id
+    invoice_id = invoice.id
+    operation_id = operation.id
+    square_card_id = rental.square_card_id
+    square_customer_id = rental.square_customer_id
+    customer_email = rental.customer_email
+    invoice_number = invoice.invoice_number
+    invoice_total = invoice.total_amount
+    db.commit()
     try:
         payment = create_square_payment(
-            source_id=rental.square_card_id,
-            idempotency_key=f"rental-invoice-{invoice.id}-attempt-{attempt}",
-            amount=invoice.total_amount,
-            invoice_number=invoice.invoice_number,
-            customer_email=rental.customer_email,
-            customer_id=rental.square_customer_id,
+            source_id=square_card_id,
+            idempotency_key=operation_key,
+            amount=invoice_total,
+            invoice_number=invoice_number,
+            customer_email=customer_email,
+            customer_id=square_customer_id,
         )
-    except SquareRequestError:
+    except SquareRequestError as exc:
+        rental = db.query(Rental).filter(Rental.id == rental_id).with_for_update().first()
+        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+        operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        mark_operation_failed(operation, str(exc), unknown=exc.indeterminate)
+        if exc.indeterminate:
+            invoice.next_payment_retry_at = None
+            add_invoice_transaction(
+                db, invoice, "payment_verification_pending", invoice.balance_due,
+                "credit_card", "Square response was interrupted; webhook verification is pending and no retry charge was scheduled",
+                reference_prefix="PEND",
+            )
+            _append_history(rental, "auto_charge_verification_pending", {"invoice": invoice.invoice_number, "attempt": attempt})
+            return "declined"
         rental.failed_charge_count = int(rental.failed_charge_count or 0) + 1
         add_invoice_transaction(
             db, invoice, "payment_failed", invoice.balance_due,
@@ -598,6 +648,24 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
         _append_history(rental, "auto_charge_declined", {"invoice": invoice.invoice_number, "attempt": rental.failed_charge_count})
         return "declined"
 
+    rental = db.query(Rental).filter(Rental.id == rental_id).with_for_update().first()
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+    operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+
+    payment_status = str(payment.get("status") or "").upper()
+    paid_amount = minor_units_to_amount((payment.get("amount_money") or {}).get("amount"))
+    paid_currency = str((payment.get("amount_money") or {}).get("currency") or "").upper()
+    expected_currency = settings.SQUARE_CURRENCY.strip().upper() or "USD"
+    if payment_status != "COMPLETED" or paid_amount != _money(invoice.total_amount) or paid_currency != expected_currency:
+        mark_operation_failed(operation, "Square returned an incomplete or mismatched automatic payment", unknown=True)
+        invoice.next_payment_retry_at = None
+        add_invoice_transaction(
+            db, invoice, "payment_verification_pending", invoice.balance_due,
+            "credit_card", "Square automatic payment requires reconciliation; no retry charge was scheduled",
+            reference_prefix="PEND",
+        )
+        return "declined"
+
     previous_paid = invoice.amount_paid
     invoice.amount_paid = invoice.total_amount
     invoice.balance_due = Decimal("0")
@@ -610,6 +678,11 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     )
     if payment_txn is not None:
         payment_txn.reference_number = payment.get("id")
+    mark_operation_succeeded(
+        operation,
+        provider_reference=payment.get("id"),
+        response_data={"invoice_id": invoice.id, "payment_id": payment.get("id")},
+    )
     rental.failed_charge_count = 0
     _append_history(rental, "auto_charged", {"invoice": invoice.invoice_number, "amount": str(invoice.total_amount)})
     return "charged"

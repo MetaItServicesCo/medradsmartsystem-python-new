@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { completePaymentRequest, paymentRequestKey } from '@/utils/paymentIdempotency'
 
 export interface InvoiceBillingApproval {
   id: number
@@ -20,6 +21,11 @@ export const recordInvoicePayment = async (
   invoiceId: number,
   data: { amount: number; payment_method: string; notes?: string },
 ) => {
-  const response = await apiClient.post(`/billing/invoices/${invoiceId}/payments`, data)
+  const fingerprint = `invoice:${invoiceId}:${Number(data.amount).toFixed(2)}:${data.payment_method}`
+  const response = await apiClient.post(`/billing/invoices/${invoiceId}/payments`, {
+    ...data,
+    idempotency_key: paymentRequestKey(fingerprint),
+  })
+  completePaymentRequest(fingerprint)
   return response.data
 }

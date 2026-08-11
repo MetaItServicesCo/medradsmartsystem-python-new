@@ -16,8 +16,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload, joinedload
 
 from app.db.base import get_db
+from app.core.config import settings
 from app.core.deps import get_current_user
 from app.models.invoice import Invoice, InvoiceStatus
+from app.models.payment_operation import PaymentOperation
 from app.models.rental import (
     Rental, RentalItem, RentalAgreementAcceptance,
     RentalExtensionRequest, RentalExtensionStatus, RentalStatus,
@@ -39,6 +41,14 @@ from app.utils.square_payments import (
     create_square_card_on_file,
     create_square_payment,
     SquareRequestError,
+    minor_units_to_amount,
+)
+from app.utils.payment_idempotency import (
+    get_or_create_operation,
+    mark_operation_failed,
+    mark_operation_succeeded,
+    payment_fingerprint,
+    replay_or_raise,
 )
 
 router = APIRouter()
@@ -802,7 +812,7 @@ def _pay_rental_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.balance_due or 0)) <= 0:
-        raise HTTPException(status_code=400, detail="This invoice is already paid")
+        return _portal_response(db, rental)
     payment_source = payload.source_id
     saved_card: Optional[dict[str, Any]] = None
     conditional_discount = bool(
@@ -818,6 +828,31 @@ def _pay_rental_invoice(
             Decimal("0"),
             Decimal(str(projected_amounts["total"])) - Decimal(str(invoice.amount_paid or 0)),
         )
+    operation_key = payload.idempotency_key or f"rental-payment-{rental.id}-{invoice.id}"
+    operation, replay = get_or_create_operation(
+        db,
+        idempotency_key=operation_key,
+        fingerprint=payment_fingerprint(
+            "square_invoice_payment",
+            invoice_id=invoice.id,
+            amount=payment_amount,
+            currency=settings.SQUARE_CURRENCY,
+            attributes={
+                "save_card": payload.save_card,
+                "authorize_auto_charge": payload.authorize_auto_charge,
+            },
+        ),
+        operation_type="square_invoice_payment",
+        invoice_id=invoice.id,
+        amount=payment_amount,
+        currency=settings.SQUARE_CURRENCY,
+        provider="square",
+        created_by_id=current_user.id if current_user else None,
+    )
+    if replay:
+        replay_or_raise(operation)
+        db.refresh(rental)
+        return _portal_response(db, rental)
     attempt = int(invoice.payment_attempt_count or 0) + 1
     invoice.payment_attempt_count = attempt
     invoice.last_payment_attempt_at = datetime.utcnow()
@@ -825,6 +860,13 @@ def _pay_rental_invoice(
         db, invoice, "payment_attempt", invoice.balance_due, "credit_card",
         f"Customer online payment attempt {attempt} by {actor_name}", current_user, reference_prefix="ATT",
     )
+    rental_id = rental.id
+    invoice_id = invoice.id
+    operation_id = operation.id
+    invoice_number = invoice.invoice_number
+    customer_name = rental.customer_name
+    customer_email = rental.customer_email
+    db.commit()
     try:
         if payload.save_card:
             card_key = hashlib.sha256(
@@ -833,8 +875,8 @@ def _pay_rental_invoice(
             saved_card = create_square_card_on_file(
                 source_id=payload.source_id,
                 idempotency_key=f"rent-card-{card_key}",
-                customer_name=rental.customer_name,
-                customer_email=rental.customer_email,
+                customer_name=customer_name,
+                customer_email=customer_email,
             )
             payment_source = saved_card["card_id"]
         # A commitment catch-up discount can legitimately reduce a milestone
@@ -843,16 +885,20 @@ def _pay_rental_invoice(
         payment = (
             create_square_payment(
                 source_id=payment_source,
-                idempotency_key=payload.idempotency_key or f"rental-pay-{invoice.id}-{int(datetime.utcnow().timestamp())}",
+                idempotency_key=operation_key,
                 amount=payment_amount,
-                invoice_number=invoice.invoice_number,
-                customer_email=rental.customer_email,
+                invoice_number=invoice_number,
+                customer_email=customer_email,
                 customer_id=saved_card.get("customer_id") if saved_card else None,
             )
             if payment_amount > 0
             else {"id": f"discount-settled-{invoice.id}"}
         )
     except SquareRequestError as exc:
+        rental = db.query(Rental).filter(Rental.id == rental_id).with_for_update().first()
+        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+        operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        mark_operation_failed(operation, str(exc), unknown=exc.indeterminate)
         add_invoice_transaction(
             db, invoice, "payment_failed", invoice.balance_due, "credit_card",
             f"Customer online payment attempt {attempt} by {actor_name} failed: {exc}", current_user, reference_prefix="DEC",
@@ -868,6 +914,22 @@ def _pay_rental_invoice(
         rental.history = history
         db.commit()
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
+    rental = db.query(Rental).filter(Rental.id == rental_id).with_for_update().first()
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+    operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+    payment_id = str(payment.get("id") or "").strip()
+    if payment_amount > 0:
+        payment_status = str(payment.get("status") or "").upper()
+        paid_amount = minor_units_to_amount((payment.get("amount_money") or {}).get("amount"))
+        paid_currency = str((payment.get("amount_money") or {}).get("currency") or "").upper()
+        expected_currency = settings.SQUARE_CURRENCY.strip().upper() or "USD"
+        if payment_status != "COMPLETED" or paid_amount != payment_amount or paid_currency != expected_currency:
+            mark_operation_failed(operation, "Square returned an incomplete or mismatched rental payment", unknown=True)
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail="Square returned an incomplete or mismatched payment; the invoice was not changed",
+            )
     previous_paid = invoice.amount_paid
     if saved_card:
         _store_card_result(rental, saved_card, payload.authorize_auto_charge, actor_name)
@@ -881,7 +943,7 @@ def _pay_rental_invoice(
     rental.failed_charge_count = 0
     payment_txn = record_payment_delta(db, invoice, previous_paid, invoice.total_amount, current_user, "credit_card", f"Online card payment by {actor_name} ({payment.get('id')})")
     if payment_txn is not None:
-        payment_txn.reference_number = payment.get("id")
+        payment_txn.reference_number = payment_id
     if saved_card:
         add_invoice_transaction(
             db, invoice,
@@ -913,6 +975,11 @@ def _pay_rental_invoice(
     })
     rental.history = history
     rental.updated_at = datetime.utcnow()
+    mark_operation_succeeded(
+        operation,
+        provider_reference=payment_id,
+        response_data={"invoice_id": invoice.id, "payment_id": payment_id},
+    )
     db.commit()
     db.refresh(rental)
     return _portal_response(db, rental)

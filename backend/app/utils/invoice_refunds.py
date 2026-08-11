@@ -78,6 +78,7 @@ def execute_square_invoice_refund(
     user: Optional[User] = None,
     reason: Optional[str] = None,
     description: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
 ) -> Optional[str]:
     """Refund `amount` to the Square card that paid this invoice.
 
@@ -97,7 +98,7 @@ def execute_square_invoice_refund(
         payment_id=source_payment.reference_number,
         # Stable per refund step: a retry of a failed call reuses the key (Square de-dups),
         # while a genuine second refund carries a higher running total and a fresh key.
-        idempotency_key=(
+        idempotency_key=idempotency_key or (
             f"invoice-refund-{invoice.id}-{amount_to_minor_units(existing_refunded)}"
             f"-{amount_to_minor_units(amount)}"
         ),
@@ -152,6 +153,7 @@ def issue_invoice_refund(
     payment_method: Optional[str] = None,
     notes: Optional[str] = None,
     user: Optional[User] = None,
+    idempotency_key: Optional[str] = None,
 ) -> dict[str, Any]:
     """Explicit staff refund used by the Sales and Rentals "Record Refund" actions.
 
@@ -168,6 +170,7 @@ def issue_invoice_refund(
         user=user,
         reason=notes or f"Refund for {invoice.invoice_number}",
         description=notes or f"Refund issued for {invoice.invoice_number}",
+        idempotency_key=idempotency_key,
     )
     if refund_id:
         return {"method": "square_card", "square_refund_id": refund_id, "amount": str(amount)}

@@ -56,6 +56,12 @@ const createIdempotencyKey = () => {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
 }
 
+const squarePaymentStorageKey = (scope: string) => `medrad-payment:${scope}`
+
+export const clearSquarePaymentKey = (scope: string) => {
+  if (typeof window !== 'undefined') window.sessionStorage.removeItem(squarePaymentStorageKey(scope))
+}
+
 interface Props {
   applicationId: string
   locationId: string
@@ -68,6 +74,7 @@ interface Props {
   // 'CHARGE' collects a one-time payment; 'STORE' vaults a card on file for later.
   intent?: 'CHARGE' | 'STORE'
   submitLabel?: string
+  idempotencyScope?: string
   onPaymentToken: (token: string, idempotencyKey: string) => void
 }
 
@@ -82,6 +89,7 @@ const SquareCardCheckout = ({
   processing = false,
   intent = 'CHARGE',
   submitLabel,
+  idempotencyScope,
   onPaymentToken,
 }: Props) => {
   const containerId = useRef(`square-card-${Math.random().toString(36).slice(2)}`)
@@ -89,6 +97,18 @@ const SquareCardCheckout = ({
   const [loading, setLoading] = useState(true)
   const [tokenizing, setTokenizing] = useState(false)
   const [error, setError] = useState('')
+  const paymentKeyRef = useRef<string>('')
+
+  const stablePaymentKey = () => {
+    if (paymentKeyRef.current) return paymentKeyRef.current
+    const scope = idempotencyScope || `${intent}:${payerEmail || payerName}:${Number(amount).toFixed(2)}:${currency}`
+    const storageKey = squarePaymentStorageKey(scope)
+    const stored = window.sessionStorage.getItem(storageKey)
+    const key = stored || createIdempotencyKey()
+    if (!stored) window.sessionStorage.setItem(storageKey, key)
+    paymentKeyRef.current = key
+    return key
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -144,7 +164,7 @@ const SquareCardCheckout = ({
           .join('; ')
         throw new Error(message || 'Square could not verify the payment information')
       }
-      onPaymentToken(result.token, createIdempotencyKey())
+      onPaymentToken(result.token, stablePaymentKey())
     } catch (paymentError: any) {
       setError(paymentError?.message || 'Could not prepare the Square payment')
     } finally {

@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { completePaymentRequest, paymentRequestKey } from '@/utils/paymentIdempotency'
 
 export type ServiceRequestPriority = 'low' | 'medium' | 'high' | 'critical'
 export type ServiceRequestStatus =
@@ -608,7 +609,12 @@ export const createQuotationPayment = async (
   quotationId: number,
   data: QuotationPaymentCreate
 ): Promise<QuotationPayment> => {
-  const res = await apiClient.post(`/service-requests/quotations/${quotationId}/payments`, data)
+  const fingerprint = `service-quotation:${quotationId}:${Number(data.amount).toFixed(2)}:${data.payment_method}`
+  const res = await apiClient.post(`/service-requests/quotations/${quotationId}/payments`, {
+    ...data,
+    idempotency_key: paymentRequestKey(fingerprint),
+  })
+  completePaymentRequest(fingerprint)
   return res.data
 }
 

@@ -2605,6 +2605,42 @@ def create_quotation_payment(
     valid_methods = ["credit_card", "ach", "mbmts_ach"]
     if payment_in.payment_method not in valid_methods:
         raise HTTPException(status_code=400, detail=f"Invalid payment method. Allowed: {valid_methods}")
+
+    payment_amount = _money(payment_in.amount).quantize(Decimal("0.01"))
+    if payment_amount <= Decimal("0"):
+        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
+
+    from uuid import uuid4
+    from app.utils.payment_idempotency import (
+        get_or_create_operation,
+        mark_operation_succeeded,
+        payment_fingerprint,
+        replay_or_raise,
+    )
+
+    operation_key = payment_in.idempotency_key or f"legacy-service-quote-{quotation_id}-{uuid4()}"
+    operation, replay = get_or_create_operation(
+        db,
+        idempotency_key=operation_key,
+        fingerprint=payment_fingerprint(
+            "service_quotation_payment",
+            quotation_id=quotation_id,
+            amount=payment_amount,
+            attributes={"payment_method": payment_in.payment_method, "actor_id": current_user.id},
+        ),
+        operation_type="service_quotation_payment",
+        quotation_id=quotation_id,
+        amount=payment_amount,
+        created_by_id=current_user.id,
+    )
+    if replay:
+        replay_or_raise(operation)
+        existing_payment_id = (operation.response_data or {}).get("payment_id")
+        existing_payment = db.query(QuotationPayment).filter(QuotationPayment.id == existing_payment_id).first()
+        if existing_payment:
+            return _payment_dict(existing_payment)
+        raise HTTPException(status_code=409, detail="The payment was already recorded")
+
     if db_quotation.status not in {"authorized", "partially_paid"}:
         raise HTTPException(status_code=409, detail="Only an authorized quotation can be paid")
 
@@ -2617,9 +2653,6 @@ def create_quotation_payment(
     if _money(authorization.authorized_amount) != _money(db_quotation.amount):
         raise HTTPException(status_code=409, detail="Authorization no longer matches the quotation amount")
 
-    payment_amount = _money(payment_in.amount).quantize(Decimal("0.01"))
-    if payment_amount <= Decimal("0"):
-        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
     paid_to_date = sum(
         (_money(payment.amount) for payment in (db_quotation.payments or []) if payment.status == "completed"),
         Decimal("0"),
@@ -2666,6 +2699,7 @@ def create_quotation_payment(
         mbmts_bank_address=payment_in.mbmts_bank_address,
     )
     db.add(db_payment)
+    db.flush()
 
     new_paid_total = (paid_to_date + payment_amount).quantize(Decimal("0.01"))
     new_balance = max((_money(db_quotation.amount) - new_paid_total).quantize(Decimal("0.01")), Decimal("0"))
@@ -2706,6 +2740,11 @@ def create_quotation_payment(
         notification_type="service_request",
         link_url=f"/service-requests/{sr.id}",
         actor_id=current_user.id,
+    )
+    mark_operation_succeeded(
+        operation,
+        provider_reference=reference_number,
+        response_data={"payment_id": db_payment.id, "reference_number": reference_number},
     )
     db.commit()
     db.refresh(db_payment)

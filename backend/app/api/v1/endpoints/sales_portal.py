@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction
+from app.models.payment_operation import PaymentOperation
 from app.models.sales import (
     SalesPaymentAuthorization,
     SalesQuotation,
@@ -46,6 +47,13 @@ from app.utils.sales_inventory import (
     ensure_sales_inventory_available,
     fulfill_sales_invoice_inventory,
     release_sales_inventory_reservations,
+)
+from app.utils.payment_idempotency import (
+    get_or_create_operation,
+    mark_operation_failed,
+    mark_operation_succeeded,
+    payment_fingerprint,
+    replay_or_raise,
 )
 
 
@@ -334,18 +342,59 @@ def _record_square_payment(
     # Lock and validate the exact selected products before Square charges the
     # customer. The locks remain in this transaction through fulfillment.
     ensure_sales_inventory_available(db, invoice)
+
+    operation, replay = get_or_create_operation(
+        db,
+        idempotency_key=payload.idempotency_key,
+        fingerprint=payment_fingerprint(
+            "square_invoice_payment",
+            invoice_id=invoice.id,
+            amount=balance,
+            currency=settings.SQUARE_CURRENCY,
+            attributes={"payer_name": payload.payer_name.strip()},
+        ),
+        operation_type="square_invoice_payment",
+        invoice_id=invoice.id,
+        amount=balance,
+        currency=settings.SQUARE_CURRENCY,
+        provider="square",
+        created_by_id=actor.id if actor else recipient.user_id,
+    )
+    if replay:
+        replay_or_raise(operation)
+        db.refresh(recipient)
+        return _portal_response(recipient)
+
+    # Persist the processing marker before contacting Square. This makes an
+    # uncertain network response recoverable across worker/process restarts.
+    invoice_id = invoice.id
+    invoice_number = invoice.invoice_number
+    customer_email = invoice.customer_email
+    operation_id = operation.id
+    db.commit()
     try:
         square_payment = create_square_payment(
             source_id=payload.source_id,
             idempotency_key=payload.idempotency_key,
             amount=balance,
-            invoice_number=invoice.invoice_number,
-            customer_email=invoice.customer_email,
+            invoice_number=invoice_number,
+            customer_email=customer_email,
         )
     except SquareConfigurationError as exc:
+        operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        mark_operation_failed(operation, str(exc))
+        db.commit()
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except SquareRequestError as exc:
+        operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        mark_operation_failed(operation, str(exc), unknown=exc.indeterminate)
+        db.commit()
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+    operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+    recipient = db.query(SalesQuotationRecipient).options(*_recipient_options()).filter(SalesQuotationRecipient.id == recipient.id).first()
+    quotation = recipient.quotation
 
     payment_id = str(square_payment.get("id") or "").strip()
     payment_status = str(square_payment.get("status") or "").upper()
@@ -357,11 +406,15 @@ def _record_square_payment(
     ).upper()
     expected_currency = settings.SQUARE_CURRENCY.strip().upper() or "USD"
     if payment_status != "COMPLETED":
+        mark_operation_failed(operation, f"Square payment status was {payment_status or 'unknown'}", unknown=True)
+        db.commit()
         raise HTTPException(
             status_code=409,
             detail=f"Square payment is {payment_status.lower() or 'not completed'}",
         )
     if square_amount != balance or square_currency != expected_currency:
+        mark_operation_failed(operation, "Square returned an unexpected amount or currency", unknown=True)
+        db.commit()
         raise HTTPException(
             status_code=409,
             detail="Square completed an unexpected amount or currency; the invoice was not changed",
@@ -372,6 +425,12 @@ def _record_square_payment(
         .first()
     )
     if existing_transaction:
+        mark_operation_succeeded(
+            operation,
+            provider_reference=payment_id,
+            response_data={"invoice_id": invoice.id, "payment_id": payment_id},
+        )
+        db.commit()
         return _portal_response(recipient)
 
     previous_paid = _money(invoice.amount_paid)
@@ -450,6 +509,11 @@ def _record_square_payment(
         notification_type="billing",
         link_url=f"/billing?search={invoice.invoice_number}",
         actor_id=actor.id if actor else recipient.user_id,
+    )
+    mark_operation_succeeded(
+        operation,
+        provider_reference=payment_id,
+        response_data={"invoice_id": invoice.id, "payment_id": payment_id},
     )
     db.commit()
     db.refresh(recipient)

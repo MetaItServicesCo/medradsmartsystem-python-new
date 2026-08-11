@@ -486,7 +486,10 @@ export const refundRentalInvoice = async (
   id: number,
   data: { amount: number; payment_method?: string; notes?: string }
 ): Promise<RentalInvoice> => {
-  const res = await apiClient.post(`/rentals/invoices/${id}/refunds`, data)
+  const { completePaymentRequest, paymentRequestKey } = await import('@/utils/paymentIdempotency')
+  const fingerprint = `rental-refund:${id}:${Number(data.amount).toFixed(2)}:${data.payment_method || ''}`
+  const res = await apiClient.post(`/rentals/invoices/${id}/refunds`, { ...data, idempotency_key: paymentRequestKey(fingerprint) })
+  completePaymentRequest(fingerprint)
   return res.data
 }
 

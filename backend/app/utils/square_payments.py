@@ -16,10 +16,14 @@ class SquareConfigurationError(RuntimeError):
 
 
 class SquareRequestError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int = 502, errors: list[dict[str, Any]] | None = None):
+    def __init__(self, message: str, *, status_code: int = 502, errors: list[dict[str, Any]] | None = None, indeterminate: bool = False):
         super().__init__(message)
         self.status_code = status_code
         self.errors = errors or []
+        # True means Square may have received the request even though this
+        # process did not receive a response. The same idempotency key must be
+        # retained and the operation reconciled, never blindly charged again.
+        self.indeterminate = indeterminate
 
 
 def square_is_configured() -> bool:
@@ -121,7 +125,10 @@ def create_square_payment(
             timeout=25,
         )
     except httpx.RequestError as exc:
-        raise SquareRequestError("Square could not be reached. Please try again.") from exc
+        raise SquareRequestError(
+            "Square payment confirmation is pending. Do not submit another payment while it is being verified.",
+            indeterminate=True,
+        ) from exc
 
     try:
         payload = response.json()

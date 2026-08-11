@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -31,6 +32,12 @@ from app.utils.invoice_ledger import (
 from app.utils.notifications import create_notifications
 from app.utils.permission_deps import require_module_access
 from app.utils.permissions import has_module_permission
+from app.utils.payment_idempotency import (
+    get_or_create_operation,
+    mark_operation_succeeded,
+    payment_fingerprint,
+    replay_or_raise,
+)
 from app.utils.sales_inventory import (
     ensure_sales_inventory_available,
     fulfill_sales_invoice_inventory,
@@ -44,6 +51,7 @@ class InvoicePaymentCreate(BaseModel):
     amount: Decimal
     payment_method: str
     notes: Optional[str] = None
+    idempotency_key: Optional[str] = None
 
 
 def _money(value: Any) -> Decimal:
@@ -241,6 +249,39 @@ def record_invoice_payment(
     require_invoice_approved(invoice)
     if invoice.status == InvoiceStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="A cancelled invoice cannot receive payment")
+    operation_key = payload.idempotency_key or f"legacy-manual-invoice-{invoice.id}-{uuid4()}"
+    fingerprint = payment_fingerprint(
+        "manual_invoice_payment",
+        invoice_id=invoice.id,
+        amount=payload.amount,
+        attributes={
+            "payment_method": payload.payment_method,
+            "actor_id": current_user.id,
+        },
+    )
+    operation, replay = get_or_create_operation(
+        db,
+        idempotency_key=operation_key,
+        fingerprint=fingerprint,
+        operation_type="manual_invoice_payment",
+        invoice_id=invoice.id,
+        amount=payload.amount,
+        created_by_id=current_user.id,
+    )
+    if replay:
+        replay_or_raise(operation)
+        db.refresh(invoice)
+        return {
+            "id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "amount_paid": invoice.amount_paid,
+            "balance_due": invoice.balance_due,
+            "status": invoice.status.value if hasattr(invoice.status, "value") else invoice.status,
+            "payment_method": invoice.payment_method,
+            **approval_response(invoice),
+            "transactions": [transaction_response(item) for item in invoice.transactions or []],
+        }
+
     if invoice.invoice_type == InvoiceType.SALES:
         ensure_sales_inventory_available(db, invoice)
 
@@ -308,6 +349,11 @@ def record_invoice_payment(
     )
     if invoice.invoice_type == InvoiceType.SALES:
         fulfill_sales_invoice_inventory(db, invoice, current_user)
+    mark_operation_succeeded(
+        operation,
+        provider_reference=payment_transaction.reference_number if payment_transaction else None,
+        response_data={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
+    )
     db.commit()
     db.refresh(invoice)
     return {

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
+import hashlib
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -11,6 +12,8 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.core.config import settings
 from app.db.base import get_db
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction
+from app.models.payment_operation import PaymentOperation, PaymentWebhookEvent
+from sqlalchemy.exc import IntegrityError
 from app.utils.invoice_ledger import (
     add_invoice_transaction,
     record_payment_delta,
@@ -18,6 +21,11 @@ from app.utils.invoice_ledger import (
 )
 from app.utils.square_payments import minor_units_to_amount, verify_square_webhook_signature
 from app.utils.sales_inventory import fulfill_sales_invoice_inventory
+from app.utils.payment_idempotency import (
+    get_or_create_operation,
+    mark_operation_succeeded,
+    payment_fingerprint,
+)
 
 
 router = APIRouter()
@@ -96,6 +104,40 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
     if amount <= 0 or currency != expected_currency:
         return "ignored"
 
+    operation = (
+        db.query(PaymentOperation)
+        .filter(PaymentOperation.provider_reference == payment_id)
+        .with_for_update()
+        .first()
+    )
+    if not operation:
+        operation = (
+            db.query(PaymentOperation)
+            .filter(
+                PaymentOperation.invoice_id == invoice.id,
+                PaymentOperation.status.in_(["processing", "unknown"]),
+                PaymentOperation.amount == amount,
+            )
+            .with_for_update()
+            .first()
+        )
+    if not operation:
+        operation, _ = get_or_create_operation(
+            db,
+            idempotency_key=f"square-webhook-payment:{payment_id}",
+            fingerprint=payment_fingerprint(
+                "square_invoice_payment",
+                invoice_id=invoice.id,
+                amount=amount,
+                currency=currency,
+            ),
+            operation_type="square_invoice_payment",
+            invoice_id=invoice.id,
+            amount=amount,
+            currency=currency,
+            provider="square",
+        )
+
     previous_paid = _money(invoice.amount_paid)
     previous_status = invoice.status
     remaining = max(_money(invoice.total_amount) - previous_paid, Decimal("0"))
@@ -131,6 +173,11 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
     )
     fulfill_sales_invoice_inventory(db, invoice, None)
     _sync_source_after_payment(invoice, applied_amount, payment_id)
+    mark_operation_succeeded(
+        operation,
+        provider_reference=payment_id,
+        response_data={"invoice_id": invoice.id, "payment_id": payment_id},
+    )
     db.commit()
     return "processed"
 
@@ -171,6 +218,41 @@ def _sync_completed_refund(db: Session, refund: dict[str, Any]) -> str:
     if amount <= 0 or currency != expected_currency:
         return "ignored"
 
+    operation = (
+        db.query(PaymentOperation)
+        .filter(PaymentOperation.provider_reference == refund_id)
+        .with_for_update()
+        .first()
+    )
+    if not operation:
+        operation = (
+            db.query(PaymentOperation)
+            .filter(
+                PaymentOperation.invoice_id == invoice.id,
+                PaymentOperation.operation_type == "invoice_refund",
+                PaymentOperation.status.in_(["processing", "unknown"]),
+                PaymentOperation.amount == amount,
+            )
+            .with_for_update()
+            .first()
+        )
+    if not operation:
+        operation, _ = get_or_create_operation(
+            db,
+            idempotency_key=f"square-webhook-refund:{refund_id}",
+            fingerprint=payment_fingerprint(
+                "invoice_refund",
+                invoice_id=invoice.id,
+                amount=amount,
+                currency=currency,
+            ),
+            operation_type="invoice_refund",
+            invoice_id=invoice.id,
+            amount=amount,
+            currency=currency,
+            provider="square",
+        )
+
     invoice.refunded_amount = _money(invoice.refunded_amount) + amount
     invoice.refund_status = (
         "refunded"
@@ -204,6 +286,11 @@ def _sync_completed_refund(db: Session, refund: dict[str, Any]) -> str:
         })
         invoice.sales_quotation.history = history
         flag_modified(invoice.sales_quotation, "history")
+    mark_operation_succeeded(
+        operation,
+        provider_reference=refund_id,
+        response_data={"invoice_id": invoice.id, "refund_id": refund_id},
+    )
     db.commit()
     return "processed"
 
@@ -223,13 +310,58 @@ async def receive_square_webhook(
         raise HTTPException(status_code=400, detail="Invalid Square webhook payload") from exc
 
     event_type = str(payload.get("type") or "")
-    event_object = ((payload.get("data") or {}).get("object") or {})
-    if event_type in {"payment.created", "payment.updated"}:
-        payment = event_object.get("payment") or {}
-        if str(payment.get("status") or "").upper() == "COMPLETED":
-            return {"status": _sync_completed_payment(db, payment)}
-    if event_type in {"refund.created", "refund.updated"}:
-        refund = event_object.get("refund") or {}
-        if str(refund.get("status") or "").upper() == "COMPLETED":
-            return {"status": _sync_completed_refund(db, refund)}
-    return {"status": "ignored"}
+    event_id = str(payload.get("event_id") or payload.get("id") or "").strip()
+    if not event_id:
+        raise HTTPException(status_code=400, detail="Square webhook event id is required")
+    event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.event_id == event_id).with_for_update().first()
+    if event and event.status == "processed":
+        return {"status": "duplicate"}
+    if event and event.status == "processing":
+        # Square retries deliveries. A recent processing marker means another
+        # worker owns this event; an old marker means that worker terminated
+        # before completing and the event is safe to reclaim.
+        lease_started = event.updated_at or event.received_at
+        if lease_started and lease_started >= datetime.utcnow() - timedelta(minutes=5):
+            return {"status": "duplicate"}
+    if not event:
+        event = PaymentWebhookEvent(
+            provider="square",
+            event_id=event_id,
+            event_type=event_type or "unknown",
+            payload_hash=hashlib.sha256(raw_body).hexdigest(),
+            status="processing",
+        )
+        try:
+            with db.begin_nested():
+                db.add(event)
+                db.flush()
+        except IntegrityError:
+            return {"status": "duplicate"}
+    else:
+        event.status = "processing"
+        event.error_message = None
+    db.commit()
+
+    try:
+        event_object = ((payload.get("data") or {}).get("object") or {})
+        result = "ignored"
+        if event_type in {"payment.created", "payment.updated"}:
+            payment = event_object.get("payment") or {}
+            if str(payment.get("status") or "").upper() == "COMPLETED":
+                result = _sync_completed_payment(db, payment)
+        elif event_type in {"refund.created", "refund.updated"}:
+            refund = event_object.get("refund") or {}
+            if str(refund.get("status") or "").upper() == "COMPLETED":
+                result = _sync_completed_refund(db, refund)
+    except Exception as exc:
+        db.rollback()
+        event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.event_id == event_id).with_for_update().first()
+        event.status = "failed"
+        event.error_message = str(exc)[:4000]
+        db.commit()
+        raise
+    event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.event_id == event_id).with_for_update().first()
+    event.status = "processed"
+    event.processed_at = datetime.utcnow()
+    db.commit()
+    return {"status": result}

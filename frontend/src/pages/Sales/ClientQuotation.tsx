@@ -43,7 +43,7 @@ import {
   payPublicSalesQuotationWithSquare,
   type SalesQuotationLineItem,
 } from '@/api/sales'
-import SquareCardCheckout from '@/components/Billing/SquareCardCheckout'
+import SquareCardCheckout, { clearSquarePaymentKey } from '@/components/Billing/SquareCardCheckout'
 import {
   CustomerSignaturePreview,
   CustomerSignatureRecord,
@@ -230,7 +230,12 @@ const ClientQuotation = () => {
       toast.success('Payment completed securely. The invoice and ledger are now updated.')
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.detail || error.message || 'Square could not complete the payment')
+      const detail = error.response?.data?.detail || error.message || 'Square could not complete the payment'
+      const verificationPending = error.response?.status === 409 || /pending|verif/i.test(String(detail))
+      if (!verificationPending && data?.invoice) {
+        clearSquarePaymentKey(`sales-invoice-${data.invoice.id}-${Number(data.invoice.balance_due).toFixed(2)}`)
+      }
+      toast.error(detail)
     },
   })
 
@@ -545,6 +550,7 @@ const ClientQuotation = () => {
               payerName={data.acceptance?.accepted_by_name || data.recipient.name}
               payerEmail={data.recipient.email}
               processing={squarePaymentMut.isPending}
+              idempotencyScope={`sales-invoice-${data.invoice.id}-${Number(data.invoice.balance_due).toFixed(2)}`}
               onPaymentToken={(sourceId, idempotencyKey) => {
                 squarePaymentMut.mutate({ sourceId, idempotencyKey })
               }}

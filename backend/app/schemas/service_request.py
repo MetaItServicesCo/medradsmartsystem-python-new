@@ -42,6 +42,7 @@ class QuotationPaymentBase(BaseModel):
     mbmts_bank_name: Optional[str] = None
     mbmts_bank_address: Optional[str] = None
     payment_channel: Optional[str] = None
+    idempotency_key: Optional[str] = None
 
 class QuotationPaymentCreate(QuotationPaymentBase):
     pass

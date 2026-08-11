@@ -293,6 +293,7 @@ class RentalInvoiceRefundCreate(BaseModel):
     amount: Decimal
     payment_method: Optional[str] = None
     notes: Optional[str] = None
+    idempotency_key: Optional[str] = None
 
 
 class RentalExtensionOfferIn(BaseModel):
@@ -2783,6 +2784,29 @@ def refund_rental_invoice(
         require_facility_access(db, current_user, invoice.facility_id)
     require_invoice_approved(invoice)
 
+    from uuid import uuid4
+    from app.utils.payment_idempotency import get_or_create_operation, mark_operation_failed, mark_operation_succeeded, payment_fingerprint, replay_or_raise
+    operation_key = payload.idempotency_key or f"legacy-rental-refund-{invoice.id}-{uuid4()}"
+    operation, replay = get_or_create_operation(
+        db,
+        idempotency_key=operation_key,
+        fingerprint=payment_fingerprint(
+            "invoice_refund",
+            invoice_id=invoice.id,
+            amount=amount,
+            attributes={"payment_method": payload.payment_method or invoice.payment_method},
+        ),
+        operation_type="invoice_refund",
+        invoice_id=invoice.id,
+        amount=amount,
+        provider="square" if invoice.payment_method == "square_card" else "manual",
+        created_by_id=current_user.id,
+    )
+    if replay:
+        replay_or_raise(operation)
+        db.refresh(invoice)
+        return _invoice_response(invoice)
+
     refundable = max(_money(invoice.amount_paid) - _money(invoice.refunded_amount), Decimal("0"))
     if amount > refundable:
         raise HTTPException(status_code=400, detail="Refund cannot exceed the remaining paid amount")
@@ -2795,8 +2819,11 @@ def refund_rental_invoice(
             payment_method=payload.payment_method,
             notes=payload.notes,
             user=current_user,
+            idempotency_key=operation_key,
         )
     except SquareRequestError as exc:
+        mark_operation_failed(operation, str(exc), unknown=exc.indeterminate)
+        db.commit()
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
 
     if invoice.rental:
@@ -2819,6 +2846,11 @@ def refund_rental_invoice(
         "REFUND_RENTAL_INVOICE",
         current_user,
         {"amount": str(amount), "method": result["method"], "refund_status": invoice.refund_status},
+    )
+    mark_operation_succeeded(
+        operation,
+        provider_reference=result["square_refund_id"],
+        response_data={"invoice_id": invoice.id, "square_refund_id": result["square_refund_id"]},
     )
     db.commit()
     db.refresh(invoice)
