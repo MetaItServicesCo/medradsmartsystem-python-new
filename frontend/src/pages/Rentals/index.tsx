@@ -75,6 +75,7 @@ import {
   type RentalDiscountPackage,
   type RentalDiscountPackagePayload,
   type RentalFacilityCustomer,
+  type RentalSecondaryRecipient,
   type BillingFrequency,
   type RentalStatus,
   type RentalInvoiceStatus,
@@ -306,6 +307,28 @@ const apiErrorMessage = (error: any, fallback: string) => {
   return fallback
 }
 
+const parseSecondaryRecipient = (value: string): RentalSecondaryRecipient | null => {
+  const trimmed = value.trim()
+  const addressMatch = trimmed.match(/^(.*?)\s*<([^<>]+)>$/)
+  const email = (addressMatch?.[2] || trimmed).trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null
+  const name = (addressMatch?.[1] || '').trim() || email.split('@')[0]
+  return { user_id: null, name, email }
+}
+
+const uniqueSecondaryRecipients = (
+  recipients: RentalSecondaryRecipient[],
+  primaryEmail: string,
+) => {
+  const seen = new Set([primaryEmail.trim().toLowerCase()])
+  return recipients.filter(recipient => {
+    const key = recipient.email.trim().toLowerCase()
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 interface RentalItemForm {
   key: string
   part_id: number | null
@@ -330,6 +353,7 @@ interface RentalAgreementFormState {
   customer_name: string
   customer_email: string
   customer_phone: string
+  secondary_recipients: RentalSecondaryRecipient[]
   customer_address: string
   delivery_street: string
   delivery_city: string
@@ -358,6 +382,7 @@ const emptyAgreement = (): RentalAgreementFormState => ({
   customer_name: '',
   customer_email: '',
   customer_phone: '',
+  secondary_recipients: [],
   customer_address: '',
   delivery_street: '',
   delivery_city: '',
@@ -764,6 +789,13 @@ const Rentals = () => {
   const selectedFacilityCustomer = facilityCustomers.find(
     customer => customer.id === agreementForm.customer_user_id,
   ) || null
+  const secondaryRecipientOptions: RentalSecondaryRecipient[] = facilityCustomers
+    .filter(customer => customer.id !== agreementForm.customer_user_id)
+    .map(customer => ({
+      user_id: customer.id,
+      name: customer.full_name,
+      email: customer.email,
+    }))
   const parts = partsQ.data?.items || []
   const rentals = rentalsQ.data?.items || []
   const totalRentals = rentalsQ.data?.total || 0
@@ -851,6 +883,7 @@ const Rentals = () => {
     customer_name: agreementForm.customer_name.trim(),
     customer_email: agreementForm.customer_email.trim(),
     customer_phone: digitsOnly(agreementForm.customer_phone),
+    secondary_recipients: agreementForm.secondary_recipients,
     customer_address: composeDeliveryAddress(agreementForm.delivery_street, agreementForm.delivery_city, agreementForm.delivery_state, agreementForm.delivery_zip) || agreementForm.customer_address.trim(),
     delivery_street: agreementForm.delivery_street.trim() || null,
     delivery_city: agreementForm.delivery_city.trim() || null,
@@ -1083,6 +1116,7 @@ const Rentals = () => {
       customer_name: rental.customer_name,
       customer_email: rental.customer_email,
       customer_phone: formatUSPhoneInput(rental.customer_phone),
+      secondary_recipients: rental.secondary_recipients || [],
       customer_address: rental.customer_address,
       delivery_street: rental.delivery_street || '',
       delivery_city: rental.delivery_city || '',
@@ -1125,7 +1159,7 @@ const Rentals = () => {
 
   const syncCustomerFromFacility = (facility: Facility | null) => {
     setAgreementForm(prev => {
-      if (!facility) return { ...prev, facility_id: null, customer_user_id: null }
+      if (!facility) return { ...prev, facility_id: null, customer_user_id: null, secondary_recipients: [] }
       const street = [facility.billing_street || facility.address, facility.billing_suite || facility.suite].filter(Boolean).join(', ')
       const city = facility.billing_city || facility.city || ''
       const state = facility.billing_state || facility.state || ''
@@ -1134,6 +1168,7 @@ const Rentals = () => {
         ...prev,
         facility_id: facility.id || null,
         customer_user_id: null,
+        secondary_recipients: [],
         customer_name: facility.billing_name || facility.name || '',
         customer_email: facility.billing_email || facility.email || '',
         customer_phone: facility.phone ? formatUSPhoneInput(facility.phone) : '',
@@ -2456,6 +2491,7 @@ const Rentals = () => {
                 ...previous,
                 facility_id: facilityId ? Number(facilityId) : null,
                 customer_user_id: null,
+                secondary_recipients: [],
               }))}
               onFacilityChange={syncCustomerFromFacility}
             />
@@ -2472,6 +2508,10 @@ const Rentals = () => {
                   customer_name: customer?.full_name || previous.customer_name,
                   customer_email: customer?.email || previous.customer_email,
                   customer_phone: customer?.phone ? formatUSPhoneInput(customer.phone) : previous.customer_phone,
+                  secondary_recipients: uniqueSecondaryRecipients(
+                    previous.secondary_recipients.filter(recipient => recipient.user_id !== customer?.id),
+                    customer?.email || previous.customer_email,
+                  ),
                 }))}
                 renderInput={params => (
                   <TextField
@@ -2486,8 +2526,74 @@ const Rentals = () => {
               />
             ) : null}
             <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
-            <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
+            <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({
+              ...prev,
+              customer_email: e.target.value,
+              secondary_recipients: uniqueSecondaryRecipients(prev.secondary_recipients, e.target.value),
+            }))} />
             <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
+            <Autocomplete<RentalSecondaryRecipient, true, false, true>
+              multiple
+              freeSolo
+              filterSelectedOptions
+              options={secondaryRecipientOptions}
+              value={agreementForm.secondary_recipients}
+              getOptionLabel={option => typeof option === 'string' ? option : `${option.name} <${option.email}>`}
+              isOptionEqualToValue={(option, value) => (
+                typeof option !== 'string'
+                && typeof value !== 'string'
+                && option.email.toLowerCase() === value.email.toLowerCase()
+              )}
+              onChange={(_, values) => {
+                let invalidAddress = false
+                const recipients = values.flatMap(value => {
+                  if (typeof value !== 'string') return [value]
+                  const parsed = parseSecondaryRecipient(value)
+                  if (!parsed) invalidAddress = true
+                  return parsed ? [parsed] : []
+                })
+                if (invalidAddress) toast.error('Enter a valid email, or use Name <email@example.com>')
+                setAgreementForm(previous => ({
+                  ...previous,
+                  secondary_recipients: uniqueSecondaryRecipients(recipients, previous.customer_email),
+                }))
+              }}
+              renderOption={(props, option) => {
+                if (typeof option === 'string') return <li {...props}>{option}</li>
+                return (
+                  <li {...props}>
+                    <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: '#EDE9FE', color: '#6D28D9', fontSize: 13, fontWeight: 800 }}>
+                      {(option.name || option.email).slice(0, 1).toUpperCase()}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ color: '#1E1B4B', fontWeight: 750, lineHeight: 1.2 }}>{option.name}</Typography>
+                      <Typography sx={{ color: '#64748B', fontSize: 12 }}>{option.email}</Typography>
+                    </Box>
+                  </li>
+                )
+              }}
+              renderTags={(recipients, getTagProps) => recipients.map((recipient, index) => {
+                const { key, ...tagProps } = getTagProps({ index })
+                return (
+                  <Chip
+                    key={key}
+                    {...tagProps}
+                    avatar={<Avatar>{(recipient.name || recipient.email).slice(0, 1).toUpperCase()}</Avatar>}
+                    label={`${recipient.name} · ${recipient.email}`}
+                    sx={{ maxWidth: 320, bgcolor: '#F3E8FF', color: '#5B21B6', fontWeight: 700 }}
+                  />
+                )
+              })}
+              renderInput={params => (
+                <TextField
+                  {...params}
+                  label="Secondary recipients"
+                  placeholder={agreementForm.secondary_recipients.length ? 'Add another recipient' : 'Search facility users or type an email'}
+                  helperText="Optional. Select attached users by name/email, or type an external email and press Enter."
+                />
+              )}
+              sx={{ gridColumn: '1 / -1' }}
+            />
             <TextField label="Delivery Street Address *" value={agreementForm.delivery_street} onChange={e => setDeliveryField('delivery_street', e.target.value)} sx={{ gridColumn: '1 / -1' }} />
             <TextField label="City *" value={agreementForm.delivery_city} onChange={e => setDeliveryField('delivery_city', e.target.value)} />
             <TextField label="State *" value={agreementForm.delivery_state} onChange={e => setDeliveryField('delivery_state', e.target.value)} />
@@ -2497,8 +2603,23 @@ const Rentals = () => {
           </Box>
 
           <Divider sx={{ my: 3 }} />
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Rental Products</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25, mb: 2, alignItems: 'start', '& .MuiOutlinedInput-root': { minHeight: 44 }, '& .MuiInputBase-input': { py: 1.25 } }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 1.25, mb: 1.5 }}>
+            <Box>
+              <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Rental Products</Typography>
+              <Typography sx={{ color: '#64748B', fontSize: 13 }}>Select a product, complete its pricing and fees, then add it to the agreement.</Typography>
+            </Box>
+            <Button
+              startIcon={<AddIcon />}
+              variant="contained"
+              onClick={addRentalItem}
+              disabled={!itemDraft.part_id}
+              sx={{ borderRadius: '12px', fontWeight: 900, minHeight: 42, px: 2.5, whiteSpace: 'nowrap', alignSelf: { xs: 'stretch', sm: 'center' } }}
+            >
+              Add product
+            </Button>
+          </Box>
+          <Box sx={{ p: { xs: 1.5, sm: 2 }, mb: 2, bgcolor: '#FAFBFF', border: '1px solid #E8EAF5', borderRadius: '16px' }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25, alignItems: 'start', '& .MuiOutlinedInput-root': { minHeight: 44 }, '& .MuiInputBase-input': { py: 1.25 } }}>
             <Box sx={{ gridColumn: { xs: '1 / -1', md: 'span 2' } }}>
               <PartSearchAutocomplete<RentalPart>
                 label="Rental product"
@@ -2527,7 +2648,7 @@ const Rentals = () => {
             <TextField label="Labor" type="number" value={itemDraft.labor_fee} onChange={e => setItemDraft(prev => ({ ...prev, labor_fee: Number(e.target.value) }))} />
             <TextField label="Removal / Pickup" type="number" value={itemDraft.removal_fee} onChange={e => setItemDraft(prev => ({ ...prev, removal_fee: Number(e.target.value) }))} />
             <TextField label="Security Deposit" type="number" value={itemDraft.security_deposit} onChange={e => setItemDraft(prev => ({ ...prev, security_deposit: Number(e.target.value) }))} helperText="Per unit" />
-            <Button startIcon={<AddIcon />} variant="contained" onClick={addRentalItem} sx={{ borderRadius: '12px', fontWeight: 900, minHeight: 40, height: 40, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add product</Button>
+            </Box>
           </Box>
 
           <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '16px', overflowX: 'auto' }}>

@@ -80,6 +80,10 @@ class Rental(Base):
     customer_name = Column(String, nullable=False)
     customer_email = Column(String, nullable=False)
     customer_phone = Column(String, nullable=False)
+    # Additional agreement recipients are stored as structured delivery metadata.
+    # Each entry contains user_id (when internal), name, and email; the primary
+    # customer remains the signer/payer and is stored in the columns above.
+    secondary_recipients = Column(JSON, nullable=False, default=list)
     # customer_address is the composed single-line delivery address (also used on the
     # invoice). The structured parts below are the source of truth; customer_address is
     # rebuilt from them on save so every existing reader keeps working unchanged.

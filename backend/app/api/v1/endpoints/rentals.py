@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -74,7 +74,7 @@ from app.utils.rental_billing import (
     RENTAL_TAX_FACTOR,
 )
 from app.utils.rental_extensions import current_extension, extension_response
-from app.utils.notifications import create_notification
+from app.utils.notifications import create_notification, create_notifications
 from app.utils.permissions import has_module_permission
 from app.utils.list_search import (
     contains_ci,
@@ -129,12 +129,21 @@ class RentalItemIn(BaseModel):
     initial_meter_reading: Optional[str] = None
 
 
+class RentalSecondaryRecipientIn(BaseModel):
+    """An additional agreement recipient, either a facility user or external email."""
+
+    user_id: Optional[int] = None
+    name: Optional[str] = Field(default=None, max_length=150)
+    email: EmailStr
+
+
 class RentalCreate(BaseModel):
     facility_id: Optional[int] = None
     customer_user_id: Optional[int] = None
     customer_name: str
     customer_email: EmailStr
     customer_phone: str
+    secondary_recipients: list[RentalSecondaryRecipientIn] = Field(default_factory=list, max_length=25)
     # Legacy single-line address is still accepted; structured parts (preferred) compose it.
     customer_address: Optional[str] = None
     delivery_street: Optional[str] = None
@@ -175,6 +184,7 @@ class RentalUpdate(BaseModel):
     customer_name: Optional[str] = None
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
+    secondary_recipients: Optional[list[RentalSecondaryRecipientIn]] = Field(default=None, max_length=25)
     customer_address: Optional[str] = None
     delivery_street: Optional[str] = None
     delivery_city: Optional[str] = None
@@ -478,6 +488,7 @@ def _rental_response(rental: Rental) -> dict[str, Any]:
         "customer_name": rental.customer_name,
         "customer_email": rental.customer_email,
         "customer_phone": rental.customer_phone,
+        "secondary_recipients": rental.secondary_recipients or [],
         "customer_address": rental.customer_address,
         "delivery_street": rental.delivery_street,
         "delivery_city": rental.delivery_city,
@@ -975,6 +986,61 @@ def _resolve_rental_customer(
     return facility, customer
 
 
+def _normalize_secondary_recipients(
+    db: Session,
+    facility_id: Optional[int],
+    primary_email: Optional[str],
+    recipients: Optional[list[RentalSecondaryRecipientIn]],
+) -> list[dict[str, Any]]:
+    """Canonicalize, scope, and de-duplicate additional rental recipients.
+
+    User-backed recipients must belong to the selected facility. External
+    recipients are identified by email and never matched by display name.
+    """
+    requested = recipients or []
+    user_ids = {recipient.user_id for recipient in requested if recipient.user_id is not None}
+    eligible_users: dict[int, User] = {}
+    if user_ids:
+        if facility_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Choose a facility before adding attached users as secondary recipients",
+            )
+        eligible_users = {
+            user.id: user
+            for user in _eligible_rental_customer_query(db, facility_id)
+            .filter(User.id.in_(user_ids))
+            .all()
+        }
+        missing = user_ids - set(eligible_users)
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail="One or more secondary recipients are not active users attached to this facility",
+            )
+
+    normalized: list[dict[str, Any]] = []
+    seen = {(primary_email or "").strip().casefold()}
+    for recipient in requested:
+        attached_user = eligible_users.get(recipient.user_id) if recipient.user_id is not None else None
+        email = (attached_user.email if attached_user else str(recipient.email)).strip()
+        email_key = email.casefold()
+        if not email_key or email_key in seen:
+            continue
+        seen.add(email_key)
+        name = (
+            attached_user.full_name
+            if attached_user
+            else ((recipient.name or "").strip() or email.split("@", 1)[0])
+        )
+        normalized.append({
+            "user_id": attached_user.id if attached_user else None,
+            "name": name,
+            "email": email,
+        })
+    return normalized
+
+
 @router.get("/discount-packages")
 def list_rental_discount_packages(
     db: Session = Depends(get_db),
@@ -1330,32 +1396,61 @@ def send_rental_portal_link(
     rental.portal_sent_at = now
     rental.updated_at = now
     link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/rental/{token}"
-    _append_history(rental, "portal_link_sent", current_user, {"expires_at": rental.token_expires_at.isoformat()})
+    recipients = [
+        {
+            "user_id": rental.customer_user_id,
+            "name": rental.customer_name,
+            "email": rental.customer_email,
+        },
+        *(rental.secondary_recipients or []),
+    ]
+    _append_history(rental, "portal_link_sent", current_user, {
+        "expires_at": rental.token_expires_at.isoformat(),
+        "recipient_count": len(recipients),
+        "recipients": [recipient["email"] for recipient in recipients],
+    })
     first_invoice = db.query(Invoice).filter(Invoice.rental_id == rental.id).order_by(Invoice.id.asc()).first()
     if first_invoice:
         add_invoice_transaction(
             db, first_invoice, "portal_link_sent", 0, None,
-            f"Rental portal link emailed to {rental.customer_email}", current_user, "SEND",
+            f"Rental portal link emailed to {len(recipients)} recipient(s)", current_user, "SEND",
         )
+    notification_user_ids = {
+        int(recipient["user_id"])
+        for recipient in recipients
+        if recipient.get("user_id") is not None
+    }
+    create_notifications(
+        db,
+        user_ids=notification_user_ids,
+        title=f"Rental agreement {rental.rental_number} is ready",
+        message="Review the agreement, then sign and pay the initial invoice.",
+        notification_type="rental_agreement",
+        link_url=f"/rentals/account/{rental.id}",
+        actor_id=current_user.id,
+    )
     log_activity(db, "rentals", rental.id, "SEND_PORTAL", current_user, {})
     db.commit()
 
-    background_tasks.add_task(
-        send_html_email,
-        [rental.customer_email],
-        f"Your rental agreement {rental.rental_number}",
-        (
-            f"<p>Hello {rental.customer_name},</p>"
-            f"<p>Your rental agreement <strong>{rental.rental_number}</strong> is ready.</p>"
-            f"<p><a href=\"{link}\">View your agreement, save a card on file, and pay invoices</a></p>"
-            f"<p>This secure link expires on {rental.token_expires_at.strftime('%B %d, %Y')}.</p>"
-        ),
-        (
-            f"Hello {rental.customer_name},\n\nYour rental agreement {rental.rental_number} is ready.\n"
-            f"{link}\n\nThis link expires on {rental.token_expires_at.strftime('%B %d, %Y')}."
-        ),
-    )
-    return {"detail": "Portal link sent", "link": link}
+    # Send separately so recipients never see each other's email addresses.
+    for recipient in recipients:
+        recipient_name = recipient.get("name") or "there"
+        background_tasks.add_task(
+            send_html_email,
+            [recipient["email"]],
+            f"Your rental agreement {rental.rental_number}",
+            (
+                f"<p>Hello {recipient_name},</p>"
+                f"<p>Rental agreement <strong>{rental.rental_number}</strong> is ready.</p>"
+                f"<p><a href=\"{link}\">View the agreement, save a card on file, and pay invoices</a></p>"
+                f"<p>This secure link expires on {rental.token_expires_at.strftime('%B %d, %Y')}.</p>"
+            ),
+            (
+                f"Hello {recipient_name},\n\nRental agreement {rental.rental_number} is ready.\n"
+                f"{link}\n\nThis link expires on {rental.token_expires_at.strftime('%B %d, %Y')}."
+            ),
+        )
+    return {"detail": f"Portal link sent to {len(recipients)} recipient(s)", "link": link}
 
 
 def _apply_extension_offer(
@@ -1812,6 +1907,12 @@ def create_rental(
         payload.facility_id,
         payload.customer_user_id,
     )
+    secondary_recipients = _normalize_secondary_recipients(
+        db,
+        facility.id if facility else None,
+        str(payload.customer_email),
+        payload.secondary_recipients,
+    )
 
     deposit = _aggregate_item_deposits(item_rows)
     delivery_address = _compose_delivery_address(
@@ -1828,6 +1929,7 @@ def create_rental(
         customer_name=payload.customer_name,
         customer_email=str(payload.customer_email),
         customer_phone=payload.customer_phone,
+        secondary_recipients=secondary_recipients,
         customer_address=delivery_address,
         delivery_street=(payload.delivery_street or "").strip() or None,
         delivery_city=(payload.delivery_city or "").strip() or None,
@@ -1862,6 +1964,7 @@ def create_rental(
         "items": len(item_rows),
         "facility_id": rental.facility_id,
         "customer_user_id": rental.customer_user_id,
+        "secondary_recipient_count": len(secondary_recipients),
     })
     db.add(rental)
     db.flush()
@@ -1935,7 +2038,7 @@ def update_rental(
         resolved_committed,
     )
 
-    update_data = payload.model_dump(exclude_unset=True, exclude={"items"})
+    update_data = payload.model_dump(exclude_unset=True, exclude={"items", "secondary_recipients"})
 
     # A signed contract must remain identical to the snapshot accepted by the
     # customer. Operational status can still be managed through the normal
@@ -1963,6 +2066,22 @@ def update_rental(
         resolved_facility_id,
         resolved_customer_id,
     )
+    if "secondary_recipients" in payload.model_fields_set:
+        resolved_primary_email = (
+            payload.customer_email
+            if "customer_email" in payload.model_fields_set
+            else rental.customer_email
+        )
+        update_data["secondary_recipients"] = _normalize_secondary_recipients(
+            db,
+            facility.id if facility else None,
+            resolved_primary_email,
+            payload.secondary_recipients,
+        )
+    elif facility_changed:
+        # Attached recipients are facility scoped and cannot follow an agreement
+        # to another facility implicitly.
+        update_data["secondary_recipients"] = []
     if facility_changed:
         update_data["facility_id"] = facility.id if facility else None
         if not customer_changed:

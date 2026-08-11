@@ -91,6 +91,12 @@ export interface RentalItem {
   item_status: RentalItemStatus
 }
 
+export interface RentalSecondaryRecipient {
+  user_id: number | null
+  name: string
+  email: string
+}
+
 export interface Rental {
   id: number
   rental_number: string
@@ -135,6 +141,7 @@ export interface Rental {
   customer_name: string
   customer_email: string
   customer_phone: string
+  secondary_recipients: RentalSecondaryRecipient[]
   customer_address: string
   delivery_street: string | null
   delivery_city: string | null
@@ -261,6 +268,7 @@ export interface RentalPayload {
   customer_name: string
   customer_email: string
   customer_phone: string
+  secondary_recipients?: RentalSecondaryRecipient[]
   customer_address: string
   delivery_street: string | null
   delivery_city: string | null

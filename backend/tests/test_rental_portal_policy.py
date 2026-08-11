@@ -7,8 +7,10 @@ from fastapi import HTTPException
 from app.api.v1.endpoints.rental_portal import _is_rental_account_user, _pricing_view, _require_signed
 from app.api.v1.endpoints.rentals import (
     RentalDiscountPackageIn,
+    RentalSecondaryRecipientIn,
     _discount_package_values,
     _is_rental_customer_user,
+    _normalize_secondary_recipients,
     _require_internal_rental_operator,
 )
 from app.models.user import UserRole
@@ -92,6 +94,25 @@ def test_discount_package_normalizes_name_and_keeps_reusable_pricing_rules() -> 
         "continue_after": True,
         "requires_saved_card": True,
     }
+
+
+def test_external_secondary_recipients_are_canonicalized_and_deduplicated() -> None:
+    recipients = _normalize_secondary_recipients(
+        None,
+        None,
+        "primary@example.com",
+        [
+            RentalSecondaryRecipientIn(name=" Billing Team ", email="billing@example.com"),
+            RentalSecondaryRecipientIn(name="Duplicate", email="BILLING@example.com"),
+            RentalSecondaryRecipientIn(name="Primary", email="PRIMARY@example.com"),
+        ],
+    )
+
+    assert recipients == [{
+        "user_id": None,
+        "name": "Billing Team",
+        "email": "billing@example.com",
+    }]
 
 
 def test_discount_package_rejects_invalid_value_and_single_invoice_cannot_continue() -> None:
