@@ -505,10 +505,9 @@ const calculateInitialRentalPricing = (
   if (agreement.discount_type && agreement.discount_invoice_number !== '' && Number(agreement.discount_invoice_number) === 1) {
     offeredDiscount = agreement.discount_type === 'percent'
       ? roundRentalMoney(rental * Number(agreement.discount_value || 0) / 100)
-      : Math.min(rental, roundRentalMoney(Number(agreement.discount_value || 0)))
+      : roundRentalMoney(Number(agreement.discount_value || 0))
   }
   const discountEligible = !agreement.discount_requires_card || cardAuthorizedScenario
-  const discount = discountEligible ? offeredDiscount : 0
 
   // Match the authoritative backend and Sales: tax the full eligible rental
   // and logistics amounts first, then subtract the discount from the total.
@@ -520,6 +519,10 @@ const calculateInitialRentalPricing = (
   const removalTax = taxableTotal > 0 ? roundRentalMoney(tax * removal / taxableTotal) : 0
   const setupTax = roundRentalMoney(tax - rentalTax - shippingTax - removalTax)
   const subtotal = roundRentalMoney(rental + deposit + shipping + setup + labor + removal)
+  // Flat discounts are invoice-level amounts, not rental-line discounts. Cap
+  // the eligible discount only against the complete post-tax invoice balance.
+  const preDiscountTotal = roundRentalMoney(Math.max(0, subtotal + tax))
+  const discount = discountEligible ? Math.min(offeredDiscount, preDiscountTotal) : 0
 
   return {
     rental,
@@ -537,7 +540,7 @@ const calculateInitialRentalPricing = (
     setupTax,
     removalTax,
     subtotal,
-    total: roundRentalMoney(Math.max(0, subtotal + tax - discount)),
+    total: roundRentalMoney(preDiscountTotal - discount),
   }
 }
 

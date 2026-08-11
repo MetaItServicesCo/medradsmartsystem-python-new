@@ -156,7 +156,11 @@ def _discount_invoice_number(rental: Rental) -> Optional[int]:
 def _discount_value_for_base(rental: Rental, base: Decimal) -> Decimal:
     if rental.discount_type == RentalDiscountType.PERCENT.value:
         return (base * _money(rental.discount_value) / Decimal("100")).quantize(Decimal("0.01"))
-    return min(base, _money(rental.discount_value))
+    # A flat discount is an invoice-level dollar amount. Do not cap it to the
+    # rental line here because the first invoice can also contain deposits,
+    # logistics, and labor. The final amount calculators cap it against the
+    # complete post-tax invoice balance so an invoice can never become negative.
+    return _money(rental.discount_value)
 
 
 def _offered_period_discount(rental: Rental, period_index: int, base: Decimal) -> Decimal:
@@ -167,7 +171,7 @@ def _offered_period_discount(rental: Rental, period_index: int, base: Decimal) -
     mode = getattr(rental, "discount_application_mode", None) or "single_invoice"
     if mode == "commitment":
         if period_index == target:
-            return min(base, unit_discount * target)
+            return unit_discount * target
         if period_index > target and bool(getattr(rental, "discount_continue", False)):
             return unit_discount
         return Decimal("0")
@@ -210,7 +214,9 @@ def _recurring_invoice_amounts(rental: Rental, period_index: int, *, include_con
     rental_total, discount, conditional = _period_amounts(rental, period_index, include_conditional=include_conditional)
     taxable_rental = max(Decimal("0"), rental_total)
     tax = (taxable_rental * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
-    total = max(Decimal("0"), rental_total + tax - discount)
+    pre_discount_total = max(Decimal("0"), rental_total + tax)
+    discount = min(max(Decimal("0"), discount), pre_discount_total)
+    total = pre_discount_total - discount
     return {
         "rental": rental_total,
         "discount": discount,
@@ -304,7 +310,9 @@ def _initial_invoice_amounts(rental: Rental, *, include_conditional: bool = Fals
     taxable_total = taxable_rental + shipping_total + setup_total + removal_total
     tax = (taxable_total * RENTAL_TAX_FACTOR).quantize(Decimal("0.01"))
     subtotal = rental_total + deposit + shipping_total + setup_total + labor_total + removal_total
-    total = max(Decimal("0"), subtotal + tax - discount)
+    pre_discount_total = max(Decimal("0"), subtotal + tax)
+    discount = min(max(Decimal("0"), discount), pre_discount_total)
+    total = pre_discount_total - discount
     return {
         "rental": rental_total,
         "deposit": deposit,

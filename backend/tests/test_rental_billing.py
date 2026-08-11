@@ -124,6 +124,94 @@ def test_initial_invoice_discount_is_applied_after_tax():
     assert amounts["total"] == Decimal("200.72")
 
 
+def test_flat_discount_uses_full_initial_invoice_balance_not_only_rent():
+    rental = SimpleNamespace(
+        items=[_item("16.67", 1, "50", "50", "50", removal="50")],
+        security_deposit=Decimal("50"),
+        discount_type="flat",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=1,
+        discount_apply_after_periods=0,
+        discount_continue=False,
+        discount_requires_card=False,
+        auto_charge_authorized_at=None,
+    )
+
+    amounts = _initial_invoice_amounts(rental)
+
+    assert amounts["rental"] == Decimal("16.67")
+    assert amounts["discount"] == Decimal("20.00")
+    assert amounts["subtotal"] == Decimal("266.67")
+    assert amounts["tax"] == Decimal("13.75")
+    assert amounts["total"] == Decimal("260.42")
+
+
+def test_flat_discount_stays_conditional_until_saved_card_authorization():
+    rental = SimpleNamespace(
+        items=[_item("16.67", 1, "50", "50", "50", removal="50")],
+        security_deposit=Decimal("50"),
+        discount_type="flat",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=1,
+        discount_apply_after_periods=0,
+        discount_continue=False,
+        discount_requires_card=True,
+        auto_charge_authorized_at=None,
+    )
+
+    without_card = _initial_invoice_amounts(rental)
+    with_card_preview = _initial_invoice_amounts(rental, include_conditional=True)
+
+    assert without_card["discount"] == Decimal("0.00")
+    assert without_card["total"] == Decimal("280.42")
+    assert without_card["discount_conditional"] is True
+    assert with_card_preview["discount"] == Decimal("20.00")
+    assert with_card_preview["total"] == Decimal("260.42")
+
+
+def test_flat_discount_is_capped_only_by_complete_recurring_invoice_total():
+    rental = SimpleNamespace(
+        items=[_item("16.67", 1, "0", "0", "0")],
+        discount_type="flat",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=2,
+        discount_apply_after_periods=1,
+        discount_continue=False,
+        discount_requires_card=False,
+        auto_charge_authorized_at=None,
+    )
+
+    amounts = _recurring_invoice_amounts(rental, 2)
+
+    assert amounts["tax"] == Decimal("1.38")
+    assert amounts["discount"] == Decimal("18.05")
+    assert amounts["total"] == Decimal("0.00")
+
+
+def test_percent_discount_remains_based_on_rental_amount_and_applies_after_tax():
+    rental = SimpleNamespace(
+        items=[_item("16.67", 1, "50", "50", "50", removal="50")],
+        security_deposit=Decimal("50"),
+        discount_type="percent",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=1,
+        discount_apply_after_periods=0,
+        discount_continue=False,
+        discount_requires_card=False,
+        auto_charge_authorized_at=None,
+    )
+
+    amounts = _initial_invoice_amounts(rental)
+
+    assert amounts["discount"] == Decimal("3.33")
+    assert amounts["tax"] == Decimal("13.75")
+    assert amounts["total"] == Decimal("277.09")
+
+
 def test_projected_schedule_contains_first_invoice_and_remaining_periods():
     rental = SimpleNamespace(
         items=[_item("100", 1, "10", "20", "30")],
