@@ -723,7 +723,9 @@ def _discount_package_values(payload: RentalDiscountPackageIn) -> dict[str, Any]
         "discount_value": value,
         "application_mode": payload.application_mode,
         "invoice_number": payload.invoice_number,
-        "continue_after": bool(payload.continue_after) if payload.application_mode == "commitment" else False,
+        # Continuing future-period discounts is valid for both the standard
+        # and catch-up schedules. The mode controls invoice N only.
+        "continue_after": bool(payload.continue_after),
         "requires_saved_card": bool(payload.requires_saved_card),
     }
 

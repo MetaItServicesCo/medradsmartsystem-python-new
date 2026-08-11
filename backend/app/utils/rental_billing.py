@@ -172,10 +172,14 @@ def _offered_period_discount(rental: Rental, period_index: int, base: Decimal) -
     if mode == "commitment":
         if period_index == target:
             return unit_discount * target
-        if period_index > target and bool(getattr(rental, "discount_continue", False)):
-            return unit_discount
-        return Decimal("0")
-    return unit_discount if period_index == target else Decimal("0")
+    elif period_index == target:
+        return unit_discount
+    # Continuation is independent of whether invoice N receives a standard or
+    # catch-up discount. Once N has passed, every later period receives the
+    # normal per-period discount when continuation was selected.
+    if period_index > target and bool(getattr(rental, "discount_continue", False)):
+        return unit_discount
+    return Decimal("0")
 
 
 def _discount_authorized(rental: Rental) -> bool:

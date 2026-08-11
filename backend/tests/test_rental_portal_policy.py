@@ -127,7 +127,7 @@ def test_secondary_recipients_require_a_facility() -> None:
     assert "facility" in str(error.value.detail).lower()
 
 
-def test_discount_package_rejects_invalid_value_and_single_invoice_cannot_continue() -> None:
+def test_discount_package_rejects_invalid_value_and_preserves_future_continuation() -> None:
     with pytest.raises(HTTPException) as error:
         _discount_package_values(RentalDiscountPackageIn(
             name="Invalid",
@@ -145,4 +145,4 @@ def test_discount_package_rejects_invalid_value_and_single_invoice_cannot_contin
         continue_after=True,
         requires_saved_card=False,
     ))
-    assert values["continue_after"] is False
+    assert values["continue_after"] is True

@@ -952,7 +952,7 @@ const Rentals = () => {
     discount_value: normalizeMoneyInput(agreementForm.discount_value),
     application_mode: agreementForm.discount_application_mode,
     invoice_number: Number(agreementForm.discount_invoice_number || 1),
-    continue_after: agreementForm.discount_application_mode === 'commitment' && agreementForm.discount_continue,
+    continue_after: agreementForm.discount_continue,
     requires_saved_card: agreementForm.discount_requires_card,
   })
 
@@ -2788,15 +2788,15 @@ const Rentals = () => {
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '130px 90px minmax(150px, 1fr)', gap: 0.75 }}>
-                      <TextField fullWidth size="small" select aria-label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent', discount_value: e.target.value ? prev.discount_value : 0, discount_invoice_number: e.target.value ? (prev.discount_invoice_number || 1) : '', discount_apply_after_periods: e.target.value ? (prev.discount_apply_after_periods || 0) : '' }))}>
+                      <TextField fullWidth size="small" select aria-label="Discount type" value={agreementForm.discount_type} onChange={e => setAgreementForm(prev => ({ ...prev, discount_type: e.target.value as '' | 'flat' | 'percent', discount_value: e.target.value ? prev.discount_value : 0, discount_invoice_number: e.target.value ? (prev.discount_invoice_number || 1) : '', discount_apply_after_periods: e.target.value ? (prev.discount_apply_after_periods || 0) : '', discount_continue: e.target.value ? (prev.discount_type ? prev.discount_continue : true) : false }))}>
                         <MenuItem value="">None</MenuItem>
                         <MenuItem value="flat">Flat</MenuItem>
                         <MenuItem value="percent">Percent</MenuItem>
                       </TextField>
                       <TextField fullWidth size="small" aria-label="Discount value" placeholder="Value" disabled={!agreementForm.discount_type} type="number" value={agreementForm.discount_type ? agreementForm.discount_value : ''} onChange={e => setAgreementForm(prev => ({ ...prev, discount_value: Number(e.target.value) }))} inputProps={{ min: 0, step: '0.01' }} />
-                      <TextField fullWidth size="small" aria-label="Discount schedule" disabled={!agreementForm.discount_type} select value={agreementForm.discount_application_mode} onChange={e => setAgreementForm(prev => ({ ...prev, discount_application_mode: e.target.value as 'single_invoice' | 'commitment', discount_continue: e.target.value === 'commitment' && prev.discount_continue }))}>
-                        <MenuItem value="single_invoice">Only invoice N</MenuItem>
-                        <MenuItem value="commitment">Accumulate through N</MenuItem>
+                      <TextField fullWidth size="small" aria-label="Discount schedule" disabled={!agreementForm.discount_type} select value={agreementForm.discount_application_mode} onChange={e => setAgreementForm(prev => ({ ...prev, discount_application_mode: e.target.value as 'single_invoice' | 'commitment' }))}>
+                        <MenuItem value="single_invoice">Standard at invoice N</MenuItem>
+                        <MenuItem value="commitment">Catch up through invoice N</MenuItem>
                       </TextField>
                     </Box>
                   </TableCell>
@@ -2804,7 +2804,7 @@ const Rentals = () => {
                     <TextField fullWidth size="small" disabled={!agreementForm.discount_type} type="number" value={agreementForm.discount_type ? agreementForm.discount_invoice_number : ''} onChange={e => setAgreementForm(prev => ({ ...prev, discount_invoice_number: e.target.value === '' ? '' : Number(e.target.value), discount_apply_after_periods: e.target.value === '' ? '' : Math.max(0, Number(e.target.value) - 1) }))} inputProps={{ min: 1, max: agreementForm.committed_periods || undefined }} />
                   </TableCell>
                   <TableCell align="center">
-                    <Checkbox disabled={!agreementForm.discount_type || agreementForm.discount_application_mode !== 'commitment'} checked={agreementForm.discount_continue} onChange={e => setAgreementForm(prev => ({ ...prev, discount_continue: e.target.checked }))} />
+                    <Checkbox disabled={!agreementForm.discount_type} checked={agreementForm.discount_continue} onChange={e => setAgreementForm(prev => ({ ...prev, discount_continue: e.target.checked }))} inputProps={{ 'aria-label': 'Apply discount to future invoices' }} />
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'grid', gap: 0.25 }}>
@@ -2828,6 +2828,11 @@ const Rentals = () => {
               : 'The end date is calculated automatically from the billing frequency and committed periods.'}
             {agreementForm.discount_type && agreementForm.discount_requires_card
               ? ' The discount remains conditional until the customer saves a card and authorizes automatic payments.'
+              : ''}
+            {agreementForm.discount_type
+              ? agreementForm.discount_continue
+                ? ' The normal discount continues on every invoice after the selected invoice.'
+                : ' The discount applies only to the selected invoice.'
               : ''}
           </Typography>
           <TextField label="Terms and Conditions" value={agreementForm.terms_and_conditions} onChange={e => setAgreementForm(prev => ({ ...prev, terms_and_conditions: e.target.value }))} multiline rows={2} fullWidth sx={{ mt: 2 }} />

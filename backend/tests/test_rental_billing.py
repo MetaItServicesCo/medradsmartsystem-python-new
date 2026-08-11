@@ -2,6 +2,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from app.utils.rental_billing import (
     _facility_id,
     _initial_invoice_amounts,
@@ -20,6 +22,36 @@ def _item(rate: str, quantity: int, shipping: str, setup: str, labor: str, remov
         labor_fee=Decimal(labor),
         removal_fee=Decimal(removal),
         security_deposit=Decimal("0"),
+    )
+
+
+def _discount_rental(
+    *,
+    discount_type: str,
+    discount_value: str,
+    target: int,
+    mode: str = "single_invoice",
+    continue_after: bool = False,
+    requires_card: bool = False,
+    authorized: bool = False,
+    rate: str = "100",
+    quantity: int = 1,
+):
+    return SimpleNamespace(
+        items=[_item(rate, quantity, "0", "0", "0")],
+        security_deposit=Decimal("0"),
+        discount_type=discount_type,
+        discount_value=Decimal(discount_value),
+        discount_application_mode=mode,
+        discount_invoice_number=target,
+        discount_apply_after_periods=target - 1,
+        discount_continue=continue_after,
+        discount_requires_card=requires_card,
+        auto_charge_authorized_at=datetime(2026, 1, 1) if authorized else None,
+        billing_frequency="monthly",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 5, 31),
+        committed_periods=5,
     )
 
 
@@ -188,6 +220,193 @@ def test_flat_discount_is_capped_only_by_complete_recurring_invoice_total():
 
     assert amounts["tax"] == Decimal("1.38")
     assert amounts["discount"] == Decimal("18.05")
+    assert amounts["total"] == Decimal("0.00")
+
+
+def test_standard_flat_discount_can_continue_on_every_future_invoice():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "0", "0", "0")],
+        security_deposit=Decimal("0"),
+        discount_type="flat",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=1,
+        discount_apply_after_periods=0,
+        discount_continue=True,
+        discount_requires_card=False,
+        auto_charge_authorized_at=None,
+    )
+
+    initial = _initial_invoice_amounts(rental)
+    second = _recurring_invoice_amounts(rental, 2)
+    third = _recurring_invoice_amounts(rental, 3)
+
+    assert initial["discount"] == Decimal("20.00")
+    assert second["discount"] == Decimal("20.00")
+    assert second["total"] == Decimal("88.25")
+    assert third["discount"] == Decimal("20.00")
+    assert third["total"] == Decimal("88.25")
+
+
+def test_standard_percent_discount_can_continue_after_saved_card_authorization():
+    rental = SimpleNamespace(
+        items=[_item("100", 1, "0", "0", "0")],
+        security_deposit=Decimal("0"),
+        discount_type="percent",
+        discount_value=Decimal("20"),
+        discount_application_mode="single_invoice",
+        discount_invoice_number=1,
+        discount_apply_after_periods=0,
+        discount_continue=True,
+        discount_requires_card=True,
+        auto_charge_authorized_at=datetime(2026, 1, 1),
+    )
+
+    second = _recurring_invoice_amounts(rental, 2)
+
+    assert second["discount"] == Decimal("20.00")
+    assert second["tax"] == Decimal("8.25")
+    assert second["total"] == Decimal("88.25")
+
+
+@pytest.mark.parametrize("discount_type", ["flat", "percent"])
+@pytest.mark.parametrize("target", [1, 3, 5])
+@pytest.mark.parametrize("continue_after", [False, True])
+def test_standard_discount_matrix_supports_any_invoice_and_optional_continuation(
+    discount_type: str,
+    target: int,
+    continue_after: bool,
+):
+    rental = _discount_rental(
+        discount_type=discount_type,
+        discount_value="20",
+        target=target,
+        continue_after=continue_after,
+    )
+
+    schedule = projected_billing_schedule(rental, include_conditional=False)
+    discounts = [period["discount"] for period in schedule]
+    totals = [period["total"] for period in schedule]
+    expected_discounts = [
+        Decimal("20.00") if period == target or (continue_after and period > target) else Decimal("0.00")
+        for period in range(1, 6)
+    ]
+
+    assert discounts == expected_discounts
+    assert totals == [
+        Decimal("88.25") if discount > 0 else Decimal("108.25")
+        for discount in expected_discounts
+    ]
+
+
+@pytest.mark.parametrize("discount_type", ["flat", "percent"])
+@pytest.mark.parametrize("continue_after", [False, True])
+def test_catch_up_discount_matrix_accumulates_at_n_then_optionally_continues(
+    discount_type: str,
+    continue_after: bool,
+):
+    rental = _discount_rental(
+        discount_type=discount_type,
+        discount_value="20",
+        target=3,
+        mode="commitment",
+        continue_after=continue_after,
+    )
+
+    schedule = projected_billing_schedule(rental, include_conditional=False)
+    expected_discounts = [
+        Decimal("0.00"),
+        Decimal("0.00"),
+        Decimal("60.00"),
+        Decimal("20.00") if continue_after else Decimal("0.00"),
+        Decimal("20.00") if continue_after else Decimal("0.00"),
+    ]
+
+    assert [period["discount"] for period in schedule] == expected_discounts
+    assert schedule[2]["total"] == Decimal("48.25")
+    assert schedule[3]["total"] == (Decimal("88.25") if continue_after else Decimal("108.25"))
+
+
+@pytest.mark.parametrize("discount_type", ["flat", "percent"])
+def test_card_required_discount_matrix_matches_preview_authorization_and_posted_invoices(discount_type: str):
+    rental = _discount_rental(
+        discount_type=discount_type,
+        discount_value="20",
+        target=2,
+        continue_after=True,
+        requires_card=True,
+    )
+
+    without_card = projected_billing_schedule(rental, include_conditional=False)
+    offered_preview = projected_billing_schedule(rental, include_conditional=True)
+    rental.auto_charge_authorized_at = datetime(2026, 1, 1)
+    authorized = projected_billing_schedule(rental, include_conditional=False)
+
+    assert [row["discount"] for row in without_card] == [Decimal("0.00")] * 5
+    assert [row["discount_conditional"] for row in without_card] == [False, True, True, True, True]
+    assert [row["discount"] for row in offered_preview] == [
+        Decimal("0.00"), Decimal("20.00"), Decimal("20.00"), Decimal("20.00"), Decimal("20.00"),
+    ]
+    assert [row["discount"] for row in authorized] == [
+        Decimal("0.00"), Decimal("20.00"), Decimal("20.00"), Decimal("20.00"), Decimal("20.00"),
+    ]
+    assert all(row["discount_conditional"] is False for row in authorized)
+
+
+@pytest.mark.parametrize(
+    ("discount_type", "discount_value", "expected_discount"),
+    [
+        ("flat", "25", Decimal("25.00")),
+        ("percent", "25", Decimal("50.00")),
+    ],
+)
+def test_discount_matrix_respects_quantity_for_flat_and_percentage_rules(
+    discount_type: str,
+    discount_value: str,
+    expected_discount: Decimal,
+):
+    rental = _discount_rental(
+        discount_type=discount_type,
+        discount_value=discount_value,
+        target=2,
+        rate="100",
+        quantity=2,
+    )
+
+    amounts = _recurring_invoice_amounts(rental, 2)
+
+    assert amounts["rental"] == Decimal("200.00")
+    assert amounts["tax"] == Decimal("16.50")
+    assert amounts["discount"] == expected_discount
+    assert amounts["total"] == Decimal("216.50") - expected_discount
+
+
+def test_percentage_discount_rounds_to_cents_and_is_subtracted_after_full_tax():
+    rental = _discount_rental(
+        discount_type="percent",
+        discount_value="33.33",
+        target=4,
+        rate="99.99",
+    )
+
+    amounts = _recurring_invoice_amounts(rental, 4)
+
+    assert amounts["tax"] == Decimal("8.25")
+    assert amounts["discount"] == Decimal("33.33")
+    assert amounts["total"] == Decimal("74.91")
+
+
+@pytest.mark.parametrize("discount_type", ["flat", "percent"])
+def test_excessive_discount_never_creates_negative_invoice(discount_type: str):
+    rental = _discount_rental(
+        discount_type=discount_type,
+        discount_value="500",
+        target=2,
+    )
+
+    amounts = _recurring_invoice_amounts(rental, 2)
+
+    assert amounts["discount"] == Decimal("108.25")
     assert amounts["total"] == Decimal("0.00")
 
 
