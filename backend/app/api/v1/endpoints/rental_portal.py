@@ -115,6 +115,15 @@ def _find_rental_for_account(
     return rental
 
 
+def _require_primary_account_recipient(rental: Rental, current_user: User) -> None:
+    """Keep agreement decisions and payments with the selected primary recipient."""
+    if rental.customer_user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the primary rental recipient can sign, pay, or manage this agreement",
+        )
+
+
 def _item_view(item: RentalItem) -> dict[str, Any]:
     return {
         "id": item.id,
@@ -258,7 +267,12 @@ def _store_card_result(rental: Rental, result: dict[str, Any], authorize_auto_ch
         rental.auto_charge_authorized_by = authorized_by
 
 
-def _portal_response(db: Session, rental: Rental) -> dict[str, Any]:
+def _portal_response(
+    db: Session,
+    rental: Rental,
+    *,
+    can_transact: bool = True,
+) -> dict[str, Any]:
     invoices = (
         db.query(Invoice)
         .filter(Invoice.rental_id == rental.id)
@@ -337,13 +351,15 @@ def _portal_response(db: Session, rental: Rental) -> dict[str, Any]:
         "company_name": "Mr. BioMed Tech Services",
         "agreement": _agreement_view(rental),
         "acceptance": _acceptance_view(rental.acceptance),
-        "can_sign": rental.acceptance is None,
+        "can_transact": can_transact,
+        "can_sign": can_transact and rental.acceptance is None,
         "invoices": [_invoice_view(invoice) for invoice in invoices],
         "billing_schedule": schedule,
         "next_payment": next_payment,
         "extension": extension_response(current_extension(rental)),
         "can_request_extension": bool(
-            rental.acceptance
+            can_transact
+            and rental.acceptance
             and rental.status == RentalStatus.ACTIVE
             and not any(item.status in OPEN_EXTENSION_STATUSES for item in (rental.extensions or []))
         ),
@@ -926,7 +942,11 @@ def account_view_rental(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     rental = _find_rental_for_account(db, rental_id, current_user)
-    return _portal_response(db, rental)
+    return _portal_response(
+        db,
+        rental,
+        can_transact=rental.customer_user_id == current_user.id,
+    )
 
 
 @router.post("/rentals/account/{rental_id}/extensions")
@@ -937,6 +957,7 @@ def account_request_rental_extension(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    _require_primary_account_recipient(rental, current_user)
     return _request_extension(
         rental,
         payload,
@@ -956,6 +977,7 @@ def account_accept_rental_extension(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    _require_primary_account_recipient(rental, current_user)
     extension = (
         db.query(RentalExtensionRequest)
         .filter(RentalExtensionRequest.id == extension_id, RentalExtensionRequest.rental_id == rental.id)
@@ -976,6 +998,7 @@ def account_cancel_rental_extension(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    _require_primary_account_recipient(rental, current_user)
     extension = (
         db.query(RentalExtensionRequest)
         .filter(RentalExtensionRequest.id == extension_id, RentalExtensionRequest.rental_id == rental.id)
@@ -1002,6 +1025,7 @@ def account_accept_rental(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    _require_primary_account_recipient(rental, current_user)
     return _accept_rental(rental, payload, request, db, current_user)
 
 
@@ -1013,4 +1037,5 @@ def account_pay_rental_invoice(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    _require_primary_account_recipient(rental, current_user)
     return _pay_rental_invoice(rental, payload, db, current_user)

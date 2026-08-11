@@ -235,7 +235,8 @@ const ClientRental = () => {
 
   const portal = portalQ.data
   const { agreement, acceptance, invoices, billing_schedule, next_payment, square, company_name, extension } = portal
-  const canPay = !isExtensionView && square.enabled && Boolean(square.application_id) && Boolean(square.location_id)
+  const canTransact = portal.can_transact !== false
+  const canPay = canTransact && !isExtensionView && square.enabled && Boolean(square.application_id) && Boolean(square.location_id)
   const initialInvoice = invoices[0]
   const initialInvoiceId = initialInvoice?.id
   const displayedInvoice = printInvoiceId
@@ -297,11 +298,11 @@ const ClientRental = () => {
         <Box className="rental-agreement-content">
         <CustomerDocumentProgress steps={[
           { label: 'Review agreement', complete: true },
-          { label: acceptance ? 'Agreement signed' : 'Sign agreement', complete: Boolean(acceptance) },
+          { label: acceptance ? 'Agreement signed' : canTransact ? 'Sign agreement' : 'Awaiting primary signature', complete: Boolean(acceptance) },
           { label: initialPaymentComplete ? 'Payment complete' : 'Pay initial invoice', complete: initialPaymentComplete },
         ]} />
 
-        {!acceptance && (
+        {!acceptance && canTransact && (
           <Alert
             severity="info"
             action={(
@@ -317,6 +318,11 @@ const ClientRental = () => {
             sx={{ mb: 3, borderRadius: '14px', alignItems: 'center' }}
           >
             Review the agreement and its terms, then sign before making the initial payment.
+          </Alert>
+        )}
+        {!acceptance && !canTransact && (
+          <Alert severity="info" sx={{ mb: 3, borderRadius: '14px' }}>
+            You are a copied recipient. You can review this agreement and its invoices; the selected primary recipient will sign and pay.
           </Alert>
         )}
 
@@ -473,7 +479,7 @@ const ClientRental = () => {
         )}
         </Box>
 
-        {!acceptance ? (
+        {!acceptance && canTransact ? (
           <Card id="rental-acceptance" className="rental-agreement-content" variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', mb: 3, borderColor: '#C4B5FD', bgcolor: '#FAF9FF', scrollMarginTop: 24 }}>
             <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 20 }}>Sign and approve this rental agreement</Typography>
             <Typography sx={{ color: '#64748B', mt: 0.5, mb: 2 }}>Review the agreement, type your full legal name, and accept the terms before paying.</Typography>
@@ -488,7 +494,7 @@ const ClientRental = () => {
               Sign &amp; Approve Agreement
             </Button>
           </Card>
-        ) : <CustomerSignatureRecord context="Agreement" acceptedBy={acceptance.accepted_by_name} acceptedAt={dateLabel(acceptance.accepted_at)} signature={acceptance.signature_name} detail={`Revision ${acceptance.agreement_revision}`} />}
+        ) : acceptance ? <CustomerSignatureRecord context="Agreement" acceptedBy={acceptance.accepted_by_name} acceptedAt={dateLabel(acceptance.accepted_at)} signature={acceptance.signature_name} detail={`Revision ${acceptance.agreement_revision}`} /> : null}
 
         {acceptance && (
           <>

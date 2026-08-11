@@ -307,15 +307,6 @@ const apiErrorMessage = (error: any, fallback: string) => {
   return fallback
 }
 
-const parseSecondaryRecipient = (value: string): RentalSecondaryRecipient | null => {
-  const trimmed = value.trim()
-  const addressMatch = trimmed.match(/^(.*?)\s*<([^<>]+)>$/)
-  const email = (addressMatch?.[2] || trimmed).trim().toLowerCase()
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null
-  const name = (addressMatch?.[1] || '').trim() || email.split('@')[0]
-  return { user_id: null, name, email }
-}
-
 const uniqueSecondaryRecipients = (
   recipients: RentalSecondaryRecipient[],
   primaryEmail: string,
@@ -796,6 +787,9 @@ const Rentals = () => {
       name: customer.full_name,
       email: customer.email,
     }))
+  const selectedSecondaryRecipients = secondaryRecipientOptions.filter(option => (
+    agreementForm.secondary_recipients.some(recipient => recipient.user_id === option.user_id)
+  ))
   const parts = partsQ.data?.items || []
   const rentals = rentalsQ.data?.items || []
   const totalRentals = rentalsQ.data?.total || 0
@@ -1116,7 +1110,9 @@ const Rentals = () => {
       customer_name: rental.customer_name,
       customer_email: rental.customer_email,
       customer_phone: formatUSPhoneInput(rental.customer_phone),
-      secondary_recipients: rental.secondary_recipients || [],
+      secondary_recipients: rental.facility_id
+        ? (rental.secondary_recipients || []).filter(recipient => recipient.user_id !== null)
+        : [],
       customer_address: rental.customer_address,
       delivery_street: rental.delivery_street || '',
       delivery_city: rental.delivery_city || '',
@@ -2517,7 +2513,7 @@ const Rentals = () => {
                   <TextField
                     {...params}
                     required
-                    label="Facility Customer / Primary Contact"
+                    label="Primary Recipient"
                     helperText={facilityCustomers.length === 0 && !facilityCustomersQ.isLoading
                       ? 'No active facility admin, manager, or client is attached to this facility'
                       : 'This person receives, signs, and pays the rental agreement'}
@@ -2525,42 +2521,26 @@ const Rentals = () => {
                 )}
               />
             ) : null}
-            <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
-            <TextField label="Customer Email *" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({
-              ...prev,
-              customer_email: e.target.value,
-              secondary_recipients: uniqueSecondaryRecipients(prev.secondary_recipients, e.target.value),
-            }))} />
-            <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
-            <Autocomplete<RentalSecondaryRecipient, true, false, true>
+            {!agreementForm.facility_id ? (
+              <>
+                <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
+                <TextField label="Customer Email *" type="email" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
+                <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
+              </>
+            ) : null}
+            {agreementForm.facility_id ? <Autocomplete<RentalSecondaryRecipient, true>
               multiple
-              freeSolo
               filterSelectedOptions
               options={secondaryRecipientOptions}
-              value={agreementForm.secondary_recipients}
-              getOptionLabel={option => typeof option === 'string' ? option : `${option.name} <${option.email}>`}
-              isOptionEqualToValue={(option, value) => (
-                typeof option !== 'string'
-                && typeof value !== 'string'
-                && option.email.toLowerCase() === value.email.toLowerCase()
-              )}
-              onChange={(_, values) => {
-                let invalidAddress = false
-                const recipients = values.flatMap(value => {
-                  if (typeof value !== 'string') return [value]
-                  const parsed = parseSecondaryRecipient(value)
-                  if (!parsed) invalidAddress = true
-                  return parsed ? [parsed] : []
-                })
-                if (invalidAddress) toast.error('Enter a valid email, or use Name <email@example.com>')
-                setAgreementForm(previous => ({
-                  ...previous,
-                  secondary_recipients: uniqueSecondaryRecipients(recipients, previous.customer_email),
-                }))
-              }}
-              renderOption={(props, option) => {
-                if (typeof option === 'string') return <li {...props}>{option}</li>
-                return (
+              value={selectedSecondaryRecipients}
+              loading={facilityCustomersQ.isLoading}
+              getOptionLabel={option => `${option.name} · ${option.email}`}
+              isOptionEqualToValue={(option, value) => option.user_id === value.user_id}
+              onChange={(_, recipients) => setAgreementForm(previous => ({
+                ...previous,
+                secondary_recipients: uniqueSecondaryRecipients(recipients, previous.customer_email),
+              }))}
+              renderOption={(props, option) => (
                   <li {...props}>
                     <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: '#EDE9FE', color: '#6D28D9', fontSize: 13, fontWeight: 800 }}>
                       {(option.name || option.email).slice(0, 1).toUpperCase()}
@@ -2570,8 +2550,7 @@ const Rentals = () => {
                       <Typography sx={{ color: '#64748B', fontSize: 12 }}>{option.email}</Typography>
                     </Box>
                   </li>
-                )
-              }}
+              )}
               renderTags={(recipients, getTagProps) => recipients.map((recipient, index) => {
                 const { key, ...tagProps } = getTagProps({ index })
                 return (
@@ -2587,13 +2566,12 @@ const Rentals = () => {
               renderInput={params => (
                 <TextField
                   {...params}
-                  label="Secondary recipients"
-                  placeholder={agreementForm.secondary_recipients.length ? 'Add another recipient' : 'Search facility users or type an email'}
-                  helperText="Optional. Select attached users by name/email, or type an external email and press Enter."
+                  label="Secondary Recipients"
+                  placeholder={selectedSecondaryRecipients.length ? 'Add another facility user' : 'Search attached users by name or email'}
+                  helperText="Optional; copied facility recipients can view the rental agreement and invoices"
                 />
               )}
-              sx={{ gridColumn: '1 / -1' }}
-            />
+            /> : null}
             <TextField label="Delivery Street Address *" value={agreementForm.delivery_street} onChange={e => setDeliveryField('delivery_street', e.target.value)} sx={{ gridColumn: '1 / -1' }} />
             <TextField label="City *" value={agreementForm.delivery_city} onChange={e => setDeliveryField('delivery_city', e.target.value)} />
             <TextField label="State *" value={agreementForm.delivery_state} onChange={e => setDeliveryField('delivery_state', e.target.value)} />

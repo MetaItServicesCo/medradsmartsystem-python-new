@@ -634,6 +634,7 @@ export interface RentalPortal {
     agreement_revision: number
     accepted_at: string
   } | null
+  can_transact: boolean
   can_sign: boolean
   invoices: RentalPortalInvoice[]
   billing_schedule: RentalBillingPeriod[]

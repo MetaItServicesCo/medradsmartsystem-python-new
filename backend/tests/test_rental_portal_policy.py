@@ -4,7 +4,12 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.endpoints.rental_portal import _is_rental_account_user, _pricing_view, _require_signed
+from app.api.v1.endpoints.rental_portal import (
+    _is_rental_account_user,
+    _pricing_view,
+    _require_primary_account_recipient,
+    _require_signed,
+)
 from app.api.v1.endpoints.rentals import (
     RentalDiscountPackageIn,
     RentalSecondaryRecipientIn,
@@ -73,6 +78,19 @@ def test_customer_roles_cannot_invoke_internal_rental_operations() -> None:
     assert _is_rental_account_user(facility_admin_account)
 
 
+def test_only_selected_primary_account_recipient_can_transact() -> None:
+    rental = SimpleNamespace(customer_user_id=17)
+    primary = SimpleNamespace(id=17)
+    copied_recipient = SimpleNamespace(id=18)
+
+    _require_primary_account_recipient(rental, primary)
+    with pytest.raises(HTTPException) as error:
+        _require_primary_account_recipient(rental, copied_recipient)
+
+    assert error.value.status_code == 403
+    assert "primary" in str(error.value.detail).lower()
+
+
 def test_discount_package_normalizes_name_and_keeps_reusable_pricing_rules() -> None:
     values = _discount_package_values(RentalDiscountPackageIn(
         name="  Four   Period Card Deal  ",
@@ -96,23 +114,17 @@ def test_discount_package_normalizes_name_and_keeps_reusable_pricing_rules() -> 
     }
 
 
-def test_external_secondary_recipients_are_canonicalized_and_deduplicated() -> None:
-    recipients = _normalize_secondary_recipients(
-        None,
-        None,
-        "primary@example.com",
-        [
-            RentalSecondaryRecipientIn(name=" Billing Team ", email="billing@example.com"),
-            RentalSecondaryRecipientIn(name="Duplicate", email="BILLING@example.com"),
-            RentalSecondaryRecipientIn(name="Primary", email="PRIMARY@example.com"),
-        ],
-    )
+def test_secondary_recipients_require_a_facility() -> None:
+    with pytest.raises(HTTPException) as error:
+        _normalize_secondary_recipients(
+            None,
+            None,
+            "primary@example.com",
+            [RentalSecondaryRecipientIn(user_id=42, name="Billing Team", email="billing@example.com")],
+        )
 
-    assert recipients == [{
-        "user_id": None,
-        "name": "Billing Team",
-        "email": "billing@example.com",
-    }]
+    assert error.value.status_code == 400
+    assert "facility" in str(error.value.detail).lower()
 
 
 def test_discount_package_rejects_invalid_value_and_single_invoice_cannot_continue() -> None:

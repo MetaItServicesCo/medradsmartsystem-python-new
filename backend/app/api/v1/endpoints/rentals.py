@@ -130,9 +130,9 @@ class RentalItemIn(BaseModel):
 
 
 class RentalSecondaryRecipientIn(BaseModel):
-    """An additional agreement recipient, either a facility user or external email."""
+    """An attached facility user copied on an agreement."""
 
-    user_id: Optional[int] = None
+    user_id: int
     name: Optional[str] = Field(default=None, max_length=150)
     email: EmailStr
 
@@ -992,50 +992,43 @@ def _normalize_secondary_recipients(
     primary_email: Optional[str],
     recipients: Optional[list[RentalSecondaryRecipientIn]],
 ) -> list[dict[str, Any]]:
-    """Canonicalize, scope, and de-duplicate additional rental recipients.
-
-    User-backed recipients must belong to the selected facility. External
-    recipients are identified by email and never matched by display name.
-    """
+    """Canonicalize and scope copied recipients to attached facility users."""
     requested = recipients or []
-    user_ids = {recipient.user_id for recipient in requested if recipient.user_id is not None}
+    if not requested:
+        return []
+    if facility_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Choose a facility before adding secondary recipients",
+        )
+
+    user_ids = {recipient.user_id for recipient in requested}
     eligible_users: dict[int, User] = {}
-    if user_ids:
-        if facility_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Choose a facility before adding attached users as secondary recipients",
-            )
-        eligible_users = {
-            user.id: user
-            for user in _eligible_rental_customer_query(db, facility_id)
-            .filter(User.id.in_(user_ids))
-            .all()
-        }
-        missing = user_ids - set(eligible_users)
-        if missing:
-            raise HTTPException(
-                status_code=400,
-                detail="One or more secondary recipients are not active users attached to this facility",
-            )
+    eligible_users = {
+        user.id: user
+        for user in _eligible_rental_customer_query(db, facility_id)
+        .filter(User.id.in_(user_ids))
+        .all()
+    }
+    missing = user_ids - set(eligible_users)
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="One or more secondary recipients are not active users attached to this facility",
+        )
 
     normalized: list[dict[str, Any]] = []
     seen = {(primary_email or "").strip().casefold()}
     for recipient in requested:
-        attached_user = eligible_users.get(recipient.user_id) if recipient.user_id is not None else None
-        email = (attached_user.email if attached_user else str(recipient.email)).strip()
+        attached_user = eligible_users[recipient.user_id]
+        email = attached_user.email.strip()
         email_key = email.casefold()
         if not email_key or email_key in seen:
             continue
         seen.add(email_key)
-        name = (
-            attached_user.full_name
-            if attached_user
-            else ((recipient.name or "").strip() or email.split("@", 1)[0])
-        )
         normalized.append({
-            "user_id": attached_user.id if attached_user else None,
-            "name": name,
+            "user_id": attached_user.id,
+            "name": attached_user.full_name,
             "email": email,
         })
     return normalized
@@ -1388,6 +1381,8 @@ def send_rental_portal_link(
     _require_rental_facility_access(db, current_user, rental)
     if not rental.customer_email:
         raise HTTPException(status_code=400, detail="A customer email is required to send the portal link")
+    if rental.facility_id is not None and rental.customer_user_id is None:
+        raise HTTPException(status_code=400, detail="Select a primary facility recipient before sending")
 
     token = secrets.token_urlsafe(32)
     now = datetime.utcnow()
@@ -1401,8 +1396,16 @@ def send_rental_portal_link(
             "user_id": rental.customer_user_id,
             "name": rental.customer_name,
             "email": rental.customer_email,
+            "recipient_type": "primary",
         },
-        *(rental.secondary_recipients or []),
+        *(
+            {
+                **recipient,
+                "recipient_type": "secondary",
+            }
+            for recipient in (rental.secondary_recipients or [])
+            if recipient.get("user_id") is not None
+        ),
     ]
     _append_history(rental, "portal_link_sent", current_user, {
         "expires_at": rental.token_expires_at.isoformat(),
@@ -1415,26 +1418,43 @@ def send_rental_portal_link(
             db, first_invoice, "portal_link_sent", 0, None,
             f"Rental portal link emailed to {len(recipients)} recipient(s)", current_user, "SEND",
         )
-    notification_user_ids = {
+    if rental.customer_user_id is not None:
+        create_notifications(
+            db,
+            user_ids=[rental.customer_user_id],
+            title=f"Rental agreement {rental.rental_number} is ready",
+            message="Review the agreement, then sign and pay the initial invoice.",
+            notification_type="rental_agreement",
+            link_url=f"/rentals/account/{rental.id}",
+            actor_id=current_user.id,
+        )
+    secondary_user_ids = {
         int(recipient["user_id"])
         for recipient in recipients
-        if recipient.get("user_id") is not None
+        if recipient["recipient_type"] == "secondary" and recipient.get("user_id") is not None
     }
-    create_notifications(
-        db,
-        user_ids=notification_user_ids,
-        title=f"Rental agreement {rental.rental_number} is ready",
-        message="Review the agreement, then sign and pay the initial invoice.",
-        notification_type="rental_agreement",
-        link_url=f"/rentals/account/{rental.id}",
-        actor_id=current_user.id,
-    )
+    if secondary_user_ids:
+        create_notifications(
+            db,
+            user_ids=secondary_user_ids,
+            title=f"Rental agreement {rental.rental_number} shared with you",
+            message="You were copied on this agreement and can view its agreement and invoices.",
+            notification_type="rental_agreement",
+            link_url=f"/rentals/account/{rental.id}",
+            actor_id=current_user.id,
+        )
     log_activity(db, "rentals", rental.id, "SEND_PORTAL", current_user, {})
     db.commit()
 
     # Send separately so recipients never see each other's email addresses.
     for recipient in recipients:
         recipient_name = recipient.get("name") or "there"
+        is_primary = recipient["recipient_type"] == "primary"
+        recipient_link = (
+            link
+            if is_primary
+            else f"{settings.PUBLIC_APP_URL.rstrip('/')}/rentals/account/{rental.id}"
+        )
         background_tasks.add_task(
             send_html_email,
             [recipient["email"]],
@@ -1442,12 +1462,23 @@ def send_rental_portal_link(
             (
                 f"<p>Hello {recipient_name},</p>"
                 f"<p>Rental agreement <strong>{rental.rental_number}</strong> is ready.</p>"
-                f"<p><a href=\"{link}\">View the agreement, save a card on file, and pay invoices</a></p>"
-                f"<p>This secure link expires on {rental.token_expires_at.strftime('%B %d, %Y')}.</p>"
+                f"<p><a href=\"{recipient_link}\">"
+                f"{'Review, sign, and pay the agreement' if is_primary else 'View the agreement and invoices'}"
+                f"</a></p>"
+                + (
+                    f"<p>This secure link expires on {rental.token_expires_at.strftime('%B %d, %Y')}.</p>"
+                    if is_primary
+                    else "<p>Sign in with your facility account to view this shared agreement.</p>"
+                )
             ),
             (
                 f"Hello {recipient_name},\n\nRental agreement {rental.rental_number} is ready.\n"
-                f"{link}\n\nThis link expires on {rental.token_expires_at.strftime('%B %d, %Y')}."
+                f"{recipient_link}\n\n"
+                + (
+                    f"This link expires on {rental.token_expires_at.strftime('%B %d, %Y')}."
+                    if is_primary
+                    else "Sign in with your facility account to view this shared agreement."
+                )
             ),
         )
     return {"detail": f"Portal link sent to {len(recipients)} recipient(s)", "link": link}
@@ -1910,7 +1941,7 @@ def create_rental(
     secondary_recipients = _normalize_secondary_recipients(
         db,
         facility.id if facility else None,
-        str(payload.customer_email),
+        customer_user.email if customer_user else str(payload.customer_email),
         payload.secondary_recipients,
     )
 
@@ -1926,9 +1957,9 @@ def create_rental(
         created_by_id=current_user.id,
         facility_id=facility.id if facility else None,
         customer_user_id=customer_user.id if customer_user else None,
-        customer_name=payload.customer_name,
-        customer_email=str(payload.customer_email),
-        customer_phone=payload.customer_phone,
+        customer_name=customer_user.full_name if customer_user else payload.customer_name,
+        customer_email=customer_user.email if customer_user else str(payload.customer_email),
+        customer_phone=customer_user.phone if customer_user else payload.customer_phone,
         secondary_recipients=secondary_recipients,
         customer_address=delivery_address,
         delivery_street=(payload.delivery_street or "").strip() or None,
@@ -2067,7 +2098,7 @@ def update_rental(
         resolved_customer_id,
     )
     if "secondary_recipients" in payload.model_fields_set:
-        resolved_primary_email = (
+        resolved_primary_email = customer_user.email if customer_user else (
             payload.customer_email
             if "customer_email" in payload.model_fields_set
             else rental.customer_email
@@ -2088,6 +2119,10 @@ def update_rental(
             update_data["customer_user_id"] = None
     if customer_changed:
         update_data["customer_user_id"] = customer_user.id if customer_user else None
+        if customer_user:
+            update_data["customer_name"] = customer_user.full_name
+            update_data["customer_email"] = customer_user.email
+            update_data["customer_phone"] = customer_user.phone
     # Replace the item set (and reconcile reserved stock) when items are supplied.
     if payload.items is not None:
         if not payload.items:
