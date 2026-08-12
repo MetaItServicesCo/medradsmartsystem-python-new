@@ -16,7 +16,7 @@ from typing import Any, Iterable, Optional
 
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.invoice import Invoice, InvoiceType, PaymentReceiptDelivery
@@ -187,9 +187,12 @@ def _receipt_content(delivery: PaymentReceiptDelivery) -> tuple[str, str, str]:
 
 
 def deliver_payment_receipt(db: Session, delivery_id: int) -> bool:
+    # Lock only the outbox row. Eager-loading Invoice.rental here causes
+    # SQLAlchemy to emit LEFT OUTER JOINs; PostgreSQL rejects an unqualified
+    # FOR UPDATE when it would also lock the nullable side of those joins.
+    # The relationships are loaded lazily after the claim is committed.
     delivery = (
         db.query(PaymentReceiptDelivery)
-        .options(joinedload(PaymentReceiptDelivery.invoice).joinedload(Invoice.rental))
         .filter(PaymentReceiptDelivery.id == delivery_id)
         .with_for_update()
         .first()
@@ -216,7 +219,6 @@ def deliver_payment_receipt(db: Session, delivery_id: int) -> bool:
 
     delivery = (
         db.query(PaymentReceiptDelivery)
-        .options(joinedload(PaymentReceiptDelivery.invoice))
         .filter(PaymentReceiptDelivery.id == delivery_id)
         .with_for_update()
         .first()

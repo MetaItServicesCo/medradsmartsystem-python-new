@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from app.models.invoice import PaymentReceiptDelivery
 from app.utils.payment_receipts import (
     _receipt_content,
+    deliver_payment_receipt,
     queue_payment_receipt,
     rental_receipt_recipients,
 )
@@ -89,6 +90,54 @@ def test_queue_payment_receipt_is_idempotent_for_invoice_and_payment_reference()
         recipients=["customer@example.com"],
     ) is existing
     db.add.assert_not_called()
+
+
+def test_receipt_delivery_locks_only_the_outbox_row(monkeypatch):
+    """PostgreSQL cannot lock nullable eager-join rows with FOR UPDATE."""
+    rental = SimpleNamespace(rental_number="RNT-000216")
+    invoice = SimpleNamespace(
+        customer_name="Rental Customer",
+        invoice_number="INV-RENTAL-004573",
+        balance_due=Decimal("0"),
+        rental=rental,
+    )
+    delivery = SimpleNamespace(
+        id=1,
+        invoice_id=4573,
+        invoice=invoice,
+        amount=Decimal("324.75"),
+        payment_method="credit_card",
+        card_brand="VISA",
+        card_last4="1111",
+        payment_reference="sandbox-payment-1",
+        recipients=["customer@example.com"],
+        status="pending",
+        attempt_count=0,
+        next_attempt_at=datetime.utcnow(),
+        last_error=None,
+        sent_at=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    query = MagicMock()
+    query.filter.return_value = query
+    query.with_for_update.return_value = query
+    query.first.side_effect = [delivery, delivery]
+    db = MagicMock()
+    db.query.return_value = query
+    monkeypatch.setattr(
+        "app.utils.payment_receipts.send_html_email",
+        lambda *_args, **_kwargs: True,
+    )
+    ledger = MagicMock()
+    monkeypatch.setattr("app.utils.payment_receipts.add_invoice_transaction", ledger)
+
+    assert deliver_payment_receipt(db, delivery.id) is True
+
+    assert delivery.status == "sent"
+    assert query.with_for_update.call_count == 2
+    query.options.assert_not_called()
+    ledger.assert_called_once()
 
 
 def test_billing_job_runs_cleanup_billing_and_receipt_delivery(monkeypatch):
