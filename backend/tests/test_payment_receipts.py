@@ -9,6 +9,7 @@ from app.utils.payment_receipts import (
     deliver_payment_receipt,
     queue_payment_receipt,
     rental_receipt_recipients,
+    sales_receipt_recipients,
 )
 from app.utils.rental_billing_job import run_rental_billing_job
 
@@ -29,6 +30,49 @@ def test_rental_receipt_recipients_include_primary_and_secondary_without_duplica
         "audit@example.com",
         "primary@example.com",
     ]
+
+
+def test_sales_receipt_recipients_include_all_document_recipients_without_duplicates():
+    quotation = SimpleNamespace(
+        customer_email="Primary@Example.com",
+        recipients=[
+            SimpleNamespace(email="accounts@example.com"),
+            SimpleNamespace(email="PRIMARY@example.com"),
+        ],
+    )
+    invoice = SimpleNamespace(customer_email="primary@example.com")
+
+    assert sales_receipt_recipients(quotation, invoice) == [
+        "accounts@example.com",
+        "primary@example.com",
+    ]
+
+
+def test_sales_receipt_content_uses_sales_document_reference():
+    quotation = SimpleNamespace(quotation_number="SQ-000321")
+    invoice = SimpleNamespace(
+        customer_name="Sales Customer",
+        invoice_number="INV-SALES-000321",
+        balance_due=Decimal("0"),
+        rental=None,
+        sales_quotation=quotation,
+    )
+    delivery = SimpleNamespace(
+        invoice=invoice,
+        amount=Decimal("75.00"),
+        payment_method="square_card",
+        card_brand="VISA",
+        card_last4="4242",
+        payment_reference="square-payment-321",
+        sent_at=None,
+        created_at=datetime(2026, 8, 13, 10, 30),
+    )
+
+    subject, html_body, text_body = _receipt_content(delivery)
+
+    assert "INV-SALES-000321" in subject
+    assert "Sales document" in html_body
+    assert "SQ-000321" in html_body + text_body
 
 
 def test_receipt_content_contains_payment_facts_and_only_masked_card_metadata():

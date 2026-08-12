@@ -63,6 +63,7 @@ import {
   type SalesQuotationLineItem,
   type SalesQuotationPayload,
   type SalesQuotationRecipientCandidate,
+  type SalesSecondaryRecipient,
   type SalesTradeInPart,
 } from '@/api/sales'
 import { useListContext } from '@/contexts/ListContext'
@@ -220,6 +221,37 @@ const SalesStatusChip = ({ value, label }: { value: string; label?: string }) =>
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const normalizeSecondaryRecipient = (
+  value: string | SalesSecondaryRecipient,
+): SalesSecondaryRecipient | null => {
+  if (typeof value !== 'string') {
+    const email = value.email.trim().toLowerCase()
+    return EMAIL_PATTERN.test(email) ? { ...value, email } : null
+  }
+  const raw = value.trim()
+  const namedEmail = raw.match(/^(.*?)\s*<([^<>]+)>$/)
+  const email = (namedEmail?.[2] || raw).trim().toLowerCase()
+  if (!EMAIL_PATTERN.test(email)) return null
+  return {
+    user_id: null,
+    name: (namedEmail?.[1] || email.split('@')[0]).trim(),
+    email,
+  }
+}
+const uniqueSalesRecipients = (
+  recipients: Array<string | SalesSecondaryRecipient>,
+  primaryEmail: string,
+) => {
+  const seen = new Set([primaryEmail.trim().toLowerCase()].filter(Boolean))
+  return recipients.reduce<SalesSecondaryRecipient[]>((result, candidate) => {
+    const recipient = normalizeSecondaryRecipient(candidate)
+    if (!recipient || seen.has(recipient.email)) return result
+    seen.add(recipient.email)
+    result.push(recipient)
+    return result
+  }, [])
+}
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
   return new Date(value).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
@@ -239,6 +271,7 @@ const emptyQuotation = (): SalesQuotationPayload => ({
   discount_amount: 0,
   primary_recipient_user_id: null,
   additional_recipient_user_ids: [],
+  secondary_recipients: [],
   items: [],
 })
 
@@ -833,9 +866,10 @@ const Sales = () => {
   const selectedPrimaryRecipient = recipientCandidates.find(
     candidate => candidate.id === quotationForm.primary_recipient_user_id,
   ) || null
-  const selectedAdditionalRecipients = recipientCandidates.filter(
-    candidate => quotationForm.additional_recipient_user_ids?.includes(candidate.id),
-  )
+  const secondaryRecipientOptions: SalesSecondaryRecipient[] = recipientCandidates
+    .filter(candidate => candidate.id !== quotationForm.primary_recipient_user_id)
+    .map(candidate => ({ user_id: candidate.id, name: candidate.full_name, email: candidate.email }))
+  const selectedAdditionalRecipients = quotationForm.secondary_recipients || []
 
   const openCreate = (mode: 'quotation' | 'invoice' = 'quotation') => {
     setSalesDocumentMode(mode)
@@ -874,6 +908,11 @@ const Sales = () => {
       discount_amount: Number(quotation.discount_amount || 0),
       primary_recipient_user_id: quotation.primary_recipient?.user_id || null,
       additional_recipient_user_ids: quotation.additional_recipients?.map(item => item.user_id).filter((id): id is number => Boolean(id)) || [],
+      secondary_recipients: quotation.additional_recipients?.map(item => ({
+        user_id: item.user_id,
+        name: item.name,
+        email: item.email,
+      })) || [],
       items: quotation.line_items.map(item => ({
         part_id: item.part_id,
         item_kind: item.item_kind,
@@ -1258,6 +1297,7 @@ const Sales = () => {
         : prev.customer_address,
       primary_recipient_user_id: null,
       additional_recipient_user_ids: [],
+      secondary_recipients: [],
     }))
   }
 
@@ -2079,14 +2119,24 @@ const Sales = () => {
         accent="#7C3AED"
       />
 
-      <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="lg" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
+      <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="xl" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           {editingQuotation
             ? `Edit Sales ${salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'}`
             : salesDocumentMode === 'invoice' ? 'Create Sales Invoice' : 'Create Sales Quotation'}
         </DialogTitle>
         <DialogContent dividers>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
+            Customer &amp; {salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} Details
+          </Typography>
+          <Box sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' },
+            gap: 1.5,
+            pt: 1,
+            '& .MuiOutlinedInput-root': { minHeight: 44 },
+            '& .MuiInputBase-input': { py: 1.25 },
+          }}>
             <FacilitySearchAutocomplete
               label="Facility"
               value={quotationForm.facility_id || ''}
@@ -2097,12 +2147,14 @@ const Sales = () => {
               onChange={facilityId => setQuotationForm(previous => ({
                 ...previous,
                 facility_id: facilityId ? Number(facilityId) : null,
+                primary_recipient_user_id: null,
+                additional_recipient_user_ids: [],
+                secondary_recipients: [],
               }))}
               onFacilityChange={facility => syncCustomerFromFacility(facility?.id || '', facility)}
             />
             {quotationForm.facility_id ? (
-              <>
-                <Autocomplete<SalesQuotationRecipientCandidate>
+              <Autocomplete<SalesQuotationRecipientCandidate>
                   options={recipientCandidates}
                   value={selectedPrimaryRecipient}
                   loading={recipientCandidatesQ.isLoading}
@@ -2112,10 +2164,25 @@ const Sales = () => {
                     ...prev,
                     primary_recipient_user_id: recipient?.id || null,
                     additional_recipient_user_ids: (prev.additional_recipient_user_ids || []).filter(id => id !== recipient?.id),
+                    secondary_recipients: (prev.secondary_recipients || []).filter(item => (
+                      item.user_id !== recipient?.id
+                      && item.email.toLowerCase() !== recipient?.email.toLowerCase()
+                    )),
                     customer_name: recipient?.full_name || prev.customer_name,
                     customer_email: recipient?.email || prev.customer_email,
                     customer_phone: recipient?.phone ? formatUSPhoneInput(recipient.phone) : prev.customer_phone,
                   }))}
+                  renderOption={(props, option) => (
+                    <li {...props}>
+                      <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: '#EDE9FE', color: '#6D28D9', fontSize: 13, fontWeight: 800 }}>
+                        {(option.full_name || option.email).slice(0, 1).toUpperCase()}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ color: '#1E1B4B', fontWeight: 750, lineHeight: 1.2 }}>{option.full_name}</Typography>
+                        <Typography sx={{ color: '#64748B', fontSize: 12 }}>{option.email}</Typography>
+                      </Box>
+                    </li>
+                  )}
                   renderInput={params => (
                     <TextField
                       {...params}
@@ -2125,28 +2192,64 @@ const Sales = () => {
                         : salesDocumentMode === 'invoice' ? 'This person can sign and pay the invoice' : 'This person can accept or decline the quotation'}
                     />
                   )}
-                />
-                <Autocomplete<SalesQuotationRecipientCandidate, true>
+              />
+            ) : null}
+            <Autocomplete<SalesSecondaryRecipient, true, false, true>
                   multiple
-                  options={recipientCandidates.filter(candidate => candidate.id !== quotationForm.primary_recipient_user_id)}
+                  freeSolo
+                  filterSelectedOptions
+                  options={secondaryRecipientOptions}
                   value={selectedAdditionalRecipients}
                   loading={recipientCandidatesQ.isLoading}
-                  getOptionLabel={option => `${option.full_name} · ${option.email}`}
-                  isOptionEqualToValue={(option, value) => option.id === value.id}
-                  onChange={(_, recipients) => setQuotationForm(prev => ({
-                    ...prev,
-                    additional_recipient_user_ids: recipients.map(item => item.id),
-                  }))}
+                  getOptionLabel={option => typeof option === 'string' ? option : `${option.name} · ${option.email}`}
+                  isOptionEqualToValue={(option, value) => (
+                    option.email.toLowerCase() === value.email.toLowerCase()
+                    || (option.user_id !== null && option.user_id === value.user_id)
+                  )}
+                  onChange={(_, recipients) => setQuotationForm(prev => {
+                    const normalized = uniqueSalesRecipients(recipients, prev.customer_email || '')
+                    return {
+                      ...prev,
+                      secondary_recipients: normalized,
+                      additional_recipient_user_ids: normalized
+                        .map(item => item.user_id)
+                        .filter((id): id is number => id !== null),
+                    }
+                  })}
+                  renderOption={(props, option) => (
+                    <li {...props}>
+                      <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: '#EDE9FE', color: '#6D28D9', fontSize: 13, fontWeight: 800 }}>
+                        {(option.name || option.email).slice(0, 1).toUpperCase()}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ color: '#1E1B4B', fontWeight: 750, lineHeight: 1.2 }}>{option.name}</Typography>
+                        <Typography sx={{ color: '#64748B', fontSize: 12 }}>{option.email}</Typography>
+                      </Box>
+                    </li>
+                  )}
+                  renderTags={(recipients, getTagProps) => recipients.map((candidate, index) => {
+                    const recipient = normalizeSecondaryRecipient(candidate)
+                    if (!recipient) return null
+                    const { key, ...tagProps } = getTagProps({ index })
+                    return (
+                      <Chip
+                        key={key}
+                        {...tagProps}
+                        avatar={<Avatar>{(recipient.name || recipient.email).slice(0, 1).toUpperCase()}</Avatar>}
+                        label={`${recipient.name} · ${recipient.email}`}
+                        sx={{ maxWidth: 320, bgcolor: '#F3E8FF', color: '#5B21B6', fontWeight: 700 }}
+                      />
+                    )
+                  })}
                   renderInput={params => (
                     <TextField
                       {...params}
-                      label="Additional Recipients"
-                      helperText={`Optional; copied recipients can view the ${salesDocumentMode === 'invoice' ? 'invoice' : 'quotation'}`}
+                      label="Secondary Recipients"
+                      placeholder={selectedAdditionalRecipients.length ? 'Add another recipient' : 'Search users or type an email, then press Enter'}
+                      helperText={`Optional; add up to 25 recipients. Each receives a private ${salesDocumentMode === 'invoice' ? 'invoice' : 'quotation'} link.`}
                     />
                   )}
-                />
-              </>
-            ) : null}
+            />
             <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
             <TextField label="Customer Email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
             <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
@@ -2178,9 +2281,31 @@ const Sales = () => {
           </Box>
 
           <Divider sx={{ my: 3 }} />
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Sales Parts</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'minmax(240px, 1.5fr) 92px repeat(3, minmax(120px, 0.6fr)) 130px auto' }, gap: 2, mb: 2, alignItems: 'start' }}>
-            <Box sx={{ gridColumn: { xs: '1 / -1', lg: 'auto' } }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 1.25, mb: 1.5 }}>
+            <Box>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Parts</Typography>
+              <Typography sx={{ color: '#64748B', fontSize: 13 }}>Select a part, complete its pricing and fees, then add it to the document.</Typography>
+            </Box>
+            <Button
+              startIcon={<AddIcon />}
+              variant="contained"
+              onClick={addLineItem}
+              disabled={!selectedPart || selectedPartQty < 1 || selectedPartQty > selectedPartRemaining}
+              sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, minHeight: 42, px: 2.5, whiteSpace: 'nowrap', alignSelf: { xs: 'stretch', sm: 'center' } }}
+            >
+              Add Part
+            </Button>
+          </Box>
+          <Box sx={{ p: { xs: 1.5, sm: 2 }, mb: 2, bgcolor: '#FAFBFF', border: '1px solid #E8EAF5', borderRadius: '16px' }}>
+            <Box sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' },
+              gap: 1.25,
+              alignItems: 'start',
+              '& .MuiOutlinedInput-root': { minHeight: 44 },
+              '& .MuiInputBase-input': { py: 1.25 },
+            }}>
+            <Box sx={{ gridColumn: { xs: '1 / -1', md: 'span 2' } }}>
               <PartSearchAutocomplete<SalesPart>
                 label="Part assigned for sale"
                 value={selectedPart}
@@ -2224,7 +2349,7 @@ const Sales = () => {
             <TextField select label="Condition" value={selectedPartCondition} onChange={e => setSelectedPartCondition(e.target.value)}>
               {['New', 'Used', 'Refurbished', 'Damaged'].map(condition => <MenuItem key={condition} value={condition}>{condition}</MenuItem>)}
             </TextField>
-            <Button startIcon={<AddIcon />} variant="contained" onClick={addLineItem} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, height: 56, whiteSpace: 'nowrap', alignSelf: 'start' }}>Add Part</Button>
+            </Box>
           </Box>
           {selectedPart && (
             <Card

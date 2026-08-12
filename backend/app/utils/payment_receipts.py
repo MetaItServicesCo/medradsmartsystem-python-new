@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.invoice import Invoice, InvoiceType, PaymentReceiptDelivery
 from app.models.rental import Rental
+from app.models.sales import SalesQuotation
 from app.utils.email import send_html_email
 from app.utils.invoice_ledger import add_invoice_transaction
 
@@ -42,6 +43,17 @@ def rental_receipt_recipients(rental: Optional[Rental], invoice: Invoice) -> lis
                 values.append(str(recipient.get("email") or ""))
             elif isinstance(recipient, str):
                 values.append(recipient)
+    return sorted({value.strip().lower() for value in values if value and "@" in value})
+
+
+def sales_receipt_recipients(
+    quotation: Optional[SalesQuotation],
+    invoice: Invoice,
+) -> list[str]:
+    values: list[str] = [invoice.customer_email]
+    if quotation:
+        values.append(quotation.customer_email)
+        values.extend(recipient.email for recipient in quotation.recipients or [])
     return sorted({value.strip().lower() for value in values if value and "@" in value})
 
 
@@ -127,6 +139,29 @@ def queue_rental_payment_receipt(
     )
 
 
+def queue_sales_payment_receipt(
+    db: Session,
+    quotation: SalesQuotation,
+    invoice: Invoice,
+    *,
+    payment_reference: str,
+    amount: Any,
+    payment_method: Optional[str] = None,
+    card_brand: Optional[str] = None,
+    card_last4: Optional[str] = None,
+) -> Optional[PaymentReceiptDelivery]:
+    return queue_payment_receipt(
+        db,
+        invoice,
+        payment_reference=payment_reference,
+        amount=amount,
+        payment_method=payment_method,
+        recipients=sales_receipt_recipients(quotation, invoice),
+        card_brand=card_brand,
+        card_last4=card_last4,
+    )
+
+
 def _message_id(delivery: PaymentReceiptDelivery) -> str:
     digest = hashlib.sha256(
         f"{delivery.invoice_id}:{delivery.payment_reference}".encode("utf-8")
@@ -138,10 +173,20 @@ def _message_id(delivery: PaymentReceiptDelivery) -> str:
 
 def _receipt_content(delivery: PaymentReceiptDelivery) -> tuple[str, str, str]:
     invoice = delivery.invoice
-    rental = invoice.rental
+    rental = getattr(invoice, "rental", None)
+    sales_quotation = getattr(invoice, "sales_quotation", None)
     customer = html.escape(invoice.customer_name or "Customer")
     invoice_number = html.escape(invoice.invoice_number)
-    agreement = html.escape(rental.rental_number) if rental else "—"
+    source_label = "Rental agreement" if rental else "Sales document"
+    source_number = html.escape(
+        rental.rental_number
+        if rental
+        else (
+            sales_quotation.quotation_number
+            if sales_quotation
+            else invoice.invoice_number
+        )
+    )
     amount = _money(delivery.amount)
     balance = _money(invoice.balance_due)
     method = (delivery.payment_method or "Payment").replace("_", " ").title()
@@ -164,7 +209,7 @@ def _receipt_content(delivery: PaymentReceiptDelivery) -> tuple[str, str, str]:
           <p>Your payment was confirmed and applied to the invoice below.</p>
           <table role="presentation" style="width:100%;border-collapse:collapse;margin:24px 0;border:1px solid #e7e4f4">
             <tr><td style="padding:12px;border-bottom:1px solid #e7e4f4;color:#6b7280">Invoice</td><td style="padding:12px;border-bottom:1px solid #e7e4f4;text-align:right;font-weight:700">{invoice_number}</td></tr>
-            <tr><td style="padding:12px;border-bottom:1px solid #e7e4f4;color:#6b7280">Rental agreement</td><td style="padding:12px;border-bottom:1px solid #e7e4f4;text-align:right">{agreement}</td></tr>
+            <tr><td style="padding:12px;border-bottom:1px solid #e7e4f4;color:#6b7280">{source_label}</td><td style="padding:12px;border-bottom:1px solid #e7e4f4;text-align:right">{source_number}</td></tr>
             <tr><td style="padding:12px;border-bottom:1px solid #e7e4f4;color:#6b7280">Payment date</td><td style="padding:12px;border-bottom:1px solid #e7e4f4;text-align:right">{paid_at}</td></tr>
             <tr><td style="padding:12px;border-bottom:1px solid #e7e4f4;color:#6b7280">Payment method</td><td style="padding:12px;border-bottom:1px solid #e7e4f4;text-align:right">{payment_label}</td></tr>
             <tr><td style="padding:14px;color:#6b7280">Amount received</td><td style="padding:14px;text-align:right;font-size:22px;font-weight:800;color:#059669">${amount:,.2f}</td></tr>
@@ -179,7 +224,7 @@ def _receipt_content(delivery: PaymentReceiptDelivery) -> tuple[str, str, str]:
     text = (
         f"Payment receipt\n\nHello {invoice.customer_name},\n"
         f"We received ${amount:,.2f} for invoice {invoice.invoice_number}.\n"
-        f"Rental agreement: {rental.rental_number if rental else '-'}\n"
+        f"{source_label}: {source_number}\n"
         f"Payment method: {masked or method}\nRemaining balance: ${balance:,.2f}\n"
         f"Reference: {delivery.payment_reference}\n\nMr. BioMed Tech Services"
     )
@@ -254,7 +299,7 @@ def deliver_due_payment_receipts(db: Session, limit: int = 50) -> dict[str, int]
         db.query(PaymentReceiptDelivery.id)
         .join(Invoice, Invoice.id == PaymentReceiptDelivery.invoice_id)
         .filter(
-            Invoice.invoice_type == InvoiceType.RENTAL,
+            Invoice.invoice_type.in_([InvoiceType.RENTAL, InvoiceType.SALES]),
             PaymentReceiptDelivery.attempt_count < RECEIPT_MAX_ATTEMPTS,
             or_(
                 PaymentReceiptDelivery.status == "pending",

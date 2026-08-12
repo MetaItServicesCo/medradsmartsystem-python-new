@@ -19,7 +19,7 @@ from app.utils.invoice_ledger import (
     record_payment_delta,
     record_status_change,
 )
-from app.utils.payment_receipts import queue_rental_payment_receipt
+from app.utils.payment_receipts import queue_rental_payment_receipt, queue_sales_payment_receipt
 from app.utils.square_payments import minor_units_to_amount, verify_square_webhook_signature
 from app.utils.sales_inventory import fulfill_sales_invoice_inventory
 from app.utils.payment_idempotency import (
@@ -170,6 +170,18 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
         queue_rental_payment_receipt(
             db,
             invoice.rental,
+            invoice,
+            payment_reference=payment_id,
+            amount=applied_amount,
+            payment_method="square_card",
+            card_brand=payment_card.get("card_brand"),
+            card_last4=payment_card.get("last_4"),
+        )
+    elif invoice.invoice_type == InvoiceType.SALES and invoice.sales_quotation:
+        payment_card = (payment.get("card_details") or {}).get("card") or {}
+        queue_sales_payment_receipt(
+            db,
+            invoice.sales_quotation,
             invoice,
             payment_reference=payment_id,
             amount=applied_amount,

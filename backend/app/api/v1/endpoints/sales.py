@@ -103,6 +103,14 @@ class SalesQuotationItemIn(BaseModel):
     trade_in_part: Optional[SalesTradeInPartIn] = None
 
 
+class SalesSecondaryRecipientIn(BaseModel):
+    """A copied recipient selected from a facility or entered by email."""
+
+    user_id: Optional[int] = None
+    name: Optional[str] = Field(default=None, max_length=150)
+    email: EmailStr
+
+
 class SalesQuotationCreate(BaseModel):
     facility_id: Optional[int] = None
     customer_name: str
@@ -116,6 +124,7 @@ class SalesQuotationCreate(BaseModel):
     discount_amount: Decimal = Decimal("0")
     primary_recipient_user_id: Optional[int] = None
     additional_recipient_user_ids: list[int] = Field(default_factory=list)
+    secondary_recipients: list[SalesSecondaryRecipientIn] = Field(default_factory=list, max_length=25)
     items: list[SalesQuotationItemIn]
 
 
@@ -138,6 +147,7 @@ class SalesQuotationUpdate(BaseModel):
     paid_status: Optional[str] = None
     primary_recipient_user_id: Optional[int] = None
     additional_recipient_user_ids: Optional[list[int]] = None
+    secondary_recipients: Optional[list[SalesSecondaryRecipientIn]] = Field(default=None, max_length=25)
     items: Optional[list[SalesQuotationItemIn]] = None
 
 
@@ -633,6 +643,7 @@ def _sync_quotation_recipients(
     quotation: SalesQuotation,
     primary_user_id: Optional[int],
     additional_user_ids: Optional[list[int]],
+    secondary_recipients: Optional[list[SalesSecondaryRecipientIn]] = None,
 ) -> None:
     if quotation.status not in {"draft", "pending", "changes_requested"}:
         raise HTTPException(
@@ -646,12 +657,14 @@ def _sync_quotation_recipients(
                 status_code=400,
                 detail="Facility users can only be selected after choosing a facility",
             )
-        quotation.recipients.clear()
-        return
 
+    supplied_secondary = secondary_recipients or []
+    supplied_secondary_user_ids = {
+        recipient.user_id for recipient in supplied_secondary if recipient.user_id is not None
+    }
     requested_ids = {
         user_id
-        for user_id in [primary_user_id, *(additional_user_ids or [])]
+        for user_id in [primary_user_id, *(additional_user_ids or []), *supplied_secondary_user_ids]
         if user_id is not None
     }
     users = (
@@ -659,7 +672,7 @@ def _sync_quotation_recipients(
         .filter(User.id.in_(requested_ids))
         .order_by(User.id.asc())
         .all()
-        if requested_ids
+        if quotation.facility_id is not None and requested_ids
         else []
     )
     users_by_id = {user.id: user for user in users}
@@ -672,6 +685,7 @@ def _sync_quotation_recipients(
 
     additional_ids = [user_id for user_id in dict.fromkeys(additional_user_ids or []) if user_id != primary_user_id]
     quotation.recipients.clear()
+    primary_email_key = (quotation.customer_email or "").strip().casefold()
     if primary_user_id:
         primary = users_by_id[primary_user_id]
         quotation.recipients.append(
@@ -685,8 +699,14 @@ def _sync_quotation_recipients(
         quotation.customer_name = primary.full_name
         quotation.customer_email = primary.email
         quotation.customer_phone = primary.phone
+        primary_email_key = primary.email.strip().casefold()
+    seen_emails = {primary_email_key} if primary_email_key else set()
     for user_id in additional_ids:
         user = users_by_id[user_id]
+        email_key = user.email.strip().casefold()
+        if email_key in seen_emails:
+            continue
+        seen_emails.add(email_key)
         quotation.recipients.append(
             SalesQuotationRecipient(
                 user_id=user.id,
@@ -695,6 +715,82 @@ def _sync_quotation_recipients(
                 email=user.email,
             )
         )
+    for recipient in supplied_secondary:
+        if recipient.user_id is not None:
+            user = users_by_id[recipient.user_id]
+            name = user.full_name
+            email = user.email.strip()
+            user_id = user.id
+        else:
+            name = (recipient.name or "").strip() or recipient.email.split("@", 1)[0]
+            email = str(recipient.email).strip()
+            user_id = None
+        email_key = email.casefold()
+        if not email_key or email_key in seen_emails:
+            continue
+        seen_emails.add(email_key)
+        quotation.recipients.append(
+            SalesQuotationRecipient(
+                user_id=user_id,
+                recipient_type="additional",
+                name=name,
+                email=email,
+            )
+        )
+
+
+def _recipient_update_values(
+    quotation: SalesQuotation,
+    payload: SalesQuotationUpdate,
+) -> tuple[Optional[int], list[int], list[SalesSecondaryRecipientIn]]:
+    """Resolve recipient values for a PATCH-style update without clearing omitted fields.
+
+    ``secondary_recipients`` is the canonical Gmail-style recipient list. When it is
+    supplied, it replaces the copied-recipient collection. The legacy user-id field
+    remains supported for older clients; external recipients are retained when only
+    that legacy field is changed.
+    """
+
+    current_recipients = list(quotation.recipients or [])
+    current_primary = next(
+        (recipient.user_id for recipient in current_recipients if recipient.recipient_type == "primary"),
+        None,
+    )
+    current_additional = [
+        recipient for recipient in current_recipients if recipient.recipient_type == "additional"
+    ]
+
+    primary_user_id = (
+        payload.primary_recipient_user_id
+        if "primary_recipient_user_id" in payload.model_fields_set
+        else current_primary
+    )
+
+    if "secondary_recipients" in payload.model_fields_set:
+        # The modern control submits every copied recipient, including attached users.
+        secondary_recipients = list(payload.secondary_recipients or [])
+        additional_user_ids = (
+            list(payload.additional_recipient_user_ids or [])
+            if "additional_recipient_user_ids" in payload.model_fields_set
+            else []
+        )
+    else:
+        additional_user_ids = (
+            list(payload.additional_recipient_user_ids or [])
+            if "additional_recipient_user_ids" in payload.model_fields_set
+            else [recipient.user_id for recipient in current_additional if recipient.user_id is not None]
+        )
+        secondary_recipients = [
+            SalesSecondaryRecipientIn(
+                user_id=None,
+                name=recipient.name,
+                email=recipient.email,
+            )
+            for recipient in current_additional
+            if recipient.user_id is None
+        ]
+
+    return primary_user_id, additional_user_ids, secondary_recipients
 
 
 def _effective_quotation_lines(quotation: SalesQuotation) -> list[SalesQuotationLineItem]:
@@ -1583,6 +1679,7 @@ def create_direct_invoice(
         source,
         payload.primary_recipient_user_id,
         payload.additional_recipient_user_ids,
+        payload.secondary_recipients,
     )
     _apply_items(db, source, payload.items, current_user)
     invoice = _create_invoice_for_accepted_quotation(
@@ -1642,6 +1739,7 @@ def update_direct_invoice(
             "items",
             "primary_recipient_user_id",
             "additional_recipient_user_ids",
+            "secondary_recipients",
             "status",
             "paid_status",
             "due_date",
@@ -1657,12 +1755,14 @@ def update_direct_invoice(
         _apply_items(db, source, payload.items, current_user)
     else:
         _apply_quotation_pricing(source, _effective_quotation_lines(source))
-    if {"primary_recipient_user_id", "additional_recipient_user_ids"}.intersection(payload.model_fields_set):
+    if {"primary_recipient_user_id", "additional_recipient_user_ids", "secondary_recipients"}.intersection(payload.model_fields_set):
+        primary_user_id, additional_user_ids, secondary_recipients = _recipient_update_values(source, payload)
         _sync_quotation_recipients(
             db,
             source,
-            payload.primary_recipient_user_id,
-            payload.additional_recipient_user_ids or [],
+            primary_user_id,
+            additional_user_ids,
+            secondary_recipients,
         )
 
     lines = _effective_quotation_lines(source)
@@ -1754,6 +1854,7 @@ def create_quotation(
         quotation,
         payload.primary_recipient_user_id,
         payload.additional_recipient_user_ids,
+        payload.secondary_recipients,
     )
     _apply_items(db, quotation, payload.items, current_user)
     log_activity(db, "sales_quotations", quotation.id, "CREATE", current_user, {"work_order": quotation.work_order})
@@ -1820,6 +1921,7 @@ def update_quotation(
             "items",
             "primary_recipient_user_id",
             "additional_recipient_user_ids",
+            "secondary_recipients",
         },
     )
     for field, value in update_data.items():
@@ -1836,12 +1938,15 @@ def update_quotation(
     if {
         "primary_recipient_user_id",
         "additional_recipient_user_ids",
+        "secondary_recipients",
     }.intersection(payload.model_fields_set):
+        primary_user_id, additional_user_ids, secondary_recipients = _recipient_update_values(quotation, payload)
         _sync_quotation_recipients(
             db,
             quotation,
-            payload.primary_recipient_user_id,
-            payload.additional_recipient_user_ids or [],
+            primary_user_id,
+            additional_user_ids,
+            secondary_recipients,
         )
     quotation.updated_at = datetime.utcnow()
     _append_history(quotation, "updated", current_user, update_data)

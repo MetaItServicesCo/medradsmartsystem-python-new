@@ -100,6 +100,12 @@ export interface SalesQuotationRecipientCandidate {
   role: 'facility_admin' | 'facility_manager' | 'client' | string
 }
 
+export interface SalesSecondaryRecipient {
+  user_id: number | null
+  name: string
+  email: string
+}
+
 export interface SalesHistoryItem {
   action: string
   by: string
@@ -308,6 +314,7 @@ export interface SalesQuotationPayload {
   }>
   primary_recipient_user_id?: number | null
   additional_recipient_user_ids?: number[]
+  secondary_recipients?: SalesSecondaryRecipient[]
   due_date?: string | null
 }
 

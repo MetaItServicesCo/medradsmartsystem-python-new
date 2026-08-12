@@ -55,6 +55,8 @@ from app.utils.payment_idempotency import (
     payment_fingerprint,
     replay_or_raise,
 )
+from app.utils.payment_receipts import deliver_payment_receipt, queue_sales_payment_receipt
+from app.utils.rate_limit import enforce_rate_limit, public_payment_identity
 
 
 router = APIRouter()
@@ -515,7 +517,20 @@ def _record_square_payment(
         provider_reference=payment_id,
         response_data={"invoice_id": invoice.id, "payment_id": payment_id},
     )
+    payment_card = (square_payment.get("card_details") or {}).get("card") or {}
+    receipt_delivery = queue_sales_payment_receipt(
+        db,
+        quotation,
+        invoice,
+        payment_reference=payment_id,
+        amount=square_amount,
+        payment_method="square_card",
+        card_brand=payment_card.get("card_brand"),
+        card_last4=payment_card.get("last_4"),
+    )
     db.commit()
+    if receipt_delivery:
+        deliver_payment_receipt(db, receipt_delivery.id)
     db.refresh(recipient)
     return _portal_response(recipient)
 
@@ -880,8 +895,15 @@ def decide_public_quotation(
 def pay_public_quotation_in_test_mode(
     token: str,
     payload: PortalTestPaymentIn,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    enforce_rate_limit(
+        bucket="public-sales-test-payment",
+        identity=public_payment_identity(request, token),
+        limit=8,
+        window_seconds=600,
+    )
     recipient = (
         db.query(SalesQuotationRecipient)
         .options(*_recipient_options())
@@ -897,8 +919,15 @@ def pay_public_quotation_in_test_mode(
 def pay_public_quotation_with_square(
     token: str,
     payload: PortalSquarePaymentIn,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    enforce_rate_limit(
+        bucket="public-sales-card-payment",
+        identity=public_payment_identity(request, token),
+        limit=8,
+        window_seconds=600,
+    )
     recipient = (
         db.query(SalesQuotationRecipient)
         .options(*_recipient_options())
@@ -1167,9 +1196,16 @@ def decide_client_quotation(
 def pay_client_quotation_in_test_mode(
     quotation_id: int,
     payload: PortalTestPaymentIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    enforce_rate_limit(
+        bucket="account-sales-test-payment",
+        identity=f"user:{current_user.id}:quotation:{quotation_id}",
+        limit=12,
+        window_seconds=600,
+    )
     recipient = (
         db.query(SalesQuotationRecipient)
         .options(*_recipient_options())
@@ -1189,9 +1225,16 @@ def pay_client_quotation_in_test_mode(
 def pay_client_quotation_with_square(
     quotation_id: int,
     payload: PortalSquarePaymentIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    enforce_rate_limit(
+        bucket="account-sales-card-payment",
+        identity=f"user:{current_user.id}:quotation:{quotation_id}",
+        limit=8,
+        window_seconds=600,
+    )
     recipient = (
         db.query(SalesQuotationRecipient)
         .options(*_recipient_options())
