@@ -629,6 +629,8 @@ export interface RentalPortal {
     items: RentalPortalItem[]
     has_card_on_file: boolean
     saved_card: { brand: string | null; last4: string | null; exp_month: number | null; exp_year: number | null } | null
+    auto_charge_consent_text: string
+    card_removal_pending: boolean
   }
   acceptance: {
     accepted_by_name: string
@@ -792,11 +794,31 @@ export const acceptPublicRental = async (token: string, signatureName: string): 
   return res.data
 }
 
-export const savePublicRentalCard = async (token: string, sourceId: string, authorizeAutoCharge = false): Promise<RentalPortal> => {
+export const savePublicRentalCard = async (token: string, sourceId: string, authorizeAutoCharge = false, idempotencyKey?: string): Promise<RentalPortal> => {
   const res = await apiClient.post(`/rentals/public/${token}/save-card`, {
     source_id: sourceId,
     authorize_auto_charge: authorizeAutoCharge,
+    idempotency_key: idempotencyKey,
   })
+  return res.data
+}
+
+export const saveAccountRentalCard = async (rentalId: number, sourceId: string, authorizeAutoCharge = false, idempotencyKey?: string): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/account/${rentalId}/save-card`, {
+    source_id: sourceId,
+    authorize_auto_charge: authorizeAutoCharge,
+    idempotency_key: idempotencyKey,
+  })
+  return res.data
+}
+
+export const removePublicRentalCard = async (token: string): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/public/${token}/remove-card`, { confirm: true })
+  return res.data
+}
+
+export const removeAccountRentalCard = async (rentalId: number): Promise<RentalPortal> => {
+  const res = await apiClient.post(`/rentals/account/${rentalId}/remove-card`, { confirm: true })
   return res.data
 }
 

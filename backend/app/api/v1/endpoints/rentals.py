@@ -1,12 +1,12 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 from math import ceil
 import secrets
 import hashlib
 from types import SimpleNamespace
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import and_, func, or_, select
@@ -42,6 +42,7 @@ from app.utils.facility_access import (
 )
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.payment_receipts import deliver_payment_receipt, queue_rental_payment_receipt
 from app.utils.invoice_refunds import execute_square_invoice_refund, issue_invoice_refund
 from app.utils.invoice_approval import (
     approval_response,
@@ -58,11 +59,18 @@ from app.utils.invoice_approval import (
 from app.utils.logging import log_activity
 from app.utils.square_payments import (
     square_is_configured,
-    create_square_card_on_file,
     SquareRequestError,
 )
+from app.utils.rental_card_security import (
+    clear_saved_card,
+    complete_provider_card_cleanup,
+    record_card_event,
+    revoke_auto_charge,
+    store_saved_card,
+    vault_replacement_card,
+)
+from app.utils.rate_limit import enforce_rate_limit, request_ip
 from app.utils.rental_billing import (
-    run_rental_recurring_billing,
     generate_deposit_invoice,
     advance_billing_date,
     projected_period,
@@ -73,6 +81,7 @@ from app.utils.rental_billing import (
     RENTAL_TAX_RATE,
     RENTAL_TAX_FACTOR,
 )
+from app.utils.rental_billing_job import run_rental_billing_job
 from app.utils.rental_extensions import current_extension, extension_response
 from app.utils.notifications import create_notification, create_notifications
 from app.utils.permissions import has_module_permission
@@ -1299,16 +1308,27 @@ def upsert_product_rate(
 
 
 class RentalCardOnFilePayload(BaseModel):
-    source_id: str  # Square Web-SDK card nonce
+    source_id: str = Field(min_length=8, max_length=500)  # Square Web-SDK card nonce
+    authorize_auto_charge: bool = False
+    customer_authorization_confirmed: bool = False
+    authorization_method: Optional[Literal["phone", "written", "in_person"]] = None
+    authorization_note: Optional[str] = Field(default=None, max_length=1000)
 
 
 @router.post("/{rental_id}/save-card")
 def save_rental_card(
     rental_id: int,
     payload: RentalCardOnFilePayload,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    enforce_rate_limit(
+        bucket="rental-staff-card-save",
+        identity=f"{current_user.id}:{rental_id}:{request_ip(request)}",
+        limit=5,
+        window_seconds=600,
+    )
     """Vault a card on file (via Square) so the agreement can be auto-charged each period."""
     _require_internal_rental_operator(current_user)
     if not square_is_configured():
@@ -1322,40 +1342,124 @@ def save_rental_card(
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
     _require_rental_facility_access(db, current_user, rental)
+    previous_card_id = rental.square_card_id
+    if payload.authorize_auto_charge and (
+        not payload.customer_authorization_confirmed or not payload.authorization_method
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Confirm the customer's authorization method before enabling automatic charges",
+        )
     try:
-        result = create_square_card_on_file(
+        result, replaced = vault_replacement_card(
+            rental,
             source_id=payload.source_id,
             idempotency_key=f"rental-card-{rental_id}-{int(datetime.utcnow().timestamp())}",
-            customer_name=rental.customer_name,
-            customer_email=rental.customer_email,
         )
     except SquareRequestError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
-    rental.square_card_id = result["card_id"]
-    rental.square_customer_id = result["customer_id"]
-    rental.square_card_brand = result.get("card_brand")
-    rental.square_card_last4 = result.get("last_4")
-    rental.square_card_exp_month = result.get("exp_month")
-    rental.square_card_exp_year = result.get("exp_year")
-    if rental.auto_charge:
-        rental.auto_charge_authorized_at = datetime.utcnow()
-        rental.auto_charge_authorized_by = f"{current_user.full_name} (recorded by staff)"
-    rental.failed_charge_count = 0
+    store_saved_card(
+        rental,
+        result,
+        authorize_auto_charge=payload.authorize_auto_charge,
+        authorized_by=f"{current_user.full_name} (recorded by staff)",
+    )
+    method_label = (payload.authorization_method or "card storage only").replace("_", " ")
+    evidence_text = (
+        f"{current_user.full_name} recorded the customer's "
+        f"{'automatic payment authorization' if payload.authorize_auto_charge else 'card-storage authorization'} "
+        f"via {method_label} for rental agreement {rental.rental_number}."
+    )
+    if payload.authorization_note:
+        evidence_text += f" Note: {payload.authorization_note.strip()}"
+    evidence = record_card_event(
+        db,
+        rental,
+        event_type="replaced" if replaced else ("authorized" if payload.authorize_auto_charge else "saved"),
+        accepted_by_name=current_user.full_name,
+        channel="staff",
+        authorize_auto_charge=payload.authorize_auto_charge,
+        current_user=current_user,
+        request=request,
+        card=result,
+        consent_text_override=evidence_text,
+        provider_cleanup_pending=replaced,
+        provider_card_reference=previous_card_id if replaced else None,
+    )
     rental.updated_at = datetime.utcnow()
     _append_history(rental, "card_saved", current_user, {"brand": result.get("card_brand"), "last_4": result.get("last_4")})
     first_invoice = db.query(Invoice).filter(Invoice.rental_id == rental.id).order_by(Invoice.id.asc()).first()
     if first_invoice:
         add_invoice_transaction(
             db, first_invoice,
-            "auto_charge_authorized" if rental.auto_charge else "card_saved",
+            "auto_charge_authorized" if payload.authorize_auto_charge else "card_saved",
             0, "credit_card",
             f"Card ending {result.get('last_4') or 'unknown'} saved by {current_user.full_name}"
-            + (" with staff-recorded automatic charge authorization" if rental.auto_charge else ""),
+            + (" with staff-recorded automatic charge authorization" if payload.authorize_auto_charge else ""),
             current_user,
-            "AUTH" if rental.auto_charge else "CARD",
+            "AUTH" if payload.authorize_auto_charge else "CARD",
         )
     log_activity(db, "rentals", rental.id, "SAVE_CARD", current_user, {"last_4": result.get("last_4")})
     db.commit()
+    db.refresh(rental)
+    if replaced and complete_provider_card_cleanup(db, evidence):
+        db.commit()
+    return _rental_response(rental)
+
+
+@router.delete("/{rental_id}/saved-card")
+def remove_rental_saved_card(
+    rental_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    enforce_rate_limit(
+        bucket="rental-staff-card-remove",
+        identity=f"{current_user.id}:{rental_id}:{request_ip(request)}",
+        limit=5,
+        window_seconds=600,
+    )
+    _require_internal_rental_operator(current_user)
+    rental = (
+        db.query(Rental)
+        .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part))
+        .filter(Rental.id == rental_id)
+        .with_for_update()
+        .first()
+    )
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    old_card_id = rental.square_card_id
+    if not old_card_id:
+        revoke_auto_charge(rental)
+        db.commit()
+        return _rental_response(rental)
+
+    revoke_auto_charge(rental)
+    evidence = record_card_event(
+        db,
+        rental,
+        event_type="revoked",
+        accepted_by_name=current_user.full_name,
+        channel="staff",
+        current_user=current_user,
+        request=request,
+        provider_cleanup_pending=True,
+        provider_card_reference=old_card_id,
+        consent_text_override=f"{current_user.full_name} requested saved-card removal for {rental.rental_number}.",
+    )
+    rental.updated_at = datetime.utcnow()
+    _append_history(rental, "saved_card_removed", current_user, {"auto_charge_revoked": True})
+    log_activity(db, "rentals", rental.id, "REMOVE_SAVED_CARD", current_user, {})
+    db.commit()
+    if complete_provider_card_cleanup(db, evidence):
+        evidence.event_type = "removed"
+        clear_saved_card(rental)
+        for invoice in db.query(Invoice).filter(Invoice.rental_id == rental.id).all():
+            reprice_unpaid_rental_invoice(invoice, rental, include_conditional=False)
+        db.commit()
     db.refresh(rental)
     return _rental_response(rental)
 
@@ -1745,7 +1849,7 @@ def run_recurring_billing(
     """Raise due period invoices and auto-charge/notify. Intended for a daily cron."""
     if current_user.role not in {UserRole.ADMIN, UserRole.SUPERADMIN}:
         raise HTTPException(status_code=403, detail="Only an admin can run recurring rental billing")
-    return run_rental_recurring_billing(db)
+    return run_rental_billing_job(db)
 
 
 @router.get("")
@@ -2741,10 +2845,22 @@ def update_rental_invoice(
             _append_history(invoice.rental, "invoice_updated", current_user, {"invoice_id": invoice.id, "status": invoice.status.value})
             
     invoice.updated_at = datetime.utcnow()
-    record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
+    payment_transaction = record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
+    receipt_delivery = None
+    if payment_transaction is not None and invoice.rental and _money(invoice.amount_paid) > _money(previous_paid):
+        receipt_delivery = queue_rental_payment_receipt(
+            db,
+            invoice.rental,
+            invoice,
+            payment_reference=payment_transaction.reference_number,
+            amount=_money(invoice.amount_paid) - _money(previous_paid),
+            payment_method=invoice.payment_method,
+        )
     record_status_change(db, invoice, previous_status, current_user)
     log_activity(db, "invoices", invoice.id, "UPDATE_RENTAL_INVOICE", current_user, update_data)
     db.commit()
+    if receipt_delivery:
+        deliver_payment_receipt(db, receipt_delivery.id)
     db.refresh(invoice)
     return _invoice_response(invoice)
 

@@ -10,6 +10,7 @@ from app.utils.rental_billing import (
     _recurring_invoice_amounts,
     advance_billing_date,
     projected_billing_schedule,
+    _public_pay_url,
 )
 
 
@@ -114,6 +115,22 @@ def test_monthly_schedule_uses_calendar_months_and_preserves_month_end_anchor():
     assert advance_billing_date(date(2026, 1, 31), "monthly", 1) == date(2026, 2, 28)
     assert advance_billing_date(date(2026, 1, 31), "monthly", 2) == date(2026, 3, 31)
     assert advance_billing_date(date(2026, 11, 30), "quarterly", 1) == date(2027, 2, 28)
+
+
+def test_scheduled_invoice_email_url_uses_the_real_token_portal_route():
+    rental = SimpleNamespace(
+        access_token_hash=None,
+        token_expires_at=None,
+        portal_sent_at=None,
+    )
+
+    url = _public_pay_url(rental)
+
+    assert "/rental/" in url
+    assert "/rental-invoice/" not in url
+    assert rental.access_token_hash
+    assert rental.access_token_hash not in url
+    assert rental.token_expires_at > datetime.utcnow()
 
 
 def test_recurring_discount_is_applied_after_tax():

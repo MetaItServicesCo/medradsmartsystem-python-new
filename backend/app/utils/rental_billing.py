@@ -13,6 +13,8 @@ Square is configured AND a card is on file, so it is safe to run without payment
 from __future__ import annotations
 
 import calendar
+import hashlib
+import secrets
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Optional
@@ -41,6 +43,7 @@ from app.utils.payment_idempotency import (
     payment_fingerprint,
     replay_or_raise,
 )
+from app.utils.payment_receipts import queue_rental_payment_receipt
 
 MAX_CHARGE_ATTEMPTS = 3
 
@@ -502,28 +505,40 @@ def _generate_period_invoice(db: Session, rental: Rental) -> Invoice:
     return invoice
 
 
-def _public_pay_url(invoice: Invoice) -> str:
+def _public_pay_url(rental: Rental) -> str:
+    """Issue a fresh secure portal link for a scheduled billing email.
+
+    Only the token hash is stored. This avoids persisting a bearer link while
+    ensuring an external customer can actually open and pay a newly generated
+    recurring invoice.
+    """
+    token = secrets.token_urlsafe(32)
+    rental.access_token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    rental.token_expires_at = datetime.utcnow() + timedelta(days=90)
+    rental.portal_sent_at = datetime.utcnow()
     base = settings.PUBLIC_APP_URL.rstrip("/")
-    return f"{base}/rental-invoice/{invoice.id}"
+    return f"{base}/rental/{token}"
 
 
 def _email_invoice_due(rental: Rental, invoice: Invoice) -> bool:
     if not rental.customer_email:
         return False
+    payment_url = _public_pay_url(rental)
     subject = f"Rental invoice {invoice.invoice_number} — {rental.rental_number}"
     body = (
         f"<p>Hello {rental.customer_name},</p>"
         f"<p>Your rental invoice <strong>{invoice.invoice_number}</strong> for "
         f"<strong>${invoice.total_amount}</strong> is ready.</p>"
-        f"<p><a href=\"{_public_pay_url(invoice)}\">View and pay this invoice</a></p>"
+        f"<p><a href=\"{payment_url}\">View and pay this invoice</a></p>"
         f"<p>Thank you for renting with Mr. BioMed Tech Services.</p>"
     )
-    return send_html_email([rental.customer_email], subject, body, f"Rental invoice {invoice.invoice_number}: ${invoice.total_amount}. {_public_pay_url(invoice)}")
+    return send_html_email([rental.customer_email], subject, body, f"Rental invoice {invoice.invoice_number}: ${invoice.total_amount}. {payment_url}")
 
 
 def _email_charge_failed(rental: Rental, invoice: Invoice) -> bool:
     if not rental.customer_email:
         return False
+    payment_url = _public_pay_url(rental)
     subject = f"Action needed: payment failed for {rental.rental_number}"
     body = (
         f"<p>Hello {rental.customer_name},</p>"
@@ -531,14 +546,15 @@ def _email_charge_failed(rental: Rental, invoice: Invoice) -> bool:
         f"<strong>{invoice.invoice_number}</strong> (${invoice.total_amount}) "
         f"{MAX_CHARGE_ATTEMPTS} times and it was declined.</p>"
         f"<p>Please update your payment method or pay this invoice manually: "
-        f"<a href=\"{_public_pay_url(invoice)}\">Pay now</a></p>"
+        f"<a href=\"{payment_url}\">Pay now</a></p>"
     )
-    return send_html_email([rental.customer_email], subject, body, f"Payment failed for {invoice.invoice_number}. Please update your card: {_public_pay_url(invoice)}")
+    return send_html_email([rental.customer_email], subject, body, f"Payment failed for {invoice.invoice_number}. Please update your card: {payment_url}")
 
 
 def _email_charge_declined(rental: Rental, invoice: Invoice, attempt: int, next_retry: datetime) -> bool:
     if not rental.customer_email:
         return False
+    payment_url = _public_pay_url(rental)
     subject = f"Payment attempt declined for {rental.rental_number}"
     retry_label = next_retry.strftime("%B %d, %Y")
     body = (
@@ -546,16 +562,19 @@ def _email_charge_declined(rental: Rental, invoice: Invoice, attempt: int, next_
         f"<p>Automatic payment attempt {attempt} of {MAX_CHARGE_ATTEMPTS} for "
         f"<strong>{invoice.invoice_number}</strong> (${invoice.balance_due}) was declined.</p>"
         f"<p>We will retry on <strong>{retry_label}</strong>. You can also pay manually or update "
-        f"your card here: <a href=\"{_public_pay_url(invoice)}\">View invoice</a>.</p>"
+        f"your card here: <a href=\"{payment_url}\">View invoice</a>.</p>"
     )
     return send_html_email(
         [rental.customer_email], subject, body,
-        f"Payment attempt {attempt} for {invoice.invoice_number} was declined. Next retry: {retry_label}. {_public_pay_url(invoice)}",
+        f"Payment attempt {attempt} for {invoice.invoice_number} was declined. Next retry: {retry_label}. {payment_url}",
     )
 
 
 def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     """Attempt to charge the saved card. Returns 'charged', 'declined', or 'exhausted'."""
+    charge_amount = _money(invoice.balance_due)
+    if charge_amount <= 0:
+        return "charged"
     attempt = int(invoice.payment_attempt_count or 0) + 1
     invoice.payment_attempt_count = attempt
     invoice.last_payment_attempt_at = datetime.utcnow()
@@ -571,13 +590,13 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
         fingerprint=payment_fingerprint(
             "rental_auto_charge",
             invoice_id=invoice.id,
-            amount=invoice.total_amount,
+            amount=charge_amount,
             currency=settings.SQUARE_CURRENCY,
             attributes={"attempt": attempt, "rental_id": rental.id},
         ),
         operation_type="rental_auto_charge",
         invoice_id=invoice.id,
-        amount=invoice.total_amount,
+        amount=charge_amount,
         currency=settings.SQUARE_CURRENCY,
         provider="square",
     )
@@ -590,7 +609,7 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     square_customer_id = rental.square_customer_id
     customer_email = rental.customer_email
     invoice_number = invoice.invoice_number
-    invoice_total = invoice.total_amount
+    invoice_total = charge_amount
     db.commit()
     try:
         payment = create_square_payment(
@@ -656,7 +675,7 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
     paid_amount = minor_units_to_amount((payment.get("amount_money") or {}).get("amount"))
     paid_currency = str((payment.get("amount_money") or {}).get("currency") or "").upper()
     expected_currency = settings.SQUARE_CURRENCY.strip().upper() or "USD"
-    if payment_status != "COMPLETED" or paid_amount != _money(invoice.total_amount) or paid_currency != expected_currency:
+    if payment_status != "COMPLETED" or paid_amount != charge_amount or paid_currency != expected_currency:
         mark_operation_failed(operation, "Square returned an incomplete or mismatched automatic payment", unknown=True)
         invoice.next_payment_retry_at = None
         add_invoice_transaction(
@@ -667,24 +686,35 @@ def _try_auto_charge(db: Session, rental: Rental, invoice: Invoice) -> str:
         return "declined"
 
     previous_paid = invoice.amount_paid
-    invoice.amount_paid = invoice.total_amount
-    invoice.balance_due = Decimal("0")
-    invoice.status = InvoiceStatus.PAID
+    invoice.amount_paid = min(_money(invoice.total_amount), _money(previous_paid) + charge_amount)
+    invoice.balance_due = max(_money(invoice.total_amount) - _money(invoice.amount_paid), Decimal("0"))
+    invoice.status = InvoiceStatus.PAID if invoice.balance_due <= 0 else InvoiceStatus.PARTIALLY_PAID
     invoice.payment_method = "credit_card"
     invoice.next_payment_retry_at = None
     payment_txn = record_payment_delta(
-        db, invoice, previous_paid, invoice.total_amount, None, "credit_card",
+        db, invoice, previous_paid, invoice.amount_paid, None, "credit_card",
         f"Auto-charged card on file ({payment.get('id')})",
     )
     if payment_txn is not None:
         payment_txn.reference_number = payment.get("id")
+    payment_card = (payment.get("card_details") or {}).get("card") or {}
+    queue_rental_payment_receipt(
+        db,
+        rental,
+        invoice,
+        payment_reference=str(payment.get("id") or operation_key),
+        amount=charge_amount,
+        payment_method="square_card",
+        card_brand=payment_card.get("card_brand") or rental.square_card_brand,
+        card_last4=payment_card.get("last_4") or rental.square_card_last4,
+    )
     mark_operation_succeeded(
         operation,
         provider_reference=payment.get("id"),
         response_data={"invoice_id": invoice.id, "payment_id": payment.get("id")},
     )
     rental.failed_charge_count = 0
-    _append_history(rental, "auto_charged", {"invoice": invoice.invoice_number, "amount": str(invoice.total_amount)})
+    _append_history(rental, "auto_charged", {"invoice": invoice.invoice_number, "amount": str(charge_amount)})
     return "charged"
 
 

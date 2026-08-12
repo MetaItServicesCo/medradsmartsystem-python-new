@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
 from app.db.base import Base
+from app.utils.payment_data_security import EncryptedPaymentReference
 
 class RentalStatus(str, enum.Enum):
     ACTIVE = "active"
@@ -107,8 +108,10 @@ class Rental(Base):
     payment_authorization_id = Column(Integer, nullable=True)
     # Square stored-card id used to auto-charge each period, and how many
     # consecutive auto-charge attempts have failed (the customer is notified after 3).
-    square_card_id = Column(String, nullable=True)
-    square_customer_id = Column(String, nullable=True)
+    # Reusable provider references are encrypted at application level. These
+    # are payment credentials even though they are not card numbers.
+    square_card_id = Column(EncryptedPaymentReference(), nullable=True)
+    square_customer_id = Column(EncryptedPaymentReference(), nullable=True)
     failed_charge_count = Column(Integer, nullable=False, default=0)
     committed_periods = Column(Integer, nullable=True)
     periods_billed = Column(Integer, nullable=False, default=0)
@@ -186,6 +189,13 @@ class Rental(Base):
         back_populates="rental",
         cascade="all, delete-orphan",
         order_by="RentalExtensionRequest.sequence",
+        lazy="selectin",
+    )
+    payment_authorizations = relationship(
+        "RentalPaymentAuthorization",
+        back_populates="rental",
+        cascade="all, delete-orphan",
+        order_by="RentalPaymentAuthorization.id",
         lazy="selectin",
     )
     # Legacy single-item relationships (deprecated).
@@ -272,6 +282,44 @@ class RentalAgreementAcceptance(Base):
     accepted_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     rental = relationship("Rental", back_populates="acceptance")
+
+
+class RentalPaymentAuthorization(Base):
+    """Immutable evidence for every saved-card and recurring-charge decision.
+
+    Only masked display metadata and the exact consent evidence are retained
+    for normal audit use. A provider card reference may be retained encrypted
+    only while a failed provider-removal operation is awaiting retry.
+    """
+    __tablename__ = "rental_payment_authorizations"
+    __table_args__ = (
+        Index("ix_rental_payment_auth_rental_created", "rental_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    rental_id = Column(Integer, ForeignKey("rentals.id", ondelete="CASCADE"), nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_type = Column(String(32), nullable=False, index=True)  # saved | authorized | replaced | revoked | removed | cleanup_required
+    consent_version = Column(String(40), nullable=False)
+    consent_text = Column(Text, nullable=False)
+    billing_frequency = Column(String(32), nullable=True)
+    agreement_revision = Column(Integer, nullable=False, default=1)
+    accepted_by_name = Column(String(200), nullable=False)
+    accepted_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    channel = Column(String(24), nullable=False)  # public_link | account | staff
+    ip_address = Column(String(120), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    card_brand = Column(String(40), nullable=True)
+    card_last4 = Column(String(4), nullable=True)
+    card_exp_month = Column(Integer, nullable=True)
+    card_exp_year = Column(Integer, nullable=True)
+    provider_cleanup_pending = Column(Boolean, nullable=False, default=False)
+    provider_card_reference = Column(EncryptedPaymentReference(), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    rental = relationship("Rental", back_populates="payment_authorizations")
+    invoice = relationship("Invoice")
+    accepted_by_user = relationship("User")
 
 
 class RentalExtensionRequest(Base):

@@ -8,6 +8,8 @@ from app.core.config import settings
 from app.utils.square_payments import (
     amount_to_minor_units,
     create_square_payment,
+    create_square_card_on_file,
+    disable_square_card,
     minor_units_to_amount,
     square_public_config,
     verify_square_webhook_signature,
@@ -97,3 +99,47 @@ def test_square_webhook_signature_uses_exact_notification_url_and_body(monkeypat
     assert verify_square_webhook_signature(body, expected) is True
     assert verify_square_webhook_signature(body + b" ", expected) is False
     assert verify_square_webhook_signature(body, "wrong-signature") is False
+
+
+def test_square_card_vault_reuses_existing_customer(monkeypatch) -> None:
+    calls = []
+
+    def fake_post(path, body, fallback):
+        calls.append((path, body))
+        return {
+            "card": {
+                "id": "card-2",
+                "card_brand": "VISA",
+                "last_4": "1111",
+                "exp_month": 12,
+                "exp_year": 2030,
+            }
+        }
+
+    monkeypatch.setattr("app.utils.square_payments._square_post", fake_post)
+    result = create_square_card_on_file(
+        source_id="temporary-token",
+        idempotency_key="stable-key",
+        customer_name="Customer",
+        customer_email="customer@example.com",
+        customer_id="customer-1",
+    )
+
+    assert result["customer_id"] == "customer-1"
+    assert calls == [("/cards", {
+        "idempotency_key": "stable-key",
+        "source_id": "temporary-token",
+        "card": {"customer_id": "customer-1"},
+    })]
+
+
+def test_square_disable_card_uses_provider_disable_endpoint(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        "app.utils.square_payments._square_post",
+        lambda path, body, fallback: captured.update(path=path, body=body) or {"card": {"enabled": False}},
+    )
+
+    disable_square_card("card/with unsafe chars")
+
+    assert captured == {"path": "/cards/card%2Fwith%20unsafe%20chars/disable", "body": {}}

@@ -1,7 +1,7 @@
 import smtplib
 import logging
 from email.message import EmailMessage
-from typing import Iterable
+from typing import Iterable, Optional
 
 from app.core.config import settings
 
@@ -13,6 +13,7 @@ def send_html_email(
     subject: str,
     html_body: str,
     text_body: str,
+    message_id: Optional[str] = None,
 ) -> bool:
     """Send an email when SMTP is configured.
 
@@ -29,15 +30,19 @@ def send_html_email(
     message["From"] = sender
     message["To"] = ", ".join(addresses)
     message["Subject"] = subject
+    if message_id:
+        message["Message-ID"] = message_id
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
 
     try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as smtp:
-            smtp.starttls()
+        smtp_client = smtplib.SMTP_SSL if settings.SMTP_PORT == 465 else smtplib.SMTP
+        with smtp_client(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as smtp:
+            if settings.SMTP_PORT != 465:
+                smtp.starttls()
             smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             smtp.send_message(message)
         return True
     except (OSError, smtplib.SMTPException):
-        logger.exception("Quotation email delivery failed for %s", ", ".join(addresses))
+        logger.exception("Email delivery failed for %s", ", ".join(addresses))
         return False

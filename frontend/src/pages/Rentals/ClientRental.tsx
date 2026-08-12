@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Alert, Box, Button, Card, Checkbox, Chip, CircularProgress, Divider,
-  FormControlLabel, Table, TableBody, TableCell, TableHead, TableRow,
+  Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel,
+  Table, TableBody, TableCell, TableHead, TableRow,
   TextField, Typography,
 } from '@mui/material'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import DrawIcon from '@mui/icons-material/Draw'
 import PrintIcon from '@mui/icons-material/Print'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 
@@ -38,8 +40,12 @@ import {
   fetchRentalPortal,
   payAccountRentalInvoice,
   payPublicRentalInvoice,
+  removeAccountRentalCard,
+  removePublicRentalCard,
   requestAccountRentalExtension,
   requestPublicRentalExtension,
+  saveAccountRentalCard,
+  savePublicRentalCard,
   type RentalPortalInvoice,
 } from '@/api/rentals'
 
@@ -109,6 +115,9 @@ const ClientRental = () => {
   const [extensionSignature, setExtensionSignature] = useState('')
   const [extensionTermsAccepted, setExtensionTermsAccepted] = useState(false)
   const [continueAutoCharge, setContinueAutoCharge] = useState(false)
+  const [showCardEditor, setShowCardEditor] = useState(false)
+  const [authorizeReplacement, setAuthorizeReplacement] = useState(false)
+  const [confirmCardRemoval, setConfirmCardRemoval] = useState(false)
 
   const portalKey = isAccountView
     ? ['rental-account', accountRentalId]
@@ -230,6 +239,42 @@ const ClientRental = () => {
         clearSquarePaymentKey(`rental-invoice-${variables.invoiceId}-${Number(payTarget.balance_due || 0).toFixed(2)}`)
       }
       toast.error(detail)
+    },
+  })
+
+  const saveCardMut = useMutation({
+    mutationFn: ({ sourceId, idempotencyKey }: { sourceId: string; idempotencyKey: string }) =>
+      isAccountView
+        ? saveAccountRentalCard(accountRentalId, sourceId, authorizeReplacement, idempotencyKey)
+        : savePublicRentalCard(token, sourceId, authorizeReplacement, idempotencyKey),
+    onSuccess: (data) => {
+      clearSquarePaymentKey(`rental-saved-card-${isAccountView ? accountRentalId : token}`)
+      queryClient.setQueryData(portalKey, data)
+      queryClient.invalidateQueries({ queryKey: ['rentals'] })
+      queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+      setShowCardEditor(false)
+      setAuthorizeReplacement(false)
+      toast.success('Saved payment method updated securely')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update the saved payment method'),
+  })
+
+  const removeCardMut = useMutation({
+    mutationFn: () => isAccountView
+      ? removeAccountRentalCard(accountRentalId)
+      : removePublicRentalCard(token),
+    onSuccess: (data) => {
+      queryClient.setQueryData(portalKey, data)
+      queryClient.invalidateQueries({ queryKey: ['rentals'] })
+      queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+      setConfirmCardRemoval(false)
+      setShowCardEditor(false)
+      toast.success('Saved card removed and automatic payments stopped')
+    },
+    onError: (e: any) => {
+      setConfirmCardRemoval(false)
+      void portalQ.refetch()
+      toast.error(e.response?.data?.detail || 'Could not remove the saved card')
     },
   })
 
@@ -503,6 +548,89 @@ const ClientRental = () => {
           </Card>
         ) : acceptance ? <CustomerSignatureRecord context="Agreement" acceptedBy={acceptance.accepted_by_name} acceptedAt={dateLabel(acceptance.accepted_at)} signature={acceptance.signature_name} detail={`Revision ${acceptance.agreement_revision}`} /> : null}
 
+        {acceptance && canTransact && !isExtensionView && (
+          <Card className="rental-screen-only" variant="outlined" sx={{ mt: 2.5, p: { xs: 2, md: 2.5 }, borderRadius: '16px', borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1.5, flexWrap: 'wrap' }}>
+              <Box>
+                <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 19 }}>Secure payment method</Typography>
+                {agreement.saved_card ? (
+                  <Typography sx={{ color: '#475569', mt: 0.5 }}>
+                    {agreement.saved_card.brand || 'Card'} ending in {agreement.saved_card.last4 || '••••'}
+                    {agreement.saved_card.exp_month && agreement.saved_card.exp_year
+                      ? ` · expires ${String(agreement.saved_card.exp_month).padStart(2, '0')}/${String(agreement.saved_card.exp_year).slice(-2)}`
+                      : ''}
+                  </Typography>
+                ) : (
+                  <Typography sx={{ color: '#64748B', mt: 0.5 }}>No reusable payment method is stored by MedRad. Card details are vaulted by Square.</Typography>
+                )}
+              </Box>
+              <Chip
+                label={agreement.auto_charge_authorized ? 'Auto-pay authorized' : agreement.saved_card ? 'Stored only' : 'No card on file'}
+                sx={{ fontWeight: 900, bgcolor: agreement.auto_charge_authorized ? '#D1FAE5' : '#EEF2FF', color: agreement.auto_charge_authorized ? '#047857' : '#4338CA' }}
+              />
+            </Box>
+            {agreement.card_removal_pending && (
+              <Alert severity="warning" sx={{ mt: 1.5, borderRadius: '12px' }}>
+                Automatic payments are disabled. The saved card is pending removal from Square and cannot be used for recurring charges.
+              </Alert>
+            )}
+
+            {!showCardEditor ? (
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<CreditCardIcon />}
+                  disabled={!canPay || agreement.card_removal_pending}
+                  onClick={() => {
+                    setAuthorizeReplacement(agreement.auto_charge_authorized)
+                    setShowCardEditor(true)
+                  }}
+                  sx={{ fontWeight: 900, textTransform: 'none' }}
+                >
+                  {agreement.saved_card ? 'Replace saved card' : 'Add saved card'}
+                </Button>
+                {agreement.saved_card && (
+                  <Button
+                    color="error"
+                    variant="outlined"
+                    startIcon={<DeleteOutlineIcon />}
+                    onClick={() => setConfirmCardRemoval(true)}
+                    sx={{ fontWeight: 900, textTransform: 'none' }}
+                  >
+                    Remove card &amp; stop auto-pay
+                  </Button>
+                )}
+              </Box>
+            ) : (
+              <Box sx={{ mt: 2 }}>
+                <FormControlLabel
+                  sx={{ ...customerConsentLabelSx, mb: 0.75 }}
+                  control={<Checkbox checked={authorizeReplacement} onChange={event => setAuthorizeReplacement(event.target.checked)} />}
+                  label={agreement.auto_charge_consent_text}
+                />
+                <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1.5 }}>
+                  Leave unchecked to store the card without automatic-charge authorization. MedRad never stores the full card number or security code.
+                </Typography>
+                <SquareCardCheckout
+                  applicationId={square.application_id!}
+                  locationId={square.location_id!}
+                  sdkUrl={square.sdk_url}
+                  amount={0}
+                  currency={square.currency}
+                  payerName={agreement.customer_name}
+                  payerEmail={agreement.customer_email}
+                  processing={saveCardMut.isPending}
+                  intent="STORE"
+                  submitLabel={agreement.saved_card ? 'Securely replace saved card' : 'Securely save card'}
+                  idempotencyScope={`rental-saved-card-${isAccountView ? accountRentalId : token}`}
+                  onPaymentToken={(sourceId, idempotencyKey) => saveCardMut.mutate({ sourceId, idempotencyKey })}
+                />
+                <Button onClick={() => { setShowCardEditor(false); setAuthorizeReplacement(false) }} sx={{ mt: 1, fontWeight: 800 }}>Cancel</Button>
+              </Box>
+            )}
+          </Card>
+        )}
+
         {acceptance && (
           <>
             <Divider sx={{ my: 3 }} />
@@ -559,7 +687,7 @@ const ClientRental = () => {
                           <FormControlLabel
                             sx={{ ...customerConsentLabelSx, mb: 0.5 }}
                             control={<Checkbox checked={authorizeFuturePayments} onChange={event => setAuthorizeFuturePayments(event.target.checked)} />}
-                            label={`Save this card securely and authorize automatic ${frequencyLabel(agreement.billing_frequency).toLowerCase()} payments for future billing periods`}
+                            label={agreement.auto_charge_consent_text}
                           />
                         )}
                         <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1 }}>
@@ -582,6 +710,20 @@ const ClientRental = () => {
           </>
         )}
       </Card>
+      <Dialog open={confirmCardRemoval} onClose={() => !removeCardMut.isPending && setConfirmCardRemoval(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>Remove saved card?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ color: '#475569' }}>
+            The card will be disabled in Square and removed from this agreement. Automatic payments stop immediately. Future invoices must be paid manually until another card is authorized.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button disabled={removeCardMut.isPending} onClick={() => setConfirmCardRemoval(false)} sx={{ fontWeight: 800 }}>Keep card</Button>
+          <Button disabled={removeCardMut.isPending} color="error" variant="contained" onClick={() => removeCardMut.mutate()} sx={{ fontWeight: 900 }}>
+            Remove card
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

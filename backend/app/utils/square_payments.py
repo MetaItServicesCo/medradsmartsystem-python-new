@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import hmac
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -174,14 +175,16 @@ def create_square_card_on_file(
     idempotency_key: str,
     customer_name: str,
     customer_email: str | None = None,
+    customer_id: str | None = None,
 ) -> dict[str, Any]:
     """Store a card on file for recurring auto-charge: create (or reuse) a Square
     customer, then vault the card. Returns the customer id + card id + card summary."""
-    customer_body: dict[str, Any] = {"given_name": customer_name or "Rental customer"}
-    if customer_email:
-        customer_body["email_address"] = customer_email
-    customer = _square_post("/customers", customer_body, "Square could not create the customer").get("customer") or {}
-    customer_id = customer.get("id")
+    if not customer_id:
+        customer_body: dict[str, Any] = {"given_name": customer_name or "Rental customer"}
+        if customer_email:
+            customer_body["email_address"] = customer_email
+        customer = _square_post("/customers", customer_body, "Square could not create the customer").get("customer") or {}
+        customer_id = customer.get("id")
     if not customer_id:
         raise SquareRequestError("Square returned an invalid customer response")
 
@@ -201,6 +204,18 @@ def create_square_card_on_file(
         "exp_month": card.get("exp_month"),
         "exp_year": card.get("exp_year"),
     }
+
+
+def disable_square_card(card_id: str) -> dict[str, Any]:
+    """Disable a vaulted card at Square so it cannot be charged again."""
+    normalized = str(card_id or "").strip()
+    if not normalized:
+        raise SquareRequestError("No saved card is available to disable", status_code=400)
+    return _square_post(
+        f"/cards/{quote(normalized, safe='')}/disable",
+        {},
+        "Square could not disable the saved card",
+    )
 
 
 def create_square_refund(

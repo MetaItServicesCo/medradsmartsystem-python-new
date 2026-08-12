@@ -32,6 +32,7 @@ from app.utils.rental_billing import (
     _initial_invoice_amounts, advance_billing_date, billing_period_date,
     effective_period_count, projected_billing_schedule,
     invoice_amounts_for_period, apply_projected_discount_to_unpaid_invoice,
+    reprice_unpaid_rental_invoice,
 )
 from app.utils.rental_extensions import OPEN_EXTENSION_STATUSES, current_extension, extension_response
 from app.utils.notifications import notify_admins
@@ -43,6 +44,17 @@ from app.utils.square_payments import (
     SquareRequestError,
     minor_units_to_amount,
 )
+from app.utils.payment_data_security import payment_data_encryption_configured
+from app.utils.rate_limit import enforce_rate_limit, public_payment_identity, request_ip
+from app.utils.rental_card_security import (
+    automatic_payment_consent,
+    clear_saved_card,
+    complete_provider_card_cleanup,
+    record_card_event,
+    revoke_auto_charge,
+    store_saved_card,
+    vault_replacement_card,
+)
 from app.utils.payment_idempotency import (
     get_or_create_operation,
     mark_operation_failed,
@@ -50,6 +62,7 @@ from app.utils.payment_idempotency import (
     payment_fingerprint,
     replay_or_raise,
 )
+from app.utils.payment_receipts import deliver_payment_receipt, queue_rental_payment_receipt
 
 router = APIRouter()
 
@@ -227,6 +240,11 @@ def _agreement_view(rental: Rental) -> dict[str, Any]:
             if rental.square_card_id
             else None
         ),
+        "auto_charge_consent_text": automatic_payment_consent(rental),
+        "card_removal_pending": any(
+            item.provider_cleanup_pending and item.event_type in {"revoked", "removed"}
+            for item in (rental.payment_authorizations or [])
+        ),
     }
 
 
@@ -264,17 +282,12 @@ def _require_signed(rental: Rental) -> RentalAgreementAcceptance:
 
 
 def _store_card_result(rental: Rental, result: dict[str, Any], authorize_auto_charge: bool, authorized_by: str) -> None:
-    rental.square_card_id = result["card_id"]
-    rental.square_customer_id = result["customer_id"]
-    rental.square_card_brand = result.get("card_brand")
-    rental.square_card_last4 = result.get("last_4")
-    rental.square_card_exp_month = result.get("exp_month")
-    rental.square_card_exp_year = result.get("exp_year")
-    rental.failed_charge_count = 0
-    if authorize_auto_charge:
-        rental.auto_charge = True
-        rental.auto_charge_authorized_at = datetime.utcnow()
-        rental.auto_charge_authorized_by = authorized_by
+    store_saved_card(
+        rental,
+        result,
+        authorize_auto_charge=authorize_auto_charge,
+        authorized_by=authorized_by,
+    )
 
 
 def _portal_response(
@@ -492,14 +505,36 @@ def _accept_extension(
 
     old_end = rental.end_date
     old_periods = rental.committed_periods
+    had_auto_charge = bool(rental.auto_charge and rental.auto_charge_authorized_at)
     signer = payload.signature_name.strip()
     rental.end_date = extension.offered_end_date
     if extension.offered_total_periods is not None:
         rental.committed_periods = extension.offered_total_periods
     rental.auto_charge = bool(payload.continue_auto_charge and rental.square_card_id)
-    if not rental.auto_charge:
-        rental.auto_charge_authorized_at = None
-        rental.auto_charge_authorized_by = None
+    if rental.auto_charge:
+        rental.auto_charge_authorized_at = datetime.utcnow()
+        rental.auto_charge_authorized_by = signer
+        record_card_event(
+            db,
+            rental,
+            event_type="authorized",
+            accepted_by_name=signer,
+            channel="account" if current_user else "public_link",
+            authorize_auto_charge=True,
+            current_user=current_user,
+            request=request,
+        )
+    elif had_auto_charge:
+        revoke_auto_charge(rental)
+        record_card_event(
+            db,
+            rental,
+            event_type="revoked",
+            accepted_by_name=signer,
+            channel="account" if current_user else "public_link",
+            current_user=current_user,
+            request=request,
+        )
     next_period = int(rental.periods_billed or 0) + 1
     if next_period <= effective_period_count(rental):
         rental.next_bill_date = billing_period_date(rental, next_period)
@@ -672,26 +707,50 @@ def public_cancel_rental_extension(
 
 
 class SaveCardIn(BaseModel):
-    source_id: str
+    source_id: str = Field(min_length=8, max_length=500)
     authorize_auto_charge: bool = False
+    idempotency_key: Optional[str] = Field(default=None, min_length=8, max_length=255)
 
 
 @router.post("/rentals/public/{token}/save-card")
-def public_save_rental_card(token: str, payload: SaveCardIn, db: Session = Depends(get_db)) -> Any:
+def public_save_rental_card(
+    token: str,
+    payload: SaveCardIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    enforce_rate_limit(
+        bucket="rental-card-save",
+        identity=public_payment_identity(request, token),
+        limit=5,
+        window_seconds=600,
+    )
     if not square_is_configured():
         raise HTTPException(status_code=400, detail="Card payments are not available")
     rental = _find_rental_by_token(db, token, for_update=True)
     acceptance = _require_signed(rental)
+    previous_card_id = rental.square_card_id
     try:
-        result = create_square_card_on_file(
+        result, replaced = vault_replacement_card(
+            rental,
             source_id=payload.source_id,
-            idempotency_key=f"rental-card-{rental.id}-{int(datetime.utcnow().timestamp())}",
-            customer_name=rental.customer_name,
-            customer_email=rental.customer_email,
+            idempotency_key=payload.idempotency_key or f"rental-card-{rental.id}-{int(datetime.utcnow().timestamp())}",
         )
     except SquareRequestError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
     _store_card_result(rental, result, payload.authorize_auto_charge, acceptance.accepted_by_name)
+    evidence = record_card_event(
+        db,
+        rental,
+        event_type="replaced" if replaced else ("authorized" if payload.authorize_auto_charge else "saved"),
+        accepted_by_name=acceptance.accepted_by_name,
+        channel="public_link",
+        authorize_auto_charge=payload.authorize_auto_charge,
+        request=request,
+        card=result,
+        provider_cleanup_pending=replaced,
+        provider_card_reference=previous_card_id if replaced else None,
+    )
     if payload.authorize_auto_charge:
         for invoice in db.query(Invoice).filter(Invoice.rental_id == rental.id).all():
             apply_projected_discount_to_unpaid_invoice(invoice, rental)
@@ -721,13 +780,98 @@ def public_save_rental_card(token: str, payload: SaveCardIn, db: Session = Depen
         )
     db.commit()
     db.refresh(rental)
+    if replaced and complete_provider_card_cleanup(db, evidence):
+        db.commit()
     return _portal_response(db, rental)
+
+
+class RemoveSavedCardIn(BaseModel):
+    confirm: bool
+
+
+def _remove_saved_card(
+    rental: Rental,
+    payload: RemoveSavedCardIn,
+    request: Request,
+    db: Session,
+    *,
+    accepted_by_name: str,
+    channel: str,
+    current_user: Optional[User] = None,
+) -> Any:
+    if not payload.confirm:
+        raise HTTPException(status_code=422, detail="Confirm saved-card removal")
+    _require_signed(rental)
+    old_card_id = rental.square_card_id
+    if not old_card_id:
+        revoke_auto_charge(rental)
+        db.commit()
+        return _portal_response(db, rental)
+
+    # Revocation is effective locally before provider cleanup, so recurring
+    # billing cannot charge again even if Square is temporarily unavailable.
+    revoke_auto_charge(rental)
+    evidence = record_card_event(
+        db,
+        rental,
+        event_type="revoked",
+        accepted_by_name=accepted_by_name,
+        channel=channel,
+        current_user=current_user,
+        request=request,
+        provider_cleanup_pending=True,
+        provider_card_reference=old_card_id,
+    )
+    rental.updated_at = datetime.utcnow()
+    history = list(rental.history or [])
+    history.append({
+        "action": "saved_card_removed",
+        "by": accepted_by_name,
+        "user_id": current_user.id if current_user else None,
+        "at": datetime.utcnow().isoformat(),
+        "details": {"auto_charge_revoked": True},
+    })
+    rental.history = history
+    db.commit()
+    if complete_provider_card_cleanup(db, evidence):
+        evidence.event_type = "removed"
+        clear_saved_card(rental)
+        for invoice in db.query(Invoice).filter(Invoice.rental_id == rental.id).all():
+            reprice_unpaid_rental_invoice(invoice, rental, include_conditional=False)
+        db.commit()
+    db.refresh(rental)
+    return _portal_response(db, rental)
+
+
+@router.post("/rentals/public/{token}/remove-card")
+def public_remove_rental_card(
+    token: str,
+    payload: RemoveSavedCardIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    enforce_rate_limit(
+        bucket="rental-card-remove",
+        identity=public_payment_identity(request, token),
+        limit=5,
+        window_seconds=600,
+    )
+    rental = _find_rental_by_token(db, token, for_update=True)
+    acceptance = _require_signed(rental)
+    return _remove_saved_card(
+        rental,
+        payload,
+        request,
+        db,
+        accepted_by_name=acceptance.accepted_by_name,
+        channel="public_link",
+    )
 
 
 class PayInvoiceIn(BaseModel):
     invoice_id: int
-    source_id: str
-    idempotency_key: Optional[str] = None
+    source_id: str = Field(min_length=8, max_length=500)
+    idempotency_key: Optional[str] = Field(default=None, min_length=8, max_length=255)
     save_card: bool = False
     authorize_auto_charge: bool = False
 
@@ -794,6 +938,7 @@ def _accept_rental(
 def _pay_rental_invoice(
     rental: Rental,
     payload: PayInvoiceIn,
+    request: Request,
     db: Session,
     current_user: Optional[User] = None,
 ) -> Any:
@@ -803,6 +948,8 @@ def _pay_rental_invoice(
     actor_name = current_user.full_name if current_user else acceptance.accepted_by_name
     if payload.authorize_auto_charge and not payload.save_card:
         raise HTTPException(status_code=422, detail="Save the card before authorizing automatic charges")
+    if payload.save_card and not payment_data_encryption_configured():
+        raise HTTPException(status_code=503, detail="Secure saved-card storage is not configured")
     invoice = (
         db.query(Invoice)
         .filter(Invoice.id == payload.invoice_id, Invoice.rental_id == rental.id)
@@ -815,6 +962,9 @@ def _pay_rental_invoice(
         return _portal_response(db, rental)
     payment_source = payload.source_id
     saved_card: Optional[dict[str, Any]] = None
+    card_evidence = None
+    previous_card_id = rental.square_card_id
+    previous_customer_id = rental.square_customer_id
     conditional_discount = bool(
         payload.save_card
         and payload.authorize_auto_charge
@@ -877,6 +1027,7 @@ def _pay_rental_invoice(
                 idempotency_key=f"rent-card-{card_key}",
                 customer_name=customer_name,
                 customer_email=customer_email,
+                customer_id=previous_customer_id,
             )
             payment_source = saved_card["card_id"]
         # A commitment catch-up discount can legitimately reduce a milestone
@@ -898,6 +1049,27 @@ def _pay_rental_invoice(
         rental = db.query(Rental).filter(Rental.id == rental_id).with_for_update().first()
         invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
         operation = db.query(PaymentOperation).filter(PaymentOperation.id == operation_id).with_for_update().first()
+        # A card can be vaulted successfully before Square declines the
+        # payment. Persist its encrypted provider reference as cleanup work so
+        # no orphaned saved card is left unmanaged at the processor.
+        if saved_card and saved_card.get("card_id"):
+            record_card_event(
+                db,
+                rental,
+                event_type="cleanup_required",
+                accepted_by_name=actor_name,
+                channel="account" if current_user else "public_link",
+                current_user=current_user,
+                request=request,
+                invoice=invoice,
+                card=saved_card,
+                provider_cleanup_pending=True,
+                provider_card_reference=saved_card["card_id"],
+                consent_text_override=(
+                    "A newly vaulted card was not retained after an unsuccessful payment "
+                    "and is queued for provider cleanup."
+                ),
+            )
         mark_operation_failed(operation, str(exc), unknown=exc.indeterminate)
         add_invoice_transaction(
             db, invoice, "payment_failed", invoice.balance_due, "credit_card",
@@ -932,7 +1104,22 @@ def _pay_rental_invoice(
             )
     previous_paid = invoice.amount_paid
     if saved_card:
+        cleanup_pending = bool(previous_card_id and previous_card_id != saved_card["card_id"])
         _store_card_result(rental, saved_card, payload.authorize_auto_charge, actor_name)
+        card_evidence = record_card_event(
+            db,
+            rental,
+            event_type="replaced" if previous_card_id else ("authorized" if payload.authorize_auto_charge else "saved"),
+            accepted_by_name=actor_name,
+            channel="account" if current_user else "public_link",
+            authorize_auto_charge=payload.authorize_auto_charge,
+            current_user=current_user,
+            request=request,
+            invoice=invoice,
+            card=saved_card,
+            provider_cleanup_pending=cleanup_pending,
+            provider_card_reference=previous_card_id if cleanup_pending else None,
+        )
         if payload.authorize_auto_charge:
             apply_projected_discount_to_unpaid_invoice(invoice, rental)
     invoice.amount_paid = invoice.total_amount
@@ -944,6 +1131,17 @@ def _pay_rental_invoice(
     payment_txn = record_payment_delta(db, invoice, previous_paid, invoice.total_amount, current_user, "credit_card", f"Online card payment by {actor_name} ({payment.get('id')})")
     if payment_txn is not None:
         payment_txn.reference_number = payment_id
+    payment_card = (payment.get("card_details") or {}).get("card") or {}
+    receipt_delivery = queue_rental_payment_receipt(
+        db,
+        rental,
+        invoice,
+        payment_reference=payment_id,
+        amount=payment_amount,
+        payment_method="square_card",
+        card_brand=(saved_card or {}).get("brand") or payment_card.get("card_brand"),
+        card_last4=(saved_card or {}).get("last_4") or payment_card.get("last_4"),
+    )
     if saved_card:
         add_invoice_transaction(
             db, invoice,
@@ -981,6 +1179,10 @@ def _pay_rental_invoice(
         response_data={"invoice_id": invoice.id, "payment_id": payment_id},
     )
     db.commit()
+    if receipt_delivery:
+        deliver_payment_receipt(db, receipt_delivery.id)
+    if card_evidence and complete_provider_card_cleanup(db, card_evidence):
+        db.commit()
     db.refresh(rental)
     return _portal_response(db, rental)
 
@@ -997,9 +1199,20 @@ def public_accept_rental(
 
 
 @router.post("/rentals/public/{token}/pay-invoice")
-def public_pay_rental_invoice(token: str, payload: PayInvoiceIn, db: Session = Depends(get_db)) -> Any:
+def public_pay_rental_invoice(
+    token: str,
+    payload: PayInvoiceIn,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    enforce_rate_limit(
+        bucket="rental-payment",
+        identity=public_payment_identity(request, token),
+        limit=5,
+        window_seconds=600,
+    )
     rental = _find_rental_by_token(db, token, for_update=True)
-    return _pay_rental_invoice(rental, payload, db)
+    return _pay_rental_invoice(rental, payload, request, db)
 
 
 @router.get("/rentals/account/{rental_id}")
@@ -1100,9 +1313,110 @@ def account_accept_rental(
 def account_pay_rental_invoice(
     rental_id: int,
     payload: PayInvoiceIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
+    enforce_rate_limit(
+        bucket="rental-account-payment",
+        identity=f"{current_user.id}:{rental_id}:{request_ip(request)}",
+        limit=5,
+        window_seconds=600,
+    )
     rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
     _require_primary_account_recipient(rental, current_user)
-    return _pay_rental_invoice(rental, payload, db, current_user)
+    return _pay_rental_invoice(rental, payload, request, db, current_user)
+
+
+@router.post("/rentals/account/{rental_id}/save-card")
+def account_save_rental_card(
+    rental_id: int,
+    payload: SaveCardIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    enforce_rate_limit(
+        bucket="rental-account-card-save",
+        identity=f"{current_user.id}:{rental_id}:{request_ip(request)}",
+        limit=5,
+        window_seconds=600,
+    )
+    if not square_is_configured():
+        raise HTTPException(status_code=400, detail="Card payments are not available")
+    rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    _require_primary_account_recipient(rental, current_user)
+    _require_signed(rental)
+    previous_card_id = rental.square_card_id
+    try:
+        result, replaced = vault_replacement_card(
+            rental,
+            source_id=payload.source_id,
+            idempotency_key=payload.idempotency_key or f"rental-card-{rental.id}-{int(datetime.utcnow().timestamp())}",
+        )
+    except SquareRequestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+    actor_name = current_user.full_name or current_user.username
+    _store_card_result(rental, result, payload.authorize_auto_charge, actor_name)
+    evidence = record_card_event(
+        db,
+        rental,
+        event_type="replaced" if replaced else ("authorized" if payload.authorize_auto_charge else "saved"),
+        accepted_by_name=actor_name,
+        channel="account",
+        authorize_auto_charge=payload.authorize_auto_charge,
+        current_user=current_user,
+        request=request,
+        card=result,
+        provider_cleanup_pending=replaced,
+        provider_card_reference=previous_card_id if replaced else None,
+    )
+    if payload.authorize_auto_charge:
+        for invoice in db.query(Invoice).filter(Invoice.rental_id == rental.id).all():
+            apply_projected_discount_to_unpaid_invoice(invoice, rental)
+    rental.updated_at = datetime.utcnow()
+    history = list(rental.history or [])
+    history.append({
+        "action": "card_replaced" if replaced else "card_saved",
+        "by": actor_name,
+        "user_id": current_user.id,
+        "at": datetime.utcnow().isoformat(),
+        "details": {
+            "last_4": result.get("last_4"),
+            "brand": result.get("card_brand"),
+            "auto_charge_authorized": payload.authorize_auto_charge,
+        },
+    })
+    rental.history = history
+    db.commit()
+    db.refresh(rental)
+    if replaced and complete_provider_card_cleanup(db, evidence):
+        db.commit()
+    return _portal_response(db, rental)
+
+
+@router.post("/rentals/account/{rental_id}/remove-card")
+def account_remove_rental_card(
+    rental_id: int,
+    payload: RemoveSavedCardIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    enforce_rate_limit(
+        bucket="rental-account-card-remove",
+        identity=f"{current_user.id}:{rental_id}:{request_ip(request)}",
+        limit=5,
+        window_seconds=600,
+    )
+    rental = _find_rental_for_account(db, rental_id, current_user, for_update=True)
+    _require_primary_account_recipient(rental, current_user)
+    return _remove_saved_card(
+        rental,
+        payload,
+        request,
+        db,
+        accepted_by_name=current_user.full_name or current_user.username,
+        channel="account",
+        current_user=current_user,
+    )

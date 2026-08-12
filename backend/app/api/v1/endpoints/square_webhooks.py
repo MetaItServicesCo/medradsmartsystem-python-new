@@ -11,7 +11,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.config import settings
 from app.db.base import get_db
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.payment_operation import PaymentOperation, PaymentWebhookEvent
 from sqlalchemy.exc import IntegrityError
 from app.utils.invoice_ledger import (
@@ -19,6 +19,7 @@ from app.utils.invoice_ledger import (
     record_payment_delta,
     record_status_change,
 )
+from app.utils.payment_receipts import queue_rental_payment_receipt
 from app.utils.square_payments import minor_units_to_amount, verify_square_webhook_signature
 from app.utils.sales_inventory import fulfill_sales_invoice_inventory
 from app.utils.payment_idempotency import (
@@ -164,6 +165,18 @@ def _sync_completed_payment(db: Session, payment: dict[str, Any]) -> str:
     )
     if transaction:
         transaction.reference_number = payment_id
+    if invoice.invoice_type == InvoiceType.RENTAL and invoice.rental:
+        payment_card = (payment.get("card_details") or {}).get("card") or {}
+        queue_rental_payment_receipt(
+            db,
+            invoice.rental,
+            invoice,
+            payment_reference=payment_id,
+            amount=applied_amount,
+            payment_method="square_card",
+            card_brand=payment_card.get("card_brand"),
+            card_last4=payment_card.get("last_4"),
+        )
     record_status_change(
         db,
         invoice,

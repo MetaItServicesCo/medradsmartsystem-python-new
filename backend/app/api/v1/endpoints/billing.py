@@ -29,6 +29,7 @@ from app.utils.invoice_ledger import (
     record_status_change,
     transaction_response,
 )
+from app.utils.payment_receipts import deliver_payment_receipt, queue_rental_payment_receipt
 from app.utils.notifications import create_notifications
 from app.utils.permission_deps import require_module_access
 from app.utils.permissions import has_module_permission
@@ -349,12 +350,24 @@ def record_invoice_payment(
     )
     if invoice.invoice_type == InvoiceType.SALES:
         fulfill_sales_invoice_inventory(db, invoice, current_user)
+    receipt_delivery = None
+    if invoice.invoice_type == InvoiceType.RENTAL and invoice.rental and payment_transaction is not None:
+        receipt_delivery = queue_rental_payment_receipt(
+            db,
+            invoice.rental,
+            invoice,
+            payment_reference=payment_transaction.reference_number,
+            amount=payload.amount,
+            payment_method=payload.payment_method,
+        )
     mark_operation_succeeded(
         operation,
         provider_reference=payment_transaction.reference_number if payment_transaction else None,
         response_data={"invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
     )
     db.commit()
+    if receipt_delivery:
+        deliver_payment_receipt(db, receipt_delivery.id)
     db.refresh(invoice)
     return {
         "id": invoice.id,

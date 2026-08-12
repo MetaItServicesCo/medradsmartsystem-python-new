@@ -77,6 +77,40 @@ services:
       - SQUARE_API_VERSION=${SQUARE_API_VERSION:-2026-07-15}
       - SQUARE_WEBHOOK_SIGNATURE_KEY=${SQUARE_WEBHOOK_SIGNATURE_KEY:-}
       - SQUARE_WEBHOOK_NOTIFICATION_URL=${SQUARE_WEBHOOK_NOTIFICATION_URL:-https://medcodesolution.com/api/v1/webhooks/square}
+      - PAYMENT_DATA_ENCRYPTION_KEYS=${PAYMENT_DATA_ENCRYPTION_KEYS:-}
+      - RENTAL_BILLING_INTERVAL_SECONDS=${RENTAL_BILLING_INTERVAL_SECONDS:-900}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - medrad_network
+
+  rental_scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medrad_rental_scheduler
+    restart: unless-stopped
+    command: python -m app.jobs.rental_billing_scheduler
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://medrad:medrad123@postgres:5432/medrad_db
+      - REDIS_URL=redis://redis:6379/0
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL:-https://medcodesolution.com}
+      - SQUARE_ENVIRONMENT=${SQUARE_ENVIRONMENT:-sandbox}
+      - SQUARE_APPLICATION_ID=${SQUARE_APPLICATION_ID:-}
+      - SQUARE_ACCESS_TOKEN=${SQUARE_ACCESS_TOKEN:-}
+      - SQUARE_LOCATION_ID=${SQUARE_LOCATION_ID:-}
+      - SQUARE_CURRENCY=${SQUARE_CURRENCY:-USD}
+      - SQUARE_API_VERSION=${SQUARE_API_VERSION:-2026-07-15}
+      - PAYMENT_DATA_ENCRYPTION_KEYS=${PAYMENT_DATA_ENCRYPTION_KEYS:-}
+      - RENTAL_BILLING_INTERVAL_SECONDS=${RENTAL_BILLING_INTERVAL_SECONDS:-900}
     depends_on:
       - postgres
       - redis

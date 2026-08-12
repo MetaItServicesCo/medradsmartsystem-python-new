@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Date, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Date, Index, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -80,6 +80,7 @@ class Invoice(Base):
     sales_quotation = relationship("SalesQuotation", foreign_keys=[sales_quotation_id])
     approved_for_billing_by = relationship("User", foreign_keys=[approved_for_billing_by_id])
     transactions = relationship("InvoiceTransaction", back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceTransaction.created_at.desc()")
+    receipt_deliveries = relationship("PaymentReceiptDelivery", back_populates="invoice", cascade="all, delete-orphan")
 
 
 class InvoiceTransaction(Base):
@@ -99,3 +100,35 @@ class InvoiceTransaction(Base):
     invoice = relationship("Invoice", back_populates="transactions")
     facility = relationship("Facility")
     created_by = relationship("User")
+
+
+class PaymentReceiptDelivery(Base):
+    """Durable delivery state for a payment receipt.
+
+    A payment is committed independently from SMTP delivery. The unique payment
+    reference prevents normal request retries, Square webhooks, and the recurring
+    worker from queueing the same receipt more than once.
+    """
+    __tablename__ = "payment_receipt_deliveries"
+    __table_args__ = (
+        UniqueConstraint("invoice_id", "payment_reference", name="uq_receipt_invoice_payment"),
+        Index("ix_receipt_delivery_due", "status", "next_attempt_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False, index=True)
+    payment_reference = Column(String(255), nullable=False)
+    recipients = Column(JSON, nullable=False, default=list)
+    amount = Column(Numeric(10, 2), nullable=False)
+    payment_method = Column(String(64), nullable=True)
+    card_brand = Column(String(40), nullable=True)
+    card_last4 = Column(String(4), nullable=True)
+    status = Column(String(24), nullable=False, default="pending", index=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime, nullable=True, index=True)
+    last_error = Column(Text, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    invoice = relationship("Invoice", back_populates="receipt_deliveries")
