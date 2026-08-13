@@ -16,6 +16,7 @@ from app.api.v1.endpoints.rentals import (
     _discount_package_values,
     _is_rental_customer_user,
     _normalize_secondary_recipients,
+    _resolve_rental_customer_phone,
     _require_internal_rental_operator,
 )
 from app.models.user import UserRole
@@ -43,6 +44,22 @@ def test_public_payment_requires_acceptance_of_current_revision() -> None:
 
     rental.acceptance = SimpleNamespace(agreement_revision=2)
     assert _require_signed(rental) is rental.acceptance
+
+
+def test_rental_customer_phone_prefers_manual_agreement_value() -> None:
+    assert _resolve_rental_customer_phone(" 2145550199 ", None) == "2145550199"
+    assert _resolve_rental_customer_phone("2145550199", "9725550100") == "2145550199"
+
+
+def test_rental_customer_phone_falls_back_to_linked_profile() -> None:
+    assert _resolve_rental_customer_phone("", "9725550100") == "9725550100"
+
+
+def test_rental_customer_phone_returns_controlled_validation_error_when_missing() -> None:
+    with pytest.raises(HTTPException) as error:
+        _resolve_rental_customer_phone("", None)
+    assert error.value.status_code == 422
+    assert "manually" in str(error.value.detail).lower()
 
 
 def test_pricing_table_allocates_exact_invoice_tax_without_taxing_deposit_or_labor() -> None:

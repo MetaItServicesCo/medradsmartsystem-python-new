@@ -1291,6 +1291,9 @@ const Rentals = () => {
     }
     if (!agreementForm.customer_name.trim()) return toast.error('Customer name is required')
     if (!agreementForm.customer_email.trim()) return toast.error('Customer email is required')
+    if (!digitsOnly(agreementForm.customer_phone)) {
+      return toast.error('Customer phone is required. Enter it manually if the selected customer has no phone on file')
+    }
     if (!agreementForm.delivery_street.trim() || !agreementForm.delivery_city.trim() || !agreementForm.delivery_state.trim() || !agreementForm.delivery_zip.trim()) {
       return toast.error('Enter the full delivery address — street, city, state, and ZIP')
     }
@@ -2506,7 +2509,7 @@ const Rentals = () => {
                   customer_user_id: customer?.id || null,
                   customer_name: customer?.full_name || previous.customer_name,
                   customer_email: customer?.email || previous.customer_email,
-                  customer_phone: customer?.phone ? formatUSPhoneInput(customer.phone) : previous.customer_phone,
+                  customer_phone: customer?.phone ? formatUSPhoneInput(customer.phone) : '',
                   secondary_recipients: uniqueSecondaryRecipients(
                     previous.secondary_recipients.filter(recipient => recipient.user_id !== customer?.id),
                     customer?.email || previous.customer_email,
@@ -2528,9 +2531,17 @@ const Rentals = () => {
               <>
                 <TextField label="Customer Name *" value={agreementForm.customer_name} onChange={e => setAgreementForm(prev => ({ ...prev, customer_name: e.target.value }))} />
                 <TextField label="Customer Email *" type="email" value={agreementForm.customer_email} onChange={e => setAgreementForm(prev => ({ ...prev, customer_email: e.target.value }))} />
-                <TextField label="Customer Phone" value={agreementForm.customer_phone} onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
               </>
             ) : null}
+            <TextField
+              required
+              label="Customer Phone"
+              value={agreementForm.customer_phone}
+              onChange={e => setAgreementForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))}
+              helperText={agreementForm.facility_id && selectedFacilityCustomer && !selectedFacilityCustomer.phone
+                ? 'No phone is saved for this recipient. Enter an agreement contact number manually.'
+                : 'Contact number for this rental agreement'}
+            />
             {agreementForm.facility_id ? <Autocomplete<RentalSecondaryRecipient, true>
               multiple
               filterSelectedOptions

@@ -102,6 +102,27 @@ RENTAL_CUSTOMER_ROLES = {
 }
 
 
+def _resolve_rental_customer_phone(
+    submitted_phone: Optional[str],
+    linked_user_phone: Optional[str] = None,
+) -> str:
+    """Resolve the agreement-specific contact number without writing to the user profile.
+
+    The form value is authoritative because an operator may need to supply an
+    agreement contact number when the selected facility user has no phone on
+    their profile. The profile number remains a safe fallback for API clients
+    that do not explicitly send the prefilled value.
+    """
+    for candidate in (submitted_phone, linked_user_phone):
+        value = str(candidate or "").strip()
+        if value:
+            return value
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Customer phone is required. Enter it manually because the selected customer has no phone on file.",
+    )
+
+
 def _is_rental_customer_user(current_user: User) -> bool:
     """Return whether this account belongs on the customer rental journey."""
     return current_user.role in RENTAL_CUSTOMER_ROLES or (
@@ -2066,7 +2087,10 @@ def create_rental(
         customer_user_id=customer_user.id if customer_user else None,
         customer_name=customer_user.full_name if customer_user else payload.customer_name,
         customer_email=customer_user.email if customer_user else str(payload.customer_email),
-        customer_phone=customer_user.phone if customer_user else payload.customer_phone,
+        customer_phone=_resolve_rental_customer_phone(
+            payload.customer_phone,
+            customer_user.phone if customer_user else None,
+        ),
         secondary_recipients=secondary_recipients,
         customer_address=delivery_address,
         delivery_street=(payload.delivery_street or "").strip() or None,
@@ -2229,7 +2253,12 @@ def update_rental(
         if customer_user:
             update_data["customer_name"] = customer_user.full_name
             update_data["customer_email"] = customer_user.email
-            update_data["customer_phone"] = customer_user.phone
+            update_data["customer_phone"] = _resolve_rental_customer_phone(
+                payload.customer_phone if "customer_phone" in payload.model_fields_set else None,
+                customer_user.phone,
+            )
+    if "customer_phone" in update_data:
+        update_data["customer_phone"] = _resolve_rental_customer_phone(update_data["customer_phone"])
     # Replace the item set (and reconcile reserved stock) when items are supplied.
     if payload.items is not None:
         if not payload.items:
