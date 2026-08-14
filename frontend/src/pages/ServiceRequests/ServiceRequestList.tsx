@@ -281,6 +281,7 @@ const ServiceRequestList = () => {
         {STAT_CARDS.map((card) => (
           <Card
             key={card.key}
+            data-no-reveal="true"
             role="button"
             tabIndex={0}
             aria-pressed={activeCardKey === card.key}

@@ -47,14 +47,15 @@ export const useContentReveal = (pathname: string) => {
       if (io) io.observe(el)
       else reveal(el)
     }
-    const scan = (node: ParentNode) => node.querySelectorAll<HTMLElement>('.MuiCard-root').forEach(track)
+    const revealSelector = '.MuiCard-root:not([data-no-reveal="true"])'
+    const scan = (node: ParentNode) => node.querySelectorAll<HTMLElement>(revealSelector).forEach(track)
 
     scan(root)
 
     const mo = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
         if (!(node instanceof HTMLElement)) return
-        if (node.classList.contains('MuiCard-root')) track(node)
+        if (node.classList.contains('MuiCard-root') && node.dataset.noReveal !== 'true') track(node)
         scan(node)
       }))
     })
@@ -63,7 +64,7 @@ export const useContentReveal = (pathname: string) => {
     // Safety net (design-system fallback): reveal everything regardless so
     // content can never be left hidden if an observer misses it.
     const safety = window.setTimeout(() => {
-      root.querySelectorAll<HTMLElement>('.MuiCard-root').forEach(reveal)
+      root.querySelectorAll<HTMLElement>(revealSelector).forEach(reveal)
     }, 1100)
 
     return () => {

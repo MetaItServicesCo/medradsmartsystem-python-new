@@ -373,9 +373,6 @@ const FacilityList = () => {
     setSearchParams(next, { replace: true })
     setPage(1)
 
-    window.setTimeout(() => {
-      facilityListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 0)
   }
 
   const handleCountryFilter = (country?: string) => {
@@ -387,7 +384,6 @@ const FacilityList = () => {
     setSearchParams(next, { replace: true })
     setCountryCardAnchor(null)
     setPage(1)
-    window.setTimeout(() => facilityListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
 
   const handleEdit = (f: Facility) => {
@@ -538,6 +534,7 @@ const FacilityList = () => {
         {STAT_CARDS.map((card) => (
           <Card
             key={card.key}
+            data-no-reveal="true"
             role="button"
             tabIndex={0}
             aria-label={card.key === 'total' ? 'Show all facilities' : card.key === 'active' ? 'Show active facilities' : card.key === 'countries' ? 'Choose a country to filter facilities' : 'Show facilities with tiers'}

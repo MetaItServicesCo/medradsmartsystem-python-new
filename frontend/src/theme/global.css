@@ -168,11 +168,11 @@ canvas {
 
 /* Scroll-reveal entrance for main-content cards (driven by useContentReveal).
    Scoped to .app-main-scroll so dialogs/menus/print are unaffected. */
-.app-main-scroll .MuiCard-root {
+.app-main-scroll .MuiCard-root:not([data-no-reveal='true']) {
   opacity: 0;
   transform: translateY(14px);
 }
-.app-main-scroll .MuiCard-root.reveal-in {
+.app-main-scroll .MuiCard-root:not([data-no-reveal='true']).reveal-in {
   opacity: 1;
   transform: none;
   transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
@@ -399,7 +399,7 @@ input[type='number'] {
   }
 
   /* Never let the reveal-entrance hide content in print. */
-  .app-main-scroll .MuiCard-root {
+  .app-main-scroll .MuiCard-root:not([data-no-reveal='true']) {
     opacity: 1 !important;
     transform: none !important;
   }

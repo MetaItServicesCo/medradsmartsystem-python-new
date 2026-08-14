@@ -3047,6 +3047,8 @@ const Inspections = () => {
 
   const renderKpi = (label: string, value: number, icon: JSX.Element, color: string, targetTab: number) => (
     <Card
+      key={label}
+      data-no-reveal="true"
       role="button"
       tabIndex={0}
       aria-pressed={tab === targetTab}
