@@ -4,6 +4,8 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import WorkingContextBar from '../WorkingContextBar'
+import ModuleBackground from '../ModuleBackground'
+import { PageTransition } from '../motion'
 import { ListContextProvider } from '@/contexts/ListContext'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 
@@ -83,6 +85,7 @@ const Layout = () => {
         <Sidebar />
         <Box
           sx={{
+            position: 'relative',
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
@@ -95,20 +98,27 @@ const Layout = () => {
             isolation: 'isolate',
           }}
         >
-          <Header title={title} />
-          <WorkingContextBar />
-          <Box
-            component="main"
-            sx={{
-              flex: 1,
-              p: { xs: 2, md: 3 },
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              scrollBehavior: 'smooth',
-            }}
-            className="app-main-scroll page-enter"
-          >
-            <Outlet />
+          {/* Module-relevant background watermark, behind all content */}
+          <ModuleBackground pathname={location.pathname} />
+
+          <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <Header title={title} />
+            <WorkingContextBar />
+            <Box
+              component="main"
+              sx={{
+                flex: 1,
+                p: { xs: 2, md: 3 },
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                scrollBehavior: 'smooth',
+              }}
+              className="app-main-scroll"
+            >
+              <PageTransition routeKey={location.pathname}>
+                <Outlet />
+              </PageTransition>
+            </Box>
           </Box>
         </Box>
       </Box>

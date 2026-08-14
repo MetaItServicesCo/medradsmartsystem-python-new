@@ -85,3 +85,6 @@ coverage/
 # Build
 build/
 out/
+
+# Local MCP config (contains API keys — never commit)
+.mcp.json

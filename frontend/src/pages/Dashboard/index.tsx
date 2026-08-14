@@ -38,6 +38,7 @@ import { fetchAuditLogs, type AuditLogItem } from '@/api/audit'
 import { fetchDashboardSummary } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/authStore'
 import { enabledPermissionCount, hasPermission, type Module } from '@/config/permissions'
+import { AnimatedNumber, Stagger, StaggerItem } from '@/components/motion'
 import { format, isValid } from 'date-fns'
 
 const safeFormatDate = (dateStr: string | null | undefined) => {
@@ -439,18 +440,20 @@ const Dashboard = () => {
                 <Grid item xs={12} sm={visibleOverviewMetrics.length === 1 ? 12 : 4} key={label}>
                   <Box sx={{ p: 1.5, borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.13)', backdropFilter: 'blur(12px)' }}>
                     <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: 12, fontWeight: 700 }}>{label}</Typography>
-                    <Typography sx={{ color: '#fff', fontSize: 28, lineHeight: 1.1, fontWeight: 900 }}>{summaryLoading ? '-' : overviewHidden ? hiddenNumber : value}</Typography>
+                    <Typography sx={{ color: '#fff', fontSize: 28, lineHeight: 1.1, fontWeight: 900 }}>{summaryLoading ? '-' : overviewHidden ? hiddenNumber : <AnimatedNumber value={value} />}</Typography>
                   </Box>
                 </Grid>
               ))}
             </Grid>
           </Card>
 
+          <Stagger>
           <Grid container spacing={2.5} sx={{ mt: 0 }}>
             {visibleStats.map((stat) => {
               const cardHidden = isAnalyticsHidden(`stat-${stat.key}`)
               return (
               <Grid item xs={12} sm={6} md={3} key={stat.label}>
+                <StaggerItem style={{ height: '100%' }}>
                 <Card
                   onClick={() => navigate(stat.path)}
                   sx={{
@@ -476,7 +479,7 @@ const Dashboard = () => {
                   {summaryLoading ? (
                     <Skeleton variant="text" width={72} height={42} />
                   ) : (
-                    <Typography sx={{ color: '#1E1B4B', fontSize: 34, lineHeight: 1, fontWeight: 900, mt: 0.5 }}>{cardHidden ? hiddenNumber : stat.value}</Typography>
+                    <Typography sx={{ color: '#1E1B4B', fontSize: 34, lineHeight: 1, fontWeight: 900, mt: 0.5 }}>{cardHidden ? hiddenNumber : <AnimatedNumber value={stat.value} />}</Typography>
                   )}
                   <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700, mt: 0.8 }}>{cardHidden ? 'Analytics hidden' : stat.detail}</Typography>
                   <LinearProgress
@@ -485,10 +488,12 @@ const Dashboard = () => {
                     sx={{ mt: 1.6, height: 6, borderRadius: 999, bgcolor: '#EEF2F7', '& .MuiLinearProgress-bar': { bgcolor: stat.color, borderRadius: 999 } }}
                   />
                 </Card>
+                </StaggerItem>
               </Grid>
               )
             })}
           </Grid>
+          </Stagger>
 
           <Grid container spacing={2.5} sx={{ mt: 0 }}>
             {visibleCompactStats.map((stat) => {
@@ -515,7 +520,7 @@ const Dashboard = () => {
                   </Box>
                   <Stack direction="row" spacing={0.8} alignItems="center">
                     {renderAnalyticsToggle(`compact-${stat.key}`, `${stat.label} analytics`)}
-                    <Typography sx={{ color: stat.color, fontSize: 26, fontWeight: 900 }}>{summaryLoading ? '-' : cardHidden ? hiddenNumber : stat.value}</Typography>
+                    <Typography sx={{ color: stat.color, fontSize: 26, fontWeight: 900 }}>{summaryLoading ? '-' : cardHidden ? hiddenNumber : <AnimatedNumber value={stat.value} />}</Typography>
                   </Stack>
                 </Card>
               </Grid>
@@ -608,7 +613,7 @@ const Dashboard = () => {
                           </ResponsiveContainer>
                           <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                             <Box sx={{ textAlign: 'center' }}>
-                              <Typography sx={{ color: '#1E1B4B', fontSize: 30, lineHeight: 1, fontWeight: 900 }}>{riskTotal}</Typography>
+                              <Typography sx={{ color: '#1E1B4B', fontSize: 30, lineHeight: 1, fontWeight: 900 }}><AnimatedNumber value={riskTotal} /></Typography>
                               <Typography sx={{ color: '#8B95A7', fontSize: 11, fontWeight: 800 }}>risk items</Typography>
                             </Box>
                           </Box>
@@ -700,7 +705,7 @@ const Dashboard = () => {
                     >
                       <Avatar sx={{ width: 38, height: 38, bgcolor: `${item.color}14`, color: item.color, borderRadius: '14px' }}>{item.icon}</Avatar>
                       <Typography sx={{ flex: 1, color: '#374151', fontSize: 13, fontWeight: 800 }}>{item.label}</Typography>
-                    <Typography sx={{ color: item.color, fontSize: 22, fontWeight: 900 }}>{summaryLoading ? '-' : focusHidden ? hiddenNumber : item.value}</Typography>
+                    <Typography sx={{ color: item.color, fontSize: 22, fontWeight: 900 }}>{summaryLoading ? '-' : focusHidden ? hiddenNumber : <AnimatedNumber value={item.value} />}</Typography>
                   </Box>
                 ))}
               </Stack>
