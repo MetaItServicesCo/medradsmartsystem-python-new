@@ -119,6 +119,18 @@ canvas {
   box-shadow: 0 0 0 1px rgba(113, 97, 216, 0.25), 0 18px 40px rgba(113, 97, 216, 0.18);
 }
 
+/* Login heartbeat / ECG trace — continuously redraws */
+@keyframes ecgDraw {
+  0%   { stroke-dashoffset: 1; opacity: 0.25; }
+  8%   { opacity: 0.85; }
+  70%  { stroke-dashoffset: 0; opacity: 0.85; }
+  100% { stroke-dashoffset: 0; opacity: 0.25; }
+}
+.ecg-line {
+  stroke-dasharray: 1;
+  animation: ecgDraw 4s ease-in-out infinite;
+}
+
 /* Brand gradient text accent */
 .gradient-text {
   background: linear-gradient(120deg, #7161D8 0%, #F05D92 100%);

@@ -16,20 +16,38 @@ import { useAuthStore } from '@/stores/authStore'
 import { Stagger, StaggerItem } from '@/components/motion'
 import apiClient from '@/api/client'
 
-// Ambient drift for the background orbs on the brand panel.
+// --- Continuous ambient motion (keeps the panel alive, not just on entrance) ---
+const aurora = keyframes`
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+`
 const drift = keyframes`
   0%   { transform: translate(0px, 0px) scale(1); }
-  50%  { transform: translate(34px, -42px) scale(1.1); }
+  50%  { transform: translate(40px, -50px) scale(1.14); }
   100% { transform: translate(0px, 0px) scale(1); }
 `
 const driftAlt = keyframes`
   0%   { transform: translate(0px, 0px) scale(1); }
-  50%  { transform: translate(-40px, 30px) scale(1.12); }
+  50%  { transform: translate(-48px, 40px) scale(1.18); }
   100% { transform: translate(0px, 0px) scale(1); }
 `
-const pulse = keyframes`
-  0%, 100% { opacity: 0.28; }
-  50%      { opacity: 0.6; }
+const floaty = keyframes`
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-9px); }
+`
+const glowPulse = keyframes`
+  0%, 100% { box-shadow: 0 16px 40px rgba(0,0,0,0.22), 0 0 0 0 rgba(255,255,255,0.0); }
+  50%      { box-shadow: 0 16px 40px rgba(0,0,0,0.22), 0 0 36px 6px rgba(255,255,255,0.22); }
+`
+const sheen = keyframes`
+  0%   { transform: translateX(-130%) skewX(-18deg); }
+  60%, 100% { transform: translateX(320%) skewX(-18deg); }
+`
+const rise = keyframes`
+  0%   { transform: translateY(10px); opacity: 0; }
+  15%  { opacity: 0.7; }
+  100% { transform: translateY(-150px); opacity: 0; }
 `
 
 const features = [
@@ -37,6 +55,16 @@ const features = [
   'Real-time Equipment Tracking',
   'Compliance & Inspections',
   'Smart Attendance System',
+]
+
+// Small ambient particles that keep rising in the brand panel.
+const particles = [
+  { left: '18%', size: 6, delay: 0, dur: 9 },
+  { left: '32%', size: 4, delay: 2.4, dur: 11 },
+  { left: '54%', size: 5, delay: 1.2, dur: 10 },
+  { left: '68%', size: 3, delay: 3.1, dur: 12 },
+  { left: '80%', size: 6, delay: 0.7, dur: 9.5 },
+  { left: '44%', size: 3, delay: 4.2, dur: 13 },
 ]
 
 const Login = () => {
@@ -52,6 +80,8 @@ const Login = () => {
   const navigate = useNavigate()
   const reduce = useReducedMotion()
   const { login, isAuthenticated } = useAuthStore()
+
+  const anim = (value: string) => (reduce ? 'none' : value)
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -95,7 +125,7 @@ const Login = () => {
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F5F3FF', overflow: 'hidden' }}>
-      {/* Left panel — animated brand showcase */}
+      {/* Left panel — living brand showcase */}
       <Box
         sx={{
           width: { xs: 0, md: '46%' },
@@ -106,19 +136,34 @@ const Login = () => {
           position: 'relative',
           overflow: 'hidden',
           color: '#fff',
-          background: 'linear-gradient(150deg, #5D4FCF 0%, #7C5DD8 46%, #F0528A 128%)',
+          // Animated aurora gradient (always flowing)
+          background: 'linear-gradient(130deg, #4C3FBF 0%, #6D5AD6 26%, #9D5CD0 50%, #F0528A 78%, #6D5AD6 100%)',
+          backgroundSize: '300% 300%',
+          animation: anim(`${aurora} 18s ease infinite`),
         }}
       >
-        {/* Ambient drifting orbs */}
-        <Box sx={{ position: 'absolute', top: '-14%', right: '-12%', width: 420, height: 420, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.28), rgba(255,255,255,0))', filter: 'blur(30px)', animation: reduce ? 'none' : `${drift} 18s ease-in-out infinite` }} />
-        <Box sx={{ position: 'absolute', bottom: '-16%', left: '-10%', width: 380, height: 380, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,82,138,0.4), rgba(240,82,138,0))', filter: 'blur(36px)', animation: reduce ? 'none' : `${driftAlt} 22s ease-in-out infinite` }} />
-        <Box sx={{ position: 'absolute', top: '30%', left: '20%', width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.45), rgba(124,93,216,0))', filter: 'blur(30px)', animation: reduce ? 'none' : `${drift} 26s ease-in-out infinite` }} />
+        {/* Drifting orbs */}
+        <Box sx={{ position: 'absolute', top: '-14%', right: '-12%', width: 440, height: 440, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.32), rgba(255,255,255,0))', filter: 'blur(28px)', animation: anim(`${drift} 15s ease-in-out infinite`) }} />
+        <Box sx={{ position: 'absolute', bottom: '-16%', left: '-10%', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,82,138,0.5), rgba(240,82,138,0))', filter: 'blur(32px)', animation: anim(`${driftAlt} 19s ease-in-out infinite`) }} />
+        <Box sx={{ position: 'absolute', top: '28%', left: '18%', width: 240, height: 240, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.5), rgba(124,93,216,0))', filter: 'blur(26px)', animation: anim(`${drift} 22s ease-in-out infinite`) }} />
 
-        {/* Faint grid + ECG pulse motif */}
+        {/* Rising particles */}
+        {!reduce && particles.map((p, i) => (
+          <Box key={i} sx={{ position: 'absolute', bottom: '12%', left: p.left, width: p.size, height: p.size, borderRadius: '50%', background: 'rgba(255,255,255,0.7)', animation: `${rise} ${p.dur}s linear ${p.delay}s infinite` }} />
+        ))}
+
+        {/* Faint grid */}
         <Box aria-hidden sx={{ position: 'absolute', inset: 0, opacity: 0.5, pointerEvents: 'none', backgroundImage: 'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize: '46px 46px', maskImage: 'radial-gradient(circle at 40% 40%, #000 0%, transparent 78%)', WebkitMaskImage: 'radial-gradient(circle at 40% 40%, #000 0%, transparent 78%)' }} />
-        <Box aria-hidden sx={{ position: 'absolute', left: 0, right: 0, bottom: '16%', color: 'rgba(255,255,255,0.5)', animation: reduce ? 'none' : `${pulse} 4s ease-in-out infinite`, pointerEvents: 'none' }}>
-          <svg width="100%" height="80" viewBox="0 0 600 80" preserveAspectRatio="none" fill="none">
-            <polyline points="0,40 120,40 150,40 168,14 190,66 214,40 300,40 330,40 348,20 368,58 388,40 600,40" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Continuously-drawing ECG heartbeat */}
+        <Box aria-hidden sx={{ position: 'absolute', left: 0, right: 0, bottom: '15%', color: 'rgba(255,255,255,0.65)', pointerEvents: 'none' }}>
+          <svg width="100%" height="90" viewBox="0 0 600 90" preserveAspectRatio="none" fill="none">
+            <polyline
+              className={reduce ? undefined : 'ecg-line'}
+              points="0,45 120,45 150,45 168,16 190,74 214,45 300,45 330,45 348,22 368,66 388,45 470,45 500,45 518,28 536,60 556,45 600,45"
+              stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+              pathLength={1}
+            />
           </svg>
         </Box>
 
@@ -131,26 +176,42 @@ const Login = () => {
           >
             <Box
               sx={{
-                width: 66, height: 66, borderRadius: '22px', mb: 5,
-                background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.3)',
+                width: 68, height: 68, borderRadius: '22px', mb: 5,
+                background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.32)',
                 backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '1.9rem', fontWeight: 900, color: '#fff', letterSpacing: '-1px',
-                boxShadow: '0 16px 40px rgba(0,0,0,0.22)',
+                animation: anim(`${floaty} 5s ease-in-out infinite, ${glowPulse} 4.5s ease-in-out infinite`),
               }}
             >
               M
             </Box>
           </motion.div>
 
+          {/* Word-by-word headline reveal */}
+          <Box sx={{ mb: 2 }}>
+            {[['Medrad'], ['Admin', 'Panel']].map((line, li) => (
+              <Box key={li} sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                {line.map((word, wi) => (
+                  <motion.span
+                    key={word}
+                    initial={reduce ? false : { opacity: 0, y: 26, rotateX: -40 }}
+                    animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                    transition={{ duration: 0.6, delay: 0.1 + (li * 2 + wi) * 0.12, ease: [0.16, 1, 0.3, 1] }}
+                    style={{ display: 'inline-block', fontWeight: 900, fontSize: '2.85rem', lineHeight: 1.05, letterSpacing: '-1.5px', color: '#fff', transformOrigin: 'bottom' }}
+                  >
+                    {word}
+                  </motion.span>
+                ))}
+              </Box>
+            ))}
+          </Box>
+
           <motion.div
             initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.6, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
           >
-            <Typography variant="h2" sx={{ fontWeight: 900, color: '#fff', mb: 2, lineHeight: 1.08, letterSpacing: '-1.5px' }}>
-              Medrad<br />Admin Panel
-            </Typography>
-            <Typography sx={{ color: 'rgba(255,255,255,0.86)', fontSize: '1.1rem', lineHeight: 1.7, maxWidth: 380, mb: 5, fontWeight: 500 }}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.88)', fontSize: '1.1rem', lineHeight: 1.7, maxWidth: 380, mb: 5, fontWeight: 500 }}>
               Comprehensive healthcare equipment management for hospitals and medical facilities.
             </Typography>
           </motion.div>
@@ -159,29 +220,25 @@ const Login = () => {
             {features.map((feat) => (
               <StaggerItem key={feat}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.8, mb: 1.8 }}>
-                  <Box
-                    sx={{
-                      width: 30, height: 30, borderRadius: '10px', flexShrink: 0,
-                      background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.28)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
+                  <motion.div
+                    initial={reduce ? false : { scale: 0, rotate: -90 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 18, delay: 0.5 }}
                   >
-                    <CheckRoundedIcon sx={{ fontSize: '1.05rem', color: '#fff' }} />
-                  </Box>
+                    <Box sx={{ width: 30, height: 30, borderRadius: '10px', flexShrink: 0, background: 'rgba(255,255,255,0.18)', border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <CheckRoundedIcon sx={{ fontSize: '1.05rem', color: '#fff' }} />
+                    </Box>
+                  </motion.div>
                   <Typography sx={{ color: '#fff', fontSize: '1rem', fontWeight: 600 }}>{feat}</Typography>
                 </Box>
               </StaggerItem>
             ))}
           </Stagger>
 
-          <motion.div
-            initial={reduce ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
-          >
-            <Box sx={{ mt: 5, display: 'inline-flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderRadius: '999px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)', backdropFilter: 'blur(10px)' }}>
-              <ShieldOutlinedIcon sx={{ fontSize: '1.1rem', color: 'rgba(255,255,255,0.9)' }} />
-              <Typography sx={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.82rem', fontWeight: 700 }}>
+          <motion.div initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.8 }}>
+            <Box sx={{ mt: 5, display: 'inline-flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderRadius: '999px', background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.24)', backdropFilter: 'blur(10px)' }}>
+              <ShieldOutlinedIcon sx={{ fontSize: '1.1rem', color: 'rgba(255,255,255,0.92)' }} />
+              <Typography sx={{ color: 'rgba(255,255,255,0.92)', fontSize: '0.82rem', fontWeight: 700 }}>
                 Enterprise-grade security &amp; access control
               </Typography>
             </Box>
@@ -191,13 +248,12 @@ const Login = () => {
 
       {/* Right panel — login form */}
       <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', p: { xs: 3, sm: 4 }, position: 'relative' }}>
-        {/* Soft ambient tint on the form side */}
-        <Box aria-hidden sx={{ position: 'absolute', top: -120, right: -80, width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(113,97,216,0.10), transparent 70%)', pointerEvents: 'none' }} />
+        <Box aria-hidden sx={{ position: 'absolute', top: -120, right: -80, width: 380, height: 380, borderRadius: '50%', background: 'radial-gradient(circle, rgba(113,97,216,0.12), transparent 70%)', pointerEvents: 'none', animation: anim(`${drift} 20s ease-in-out infinite`) }} />
 
         <motion.div
-          initial={reduce ? false : { opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+          initial={reduce ? false : { opacity: 0, x: 30 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
           style={{ width: '100%', maxWidth: 392, position: 'relative' }}
         >
           {/* Mobile logo */}
@@ -293,10 +349,11 @@ const Login = () => {
                   variant="contained"
                   disabled={loading}
                   component={motion.button}
-                  whileHover={reduce ? undefined : { y: -2 }}
+                  whileHover={reduce ? undefined : { y: -2, scale: 1.01 }}
                   whileTap={reduce ? undefined : { scale: 0.985 }}
                   sx={{
                     mt: 3.5, py: 1.7, fontSize: '1rem', fontWeight: 800,
+                    position: 'relative', overflow: 'hidden',
                     background: 'linear-gradient(135deg, #7161D8 0%, #F05D92 100%)',
                     boxShadow: '0 12px 30px rgba(113,97,216,0.32)',
                     borderRadius: '14px', textTransform: 'none',
@@ -304,7 +361,13 @@ const Login = () => {
                     '&:disabled': { background: 'linear-gradient(135deg, #C4B5FD 0%, #FBCFE8 100%)', color: 'rgba(255,255,255,0.85)' },
                   }}
                 >
-                  {loading ? <CircularProgress size={24} sx={{ color: '#fff' }} /> : isSignUp ? 'Create Account' : 'Sign In'}
+                  {/* Sweeping sheen */}
+                  {!loading && (
+                    <Box aria-hidden sx={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)', animation: anim(`${sheen} 3.4s ease-in-out infinite`), pointerEvents: 'none' }} />
+                  )}
+                  <Box component="span" sx={{ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center' }}>
+                    {loading ? <CircularProgress size={24} sx={{ color: '#fff' }} /> : isSignUp ? 'Create Account' : 'Sign In'}
+                  </Box>
                 </Button>
               </StaggerItem>
             </Stagger>
