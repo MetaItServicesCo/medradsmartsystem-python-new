@@ -5,7 +5,7 @@ import {
   IconButton, Alert, CircularProgress
 } from '@mui/material'
 import { keyframes } from '@emotion/react'
-import { motion, useReducedMotion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
@@ -78,7 +78,9 @@ const Login = () => {
   const [email, setEmail] = useState('')
   const [success, setSuccess] = useState('')
   const navigate = useNavigate()
-  const reduce = useReducedMotion()
+  // Motion is always on in this app (see components/motion). Kept as a flag so the
+  // animation wiring stays in one place if an in-app calm mode is added later.
+  const reduce = false
   const { login, isAuthenticated } = useAuthStore()
 
   const anim = (value: string) => (reduce ? 'none' : value)

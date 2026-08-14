@@ -320,16 +320,10 @@ input[type='number'] {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.001ms !important;
-  }
-}
+/* Motion is a product requirement in this app, so the OS "reduce motion" flag is
+   not used to globally disable animation (an in-app calm mode is the intended
+   accessibility control). Continuous heartbeat loops still avoid layout thrash by
+   animating only transform/opacity/stroke. */
 
 /* Neutralise a stranded / orphaned MUI menu or popover. When such an overlay is
    left behind (its React handlers are gone), MUI marks its own root with

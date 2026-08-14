@@ -39,6 +39,7 @@ import { fetchDashboardSummary } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/authStore'
 import { enabledPermissionCount, hasPermission, type Module } from '@/config/permissions'
 import { AnimatedNumber, Stagger, StaggerItem } from '@/components/motion'
+import AuroraBackground from '@/components/AuroraBackground'
 import { format, isValid } from 'date-fns'
 
 const safeFormatDate = (dateStr: string | null | undefined) => {
@@ -395,6 +396,8 @@ const Dashboard = () => {
               boxShadow: '0 24px 60px rgba(89,76,190,0.28)',
             }}
           >
+            <AuroraBackground colors={['rgba(255,255,255,0.30)', 'rgba(240,95,150,0.55)', 'rgba(124,93,216,0.6)']} blur={52} opacity={0.9} />
+            <Box sx={{ position: 'relative', zIndex: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 1 }}>
               <Box>
                 <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontWeight: 800, fontSize: 12, textTransform: 'uppercase' }}>
@@ -445,6 +448,7 @@ const Dashboard = () => {
                 </Grid>
               ))}
             </Grid>
+            </Box>
           </Card>
 
           <Stagger>
