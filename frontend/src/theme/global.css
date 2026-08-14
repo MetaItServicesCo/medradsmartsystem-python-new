@@ -257,6 +257,20 @@ canvas {
   max-height: calc(100vh - 48px);
 }
 
+/* Softer, premium modal backdrop — scoped to dialogs so menus/selects/drawers
+   are unaffected. Presentation only. */
+.MuiDialog-root > .MuiBackdrop-root {
+  background-color: rgba(30, 27, 75, 0.5);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* Brand-tinted required-field asterisk across every form. */
+.MuiFormLabel-asterisk {
+  color: #F05D92;
+  font-weight: 700;
+}
+
 .MuiDialogContent-root {
   scrollbar-gutter: stable;
 }

@@ -1,4 +1,5 @@
 import { createTheme } from '@mui/material/styles'
+import Grow from '@mui/material/Grow'
 
 const theme = createTheme({
   palette: {
@@ -284,6 +285,12 @@ const theme = createTheme({
       },
     },
     MuiDialog: {
+      // Presentation only: a consistent, gentle scale+fade entrance for every
+      // dialog in the app. Any dialog can still override this per-instance.
+      defaultProps: {
+        TransitionComponent: Grow,
+        transitionDuration: { enter: 260, exit: 200 },
+      },
       styleOverrides: {
         paper: {
           borderRadius: 24,
