@@ -140,6 +140,31 @@ canvas {
   color: transparent;
 }
 
+/* Cursor-following spotlight on every card, app-wide (positions come from
+   useCardSpotlight; the glow is pure CSS and only shows on hover). */
+.MuiCard-root {
+  position: relative;
+}
+.MuiCard-root::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 0;
+  background: radial-gradient(
+    260px circle at var(--spot-x, -300px) var(--spot-y, -300px),
+    rgba(113, 97, 216, 0.16),
+    rgba(240, 93, 146, 0.07) 34%,
+    transparent 62%
+  );
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.MuiCard-root:hover::after {
+  opacity: 1;
+}
+
 /* Glassmorphism */
 .glass-card {
   background: var(--glass);

@@ -40,6 +40,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { enabledPermissionCount, hasPermission, type Module } from '@/config/permissions'
 import { AnimatedNumber, Stagger, StaggerItem } from '@/components/motion'
 import AuroraBackground from '@/components/AuroraBackground'
+import { Tilt } from '@/components/effects/Tilt'
 import { keyframes } from '@emotion/react'
 import { format, isValid } from 'date-fns'
 
@@ -478,6 +479,7 @@ const Dashboard = () => {
               return (
               <Grid item xs={12} sm={6} md={3} key={stat.label}>
                 <StaggerItem style={{ height: '100%' }}>
+                <Tilt style={{ height: '100%' }}>
                 <Card
                   onClick={() => navigate(stat.path)}
                   sx={{
@@ -512,6 +514,7 @@ const Dashboard = () => {
                     sx={{ mt: 1.6, height: 6, borderRadius: 999, bgcolor: '#EEF2F7', '& .MuiLinearProgress-bar': { bgcolor: stat.color, borderRadius: 999 } }}
                   />
                 </Card>
+                </Tilt>
                 </StaggerItem>
               </Grid>
               )
