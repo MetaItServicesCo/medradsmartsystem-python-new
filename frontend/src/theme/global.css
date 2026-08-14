@@ -166,6 +166,28 @@ canvas {
   opacity: 1;
 }
 
+/* Consistent premium accent: a subtle brand gradient hairline ring on card hover,
+   app-wide. Purely additive (a masked pseudo-element on the border only), so it
+   never overrides a card's own background, shadow, or border. */
+.app-main-scroll .MuiCard-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(113, 97, 216, 0.4), rgba(240, 93, 146, 0.28));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+.app-main-scroll .MuiCard-root:hover::before {
+  opacity: 1;
+}
+
 /* Scroll-reveal entrance for main-content cards (driven by useContentReveal).
    Scoped to .app-main-scroll so dialogs/menus/print are unaffected. */
 .app-main-scroll .MuiCard-root:not([data-no-reveal='true']) {

@@ -10,6 +10,7 @@ import { ListContextProvider } from '@/contexts/ListContext'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { useCardSpotlight } from '@/hooks/useCardSpotlight'
 import { useContentReveal } from '@/hooks/useContentReveal'
+import { useCardTilt } from '@/hooks/useCardTilt'
 
 // Sign the user out after this much inactivity.
 const SESSION_IDLE_TIMEOUT_MS = 180_000 // 180 seconds
@@ -70,6 +71,7 @@ const Layout = () => {
   useDismissOrphanedOverlays(location.pathname)
   useIdleLogout(SESSION_IDLE_TIMEOUT_MS)
   useCardSpotlight()
+  useCardTilt()
   useContentReveal(location.pathname)
   const title = Object.entries(pageTitles).find(([path]) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
