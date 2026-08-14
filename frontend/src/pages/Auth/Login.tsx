@@ -142,6 +142,25 @@ const Login = () => {
         background: 'linear-gradient(125deg, #ECEAFF 0%, #F3EEFF 42%, #FDEBF2 100%)',
       }}
     >
+      {/* Animated border-beam styles (login page only; 21st.dev "Sign In Card" pattern) */}
+      <style>{`
+        @property --login-beam { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+        @keyframes loginBeamSpin { to { --login-beam: 360deg; } }
+        .login-beam::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          padding: 1.6px;
+          background: conic-gradient(from var(--login-beam), transparent 0 68%, #7161D8 82%, #F05D92 92%, transparent 100%);
+          -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          animation: loginBeamSpin 5s linear infinite;
+          pointer-events: none;
+        }
+      `}</style>
+
       {/* Ambient background blobs (blurred behind the glass) */}
       <Box aria-hidden sx={{ position: 'absolute', top: '-12%', left: '-6%', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.34), transparent 70%)', filter: 'blur(28px)', animation: `${drift} 18s ease-in-out infinite` }} />
       <Box aria-hidden sx={{ position: 'absolute', bottom: '-14%', right: '-8%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,93,146,0.32), transparent 70%)', filter: 'blur(30px)', animation: `${driftAlt} 22s ease-in-out infinite` }} />
@@ -169,9 +188,11 @@ const Login = () => {
           boxShadow: '0 44px 120px rgba(84,69,179,0.20)',
         }}
       >
-        {/* Left — form card */}
+        {/* Left — form card (with animated border-beam) */}
         <Box
+          className="login-beam"
           sx={{
+            position: 'relative',
             width: { xs: '100%', md: 400 },
             flexShrink: 0,
             p: { xs: 2.5, sm: 4 },
