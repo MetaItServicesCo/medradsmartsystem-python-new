@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AnimatedNumber } from '@/components/motion'
 import {
   Avatar,
   Box,
@@ -439,7 +440,7 @@ const Attendance = () => {
         </Box>
         <Box>
           <Typography sx={{ color: '#8B95A7', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 28 }}>{value ?? 0}</Typography>
+          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 28 }}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : (value ?? 0)}</Typography>
         </Box>
       </Box>
     </Card>

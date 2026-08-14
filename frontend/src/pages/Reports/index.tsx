@@ -20,6 +20,7 @@ import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
 import { buildInspectionReportDocumentHtml, buildInspectionSingleReportHtml, buildInspectionBatchReportHtml, printInspectionRecord, resolveReportInvoice } from '@/utils/inspectionReportHtml'
 import { buildServiceReportDocument, printServiceReportSheet } from '@/utils/serviceReportHtml'
+import { AnimatedNumber } from '@/components/motion'
 import { fetchFacility } from '@/api/facilities'
 import { fetchInspectionBatch } from '@/api/inspections'
 import {
@@ -273,7 +274,7 @@ const Reports = () => {
           >
             <Avatar sx={{ bgcolor: `${item.color}18`, color: item.color, borderRadius: '16px', mb: 1.5 }}>{item.icon}</Avatar>
             <Typography sx={{ color: '#64748B', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>{item.label}</Typography>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 30 }}>{item.value}</Typography>
+            <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 30 }}>{typeof item.value === 'number' ? <AnimatedNumber value={item.value} /> : item.value}</Typography>
           </Card>
         ))}
       </Box>

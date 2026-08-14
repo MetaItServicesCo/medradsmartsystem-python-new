@@ -1,6 +1,7 @@
 import { type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { NumericField } from '../../components/NumericField'
+import { AnimatedNumber } from '@/components/motion'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Autocomplete,
@@ -3075,7 +3076,7 @@ const Inspections = () => {
         <Avatar sx={{ bgcolor: `${color}18`, color, borderRadius: '14px' }}>{icon}</Avatar>
         <Box>
           <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography sx={{ color: '#1E1B4B', fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{value}</Typography>
+          <Typography sx={{ color: '#1E1B4B', fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : value}</Typography>
         </Box>
       </Box>
     </Card>

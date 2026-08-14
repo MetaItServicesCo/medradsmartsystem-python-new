@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AnimatedNumber } from '@/components/motion'
 import {
   Avatar, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, Divider,
@@ -1001,7 +1002,7 @@ function AttendancePoliciesTab() {
             <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box>
                 <Typography variant="caption" color="text.secondary">{k.label}</Typography>
-                <Typography variant="h5" fontWeight={800}>{k.value}</Typography>
+                <Typography variant="h5" fontWeight={800}>{typeof k.value === 'number' ? <AnimatedNumber value={k.value} /> : k.value}</Typography>
               </Box>
               <Typography fontSize={28}>{k.icon}</Typography>
             </CardContent>
@@ -1509,7 +1510,7 @@ function LeaveTypesTab() {
             <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Box>
                 <Typography variant="caption" color="text.secondary">{k.label}</Typography>
-                <Typography variant="h5" fontWeight={800}>{k.value}</Typography>
+                <Typography variant="h5" fontWeight={800}>{typeof k.value === 'number' ? <AnimatedNumber value={k.value} /> : k.value}</Typography>
               </Box>
               <Typography fontSize={28}>{k.icon}</Typography>
             </CardContent>
@@ -1739,7 +1740,7 @@ function EmployeeSubmissionsTab() {
           <Card key={k.label} sx={{ flex: 1, minWidth: 140 }}>
             <CardContent sx={{ py: '12px !important' }}>
               <Typography variant="caption" color="text.secondary">{k.label}</Typography>
-              <Typography variant="h5" fontWeight={800} sx={{ color: k.color }}>{k.value}</Typography>
+              <Typography variant="h5" fontWeight={800} sx={{ color: k.color }}>{typeof k.value === 'number' ? <AnimatedNumber value={k.value} /> : k.value}</Typography>
             </CardContent>
           </Card>
         ))}
@@ -2612,7 +2613,7 @@ function DocumentsSection() {
                   <CardContent sx={{ py: '12px !important', px: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Box>
-                        <Typography variant="h4" fontWeight={700} sx={{ color: k.color, lineHeight: 1.2 }}>{k.value}</Typography>
+                        <Typography variant="h4" fontWeight={700} sx={{ color: k.color, lineHeight: 1.2 }}>{typeof k.value === 'number' ? <AnimatedNumber value={k.value} /> : k.value}</Typography>
                         <Typography variant="caption" color="text.secondary">{k.label}</Typography>
                       </Box>
                       {k.icon}
