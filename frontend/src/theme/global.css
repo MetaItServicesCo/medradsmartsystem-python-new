@@ -166,6 +166,18 @@ canvas {
   opacity: 1;
 }
 
+/* Scroll-reveal entrance for main-content cards (driven by useContentReveal).
+   Scoped to .app-main-scroll so dialogs/menus/print are unaffected. */
+.app-main-scroll .MuiCard-root {
+  opacity: 0;
+  transform: translateY(14px);
+}
+.app-main-scroll .MuiCard-root.reveal-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Glassmorphism */
 .glass-card {
   background: var(--glass);
@@ -384,5 +396,11 @@ input[type='number'] {
   .MuiBackdrop-root,
   .no-print {
     display: none !important;
+  }
+
+  /* Never let the reveal-entrance hide content in print. */
+  .app-main-scroll .MuiCard-root {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

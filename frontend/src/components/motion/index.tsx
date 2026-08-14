@@ -28,9 +28,27 @@ export const PageTransition = ({ children, routeKey, className, style }: MotionP
     key={routeKey}
     className={className}
     style={style}
-    initial={{ opacity: 0, y: 16, scale: 0.994 }}
-    animate={{ opacity: 1, y: 0, scale: 1 }}
-    transition={{ duration: 0.46, ease: EASE_OUT }}
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ duration: 0.28, ease: EASE_OUT }}
+  >
+    {children}
+  </motion.div>
+)
+
+/**
+ * Scroll-reveal wrapper — the 21st.dev "Scroll Reveal" pattern (framer
+ * `whileInView`, once-only): fades + rises its children a little as they enter
+ * the viewport. Use it for bespoke sections that aren't plain cards.
+ */
+export const ScrollReveal = ({ children, className, style, delay = 0, y = 14 }: MotionProps & { delay?: number; y?: number }) => (
+  <motion.div
+    className={className}
+    style={style}
+    initial={{ opacity: 0, y }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true, amount: 0.15 }}
+    transition={{ duration: 0.45, ease: EASE_OUT, delay }}
   >
     {children}
   </motion.div>
