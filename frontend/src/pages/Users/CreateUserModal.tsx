@@ -122,12 +122,16 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
       toast.error('Please fill all required fields')
       return
     }
+    if (form.password.length < 12) {
+      toast.error('Password must be at least 12 characters')
+      return
+    }
     mutation.mutate()
   }
 
   const passwordStrength = (pw: string) => {
     let score = 0
-    if (pw.length >= 8) score++
+    if (pw.length >= 12) score++
     if (/[A-Z]/.test(pw)) score++
     if (/[0-9]/.test(pw)) score++
     if (/[^A-Za-z0-9]/.test(pw)) score++
@@ -184,6 +188,8 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
                 type={showPassword ? 'text' : 'password'}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
+                inputProps={{ minLength: 12, maxLength: 72 }}
+                helperText="Use at least 12 characters"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">

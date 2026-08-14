@@ -18,7 +18,7 @@ from app.schemas.user import (
     UserProfileUpdate, UserRoleUpdate, UserSearchResponse, FacilityBrief,
     UserPermissionsUpdate, PermissionCatalogResponse,
 )
-from app.core.security import create_access_token, get_password_hash
+from app.core.security import create_access_token, get_password_hash, password_token_version
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notification
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
@@ -728,7 +728,11 @@ def impersonate_user(
     if not target_user.is_active:
         raise HTTPException(status_code=400, detail="Cannot impersonate an inactive user")
 
-    access_token = create_access_token(data={"sub": target_user.username, "role": target_user.role.value if hasattr(target_user.role, "value") else str(target_user.role)})
+    access_token = create_access_token(data={
+        "sub": target_user.username,
+        "role": target_user.role.value if hasattr(target_user.role, "value") else str(target_user.role),
+        "ver": password_token_version(target_user.hashed_password),
+    })
     
     log_activity(db, "users", user_id, "IMPERSONATE", current_user, {"target_username": target_user.username})
     

@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.core.security import decode_token
 from app.db.base import SessionLocal
+from app.middleware.security import _safe_log_path
 from app.models.user import User
 from app.utils.logging import log_activity
 
@@ -131,7 +132,8 @@ class ActivityAuditMiddleware(BaseHTTPMiddleware):
             "activity_type": "api_request",
             "module": module,
             "method": request.method,
-            "path": request.url.path,
+            "path": _safe_log_path(request.url.path),
+            "request_id": getattr(request.state, "request_id", None),
             "query": _safe_query_params(request),
             "status_code": response.status_code,
             "record_id": record_id or None,

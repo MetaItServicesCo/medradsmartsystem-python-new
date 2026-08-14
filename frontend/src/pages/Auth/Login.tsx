@@ -95,6 +95,10 @@ const Login = () => {
     e.preventDefault()
     setError('')
     setSuccess('')
+    if (isSignUp && password.length < 12) {
+      setError('Password must be at least 12 characters')
+      return
+    }
     setLoading(true)
     try {
       if (isSignUp) {
@@ -325,6 +329,8 @@ const Login = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   margin="normal"
                   required
+                  inputProps={{ minLength: isSignUp ? 12 : undefined, maxLength: 72 }}
+                  helperText={isSignUp ? 'Use at least 12 characters.' : undefined}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">

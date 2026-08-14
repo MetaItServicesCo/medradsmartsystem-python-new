@@ -1,19 +1,35 @@
 from typing import List
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Medrad Admin Panel"
     VERSION: str = "2.0.0"
     API_V1_STR: str = "/api/v1"
+    APP_ENV: str = "development"
+    ENABLE_API_DOCS: bool = True
+    RUN_STARTUP_MIGRATIONS: bool = False
     
     # Database
     DATABASE_URL: str = "postgresql://medrad:medrad123@localhost:5432/medrad_db"
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_TIMEOUT_SECONDS: int = 30
+    DATABASE_POOL_RECYCLE_SECONDS: int = 1800
     
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    JWT_ISSUER: str = "medrad-api"
+    JWT_AUDIENCE: str = "medrad-web"
+    AUTH_LOGIN_IP_LIMIT: int = 30
+    AUTH_LOGIN_ACCOUNT_LIMIT: int = 10
+    AUTH_LOGIN_WINDOW_SECONDS: int = 900
+    AUTH_REGISTER_IP_LIMIT: int = 5
+    AUTH_REGISTER_WINDOW_SECONDS: int = 3600
     
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
@@ -24,6 +40,13 @@ class Settings(BaseSettings):
         "http://134.199.192.91:3000",
         "http://134.199.192.91",
     ]
+    TRUSTED_HOSTS: List[str] = ["localhost", "127.0.0.1", "testserver"]
+
+    # Cross-cutting API resource protection. Endpoint-specific payment limits
+    # remain stricter than this general ceiling.
+    API_RATE_LIMIT: int = 600
+    API_RATE_LIMIT_WINDOW_SECONDS: int = 60
+    MAX_REQUEST_BODY_SIZE: int = 16 * 1024 * 1024
     
     # File Upload
     UPLOAD_DIR: str = "uploads"
@@ -69,6 +92,37 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+
+    @property
+    def is_production(self) -> bool:
+        return self.APP_ENV.strip().lower() in {"production", "prod"}
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        if not self.is_production:
+            return self
+
+        if (
+            not self.SECRET_KEY
+            or self.SECRET_KEY == "your-secret-key-change-in-production"
+            or len(self.SECRET_KEY) < 32
+        ):
+            raise ValueError("SECRET_KEY must be a unique value of at least 32 characters in production")
+        if not self.PUBLIC_APP_URL.startswith("https://"):
+            raise ValueError("PUBLIC_APP_URL must use HTTPS in production")
+        if not self.TRUSTED_HOSTS or "*" in self.TRUSTED_HOSTS:
+            raise ValueError("TRUSTED_HOSTS must contain explicit production hosts")
+        if self.ENABLE_TEST_PAYMENTS:
+            raise ValueError("ENABLE_TEST_PAYMENTS must be disabled in production")
+        if self.SQUARE_ACCESS_TOKEN and not self.PAYMENT_DATA_ENCRYPTION_KEYS.strip():
+            raise ValueError("PAYMENT_DATA_ENCRYPTION_KEYS is required when Square is configured")
+        insecure_origins = [
+            origin for origin in self.BACKEND_CORS_ORIGINS
+            if origin == "*" or origin.startswith("http://")
+        ]
+        if insecure_origins:
+            raise ValueError("Production CORS origins must be explicit HTTPS origins")
+        return self
     
     class Config:
         env_file = ".env"

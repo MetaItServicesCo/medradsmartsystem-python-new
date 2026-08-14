@@ -1,7 +1,17 @@
 
 from typing import Optional, List, Dict
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+
+
+def _validate_password(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return value
+    if len(value) < 12:
+        raise ValueError("Password must contain at least 12 characters")
+    if len(value.encode("utf-8")) > 72:
+        raise ValueError("Password is too long")
+    return value
 
 
 class UserBase(BaseModel):
@@ -17,6 +27,8 @@ class UserCreate(UserBase):
     user_type: Optional[str] = "employee"
     facility_ids: Optional[List[int]] = None
 
+    _password_policy = field_validator("password")(_validate_password)
+
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None
@@ -29,12 +41,16 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     facility_ids: Optional[List[int]] = None
 
+    _password_policy = field_validator("password")(_validate_password)
+
 
 class UserProfileUpdate(BaseModel):
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
     password: Optional[str] = None
+
+    _password_policy = field_validator("password")(_validate_password)
 
 
 class UserRoleUpdate(BaseModel):

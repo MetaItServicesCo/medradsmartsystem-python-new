@@ -33,7 +33,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isAuthenticated: false,
@@ -41,8 +41,18 @@ export const useAuthStore = create<AuthState>()(
         set({ user, token, isAuthenticated: true }),
       setUser: (user) =>
         set({ user, isAuthenticated: true }),
-      logout: () =>
-        set({ user: null, token: null, isAuthenticated: false }),
+      logout: () => {
+        const token = get().token
+        if (token && typeof window !== 'undefined') {
+          const apiBase = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
+          void fetch(`${apiBase}/auth/logout`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            keepalive: true,
+          }).catch(() => undefined)
+        }
+        set({ user: null, token: null, isAuthenticated: false })
+      },
     }),
     {
       name: 'auth-storage',

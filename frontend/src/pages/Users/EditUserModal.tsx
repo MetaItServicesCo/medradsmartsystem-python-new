@@ -105,6 +105,10 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (form.password && form.password.length < 12) {
+      toast.error('Password must be at least 12 characters')
+      return
+    }
     const payload: UpdateUserPayload = {
       username: form.username,
       email: form.email,
@@ -167,7 +171,8 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                helperText="Only fill if you want to change the password"
+                inputProps={{ minLength: 12, maxLength: 72 }}
+                helperText="Leave blank to keep it, or use at least 12 characters"
               />
             </Grid>
             <Grid item xs={12} sm={6}>

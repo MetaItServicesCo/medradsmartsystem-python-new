@@ -5,12 +5,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
-from jose import JWTError, jwt
+from jose import JWTError
 
-from app.core.config import settings
+from app.core.security import decode_token, password_token_version
 from app.db.base import SessionLocal
 from app.models.user import User
 from app.models.chat import DirectMessage, WorkspaceMessage, MessageType, WorkspaceMember
+from app.utils.token_revocation import access_token_is_revoked
 from app.utils.notifications import create_notification, create_notifications
 
 router = APIRouter()
@@ -73,14 +74,20 @@ manager = ConnectionManager()
 def get_user_from_token(token: str) -> int | None:
     """Extract user_id from JWT token."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = decode_token(token)
+        if payload.get("token_type") != "access" or access_token_is_revoked(payload):
+            return None
         username = payload.get("sub")
         if not username:
             return None
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.username == username).first()
-            return user.id if user else None
+            if not user or not user.is_active:
+                return None
+            if payload.get("ver") != password_token_version(user.hashed_password):
+                return None
+            return user.id
         finally:
             db.close()
     except JWTError:
