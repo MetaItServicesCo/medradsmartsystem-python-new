@@ -40,7 +40,18 @@ import { useAuthStore } from '@/stores/authStore'
 import { enabledPermissionCount, hasPermission, type Module } from '@/config/permissions'
 import { AnimatedNumber, Stagger, StaggerItem } from '@/components/motion'
 import AuroraBackground from '@/components/AuroraBackground'
+import { keyframes } from '@emotion/react'
 import { format, isValid } from 'date-fns'
+
+// Obvious, continuous hero motion (a light sweep + a pulsing "live" dot).
+const heroSweep = keyframes`
+  0%   { background-position: 190% 0; }
+  100% { background-position: -90% 0; }
+`
+const livePulse = keyframes`
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.75); opacity: 1; }
+  50%      { box-shadow: 0 0 0 7px rgba(74,222,128,0); opacity: 0.65; }
+`
 
 const safeFormatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return 'Recently'
@@ -396,7 +407,8 @@ const Dashboard = () => {
               boxShadow: '0 24px 60px rgba(89,76,190,0.28)',
             }}
           >
-            <AuroraBackground colors={['rgba(255,255,255,0.30)', 'rgba(240,95,150,0.55)', 'rgba(124,93,216,0.6)']} blur={52} opacity={0.9} />
+            <AuroraBackground colors={['rgba(255,255,255,0.55)', 'rgba(56,189,248,0.45)', 'rgba(240,95,150,0.6)']} blur={44} opacity={1} />
+            <Box aria-hidden sx={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none', background: 'linear-gradient(105deg, transparent 34%, rgba(255,255,255,0.24) 50%, transparent 64%)', backgroundSize: '250% 100%', animation: `${heroSweep} 5.5s ease-in-out infinite` }} />
             <Box sx={{ position: 'relative', zIndex: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 1 }}>
               <Box>
@@ -408,7 +420,15 @@ const Dashboard = () => {
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1} alignItems="center">
-                <Chip label="Live system data" sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: '#fff', fontWeight: 800, backdropFilter: 'blur(10px)' }} />
+                <Chip
+                  label={(
+                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.9 }}>
+                      <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4ADE80', animation: `${livePulse} 1.8s ease-in-out infinite` }} />
+                      Live system data
+                    </Box>
+                  )}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: '#fff', fontWeight: 800, backdropFilter: 'blur(10px)' }}
+                />
                 {renderAnalyticsToggle('overview', 'overview analytics')}
               </Stack>
             </Box>
