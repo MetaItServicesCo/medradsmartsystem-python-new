@@ -100,7 +100,7 @@ const Login = () => {
       <Box aria-hidden sx={{ position: 'absolute', top: '-12%', left: '-6%', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.30), transparent 70%)', filter: 'blur(30px)', animation: `${drift} 20s ease-in-out infinite` }} />
       <Box aria-hidden sx={{ position: 'absolute', bottom: '-14%', right: '-8%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,93,146,0.28), transparent 70%)', filter: 'blur(32px)', animation: `${driftAlt} 24s ease-in-out infinite` }} />
 
-      {/* Centered login card */}
+      {/* Centered login — frosted outer panel framing the white form card (double-box) */}
       <Box
         component={motion.div}
         initial={{ opacity: 0, y: 22, scale: 0.97 }}
@@ -109,16 +109,26 @@ const Login = () => {
         sx={{
           position: 'relative',
           width: '100%',
-          maxWidth: 420,
-          p: { xs: 3, sm: 4.5 },
-          borderRadius: '28px',
-          background: 'rgba(255,255,255,0.9)',
-          backdropFilter: 'blur(22px)',
-          WebkitBackdropFilter: 'blur(22px)',
-          border: '1px solid rgba(255,255,255,0.85)',
-          boxShadow: '0 40px 100px rgba(84,69,179,0.20)',
+          maxWidth: 480,
+          p: { xs: 2, sm: 3 },
+          borderRadius: '34px',
+          background: 'rgba(255,255,255,0.42)',
+          backdropFilter: 'blur(26px)',
+          WebkitBackdropFilter: 'blur(26px)',
+          border: '1px solid rgba(255,255,255,0.6)',
+          boxShadow: '0 44px 110px rgba(84,69,179,0.22)',
         }}
       >
+        {/* Inner white form card */}
+        <Box
+          sx={{
+            p: { xs: 2.75, sm: 4 },
+            borderRadius: '26px',
+            background: 'rgba(255,255,255,0.96)',
+            border: '1px solid rgba(255,255,255,0.9)',
+            boxShadow: '0 22px 55px rgba(84,69,179,0.12)',
+          }}
+        >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 3 }}>
           <Box sx={{ width: 40, height: 40, borderRadius: '13px', background: 'linear-gradient(135deg, #7161D8, #F05D92)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: '#fff', fontSize: '1.1rem', boxShadow: '0 8px 20px rgba(113,97,216,0.35)' }}>M</Box>
           <Typography sx={{ fontWeight: 800, color: '#7161D8', letterSpacing: '0.14em', fontSize: '0.72rem', textTransform: 'uppercase' }}>Mr. BioMed Tech</Typography>
@@ -231,6 +241,7 @@ const Login = () => {
               {isSignUp ? 'Sign in' : 'Register for free'}
             </Button>
           </Typography>
+        </Box>
         </Box>
       </Box>
 
