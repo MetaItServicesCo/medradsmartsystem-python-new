@@ -117,7 +117,6 @@ const Layout = () => {
                 p: { xs: 2, md: 3 },
                 overflowY: 'auto',
                 overflowX: 'hidden',
-                scrollBehavior: 'smooth',
               }}
               className="app-main-scroll"
             >

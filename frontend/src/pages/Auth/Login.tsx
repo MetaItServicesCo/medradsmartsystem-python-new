@@ -16,12 +16,12 @@ import apiClient from '@/api/client'
 
 // --- Self-contained ambient motion (login page only) ---
 const drift = keyframes`
-  0%,100% { transform: translate(0,0) scale(1); }
-  50%     { transform: translate(38px,-44px) scale(1.12); }
+  0%,100% { transform: translate3d(0,0,0) scale(1); }
+  50%     { transform: translate3d(38px,-44px,0) scale(1.12); }
 `
 const driftAlt = keyframes`
-  0%,100% { transform: translate(0,0) scale(1); }
-  50%     { transform: translate(-46px,36px) scale(1.16); }
+  0%,100% { transform: translate3d(0,0,0) scale(1); }
+  50%     { transform: translate3d(-46px,36px,0) scale(1.16); }
 `
 const sheen = keyframes`
   0%   { transform: translateX(-130%) skewX(-18deg); }
@@ -97,8 +97,8 @@ const Login = () => {
       }}
     >
       {/* Subtle ambient blobs behind the card */}
-      <Box aria-hidden sx={{ position: 'absolute', top: '-12%', left: '-6%', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.30), transparent 70%)', filter: 'blur(30px)', animation: `${drift} 20s ease-in-out infinite` }} />
-      <Box aria-hidden sx={{ position: 'absolute', bottom: '-14%', right: '-8%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,93,146,0.28), transparent 70%)', filter: 'blur(32px)', animation: `${driftAlt} 24s ease-in-out infinite` }} />
+      <Box aria-hidden sx={{ position: 'absolute', top: '-12%', left: '-6%', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.30), transparent 70%)', animation: `${drift} 20s ease-in-out infinite`, pointerEvents: 'none' }} />
+      <Box aria-hidden sx={{ position: 'absolute', bottom: '-14%', right: '-8%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,93,146,0.28), transparent 70%)', animation: `${driftAlt} 24s ease-in-out infinite`, pointerEvents: 'none' }} />
 
       {/* Centered login — frosted outer panel framing the white form card (double-box) */}
       <Box
@@ -112,9 +112,7 @@ const Login = () => {
           maxWidth: 480,
           p: { xs: 2, sm: 3 },
           borderRadius: '34px',
-          background: 'rgba(255,255,255,0.42)',
-          backdropFilter: 'blur(26px)',
-          WebkitBackdropFilter: 'blur(26px)',
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.66), rgba(255,255,255,0.38))',
           border: '1px solid rgba(255,255,255,0.6)',
           boxShadow: '0 44px 110px rgba(84,69,179,0.22)',
         }}

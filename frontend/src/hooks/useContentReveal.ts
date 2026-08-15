@@ -1,76 +1,89 @@
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
 
 /**
- * App-wide "Scroll Reveal (Subtle)" — the motion preset recommended by the
- * UI/UX Pro Max design system and mirrored by the 21st.dev Scroll Reveal
- * pattern: content fades and rises a little as it enters view, cards above the
- * fold stagger on load, once-only (never re-triggers).
- *
- * Applied globally to every card in the main content area so all 16 modules get
- * a consistent entrance without per-page wiring. Targets a stable class
- * (.MuiCard-root), catches async-rendered cards via a MutationObserver, and —
- * per the design system's explicit "don't leave content invisible by default"
- * rule — a safety timeout reveals everything regardless. The visual transition
- * lives in global.css (`.app-main-scroll .MuiCard-root`).
+ * Once-only scroll reveal for top-level content cards. Only cards actually
+ * tracked by this hook receive the hidden state, so async content can never
+ * disappear. DOM mutations are batched to one scan per frame and observation
+ * stops after the initial page has settled to avoid permanent list overhead.
  */
 export const useContentReveal = (pathname: string) => {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.querySelector('.app-main-scroll') as HTMLElement | null
     if (!root) return
 
     let stagger = 0
     let resetHandle = 0
+    let scanFrame = 0
+    const pendingRoots = new Set<HTMLElement>()
+    const revealSelector = '.MuiCard-root:not([data-no-reveal="true"])'
+
+    const isTopLevelCard = (el: HTMLElement) => {
+      const parentCard = el.parentElement?.closest('.MuiCard-root') as HTMLElement | null
+      return !parentCard || !root.contains(parentCard)
+    }
+
     const reveal = (el: HTMLElement) => {
       if (el.dataset.revealed) return
       el.dataset.revealed = '1'
-      // Small per-item delay (~0.05s), capped so long lists never feel sluggish.
-      el.style.transitionDelay = `${Math.min(stagger, 6) * 50}ms`
+      el.style.transitionDelay = `${Math.min(stagger, 5) * 40}ms`
       el.classList.add('reveal-in')
       stagger += 1
       window.clearTimeout(resetHandle)
-      resetHandle = window.setTimeout(() => { stagger = 0 }, 240)
+      resetHandle = window.setTimeout(() => { stagger = 0 }, 200)
     }
 
     const io = 'IntersectionObserver' in window
-      ? new IntersectionObserver((entries, obs) => {
+      ? new IntersectionObserver((entries, observer) => {
           entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              reveal(entry.target as HTMLElement)
-              obs.unobserve(entry.target)
-            }
+            if (!entry.isIntersecting) return
+            reveal(entry.target as HTMLElement)
+            observer.unobserve(entry.target)
           })
-        }, { root, threshold: 0.05 })
+        }, { root, threshold: 0.04, rootMargin: '40px 0px' })
       : null
 
     const track = (el: HTMLElement) => {
-      if (el.dataset.revealed) return
+      if (el.dataset.revealed || !isTopLevelCard(el)) return
+      el.classList.add('reveal-pending')
       if (io) io.observe(el)
       else reveal(el)
     }
-    const revealSelector = '.MuiCard-root:not([data-no-reveal="true"])'
-    const scan = (node: ParentNode) => node.querySelectorAll<HTMLElement>(revealSelector).forEach(track)
+
+    const scan = (node: ParentNode) => {
+      if (node instanceof HTMLElement && node.matches(revealSelector)) track(node)
+      node.querySelectorAll<HTMLElement>(revealSelector).forEach(track)
+    }
 
     scan(root)
 
+    const flushScans = () => {
+      scanFrame = 0
+      pendingRoots.forEach(scan)
+      pendingRoots.clear()
+    }
+
     const mo = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
-        if (!(node instanceof HTMLElement)) return
-        if (node.classList.contains('MuiCard-root') && node.dataset.noReveal !== 'true') track(node)
-        scan(node)
+        if (node instanceof HTMLElement) pendingRoots.add(node)
       }))
+      if (pendingRoots.size && !scanFrame) scanFrame = window.requestAnimationFrame(flushScans)
     })
     mo.observe(root, { childList: true, subtree: true })
 
-    // Safety net (design-system fallback): reveal everything regardless so
-    // content can never be left hidden if an observer misses it.
     const safety = window.setTimeout(() => {
-      root.querySelectorAll<HTMLElement>(revealSelector).forEach(reveal)
-    }, 1100)
+      root.querySelectorAll<HTMLElement>('.MuiCard-root.reveal-pending:not(.reveal-in)').forEach(reveal)
+    }, 900)
+
+    // Async page shells/cards render during the initial load. Once settled,
+    // table updates and searches should not keep a global DOM observer alive.
+    const settle = window.setTimeout(() => mo.disconnect(), 4000)
 
     return () => {
       io?.disconnect()
       mo.disconnect()
+      if (scanFrame) window.cancelAnimationFrame(scanFrame)
       window.clearTimeout(safety)
+      window.clearTimeout(settle)
       window.clearTimeout(resetHandle)
     }
   }, [pathname])
