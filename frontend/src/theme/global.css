@@ -260,9 +260,7 @@ canvas {
 /* Softer, premium modal backdrop — scoped to dialogs so menus/selects/drawers
    are unaffected. Presentation only. */
 .MuiDialog-root > .MuiBackdrop-root {
-  background-color: rgba(30, 27, 75, 0.5);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background-color: rgba(30, 27, 75, 0.46);
 }
 
 /* Brand-tinted required-field asterisk across every form. */
