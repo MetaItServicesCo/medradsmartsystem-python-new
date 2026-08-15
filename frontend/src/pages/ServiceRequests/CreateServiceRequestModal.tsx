@@ -231,7 +231,7 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
           </Box>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto' }, gap: 1 }}>
-            <TextField label="Reference #" placeholder="PO Reference" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
+            <TextField label="Reference Number / PO Number" placeholder="Enter reference or PO number" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
             <Button
               variant="contained"
               disabled={!referenceNumber.trim()}

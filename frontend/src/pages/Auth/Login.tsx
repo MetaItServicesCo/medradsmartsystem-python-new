@@ -131,7 +131,7 @@ const Login = () => {
         >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 3 }}>
           <Box sx={{ width: 40, height: 40, borderRadius: '13px', background: 'linear-gradient(135deg, #7161D8, #F05D92)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: '#fff', fontSize: '1.1rem', boxShadow: '0 8px 20px rgba(113,97,216,0.35)' }}>M</Box>
-          <Typography sx={{ fontWeight: 800, color: '#7161D8', letterSpacing: '0.14em', fontSize: '0.72rem', textTransform: 'uppercase' }}>Mr. BioMed Tech</Typography>
+          <Typography sx={{ fontWeight: 800, color: '#7161D8', letterSpacing: '0.14em', fontSize: '0.72rem', textTransform: 'uppercase' }}>MEDRAD</Typography>
         </Box>
 
         <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B', letterSpacing: '-0.5px', mb: 0.5 }}>
