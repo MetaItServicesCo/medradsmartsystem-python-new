@@ -39,7 +39,7 @@ def claim_payment_proof_jobs(limit: int | None = None) -> list[int]:
                         )
                     ),
                     (
-                        PaymentProof.extraction_status == "processing"
+                        (PaymentProof.extraction_status == "processing")
                         & PaymentProof.extraction_started_at.is_not(None)
                         & (PaymentProof.extraction_started_at <= stale_before)
                     ),
