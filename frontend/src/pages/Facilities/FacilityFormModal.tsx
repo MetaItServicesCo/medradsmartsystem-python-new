@@ -13,12 +13,13 @@ import BusinessIcon from '@mui/icons-material/Business'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DeleteIcon from '@mui/icons-material/Delete'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
+import DownloadIcon from '@mui/icons-material/Download'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 
 import { 
   createFacility, updateFacility, searchFacilities,
-  uploadFacilityDocument, fetchFacilityDocuments, deleteFacilityDocument, exportFacilityPdf,
+  uploadFacilityDocument, fetchFacilityDocuments, downloadFacilityDocument, deleteFacilityDocument, exportFacilityPdf,
   type Facility, type FacilityCreate 
 } from '@/api/facilities'
 import { FACILITY_TIMEZONE_OPTIONS, formatUSPhoneInput, normalizeFacilityTimezone } from '@/utils/formatters'
@@ -510,6 +511,13 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
                           Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
                         </Typography>
                       </Box>
+                      <IconButton
+                        color="primary"
+                        size="small"
+                        onClick={() => downloadFacilityDocument(facility!.id, doc).catch(() => toast.error('Unable to download document'))}
+                      >
+                        <DownloadIcon />
+                      </IconButton>
                       <IconButton color="error" size="small" onClick={() => deleteDocMut.mutate(doc.id)} disabled={deleteDocMut.isPending}>
                         <DeleteIcon />
                       </IconButton>

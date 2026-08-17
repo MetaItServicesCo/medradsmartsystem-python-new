@@ -18,6 +18,7 @@ HR_DOC_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..
 
 from app.core.deps import get_current_user, require_roles
 from app.utils.permission_deps import require_module_access
+from app.utils.upload_security import protected_upload_path
 from app.db.base import get_db
 from app.utils.notifications import create_notification
 from app.models.hr import (
@@ -1910,16 +1911,21 @@ def download_employee_document(
         raise HTTPException(404, "Not found")
     if not obj.file_url:
         raise HTTPException(400, "No file attached to this document")
-    file_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..",
-        obj.file_url.lstrip("/").replace("/", os.sep)
-    )
+    try:
+        file_path = protected_upload_path(HR_DOC_UPLOAD_DIR, obj.file_url, "hr_documents")
+    except ValueError:
+        raise HTTPException(404, "File not found on server")
     if not os.path.exists(file_path):
         raise HTTPException(404, "File not found on server")
     obj.download_count = (obj.download_count or 0) + 1
     db.commit()
     filename = obj.file_name or os.path.basename(file_path)
-    return FileResponse(file_path, filename=filename, media_type="application/octet-stream")
+    return FileResponse(
+        file_path,
+        filename=filename,
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 # ── Employee Contracts ────────────────────────────────────────────────────────

@@ -403,6 +403,11 @@ export const fetchServiceRequest = async (id: number): Promise<ServiceRequest> =
   return res.data
 }
 
+export const fetchServiceRequestImage = async (id: number): Promise<Blob> => {
+  const res = await apiClient.get(`/service-requests/${id}/image`, { responseType: 'blob' })
+  return res.data
+}
+
 export const createServiceRequest = async (
   data: ServiceRequestCreate
 ): Promise<ServiceRequest> => {

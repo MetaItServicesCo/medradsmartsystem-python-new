@@ -3,7 +3,6 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -14,6 +13,7 @@ from app.db.base import engine
 from app.middleware.activity_audit import ActivityAuditMiddleware
 from app.middleware.security import ApiSecurityMiddleware
 from app.utils.rate_limit import _redis_client
+from app.utils.upload_security import PublicUploadsStaticFiles
 
 if settings.RUN_STARTUP_MIGRATIONS:
     run_migration()
@@ -74,10 +74,11 @@ async def safe_validation_exception_handler(request: Request, exc: RequestValida
 # Include API router (REST + WebSocket)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# Serve uploaded files (chat files, documents, etc.)
+# Serve only explicitly classified public presentation media. Sensitive upload
+# subtrees are deny-by-default and are delivered by authorization-aware APIs.
 UPLOADS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "uploads")
 os.makedirs(UPLOADS_PATH, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOADS_PATH), name="uploads")
+app.mount("/uploads", PublicUploadsStaticFiles(directory=UPLOADS_PATH), name="uploads")
 
 @app.get("/")
 async def root():

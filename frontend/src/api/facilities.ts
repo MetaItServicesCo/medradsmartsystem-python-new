@@ -211,6 +211,24 @@ export const uploadFacilityDocument = async (facilityId: number, file: File): Pr
   return res.data
 }
 
+export const downloadFacilityDocument = async (
+  facilityId: number,
+  document: FacilityDocument,
+): Promise<void> => {
+  const res = await apiClient.get(
+    `/facilities/${facilityId}/documents/${document.id}/download`,
+    { responseType: 'blob' },
+  )
+  const objectUrl = URL.createObjectURL(res.data)
+  const anchor = window.document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = document.filename
+  window.document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
+}
+
 export const deleteFacilityDocument = async (facilityId: number, docId: number): Promise<void> => {
   await apiClient.delete(`/facilities/${facilityId}/documents/${docId}`)
 }

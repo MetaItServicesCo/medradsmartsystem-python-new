@@ -6,7 +6,7 @@ import csv
 import re
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import case, func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -27,6 +27,7 @@ from app.utils.logging import log_activity
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.permissions import require_module_permission
 from app.utils.list_search import contains_ci, normalize_list_search, predicates_for_field, value_contains_ci
+from app.utils.upload_security import protected_upload_path
 
 router = APIRouter(dependencies=[Depends(require_module_access("facilities"))])
 
@@ -957,6 +958,41 @@ async def upload_facility_document(
     return doc
 
 
+@router.get("/{facility_id}/documents/{doc_id}/download")
+def download_facility_document(
+    facility_id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Download a facility document after validating facility access."""
+    doc = db.query(FacilityDocument).filter(
+        FacilityDocument.id == doc_id,
+        FacilityDocument.facility_id == facility_id,
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    require_facility_access(db, current_user, doc.facility_id)
+
+    try:
+        file_path = protected_upload_path(
+            UPLOAD_DIR,
+            os.path.basename(doc.file_path or ""),
+            "facility_documents",
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Document file not found")
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Document file not found")
+
+    return FileResponse(
+        file_path,
+        filename=doc.filename or os.path.basename(file_path),
+        media_type=doc.file_type or "application/octet-stream",
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 @router.delete("/{facility_id}/documents/{doc_id}")
 def delete_facility_document(
     facility_id: int,
@@ -973,9 +1009,17 @@ def delete_facility_document(
         raise HTTPException(status_code=404, detail="Document not found")
     require_facility_access(db, current_user, doc.facility_id)
 
-    # Remove file from disk
-    if os.path.exists(doc.file_path):
-        os.remove(doc.file_path)
+    # Never trust an absolute database path as a deletion target.
+    try:
+        file_path = protected_upload_path(
+            UPLOAD_DIR,
+            os.path.basename(doc.file_path or ""),
+            "facility_documents",
+        )
+    except ValueError:
+        file_path = None
+    if file_path and os.path.isfile(file_path):
+        os.remove(file_path)
 
     db.delete(doc)
     db.commit()

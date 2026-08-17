@@ -18,7 +18,9 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import PersonIcon from '@mui/icons-material/Person'
 import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import { type Facility, fetchFacilityDocuments, exportFacilityPdf, fetchFacility } from '@/api/facilities'
+import DownloadIcon from '@mui/icons-material/Download'
+import { type Facility, downloadFacilityDocument, fetchFacilityDocuments, exportFacilityPdf, fetchFacility } from '@/api/facilities'
+import { toast } from 'react-toastify'
 import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
 
 interface Props {
@@ -226,6 +228,13 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
                     {new Date(doc.uploaded_at).toLocaleDateString()} · {Math.round((doc.file_size || 0) / 1024)} KB
                   </Typography>
                 </Box>
+                <IconButton
+                  aria-label={`Download ${doc.filename}`}
+                  onClick={() => downloadFacilityDocument(facility.id, doc).catch(() => toast.error('Unable to download document'))}
+                  sx={{ color: '#7C3AED' }}
+                >
+                  <DownloadIcon />
+                </IconButton>
               </Box>
             ))}
           </Box>

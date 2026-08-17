@@ -2,6 +2,7 @@ import os
 import uuid
 from typing import Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
@@ -9,6 +10,7 @@ from app.core.deps import get_current_user
 from app.utils.permission_deps import require_module_access
 from app.utils.logging import log_activity
 from app.utils.notifications import create_notification, create_notifications
+from app.utils.upload_security import protected_upload_path
 from app.db.base import get_db
 from app.models.user import User
 from app.models.chat import (
@@ -584,6 +586,60 @@ def send_workspace_message(
 
 # ─── File Upload ─────────────────────────────────────────────────────
 
+@router.get("/files/{stored_name}")
+def download_chat_file(
+    stored_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Serve a chat attachment only to a participant in its conversation."""
+    try:
+        file_path = protected_upload_path(CHAT_UPLOAD_DIR, stored_name, "chat_files")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    filename = os.path.basename(file_path)
+    references = (
+        f"/uploads/chat_files/{filename}",
+        f"/api/v1/chat/files/{filename}",
+    )
+    direct_message = db.query(DirectMessage).filter(
+        DirectMessage.file_url.in_(references),
+        or_(
+            DirectMessage.sender_id == current_user.id,
+            DirectMessage.receiver_id == current_user.id,
+        ),
+    ).first()
+
+    workspace_message = None
+    if not direct_message:
+        workspace_message = (
+            db.query(WorkspaceMessage)
+            .join(
+                WorkspaceMember,
+                WorkspaceMember.workspace_id == WorkspaceMessage.workspace_id,
+            )
+            .filter(
+                WorkspaceMessage.file_url.in_(references),
+                WorkspaceMember.user_id == current_user.id,
+            )
+            .first()
+        )
+
+    message = direct_message or workspace_message
+    if not message or not os.path.isfile(file_path):
+        # Do not disclose whether the file exists to a non-participant.
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        file_path,
+        filename=message.file_name or filename,
+        media_type=message.file_type or "application/octet-stream",
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 @router.post("/upload")
 async def upload_chat_file(
     file: UploadFile = File(...),
@@ -606,7 +662,7 @@ async def upload_chat_file(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    file_url = f"/uploads/chat_files/{stored_name}"
+    file_url = f"/api/v1/chat/files/{stored_name}"
 
     log_activity(db, "chat_files", 0, "FILE_UPLOADED", current_user, {"file_name": file.filename, "file_size": len(content)})
     db.commit()

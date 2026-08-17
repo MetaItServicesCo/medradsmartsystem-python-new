@@ -17,6 +17,7 @@ from app.models.user import UserRole
 from app.middleware.security import ApiSecurityMiddleware, _safe_log_path
 from app.schemas.user import UserCreate, UserUpdate
 from app.utils.token_revocation import access_token_is_revoked, revoke_access_token
+from app.utils.upload_security import PublicUploadsStaticFiles, protected_upload_path
 
 
 def test_access_tokens_are_short_lived_scoped_and_signed(monkeypatch) -> None:
@@ -230,3 +231,56 @@ def test_superadmin_impersonation_keeps_password_bound_token_compatibility(monke
 
     assert result["user"] == {"id": 44}
     assert payload["ver"] == password_token_version(target.hashed_password)
+
+
+def test_upload_static_mount_denies_sensitive_subtrees_by_default(tmp_path) -> None:
+    for subtree in (
+        "profile_pictures",
+        "test_equipment",
+        "hr_documents",
+        "chat_files",
+        "attendance_faces",
+        "facility_documents",
+        "service_request_images",
+        "future_private_uploads",
+    ):
+        directory = tmp_path / subtree
+        directory.mkdir()
+        (directory / "sample.txt").write_text(subtree, encoding="utf-8")
+
+    test_app = FastAPI()
+    test_app.mount("/uploads", PublicUploadsStaticFiles(directory=str(tmp_path)))
+    client = TestClient(test_app)
+
+    assert client.get("/uploads/profile_pictures/sample.txt").status_code == 200
+    assert client.get("/uploads/test_equipment/sample.txt").status_code == 200
+    for subtree in (
+        "hr_documents",
+        "chat_files",
+        "attendance_faces",
+        "facility_documents",
+        "service_request_images",
+        "future_private_uploads",
+    ):
+        response = client.get(f"/uploads/{subtree}/sample.txt")
+        assert response.status_code == 404
+        assert response.headers["cache-control"] == "no-store"
+
+
+def test_protected_upload_path_accepts_only_expected_legacy_url_or_filename(tmp_path) -> None:
+    expected = tmp_path / "safe.pdf"
+    assert protected_upload_path(
+        str(tmp_path),
+        "/uploads/hr_documents/safe.pdf",
+        "hr_documents",
+    ) == str(expected.resolve())
+    assert protected_upload_path(str(tmp_path), "safe.pdf", "hr_documents") == str(expected.resolve())
+
+    for unsafe in (
+        "../safe.pdf",
+        "/uploads/other/safe.pdf",
+        "/etc/passwd",
+        "nested/safe.pdf",
+    ):
+        with pytest.raises(ValueError):
+            protected_upload_path(str(tmp_path), unsafe, "hr_documents")

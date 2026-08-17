@@ -1,10 +1,12 @@
 import copy
+import mimetypes
 import os
 import uuid
 from typing import Any, Optional
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
@@ -62,6 +64,7 @@ from app.utils.list_search import (
     predicates_for_field,
     value_contains_ci,
 )
+from app.utils.upload_security import protected_upload_path
 
 router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
 
@@ -1162,6 +1165,42 @@ def list_service_request_parts(
     total = query.count()
     parts = query.order_by(InventoryPart.updated_at.desc(), InventoryPart.id.desc()).offset(skip).limit(limit).all()
     return {"items": [_service_part_option(part) for part in parts], "total": total}
+
+
+@router.get("/{request_id}/image")
+def download_service_request_image(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return a request attachment only to users allowed to view the request."""
+    sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
+    if not sr or not sr.request_image_url:
+        raise HTTPException(status_code=404, detail="Image not found")
+    _require_service_facility_access(db, current_user, sr.facility_id)
+    if current_user.role == UserRole.TECHNICIAN and sr.assigned_technician_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only view service requests assigned to you")
+    if current_user.role == UserRole.EMPLOYEE and sr.requester_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only view service requests you submitted")
+
+    try:
+        file_path = protected_upload_path(
+            SERVICE_REQUEST_UPLOAD_DIR,
+            sr.request_image_url,
+            "service_request_images",
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Image not found")
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    media_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @router.get("/{request_id}", response_model=ServiceRequestResponse)

@@ -32,6 +32,7 @@ import { toast } from 'react-toastify'
 
 import {
   createServiceRequestWorkSession,
+  fetchServiceRequestImage,
   fetchServiceRequestParts,
   fetchServiceRequest,
   fetchServiceInvoices,
@@ -177,6 +178,7 @@ const ServiceRequestDetail = () => {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [changeTechOpen, setChangeTechOpen] = useState(false)
   const [imageOpen, setImageOpen] = useState(false)
+  const [requestImageUrl, setRequestImageUrl] = useState('')
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [includeQuotations, setIncludeQuotations] = useState(false)
   const [selectedQuotationIds, setSelectedQuotationIds] = useState<number[]>([])
@@ -214,6 +216,28 @@ const ServiceRequestDetail = () => {
     queryFn: () => fetchServiceRequest(Number(id)),
     enabled: !!id,
   })
+
+  useEffect(() => {
+    let active = true
+    let objectUrl = ''
+    setRequestImageUrl('')
+    if (!sr?.id || !sr.request_image_url) return undefined
+
+    fetchServiceRequestImage(sr.id)
+      .then((blob) => {
+        if (!active) return
+        objectUrl = URL.createObjectURL(blob)
+        setRequestImageUrl(objectUrl)
+      })
+      .catch(() => {
+        if (active) setRequestImageUrl('')
+      })
+
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [sr?.id, sr?.request_image_url])
   const canLogWorkForRequest = Boolean(
     sr
     && !['completed', 'cancelled'].includes(sr.status)
@@ -720,7 +744,6 @@ const ServiceRequestDetail = () => {
   const currentStepIndex = STATUS_STEPS.indexOf(progressStatus)
   const isTerminal = sr.status === 'completed' || sr.status === 'cancelled'
   const nextStatus = NEXT_STATUS[sr.status]
-  const requestImageUrl = resolveUploadUrl(sr.request_image_url) || sr.request_image_url || ''
   const canLogWork = canLogWorkForRequest
   const canCustomerCancelRequest = isFacilityCustomerView && canEditServiceRequests && sr.status === 'new' && sr.requester_id === user?.id
   const timeSpentHours = Number(sr.time_spent_hours || 0)
@@ -984,11 +1007,12 @@ const ServiceRequestDetail = () => {
                 </Box>
               </Box>
 
-              {requestImageUrl && (
+              {sr.request_image_url && (
                 <Button
                   variant="outlined"
                   startIcon={<ImageIcon />}
                   onClick={() => setImageOpen(true)}
+                  disabled={!requestImageUrl}
                   sx={{ borderRadius: '12px', fontWeight: 700, justifyContent: 'flex-start' }}
                 >
                   View Attached Image

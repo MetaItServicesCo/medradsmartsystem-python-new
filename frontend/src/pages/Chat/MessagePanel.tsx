@@ -18,12 +18,11 @@ import data from '@emoji-mart/data'
 import Picker from '@emoji-mart/react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
-import { fetchDirectMessages, uploadChatFile, type DirectMessageData } from '@/api/chat'
+import { downloadChatFile, fetchDirectMessages, uploadChatFile, type DirectMessageData } from '@/api/chat'
 import { useAuthStore } from '@/stores/authStore'
 import { useChatStore } from '@/stores/chatStore'
 import CallPanel from './CallPanel'
-
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace('/api/v1', '')
+import ProtectedChatImage from './ProtectedChatImage'
 
 // Helper: get icon for file type
 const getFileIcon = (fileType: string | null) => {
@@ -202,31 +201,20 @@ const MessagePanel = ({ user }: Props) => {
 
   // Render a file message bubble
   const renderFileContent = (msg: DirectMessageData, isMine: boolean) => {
-    const fileUrl = `${API_BASE}${msg.file_url}`
-
     if (isImageFile(msg.file_type)) {
       return (
         <Box>
-          <Box
-            component="a"
-            href={fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            sx={{ display: 'block', cursor: 'pointer' }}
-          >
-            <Box
-              component="img"
-              src={fileUrl}
-              alt={msg.file_name || 'Image'}
-              sx={{
-                maxWidth: '100%',
-                maxHeight: 260,
-                borderRadius: '12px',
-                objectFit: 'cover',
-                display: 'block',
-              }}
-            />
-          </Box>
+          <ProtectedChatImage
+            fileUrl={msg.file_url!}
+            alt={msg.file_name || 'Image'}
+            sx={{
+              maxWidth: '100%',
+              maxHeight: 260,
+              borderRadius: '12px',
+              objectFit: 'cover',
+              display: 'block',
+            }}
+          />
           {msg.content && !msg.content.startsWith('📎') && (
             <Typography sx={{ fontSize: '0.9rem', lineHeight: 1.6, mt: 1, color: 'inherit', wordBreak: 'break-word' }}>
               {msg.content}
@@ -239,11 +227,14 @@ const MessagePanel = ({ user }: Props) => {
     // Non-image file card
     return (
       <Box
-        component="a"
-        href={fileUrl}
-        target="_blank"
-        rel="noopener noreferrer"
+        component="button"
+        type="button"
+        onClick={() => downloadChatFile(msg.file_url!, msg.file_name).catch(() => toast.error('Unable to download file'))}
         sx={{
+          width: '100%',
+          font: 'inherit',
+          textAlign: 'left',
+          cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,

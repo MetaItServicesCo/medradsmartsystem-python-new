@@ -104,6 +104,32 @@ export const uploadChatFile = async (file: File): Promise<ChatFileUploadResponse
   return res.data
 }
 
+const chatFileName = (fileUrl: string): string => {
+  const path = fileUrl.split('?', 1)[0].replace(/\\/g, '/')
+  const name = path.split('/').filter(Boolean).pop()
+  if (!name) throw new Error('Invalid chat file reference')
+  return name
+}
+
+export const fetchChatFile = async (fileUrl: string): Promise<Blob> => {
+  const res = await apiClient.get(`/chat/files/${encodeURIComponent(chatFileName(fileUrl))}`, {
+    responseType: 'blob',
+  })
+  return res.data
+}
+
+export const downloadChatFile = async (fileUrl: string, fileName?: string | null): Promise<void> => {
+  const blob = await fetchChatFile(fileUrl)
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = fileName || chatFileName(fileUrl)
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
+}
+
 // ─── Workspaces ──────────────────────────────────────────────────────
 
 export interface WorkspaceMemberData {
