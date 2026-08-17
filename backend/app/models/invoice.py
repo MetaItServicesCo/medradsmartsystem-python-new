@@ -1,8 +1,24 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Date, Index, UniqueConstraint, JSON
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+    Enum as SQLEnum,
+    Numeric,
+    Date,
+    Index,
+    UniqueConstraint,
+    JSON,
+)
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
 from app.db.base import Base
+from app.utils.payment_data_security import EncryptedPaymentReference
 
 class InvoiceStatus(str, enum.Enum):
     PENDING = "pending"
@@ -81,6 +97,7 @@ class Invoice(Base):
     approved_for_billing_by = relationship("User", foreign_keys=[approved_for_billing_by_id])
     transactions = relationship("InvoiceTransaction", back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceTransaction.created_at.desc()")
     receipt_deliveries = relationship("PaymentReceiptDelivery", back_populates="invoice", cascade="all, delete-orphan")
+    payment_proofs = relationship("PaymentProof", back_populates="invoice", cascade="all, delete-orphan")
 
 
 class InvoiceTransaction(Base):
@@ -132,3 +149,82 @@ class PaymentReceiptDelivery(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     invoice = relationship("Invoice", back_populates="receipt_deliveries")
+
+
+class PaymentProof(Base):
+    """Private proof and review state for a non-card payment.
+
+    A proof targets either an invoice or a service quotation. OCR output is
+    advisory only; money moves only after an internal approver accepts it.
+    """
+
+    __tablename__ = "payment_proofs"
+    __table_args__ = (
+        CheckConstraint(
+            "(invoice_id IS NOT NULL AND service_quotation_id IS NULL) OR "
+            "(invoice_id IS NULL AND service_quotation_id IS NOT NULL)",
+            name="ck_payment_proof_single_target",
+        ),
+        Index("ix_payment_proofs_review_queue", "status", "created_at"),
+        Index("ix_payment_proofs_extraction_queue", "extraction_status", "extraction_next_attempt_at"),
+        Index("ix_payment_proofs_invoice_created", "invoice_id", "created_at"),
+        Index("ix_payment_proofs_quotation_created", "service_quotation_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=True, index=True)
+    service_quotation_id = Column(
+        Integer,
+        ForeignKey("service_request_quotations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    submitted_by_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    payment_method = Column(String(40), nullable=False, index=True)
+    claimed_amount = Column(Numeric(10, 2), nullable=False)
+    notes = Column(Text, nullable=True)
+    original_filename = Column(String(255), nullable=False)
+    stored_filename = Column(String(255), nullable=False, unique=True)
+    storage_backend = Column(String(16), nullable=False, default="local", index=True)
+    mime_type = Column(String(100), nullable=False)
+    file_size = Column(Integer, nullable=False)
+    sha256 = Column(String(64), nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="pending_verification", index=True)
+    extraction_status = Column(String(24), nullable=False, default="queued", index=True)
+    extraction_attempt_count = Column(Integer, nullable=False, default=0)
+    extraction_next_attempt_at = Column(DateTime, nullable=True, index=True)
+    extraction_started_at = Column(DateTime, nullable=True)
+    extraction_completed_at = Column(DateTime, nullable=True)
+    extraction_last_error = Column(Text, nullable=True)
+    ocr_provider = Column(String(40), nullable=True)
+    ocr_text = Column(EncryptedPaymentReference, nullable=True)
+    extracted_data = Column(JSON, nullable=False, default=dict)
+    extraction_confidence = Column(Numeric(5, 4), nullable=True)
+    mismatch_flags = Column(JSON, nullable=False, default=list)
+    requires_manual_review = Column(Boolean, nullable=False, default=True)
+    reviewed_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    review_notes = Column(Text, nullable=True)
+    invoice_transaction_id = Column(
+        Integer,
+        ForeignKey("invoice_transactions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    quotation_payment_id = Column(
+        Integer,
+        ForeignKey("quotation_payments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    invoice = relationship("Invoice", back_populates="payment_proofs")
+    service_quotation = relationship("ServiceRequestQuotation", back_populates="payment_proofs")
+    submitted_by = relationship("User", foreign_keys=[submitted_by_id])
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
+    invoice_transaction = relationship("InvoiceTransaction", foreign_keys=[invoice_transaction_id])
+    quotation_payment = relationship(
+        "QuotationPayment",
+        foreign_keys=[quotation_payment_id],
+        back_populates="payment_proofs",
+    )

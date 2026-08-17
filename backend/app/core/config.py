@@ -51,6 +51,22 @@ class Settings(BaseSettings):
     # File Upload
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
+
+    # Private non-card payment proofs. Local storage remains the development
+    # default; production can use any S3-compatible private bucket (including
+    # DigitalOcean Spaces) without changing the payment workflow.
+    PAYMENT_PROOF_STORAGE_BACKEND: str = "local"
+    PAYMENT_PROOF_S3_ENDPOINT_URL: str = ""
+    PAYMENT_PROOF_S3_REGION: str = ""
+    PAYMENT_PROOF_S3_BUCKET: str = ""
+    PAYMENT_PROOF_S3_ACCESS_KEY_ID: str = ""
+    PAYMENT_PROOF_S3_SECRET_ACCESS_KEY: str = ""
+    PAYMENT_PROOF_S3_PREFIX: str = "payment-proofs"
+    PAYMENT_PROOF_S3_SERVER_SIDE_ENCRYPTION: str = "AES256"
+    PAYMENT_PROOF_OCR_POLL_SECONDS: int = 2
+    PAYMENT_PROOF_OCR_BATCH_SIZE: int = 4
+    PAYMENT_PROOF_OCR_MAX_ATTEMPTS: int = 4
+    PAYMENT_PROOF_OCR_LEASE_SECONDS: int = 900
     
     # Face Recognition
     FACE_RECOGNITION_TOLERANCE: float = 0.6
@@ -116,6 +132,11 @@ class Settings(BaseSettings):
             raise ValueError("ENABLE_TEST_PAYMENTS must be disabled in production")
         if self.SQUARE_ACCESS_TOKEN and not self.PAYMENT_DATA_ENCRYPTION_KEYS.strip():
             raise ValueError("PAYMENT_DATA_ENCRYPTION_KEYS is required when Square is configured")
+        proof_storage = self.PAYMENT_PROOF_STORAGE_BACKEND.strip().lower()
+        if proof_storage not in {"local", "s3"}:
+            raise ValueError("PAYMENT_PROOF_STORAGE_BACKEND must be 'local' or 's3'")
+        if proof_storage == "s3" and not self.PAYMENT_PROOF_S3_BUCKET.strip():
+            raise ValueError("PAYMENT_PROOF_S3_BUCKET is required for S3 payment-proof storage")
         insecure_origins = [
             origin for origin in self.BACKEND_CORS_ORIGINS
             if origin == "*" or origin.startswith("http://")

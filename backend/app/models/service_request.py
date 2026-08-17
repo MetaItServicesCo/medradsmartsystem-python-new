@@ -76,6 +76,11 @@ class QuotationPayment(Base):
     quotation = relationship("ServiceRequestQuotation", back_populates="payments")
     created_by = relationship("User", foreign_keys=[created_by_id])
     authorization = relationship("QuotationAuthorization", back_populates="payments")
+    payment_proofs = relationship(
+        "PaymentProof",
+        foreign_keys="PaymentProof.quotation_payment_id",
+        back_populates="quotation_payment",
+    )
 
     @property
     def paid_by_name(self):
@@ -155,6 +160,12 @@ class ServiceRequestQuotation(Base):
     created_by = relationship("User", foreign_keys=[created_by_id])
     line_items = relationship("QuotationLineItem", back_populates="quotation", cascade="all, delete-orphan", lazy="joined")
     payments = relationship("QuotationPayment", back_populates="quotation", cascade="all, delete-orphan", lazy="joined")
+    payment_proofs = relationship(
+        "PaymentProof",
+        back_populates="service_quotation",
+        cascade="all, delete-orphan",
+        order_by="PaymentProof.created_at.desc()",
+    )
     authorizations = relationship(
         "QuotationAuthorization",
         back_populates="quotation",

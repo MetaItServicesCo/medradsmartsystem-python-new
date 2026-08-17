@@ -5,7 +5,7 @@ import uuid
 from typing import Any, Optional
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, case, func, or_
@@ -28,7 +28,7 @@ from app.models.facility import Facility
 from app.models.equipment import Equipment
 from app.models.test_equipment import TestEquipment
 from app.models.inventory import InventoryPart, InventoryTransaction
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType, PaymentProof
 from app.schemas.service_request import (
     ServiceRequestCreate, ServiceRequestUpdate,
     ServiceRequestResponse, ServiceRequestListResponse,
@@ -65,6 +65,15 @@ from app.utils.list_search import (
     value_contains_ci,
 )
 from app.utils.upload_security import protected_upload_path
+from app.utils.payment_proofs import (
+    delete_payment_proof_file,
+    normalize_non_card_method,
+    payment_proof_response,
+    payment_proof_sha256,
+    read_and_validate_payment_proof,
+    store_encrypted_payment_proof,
+)
+from app.utils.rate_limit import enforce_rate_limit
 
 router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
 
@@ -79,6 +88,10 @@ SERVICE_REQUEST_UPLOAD_DIR = os.path.join(
 )
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_IMAGE_SIZE = 8 * 1024 * 1024
+
+
+class ServicePaymentProofReview(BaseModel):
+    notes: Optional[str] = None
 
 # Allowed ordered transitions  (+ cancelled from any state)
 SERVICE_WORKFLOW_STATUSES = [
@@ -2607,6 +2620,100 @@ def decide_quotation_authorization(
     return _authorization_dict(authorization)
 
 
+def _apply_quotation_payment_locked(
+    db: Session,
+    quotation: ServiceRequestQuotation,
+    payment_in: QuotationPaymentCreate,
+    payment_amount: Decimal,
+    authorization: QuotationAuthorization,
+    current_user: User,
+) -> QuotationPayment:
+    existing_count = db.query(QuotationPayment).filter(
+        QuotationPayment.quotation_id == quotation.id
+    ).count()
+    q_num = quotation.quotation_number or f"Q-{quotation.id}"
+    method_prefix = {
+        "credit_card": "CC",
+        "ach": "ACH",
+        "mbmts_ach": "MACH",
+        "cheque": "CHK",
+        "bank_transfer": "BANK",
+    }
+    reference_number = f"PAY-{q_num}-{method_prefix.get(payment_in.payment_method, 'PAY')}-{existing_count + 1:02d}"
+    paid_to_date = sum(
+        (_money(payment.amount) for payment in (quotation.payments or []) if payment.status == "completed"),
+        Decimal("0"),
+    ).quantize(Decimal("0.01"))
+    remaining_balance = max((_money(quotation.amount) - paid_to_date).quantize(Decimal("0.01")), Decimal("0"))
+    if remaining_balance <= Decimal("0"):
+        raise HTTPException(status_code=409, detail="This quotation is already fully paid")
+    if payment_amount > remaining_balance:
+        raise HTTPException(status_code=400, detail=f"Payment cannot exceed the remaining balance of ${remaining_balance}")
+
+    db_payment = QuotationPayment(
+        quotation_id=quotation.id,
+        payment_method=payment_in.payment_method,
+        amount=payment_amount,
+        reference_number=reference_number,
+        notes=payment_in.notes,
+        status="completed",
+        paid_at=datetime.utcnow(),
+        created_by_id=current_user.id,
+        authorization_id=authorization.id,
+        payment_channel="admin_assisted" if _is_internal_service_user(current_user) else "facility_self_service",
+        payer_role=_role_name(current_user),
+        bank_name=payment_in.bank_name,
+        account_last_four=payment_in.account_last_four,
+        routing_number_last_four=payment_in.routing_number_last_four,
+        mbmts_account_name=payment_in.mbmts_account_name,
+        mbmts_routing_number=payment_in.mbmts_routing_number,
+        mbmts_account_number=payment_in.mbmts_account_number,
+        mbmts_bank_name=payment_in.mbmts_bank_name,
+        mbmts_bank_address=payment_in.mbmts_bank_address,
+    )
+    db.add(db_payment)
+    db.flush()
+    new_paid_total = (paid_to_date + payment_amount).quantize(Decimal("0.01"))
+    new_balance = max((_money(quotation.amount) - new_paid_total).quantize(Decimal("0.01")), Decimal("0"))
+    quotation.status = "paid" if new_balance == Decimal("0") else "partially_paid"
+    quotation.updated_at = datetime.utcnow()
+    _append_quotation_ledger(
+        db,
+        quotation,
+        "payment_recorded",
+        current_user,
+        channel=db_payment.payment_channel,
+        amount=payment_amount,
+        reference_number=reference_number,
+        details={
+            "authorization_id": authorization.id,
+            "authorization_reference": authorization.confirmation_reference,
+            "authorized_by_id": authorization.authorized_by_id,
+            "authorized_by_name": authorization.authorized_by_name,
+            "authorized_by_role": authorization.authorized_by_role,
+            "paid_by_id": current_user.id,
+            "paid_by_name": current_user.full_name or current_user.username,
+            "paid_by_role": _role_name(current_user),
+            "payment_channel": db_payment.payment_channel,
+            "payment_method": payment_in.payment_method,
+            "paid_total": new_paid_total,
+            "remaining_balance": new_balance,
+            "quotation_status": quotation.status,
+        },
+    )
+    sr = quotation.service_request
+    create_notifications(
+        db,
+        user_ids=[uid for uid in {sr.requester_id, sr.assigned_technician_id} if uid and uid != current_user.id],
+        title="Quotation payment recorded",
+        message=f"Payment {reference_number} was recorded.",
+        notification_type="service_request",
+        link_url=f"/service-requests/{sr.id}",
+        actor_id=current_user.id,
+    )
+    return db_payment
+
+
 @router.post("/quotations/{quotation_id}/payments", response_model=QuotationPaymentResponse, status_code=status.HTTP_201_CREATED)
 def create_quotation_payment(
     quotation_id: int,
@@ -2702,84 +2809,20 @@ def create_quotation_payment(
     if payment_amount > remaining_balance:
         raise HTTPException(status_code=400, detail=f"Payment cannot exceed the remaining balance of ${remaining_balance}")
 
-    # Auto-generate reference number: PAY-{quotation_number}-{seq}
-    existing_count = db.query(QuotationPayment).filter(
-        QuotationPayment.quotation_id == quotation_id
-    ).count()
-    q_num = db_quotation.quotation_number or f"Q-{quotation_id}"
-    method_prefix = {"credit_card": "CC", "ach": "ACH", "mbmts_ach": "MACH"}
-    reference_number = f"PAY-{q_num}-{method_prefix.get(payment_in.payment_method, 'PAY')}-{existing_count + 1:02d}"
-
-    db_payment = QuotationPayment(
-        quotation_id=quotation_id,
-        payment_method=payment_in.payment_method,
-        amount=payment_amount,
-        reference_number=reference_number,
-        notes=payment_in.notes,
-        status="completed",
-        paid_at=datetime.utcnow(),
-        created_by_id=current_user.id,
-        authorization_id=authorization.id,
-        payment_channel=(
-            "admin_assisted"
-            if _is_internal_service_user(current_user)
-            else "facility_self_service"
-        ),
-        payer_role=_role_name(current_user),
-        # ACH fields
-        bank_name=payment_in.bank_name,
-        account_last_four=payment_in.account_last_four,
-        routing_number_last_four=payment_in.routing_number_last_four,
-        # MBMTS ACH fields
-        mbmts_account_name=payment_in.mbmts_account_name,
-        mbmts_routing_number=payment_in.mbmts_routing_number,
-        mbmts_account_number=payment_in.mbmts_account_number,
-        mbmts_bank_name=payment_in.mbmts_bank_name,
-        mbmts_bank_address=payment_in.mbmts_bank_address,
-    )
-    db.add(db_payment)
-    db.flush()
-
-    new_paid_total = (paid_to_date + payment_amount).quantize(Decimal("0.01"))
-    new_balance = max((_money(db_quotation.amount) - new_paid_total).quantize(Decimal("0.01")), Decimal("0"))
-    db_quotation.status = "paid" if new_balance == Decimal("0") else "partially_paid"
-    db_quotation.updated_at = datetime.utcnow()
-
-    _append_quotation_ledger(
+    if payment_in.payment_method in {"ach", "mbmts_ach", "cheque", "bank_transfer"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Upload payment proof for non-card payments; the quotation will update after Admin or Super Admin approval",
+        )
+    db_payment = _apply_quotation_payment_locked(
         db,
         db_quotation,
-        "payment_recorded",
+        payment_in,
+        payment_amount,
+        authorization,
         current_user,
-        channel=db_payment.payment_channel,
-        amount=payment_amount,
-        reference_number=reference_number,
-        details={
-            "authorization_id": authorization.id,
-            "authorization_reference": authorization.confirmation_reference,
-            "authorized_by_id": authorization.authorized_by_id,
-            "authorized_by_name": authorization.authorized_by_name,
-            "authorized_by_role": authorization.authorized_by_role,
-            "paid_by_id": current_user.id,
-            "paid_by_name": current_user.full_name or current_user.username,
-            "paid_by_role": _role_name(current_user),
-            "payment_channel": db_payment.payment_channel,
-            "payment_method": payment_in.payment_method,
-            "paid_total": new_paid_total,
-            "remaining_balance": new_balance,
-            "quotation_status": db_quotation.status,
-        },
     )
-
-    sr = db_quotation.service_request
-    create_notifications(
-        db,
-        user_ids=[uid for uid in {sr.requester_id, sr.assigned_technician_id} if uid and uid != current_user.id],
-        title="Quotation payment recorded",
-        message=f"Payment {reference_number} was recorded.",
-        notification_type="service_request",
-        link_url=f"/service-requests/{sr.id}",
-        actor_id=current_user.id,
-    )
+    reference_number = db_payment.reference_number
     mark_operation_succeeded(
         operation,
         provider_reference=reference_number,
@@ -2789,3 +2832,289 @@ def create_quotation_payment(
     db.refresh(db_payment)
 
     return _payment_dict(db_payment)
+
+
+@router.post("/quotations/{quotation_id}/payment-proofs", status_code=status.HTTP_201_CREATED)
+async def submit_quotation_payment_proof(
+    quotation_id: int,
+    payment_method: str = Form(...),
+    amount: Decimal = Form(...),
+    notes: Optional[str] = Form(None),
+    proof_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    if current_user.role not in {
+        UserRole.SUPERADMIN,
+        UserRole.ADMIN,
+        UserRole.FACILITY_ADMIN,
+        UserRole.FACILITY_MANAGER,
+        UserRole.CLIENT,
+    }:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    if not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Billing edit permission is required")
+    enforce_rate_limit(
+        bucket="authenticated-payment-proof-upload",
+        identity=f"user:{current_user.id}",
+        limit=10,
+        window_seconds=60,
+        message="Too many payment proof uploads. Please wait before trying again.",
+    )
+    amount = _money(amount).quantize(Decimal("0.01"))
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
+    method = normalize_non_card_method(payment_method)
+    quotation = (
+        db.query(ServiceRequestQuotation)
+        .options(
+            joinedload(ServiceRequestQuotation.service_request),
+            selectinload(ServiceRequestQuotation.authorizations),
+            selectinload(ServiceRequestQuotation.payments),
+        )
+        .filter(ServiceRequestQuotation.id == quotation_id)
+        .first()
+    )
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    _require_service_facility_access(db, current_user, quotation.service_request.facility_id)
+    if quotation.status not in {"authorized", "partially_paid"}:
+        raise HTTPException(status_code=409, detail="Only an authorized quotation can receive payment proof")
+    authorization = next((item for item in quotation.authorizations or [] if item.status == "authorized"), None)
+    if not authorization or _money(authorization.authorized_amount) != _money(quotation.amount):
+        raise HTTPException(status_code=409, detail="Quotation payment authorization is missing or no longer valid")
+    paid_to_date = sum(
+        (_money(item.amount) for item in quotation.payments or [] if item.status == "completed"),
+        Decimal("0"),
+    )
+    balance = max(_money(quotation.amount) - paid_to_date, Decimal("0"))
+    if amount > balance:
+        raise HTTPException(status_code=400, detail=f"Payment cannot exceed the remaining balance of ${balance}")
+
+    data, mime_type, original_name = await read_and_validate_payment_proof(proof_file)
+    sha256 = payment_proof_sha256(data)
+    duplicate = (
+        db.query(PaymentProof)
+        .filter(
+            PaymentProof.service_quotation_id == quotation.id,
+            PaymentProof.sha256 == sha256,
+            PaymentProof.claimed_amount == amount,
+            PaymentProof.status.in_(["pending_verification", "approved"]),
+        )
+        .order_by(PaymentProof.id.desc())
+        .first()
+    )
+    if duplicate:
+        return payment_proof_response(duplicate, include_ocr_text=_is_internal_service_user(current_user))
+
+    stored_name, storage_backend = store_encrypted_payment_proof(data)
+    proof = PaymentProof(
+        service_quotation_id=quotation.id,
+        submitted_by_id=current_user.id,
+        payment_method=method,
+        claimed_amount=amount,
+        notes=notes,
+        original_filename=original_name,
+        stored_filename=stored_name,
+        storage_backend=storage_backend,
+        mime_type=mime_type,
+        file_size=len(data),
+        sha256=sha256,
+        status="pending_verification",
+        extraction_status="queued",
+        extraction_next_attempt_at=datetime.utcnow(),
+        extracted_data={},
+        mismatch_flags=[],
+        requires_manual_review=True,
+    )
+    try:
+        db.add(proof)
+        db.flush()
+        _append_quotation_ledger(
+            db,
+            quotation,
+            "payment_proof_submitted",
+            current_user,
+            channel="document_upload",
+            amount=amount,
+            reference_number=f"PROOF-{proof.id}",
+            details={
+                "proof_id": proof.id,
+                "payment_method": method,
+                "status": proof.status,
+                "mismatch_flags": proof.mismatch_flags,
+            },
+        )
+        notify_admins(
+            db,
+            title="Payment proof awaiting review",
+            message=f"{quotation.quotation_number}: {method.replace('_', ' ').title()} proof for ${amount}",
+            notification_type="billing",
+            link_url=f"/billing?search={quotation.quotation_number}",
+            actor_id=current_user.id,
+        )
+        db.commit()
+        db.refresh(proof)
+    except Exception:
+        db.rollback()
+        delete_payment_proof_file(stored_name, storage_backend)
+        raise
+    return payment_proof_response(proof, include_ocr_text=_is_internal_service_user(current_user))
+
+
+@router.get("/quotations/{quotation_id}/payment-proofs")
+def list_quotation_payment_proofs(
+    quotation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    quotation = (
+        db.query(ServiceRequestQuotation)
+        .options(joinedload(ServiceRequestQuotation.service_request))
+        .filter(ServiceRequestQuotation.id == quotation_id)
+        .first()
+    )
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    _require_service_facility_access(db, current_user, quotation.service_request.facility_id)
+    proofs = (
+        db.query(PaymentProof)
+        .filter(PaymentProof.service_quotation_id == quotation.id)
+        .order_by(PaymentProof.created_at.desc())
+        .all()
+    )
+    show_ocr = _is_internal_service_user(current_user)
+    return [payment_proof_response(proof, include_ocr_text=show_ocr) for proof in proofs]
+
+
+@router.post("/payment-proofs/{proof_id}/approve")
+def approve_quotation_payment_proof(
+    proof_id: int,
+    payload: ServicePaymentProofReview,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    if not _is_internal_service_user(current_user) or not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can approve payment proof")
+    proof = db.query(PaymentProof).filter(PaymentProof.id == proof_id).with_for_update().first()
+    if not proof:
+        raise HTTPException(status_code=404, detail="Payment proof not found")
+    if proof.status == "approved":
+        return payment_proof_response(proof, include_ocr_text=True)
+    if proof.status != "pending_verification" or not proof.service_quotation_id:
+        raise HTTPException(status_code=409, detail=f"This {proof.status} proof cannot be approved here")
+    if proof.extraction_status not in {"completed", "failed"}:
+        raise HTTPException(status_code=409, detail="OCR processing is still in progress. Review the proof when processing finishes")
+    quotation = (
+        db.query(ServiceRequestQuotation)
+        .options(
+            joinedload(ServiceRequestQuotation.service_request),
+            selectinload(ServiceRequestQuotation.authorizations),
+            selectinload(ServiceRequestQuotation.payments),
+        )
+        .filter(ServiceRequestQuotation.id == proof.service_quotation_id)
+        .with_for_update(of=ServiceRequestQuotation)
+        .first()
+    )
+    if not quotation or quotation.status not in {"authorized", "partially_paid"}:
+        raise HTTPException(status_code=409, detail="The quotation is no longer payable")
+    authorization = next((item for item in quotation.authorizations or [] if item.status == "authorized"), None)
+    if not authorization or _money(authorization.authorized_amount) != _money(quotation.amount):
+        raise HTTPException(status_code=409, detail="Quotation authorization is missing or no longer valid")
+    payment_input = QuotationPaymentCreate(
+        payment_method=proof.payment_method,
+        amount=proof.claimed_amount,
+        notes=payload.notes or proof.notes or f"Approved payment proof #{proof.id}",
+    )
+    payment = _apply_quotation_payment_locked(
+        db,
+        quotation,
+        payment_input,
+        _money(proof.claimed_amount),
+        authorization,
+        current_user,
+    )
+    proof.status = "approved"
+    proof.reviewed_by_id = current_user.id
+    proof.reviewed_at = datetime.utcnow()
+    proof.review_notes = payload.notes
+    proof.quotation_payment_id = payment.id
+    proof.updated_at = datetime.utcnow()
+    _append_quotation_ledger(
+        db,
+        quotation,
+        "payment_proof_approved",
+        current_user,
+        channel="admin_review",
+        amount=proof.claimed_amount,
+        reference_number=payment.reference_number,
+        details={"proof_id": proof.id, "payment_id": payment.id},
+    )
+    if proof.submitted_by_id != current_user.id:
+        create_notification(
+            db,
+            user_id=proof.submitted_by_id,
+            title="Payment proof approved",
+            message=f"Payment proof #{proof.id} for {quotation.quotation_number} was approved.",
+            notification_type="billing",
+            link_url=f"/billing?search={quotation.quotation_number}",
+            actor_id=current_user.id,
+        )
+    db.commit()
+    db.refresh(proof)
+    return payment_proof_response(proof, include_ocr_text=True)
+
+
+@router.post("/payment-proofs/{proof_id}/reject")
+def reject_quotation_payment_proof(
+    proof_id: int,
+    payload: ServicePaymentProofReview,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    if not _is_internal_service_user(current_user) or not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can reject payment proof")
+    reason = (payload.notes or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="A rejection reason is required")
+    proof = db.query(PaymentProof).filter(PaymentProof.id == proof_id).with_for_update().first()
+    if not proof:
+        raise HTTPException(status_code=404, detail="Payment proof not found")
+    if proof.status == "rejected":
+        return payment_proof_response(proof, include_ocr_text=True)
+    if proof.status != "pending_verification" or not proof.service_quotation_id:
+        raise HTTPException(status_code=409, detail=f"This {proof.status} proof cannot be rejected here")
+    quotation = db.query(ServiceRequestQuotation).filter(ServiceRequestQuotation.id == proof.service_quotation_id).first()
+    proof.status = "rejected"
+    if proof.extraction_status in {"queued", "retry", "processing"}:
+        proof.extraction_status = "cancelled"
+        proof.extraction_started_at = None
+        proof.extraction_next_attempt_at = None
+    proof.reviewed_by_id = current_user.id
+    proof.reviewed_at = datetime.utcnow()
+    proof.review_notes = reason
+    proof.updated_at = datetime.utcnow()
+    if quotation:
+        _append_quotation_ledger(
+            db,
+            quotation,
+            "payment_proof_rejected",
+            current_user,
+            channel="admin_review",
+            amount=proof.claimed_amount,
+            reference_number=f"PROOF-{proof.id}",
+            details={"proof_id": proof.id, "reason": reason},
+        )
+        if proof.submitted_by_id != current_user.id:
+            create_notification(
+                db,
+                user_id=proof.submitted_by_id,
+                title="Payment proof rejected",
+                message=f"Payment proof #{proof.id} for {quotation.quotation_number} was rejected: {reason}",
+                notification_type="billing",
+                link_url=f"/billing?search={quotation.quotation_number}",
+                actor_id=current_user.id,
+            )
+    db.commit()
+    db.refresh(proof)
+    return payment_proof_response(proof, include_ocr_text=True)

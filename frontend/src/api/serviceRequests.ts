@@ -75,6 +75,29 @@ export interface QuotationPaymentCreate {
   mbmts_bank_address?: string
 }
 
+export const submitQuotationPaymentProof = async (
+  quotationId: number,
+  data: { amount: number; payment_method: string; notes?: string; file: File },
+) => {
+  const form = new FormData()
+  form.append('amount', String(data.amount))
+  form.append('payment_method', data.payment_method)
+  if (data.notes) form.append('notes', data.notes)
+  form.append('proof_file', data.file)
+  const response = await apiClient.post(`/service-requests/quotations/${quotationId}/payment-proofs`, form)
+  return response.data
+}
+
+export const approveQuotationPaymentProof = async (proofId: number, notes?: string) => {
+  const response = await apiClient.post(`/service-requests/payment-proofs/${proofId}/approve`, { notes })
+  return response.data
+}
+
+export const rejectQuotationPaymentProof = async (proofId: number, notes: string) => {
+  const response = await apiClient.post(`/service-requests/payment-proofs/${proofId}/reject`, { notes })
+  return response.data
+}
+
 export interface QuotationAuthorization {
   id: number
   quotation_id: number

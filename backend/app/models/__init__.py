@@ -6,7 +6,7 @@ from app.models.tier import Tier
 from app.models.modality import Modality, ModalityCategory
 from app.models.department import Department
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, PaymentReceiptDelivery
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, PaymentProof, PaymentReceiptDelivery
 from app.models.payment_operation import PaymentOperation, PaymentWebhookEvent
 from app.models.rental import (
     Rental,

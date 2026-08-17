@@ -11,6 +11,7 @@ import {
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
+import AttachFileIcon from '@mui/icons-material/AttachFile'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
@@ -33,6 +34,9 @@ import {
 } from '@/api/sales'
 import {
   createQuotationPayment,
+  approveQuotationPaymentProof,
+  rejectQuotationPaymentProof,
+  submitQuotationPaymentProof,
   requestQuotationAuthorization,
   decideQuotationAuthorization,
   fetchQuotationAuthorizationCandidates,
@@ -57,11 +61,20 @@ import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
-import { approveInvoiceForBilling, recordInvoicePayment } from '@/api/billing'
+import {
+  approveInvoiceForBilling,
+  approveInvoicePaymentProof,
+  fetchPaymentProofQueue,
+  openPaymentProofFile,
+  recordInvoicePayment,
+  rejectInvoicePaymentProof,
+  submitInvoicePaymentProof,
+  type PaymentProof,
+} from '@/api/billing'
 
 type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
 type BillingStatus = 'draft' | 'sent' | 'authorization_requested' | 'authorized' | 'approved' | 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'rejected' | 'cancelled'
-type PayMethod = 'credit_card' | 'ach'
+type PayMethod = 'credit_card' | 'ach' | 'cheque'
 type AchChoice = 'ach' | 'mbmts_ach'
 
 const BILLING_SEARCH_FIELDS = [
@@ -484,6 +497,10 @@ const Billing = () => {
   const [payBankName, setPayBankName] = useState('')
   const [payAcctLast4, setPayAcctLast4] = useState('')
   const [payRoutingLast4, setPayRoutingLast4] = useState('')
+  const [payProofFile, setPayProofFile] = useState<File | null>(null)
+  const [proofQueueOpen, setProofQueueOpen] = useState(false)
+  const [proofQueueStatus, setProofQueueStatus] = useState<'pending_verification' | 'approved' | 'rejected'>('pending_verification')
+  const [proofReviewNotes, setProofReviewNotes] = useState<Record<number, string>>({})
 
   useEffect(() => {
     setSearchInput(search)
@@ -522,6 +539,13 @@ const Billing = () => {
     queryFn: () => fetchQuotationAuthorizationCandidates(Number(authorizationItem?.id)),
     enabled: Boolean(authorizationItem && authorizationChannel === 'phone' && canManageQuotationAuthorization),
     staleTime: 60_000,
+  })
+  const paymentProofQueueQ = useQuery({
+    queryKey: ['billing-payment-proof-queue', proofQueueStatus],
+    queryFn: () => fetchPaymentProofQueue(proofQueueStatus),
+    enabled: canApproveBilling && proofQueueOpen,
+    staleTime: 15_000,
+    refetchInterval: proofQueueOpen && proofQueueStatus === 'pending_verification' ? 3_000 : 15_000,
   })
 
   // Fetch full SR data (with history) when printing a service invoice — needed to append the service report
@@ -844,6 +868,46 @@ const Billing = () => {
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice payment'),
   })
 
+  const paymentProofMut = useMutation({
+    mutationFn: async ({ item, amount, method, notes, file }: { item: BillingItem; amount: number; method: string; notes?: string; file: File }) => {
+      if (item.source === 'service' && item.billingKind !== 'service_invoice') {
+        return submitQuotationPaymentProof(item.id, { amount, payment_method: method, notes, file })
+      }
+      return submitInvoicePaymentProof(item.id, { amount, payment_method: method, notes, file })
+    },
+    onSuccess: async () => {
+      toast.success('Payment proof submitted for Admin review; no balance was changed')
+      closePayDialog()
+      await Promise.all([
+        invalidateBilling(),
+        queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] }),
+      ])
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to submit payment proof'),
+  })
+
+  const reviewProofMut = useMutation({
+    mutationFn: async ({ proof, decision, notes }: { proof: PaymentProof; decision: 'approve' | 'reject'; notes?: string }) => {
+      if (decision === 'reject' && !notes?.trim()) throw new Error('Enter a rejection reason')
+      if (proof.service_quotation_id) {
+        return decision === 'approve'
+          ? approveQuotationPaymentProof(proof.id, notes)
+          : rejectQuotationPaymentProof(proof.id, notes || '')
+      }
+      return decision === 'approve'
+        ? approveInvoicePaymentProof(proof.id, notes)
+        : rejectInvoicePaymentProof(proof.id, notes || '')
+    },
+    onSuccess: async (_, variables) => {
+      toast.success(variables.decision === 'approve' ? 'Payment proof approved and financial records updated' : 'Payment proof rejected; no balance was changed')
+      await Promise.all([
+        invalidateBilling(),
+        queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] }),
+      ])
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || err.message || 'Could not review payment proof'),
+  })
+
   const approveBillingMut = useMutation({
     mutationFn: (invoiceId: number) => approveInvoiceForBilling(invoiceId),
     onSuccess: async approval => {
@@ -910,6 +974,7 @@ const Billing = () => {
     setPayBankName('')
     setPayAcctLast4('')
     setPayRoutingLast4('')
+    setPayProofFile(null)
   }
 
   const closePayDialog = () => {
@@ -1006,6 +1071,15 @@ const Billing = () => {
     const actualMethod = payMethod === 'ach' ? achChoice : payMethod
     const notes = payNotes || undefined
 
+    if (actualMethod !== 'credit_card') {
+      if (!payProofFile) {
+        toast.error('Upload the cheque or ACH payment proof before submitting')
+        return
+      }
+      paymentProofMut.mutate({ item: payOpen, amount, method: actualMethod, notes, file: payProofFile })
+      return
+    }
+
     if (payOpen.source === 'service' && payOpen.billingKind !== 'service_invoice') {
       const data: QuotationPaymentCreate = {
         payment_method: actualMethod as any,
@@ -1017,18 +1091,6 @@ const Billing = () => {
         data.account_last_four = digits.slice(-4) || undefined
         data.bank_name = ccName || undefined
       }
-      if (actualMethod === 'ach') {
-        data.bank_name = payBankName || undefined
-        data.account_last_four = payAcctLast4 || undefined
-        data.routing_number_last_four = payRoutingLast4 || undefined
-      }
-      if (actualMethod === 'mbmts_ach') {
-        data.mbmts_account_name = 'Mr. Biomed Tech Services'
-        data.mbmts_routing_number = '111000614'
-        data.mbmts_account_number = '818388071'
-        data.mbmts_bank_name = 'Chase Business Banking'
-        data.mbmts_bank_address = '555 N. 5th Street Suite 109B, Garland, TX 75040'
-      }
       servicePayMut.mutate({ id: payOpen.id, data })
       return
     }
@@ -1036,7 +1098,7 @@ const Billing = () => {
     invoicePayMut.mutate({ item: payOpen, amount, method: actualMethod, notes })
   }
 
-  const paying = servicePayMut.isPending || invoicePayMut.isPending
+  const paying = servicePayMut.isPending || invoicePayMut.isPending || paymentProofMut.isPending
 
   const printableItem = (item: BillingItem | null) => {
     if (!item) return null
@@ -1329,6 +1391,14 @@ const Billing = () => {
             sx={{ fontWeight: 700, cursor: 'pointer', bgcolor: statusFilter === status ? '#EC4899' : '#F3F4F6', color: statusFilter === status ? '#fff' : '#374151' }}
           />
         ))}
+        {canApproveBilling && (
+          <Chip
+            icon={<AttachFileIcon />}
+            label="Review payment proofs"
+            onClick={() => setProofQueueOpen(true)}
+            sx={{ ml: 'auto', fontWeight: 900, cursor: 'pointer', bgcolor: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}
+          />
+        )}
       </Card>
 
       <Card sx={{ borderRadius: '24px', border: '1px solid #EEF0F6', overflow: 'hidden', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
@@ -1777,6 +1847,148 @@ const Billing = () => {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={proofQueueOpen} onClose={() => setProofQueueOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Payment Proof Review
+          <Typography sx={{ mt: 0.5, color: '#64748B', fontSize: 13, fontWeight: 700 }}>
+            OCR findings are review aids only. Approving is the only action that updates paid balances and downstream ledgers.
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: '#F8FAFC' }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            {([
+              ['pending_verification', 'Pending review'],
+              ['approved', 'Approved'],
+              ['rejected', 'Rejected'],
+            ] as const).map(([value, label]) => (
+              <Chip
+                key={value}
+                label={label}
+                onClick={() => setProofQueueStatus(value)}
+                sx={{
+                  cursor: 'pointer',
+                  fontWeight: 900,
+                  bgcolor: proofQueueStatus === value ? '#7C3AED' : '#EDE9FE',
+                  color: proofQueueStatus === value ? '#fff' : '#5B21B6',
+                }}
+              />
+            ))}
+          </Box>
+          {paymentProofQueueQ.isLoading ? (
+            <Box sx={{ display: 'grid', placeItems: 'center', py: 7 }}><CircularProgress /></Box>
+          ) : !(paymentProofQueueQ.data?.length) ? (
+            <Alert severity="success">There are no {proofQueueStatus.replace(/_/g, ' ')} payment proofs.</Alert>
+          ) : (
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              {paymentProofQueueQ.data.map(proof => {
+                const extractedAmounts = Array.isArray(proof.extracted_data?.amounts) ? proof.extracted_data.amounts : []
+                const extractionReady = ['completed', 'failed'].includes(proof.extraction_status || 'completed')
+                return (
+                  <Card key={proof.id} variant="outlined" sx={{ p: 2, borderRadius: '16px', borderColor: proof.mismatch_flags.length ? '#F59E0B88' : '#CBD5E1' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+                      <Box>
+                        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{proof.target_number || `Payment proof #${proof.id}`}</Typography>
+                        <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 700 }}>
+                          {proof.customer_name || 'Customer'} · {methodLabel(proof.payment_method)} · Claimed {money(proof.claimed_amount)}
+                        </Typography>
+                        <Typography sx={{ color: '#64748B', fontSize: 12, mt: 0.5 }}>
+                          Submitted by {proof.submitted_by_name || `User #${proof.submitted_by_id}`} on {formatDate(proof.created_at)}
+                        </Typography>
+                        {proof.reviewed_at && (
+                          <Typography sx={{ color: '#64748B', fontSize: 12, mt: 0.25 }}>
+                            Reviewed by {proof.reviewed_by_name || 'Admin'} on {formatDate(proof.reviewed_at)}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Chip
+                        label={methodLabel(proof.status)}
+                        sx={{
+                          fontWeight: 800,
+                          bgcolor: proof.status === 'approved' ? '#D1FAE5' : proof.status === 'rejected' ? '#FEE2E2' : '#FEF3C7',
+                          color: proof.status === 'approved' ? '#047857' : proof.status === 'rejected' ? '#B91C1C' : '#B45309',
+                        }}
+                      />
+                    </Box>
+                    <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '12px', bgcolor: '#F1F5F9', display: 'grid', gap: 0.5 }}>
+                      {!extractionReady && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <CircularProgress size={16} />
+                          <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#475569' }}>
+                            OCR processing {proof.extraction_status === 'retry' ? 'will retry automatically' : 'in the background'}
+                          </Typography>
+                        </Box>
+                      )}
+                      {proof.extraction_status === 'failed' && (
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#B45309', mb: 0.5 }}>
+                          OCR could not read this document after {proof.extraction_attempt_count} attempts. Review the original proof manually.
+                        </Typography>
+                      )}
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#334155' }}>
+                        OCR amounts: {extractedAmounts.length ? extractedAmounts.map((value: string) => money(value)).join(', ') : 'Not detected'}
+                      </Typography>
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#334155' }}>
+                        OCR reference: {proof.extracted_data?.reference || 'Not detected'} · Confidence {Math.round(Number(proof.extraction_confidence || 0) * 100)}%
+                      </Typography>
+                      {proof.mismatch_flags.length > 0 && (
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#B45309' }}>
+                          Review flags: {proof.mismatch_flags.map(flag => methodLabel(flag)).join(', ')}
+                        </Typography>
+                      )}
+                    </Box>
+                    {proof.status === 'pending_verification' ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="Reviewer notes / rejection reason"
+                        value={proofReviewNotes[proof.id] || ''}
+                        onChange={event => setProofReviewNotes(current => ({ ...current, [proof.id]: event.target.value }))}
+                        sx={{ mt: 1.5 }}
+                      />
+                    ) : proof.review_notes ? (
+                      <Typography sx={{ mt: 1.5, color: '#475569', fontSize: 13, fontWeight: 700 }}>
+                        Review notes: {proof.review_notes}
+                      </Typography>
+                    ) : null}
+                    <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
+                      <Button
+                        variant="outlined"
+                        startIcon={<VisibilityOutlinedIcon />}
+                        onClick={() => openPaymentProofFile(proof.id, proof.original_filename).catch(() => toast.error('Could not open payment proof'))}
+                        sx={{ fontWeight: 900 }}
+                      >
+                        View proof
+                      </Button>
+                      {proof.status === 'pending_verification' && (
+                        <>
+                          <Button
+                            color="error"
+                            variant="outlined"
+                            disabled={reviewProofMut.isPending}
+                            onClick={() => reviewProofMut.mutate({ proof, decision: 'reject', notes: proofReviewNotes[proof.id] })}
+                            sx={{ fontWeight: 900 }}
+                          >
+                            Reject
+                          </Button>
+                          <Button
+                            variant="contained"
+                            disabled={reviewProofMut.isPending || !extractionReady}
+                            onClick={() => reviewProofMut.mutate({ proof, decision: 'approve', notes: proofReviewNotes[proof.id] })}
+                            sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)' }}
+                          >
+                            Approve payment
+                          </Button>
+                        </>
+                      )}
+                    </Box>
+                  </Card>
+                )
+              })}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}><Button onClick={() => setProofQueueOpen(false)} sx={{ fontWeight: 900 }}>Close</Button></DialogActions>
+      </Dialog>
+
       <Dialog open={Boolean(payOpen)} onClose={closePayDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1795,6 +2007,7 @@ const Billing = () => {
             <RadioGroup row value={payMethod} onChange={e => { setPayMethod(e.target.value as PayMethod); setAchChoice('ach') }}>
               <FormControlLabel value="credit_card" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><CreditCardIcon fontSize="small" /> Credit Card</Box>} />
               <FormControlLabel value="ach" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><AccountBalanceIcon fontSize="small" /> ACH</Box>} />
+              <FormControlLabel value="cheque" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><ReceiptLongIcon fontSize="small" /> Cheque</Box>} />
             </RadioGroup>
           </FormControl>
 
@@ -1810,6 +2023,26 @@ const Billing = () => {
 
           <TextField label="Amount ($)" type="number" fullWidth value={payAmount} onChange={e => setPayAmount(e.target.value)} sx={{ mb: 2 }} inputProps={{ min: 0, step: 0.01 }} />
           <TextField label="Notes" multiline rows={2} fullWidth value={payNotes} onChange={e => setPayNotes(e.target.value)} sx={{ mb: 2 }} />
+
+          {payMethod !== 'credit_card' && (
+            <Box sx={{ mb: 2, p: 2, borderRadius: '14px', border: '1px solid #F59E0B55', bgcolor: '#FFFBEB' }}>
+              <Alert severity="warning" sx={{ mb: 1.5, bgcolor: 'transparent', p: 0 }}>
+                OCR will extract review details, but this payment remains unpaid until an Admin or Super Admin approves the proof.
+              </Alert>
+              <Button component="label" variant="outlined" startIcon={<AttachFileIcon />} sx={{ fontWeight: 900, borderRadius: '12px' }}>
+                {payProofFile ? 'Replace proof' : 'Upload payment proof'}
+                <input
+                  hidden
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  onChange={event => setPayProofFile(event.target.files?.[0] || null)}
+                />
+              </Button>
+              <Typography sx={{ mt: 1, fontSize: 12.5, fontWeight: 700, color: payProofFile ? '#047857' : '#92400E' }}>
+                {payProofFile ? `${payProofFile.name} · ${(payProofFile.size / 1024).toFixed(0)} KB` : 'PDF, JPEG, PNG, or WebP · maximum 10 MB'}
+              </Typography>
+            </Box>
+          )}
 
           {payMethod === 'credit_card' && (
             <Box sx={{ display: 'grid', gap: 1.5, p: 2, bgcolor: '#EFF6FF', borderRadius: '14px', border: '1px solid rgba(29,78,216,0.12)' }}>
@@ -1867,7 +2100,7 @@ const Billing = () => {
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={closePayDialog} sx={{ fontWeight: 900 }}>Cancel</Button>
           <Button onClick={handlePay} variant="contained" disabled={paying || !payAmount} sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
-            {paying ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Record Payment'}
+            {paying ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : payMethod === 'credit_card' ? 'Record Payment' : 'Submit Proof for Review'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -9,7 +9,9 @@ from app.core.config import settings
 from app.utils.payment_data_security import (
     ENCRYPTED_PREFIX,
     PaymentDataSecurityError,
+    decrypt_payment_blob,
     decrypt_payment_reference,
+    encrypt_payment_blob,
     encrypt_payment_reference,
     payment_data_encryption_configured,
     reencrypt_payment_reference,
@@ -48,6 +50,17 @@ def test_saved_card_storage_fails_closed_without_encryption_key(monkeypatch) -> 
     assert payment_data_encryption_configured() is False
     with pytest.raises(PaymentDataSecurityError):
         encrypt_payment_reference("must-not-be-plaintext")
+
+
+def test_payment_document_bytes_are_encrypted_at_rest(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "PAYMENT_DATA_ENCRYPTION_KEYS", OLD_KEY)
+    document = b"private cheque proof and bank reference"
+
+    encrypted = encrypt_payment_blob(document)
+
+    assert encrypted != document
+    assert document not in encrypted
+    assert decrypt_payment_blob(encrypted) == document
 
 
 def test_customer_consent_is_bound_to_agreement_and_frequency() -> None:

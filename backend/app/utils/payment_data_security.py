@@ -87,6 +87,23 @@ def reencrypt_payment_reference(value: Optional[str]) -> Optional[str]:
     return f"{ENCRYPTED_PREFIX}{token}"
 
 
+def encrypt_payment_blob(value: bytes) -> bytes:
+    """Encrypt a private payment document before writing it to disk."""
+    if not value:
+        raise PaymentDataSecurityError("An empty payment document cannot be encrypted")
+    return _cipher(_configured_keys()).encrypt(value)
+
+
+def decrypt_payment_blob(value: bytes) -> bytes:
+    """Decrypt a private payment document for an authorized response."""
+    try:
+        return _cipher(_configured_keys()).decrypt(value)
+    except InvalidToken as exc:
+        raise PaymentDataSecurityError(
+            "A protected payment document could not be decrypted with the configured key ring"
+        ) from exc
+
+
 class EncryptedPaymentReference(TypeDecorator):
     """Transparent application-level encryption for reusable provider IDs.
 

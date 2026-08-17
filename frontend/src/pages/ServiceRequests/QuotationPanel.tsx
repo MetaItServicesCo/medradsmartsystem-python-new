@@ -15,6 +15,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import PaymentIcon from '@mui/icons-material/Payment'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
+import AttachFileIcon from '@mui/icons-material/AttachFile'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
@@ -26,6 +27,7 @@ import {
   updateServiceRequestQuotation,
   deleteServiceRequestQuotation,
   createQuotationPayment,
+  submitQuotationPaymentProof,
   requestQuotationAuthorization,
   decideQuotationAuthorization,
   fetchQuotationAuthorizationCandidates,
@@ -103,8 +105,9 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
   const [selectedPartsByLine, setSelectedPartsByLine] = useState<Record<number, InventoryPart | null>>({})
 
   // Payment form state
-  const [payMethod, setPayMethod] = useState<'credit_card' | 'ach' | 'mbmts_ach'>('credit_card')
+  const [payMethod, setPayMethod] = useState<'credit_card' | 'ach' | 'cheque'>('credit_card')
   const [payAmount, setPayAmount] = useState('')
+  const [payProofFile, setPayProofFile] = useState<File | null>(null)
 
   const [payNotes, setPayNotes] = useState('')
   const [payBankName, setPayBankName] = useState('')
@@ -193,6 +196,33 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
   })
 
+  const paymentProofMut = useMutation({
+    mutationFn: ({ id, amount, paymentMethod, notes, file }: {
+      id: number
+      amount: number
+      paymentMethod: string
+      notes?: string
+      file: File
+    }) => submitQuotationPaymentProof(id, {
+      amount,
+      payment_method: paymentMethod,
+      notes,
+      file,
+    }),
+    onSuccess: async () => {
+      setPayOpen(null)
+      resetPayForm()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ['billing-payment-proofs'] }),
+        queryClient.invalidateQueries({ queryKey: ['billing-service-quotations'] }),
+        queryClient.invalidateQueries({ queryKey: ['notifications-header'] }),
+      ])
+      toast.success('Payment proof submitted for administrator review. No balance changed yet.')
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not submit payment proof'),
+  })
+
   const requestAuthorizationMut = useMutation({
     mutationFn: ({ id, notes }: { id: number; notes?: string }) => requestQuotationAuthorization(id, notes),
     onSuccess: () => {
@@ -228,6 +258,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
   const resetPayForm = () => {
     setPayMethod('credit_card'); setPayAmount(''); setPayNotes('')
+    setPayProofFile(null)
     setPayBankName(''); setPayAcctLast4(''); setPayRoutingLast4('')
     setCcName(''); setCcNumber(''); setCcExpiry(''); setCcCvv('')
     setAchChoice('ach')
@@ -365,6 +396,20 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       return
     }
     const actualMethod = payMethod === 'ach' ? achChoice : payMethod
+    if (actualMethod !== 'credit_card') {
+      if (!payProofFile) {
+        toast.error('Upload the cheque or ACH payment proof before submitting')
+        return
+      }
+      paymentProofMut.mutate({
+        id: quotationId,
+        amount,
+        paymentMethod: actualMethod,
+        notes: payNotes || undefined,
+        file: payProofFile,
+      })
+      return
+    }
     const data: QuotationPaymentCreate = {
       payment_method: actualMethod as any,
       amount,
@@ -374,18 +419,6 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       const cardDigits = ccNumber.replace(/\s/g, '')
       data.account_last_four = cardDigits.slice(-4) || undefined
       data.bank_name = ccName || undefined
-    }
-    if (actualMethod === 'ach') {
-      data.bank_name = payBankName || undefined
-      data.account_last_four = payAcctLast4 || undefined
-      data.routing_number_last_four = payRoutingLast4 || undefined
-    }
-    if (actualMethod === 'mbmts_ach') {
-      data.mbmts_account_name = 'Mr. Biomed Tech Services'
-      data.mbmts_routing_number = '111000614'
-      data.mbmts_account_number = '818388071'
-      data.mbmts_bank_name = 'Chase Business Banking'
-      data.mbmts_bank_address = '555 N. 5th Street Suite 109B, Garland, TX 75040'
     }
     payMut.mutate({ id: quotationId, data })
   }
@@ -826,6 +859,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             <RadioGroup row value={payMethod} onChange={e => { setPayMethod(e.target.value as any); setAchChoice('ach') }}>
               <FormControlLabel value="credit_card" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><CreditCardIcon fontSize="small" /> Credit Card</Box>} />
               <FormControlLabel value="ach" control={<Radio />} label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><AccountBalanceIcon fontSize="small" /> ACH</Box>} />
+              <FormControlLabel value="cheque" control={<Radio />} label="Cheque" />
             </RadioGroup>
           </FormControl>
 
@@ -922,12 +956,33 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
               </Typography>
             </Box>
           )}
+          {payMethod !== 'credit_card' && (
+            <Box sx={{ mt: 2, p: 2, borderRadius: '12px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+              <Typography sx={{ color: '#9A3412', fontWeight: 800, fontSize: '0.85rem', mb: 1 }}>
+                Verification required
+              </Typography>
+              <Typography sx={{ color: '#7C2D12', fontSize: '0.78rem', mb: 1.5 }}>
+                Upload a PDF or image of the payment confirmation. OCR assists the review, but the quotation remains unpaid until an Admin or Super Admin approves the proof.
+              </Typography>
+              <Button component="label" variant="outlined" startIcon={<AttachFileIcon />} sx={{ textTransform: 'none' }}>
+                {payProofFile ? payProofFile.name : 'Upload payment proof'}
+                <input
+                  hidden
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  onChange={event => setPayProofFile(event.target.files?.[0] || null)}
+                />
+              </Button>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => { setPayOpen(null); resetPayForm() }} variant="outlined" sx={{ borderRadius: '10px' }}>Cancel</Button>
-          <Button onClick={() => payOpen && handlePay(payOpen)} variant="contained" disabled={payMut.isPending || !payAmount}
+          <Button onClick={() => payOpen && handlePay(payOpen)} variant="contained" disabled={payMut.isPending || paymentProofMut.isPending || !payAmount}
             sx={{ borderRadius: '10px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', fontWeight: 700 }}>
-            {payMut.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Confirm Payment'}
+            {(payMut.isPending || paymentProofMut.isPending)
+              ? <CircularProgress size={20} sx={{ color: '#fff' }} />
+              : payMethod === 'credit_card' ? 'Confirm Payment' : 'Submit Proof for Review'}
           </Button>
         </DialogActions>
       </Dialog>
