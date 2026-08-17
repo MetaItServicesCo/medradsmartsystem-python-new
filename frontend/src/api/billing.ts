@@ -73,7 +73,9 @@ export const submitInvoicePaymentProof = async (
   form.append('payment_method', data.payment_method)
   if (data.notes) form.append('notes', data.notes)
   form.append('proof_file', data.file)
-  const response = await apiClient.post(`/billing/invoices/${invoiceId}/payment-proofs`, form)
+  const response = await apiClient.post(`/billing/invoices/${invoiceId}/payment-proofs`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return response.data
 }
 

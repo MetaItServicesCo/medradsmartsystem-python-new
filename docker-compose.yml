@@ -193,6 +193,7 @@ services:
       - RUN_STARTUP_MIGRATIONS=false
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["https://medcodesolution.com","https://www.medcodesolution.com"]}
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-["medcodesolution.com","www.medcodesolution.com","api.medcodesolution.com","localhost","127.0.0.1"]}
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL:-https://medcodesolution.com}
       - DATABASE_POOL_SIZE=${OCR_DATABASE_POOL_SIZE:-2}
       - DATABASE_MAX_OVERFLOW=${OCR_DATABASE_MAX_OVERFLOW:-1}
       - PAYMENT_DATA_ENCRYPTION_KEYS=${PAYMENT_DATA_ENCRYPTION_KEYS:-}
