@@ -20,6 +20,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PaymentIcon from '@mui/icons-material/Payment'
 import PrintIcon from '@mui/icons-material/Print'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
@@ -68,6 +69,7 @@ import {
   openPaymentProofFile,
   recordInvoicePayment,
   rejectInvoicePaymentProof,
+  retryPaymentProofOcr,
   submitInvoicePaymentProof,
   type PaymentProof,
 } from '@/api/billing'
@@ -906,6 +908,15 @@ const Billing = () => {
       ])
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || err.message || 'Could not review payment proof'),
+  })
+
+  const retryProofOcrMut = useMutation({
+    mutationFn: (proofId: number) => retryPaymentProofOcr(proofId),
+    onSuccess: async () => {
+      toast.success('Payment proof queued for a fresh OCR scan')
+      await queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] })
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not retry payment-proof OCR'),
   })
 
   const approveBillingMut = useMutation({
@@ -1960,6 +1971,15 @@ const Billing = () => {
                       </Button>
                       {proof.status === 'pending_verification' && (
                         <>
+                          <Button
+                            variant="outlined"
+                            startIcon={<RestartAltIcon />}
+                            disabled={retryProofOcrMut.isPending || !extractionReady}
+                            onClick={() => retryProofOcrMut.mutate(proof.id)}
+                            sx={{ fontWeight: 900 }}
+                          >
+                            Retry OCR
+                          </Button>
                           <Button
                             color="error"
                             variant="outlined"

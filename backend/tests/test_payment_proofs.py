@@ -80,6 +80,39 @@ def test_ocr_retry_uses_bounded_exponential_backoff() -> None:
     assert ocr_retry_delay_seconds(20) == 300
 
 
+def test_money_candidates_support_grouped_cheque_amounts() -> None:
+    assert payment_proofs._money_candidates("Amount $ 1,200.00") == [Decimal("1200.00")]
+    assert payment_proofs._money_candidates("Amount USD 1 200.00") == [Decimal("1200.00")]
+
+
+def test_money_candidates_tolerate_common_ocr_decimal_errors() -> None:
+    assert payment_proofs._money_candidates(
+        "Amount $ 1,200,00 and duplicate $ 1,200 00"
+    ) == [Decimal("1200.00")]
+
+
+def test_image_ocr_selects_the_readable_rotation(monkeypatch) -> None:
+    image = payment_proofs.Image.new("RGB", (120, 60), "white")
+    payload = payment_proofs.io.BytesIO()
+    image.save(payload, format="PNG")
+    calls: list[tuple[int, int, int]] = []
+
+    def fake_pass(candidate, *, page_segmentation_mode):
+        calls.append((candidate.width, candidate.height, page_segmentation_mode))
+        if candidate.height > candidate.width:
+            return "Cheque amount $1,200.00", 90.0
+        return "unreadable", 10.0
+
+    monkeypatch.setattr(payment_proofs, "_ocr_image_pass", fake_pass)
+
+    text = payment_proofs._image_text(payload.getvalue())
+
+    assert "$1,200.00" in text
+    assert len([call for call in calls if call[2] == 11]) == 4
+    assert calls[-1][2] == 6
+    assert calls[-1][1] > calls[-1][0]
+
+
 def test_s3_storage_is_private_and_client_side_encrypted(monkeypatch) -> None:
     captured = {}
 

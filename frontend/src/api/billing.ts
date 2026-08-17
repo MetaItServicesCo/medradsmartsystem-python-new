@@ -94,6 +94,11 @@ export const rejectInvoicePaymentProof = async (proofId: number, notes: string):
   return response.data
 }
 
+export const retryPaymentProofOcr = async (proofId: number): Promise<PaymentProof> => {
+  const response = await apiClient.post(`/billing/payment-proofs/${proofId}/retry-ocr`)
+  return response.data
+}
+
 export const openPaymentProofFile = async (proofId: number, filename: string): Promise<void> => {
   const response = await apiClient.get(`/billing/payment-proofs/${proofId}/file`, { responseType: 'blob' })
   const url = URL.createObjectURL(response.data)

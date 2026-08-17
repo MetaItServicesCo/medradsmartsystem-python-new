@@ -617,6 +617,40 @@ def download_payment_proof(
     )
 
 
+@router.post("/payment-proofs/{proof_id}/retry-ocr")
+def retry_payment_proof_ocr(
+    proof_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Queue a pending proof for a fresh OCR pass without changing money."""
+    if not is_invoice_approver(current_user) or not has_module_permission(current_user, "billing", "edit"):
+        raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can retry payment-proof OCR")
+    proof = db.query(PaymentProof).filter(PaymentProof.id == proof_id).with_for_update().first()
+    if not proof:
+        raise HTTPException(status_code=404, detail="Payment proof not found")
+    if proof.status != "pending_verification":
+        raise HTTPException(status_code=409, detail="Only a pending payment proof can be reprocessed")
+    if proof.extraction_status in {"queued", "processing"}:
+        return payment_proof_response(proof, include_ocr_text=True)
+
+    proof.extraction_status = "queued"
+    proof.extraction_attempt_count = 0
+    proof.extraction_next_attempt_at = datetime.utcnow()
+    proof.extraction_started_at = None
+    proof.extraction_completed_at = None
+    proof.extraction_last_error = None
+    proof.ocr_provider = None
+    proof.ocr_text = None
+    proof.extracted_data = {}
+    proof.extraction_confidence = None
+    proof.mismatch_flags = []
+    proof.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(proof)
+    return payment_proof_response(proof, include_ocr_text=True)
+
+
 @router.post("/payment-proofs/{proof_id}/approve")
 def approve_payment_proof(
     proof_id: int,

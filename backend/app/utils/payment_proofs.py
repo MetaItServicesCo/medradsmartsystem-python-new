@@ -12,7 +12,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
-from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance, ImageOps
 
 from app.core.config import settings
 from app.models.invoice import PaymentProof
@@ -205,13 +205,77 @@ def payment_proof_sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _image_text(data: bytes) -> str:
+def _ocr_image_pass(image: Image.Image, *, page_segmentation_mode: int) -> tuple[str, float]:
+    """Return text plus a quality score from one Tesseract document pass."""
     import pytesseract
 
+    result = pytesseract.image_to_data(
+        image,
+        config=f"--oem 3 --psm {page_segmentation_mode}",
+        output_type=pytesseract.Output.DICT,
+    )
+    lines: dict[tuple[Any, ...], list[str]] = {}
+    weighted_confidence = 0.0
+    confidence_weight = 0
+    for index, raw_token in enumerate(result.get("text", [])):
+        token = str(raw_token or "").strip()
+        if not token:
+            continue
+        try:
+            confidence = max(0.0, float(result.get("conf", [])[index]))
+        except (IndexError, TypeError, ValueError):
+            confidence = 0.0
+        key = tuple(
+            result.get(field, [0] * len(result.get("text", [])))[index]
+            for field in ("page_num", "block_num", "par_num", "line_num")
+        )
+        lines.setdefault(key, []).append(token)
+        weight = max(1, sum(character.isalnum() for character in token))
+        weighted_confidence += confidence * weight
+        confidence_weight += weight
+
+    text = "\n".join(" ".join(tokens) for tokens in lines.values()).strip()
+    mean_confidence = weighted_confidence / confidence_weight if confidence_weight else 0.0
+    # Confidence is the main orientation signal. Readable characters and
+    # payment-shaped values break ties without trusting any extracted value.
+    quality = mean_confidence + min(20.0, len(re.findall(r"[A-Za-z0-9]", text)) / 20)
+    if re.search(r"\$\s*\d|\d[,.]\d{2}", text):
+        quality += 8.0
+    return text, quality
+
+
+def _image_text(data: bytes) -> str:
+    """Read photographed proofs in any cardinal orientation.
+
+    Phone photos commonly arrive sideways without reliable EXIF orientation.
+    A light sparse-text pass selects the strongest orientation, followed by a
+    denser document pass at full working resolution. This remains local OCR;
+    no payment document is sent to an external service.
+    """
     with Image.open(io.BytesIO(data)) as source:
-        image = ImageOps.exif_transpose(source).convert("L")
-        image.thumbnail((2600, 2600))
-        return pytesseract.image_to_string(image, config="--psm 6")
+        grayscale = ImageOps.autocontrast(
+            ImageOps.exif_transpose(source).convert("L"),
+            cutoff=1,
+        )
+
+    resampling = getattr(Image, "Resampling", Image).LANCZOS
+    orientation_image = grayscale.copy()
+    orientation_image.thumbnail((1800, 1800), resampling)
+    candidates: list[tuple[float, int, str]] = []
+    for rotation in (0, 90, 180, 270):
+        rotated = orientation_image.rotate(rotation, expand=True)
+        text, quality = _ocr_image_pass(rotated, page_segmentation_mode=11)
+        candidates.append((quality, rotation, text))
+
+    _, best_rotation, sparse_text = max(candidates, key=lambda candidate: candidate[0])
+    document_image = grayscale.rotate(best_rotation, expand=True)
+    document_image.thumbnail((2800, 2800), resampling)
+    document_image = ImageEnhance.Sharpness(document_image).enhance(1.5)
+    dense_text, _ = _ocr_image_pass(document_image, page_segmentation_mode=6)
+
+    # Preserve both layouts because sparse mode is better at isolated cheque
+    # numbers while dense mode is better at payee, amount, and memo rows.
+    return "\n".join(value for value in (sparse_text, dense_text) if value).strip()
 
 
 def _pdf_text(data: bytes) -> str:
@@ -234,10 +298,28 @@ def _pdf_text(data: bytes) -> str:
 
 
 def _money_candidates(text: str) -> list[Decimal]:
+    # Tesseract can read the final decimal separator on photographed cheques
+    # as a comma/colon, or omit it while retaining a space. Normalize only
+    # currency-shaped values so account and routing numbers stay untouched.
+    normalized_text = re.sub(
+        r"(?<=\d)[,:;](?=\d{2}(?:\D|$))",
+        ".",
+        text,
+    )
+    normalized_text = re.sub(
+        r"((?:USD\s*)?\$\s*(?:[0-9]{1,3}(?:[,\s][0-9]{3})+|[0-9]+))\s+(\d{2})(?!\d)",
+        r"\1.\2",
+        normalized_text,
+        flags=re.I,
+    )
     values: list[Decimal] = []
-    for raw in re.findall(r"(?<!\d)(?:USD\s*)?\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})|[0-9]+\.\d{2})(?!\d)", text, flags=re.I):
+    for raw in re.findall(
+        r"(?<!\d)(?:USD\s*)?\$?\s*((?:[0-9]{1,3}(?:[,\s][0-9]{3})+|[0-9]+)\.[0-9]{2})(?!\d)",
+        normalized_text,
+        flags=re.I,
+    ):
         try:
-            amount = Decimal(raw.replace(",", "")).quantize(Decimal("0.01"))
+            amount = Decimal(raw.replace(",", "").replace(" ", "")).quantize(Decimal("0.01"))
         except InvalidOperation:
             continue
         if amount >= 0 and amount not in values:
