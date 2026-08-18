@@ -162,6 +162,26 @@ export interface PrintableAcceptance {
   quotation_revision: number
 }
 
+export interface PrintablePaymentEvidence {
+  id: string
+  evidence_type: string
+  status: string
+  amount: number
+  currency?: string | null
+  payment_method?: string | null
+  reference_number?: string | null
+  card_brand?: string | null
+  card_last4?: string | null
+  occurred_at?: string | null
+  submitted_at?: string | null
+  submitted_by_name?: string | null
+  reviewed_at?: string | null
+  reviewed_by_name?: string | null
+  proof_id?: number | null
+  proof_filename?: string | null
+  receipt_delivery_status?: string | null
+}
+
 export interface PrintableInvoiceEditPayload {
   customer_name?: string
   customer_email?: string | null
@@ -190,6 +210,9 @@ interface InvoicePrintDialogProps {
   ledgerTransactions: PrintableLedgerTransaction[]
   paidQuotations?: PrintablePaidQuotation[]
   acceptance?: PrintableAcceptance | null
+  paymentEvidence?: PrintablePaymentEvidence[]
+  paymentEvidenceLoading?: boolean
+  onOpenPaymentProof?: (proofId: number, filename: string) => void
   moduleLabel: string
   primaryDocumentLabel?: string
   accent?: string
@@ -206,6 +229,20 @@ const money = (value: number | string | null | undefined) => `$${Number(value ||
 
 const statusOptions = ['pending', 'partially_paid', 'paid', 'overdue', 'cancelled']
 const paymentOptions = ['credit_card', 'ach', 'mbmts_ach', 'cheque', 'bank_transfer', 'cash']
+
+const evidenceStatusLabel = (status?: string | null) => String(status || 'recorded').replace(/_/g, ' ')
+
+const evidenceMethodLabel = (evidence: PrintablePaymentEvidence) => {
+  if (evidence.card_last4) {
+    return `${evidence.card_brand || 'Card'} •••• ${evidence.card_last4}`
+  }
+  return paymentMethodLabel(evidence.payment_method)
+}
+
+const evidenceAuditLabel = (evidence: PrintablePaymentEvidence) => [
+  evidence.submitted_by_name ? `Submitted by ${evidence.submitted_by_name}` : '',
+  evidence.reviewed_by_name ? `Reviewed by ${evidence.reviewed_by_name}` : '',
+].filter(Boolean).join(' · ')
 
 const DEFAULT_INVOICE_LABELS: Required<PrintableInvoiceLabels> = {
   billTo: 'Bill To',
@@ -500,6 +537,7 @@ const buildPrintableHtml = (
   quantityLabel = 'Qty',
   paidQuotations: PrintablePaidQuotation[] = [],
   acceptance?: PrintableAcceptance | null,
+  paymentEvidence: PrintablePaymentEvidence[] = [],
 ) => {
   const title = documentLabel(type, primaryDocumentLabel)
   const labels = mergeInvoiceLabels(invoice.labels)
@@ -556,6 +594,16 @@ const buildPrintableHtml = (
     .filter(row => row.label || Number(row.value || 0))
     .map(row => `<div><span>${escapeHtml(row.label || 'Additional charge')}</span><strong>${escapeHtml(money(row.value))}</strong></div>`)
     .join('')
+
+  const paymentEvidenceRows = paymentEvidence.map(evidence => `
+    <tr>
+      <td>${escapeHtml(evidenceMethodLabel(evidence))}</td>
+      <td>${escapeHtml(evidenceStatusLabel(evidence.status))}</td>
+      <td>${escapeHtml(formatDate(evidence.occurred_at))}</td>
+      <td>${escapeHtml(evidence.reference_number || '-')}<br><small>${escapeHtml(evidenceAuditLabel(evidence))}</small></td>
+      <td class="right amount">${escapeHtml(money(evidence.amount))}</td>
+    </tr>
+  `).join('')
 
   return `
     <main class="sheet doc-a" style="--accent:${escapeHtml(accent)}; --accent-soft:${escapeHtml(accentSoft)}">
@@ -644,6 +692,16 @@ const buildPrintableHtml = (
       ` : ''}
 
       ${invoice.notes ? `<section class="note"><strong>${escapeHtml(labels.notes)}:</strong><br>${escapeHtml(invoice.notes)}</section>` : ''}
+      ${type !== 'packing_slip' && paymentEvidenceRows ? `
+        <section class="paid-separate">
+          <h2>Payment Evidence</h2>
+          <table>
+            <thead><tr><th>Method</th><th>Status</th><th>Date</th><th>Reference</th><th class="right">Amount</th></tr></thead>
+            <tbody>${paymentEvidenceRows}</tbody>
+          </table>
+          <p class="paid-separate-note">Card details are intentionally masked. Uploaded bank or cheque documents remain available only through authenticated system access.</p>
+        </section>
+      ` : ''}
       ${acceptance ? `
         <section class="note">
           <strong>Signed acceptance</strong><br>
@@ -679,6 +737,9 @@ const InvoicePrintDialog = ({
   appendHtml,
   paidQuotations = [],
   acceptance,
+  paymentEvidence = [],
+  paymentEvidenceLoading = false,
+  onOpenPaymentProof,
   mode = 'print',
   onSave,
   saving = false,
@@ -792,7 +853,7 @@ const InvoicePrintDialog = ({
   const handlePrint = () => {
     if (!displayInvoice) return
     const printableRows = isEditMode ? editRows : lineItems
-    const html = buildPrintableHtml(displayInvoice, activeDocumentType, printableRows, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations, acceptance)
+    const html = buildPrintableHtml(displayInvoice, activeDocumentType, printableRows, ledgerTransactions, moduleLabel, primaryDocumentLabel, accent, quantityLabel, paidQuotations, acceptance, paymentEvidence)
     printHtml(`${displayInvoice.invoice_number} ${documentLabel(activeDocumentType, primaryDocumentLabel)}`, html + (appendHtml || ''))
   }
 
@@ -1159,6 +1220,81 @@ const InvoicePrintDialog = ({
                 </Box>
               )}
 
+              {!isEditMode && activeDocumentType !== 'packing_slip' && (paymentEvidenceLoading || paymentEvidence.length > 0) && (
+                <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #DDE5F2', bgcolor: '#F8FAFC' }}>
+                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Payment Evidence</Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: 12.5, fontWeight: 700, mb: 1.5 }}>
+                    Confirmed card metadata and securely attached non-card payment proofs for this invoice.
+                  </Typography>
+                  {paymentEvidenceLoading ? (
+                    <Typography sx={{ color: '#64748B', fontWeight: 800 }}>Loading payment evidence…</Typography>
+                  ) : (
+                    <Box sx={{ display: 'grid', gap: 1 }}>
+                      {paymentEvidence.map(evidence => {
+                        const pending = evidence.status === 'pending_verification'
+                        const rejected = evidence.status === 'rejected'
+                        return (
+                          <Box
+                            key={evidence.id}
+                            sx={{
+                              display: 'grid',
+                              gridTemplateColumns: { xs: '1fr', md: '1.25fr 0.8fr 0.75fr auto' },
+                              alignItems: 'center',
+                              gap: 1,
+                              p: 1.25,
+                              borderRadius: '12px',
+                              border: '1px solid #E2E8F0',
+                              bgcolor: '#fff',
+                            }}
+                          >
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>{evidenceMethodLabel(evidence)}</Typography>
+                              <Typography sx={{ color: '#64748B', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {evidence.reference_number || evidence.proof_filename || 'Reference unavailable'}
+                              </Typography>
+                              {evidenceAuditLabel(evidence) && (
+                                <Typography sx={{ color: '#94A3B8', fontSize: 11, mt: 0.25 }}>
+                                  {evidenceAuditLabel(evidence)}
+                                </Typography>
+                              )}
+                            </Box>
+                            <Chip
+                              size="small"
+                              label={evidenceStatusLabel(evidence.status)}
+                              sx={{
+                                justifySelf: { md: 'start' },
+                                bgcolor: rejected ? '#FEE2E2' : pending ? '#FEF3C7' : '#D1FAE5',
+                                color: rejected ? '#B91C1C' : pending ? '#B45309' : '#047857',
+                                fontWeight: 900,
+                                textTransform: 'capitalize',
+                              }}
+                            />
+                            <Box>
+                              <Typography sx={{ fontWeight: 950, color: '#111827' }}>{money(evidence.amount)}</Typography>
+                              <Typography sx={{ color: '#94A3B8', fontSize: 11 }}>{formatDate(evidence.occurred_at)}</Typography>
+                            </Box>
+                            {evidence.proof_id && onOpenPaymentProof ? (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => onOpenPaymentProof(evidence.proof_id!, evidence.proof_filename || 'payment-proof')}
+                                sx={{ borderRadius: '10px', fontWeight: 900, whiteSpace: 'nowrap' }}
+                              >
+                                View proof
+                              </Button>
+                            ) : (
+                              <Typography sx={{ color: '#64748B', fontSize: 11.5, fontWeight: 800, textAlign: { md: 'right' } }}>
+                                {evidence.card_last4 ? 'PCI-safe masked card' : 'Ledger record'}
+                              </Typography>
+                            )}
+                          </Box>
+                        )
+                      })}
+                    </Box>
+                  )}
+                </Box>
+              )}
+
               {isEditMode && (
                 <TextField
                   label={displayLabels.notes}
@@ -1197,7 +1333,7 @@ const InvoicePrintDialog = ({
             {saving ? 'Saving...' : 'Save Invoice'}
           </Button>
         ) : isViewMode ? null : (
-          <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
+          <Button startIcon={<PrintIcon />} onClick={handlePrint} variant="contained" disabled={paymentEvidenceLoading} sx={{ borderRadius: '12px', fontWeight: 900, bgcolor: accent, '&:hover': { bgcolor: accent } }}>
             Print {documentLabel(activeDocumentType, primaryDocumentLabel)}
           </Button>
         )}

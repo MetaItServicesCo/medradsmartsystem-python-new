@@ -46,6 +46,37 @@ export interface PaymentProof {
   created_at: string
 }
 
+export interface InvoicePaymentEvidenceItem {
+  id: string
+  evidence_type: 'card_payment' | 'card_refund' | 'uploaded_proof' | 'recorded_payment' | string
+  status: string
+  amount: number
+  currency: string
+  payment_method?: string | null
+  reference_number?: string | null
+  card_brand?: string | null
+  card_last4?: string | null
+  occurred_at?: string | null
+  submitted_at?: string | null
+  submitted_by_name?: string | null
+  reviewed_at?: string | null
+  reviewed_by_name?: string | null
+  proof_id?: number | null
+  proof_filename?: string | null
+  proof_file_url?: string | null
+  receipt_delivery_status?: string | null
+  review_notes?: string | null
+  ocr_provider?: string | null
+  extraction_confidence?: number | null
+  mismatch_flags?: string[]
+}
+
+export interface InvoicePaymentEvidence {
+  invoice_id: number
+  invoice_number: string
+  items: InvoicePaymentEvidenceItem[]
+}
+
 export const approveInvoiceForBilling = async (invoiceId: number): Promise<InvoiceBillingApproval> => {
   const response = await apiClient.put(`/billing/invoices/${invoiceId}/approve`)
   return response.data
@@ -53,7 +84,7 @@ export const approveInvoiceForBilling = async (invoiceId: number): Promise<Invoi
 
 export const recordInvoicePayment = async (
   invoiceId: number,
-  data: { amount: number; payment_method: string; notes?: string },
+  data: { amount: number; payment_method: string; notes?: string; card_brand?: string; card_last4?: string },
 ) => {
   const fingerprint = `invoice:${invoiceId}:${Number(data.amount).toFixed(2)}:${data.payment_method}`
   const response = await apiClient.post(`/billing/invoices/${invoiceId}/payments`, {
@@ -110,4 +141,9 @@ export const openPaymentProofFile = async (proofId: number, filename: string): P
     link.click()
   }
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+export const fetchInvoicePaymentEvidence = async (invoiceId: number): Promise<InvoicePaymentEvidence> => {
+  const response = await apiClient.get(`/billing/invoices/${invoiceId}/payment-evidence`)
+  return response.data
 }

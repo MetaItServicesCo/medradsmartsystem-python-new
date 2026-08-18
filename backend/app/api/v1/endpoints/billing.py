@@ -6,13 +6,13 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceType, PaymentProof
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType, PaymentProof
 from app.models.sales import SalesPaymentAuthorization
 from app.models.service_request import ServiceRequest, ServiceRequestQuotation
 from app.models.user import User, UserRole
@@ -32,6 +32,7 @@ from app.utils.invoice_ledger import (
     record_status_change,
     transaction_response,
 )
+from app.utils.invoice_payment_evidence import invoice_payment_evidence_response
 from app.utils.payment_receipts import deliver_payment_receipt, queue_rental_payment_receipt
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.permission_deps import require_module_access
@@ -66,6 +67,8 @@ class InvoicePaymentCreate(BaseModel):
     payment_method: str
     notes: Optional[str] = None
     idempotency_key: Optional[str] = None
+    card_brand: Optional[str] = None
+    card_last4: Optional[str] = None
 
 
 class PaymentProofReview(BaseModel):
@@ -168,6 +171,8 @@ def _apply_invoice_payment_locked(
     payment_method: str,
     notes: Optional[str],
     user: User,
+    card_brand: Optional[str] = None,
+    card_last4: Optional[str] = None,
 ) -> tuple[Any, Any]:
     """Apply an authorized payment while the caller holds the invoice lock."""
     if invoice.invoice_type == InvoiceType.SALES:
@@ -194,6 +199,9 @@ def _apply_invoice_payment_locked(
         payment_method,
         notes,
     )
+    if payment_transaction is not None:
+        payment_transaction.card_brand = card_brand
+        payment_transaction.card_last4 = card_last4
     if invoice.sales_quotation_id:
         authorization = (
             db.query(SalesPaymentAuthorization)
@@ -230,6 +238,8 @@ def _apply_invoice_payment_locked(
             payment_reference=payment_transaction.reference_number,
             amount=amount,
             payment_method=payment_method,
+            card_brand=card_brand,
+            card_last4=card_last4,
         )
     return payment_transaction, receipt_delivery
 
@@ -385,6 +395,25 @@ def record_invoice_payment(
             detail="Upload payment proof for non-card payments; the invoice will update after Admin or Super Admin approval",
         )
 
+    card_brand = None
+    card_last4 = None
+    if "card" in normalized_method or "square" in normalized_method:
+        if payload.card_last4:
+            card_last4 = "".join(char for char in payload.card_last4 if char.isdigit())
+            if len(card_last4) != 4:
+                raise HTTPException(status_code=422, detail="Card last four must contain exactly four digits")
+        if payload.card_brand:
+            supported_brands = {
+                "visa": "Visa",
+                "mastercard": "Mastercard",
+                "american express": "American Express",
+                "discover": "Discover",
+                "card": "Card",
+            }
+            card_brand = supported_brands.get(payload.card_brand.strip().lower(), "Card")
+        if not card_last4:
+            card_brand = None
+
     payment_transaction, receipt_delivery = _apply_invoice_payment_locked(
         db,
         invoice,
@@ -392,6 +421,8 @@ def record_invoice_payment(
         payment_method=normalized_method,
         notes=payload.notes,
         user=current_user,
+        card_brand=card_brand,
+        card_last4=card_last4,
     )
     mark_operation_succeeded(
         operation,
@@ -524,6 +555,39 @@ def list_invoice_payment_proofs(
     )
     show_ocr = is_invoice_approver(current_user)
     return [payment_proof_response(proof, include_ocr_text=show_ocr) for proof in proofs]
+
+
+@router.get("/invoices/{invoice_id}/payment-evidence")
+def get_invoice_payment_evidence(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Return PCI-safe payment evidence already attached to an invoice.
+
+    This is intentionally read-only and uses the same facility/account access
+    policy as the invoice itself. OCR/reviewer metadata stays internal, while
+    every authorized viewer can see proof status and masked card details.
+    """
+    invoice = (
+        db.query(Invoice)
+        .options(
+            selectinload(Invoice.receipt_deliveries),
+            selectinload(Invoice.transactions).joinedload(InvoiceTransaction.created_by),
+            selectinload(Invoice.payment_proofs).joinedload(PaymentProof.submitted_by),
+            selectinload(Invoice.payment_proofs).joinedload(PaymentProof.reviewed_by),
+            selectinload(Invoice.payment_proofs).joinedload(PaymentProof.invoice_transaction),
+        )
+        .filter(Invoice.id == invoice_id)
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    _require_invoice_facility_access(db, current_user, invoice)
+    return invoice_payment_evidence_response(
+        invoice,
+        include_internal_review=is_invoice_approver(current_user),
+    )
 
 
 @router.get("/payment-proofs")

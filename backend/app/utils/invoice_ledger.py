@@ -30,6 +30,8 @@ def transaction_response(transaction: InvoiceTransaction) -> dict[str, Any]:
         "transaction_type": transaction.transaction_type,
         "amount": transaction.amount,
         "payment_method": transaction.payment_method,
+        "card_brand": getattr(transaction, "card_brand", None),
+        "card_last4": getattr(transaction, "card_last4", None),
         "reference_number": transaction.reference_number,
         "description": transaction.description,
         "created_by_id": transaction.created_by_id,

@@ -65,6 +65,7 @@ import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
 import {
   approveInvoiceForBilling,
   approveInvoicePaymentProof,
+  fetchInvoicePaymentEvidence,
   fetchPaymentProofQueue,
   openPaymentProofFile,
   recordInvoicePayment,
@@ -72,6 +73,7 @@ import {
   retryPaymentProofOcr,
   submitInvoicePaymentProof,
   type PaymentProof,
+  type InvoicePaymentEvidenceItem,
 } from '@/api/billing'
 
 type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
@@ -170,6 +172,15 @@ const formatDate = (value: string | null | undefined) => {
 const methodLabel = (value?: string | null) => {
   if (!value) return '-'
   return value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
+const detectCardBrand = (cardNumber: string) => {
+  const digits = cardNumber.replace(/\D/g, '')
+  if (/^4/.test(digits)) return 'Visa'
+  if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(digits)) return 'Mastercard'
+  if (/^3[47]/.test(digits)) return 'American Express'
+  if (/^(6011|65|64[4-9])/.test(digits)) return 'Discover'
+  return 'Card'
 }
 
 const billingTypeLabel = (item: BillingItem) => {
@@ -551,6 +562,25 @@ const Billing = () => {
     refetchInterval: proofQueueOpen && proofQueueStatus === 'pending_verification' ? 3_000 : 15_000,
   })
 
+  const viewInvoiceId = viewItem && !(viewItem.source === 'service' && viewItem.billingKind !== 'service_invoice')
+    ? viewItem.id
+    : null
+  const printInvoiceId = printItem && !(printItem.source === 'service' && printItem.billingKind !== 'service_invoice')
+    ? printItem.id
+    : null
+  const viewPaymentEvidenceQ = useQuery({
+    queryKey: ['invoice-payment-evidence', viewInvoiceId],
+    queryFn: () => fetchInvoicePaymentEvidence(viewInvoiceId!),
+    enabled: Boolean(viewInvoiceId),
+    staleTime: 15_000,
+  })
+  const printPaymentEvidenceQ = useQuery({
+    queryKey: ['invoice-payment-evidence', printInvoiceId],
+    queryFn: () => fetchInvoicePaymentEvidence(printInvoiceId!),
+    enabled: Boolean(printInvoiceId),
+    staleTime: 15_000,
+  })
+
   // Fetch full SR data (with history) when printing a service invoice — needed to append the service report
   const printSrId = printItem?.source === 'service' && printItem?.billingKind === 'service_invoice'
     ? (printItem.raw as ServiceInvoice).service_request_id
@@ -856,17 +886,20 @@ const Billing = () => {
   })
 
   const invoicePayMut = useMutation({
-    mutationFn: async ({ item, amount, method, notes }: { item: BillingItem; amount: number; method: string; notes?: string }) => {
+    mutationFn: async ({ item, amount, method, notes, cardBrand, cardLast4 }: { item: BillingItem; amount: number; method: string; notes?: string; cardBrand?: string; cardLast4?: string }) => {
       return recordInvoicePayment(item.id, {
         amount,
         payment_method: method,
         notes,
+        card_brand: cardBrand,
+        card_last4: cardLast4,
       })
     },
     onSuccess: () => {
       toast.success('Invoice payment updated')
       closePayDialog()
       invalidateBilling()
+      queryClient.invalidateQueries({ queryKey: ['invoice-payment-evidence'] })
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice payment'),
   })
@@ -884,6 +917,7 @@ const Billing = () => {
       await Promise.all([
         invalidateBilling(),
         queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['invoice-payment-evidence'] }),
       ])
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to submit payment proof'),
@@ -906,6 +940,7 @@ const Billing = () => {
       await Promise.all([
         invalidateBilling(),
         queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['invoice-payment-evidence'] }),
       ])
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || err.message || 'Could not review payment proof'),
@@ -1107,7 +1142,15 @@ const Billing = () => {
       return
     }
 
-    invoicePayMut.mutate({ item: payOpen, amount, method: actualMethod, notes })
+    const cardDigits = ccNumber.replace(/\D/g, '')
+    invoicePayMut.mutate({
+      item: payOpen,
+      amount,
+      method: actualMethod,
+      notes,
+      cardBrand: detectCardBrand(cardDigits),
+      cardLast4: cardDigits.slice(-4) || undefined,
+    })
   }
 
   const paying = servicePayMut.isPending || invoicePayMut.isPending || paymentProofMut.isPending
@@ -1768,6 +1811,11 @@ const Billing = () => {
         accent={viewItem ? SOURCE_COLOR[viewItem.source] : '#7C3AED'}
         quantityLabel={viewItem?.source === 'service' && viewItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
         mode="view"
+        paymentEvidence={(viewPaymentEvidenceQ.data?.items || []) as InvoicePaymentEvidenceItem[]}
+        paymentEvidenceLoading={viewPaymentEvidenceQ.isLoading}
+        onOpenPaymentProof={(proofId, filename) => {
+          void openPaymentProofFile(proofId, filename).catch(() => toast.error('Could not open payment proof'))
+        }}
       />
 
       <InvoicePrintDialog
@@ -1782,6 +1830,11 @@ const Billing = () => {
         accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
         quantityLabel={printItem?.source === 'service' && printItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
         appendHtml={printSrData ? buildServiceReportSheet(printSrData) : undefined}
+        paymentEvidence={(printPaymentEvidenceQ.data?.items || []) as InvoicePaymentEvidenceItem[]}
+        paymentEvidenceLoading={printPaymentEvidenceQ.isLoading}
+        onOpenPaymentProof={(proofId, filename) => {
+          void openPaymentProofFile(proofId, filename).catch(() => toast.error('Could not open payment proof'))
+        }}
       />
 
       <InvoicePrintDialog

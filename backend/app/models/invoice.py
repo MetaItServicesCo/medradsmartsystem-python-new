@@ -109,6 +109,10 @@ class InvoiceTransaction(Base):
     transaction_type = Column(String, nullable=False, index=True)
     amount = Column(Numeric(10, 2), default=0)
     payment_method = Column(String, nullable=True)
+    # PCI-safe presentation metadata only. Full card numbers, CVVs, and
+    # provider source tokens must never be stored on an invoice transaction.
+    card_brand = Column(String(40), nullable=True)
+    card_last4 = Column(String(4), nullable=True)
     reference_number = Column(String, nullable=True, index=True)
     description = Column(Text, nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
