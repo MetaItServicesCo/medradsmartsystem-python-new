@@ -258,6 +258,34 @@ def _ocr_numeric_pass(image: Image.Image) -> str:
     ).strip()
 
 
+def _payment_orientation_quality(text: str, base_quality: float) -> float:
+    """Prefer a readable payment document over unrelated background text.
+
+    A photographed cheque can sit on an envelope or desk containing clearer,
+    larger lettering. Raw Tesseract confidence alone can therefore select the
+    wrong rotation. Payment-specific signals are much stronger orientation
+    evidence than generic readable characters.
+    """
+    normalized = re.sub(r"\s+", " ", text).lower()
+    score = min(float(base_quality), 100.0)
+    signals = (
+        (r"\bpay\s+(?:to\s+)?(?:the\s+)?order\s+of\b", 45.0),
+        (r"\bdollars?\b", 30.0),
+        (r"\bmemo\b", 24.0),
+        (r"\b(?:check|cheque)\b", 20.0),
+        (r"\b(?:bank|credit union)\b", 16.0),
+        (r"\$\s*\d", 35.0),
+        (r"\b\d{1,2}[/.-]\d{1,2}[/.-](?:\d{2}|\d{4})\b", 18.0),
+        (r"\b(?:routing|account)\b", 12.0),
+    )
+    for pattern, weight in signals:
+        if re.search(pattern, normalized, flags=re.I):
+            score += weight
+    if len(re.findall(r"\b[A-Za-z]{3,}\b", normalized)) < 2:
+        score -= 15.0
+    return score
+
+
 def _otsu_binary(image: Image.Image) -> Image.Image:
     """Create a high-contrast variant without requiring OpenCV."""
     histogram = image.histogram()
@@ -303,11 +331,21 @@ def _image_text(data: bytes) -> str:
     resampling = getattr(Image, "Resampling", Image).LANCZOS
     orientation_image = grayscale.copy()
     orientation_image.thumbnail((1800, 1800), resampling)
+    orientation_edge = max(orientation_image.size)
+    if orientation_edge and orientation_edge < 1800:
+        orientation_scale = min(2.25, 1800 / orientation_edge)
+        orientation_image = orientation_image.resize(
+            (
+                max(1, round(orientation_image.width * orientation_scale)),
+                max(1, round(orientation_image.height * orientation_scale)),
+            ),
+            resampling,
+        )
     candidates: list[tuple[float, int, str]] = []
     for rotation in (0, 90, 180, 270):
         rotated = orientation_image.rotate(rotation, expand=True)
         text, quality = _ocr_image_pass(rotated, page_segmentation_mode=11)
-        candidates.append((quality, rotation, text))
+        candidates.append((_payment_orientation_quality(text, quality), rotation, text))
 
     _, best_rotation, sparse_text = max(candidates, key=lambda candidate: candidate[0])
     document_image = grayscale.rotate(best_rotation, expand=True)
@@ -321,13 +359,18 @@ def _image_text(data: bytes) -> str:
         )
     document_image = ImageEnhance.Contrast(document_image).enhance(1.15)
     document_image = ImageEnhance.Sharpness(document_image).enhance(1.6)
+    high_resolution_sparse_text, _ = _ocr_image_pass(document_image, page_segmentation_mode=11)
     dense_text, _ = _ocr_image_pass(document_image, page_segmentation_mode=6)
     numeric_text = _ocr_numeric_pass(_otsu_binary(document_image))
 
     # Preserve both layouts because sparse mode is better at isolated cheque
     # numbers while dense mode is better at payee, amount, and memo rows. The
     # binary numeric pass recovers faint amount/date/check-number printing.
-    return "\n".join(value for value in (sparse_text, dense_text, numeric_text) if value).strip()
+    return "\n".join(
+        value
+        for value in (sparse_text, high_resolution_sparse_text, dense_text, numeric_text)
+        if value
+    ).strip()
 
 
 def _pdf_text(data: bytes) -> str:

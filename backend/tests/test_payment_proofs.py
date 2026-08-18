@@ -109,9 +109,28 @@ def test_image_ocr_selects_the_readable_rotation(monkeypatch) -> None:
     text = payment_proofs._image_text(payload.getvalue())
 
     assert "$1,200.00" in text
-    assert len([call for call in calls if call[2] == 11]) == 4
+    assert len([call for call in calls if call[2] == 11]) == 5
     assert calls[-1][2] == 6
     assert calls[-1][1] > calls[-1][0]
+
+
+def test_image_ocr_prefers_payment_signals_over_clear_background_text(monkeypatch) -> None:
+    image = payment_proofs.Image.new("RGB", (120, 60), "white")
+    payload = payment_proofs.io.BytesIO()
+    image.save(payload, format="PNG")
+
+    def fake_pass(candidate, *, page_segmentation_mode):
+        if candidate.height > candidate.width:
+            return "PAY TO THE ORDER OF Vendor\nOne Hundred DOLLARS\n$100.00\nMEMO", 55.0
+        return "POST IT SUPER STICKY NOTES CLEAR BACKGROUND WORDS", 95.0
+
+    monkeypatch.setattr(payment_proofs, "_ocr_image_pass", fake_pass)
+    monkeypatch.setattr(payment_proofs, "_ocr_numeric_pass", lambda _image: "$100.00")
+
+    text = payment_proofs._image_text(payload.getvalue())
+
+    assert "PAY TO THE ORDER OF" in text
+    assert "$100.00" in text
 
 
 def test_cheque_fields_are_extracted_for_manual_review(monkeypatch) -> None:
