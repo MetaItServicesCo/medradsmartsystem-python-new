@@ -12,7 +12,12 @@ from sqlalchemy.orm import joinedload
 from app.core.config import settings
 from app.db.base import SessionLocal
 from app.models.invoice import PaymentProof
-from app.utils.payment_proofs import extract_payment_proof, load_payment_proof
+from app.utils.payment_proofs import (
+    extract_payment_proof,
+    load_payment_proof,
+    safe_extracted_data_summary,
+    serialize_extracted_data,
+)
 
 
 def ocr_retry_delay_seconds(attempts: int) -> int:
@@ -107,7 +112,9 @@ def _record_success(proof_id: int, extraction: dict[str, Any]) -> bool:
         proof.extraction_last_error = None
         proof.ocr_provider = extraction["provider"]
         proof.ocr_text = extraction["ocr_text"]
-        proof.extracted_data = extraction["extracted_data"]
+        detailed_data = extraction["extracted_data"]
+        proof.extracted_data_encrypted = serialize_extracted_data(detailed_data)
+        proof.extracted_data = safe_extracted_data_summary(detailed_data)
         proof.extraction_confidence = extraction["confidence"]
         proof.mismatch_flags = extraction["mismatch_flags"]
         db.commit()
@@ -133,6 +140,7 @@ def _record_failure(proof_id: int, exc: Exception) -> str:
         if attempts >= max(1, settings.PAYMENT_PROOF_OCR_MAX_ATTEMPTS):
             proof.extraction_status = "failed"
             proof.extraction_completed_at = datetime.utcnow()
+            proof.extracted_data_encrypted = None
             proof.extracted_data = {"extraction_error": error}
             proof.extraction_confidence = 0
             proof.mismatch_flags = ["ocr_extraction_failed"]

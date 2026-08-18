@@ -198,6 +198,7 @@ class PaymentProof(Base):
     extraction_last_error = Column(Text, nullable=True)
     ocr_provider = Column(String(40), nullable=True)
     ocr_text = Column(EncryptedPaymentReference, nullable=True)
+    extracted_data_encrypted = Column(EncryptedPaymentReference, nullable=True)
     extracted_data = Column(JSON, nullable=False, default=dict)
     extraction_confidence = Column(Numeric(5, 4), nullable=True)
     mismatch_flags = Column(JSON, nullable=False, default=list)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
+import logging
 import os
 import re
 from datetime import datetime
@@ -21,8 +23,11 @@ from app.utils.payment_data_security import (
     decrypt_payment_blob,
     encrypt_payment_blob,
 )
+from app.utils.ai_payment_extraction import ai_extraction_available, extract_payment_proof_with_ai
 from app.utils.upload_security import protected_upload_path
 
+
+logger = logging.getLogger("medrad.payment_proofs")
 
 PAYMENT_PROOF_SUBTREE = "payment_proofs"
 PAYMENT_PROOF_DIR = os.path.join(settings.UPLOAD_DIR, PAYMENT_PROOF_SUBTREE)
@@ -508,6 +513,18 @@ def extract_payment_proof(
     raise_on_error: bool = False,
 ) -> dict[str, Any]:
     """Extract review hints. The result never authorizes or applies payment."""
+    if ai_extraction_available():
+        try:
+            return extract_payment_proof_with_ai(
+                data,
+                mime_type,
+                expected_amount=expected_amount,
+                expected_reference=expected_reference,
+            )
+        except Exception:
+            # Provider/network failures must not strand a proof in the retry
+            # queue when the on-box extractor can still produce review hints.
+            logger.warning("AI payment-proof extraction failed; falling back to OCR", exc_info=True)
     try:
         raw_text = _pdf_text(data) if mime_type == "application/pdf" else _image_text(data)
         normalized = re.sub(r"[ \t]+", " ", raw_text).strip()
@@ -571,6 +588,42 @@ def extract_payment_proof(
         }
 
 
+_SAFE_EXTRACTED_DATA_KEYS = frozenset({
+    "ocr_version",
+    "claimed_amount_detected",
+    "target_reference_detected",
+    "reconciliation",
+    "legibility",
+    "confidence_basis",
+    "confidence_is_estimate",
+    "extraction_error",
+})
+
+
+def safe_extracted_data_summary(data: dict[str, Any]) -> dict[str, Any]:
+    """Return only non-identifying processing metadata for the JSON column."""
+    return {key: value for key, value in data.items() if key in _SAFE_EXTRACTED_DATA_KEYS}
+
+
+def serialize_extracted_data(data: dict[str, Any]) -> str:
+    """Serialize detailed OCR fields for encrypted-at-rest storage."""
+    return json.dumps(data, separators=(",", ":"), sort_keys=True, default=str)
+
+
+def resolved_extracted_data(proof: PaymentProof) -> dict[str, Any]:
+    """Read encrypted findings, with compatibility for pre-migration records."""
+    encrypted_value = getattr(proof, "extracted_data_encrypted", None)
+    if encrypted_value:
+        try:
+            parsed = json.loads(encrypted_value)
+            if isinstance(parsed, dict):
+                return parsed
+        except (TypeError, ValueError):
+            logger.error("Protected OCR findings could not be decoded for proof %s", proof.id)
+            return safe_extracted_data_summary(proof.extracted_data or {})
+    return proof.extracted_data or {}
+
+
 def payment_proof_response(proof: PaymentProof, *, include_ocr_text: bool = False) -> dict[str, Any]:
     invoice = proof.invoice
     quotation = proof.service_quotation
@@ -599,7 +652,7 @@ def payment_proof_response(proof: PaymentProof, *, include_ocr_text: bool = Fals
         "extraction_last_error": proof.extraction_last_error,
         "ocr_provider": proof.ocr_provider,
         "ocr_text": proof.ocr_text if include_ocr_text else None,
-        "extracted_data": proof.extracted_data or {},
+        "extracted_data": resolved_extracted_data(proof),
         "extraction_confidence": proof.extraction_confidence,
         "mismatch_flags": proof.mismatch_flags or [],
         "requires_manual_review": proof.requires_manual_review,

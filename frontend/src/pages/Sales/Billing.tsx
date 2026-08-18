@@ -1949,7 +1949,8 @@ const Billing = () => {
                         OCR amounts: {extractedAmounts.length ? extractedAmounts.map((value: string) => money(value)).join(', ') : 'Not detected'}
                       </Typography>
                       <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#334155' }}>
-                        OCR reference: {proof.extracted_data?.reference || 'Not detected'} · Confidence {Math.round(Number(proof.extraction_confidence || 0) * 100)}%
+                        OCR reference: {proof.extracted_data?.reference || 'Not detected'} · Extraction confidence {Math.round(Number(proof.extraction_confidence || 0) * 100)}%
+                        {proof.extracted_data?.confidence_is_estimate ? ' (estimate)' : ''}
                       </Typography>
                       {chequeDetails.length > 0 && (
                         <Box

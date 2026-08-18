@@ -642,6 +642,7 @@ def retry_payment_proof_ocr(
     proof.extraction_last_error = None
     proof.ocr_provider = None
     proof.ocr_text = None
+    proof.extracted_data_encrypted = None
     proof.extracted_data = {}
     proof.extraction_confidence = None
     proof.mismatch_flags = []

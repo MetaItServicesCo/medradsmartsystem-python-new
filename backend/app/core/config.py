@@ -67,7 +67,17 @@ class Settings(BaseSettings):
     PAYMENT_PROOF_OCR_BATCH_SIZE: int = 4
     PAYMENT_PROOF_OCR_MAX_ATTEMPTS: int = 4
     PAYMENT_PROOF_OCR_LEASE_SECONDS: int = 900
-    
+
+    # AI-powered payment-proof extraction (Claude vision). When enabled, cheques
+    # and bank slips are read by the vision model instead of on-box OCR, and the
+    # amount is reconciled against the invoice. Falls back to OCR when disabled or
+    # unconfigured. The model only reads the document; it never applies payment.
+    AI_EXTRACTION_ENABLED: bool = False
+    ANTHROPIC_API_KEY: str = ""
+    AI_EXTRACTION_MODEL: str = "claude-sonnet-5"
+    AI_EXTRACTION_TIMEOUT_SECONDS: int = 60
+    AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED: bool = False
+
     # Face Recognition
     FACE_RECOGNITION_TOLERANCE: float = 0.6
     FACE_RECOGNITION_MIN_CONFIDENCE: float = 0.85
@@ -137,6 +147,12 @@ class Settings(BaseSettings):
             raise ValueError("PAYMENT_PROOF_STORAGE_BACKEND must be 'local' or 's3'")
         if proof_storage == "s3" and not self.PAYMENT_PROOF_S3_BUCKET.strip():
             raise ValueError("PAYMENT_PROOF_S3_BUCKET is required for S3 payment-proof storage")
+        if self.AI_EXTRACTION_ENABLED and not self.ANTHROPIC_API_KEY.strip():
+            raise ValueError("ANTHROPIC_API_KEY is required when AI_EXTRACTION_ENABLED is true")
+        if self.AI_EXTRACTION_ENABLED and not self.AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED:
+            raise ValueError(
+                "AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED must be true when AI extraction is enabled in production"
+            )
         insecure_origins = [
             origin for origin in self.BACKEND_CORS_ORIGINS
             if origin == "*" or origin.startswith("http://")
