@@ -503,6 +503,7 @@ const Billing = () => {
   const [proofQueueOpen, setProofQueueOpen] = useState(false)
   const [proofQueueStatus, setProofQueueStatus] = useState<'pending_verification' | 'approved' | 'rejected'>('pending_verification')
   const [proofReviewNotes, setProofReviewNotes] = useState<Record<number, string>>({})
+  const [expandedProofOcr, setExpandedProofOcr] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     setSearchInput(search)
@@ -1893,6 +1894,16 @@ const Billing = () => {
             <Box sx={{ display: 'grid', gap: 2 }}>
               {paymentProofQueueQ.data.map(proof => {
                 const extractedAmounts = Array.isArray(proof.extracted_data?.amounts) ? proof.extracted_data.amounts : []
+                const extractedDates = Array.isArray(proof.extracted_data?.dates) ? proof.extracted_data.dates : []
+                const chequeDetails = [
+                  ['Cheque / transaction #', proof.extracted_data?.cheque_number || proof.extracted_data?.reference],
+                  ['Date', extractedDates.join(', ')],
+                  ['Payee', proof.extracted_data?.payee],
+                  ['Payer', proof.extracted_data?.payer],
+                  ['Bank', proof.extracted_data?.bank_name],
+                  ['Written amount', proof.extracted_data?.written_amount],
+                  ['Memo', proof.extracted_data?.memo],
+                ].filter((detail): detail is [string, string] => Boolean(detail[1]))
                 const extractionReady = ['completed', 'failed'].includes(proof.extraction_status || 'completed')
                 return (
                   <Card key={proof.id} variant="outlined" sx={{ p: 2, borderRadius: '16px', borderColor: proof.mismatch_flags.length ? '#F59E0B88' : '#CBD5E1' }}>
@@ -1940,10 +1951,65 @@ const Billing = () => {
                       <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#334155' }}>
                         OCR reference: {proof.extracted_data?.reference || 'Not detected'} · Confidence {Math.round(Number(proof.extraction_confidence || 0) * 100)}%
                       </Typography>
+                      {chequeDetails.length > 0 && (
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+                            gap: 1,
+                            mt: 0.75,
+                          }}
+                        >
+                          {chequeDetails.map(([label, value]) => (
+                            <Box key={`${proof.id}-${label}`} sx={{ minWidth: 0, p: 1, bgcolor: '#fff', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
+                              <Typography sx={{ color: '#64748B', fontSize: 10.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.35 }}>
+                                {label}
+                              </Typography>
+                              <Typography sx={{ color: '#1E293B', fontSize: 12.5, fontWeight: 750, overflowWrap: 'anywhere' }}>
+                                {value}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
                       {proof.mismatch_flags.length > 0 && (
                         <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#B45309' }}>
                           Review flags: {proof.mismatch_flags.map(flag => methodLabel(flag)).join(', ')}
                         </Typography>
+                      )}
+                      {proof.ocr_text && (
+                        <Box sx={{ mt: 0.25 }}>
+                          <Button
+                            size="small"
+                            endIcon={expandedProofOcr[proof.id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            onClick={() => setExpandedProofOcr(current => ({ ...current, [proof.id]: !current[proof.id] }))}
+                            sx={{ px: 0, minWidth: 0, fontSize: 11.5, fontWeight: 900, textTransform: 'none' }}
+                          >
+                            {expandedProofOcr[proof.id] ? 'Hide extracted text' : 'View all extracted text'}
+                          </Button>
+                          <Collapse in={Boolean(expandedProofOcr[proof.id])}>
+                            <Box
+                              component="pre"
+                              sx={{
+                                mt: 0.75,
+                                mb: 0,
+                                p: 1.25,
+                                maxHeight: 220,
+                                overflow: 'auto',
+                                whiteSpace: 'pre-wrap',
+                                overflowWrap: 'anywhere',
+                                bgcolor: '#fff',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '10px',
+                                color: '#334155',
+                                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                fontSize: 11.5,
+                              }}
+                            >
+                              {proof.ocr_text}
+                            </Box>
+                          </Collapse>
+                        </Box>
                       )}
                     </Box>
                     {proof.status === 'pending_verification' ? (

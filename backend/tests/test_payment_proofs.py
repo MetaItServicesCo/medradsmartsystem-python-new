@@ -104,6 +104,7 @@ def test_image_ocr_selects_the_readable_rotation(monkeypatch) -> None:
         return "unreadable", 10.0
 
     monkeypatch.setattr(payment_proofs, "_ocr_image_pass", fake_pass)
+    monkeypatch.setattr(payment_proofs, "_ocr_numeric_pass", lambda _image: "$1,200.00")
 
     text = payment_proofs._image_text(payload.getvalue())
 
@@ -111,6 +112,41 @@ def test_image_ocr_selects_the_readable_rotation(monkeypatch) -> None:
     assert len([call for call in calls if call[2] == 11]) == 4
     assert calls[-1][2] == 6
     assert calls[-1][1] > calls[-1][0]
+
+
+def test_cheque_fields_are_extracted_for_manual_review(monkeypatch) -> None:
+    monkeypatch.setattr(
+        payment_proofs,
+        "_image_text",
+        lambda _data: """Commercial Bank
+21102
+PAY TO THE ORDER OF: Mr. Biomed Tech Services
+One Thousand Two Hundred and 00/100 DOLLARS
+MEMO: Equipment maintenance
+07/20/2026
+$ 1,200.00""",
+    )
+
+    result = payment_proofs.extract_payment_proof(
+        b"valid-image-placeholder",
+        "image/jpeg",
+        expected_amount=Decimal("1200.00"),
+        expected_reference="INV-SERVICE-004560",
+    )
+
+    extracted = result["extracted_data"]
+    assert extracted["ocr_version"] == 2
+    assert extracted["amounts"] == ["1200.00"]
+    assert extracted["cheque_number"] == "21102"
+    assert extracted["reference"] == "21102"
+    assert extracted["payee"] == "Mr. Biomed Tech Services"
+    assert extracted["bank_name"] == "Commercial Bank"
+    assert extracted["memo"] == "Equipment maintenance"
+    assert extracted["written_amount"] == "One Thousand Two Hundred and 00/100"
+    assert extracted["dates"] == ["07/20/2026"]
+    assert extracted["claimed_amount_detected"] is True
+    assert extracted["target_reference_detected"] is False
+    assert result["mismatch_flags"] == ["target_reference_not_detected"]
 
 
 def test_s3_storage_is_private_and_client_side_encrypted(monkeypatch) -> None:

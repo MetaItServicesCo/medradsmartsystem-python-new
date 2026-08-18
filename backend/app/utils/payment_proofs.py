@@ -244,6 +244,48 @@ def _ocr_image_pass(image: Image.Image, *, page_segmentation_mode: int) -> tuple
     return text, quality
 
 
+def _ocr_numeric_pass(image: Image.Image) -> str:
+    """Read isolated cheque numbers without surrounding layout noise."""
+    import pytesseract
+
+    return pytesseract.image_to_string(
+        image,
+        config=(
+            "--oem 3 --psm 11 "
+            "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+            "0123456789$,.#:/- "
+        ),
+    ).strip()
+
+
+def _otsu_binary(image: Image.Image) -> Image.Image:
+    """Create a high-contrast variant without requiring OpenCV."""
+    histogram = image.histogram()
+    total = sum(histogram)
+    if not total:
+        return image.copy()
+    weighted_total = sum(value * count for value, count in enumerate(histogram))
+    background_weight = 0
+    background_sum = 0
+    best_variance = -1.0
+    threshold = 160
+    for value, count in enumerate(histogram):
+        background_weight += count
+        if not background_weight:
+            continue
+        foreground_weight = total - background_weight
+        if not foreground_weight:
+            break
+        background_sum += value * count
+        background_mean = background_sum / background_weight
+        foreground_mean = (weighted_total - background_sum) / foreground_weight
+        variance = background_weight * foreground_weight * (background_mean - foreground_mean) ** 2
+        if variance > best_variance:
+            best_variance = variance
+            threshold = value
+    return image.point(lambda pixel: 255 if pixel > threshold else 0, mode="1").convert("L")
+
+
 def _image_text(data: bytes) -> str:
     """Read photographed proofs in any cardinal orientation.
 
@@ -269,13 +311,23 @@ def _image_text(data: bytes) -> str:
 
     _, best_rotation, sparse_text = max(candidates, key=lambda candidate: candidate[0])
     document_image = grayscale.rotate(best_rotation, expand=True)
-    document_image.thumbnail((2800, 2800), resampling)
-    document_image = ImageEnhance.Sharpness(document_image).enhance(1.5)
+    document_image.thumbnail((3200, 3200), resampling)
+    longest_edge = max(document_image.size)
+    if longest_edge and longest_edge < 3000:
+        scale = min(2.0, 3000 / longest_edge)
+        document_image = document_image.resize(
+            (max(1, round(document_image.width * scale)), max(1, round(document_image.height * scale))),
+            resampling,
+        )
+    document_image = ImageEnhance.Contrast(document_image).enhance(1.15)
+    document_image = ImageEnhance.Sharpness(document_image).enhance(1.6)
     dense_text, _ = _ocr_image_pass(document_image, page_segmentation_mode=6)
+    numeric_text = _ocr_numeric_pass(_otsu_binary(document_image))
 
     # Preserve both layouts because sparse mode is better at isolated cheque
-    # numbers while dense mode is better at payee, amount, and memo rows.
-    return "\n".join(value for value in (sparse_text, dense_text) if value).strip()
+    # numbers while dense mode is better at payee, amount, and memo rows. The
+    # binary numeric pass recovers faint amount/date/check-number printing.
+    return "\n".join(value for value in (sparse_text, dense_text, numeric_text) if value).strip()
 
 
 def _pdf_text(data: bytes) -> str:
@@ -327,9 +379,32 @@ def _money_candidates(text: str) -> list[Decimal]:
     return values[:20]
 
 
+def _extract_cheque_number(text: str) -> Optional[str]:
+    explicit = re.search(
+        r"\b(?:check|cheque)\s*(?:number|no\.?|#)\s*[:#-]?\s*([A-Z0-9-]{4,24})\b",
+        text,
+        flags=re.I,
+    )
+    if explicit:
+        return explicit.group(1).strip()[:24]
+
+    # Many US cheques print the cheque number alone in the upper-right corner.
+    # Accept only an isolated short number; never treat MICR/routing sequences
+    # embedded in a longer line as a cheque number.
+    for line in text.splitlines():
+        match = re.fullmatch(r"\s*#?\s*(\d{4,8})\s*", line)
+        if not match:
+            continue
+        value = match.group(1)
+        if len(value) == 4 and 1900 <= int(value) <= 2099:
+            continue
+        return value
+    return None
+
+
 def _extract_reference(text: str) -> Optional[str]:
     patterns = (
-        r"(?:confirmation|reference|trace|transaction|check|cheque)\s*(?:number|no\.?|#)?\s*[:#-]?\s*([A-Z0-9-]{4,40})",
+        r"\b(?:confirmation|reference|trace|transaction)\s*(?:number|no\.?|#)?\s*[:#-]?\s*([A-Z0-9-]{4,40})",
         r"\b(?:ACH|CHK|TXN)[- ]?[A-Z0-9-]{4,36}\b",
     )
     for pattern in patterns:
@@ -337,6 +412,48 @@ def _extract_reference(text: str) -> Optional[str]:
         if match:
             return (match.group(1) if match.lastindex else match.group(0)).strip()[:64]
     return None
+
+
+def _value_after_label(lines: list[str], label_pattern: str) -> Optional[str]:
+    pattern = re.compile(label_pattern, flags=re.I)
+    for index, line in enumerate(lines):
+        match = pattern.search(line)
+        if not match:
+            continue
+        inline = line[match.end():].strip(" :-#.")
+        if inline:
+            return inline[:200]
+        if index + 1 < len(lines):
+            following = lines[index + 1].strip()
+            if following:
+                return following[:200]
+    return None
+
+
+def _structured_cheque_fields(text: str) -> dict[str, Optional[str]]:
+    lines = list(dict.fromkeys(
+        line.strip() for line in text.splitlines() if line.strip()
+    ))
+    bank_name = next(
+        (line[:200] for line in lines if re.search(r"\b(?:bank|credit union)\b", line, flags=re.I)),
+        None,
+    )
+    written_amount = next(
+        (
+            re.sub(r"\s*\bDOLLARS?\b.*$", "", line, flags=re.I).strip(" .-:")[:200]
+            for line in lines
+            if re.search(r"[A-Za-z].*\bDOLLARS?\b", line, flags=re.I)
+        ),
+        None,
+    )
+    return {
+        "cheque_number": _extract_cheque_number(text),
+        "payee": _value_after_label(lines, r"\bpay\s+(?:to\s+)?(?:the\s+)?order\s+of\b"),
+        "payer": _value_after_label(lines, r"\b(?:payer|drawer|account\s+holder|from)\b"),
+        "bank_name": bank_name,
+        "memo": _value_after_label(lines, r"\b(?:memo|for)\b"),
+        "written_amount": written_amount,
+    }
 
 
 def extract_payment_proof(
@@ -357,6 +474,9 @@ def extract_payment_proof(
             normalized,
         )))[:8]
         reference = _extract_reference(normalized)
+        cheque_fields = _structured_cheque_fields(normalized)
+        if reference is None:
+            reference = cheque_fields["cheque_number"]
         expected = Decimal(str(expected_amount)).quantize(Decimal("0.01"))
         amount_match = any(abs(value - expected) <= Decimal("0.01") for value in amounts)
         reference_match = bool(
@@ -384,9 +504,11 @@ def extract_payment_proof(
             "provider": "tesseract",
             "ocr_text": normalized[:12000],
             "extracted_data": {
+                "ocr_version": 2,
                 "amounts": [str(value) for value in amounts],
                 "dates": dates,
                 "reference": reference,
+                **cheque_fields,
                 "claimed_amount_detected": amount_match,
                 "target_reference_detected": reference_match,
             },
