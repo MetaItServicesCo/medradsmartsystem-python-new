@@ -2225,7 +2225,7 @@ const Sales = () => {
                   )}
               />
             ) : null}
-            <Autocomplete<SalesSecondaryRecipient, true, false, true>
+            {quotationForm.facility_id ? <Autocomplete<SalesSecondaryRecipient, true, false, true>
                   multiple
                   freeSolo
                   filterSelectedOptions
@@ -2280,11 +2280,53 @@ const Sales = () => {
                       helperText={`Optional; add up to 25 recipients. Each receives a private ${salesDocumentMode === 'invoice' ? 'invoice' : 'quotation'} link.`}
                     />
                   )}
-            />
+            /> : null}
             {!quotationForm.facility_id && (
               <>
                 <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
-                <TextField label="Customer Email *" type="email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
+                <Autocomplete<SalesSecondaryRecipient, true, false, true>
+                  multiple
+                  freeSolo
+                  options={[]}
+                  value={[
+                    ...(quotationForm.customer_email ? [{ user_id: null, name: quotationForm.customer_email, email: quotationForm.customer_email }] : []),
+                    ...(quotationForm.secondary_recipients || []),
+                  ]}
+                  getOptionLabel={option => typeof option === 'string' ? option : option.email}
+                  isOptionEqualToValue={(option, value) => option.email.toLowerCase() === value.email.toLowerCase()}
+                  onChange={(_, values) => setQuotationForm(prev => {
+                    const normalized = uniqueSalesRecipients(values, '')
+                    return {
+                      ...prev,
+                      customer_email: normalized[0]?.email || '',
+                      secondary_recipients: normalized.slice(1),
+                      additional_recipient_user_ids: [],
+                    }
+                  })}
+                  renderTags={(recipients, getTagProps) => recipients.map((candidate, index) => {
+                    const recipient = normalizeSecondaryRecipient(candidate)
+                    if (!recipient) return null
+                    const { key, ...tagProps } = getTagProps({ index })
+                    return (
+                      <Chip
+                        key={key}
+                        {...tagProps}
+                        avatar={<Avatar>{recipient.email.slice(0, 1).toUpperCase()}</Avatar>}
+                        label={recipient.email}
+                        sx={{ maxWidth: 320, bgcolor: '#EDE9FE', color: '#5B21B6', fontWeight: 700 }}
+                      />
+                    )
+                  })}
+                  renderInput={params => (
+                    <TextField
+                      {...params}
+                      label="Customer Email(s) *"
+                      placeholder={quotationForm.customer_email ? 'Add another email' : 'Type an email and press Enter'}
+                      helperText="First email is the primary recipient; add more to include them"
+                    />
+                  )}
+                  sx={{ gridColumn: '1 / -1' }}
+                />
               </>
             )}
             <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
