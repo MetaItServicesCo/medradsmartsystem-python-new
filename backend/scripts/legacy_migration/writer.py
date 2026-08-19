@@ -202,10 +202,125 @@ class FoundationWriter:
     def _source_rows(self, source: Connection, sql: str) -> list[dict[str, Any]]:
         return [dict(row._mapping) for row in source.execute(text(sql))]
 
+    def _by_inventory(
+        self, source: Connection, table_name: str
+    ) -> dict[int, dict[str, Any]]:
+        """First row of a per-asset satellite table, keyed by legacy inventory id."""
+        result: dict[int, dict[str, Any]] = {}
+        for row in self._source_rows(
+            source, f"SELECT * FROM {table_name} ORDER BY id"
+        ):
+            inventory_id = row.get("inventory_id")
+            if inventory_id is None:
+                continue
+            result.setdefault(int(inventory_id), row)
+        return result
+
+    def _asset_detail_values(
+        self,
+        legacy_id: int,
+        authorized: dict[int, dict[str, Any]],
+        acquired: dict[int, dict[str, Any]],
+        warranty: dict[int, dict[str, Any]],
+        maintenance: dict[int, dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Map the legacy per-asset satellite tables onto existing equipment columns.
+
+        Closes the biggest legacy migration gap: authorized_by, acquired_froms,
+        cost_warrenties and service_mentenances are 1:1 with inventories but were
+        never carried onto the target equipment record.
+        """
+        values: dict[str, Any] = {}
+
+        auth = authorized.get(legacy_id)
+        if auth:
+            authorizer = " ".join(
+                part
+                for part in (_clean(auth.get("first")), _clean(auth.get("last")))
+                if part
+            )
+            values.update(
+                {
+                    "acquisition_authorized_by": authorizer or None,
+                    "department": _clean(auth.get("depart")) or None,
+                    "po_no": _clean(auth.get("po_no")) or None,
+                    "requester_first_name": _clean(auth.get("first")) or None,
+                    "requester_last_name": _clean(auth.get("last")) or None,
+                    "requester_phone": _clean(auth.get("phone")) or None,
+                    "requester_fax": _clean(auth.get("fax")) or None,
+                    "requester_mailing_address": _clean(auth.get("mailing")) or None,
+                    "requester_email": _clean(auth.get("email")) or None,
+                    "owning_department": _clean(auth.get("own_depart")) or None,
+                    "acquisition_method": _clean(auth.get("acq_method")) or None,
+                }
+            )
+
+        acq = acquired.get(legacy_id)
+        if acq:
+            values.update(
+                {
+                    "acquired_company_name": _clean(acq.get("acq_company")) or None,
+                    "acquired_account_number": _clean(acq.get("acq_account")) or None,
+                    "acquired_sales_person": _clean(acq.get("sale_person")) or None,
+                    "acquired_phone": _clean(acq.get("acq_phone")) or None,
+                    "acquired_email": _clean(acq.get("acq_email")) or None,
+                    "acquired_mailing_address": _clean(acq.get("acq_mailing")) or None,
+                }
+            )
+
+        war = warranty.get(legacy_id)
+        if war:
+            cost = _decimal(war.get("cost"))
+            values.update(
+                {
+                    "cost": cost if cost > 0 else None,
+                    "capital_equipment": _clean(war.get("capital_eqp")) or None,
+                    "warranty_duration": _clean(war.get("warranty")) or None,
+                    "parts_duration": _clean(war.get("parts")) or None,
+                    "labor_duration": _clean(war.get("labour")) or None,
+                    "coverage_type": _clean(war.get("cw_type")) or None,
+                    "acquisition_date": _safe_date(war.get("acq_date")),
+                    "part_warranty_end_date": _safe_date(war.get("pwe_date")),
+                    "labor_warranty_end_date": _safe_date(war.get("lwe_date")),
+                    "coverage_start_date": _safe_date(war.get("cw_date")),
+                }
+            )
+
+        pm = maintenance.get(legacy_id)
+        if pm:
+            values.update(
+                {
+                    "pm_scheduling": _clean(pm.get("pm_schedule")) or None,
+                    "last_pm_date": _safe_date(pm.get("ls_pm_date")),
+                    "next_generated_pm_date": _safe_date(pm.get("nxt_g_date")),
+                }
+            )
+
+        return values
+
+    @staticmethod
+    def _facility_billing_values(billing: dict[str, Any] | None) -> dict[str, Any]:
+        """Map the legacy facility_billings row onto existing facility columns."""
+        if not billing:
+            return {}
+        return {
+            "tax_exemption": bool(int(billing.get("tax_exempt") or 0)),
+            "inheritance": "Full" if int(billing.get("inherit") or 0) == 1 else "None",
+            "billing_email": _clean(billing.get("person1_email")) or None,
+            "delivery_email": _clean(billing.get("person2_email")) or None,
+        }
+
     def _migrate_facilities(
         self, source: Connection, target: Connection, tables: dict[str, Table]
     ) -> None:
         table = tables["facilities"]
+        billings: dict[int, dict[str, Any]] = {}
+        for billing in self._source_rows(
+            source, "SELECT * FROM facility_billings ORDER BY id"
+        ):
+            facility_key = billing.get("facility_id")
+            if facility_key is not None:
+                billings.setdefault(int(facility_key), billing)
         for row in self._source_rows(source, "SELECT * FROM facilities ORDER BY id"):
             legacy_id = int(row["id"])
             if legacy_id in self.maps["facility"]:
@@ -218,30 +333,28 @@ class FoundationWriter:
                 )
                 or None
             )
-            target_id = self._insert(
-                target,
-                table,
-                {
-                    "name": _clean(
-                        row.get("facility_name"), f"Legacy Facility {legacy_id}"
-                    ),
-                    "contact_person": contact,
-                    "phone": _clean(row.get("phone"), "Not provided"),
-                    "email": _clean(
-                        row.get("email"),
-                        f"legacy-facility-{legacy_id}@migration.invalid",
-                    ).lower(),
-                    "address": _clean(row.get("address"), "Not provided"),
-                    "city": _clean(row.get("city"), "Not provided"),
-                    "state": _clean(row.get("state"), "Not provided"),
-                    "zip_code": _clean(row.get("postal"), "Not provided"),
-                    "country": "United States",
-                    "timezone": "UTC",
-                    "status": "active" if row.get("status") == 1 else "inactive",
-                    "created_at": _safe_datetime(row.get("created_at")),
-                    "updated_at": _safe_datetime(row.get("updated_at")),
-                },
-            )
+            values = {
+                "name": _clean(
+                    row.get("facility_name"), f"Legacy Facility {legacy_id}"
+                ),
+                "contact_person": contact,
+                "phone": _clean(row.get("phone"), "Not provided"),
+                "email": _clean(
+                    row.get("email"),
+                    f"legacy-facility-{legacy_id}@migration.invalid",
+                ).lower(),
+                "address": _clean(row.get("address"), "Not provided"),
+                "city": _clean(row.get("city"), "Not provided"),
+                "state": _clean(row.get("state"), "Not provided"),
+                "zip_code": _clean(row.get("postal"), "Not provided"),
+                "country": "United States",
+                "timezone": "UTC",
+                "status": "active" if row.get("status") == 1 else "inactive",
+                "created_at": _safe_datetime(row.get("created_at")),
+                "updated_at": _safe_datetime(row.get("updated_at")),
+            }
+            values.update(self._facility_billing_values(billings.get(legacy_id)))
+            target_id = self._insert(target, table, values)
             self._record_map(target, "facility", legacy_id, target_id)
             self.counts["facilities"] += 1
 
@@ -621,6 +734,10 @@ class FoundationWriter:
         table = tables["equipment"]
         assignment_table = tables.get("equipment_facilities")
         fallback_modality = self.maps["fallback_modality"][0]
+        authorized = self._by_inventory(source, "authorized_by")
+        acquired = self._by_inventory(source, "acquired_froms")
+        warranty = self._by_inventory(source, "cost_warrenties")
+        maintenance = self._by_inventory(source, "service_mentenances")
         for row in self._source_rows(source, "SELECT * FROM inventories ORDER BY id"):
             legacy_id = int(row["id"])
             if legacy_id in self.maps["equipment"]:
@@ -634,34 +751,36 @@ class FoundationWriter:
             if not modality_id and row.get("modality_id"):
                 modality_id = self.maps["modality"].get(int(row["modality_id"]))
             modality_id = modality_id or fallback_modality
-            target_id = self._insert(
-                target,
-                table,
-                {
-                    "asset_tag": _clean(row.get("tag"), f"LEGACY-ASSET-{legacy_id}"),
-                    "make": _clean(row.get("make"), "Unknown"),
-                    "model": _clean(row.get("model"), "Unknown"),
-                    "serial_number": _clean(
-                        row.get("serial"), f"LEGACY-SERIAL-{legacy_id}"
-                    ),
-                    "modality_id": modality_id,
-                    "facility_id": facility_id,
-                    "tier_id": self.maps["tier"].get(int(row["facility_tier_id"]))
-                    if row.get("facility_tier_id")
-                    else None,
-                    "default_picture_url": row.get("image"),
-                    "description": row.get("desc"),
-                    "risk_priority": row.get("risk_p"),
-                    "risk_name": row.get("risk_name"),
-                    "location": row.get("location"),
-                    "inventory_date": _safe_date(row.get("date")),
-                    "status": "ACTIVE" if row.get("status") == 1 else "INACTIVE",
-                    "created_at": _safe_datetime(row.get("created_at"))
-                    or datetime.utcnow(),
-                    "updated_at": _safe_datetime(row.get("updated_at"))
-                    or datetime.utcnow(),
-                },
+            values = {
+                "asset_tag": _clean(row.get("tag"), f"LEGACY-ASSET-{legacy_id}"),
+                "make": _clean(row.get("make"), "Unknown"),
+                "model": _clean(row.get("model"), "Unknown"),
+                "serial_number": _clean(
+                    row.get("serial"), f"LEGACY-SERIAL-{legacy_id}"
+                ),
+                "modality_id": modality_id,
+                "facility_id": facility_id,
+                "tier_id": self.maps["tier"].get(int(row["facility_tier_id"]))
+                if row.get("facility_tier_id")
+                else None,
+                "default_picture_url": row.get("image"),
+                "description": row.get("desc"),
+                "risk_priority": row.get("risk_p"),
+                "risk_name": row.get("risk_name"),
+                "location": row.get("location"),
+                "inventory_date": _safe_date(row.get("date")),
+                "status": "ACTIVE" if row.get("status") == 1 else "INACTIVE",
+                "created_at": _safe_datetime(row.get("created_at"))
+                or datetime.utcnow(),
+                "updated_at": _safe_datetime(row.get("updated_at"))
+                or datetime.utcnow(),
+            }
+            values.update(
+                self._asset_detail_values(
+                    legacy_id, authorized, acquired, warranty, maintenance
+                )
             )
+            target_id = self._insert(target, table, values)
             self._record_map(target, "equipment", legacy_id, target_id)
             if assignment_table is not None:
                 target.execute(

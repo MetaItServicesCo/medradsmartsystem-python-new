@@ -73,6 +73,59 @@ def _date_time(day: Any, clock: Any) -> datetime | None:
         return datetime.combine(parsed_day, time.min)
 
 
+# NOT NULL columns whose default lives only on the ORM model (Python-side). The
+# writer issues Core inserts, which never fire ORM defaults, so back-fill them
+# here. Explicit values passed to _insert always win over these.
+_INSERT_DEFAULTS: dict[str, dict[str, Any]] = {
+    "sales_quotations": {
+        "document_kind": "quotation",
+        "quotation_type": "standard",
+        "status": "pending",
+        "paid_status": "unpaid",
+        "selection_status": "pending",
+        "revision": 1,
+        "worked_hours": Decimal("0"),
+        "setup_fee": Decimal("0"),
+        "service_fee": Decimal("0"),
+        "shipping_fee": Decimal("0"),
+        "application_fee": Decimal("0"),
+        "tax_rate": Decimal("0"),
+        "subtotal": Decimal("0"),
+        "tax_amount": Decimal("0"),
+        "discount_amount": Decimal("0"),
+        "total_amount": Decimal("0"),
+    },
+    "sales_quotation_line_items": {
+        "item_kind": "product",
+        "is_default": False,
+        "is_selected": False,
+        "quantity": 1,
+        "unit_price": Decimal("0"),
+        "shipping_fee": Decimal("0"),
+        "setup_fee": Decimal("0"),
+        "labor_fee": Decimal("0"),
+        "total": Decimal("0"),
+    },
+    "rentals": {
+        "auto_charge": False,
+        "failed_charge_count": 0,
+        "periods_billed": 0,
+        "revision": 1,
+        "secondary_recipients": [],
+        "discount_application_mode": "single_invoice",
+        "discount_continue": False,
+        "discount_requires_card": False,
+        "security_deposit": Decimal("0"),
+    },
+    "invoices": {
+        "billing_approval_status": "pending",
+        "payment_attempt_count": 0,
+        "refund_status": "none",
+        "refunded_amount": Decimal("0"),
+    },
+}
+
+
 class OperationalWriter:
     """Migrate operational/financial data after the foundation phase."""
 
@@ -188,9 +241,10 @@ class OperationalWriter:
         return [dict(row._mapping) for row in source.execute(text(sql))]
 
     def _insert(self, target: Connection, table: Table, values: dict[str, Any]) -> int:
+        merged = {**_INSERT_DEFAULTS.get(table.name, {}), **values}
         result = target.execute(
             insert(table)
-            .values(**_available_values(table, values))
+            .values(**_available_values(table, merged))
             .returning(table.c.id)
         )
         return int(result.scalar_one())
@@ -634,6 +688,38 @@ class OperationalWriter:
             return "FAIL"
         return "PASS" if status == "COMPLETED" else "PENDING"
 
+    @staticmethod
+    def _inspection_detail(
+        legacy_id: int,
+        parts: dict[int, list[dict[str, Any]]],
+        kits: dict[int, list[dict[str, Any]]],
+        images: dict[int, list[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        """Fold the per-inspection parts, test kits and images onto form_data."""
+        detail: dict[str, Any] = {}
+        if parts.get(legacy_id):
+            detail["parts_used"] = [
+                {
+                    "legacy_part_id": int(p["part_id"]),
+                    "usage": _clean(p.get("part_usage")) or None,
+                }
+                for p in parts[legacy_id]
+            ]
+        if kits.get(legacy_id):
+            detail["test_kits_used"] = [int(k["test_kit_id"]) for k in kits[legacy_id]]
+        if images.get(legacy_id):
+            detail["images"] = [
+                {
+                    "image_name": img.get("image_name"),
+                    "original_name": img.get("original_name"),
+                    "mime_type": img.get("mime_type"),
+                    "file_size": img.get("file_size"),
+                    "description": img.get("description"),
+                }
+                for img in images[legacy_id]
+            ]
+        return detail
+
     def _migrate_inspections(self, source: Connection, target: Connection) -> None:
         reports: dict[int, dict[str, Any]] = {}
         charges: dict[int, dict[str, Any]] = {}
@@ -642,6 +728,15 @@ class OperationalWriter:
             reports[int(row["inspection_id"])] = row
         for row in self._rows(source, "SELECT * FROM inspection_charges ORDER BY id"):
             charges[int(row["inspection_id"])] = row
+        insp_parts: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for row in self._rows(source, "SELECT * FROM insp_parts ORDER BY id"):
+            insp_parts[int(row["inspection_id"])].append(row)
+        insp_kits: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for row in self._rows(source, "SELECT * FROM insp_test_kits ORDER BY id"):
+            insp_kits[int(row["inspection_id"])].append(row)
+        insp_images: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for row in self._rows(source, "SELECT * FROM inspection_images ORDER BY id"):
+            insp_images[int(row["inspection_id"])].append(row)
         for row in self._rows(
             source, "SELECT * FROM inspection_batch_infos ORDER BY id"
         ):
@@ -766,6 +861,29 @@ class OperationalWriter:
                 report = reports.get(legacy_id, {})
                 charge = charges.get(legacy_id, {})
                 created_at = _safe_datetime(row.get("created_at")) or scheduled
+                form_data = {
+                    "source": SOURCE_SYSTEM,
+                    "legacy_inspection_id": legacy_id,
+                    "legacy_report": _json_dict(report) if report else None,
+                    "billing": {
+                        key: _json_value(charge.get(source_key))
+                        for key, source_key in {
+                            "parts": "parts",
+                            "discount": "discount",
+                            "tax": "tax",
+                            "labor": "labour",
+                            "service": "service",
+                            "travel": "travel",
+                            "other": "other",
+                            "net_charges": "net_charges",
+                        }.items()
+                    },
+                }
+                form_data.update(
+                    self._inspection_detail(
+                        legacy_id, insp_parts, insp_kits, insp_images
+                    )
+                )
                 inspection_id = self._insert(
                     target,
                     inspection_table,
@@ -788,24 +906,7 @@ class OperationalWriter:
                         "completed_at": _safe_datetime(row.get("updated_at"))
                         if status == "COMPLETED"
                         else None,
-                        "form_data": {
-                            "source": SOURCE_SYSTEM,
-                            "legacy_inspection_id": legacy_id,
-                            "legacy_report": _json_dict(report) if report else None,
-                            "billing": {
-                                key: _json_value(charge.get(source_key))
-                                for key, source_key in {
-                                    "parts": "parts",
-                                    "discount": "discount",
-                                    "tax": "tax",
-                                    "labor": "labour",
-                                    "service": "service",
-                                    "travel": "travel",
-                                    "other": "other",
-                                    "net_charges": "net_charges",
-                                }.items()
-                            },
-                        },
+                        "form_data": form_data,
                         "corrective_actions": report.get("action")
                         or report.get("f_fault"),
                         "inspection_scope": "facility_inventory",
@@ -822,6 +923,9 @@ class OperationalWriter:
                 self.counts["inspections"] += 1
                 if report:
                     self.counts["inspection_reports"] += 1
+                self.counts["inspection_parts"] += len(insp_parts.get(legacy_id, []))
+                self.counts["inspection_test_kits"] += len(insp_kits.get(legacy_id, []))
+                self.counts["inspection_images"] += len(insp_images.get(legacy_id, []))
 
     def _attach_inspection_quotations(
         self, source: Connection, target: Connection
