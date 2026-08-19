@@ -257,6 +257,19 @@ const formatDate = (value: string | null | undefined) => {
   return new Date(value).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
 }
 
+const composeCustomerAddress = (street: string, city: string, state: string, zip: string): string => {
+  const s = (street || '').trim()
+  const c = (city || '').trim()
+  const st = (state || '').trim()
+  const z = (zip || '').trim()
+  if (![s, c, st, z].some(Boolean)) return ''
+  let locality = [c, st].filter(Boolean).join(', ')
+  if (z) locality = `${locality} ${z}`.trim()
+  return [s, locality].filter(Boolean).join(', ')
+}
+
+const emptyAddressParts = () => ({ street: '', city: '', state: '', zip: '' })
+
 const emptyQuotation = (): SalesQuotationPayload => ({
   facility_id: null,
   customer_name: '',
@@ -351,6 +364,7 @@ const Sales = () => {
   const [editingQuotation, setEditingQuotation] = useState<SalesQuotation | null>(null)
   const [viewQuotation, setViewQuotation] = useState<SalesQuotation | null>(null)
   const [quotationForm, setQuotationForm] = useState<SalesQuotationPayload>(emptyQuotation())
+  const [addressParts, setAddressParts] = useState(emptyAddressParts())
   const [selectedPart, setSelectedPart] = useState<SalesPart | null>(null)
   const [selectedPartQty, setSelectedPartQty] = useState(1)
   const [selectedPartShipping, setSelectedPartShipping] = useState(0)
@@ -722,6 +736,7 @@ const Sales = () => {
       setQuotationDialog(false)
       setEditingQuotation(null)
       setQuotationForm(emptyQuotation())
+      setAddressParts(emptyAddressParts())
       setTradeInEnabled(false)
       setTradeInPart(emptyTradeInPart())
       setTradeInQuantity(1)
@@ -876,6 +891,7 @@ const Sales = () => {
     setEditingQuotation(null)
     setSelectedPart(null)
     setQuotationForm(emptyQuotation())
+    setAddressParts(emptyAddressParts())
     setTradeInEnabled(false)
     setTradeInPart(emptyTradeInPart())
     setTradeInQuantity(1)
@@ -892,6 +908,7 @@ const Sales = () => {
     setSalesDocumentMode(quotation.document_kind === 'direct_invoice' ? 'invoice' : 'quotation')
     setEditingQuotation(quotation)
     setSelectedPart(null)
+    setAddressParts({ street: quotation.customer_address || '', city: '', state: '', zip: '' })
     setQuotationForm({
       facility_id: quotation.facility_id,
       customer_name: quotation.customer_name,
@@ -1066,16 +1083,19 @@ const Sales = () => {
   }
 
   const submitQuotation = (action: 'draft' | 'send') => {
-    if (!quotationForm.customer_name) return toast.error('Customer name is required')
+    if (quotationForm.facility_id) {
+      if (!quotationForm.primary_recipient_user_id) return toast.error('Select a primary facility recipient')
+    } else {
+      if (!quotationForm.customer_name.trim()) return toast.error('Customer name is required')
+      if (!(quotationForm.customer_email || '').trim()) return toast.error('Customer email is required')
+    }
+    if (!(quotationForm.customer_phone || '').trim()) return toast.error('Customer phone is required')
+    if (!addressParts.street.trim() || !addressParts.city.trim() || !addressParts.state.trim() || !addressParts.zip.trim()) {
+      return toast.error('Enter the full customer address — street, city, state, and ZIP')
+    }
     if (quotationForm.items.length === 0) return toast.error('Add at least one sales part')
     if (quotationStockIssues.length > 0) {
       return toast.error(quotationStockIssues[0].message)
-    }
-    if (action === 'send' && quotationForm.facility_id && !quotationForm.primary_recipient_user_id) {
-      return toast.error('Select a primary facility recipient before sending')
-    }
-    if (action === 'send' && !quotationForm.customer_email) {
-      return toast.error('Customer email is required before sending')
     }
     saveQuotationMut.mutate(action)
   }
@@ -1286,6 +1306,11 @@ const Sales = () => {
 
   const syncCustomerFromFacility = (facilityId: number | '', selected?: Facility | null) => {
     const facility = selected || facilities.find(item => item.id === facilityId)
+    const street = facility ? (facility.billing_street || facility.address || '') : addressParts.street
+    const city = facility ? (facility.billing_city || facility.city || '') : addressParts.city
+    const state = facility ? (facility.billing_state || facility.state || '') : addressParts.state
+    const zip = facility ? (facility.billing_zip_code || facility.zip_code || '') : addressParts.zip
+    setAddressParts({ street, city, state, zip })
     setQuotationForm(prev => ({
       ...prev,
       facility_id: facilityId ? Number(facilityId) : null,
@@ -1293,12 +1318,18 @@ const Sales = () => {
       customer_email: facility?.billing_email || facility?.email || prev.customer_email,
       customer_phone: facility?.phone ? formatUSPhoneInput(facility.phone) : prev.customer_phone,
       customer_address: facility
-        ? [facility.billing_street || facility.address, facility.billing_city || facility.city, facility.billing_state || facility.state, facility.billing_zip_code || facility.zip_code].filter(Boolean).join(', ')
+        ? composeCustomerAddress(street, city, state, zip)
         : prev.customer_address,
       primary_recipient_user_id: null,
       additional_recipient_user_ids: [],
       secondary_recipients: [],
     }))
+  }
+
+  const setCustomerAddressField = (field: 'street' | 'city' | 'state' | 'zip', value: string) => {
+    const next = { ...addressParts, [field]: value }
+    setAddressParts(next)
+    setQuotationForm(prev => ({ ...prev, customer_address: composeCustomerAddress(next.street, next.city, next.state, next.zip) }))
   }
 
   const renderKpi = (label: string, value: number, icon: JSX.Element, color: string, targetTab: number) => (
@@ -2250,8 +2281,12 @@ const Sales = () => {
                     />
                   )}
             />
-            <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
-            <TextField label="Customer Email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
+            {!quotationForm.facility_id && (
+              <>
+                <TextField label="Customer Name *" value={quotationForm.customer_name} onChange={e => setQuotationForm(prev => ({ ...prev, customer_name: e.target.value }))} />
+                <TextField label="Customer Email *" type="email" value={quotationForm.customer_email || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_email: e.target.value }))} />
+              </>
+            )}
             <TextField label="Customer Phone" value={quotationForm.customer_phone || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_phone: formatUSPhoneInput(e.target.value) }))} />
             {salesDocumentMode === 'quotation' && <TextField
               select
@@ -2277,7 +2312,10 @@ const Sales = () => {
             {salesDocumentMode === 'invoice' && (
               <TextField label="Due Date" type="date" value={quotationForm.due_date || ''} onChange={e => setQuotationForm(prev => ({ ...prev, due_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
             )}
-            <TextField label="Customer Address" value={quotationForm.customer_address || ''} onChange={e => setQuotationForm(prev => ({ ...prev, customer_address: e.target.value }))} sx={{ gridColumn: '1 / -1' }} />
+            <TextField label="Street Address *" value={addressParts.street} onChange={e => setCustomerAddressField('street', e.target.value)} sx={{ gridColumn: '1 / -1' }} />
+            <TextField label="City *" value={addressParts.city} onChange={e => setCustomerAddressField('city', e.target.value)} />
+            <TextField label="State *" value={addressParts.state} onChange={e => setCustomerAddressField('state', e.target.value)} />
+            <TextField label="ZIP Code *" value={addressParts.zip} onChange={e => setCustomerAddressField('zip', e.target.value)} />
           </Box>
 
           <Divider sx={{ my: 3 }} />
