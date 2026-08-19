@@ -768,6 +768,16 @@ class OperationalWriter:
         batch_table = self.tables["inspection_batches"]
         inspection_table = self.tables["inspections"]
         for work_order, rows in grouped.items():
+            # Upcoming inspections are not migrated as rows; the app regenerates them
+            # on demand from each asset's PM schedule (equipment.next_generated_pm_date),
+            # so importing them here would carry stale dates and block that generation.
+            rows = [
+                row
+                for row in rows
+                if self._inspection_status(row.get("status")) != "UPCOMING"
+            ]
+            if not rows:
+                continue
             info = batch_info.get(work_order, {})
             legacy_batch_id = int(info.get("id") or rows[0]["id"])
             facility_id = self.maps["facility"].get(int(rows[0]["facility_id"]))
