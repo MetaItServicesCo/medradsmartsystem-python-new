@@ -4766,6 +4766,7 @@ const Inspections = () => {
               noOptionsText="No matching modalities"
             />
             <TextField select label="PM Scheduling" value={batchAssetForm.pm_scheduling || 'annual'} onChange={e => setBatchAssetForm(prev => ({ ...prev, pm_scheduling: e.target.value }))}>
+              <MenuItem value="monthly">Monthly</MenuItem>
               <MenuItem value="quarterly">Quarterly</MenuItem>
               <MenuItem value="semi_annual">Semi-Annual</MenuItem>
               <MenuItem value="annual">Annual</MenuItem>
