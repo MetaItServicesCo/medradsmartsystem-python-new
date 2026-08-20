@@ -36,6 +36,8 @@ from app.schemas.attendance import (
 )
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user, require_facility_access
 from app.utils.logging import log_activity
+from app.utils import face_engine
+from app.core.config import settings
 
 
 router = APIRouter()
@@ -51,8 +53,6 @@ ATTENDANCE_UPLOAD_DIR = os.path.join(
 )
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
-FACE_MATCH_THRESHOLD = 0.82
-FACE_REVIEW_THRESHOLD = 0.72
 
 get_attendance_manager = require_module_access("attendance")
 
@@ -225,60 +225,43 @@ def _load_stored_image(image_url: str):
     return image
 
 
-def _detect_face_regions(image) -> list[dict[str, Any]]:
-    cv2 = _load_cv2()
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    cascade_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
-    detector = cv2.CascadeClassifier(cascade_path)
-    faces = detector.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=5, minSize=(70, 70))
-    regions: list[dict[str, Any]] = []
-    image_area = max(image.shape[0] * image.shape[1], 1)
-    for x, y, width, height in faces:
-        area_ratio = (width * height) / image_area
-        regions.append(
-            {
-                "x": int(x),
-                "y": int(y),
-                "width": int(width),
-                "height": int(height),
-                "confidence": round(float(min(1.0, max(0.1, area_ratio * 4))), 3),
-            }
-        )
-    regions.sort(key=lambda item: item["width"] * item["height"], reverse=True)
-    return regions
-
-
-def _embedding_from_face(image, face_region: dict[str, Any]) -> list[float]:
-    cv2 = _load_cv2()
+def _detect_faces(image) -> list[face_engine.DetectedFace]:
     try:
-        import numpy as np
-    except Exception:
-        raise HTTPException(status_code=503, detail="Face recognition engine is unavailable. NumPy is not installed.")
-
-    x = max(0, int(face_region["x"]))
-    y = max(0, int(face_region["y"]))
-    width = max(1, int(face_region["width"]))
-    height = max(1, int(face_region["height"]))
-    face = image[y : y + height, x : x + width]
-    if face.size == 0:
-        raise HTTPException(status_code=400, detail="Detected face crop is empty")
-
-    gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-    resized = cv2.resize(gray, (32, 32), interpolation=cv2.INTER_AREA).astype("float32") / 255.0
-    vector = resized.flatten()
-    vector = vector - float(np.mean(vector))
-    norm = float(np.linalg.norm(vector)) or 1.0
-    vector = vector / norm
-    return [round(float(value), 6) for value in vector.tolist()]
+        return face_engine.detect(image)
+    except face_engine.FaceEngineUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"Face recognition engine is unavailable: {exc}")
 
 
-def _extract_embedding(image) -> tuple[Optional[list[float]], Optional[dict[str, Any]], list[dict[str, Any]]]:
-    faces = _detect_face_regions(image)
+def _detect_face_regions(image) -> list[dict[str, Any]]:
+    return [face.as_region() for face in _detect_faces(image)]
+
+
+def _embedding_for(image, face: face_engine.DetectedFace) -> list[float]:
+    try:
+        return face_engine.embed(image, face)
+    except face_engine.FaceEngineUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"Face recognition engine is unavailable: {exc}")
+
+
+def _sample_quality_issue(image, face: face_engine.DetectedFace) -> Optional[str]:
+    """Return a rejection reason for a poor enrollment sample, or None if acceptable."""
+    if face.score < settings.FACE_MIN_DETECTOR_SCORE:
+        return "face is unclear or not front-facing"
+    if min(face.width, face.height) < settings.FACE_MIN_FACE_PIXELS:
+        return "face is too small in the frame"
+    if face_engine.sharpness(image, face) < settings.FACE_MIN_ENROLL_SHARPNESS:
+        return "image is too blurry"
+    return None
+
+
+def _extract_embedding(
+    image,
+) -> tuple[Optional[list[float]], Optional[dict[str, Any]], list[dict[str, Any]], Optional[face_engine.DetectedFace]]:
+    faces = _detect_faces(image)
     if not faces:
-        return None, None, faces
-    face = faces[0]
-    return _embedding_from_face(image, face), face, faces
+        return None, None, [], None
+    top = faces[0]
+    return _embedding_for(image, top), top.as_region(), [face.as_region() for face in faces], top
 
 
 def _mean_embedding(embeddings: list[list[float]]) -> list[float]:
@@ -305,7 +288,7 @@ def _evaluate_face_sample(image_url: str) -> tuple[Optional[float], bool, bool, 
     if image is None:
         return None, False, True, None
 
-    embedding, face, _faces = _extract_embedding(image)
+    embedding, face, _faces, _top = _extract_embedding(image)
     if not face:
         return 0.0, False, True, None
     return face["confidence"], True, True, embedding
@@ -327,13 +310,22 @@ def _profile_candidates(db: Session, current_user: User, facility_id: Optional[i
 
 
 def _best_face_match(db: Session, current_user: User, embedding: list[float], facility_id: Optional[int] = None):
+    """Match against the closest enrolled sample (not an averaged centroid).
+
+    Comparing to each stored sample and taking the maximum cosine similarity is
+    far more robust to pose/lighting than matching a single mean embedding.
+    """
     best_profile = None
     best_score = 0.0
     for profile in _profile_candidates(db, current_user, facility_id):
-        score = _cosine_similarity(embedding, profile.face_embedding or [])
-        if score > best_score:
-            best_score = score
-            best_profile = profile
+        references = [sample.embedding for sample in profile.face_samples if sample.embedding]
+        if profile.face_embedding:
+            references.append(profile.face_embedding)
+        for reference in references:
+            score = face_engine.similarity(embedding, reference)
+            if score > best_score:
+                best_score = score
+                best_profile = profile
     return best_profile, best_score
 
 
@@ -441,7 +433,27 @@ def upload_face_sample(
         raise HTTPException(status_code=404, detail="Attendance profile not found")
     require_facility_access(db, current_user, profile.facility_id)
 
-    image_url = _save_upload(file, f"profile_{profile.id}")
+    # Enrollment quality gate — reject unusable samples up front so training only
+    # ever learns from clean, single-face, sharp, front-facing captures.
+    image, content = _read_upload_image(file)
+    faces = _detect_faces(image)
+    if not faces:
+        raise HTTPException(status_code=400, detail="No clear, front-facing face was detected. Please retake the photo.")
+    if len(faces) > 1:
+        raise HTTPException(status_code=400, detail="Multiple faces detected. Capture one person at a time.")
+    quality_issue = _sample_quality_issue(image, faces[0])
+    if quality_issue:
+        raise HTTPException(status_code=400, detail=f"Sample rejected: {quality_issue}. Please retake the photo.")
+
+    os.makedirs(ATTENDANCE_UPLOAD_DIR, exist_ok=True)
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
+    stored_name = f"profile_{profile.id}_{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(ATTENDANCE_UPLOAD_DIR, stored_name)
+    with open(file_path, "wb") as f:
+        f.write(content)
+    image_url = f"/uploads/attendance_faces/{stored_name}"
     sample = AttendanceFaceSample(profile_id=profile.id, image_url=image_url, captured_by_id=current_user.id)
     db.add(sample)
     profile.face_samples_count = (profile.face_samples_count or 0) + 1
@@ -498,7 +510,7 @@ def train_face_profile(
 
     profile.face_samples_count = len(samples)
     profile.face_status = AttendanceFaceStatus.ENROLLED
-    profile.face_model_version = f"local-cv-{profile.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    profile.face_model_version = f"{face_engine.ENGINE_VERSION}-p{profile.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     profile.face_embedding = _mean_embedding(embeddings)
     profile.updated_at = datetime.utcnow()
 
@@ -544,7 +556,7 @@ def recognize_face_attendance(
     current_user: User = Depends(get_attendance_manager),
 ) -> Any:
     image, content = _read_upload_image(file)
-    embedding, face, faces = _extract_embedding(image)
+    embedding, face, faces, top_face = _extract_embedding(image)
     if not face or not embedding:
         return {
             "matched": False,
@@ -567,11 +579,26 @@ def recognize_face_attendance(
 
     verification_status = (
         AttendanceVerificationStatus.VERIFIED
-        if score >= FACE_MATCH_THRESHOLD
+        if score >= settings.FACE_MATCH_THRESHOLD
         else AttendanceVerificationStatus.NEEDS_REVIEW
-        if score >= FACE_REVIEW_THRESHOLD
+        if score >= settings.FACE_REVIEW_THRESHOLD
         else AttendanceVerificationStatus.REJECTED
     )
+
+    # Advisory liveness (allow-but-flag): a suspected screen/photo is still marked
+    # but downgraded to NEEDS_REVIEW so HR can review it. It never rejects unless
+    # the deployment explicitly sets FACE_LIVENESS_MODE=enforce.
+    liveness_score = face_engine.liveness(image, top_face) if top_face else 1.0
+    liveness_mode = (settings.FACE_LIVENESS_MODE or "advisory").strip().lower()
+    liveness_suspect = liveness_mode != "off" and liveness_score < settings.FACE_LIVENESS_MIN_SCORE
+    if liveness_suspect and liveness_mode == "enforce":
+        verification_status = AttendanceVerificationStatus.REJECTED
+    elif (
+        liveness_suspect
+        and liveness_mode == "advisory"
+        and verification_status == AttendanceVerificationStatus.VERIFIED
+    ):
+        verification_status = AttendanceVerificationStatus.NEEDS_REVIEW
 
     if verification_status == AttendanceVerificationStatus.REJECTED:
         return {
@@ -633,7 +660,13 @@ def recognize_face_attendance(
         source=AttendanceSource.FACE,
         verification_status=verification_status,
         confidence=round(score, 3),
-        remark="Marked by face recognition" if verification_status == AttendanceVerificationStatus.VERIFIED else "Face match needs HR review",
+        remark=(
+            "Marked by face recognition"
+            if verification_status == AttendanceVerificationStatus.VERIFIED
+            else "Possible screen/photo — flagged for HR review"
+            if liveness_suspect
+            else "Face match needs HR review"
+        ),
         device_label=device_label,
         image_url=image_url,
         created_by_id=current_user.id,
@@ -651,6 +684,8 @@ def recognize_face_attendance(
             "confidence": round(score, 3),
             "verification_status": verification_status.value,
             "event_type": event_enum.value,
+            "liveness_score": round(liveness_score, 4),
+            "liveness_mode": liveness_mode,
         },
     )
     db.commit()

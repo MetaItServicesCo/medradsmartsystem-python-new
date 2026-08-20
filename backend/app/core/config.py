@@ -81,7 +81,17 @@ class Settings(BaseSettings):
     # Face Recognition
     FACE_RECOGNITION_TOLERANCE: float = 0.6
     FACE_RECOGNITION_MIN_CONFIDENCE: float = 0.85
-    
+
+    # SFace attendance recognition — cosine similarity of 128-d embeddings.
+    # Tune on real staff without a redeploy (env vars + restart).
+    FACE_MATCH_THRESHOLD: float = 0.38          # >= this -> VERIFIED
+    FACE_REVIEW_THRESHOLD: float = 0.30         # >= this -> NEEDS_REVIEW, else REJECTED
+    FACE_MIN_DETECTOR_SCORE: float = 0.80       # detection/enrollment quality gate
+    FACE_MIN_FACE_PIXELS: int = 80              # smallest acceptable face-box side
+    FACE_MIN_ENROLL_SHARPNESS: float = 40.0     # reject blurry enrollment samples
+    FACE_LIVENESS_MODE: str = "advisory"        # off | advisory | enforce
+    FACE_LIVENESS_MIN_SCORE: float = 0.25       # below this -> suspected screen/photo
+
     # Email
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
