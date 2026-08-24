@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Enum as SQLEnum, Text, Numeric
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Enum as SQLEnum, Text, Numeric, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -13,6 +13,10 @@ class EquipmentStatus(str, enum.Enum):
 
 class Equipment(Base):
     __tablename__ = "equipment"
+    __table_args__ = (
+        Index("ix_equipment_facility_status_created", "facility_id", "status", "created_at"),
+        Index("ix_equipment_facility_created", "facility_id", "created_at"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     asset_tag = Column(String, nullable=False, index=True)

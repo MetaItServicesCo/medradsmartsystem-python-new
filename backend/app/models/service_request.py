@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Boolean, JSON, Index
 
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -206,6 +206,12 @@ class BillingStatus(str, enum.Enum):
 
 class ServiceRequest(Base):
     __tablename__ = "service_requests"
+    __table_args__ = (
+        Index("ix_service_requests_facility_status_created", "facility_id", "status", "created_at"),
+        Index("ix_service_requests_technician_status_created", "assigned_technician_id", "status", "created_at"),
+        Index("ix_service_requests_requester_created", "requester_id", "created_at"),
+        Index("ix_service_requests_status_created", "status", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     request_number = Column(String, unique=True, nullable=False, index=True)

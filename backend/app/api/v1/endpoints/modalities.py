@@ -11,6 +11,7 @@ from app.models.modality import Modality
 from app.schemas.modality import (
     ModalityCreate, ModalityUpdate, ModalityResponse, ModalityListResponse
 )
+from app.utils.read_cache import cached_read
 
 router = APIRouter()
 
@@ -43,6 +44,7 @@ def _build_tree(modality: Modality, search: Optional[str] = None) -> Optional[di
 
 
 @router.get("/", response_model=ModalityListResponse)
+@cached_read("modalities", ttl_seconds=300, scope="shared")
 def list_modalities(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -80,6 +82,7 @@ def list_modalities(
 
 
 @router.get("/{id}", response_model=ModalityResponse)
+@cached_read("modalities", ttl_seconds=300, scope="shared")
 def get_modality(
     id: int,
     db: Session = Depends(get_db),

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -20,6 +20,10 @@ class UserRole(str, enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_facility_role_active_created", "facility_id", "role", "is_active", "created_at"),
+        Index("ix_users_role_active_created", "role", "is_active", "created_at"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)

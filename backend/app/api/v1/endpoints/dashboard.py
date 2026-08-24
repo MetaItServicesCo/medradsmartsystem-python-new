@@ -19,11 +19,13 @@ from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user
 from app.utils.invoice_approval import scope_invoice_approval_visibility
+from app.utils.read_cache import cached_read
 
 router = APIRouter(dependencies=[Depends(require_module_access("dashboard"))])
 
 
 @router.get("/summary")
+@cached_read("dashboard", ttl_seconds=20)
 def read_dashboard_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

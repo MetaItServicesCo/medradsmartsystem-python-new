@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_admin_user, require_roles
 from app.utils.permission_deps import require_module_access
+from app.utils.read_cache import cached_read
 from app.db.base import get_db
 from app.models.user import User, UserRole, UserType
 from app.models.user_facility import UserFacility
@@ -313,6 +314,7 @@ def create_user(
 
 
 @router.get("/", response_model=UserListResponse)
+@cached_read("users", ttl_seconds=20)
 def list_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -392,6 +394,7 @@ def list_users(
 
 
 @router.get("/search", response_model=List[UserSearchResponse])
+@cached_read("users", ttl_seconds=20)
 def search_users(
     q: str = Query(..., min_length=1),
     db: Session = Depends(get_db),

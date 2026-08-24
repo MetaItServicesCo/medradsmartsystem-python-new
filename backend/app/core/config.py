@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     API_RATE_LIMIT: int = 600
     API_RATE_LIMIT_WINDOW_SECONDS: int = 60
     MAX_REQUEST_BODY_SIZE: int = 16 * 1024 * 1024
+    SLOW_REQUEST_THRESHOLD_MS: int = 1000
+    REQUEST_LOG_SUCCESS_SAMPLE_RATE: float = 0.10
     
     # File Upload
     UPLOAD_DIR: str = "uploads"
@@ -128,6 +130,13 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+    WEBSOCKET_CHANNEL_PREFIX: str = "medrad:realtime"
+    WEBSOCKET_PRESENCE_TTL_SECONDS: int = 45
+    READ_CACHE_ENABLED: bool = True
+    READ_CACHE_PREFIX: str = "medrad:cache"
+    READ_CACHE_DEFAULT_TTL_SECONDS: int = 30
+    READ_CACHE_LOCK_SECONDS: int = 10
+    READ_CACHE_LOCK_WAIT_MS: int = 150
 
     @property
     def is_production(self) -> bool:
@@ -163,6 +172,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 "AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED must be true when AI extraction is enabled in production"
             )
+        if not 0 <= self.REQUEST_LOG_SUCCESS_SAMPLE_RATE <= 1:
+            raise ValueError("REQUEST_LOG_SUCCESS_SAMPLE_RATE must be between 0 and 1")
+        if self.WEBSOCKET_PRESENCE_TTL_SECONDS < 15:
+            raise ValueError("WEBSOCKET_PRESENCE_TTL_SECONDS must be at least 15")
+        if self.READ_CACHE_DEFAULT_TTL_SECONDS < 1:
+            raise ValueError("READ_CACHE_DEFAULT_TTL_SECONDS must be positive")
+        if self.READ_CACHE_LOCK_SECONDS < 1:
+            raise ValueError("READ_CACHE_LOCK_SECONDS must be positive")
+        if self.READ_CACHE_LOCK_WAIT_MS < 0:
+            raise ValueError("READ_CACHE_LOCK_WAIT_MS cannot be negative")
         insecure_origins = [
             origin for origin in self.BACKEND_CORS_ORIGINS
             if origin == "*" or origin.startswith("http://")

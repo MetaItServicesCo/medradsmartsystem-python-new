@@ -7,6 +7,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-medrad}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be configured}
       POSTGRES_DB: ${POSTGRES_DB:-medrad_db}
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - track_io_timing=on
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -61,10 +69,10 @@ services:
     container_name: medrad_backend
     restart: unless-stopped
     init: true
-    # Keep one worker while WebSocket presence remains process-local. Increase
-    # BACKEND_WORKERS only after presence/fan-out is shared through Redis, so
-    # scaling cannot split active chat/call state across isolated processes.
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-1} --proxy-headers --forwarded-allow-ips=* --no-access-log
+    # Redis-backed WebSocket presence/fan-out keeps chat and call signaling
+    # coherent across workers. Two workers suit the production 4-vCPU host;
+    # raise this only alongside database pool and load-test validation.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-2} --proxy-headers --forwarded-allow-ips=* --no-access-log
     volumes:
       - ./backend:/app
     ports:
@@ -86,6 +94,15 @@ services:
       - API_RATE_LIMIT=${API_RATE_LIMIT:-600}
       - API_RATE_LIMIT_WINDOW_SECONDS=${API_RATE_LIMIT_WINDOW_SECONDS:-60}
       - MAX_REQUEST_BODY_SIZE=${MAX_REQUEST_BODY_SIZE:-16777216}
+      - SLOW_REQUEST_THRESHOLD_MS=${SLOW_REQUEST_THRESHOLD_MS:-1000}
+      - REQUEST_LOG_SUCCESS_SAMPLE_RATE=${REQUEST_LOG_SUCCESS_SAMPLE_RATE:-0.10}
+      - WEBSOCKET_CHANNEL_PREFIX=${WEBSOCKET_CHANNEL_PREFIX:-medrad:realtime}
+      - WEBSOCKET_PRESENCE_TTL_SECONDS=${WEBSOCKET_PRESENCE_TTL_SECONDS:-45}
+      - READ_CACHE_ENABLED=${READ_CACHE_ENABLED:-true}
+      - READ_CACHE_PREFIX=${READ_CACHE_PREFIX:-medrad:cache}
+      - READ_CACHE_DEFAULT_TTL_SECONDS=${READ_CACHE_DEFAULT_TTL_SECONDS:-30}
+      - READ_CACHE_LOCK_SECONDS=${READ_CACHE_LOCK_SECONDS:-10}
+      - READ_CACHE_LOCK_WAIT_MS=${READ_CACHE_LOCK_WAIT_MS:-150}
       - PAYMENT_PROOF_STORAGE_BACKEND=${PAYMENT_PROOF_STORAGE_BACKEND:-local}
       - PAYMENT_PROOF_S3_ENDPOINT_URL=${PAYMENT_PROOF_S3_ENDPOINT_URL:-}
       - PAYMENT_PROOF_S3_REGION=${PAYMENT_PROOF_S3_REGION:-}
@@ -94,8 +111,10 @@ services:
       - PAYMENT_PROOF_S3_SECRET_ACCESS_KEY=${PAYMENT_PROOF_S3_SECRET_ACCESS_KEY:-}
       - PAYMENT_PROOF_S3_PREFIX=${PAYMENT_PROOF_S3_PREFIX:-payment-proofs}
       - PAYMENT_PROOF_S3_SERVER_SIDE_ENCRYPTION=${PAYMENT_PROOF_S3_SERVER_SIDE_ENCRYPTION:-AES256}
-      - DATABASE_POOL_SIZE=${DATABASE_POOL_SIZE:-10}
-      - DATABASE_MAX_OVERFLOW=${DATABASE_MAX_OVERFLOW:-20}
+      # These limits are per worker. With the default two workers the API has
+      # the same approximate connection ceiling as the former single process.
+      - DATABASE_POOL_SIZE=${DATABASE_POOL_SIZE:-8}
+      - DATABASE_MAX_OVERFLOW=${DATABASE_MAX_OVERFLOW:-8}
       - DATABASE_POOL_TIMEOUT_SECONDS=${DATABASE_POOL_TIMEOUT_SECONDS:-30}
       - DATABASE_POOL_RECYCLE_SECONDS=${DATABASE_POOL_RECYCLE_SECONDS:-1800}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}

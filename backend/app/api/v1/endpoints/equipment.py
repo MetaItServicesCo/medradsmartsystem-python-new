@@ -19,11 +19,13 @@ from app.schemas.equipment import (
 from app.utils.inspection_schedule import next_inspection_date
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.permission_deps import require_module_access
+from app.utils.read_cache import cached_read
 
 router = APIRouter(dependencies=[Depends(require_module_access("facility-inventory"))])
 
 
 @router.get("/", response_model=EquipmentListResponse)
+@cached_read("equipment", ttl_seconds=20)
 def list_equipment(
     db: Session = Depends(get_db),
     facility_id: Optional[int] = Query(None),
@@ -108,6 +110,7 @@ def export_equipment_csv(
 
 
 @router.get("/{id}", response_model=EquipmentSchema)
+@cached_read("equipment", ttl_seconds=30)
 def get_equipment(
     id: int,
     db: Session = Depends(get_db),

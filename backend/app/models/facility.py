@@ -1,10 +1,14 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.base import Base
 
 class Facility(Base):
     __tablename__ = "facilities"
+    __table_args__ = (
+        Index("ix_facilities_status_created", "status", "created_at"),
+        Index("ix_facilities_parent_created", "parent_facility_id", "created_at"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)

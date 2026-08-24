@@ -28,6 +28,7 @@ from app.utils.facility_access import require_facility_access, scope_query_to_us
 from app.utils.permissions import require_module_permission
 from app.utils.list_search import contains_ci, normalize_list_search, predicates_for_field, value_contains_ci
 from app.utils.upload_security import protected_upload_path
+from app.utils.read_cache import cached_read
 
 router = APIRouter(dependencies=[Depends(require_module_access("facilities"))])
 
@@ -383,6 +384,7 @@ def _facility_response(
 
 
 @router.get("/", response_model=schemas.FacilityListResponse)
+@cached_read("facilities", ttl_seconds=20)
 def read_facilities(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
@@ -518,6 +520,7 @@ def read_facilities(
 
 
 @router.get("/summary", response_model=schemas.FacilitySummaryResponse)
+@cached_read("facilities", ttl_seconds=30)
 def read_facility_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -560,6 +563,7 @@ def read_facility_summary(
 
 
 @router.get("/search", response_model=List[schemas.FacilityBrief])
+@cached_read("facilities", ttl_seconds=30)
 def search_facilities(
     db: Session = Depends(get_db),
     q: str = Query("", min_length=0),

@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, Response
 
 from app.core.config import settings
 from app.utils.rate_limit import enforce_rate_limit, request_ip
+from app.utils.read_cache import invalidate_read_cache, mutation_cache_namespaces
 
 
 logger = logging.getLogger("medrad.request")
@@ -119,9 +120,10 @@ class ApiSecurityMiddleware(BaseHTTPMiddleware):
             )
 
         response = self._secure_response(response, request_id, request)
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and 200 <= response.status_code < 400:
+            invalidate_read_cache(*mutation_cache_namespaces(request.url.path))
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
-        logger.info(
-            "request_id=%s method=%s path=%s status=%s duration_ms=%s ip=%s",
+        log_args = (
             request_id,
             request.method,
             _safe_log_path(request.url.path),
@@ -129,7 +131,37 @@ class ApiSecurityMiddleware(BaseHTTPMiddleware):
             duration_ms,
             request_ip(request),
         )
+        if duration_ms >= settings.SLOW_REQUEST_THRESHOLD_MS:
+            logger.warning(
+                "slow_request request_id=%s method=%s path=%s status=%s duration_ms=%s ip=%s",
+                *log_args,
+            )
+        elif response.status_code >= 500:
+            logger.error(
+                "request_failed request_id=%s method=%s path=%s status=%s duration_ms=%s ip=%s",
+                *log_args,
+            )
+        elif response.status_code >= 400 or self._sample_success(request_id):
+            logger.info(
+                "request_id=%s method=%s path=%s status=%s duration_ms=%s ip=%s",
+                *log_args,
+            )
         return response
+
+    @staticmethod
+    def _sample_success(request_id: str) -> bool:
+        """Deterministically sample routine successes without losing errors.
+
+        Audit records remain complete; this only bounds high-volume operational
+        request logging so log I/O does not become an API bottleneck.
+        """
+        rate = settings.REQUEST_LOG_SUCCESS_SAMPLE_RATE
+        if rate >= 1:
+            return True
+        if rate <= 0:
+            return False
+        bucket = int(hashlib.sha256(request_id.encode("utf-8")).hexdigest()[:8], 16)
+        return bucket / 0xFFFFFFFF < rate
 
     @staticmethod
     def _secure_response(response: Response, request_id: str, request: Request) -> Response:

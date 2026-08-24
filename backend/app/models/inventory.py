@@ -9,6 +9,8 @@ class InventoryPart(Base):
     __tablename__ = "inventory_parts"
     __table_args__ = (
         Index("ix_inventory_parts_type_status_inventory", "part_type", "status", "inventory_date"),
+        Index("ix_inventory_parts_type_updated", "part_type", "updated_at"),
+        Index("ix_inventory_parts_facility_updated", "facility_id", "updated_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)

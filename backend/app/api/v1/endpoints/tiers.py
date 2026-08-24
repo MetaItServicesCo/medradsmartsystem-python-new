@@ -14,11 +14,13 @@ from app.models.inventory import InventoryPart
 from app.schemas.tier import (
     Tier as TierSchema, TierCreate, TierUpdate, TierListResponse
 )
+from app.utils.read_cache import cached_read
 
 router = APIRouter()
 
 
 @router.get("/", response_model=TierListResponse)
+@cached_read("tiers", ttl_seconds=300, scope="shared")
 def read_tiers(
     db: Session = Depends(get_db),
     search: Optional[str] = Query(None),
@@ -43,6 +45,7 @@ def read_tiers(
 
 
 @router.get("/{id}", response_model=TierSchema)
+@cached_read("tiers", ttl_seconds=300, scope="shared")
 def read_tier(
     id: int,
     db: Session = Depends(get_db),

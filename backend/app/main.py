@@ -14,6 +14,7 @@ from app.middleware.activity_audit import ActivityAuditMiddleware
 from app.middleware.security import ApiSecurityMiddleware
 from app.utils.rate_limit import _redis_client
 from app.utils.upload_security import PublicUploadsStaticFiles
+from app.api.v1.endpoints.websocket import manager as websocket_manager
 
 if settings.RUN_STARTUP_MIGRATIONS:
     run_migration()
@@ -79,6 +80,16 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 UPLOADS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "uploads")
 os.makedirs(UPLOADS_PATH, exist_ok=True)
 app.mount("/uploads", PublicUploadsStaticFiles(directory=UPLOADS_PATH), name="uploads")
+
+
+@app.on_event("startup")
+async def start_realtime_backplane():
+    await websocket_manager.start()
+
+
+@app.on_event("shutdown")
+async def stop_realtime_backplane():
+    await websocket_manager.close()
 
 @app.get("/")
 async def root():
