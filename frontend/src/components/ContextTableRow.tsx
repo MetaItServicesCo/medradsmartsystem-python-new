@@ -14,26 +14,22 @@ const ContextTableRow = ({
   recordKey,
   recordLabel,
   contextSelected = false,
-  onPointerDownCapture,
   children,
   ...props
 }: ContextTableRowProps) => {
-  const { focusRecord, isFocused } = useListContext()
+  const { isFocused } = useListContext()
   const focused = isFocused(recordKey)
+  void recordLabel
 
   return (
     <TableRow
       {...props}
       tabIndex={focused ? 0 : -1}
       aria-current={focused ? 'true' : undefined}
-      aria-selected={contextSelected || focused}
+      aria-selected={contextSelected || undefined}
       data-list-row-key={String(recordKey)}
       data-list-row-focused={focused ? 'true' : undefined}
       data-list-row-selected={contextSelected ? 'true' : undefined}
-      onPointerDownCapture={event => {
-        focusRecord(recordKey, recordLabel)
-        onPointerDownCapture?.(event)
-      }}
     >
       {children}
     </TableRow>
@@ -41,4 +37,3 @@ const ContextTableRow = ({
 }
 
 export default ContextTableRow
-

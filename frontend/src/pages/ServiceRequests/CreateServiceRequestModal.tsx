@@ -15,6 +15,7 @@ import { createServiceRequest, uploadServiceRequestImage, type ServiceRequestCre
 import { fetchEquipment, type EquipmentItem } from '@/api/equipment'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import SearchableSelect from '@/components/SearchableSelect'
+import { useListContext } from '@/contexts/ListContext'
 
 interface Props {
   open: boolean
@@ -28,6 +29,7 @@ const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 
 const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEquipmentId }: Props) => {
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
 
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [equipmentId, setEquipmentId] = useState<number | ''>('')
@@ -83,8 +85,13 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
 
   const createMutation = useMutation({
     mutationFn: (data: ServiceRequestCreate) => createServiceRequest(data),
-    onSuccess: () => {
+    onSuccess: (request) => {
       toast.success('Service request created successfully')
+      focusRecord(`service-request-${request.id}`, request.request_number, {
+        message: 'Service request created',
+        pathname: '/service-requests',
+        query: { search: request.request_number },
+      })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
       onClose()
     },

@@ -974,7 +974,16 @@ const Inspections = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { focusRecord } = useListContext()
+  const { focusRecord: publishRecentActivity } = useListContext()
+  const focusRecord = (
+    key: string | number,
+    label: string,
+    options: Parameters<typeof publishRecentActivity>[2] = {},
+  ) => publishRecentActivity(key, label, {
+    ...options,
+    pathname: '/inspections',
+    query: { context_search: label, ...options.query },
+  })
   const currentUser = useAuthStore((state) => state.user)
   const canAddInspections = hasPermission(currentUser, 'inspections', 'add')
   const canEditInspections = hasPermission(currentUser, 'inspections', 'edit')
@@ -982,6 +991,7 @@ const Inspections = () => {
   const canInitiateInspections = canAddInspections && canEditInspections
   const requestedTab = Number(searchParams.get('tab') || 0)
   const queryTab = Number.isInteger(requestedTab) && requestedTab >= 0 && requestedTab <= 5 ? requestedTab : 0
+  const activitySearch = searchParams.get('context_search') || ''
   const dateFrom = searchParams.get('date_from') || ''
   const dateTo = searchParams.get('date_to') || ''
   const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
@@ -1104,10 +1114,37 @@ const Inspections = () => {
   const selectTab = (nextTab: number) => {
     setTab(nextTab)
     const next = new URLSearchParams(searchParams)
+    next.delete('focus')
+    next.delete('context_search')
     if (nextTab === 0) next.delete('tab')
     else next.set('tab', String(nextTab))
     setSearchParams(next, { replace: true })
   }
+
+  useEffect(() => {
+    setTab(queryTab)
+    if (!activitySearch) return
+
+    if (queryTab === 0) {
+      setUpcomingSearch(activitySearch)
+      setDebouncedUpcomingSearch(activitySearch)
+      setUpcomingPage(0)
+    } else if (queryTab === 2) {
+      setInProgressSearch(activitySearch)
+      setDebouncedInProgressSearch(activitySearch)
+      setInProgressBatchPage(0)
+      setLegacyInProgressPage(0)
+    } else if (queryTab === 3) {
+      setCompletedSearch(activitySearch)
+      setDebouncedCompletedSearch(activitySearch)
+      setCompletedBatchPage(0)
+      setLegacyCompletedPage(0)
+    } else if (queryTab === 5) {
+      setClosedSearch(activitySearch)
+      setDebouncedClosedSearch(activitySearch)
+      setClosedPage(0)
+    }
+  }, [activitySearch, queryTab])
 
   const changeDateFilter = (key: 'date_from' | 'date_to', value: string) => {
     const next = new URLSearchParams(searchParams)

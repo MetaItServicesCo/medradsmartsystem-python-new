@@ -35,6 +35,7 @@ import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
+import { useListContext } from '@/contexts/ListContext'
 import { SALES_TAX_RATE, SALES_TAX_FACTOR, roundSalesMoney } from '@/utils/salesPricing'
 import {
   fetchRentalParts,
@@ -583,6 +584,7 @@ const Rentals = () => {
   const isInternalRentalOperator = currentUser?.role === 'superadmin'
     || (currentUser?.role === 'admin' && !currentUser.facility_id)
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
   const theme = useTheme()
   const fullScreenDialog = useMediaQuery(theme.breakpoints.down('sm'))
 
@@ -1018,12 +1020,18 @@ const Rentals = () => {
         ? updateRental(editingAgreement.id, buildAgreementUpdatePayload())
         : createRental(buildAgreementCreatePayload())
     ),
-    onSuccess: () => {
+    onSuccess: (rental) => {
       toast.success(editingAgreement ? 'Rental agreement updated' : 'Rental agreement created')
       setAgreementDialog(false)
       setEditingAgreement(null)
       setAgreementForm(emptyAgreement())
       invalidateRentals()
+      focusRecord(`rental-agreement-${rental.id}`, rental.rental_number, {
+        message: editingAgreement ? 'Rental agreement updated.' : 'Rental agreement created.',
+        announce: true,
+        pathname: '/rentals/agreements',
+        query: { search: rental.rental_number },
+      })
     },
     onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not save rental agreement')),
   })
@@ -1040,22 +1048,34 @@ const Rentals = () => {
 
   const returnMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: RentalReturnPayload }) => returnRental(id, data),
-    onSuccess: () => {
+    onSuccess: (rental) => {
       toast.success('Equipment returned successfully')
       setReturnDialog(null)
       setReturnForm({ actual_return_date: new Date().toISOString().slice(0, 10), return_condition: '', final_meter_reading: 0 })
       invalidateRentals()
+      focusRecord(`rental-agreement-${rental.id}`, rental.rental_number, {
+        message: 'Equipment return recorded on the rental agreement.',
+        announce: true,
+        pathname: '/rentals/agreements',
+        query: { search: rental.rental_number },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not return equipment'),
   })
 
   const convertMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: RentalInvoiceCreatePayload }) => convertRentalToInvoice(id, data),
-    onSuccess: () => {
+    onSuccess: (invoice) => {
       toast.success('Rental agreement converted to invoice')
       setConvertAgreement(null)
       setInvoiceDetails(emptyInvoiceDetails())
       invalidateRentals()
+      focusRecord(`rental-invoice-${invoice.id}`, invoice.invoice_number, {
+        message: 'Rental invoice generated and ready in Invoices.',
+        announce: true,
+        pathname: '/rentals/invoices',
+        query: { search: invoice.invoice_number },
+      })
       navigate('/rentals/invoices')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not convert to invoice'),
@@ -1063,10 +1083,16 @@ const Rentals = () => {
 
   const invoiceMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => updateRentalInvoice(id, data),
-    onSuccess: () => {
+    onSuccess: (invoice) => {
       toast.success('Rental invoice updated')
       setInvoiceEdit(null)
       invalidateRentals()
+      focusRecord(`rental-invoice-${invoice.id}`, invoice.invoice_number, {
+        message: 'Rental invoice updated.',
+        announce: true,
+        pathname: '/rentals/invoices',
+        query: { search: invoice.invoice_number },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not update invoice'),
   })
@@ -1078,6 +1104,12 @@ const Rentals = () => {
       toast.success(refunded?.payment_method === 'square_card' ? 'Refund issued to card and recorded' : 'Refund recorded in the invoice ledger')
       setRefundInvoice(null)
       invalidateRentals()
+      focusRecord(`rental-invoice-${invoice.id}`, invoice.invoice_number, {
+        message: 'Refund recorded in the rental invoice ledger.',
+        announce: true,
+        pathname: '/rentals/invoices',
+        query: { search: invoice.invoice_number },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not record refund'),
   })

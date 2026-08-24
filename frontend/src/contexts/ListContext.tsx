@@ -4,61 +4,100 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/stores/authStore'
 
-export interface ListFocusRecord {
+export interface RecentActivityRecord {
+  id: string
   key: string
   label: string
   message?: string
   updatedAt: number
-  announce?: boolean
+  pathname: string
+  search: string
+  scope: string
 }
 
-interface FocusRecordOptions {
+export interface FocusRecordOptions {
   message?: string
   announce?: boolean
   query?: Record<string, string | number | null | undefined>
+  pathname?: string
   syncUrl?: boolean
+}
+
+interface LocateFeedback {
+  activityId: string
+  state: 'opening' | 'found' | 'missing'
 }
 
 interface ListContextValue {
   scope: string
-  focusedRecord: ListFocusRecord | null
+  recentActivities: RecentActivityRecord[]
+  noticeActivity: RecentActivityRecord | null
+  locateFeedback: LocateFeedback | null
+  highlightedRecordKey: string | null
+  // Kept as the publishing API so existing successful mutation handlers remain compatible.
   focusRecord: (key: string | number, label: string, options?: FocusRecordOptions) => void
-  clearFocusedRecord: () => void
+  showActivity: (activityOrId: RecentActivityRecord | string) => void
+  dismissActivity: (id: string) => void
+  dismissNotice: () => void
+  clearRecentActivities: () => void
   isFocused: (key: string | number) => boolean
-  locateFocusedRecord: () => boolean
 }
 
 const ListContext = createContext<ListContextValue | null>(null)
-const STORAGE_PREFIX = 'medrad:list-context:'
-const MAX_CONTEXT_AGE_MS = 30 * 60 * 1000
+const LEGACY_STORAGE_PREFIX = 'medrad:list-context:'
+const STORAGE_PREFIX = 'medrad:recent-activity:'
+const MAX_ACTIVITY_AGE_MS = 24 * 60 * 60 * 1000
+const MAX_ACTIVITIES = 5
+const LOCATE_DELAYS_MS = [80, 220, 500, 1000, 1800, 3000]
 
 const scopeFromPath = (pathname: string) => pathname.split('/').filter(Boolean)[0] || 'dashboard'
 
-const readStoredContext = (scope: string): ListFocusRecord | null => {
+const storageKeyFor = (userId?: number | null, facilityId?: number | null) => (
+  `${STORAGE_PREFIX}${userId ?? 'anonymous'}:${facilityId ?? 'global'}`
+)
+
+const readStoredActivities = (storageKey: string): RecentActivityRecord[] => {
   try {
-    const raw = window.sessionStorage.getItem(`${STORAGE_PREFIX}${scope}`)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as ListFocusRecord
-    if (!parsed?.key || Date.now() - Number(parsed.updatedAt || 0) > MAX_CONTEXT_AGE_MS) {
-      window.sessionStorage.removeItem(`${STORAGE_PREFIX}${scope}`)
-      return null
-    }
+    const raw = window.sessionStorage.getItem(storageKey)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as RecentActivityRecord[]
+    if (!Array.isArray(parsed)) return []
+    const cutoff = Date.now() - MAX_ACTIVITY_AGE_MS
     return parsed
+      .filter(activity => activity?.id && activity?.key && Number(activity.updatedAt || 0) >= cutoff)
+      .slice(0, MAX_ACTIVITIES)
   } catch {
-    return null
+    return []
   }
 }
 
-const scrollToRecord = (key: string, behavior: ScrollBehavior = 'smooth') => {
-  const escapedKey = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(key) : key.replace(/"/g, '\\"')
-  const row = document.querySelector<HTMLElement>(`[data-list-row-key="${escapedKey}"]`)
+const findRecordRow = (key: string) => {
+  const escapedKey = typeof CSS !== 'undefined' && CSS.escape
+    ? CSS.escape(key)
+    : key.replace(/"/g, '\\"')
+  return document.querySelector<HTMLElement>(`[data-list-row-key="${escapedKey}"]`)
+}
+
+const revealRecord = (key: string) => {
+  const row = findRecordRow(key)
   if (!row) return false
-  row.scrollIntoView({ behavior, block: 'center', inline: 'nearest' })
+
+  const rect = row.getBoundingClientRect()
+  const scrollPanel = row.closest<HTMLElement>('.list-scroll-panel')
+    || document.querySelector<HTMLElement>('.app-main-scroll')
+  const viewportTop = scrollPanel?.getBoundingClientRect().top ?? 0
+  const viewportBottom = scrollPanel?.getBoundingClientRect().bottom ?? window.innerHeight
+  const fullyVisible = rect.top >= viewportTop && rect.bottom <= viewportBottom
+
+  // An explicit "Show in list" may scroll, but a visible row never moves.
+  if (!fullyVisible) row.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
   row.focus({ preventScroll: true })
   return true
 }
@@ -66,49 +105,44 @@ const scrollToRecord = (key: string, behavior: ScrollBehavior = 'smooth') => {
 export const ListContextProvider = ({ children }: { children: ReactNode }) => {
   const location = useLocation()
   const navigate = useNavigate()
+  const user = useAuthStore(state => state.user)
   const scope = scopeFromPath(location.pathname)
-  const [focusedRecord, setFocusedRecord] = useState<ListFocusRecord | null>(() => readStoredContext(scope))
+  const storageKey = storageKeyFor(user?.id, user?.facility_id)
+  const [recentActivities, setRecentActivities] = useState<RecentActivityRecord[]>(() => readStoredActivities(storageKey))
+  const [noticeActivityId, setNoticeActivityId] = useState<string | null>(null)
+  const [locateFeedback, setLocateFeedback] = useState<LocateFeedback | null>(null)
+  const [highlightedRecordKey, setHighlightedRecordKey] = useState<string | null>(null)
+  const locateRequestRef = useRef(0)
+  const highlightTimerRef = useRef<number | null>(null)
+
+  const persistActivities = useCallback((activities: RecentActivityRecord[]) => {
+    try {
+      window.sessionStorage.setItem(storageKey, JSON.stringify(activities))
+    } catch {
+      // Activity continuity is progressive enhancement; operations never depend on storage.
+    }
+  }, [storageKey])
 
   useEffect(() => {
-    const stored = readStoredContext(scope)
-    const params = new URLSearchParams(location.search)
-    const urlFocus = params.get('focus')
-    if (urlFocus) {
-      setFocusedRecord(current => (
-        current?.key === urlFocus
-          ? current
-          : stored?.key === urlFocus
-            ? stored
-            : { key: urlFocus, label: 'Focused record', updatedAt: Date.now() }
-      ))
-      return
-    }
-    setFocusedRecord(stored)
-  }, [scope])
+    setRecentActivities(readStoredActivities(storageKey))
+    setNoticeActivityId(null)
+    setLocateFeedback(null)
+    setHighlightedRecordKey(null)
+    locateRequestRef.current += 1
 
-  useEffect(() => {
-    if (!focusedRecord?.key) return undefined
-    let cancelled = false
-    let timer: number | undefined
-    const retryDelays = [0, 120, 350, 800, 1600]
-
-    const locateWhenRendered = (attempt: number) => {
-      if (cancelled) return
-      if (scrollToRecord(focusedRecord.key, attempt === 0 ? 'auto' : 'smooth')) return
-      if (attempt < retryDelays.length - 1) {
-        timer = window.setTimeout(
-          () => locateWhenRendered(attempt + 1),
-          retryDelays[attempt + 1] - retryDelays[attempt],
-        )
-      }
+    // Legacy entries were not user-scoped, so they are deliberately discarded.
+    try {
+      Object.keys(window.sessionStorage).forEach(key => {
+        if (key.startsWith(LEGACY_STORAGE_PREFIX)) window.sessionStorage.removeItem(key)
+      })
+    } catch {
+      // No-op when session storage is unavailable.
     }
+  }, [storageKey])
 
-    locateWhenRendered(0)
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [focusedRecord?.key, location.pathname])
+  useEffect(() => () => {
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current)
+  }, [])
 
   const focusRecord = useCallback((
     rawKey: string | number,
@@ -116,57 +150,127 @@ export const ListContextProvider = ({ children }: { children: ReactNode }) => {
     options: FocusRecordOptions = {},
   ) => {
     const key = String(rawKey)
-    const nextRecord: ListFocusRecord = {
-      key,
-      label,
-      message: options.message,
-      announce: options.announce,
-      updatedAt: Date.now(),
-    }
-    setFocusedRecord(nextRecord)
-    try {
-      window.sessionStorage.setItem(`${STORAGE_PREFIX}${scope}`, JSON.stringify(nextRecord))
-    } catch {
-      // Session storage is an enhancement; focus still works for this render.
-    }
-
-    if (!options.syncUrl && !options.query) return
-
-    const params = new URLSearchParams(location.search)
+    const pathname = options.pathname || location.pathname
+    const params = new URLSearchParams(pathname === location.pathname ? location.search : '')
     params.set('focus', key)
     Object.entries(options.query || {}).forEach(([name, value]) => {
       if (value === null || value === undefined || value === '') params.delete(name)
       else params.set(name, String(value))
     })
-    navigate(
-      { pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' },
-      { replace: true, state: location.state },
-    )
-  }, [location.pathname, location.search, location.state, navigate, scope])
 
-  const clearFocusedRecord = useCallback(() => {
-    setFocusedRecord(null)
+    const activity: RecentActivityRecord = {
+      id: `${Date.now()}-${key}`,
+      key,
+      label,
+      message: options.message,
+      updatedAt: Date.now(),
+      pathname,
+      search: params.toString() ? `?${params.toString()}` : '',
+      scope: scopeFromPath(pathname),
+    }
+
+    setRecentActivities(current => {
+      const next = [activity, ...current.filter(item => item.key !== key)].slice(0, MAX_ACTIVITIES)
+      persistActivities(next)
+      return next
+    })
+    setNoticeActivityId(activity.id)
+    setLocateFeedback(null)
+
+    // Explicit compatibility escape hatch. Normal activity publishing never navigates.
+    if (options.syncUrl) {
+      navigate({ pathname, search: activity.search }, { replace: true, state: location.state })
+    }
+  }, [location.pathname, location.search, location.state, navigate, persistActivities])
+
+  const showActivity = useCallback((activityOrId: RecentActivityRecord | string) => {
+    const activity = typeof activityOrId === 'string'
+      ? recentActivities.find(item => item.id === activityOrId)
+      : activityOrId
+    if (!activity) return
+
+    const requestId = locateRequestRef.current + 1
+    locateRequestRef.current = requestId
+    setNoticeActivityId(activity.id)
+    setLocateFeedback({ activityId: activity.id, state: 'opening' })
+    setHighlightedRecordKey(null)
+
+    const target = `${activity.pathname}${activity.search}`
+    const current = `${location.pathname}${location.search}`
+    if (target !== current) navigate(target)
+
+    let attempt = 0
+    const locate = () => {
+      if (locateRequestRef.current !== requestId) return
+      if (revealRecord(activity.key)) {
+        setHighlightedRecordKey(activity.key)
+        setLocateFeedback({ activityId: activity.id, state: 'found' })
+        if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current)
+        highlightTimerRef.current = window.setTimeout(() => {
+          setHighlightedRecordKey(currentKey => currentKey === activity.key ? null : currentKey)
+          setLocateFeedback(currentFeedback => currentFeedback?.activityId === activity.id ? null : currentFeedback)
+        }, 4000)
+        return
+      }
+      if (attempt >= LOCATE_DELAYS_MS.length - 1) {
+        setLocateFeedback({ activityId: activity.id, state: 'missing' })
+        return
+      }
+      attempt += 1
+      window.setTimeout(locate, LOCATE_DELAYS_MS[attempt] - LOCATE_DELAYS_MS[attempt - 1])
+    }
+    window.setTimeout(locate, LOCATE_DELAYS_MS[0])
+  }, [location.pathname, location.search, navigate, recentActivities])
+
+  const dismissActivity = useCallback((id: string) => {
+    setRecentActivities(current => {
+      const next = current.filter(activity => activity.id !== id)
+      persistActivities(next)
+      return next
+    })
+    setNoticeActivityId(current => current === id ? null : current)
+    setLocateFeedback(current => current?.activityId === id ? null : current)
+  }, [persistActivities])
+
+  const clearRecentActivities = useCallback(() => {
+    setRecentActivities([])
+    setNoticeActivityId(null)
+    setLocateFeedback(null)
+    setHighlightedRecordKey(null)
+    locateRequestRef.current += 1
     try {
-      window.sessionStorage.removeItem(`${STORAGE_PREFIX}${scope}`)
+      window.sessionStorage.removeItem(storageKey)
     } catch {
       // No-op when storage is unavailable.
     }
-    const params = new URLSearchParams(location.search)
-    params.delete('focus')
-    navigate(
-      { pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' },
-      { replace: true, state: location.state },
-    )
-  }, [location.pathname, location.search, location.state, navigate, scope])
+  }, [storageKey])
 
   const value = useMemo<ListContextValue>(() => ({
     scope,
-    focusedRecord,
+    recentActivities,
+    noticeActivity: recentActivities.find(activity => activity.id === noticeActivityId) || null,
+    locateFeedback,
+    highlightedRecordKey,
     focusRecord,
-    clearFocusedRecord,
-    isFocused: key => focusedRecord?.key === String(key),
-    locateFocusedRecord: () => focusedRecord ? scrollToRecord(focusedRecord.key) : false,
-  }), [clearFocusedRecord, focusRecord, focusedRecord, scope])
+    showActivity,
+    dismissActivity,
+    dismissNotice: () => {
+      setNoticeActivityId(null)
+      setLocateFeedback(null)
+    },
+    clearRecentActivities,
+    isFocused: key => highlightedRecordKey === String(key),
+  }), [
+    clearRecentActivities,
+    dismissActivity,
+    focusRecord,
+    highlightedRecordKey,
+    locateFeedback,
+    noticeActivityId,
+    recentActivities,
+    scope,
+    showActivity,
+  ])
 
   return <ListContext.Provider value={value}>{children}</ListContext.Provider>
 }

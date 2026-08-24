@@ -1,54 +1,73 @@
-import { Box, Button, Chip, IconButton, Typography } from '@mui/material'
+import { useEffect } from 'react'
+import { Box, Button, IconButton, Typography } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import SearchOffIcon from '@mui/icons-material/SearchOff'
 import { useListContext } from '@/contexts/ListContext'
 
 const WorkingContextBar = () => {
-  const { focusedRecord, clearFocusedRecord, locateFocusedRecord } = useListContext()
-  if (!focusedRecord) return null
+  const { noticeActivity, locateFeedback, showActivity, dismissNotice } = useListContext()
+
+  useEffect(() => {
+    if (!noticeActivity || locateFeedback?.state === 'opening' || locateFeedback?.state === 'missing') return undefined
+    const timer = window.setTimeout(dismissNotice, locateFeedback?.state === 'found' ? 3500 : 10000)
+    return () => window.clearTimeout(timer)
+  }, [dismissNotice, locateFeedback?.state, noticeActivity])
+
+  if (!noticeActivity) return null
+
+  const missing = locateFeedback?.activityId === noticeActivity.id && locateFeedback.state === 'missing'
+  const opening = locateFeedback?.activityId === noticeActivity.id && locateFeedback.state === 'opening'
+  const found = locateFeedback?.activityId === noticeActivity.id && locateFeedback.state === 'found'
 
   return (
     <Box
       role="status"
-      aria-live={focusedRecord.announce ? 'polite' : 'off'}
+      aria-live="polite"
       sx={{
-        mx: { xs: 2, md: 3 },
-        mt: 1.5,
-        px: 1.5,
-        py: 1,
+        position: 'fixed',
+        right: { xs: 12, sm: 24 },
+        bottom: { xs: 12, sm: 24 },
+        zIndex: 1450,
+        width: { xs: 'calc(100vw - 24px)', sm: 440 },
+        px: 2,
+        py: 1.5,
         display: 'flex',
         alignItems: 'center',
         gap: 1.25,
-        borderRadius: '14px',
-        bgcolor: focusedRecord.announce ? '#F0FDF4' : '#F5F3FF',
-        border: `1px solid ${focusedRecord.announce ? '#A7F3D0' : '#DDD6FE'}`,
-        boxShadow: '0 8px 24px rgba(49,46,129,0.06)',
+        borderRadius: '16px',
+        bgcolor: missing ? '#FFF7ED' : '#FFFFFF',
+        border: `1px solid ${missing ? '#FED7AA' : '#D1FAE5'}`,
+        boxShadow: '0 20px 55px rgba(30,27,75,0.18)',
       }}
     >
-      <CheckCircleOutlineIcon sx={{ color: focusedRecord.announce ? '#059669' : '#7C3AED', fontSize: 20 }} />
+      {missing
+        ? <SearchOffIcon sx={{ color: '#EA580C', fontSize: 22 }} />
+        : <CheckCircleOutlineIcon sx={{ color: '#059669', fontSize: 22 }} />}
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography noWrap sx={{ color: '#1E1B4B', fontSize: 13, fontWeight: 900 }}>
-          {focusedRecord.announce ? 'Recently updated' : 'Working context'}: {focusedRecord.label}
+          {found ? 'Record located' : missing ? 'Record is not in the loaded list' : noticeActivity.label}
         </Typography>
-        {focusedRecord.message && (
-          <Typography noWrap sx={{ color: '#64748B', fontSize: 12, fontWeight: 650 }}>
-            {focusedRecord.message}
-          </Typography>
-        )}
+        <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 650, lineHeight: 1.35 }}>
+          {missing
+            ? 'It may be filtered, unavailable, or outside your permissions.'
+            : opening
+              ? 'Opening the correct list and finding the record…'
+              : noticeActivity.message || 'Update completed successfully.'}
+        </Typography>
       </Box>
-      {focusedRecord.announce && (
-        <Chip size="small" label="Updated" sx={{ bgcolor: '#D1FAE5', color: '#047857', fontWeight: 900 }} />
+      {!found && !opening && (
+        <Button
+          size="small"
+          startIcon={<MyLocationIcon />}
+          onClick={() => showActivity(noticeActivity)}
+          sx={{ flexShrink: 0, borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}
+        >
+          Show
+        </Button>
       )}
-      <Button
-        size="small"
-        startIcon={<MyLocationIcon />}
-        onClick={locateFocusedRecord}
-        sx={{ display: { xs: 'none', sm: 'inline-flex' }, borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}
-      >
-        Locate
-      </Button>
-      <IconButton size="small" aria-label="Clear working context" onClick={clearFocusedRecord}>
+      <IconButton size="small" aria-label="Dismiss recent activity" onClick={dismissNotice}>
         <CloseIcon fontSize="small" />
       </IconButton>
     </Box>

@@ -52,6 +52,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 import SearchableSelect from '@/components/SearchableSelect'
+import { useListContext } from '@/contexts/ListContext'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
@@ -158,6 +159,7 @@ const ServiceRequestDetail = () => {
   const { id } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
 
   const [technicianId, setTechnicianId] = useState<number | ''>('')
   const [sessionDiagnosis, setSessionDiagnosis] = useState('')
@@ -307,8 +309,13 @@ const ServiceRequestDetail = () => {
   const updateMutation = useMutation({
     mutationFn: (data: ServiceRequestUpdate) =>
       updateServiceRequest(Number(id), data),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       toast.success('Service request updated')
+      focusRecord(`service-request-${updated.id}`, updated.request_number, {
+        message: 'Service request updated',
+        pathname: '/service-requests',
+        query: { search: updated.request_number },
+      })
       setChangeTechOpen(false)
       queryClient.invalidateQueries({ queryKey: ['service-request', id] })
       queryClient.invalidateQueries({ queryKey: ['service-requests'] })
@@ -339,8 +346,13 @@ const ServiceRequestDetail = () => {
         status: serviceWorkflowStatus,
       })
     },
-    onSuccess: () => {
+    onSuccess: (updated) => {
       toast.success('Work order updated')
+      focusRecord(`service-request-${updated.id}`, updated.request_number, {
+        message: 'Work order updated',
+        pathname: '/service-requests',
+        query: { search: updated.request_number },
+      })
       const now = new Date()
       setSessionStartTime(toDateTimeLocalValue(now))
       setSessionEndTime(toDateTimeLocalValue(now))

@@ -281,13 +281,16 @@ input[type='number'] {
   transition: background-color 0.15s ease;
 }
 
-.MuiTableRow-root[data-list-row-selected='true'] > .MuiTableCell-root,
 .MuiTableRow-root[data-list-row-focused='true'] > .MuiTableCell-root {
   background-color: #F5F3FF;
 }
 
+.MuiTableRow-root[data-list-row-selected='true'] > .MuiTableCell-root {
+  background-color: #EFF6FF;
+}
+
 .MuiTableRow-root[data-list-row-selected='true'] > .MuiTableCell-root:first-of-type {
-  box-shadow: inset 4px 0 0 #A78BFA;
+  box-shadow: inset 4px 0 0 #3B82F6;
 }
 
 .MuiTableRow-root[data-list-row-focused='true'] > .MuiTableCell-root:first-of-type {

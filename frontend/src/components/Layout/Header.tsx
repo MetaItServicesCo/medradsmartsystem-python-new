@@ -12,6 +12,7 @@ import { fetchCurrentUser, resolveUploadUrl } from '@/api/users'
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead, type NotificationItem } from '@/api/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import RecentActivityMenu from '../RecentActivityMenu'
 
 interface HeaderProps {
   title: string
@@ -124,6 +125,9 @@ const Header = ({ title }: HeaderProps) => {
           {title}
         </Typography>
       </Box>
+
+      {/* Recent successful actions are separate from row selection and notifications. */}
+      <RecentActivityMenu />
 
       {/* Notifications */}
       <IconButton

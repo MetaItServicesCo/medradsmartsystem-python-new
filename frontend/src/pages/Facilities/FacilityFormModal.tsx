@@ -23,6 +23,7 @@ import {
   type Facility, type FacilityCreate 
 } from '@/api/facilities'
 import { FACILITY_TIMEZONE_OPTIONS, formatUSPhoneInput, normalizeFacilityTimezone } from '@/utils/formatters'
+import { useListContext } from '@/contexts/ListContext'
 
 const schema = z.object({
   // General Info
@@ -102,6 +103,7 @@ function CustomTabPanel(props: TabPanelProps) {
 
 const FacilityFormModal = ({ open, onClose, facility }: Props) => {
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
   const isEdit = !!facility && facility.id !== 0
   const isDuplicate = !!facility && facility.id === 0
 
@@ -157,8 +159,13 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
   const mutation = useMutation({
     mutationFn: (data: FacilityCreate) =>
       isEdit ? updateFacility(facility!.id, data) : createFacility(data, isDuplicate),
-    onSuccess: () => {
+    onSuccess: (savedFacility) => {
       toast.success(isEdit ? 'Facility updated successfully!' : 'Facility created successfully!')
+      focusRecord(`facility-${savedFacility.id}`, savedFacility.name, {
+        message: isEdit ? 'Facility updated' : 'Facility created',
+        pathname: '/facilities',
+        query: { search: savedFacility.name },
+      })
       queryClient.invalidateQueries({ queryKey: ['facilities'] })
       onClose()
     },

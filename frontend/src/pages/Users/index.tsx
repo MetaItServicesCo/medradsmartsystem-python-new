@@ -33,6 +33,7 @@ import AddExistingUserModal from './AddExistingUserModal'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
+import { useListContext } from '@/contexts/ListContext'
 import { fetchFacility } from '@/api/facilities'
 import { hasPermission } from '@/config/permissions'
 
@@ -93,6 +94,7 @@ const Users = () => {
   const isSuperAdmin = currentUser?.role === 'superadmin'
   const canAddUsers = hasPermission(currentUser, 'users', 'add')
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const login = useAuthStore((s) => s.login)
@@ -173,9 +175,14 @@ const Users = () => {
 
   const deactivateMutation = useMutation({
     mutationFn: (id: number) => deactivateUser(id),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       toast.success('User deactivated')
+      focusRecord(`user-${updated.id}`, updated.full_name, {
+        message: 'User deactivated',
+        pathname: '/users',
+        query: { search: updated.email },
+      })
       setConfirmDeactivate(null)
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to deactivate'),
@@ -183,18 +190,28 @@ const Users = () => {
 
   const activateMutation = useMutation({
     mutationFn: (id: number) => activateUser(id),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       toast.success('User activated')
+      focusRecord(`user-${updated.id}`, updated.full_name, {
+        message: 'User activated',
+        pathname: '/users',
+        query: { search: updated.email },
+      })
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to activate'),
   })
 
   const roleUpdateMutation = useMutation({
     mutationFn: ({ id, role }: { id: number; role: string }) => updateUserRole(id, role),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       toast.success('Role updated')
+      focusRecord(`user-${updated.id}`, updated.full_name, {
+        message: 'User role updated',
+        pathname: '/users',
+        query: { search: updated.email },
+      })
       setRoleEditUser(null)
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update role'),

@@ -14,6 +14,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import SearchIcon from '@mui/icons-material/Search'
 import ScienceIcon from '@mui/icons-material/Science'
 import { toast } from 'react-toastify'
+import { useSearchParams } from 'react-router-dom'
 
 import {
   createTestEquipment,
@@ -29,6 +30,7 @@ import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
 import SearchableSelect from '@/components/SearchableSelect'
+import { useListContext } from '@/contexts/ListContext'
 
 const PAGE_SIZE = 25
 const ACTION_MENU_PAPER = {
@@ -97,9 +99,12 @@ const statusColor = (status: string) => {
 
 const TestEquipmentPage = () => {
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
+  const [searchParams] = useSearchParams()
+  const activitySearch = searchParams.get('search') || ''
   const user = useAuthStore((state) => state.user)
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [search, setSearch] = useState(activitySearch)
+  const [debouncedSearch, setDebouncedSearch] = useState(activitySearch)
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(0)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -113,6 +118,12 @@ const TestEquipmentPage = () => {
   const canAdd = hasPermission(user, 'test-equipment', 'add')
   const canEdit = hasPermission(user, 'test-equipment', 'edit')
   const canDelete = hasPermission(user, 'test-equipment', 'delete')
+
+  useEffect(() => {
+    setSearch(activitySearch)
+    setDebouncedSearch(activitySearch)
+    setPage(0)
+  }, [activitySearch])
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -156,8 +167,13 @@ const TestEquipmentPage = () => {
 
   const createMut = useMutation({
     mutationFn: createTestEquipment,
-    onSuccess: () => {
+    onSuccess: (item) => {
       toast.success('Test equipment added')
+      focusRecord(`test-equipment-${item.id}`, item.tem, {
+        message: 'Test equipment added',
+        pathname: '/test-equipment',
+        query: { search: item.tem },
+      })
       queryClient.invalidateQueries({ queryKey: ['test-equipment'] })
       closeDialog()
     },
@@ -166,8 +182,13 @@ const TestEquipmentPage = () => {
 
   const updateMut = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: TestEquipmentPayload }) => updateTestEquipment(id, payload),
-    onSuccess: () => {
+    onSuccess: (item) => {
       toast.success('Test equipment updated')
+      focusRecord(`test-equipment-${item.id}`, item.tem, {
+        message: 'Test equipment updated',
+        pathname: '/test-equipment',
+        query: { search: item.tem },
+      })
       queryClient.invalidateQueries({ queryKey: ['test-equipment'] })
       closeDialog()
     },

@@ -697,14 +697,12 @@ const Sales = () => {
     label: string,
     message: string,
   ) => {
-    setSearch(label)
-    setDebouncedSearch(label)
-    setQuotationsPage(0)
-    setInvoicesPage(0)
-    setInProgressPage(0)
-    setCompletedPage(0)
-    focusRecord(key, label, { message, announce: true })
-    navigate(`${path}?focus=${encodeURIComponent(key)}&search=${encodeURIComponent(label)}`)
+    focusRecord(key, label, {
+      message,
+      announce: true,
+      pathname: path,
+      query: { search: label },
+    })
   }
 
   const saveQuotationMut = useMutation({

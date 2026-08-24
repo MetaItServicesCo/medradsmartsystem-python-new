@@ -34,6 +34,7 @@ import ClippedTooltipText from '@/components/ClippedTooltipText'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
+import { useListContext } from '@/contexts/ListContext'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 
 const PAGE_SIZE = 25
@@ -142,6 +143,7 @@ const transactionLabels: Record<InventoryTransactionType, string> = {
 
 const Inventory = () => {
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
   const [searchParams, setSearchParams] = useSearchParams()
   const user = useAuthStore((state) => state.user)
   const isSuperAdmin = user?.role === 'superadmin'
@@ -240,8 +242,13 @@ const Inventory = () => {
 
   const createMut = useMutation({
     mutationFn: createInventoryPart,
-    onSuccess: () => {
+    onSuccess: (part) => {
       toast.success('Part registered')
+      focusRecord(`inventory-part-${part.id}`, part.part_number, {
+        message: 'Part registered',
+        pathname: '/inventory',
+        query: { search: part.part_number },
+      })
       queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
       queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
       setPartDialogOpen(false)
@@ -252,8 +259,13 @@ const Inventory = () => {
 
   const updateMut = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: Partial<InventoryPartPayload> }) => updateInventoryPart(id, payload),
-    onSuccess: () => {
+    onSuccess: (part) => {
       toast.success('Part updated')
+      focusRecord(`inventory-part-${part.id}`, part.part_number, {
+        message: 'Part updated',
+        pathname: '/inventory',
+        query: { search: part.part_number },
+      })
       queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
       queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
       setPartDialogOpen(false)
@@ -276,6 +288,13 @@ const Inventory = () => {
     mutationFn: ({ partId, payload }: { partId: number; payload: any }) => createInventoryTransaction(partId, payload),
     onSuccess: () => {
       toast.success('Stock transaction recorded')
+      if (transactionPart) {
+        focusRecord(`inventory-part-${transactionPart.id}`, transactionPart.part_number, {
+          message: 'Stock transaction recorded',
+          pathname: '/inventory',
+          query: { search: transactionPart.part_number },
+        })
+      }
       queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
       queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
       queryClient.invalidateQueries({ queryKey: ['inventory-transactions'] })
