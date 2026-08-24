@@ -4,7 +4,6 @@ import {
   Box, TextField, Button, Typography, InputAdornment,
   IconButton, Alert, CircularProgress
 } from '@mui/material'
-import { keyframes } from '@emotion/react'
 import { motion } from 'framer-motion'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
@@ -13,20 +12,6 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { useAuthStore } from '@/stores/authStore'
 import { Stagger, StaggerItem } from '@/components/motion'
 import apiClient from '@/api/client'
-
-// --- Self-contained ambient motion (login page only) ---
-const drift = keyframes`
-  0%,100% { transform: translate3d(0,0,0) scale(1); }
-  50%     { transform: translate3d(38px,-44px,0) scale(1.12); }
-`
-const driftAlt = keyframes`
-  0%,100% { transform: translate3d(0,0,0) scale(1); }
-  50%     { transform: translate3d(-46px,36px,0) scale(1.16); }
-`
-const sheen = keyframes`
-  0%   { transform: translateX(-130%) skewX(-18deg); }
-  60%,100% { transform: translateX(320%) skewX(-18deg); }
-`
 
 const Login = () => {
   const [username, setUsername] = useState('')
@@ -97,15 +82,15 @@ const Login = () => {
       }}
     >
       {/* Subtle ambient blobs behind the card */}
-      <Box aria-hidden sx={{ position: 'absolute', top: '-12%', left: '-6%', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.30), transparent 70%)', animation: `${drift} 20s ease-in-out infinite`, pointerEvents: 'none' }} />
-      <Box aria-hidden sx={{ position: 'absolute', bottom: '-14%', right: '-8%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,93,146,0.28), transparent 70%)', animation: `${driftAlt} 24s ease-in-out infinite`, pointerEvents: 'none' }} />
+      <Box aria-hidden sx={{ position: 'absolute', top: '-12%', left: '-6%', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.30), transparent 70%)', pointerEvents: 'none' }} />
+      <Box aria-hidden sx={{ position: 'absolute', bottom: '-14%', right: '-8%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,93,146,0.28), transparent 70%)', pointerEvents: 'none' }} />
 
       {/* Centered login — frosted outer panel framing the white form card (double-box) */}
       <Box
         component={motion.div}
         initial={{ opacity: 0, y: 22, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         sx={{
           position: 'relative',
           width: '100%',
@@ -217,9 +202,6 @@ const Login = () => {
                   '&:disabled': { background: 'linear-gradient(135deg, #C4B5FD 0%, #FBCFE8 100%)', color: 'rgba(255,255,255,0.85)' },
                 }}
               >
-                {!loading && (
-                  <Box aria-hidden sx={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)', animation: `${sheen} 3.6s ease-in-out infinite`, pointerEvents: 'none' }} />
-                )}
                 <Box component="span" sx={{ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center' }}>
                   {loading ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : isSignUp ? 'Create Account' : 'Sign In'}
                 </Box>

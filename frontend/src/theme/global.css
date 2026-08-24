@@ -53,6 +53,7 @@ a {
 button,
 [role='button'] {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 img,
@@ -140,30 +141,10 @@ canvas {
   color: transparent;
 }
 
-/* Minimal, consistent card interaction across every module: a smooth transition
-   plus a faint cursor-following sheen (positions come from useCardSpotlight; the
-   glow is pure CSS and only shows on hover). Kept intentionally subtle. */
+/* Minimal, consistent card interaction across every module. */
 .MuiCard-root {
   position: relative;
   transition: box-shadow 0.24s ease, border-color 0.24s ease, transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.MuiCard-root::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  z-index: 0;
-  background: radial-gradient(
-    200px circle at var(--spot-x, -300px) var(--spot-y, -300px),
-    rgba(113, 97, 216, 0.07),
-    transparent 60%
-  );
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  pointer-events: none;
-}
-.MuiCard-root:hover::after {
-  opacity: 1;
 }
 
 /* Consistent premium accent: a subtle brand gradient hairline ring on card hover,
@@ -238,6 +219,8 @@ canvas {
 .app-main-scroll {
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
+  scroll-behavior: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .app-main-scroll > .MuiBox-root:first-child,

@@ -239,7 +239,6 @@ const ModuleBackground = ({ pathname }: { pathname: string }) => {
 
         {/* Large module motif, low opacity, anchored bottom-right */}
         <Box
-          className={reduce ? undefined : 'module-motif-float'}
           sx={{ position: 'absolute', bottom: -36, right: -28, color: theme.accent, opacity: 0.05, lineHeight: 0 }}
         >
           <svg width={480} height={480} viewBox="0 0 120 120">{motif}</svg>
