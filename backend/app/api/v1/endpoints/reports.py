@@ -14,7 +14,7 @@ from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.models.inspection import Inspection, InspectionStatus
 from app.models.inventory import InventoryPart
-from app.models.invoice import Invoice, InvoiceType
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.service_request import ServiceRequest, ServiceRequestStatus
 from app.models.user import User, UserRole
 from app.utils.facility_access import scope_query_to_user_facilities
@@ -52,25 +52,43 @@ def _part_name(part: Optional[InventoryPart]) -> Optional[str]:
 
 def _service_session_entries(sr: ServiceRequest) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    session_indexes: dict[str, int] = {}
     for entry in sr.history or []:
         if entry.get("action") not in {"technician_clock_out", "technician_work_session"}:
             continue
         changes = entry.get("changes") or {}
-        rows.append({
+        session_id = str(changes.get("session_id") or "").strip() or None
+        row = {
             "user": entry.get("user") or (sr.assigned_technician.full_name if sr.assigned_technician else "Technician"),
             "timestamp": entry.get("timestamp"),
-            "session_id": changes.get("session_id"),
+            "session_id": session_id,
             "start_time": changes.get("start_time") or changes.get("clocked_in_at"),
             "end_time": changes.get("end_time") or changes.get("clocked_out_at"),
             "break_minutes": changes.get("break_minutes"),
-            "duration_hours": changes.get("duration_hours"),
+            "duration_hours": changes.get("duration_hours") if changes.get("duration_hours") is not None else changes.get("total_work_hours"),
             "total_mileage": changes.get("total_mileage"),
             "diagnosis": changes.get("diagnosis"),
             "work_done": changes.get("work_done"),
             "notes": changes.get("notes"),
             "test_equipment": changes.get("test_equipment") or [],
             "parts": changes.get("parts") or [],
-        })
+        }
+        # Historical deployments could write both a clock-out and a work-session
+        # ledger entry for the same session. Merge the latest values while
+        # retaining any structured items recorded only in the earlier entry, so
+        # reports neither duplicate nor lose hours, mileage, parts, or equipment.
+        if session_id and session_id in session_indexes:
+            existing = rows[session_indexes[session_id]]
+            for key, value in row.items():
+                if key in {"parts", "test_equipment"}:
+                    if value:
+                        existing[key] = value
+                elif value is not None:
+                    existing[key] = value
+        else:
+            if session_id:
+                session_indexes[session_id] = len(rows)
+            rows.append(row)
     return rows
 
 
@@ -86,10 +104,15 @@ def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -
         "equipment_name": _equipment_name(sr.equipment),
         "asset_tag": sr.equipment.asset_tag if sr.equipment else None,
         "serial_number": sr.equipment.serial_number if sr.equipment else None,
+        "make": sr.equipment.make if sr.equipment else None,
+        "model": sr.equipment.model if sr.equipment else None,
         "technician_id": sr.assigned_technician_id,
         "technician_name": sr.assigned_technician.full_name if sr.assigned_technician else None,
         "status": _value(sr.status),
         "priority": _value(sr.priority),
+        "requester_id": sr.requester_id,
+        "requested_by_name": sr.requested_by_name or (sr.requester.full_name if sr.requester else None),
+        "reference_number": sr.reference_number,
         "problem_description": sr.problem_description,
         "service_required": sr.service_required,
         "resolution_description": sr.resolution_description,
@@ -97,6 +120,7 @@ def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -
         "total_cost": _money(sr.total_cost),
         "billing_status": sr.billing_status,
         "created_at": _dt(sr.created_at),
+        "assigned_at": _dt(sr.assigned_at),
         "started_at": _dt(sr.started_at),
         "completed_at": _dt(sr.completed_at),
         "diagnosis": latest_session.get("diagnosis"),
@@ -107,8 +131,15 @@ def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -
             "id": invoice.id,
             "invoice_number": invoice.invoice_number,
             "status": _value(invoice.status),
+            "subtotal": _money(invoice.subtotal),
+            "tax_amount": _money(invoice.tax_amount),
+            "discount_amount": _money(invoice.discount_amount),
             "total_amount": _money(invoice.total_amount),
+            "amount_paid": _money(invoice.amount_paid),
             "balance_due": _money(invoice.balance_due),
+            "issue_date": _dt(invoice.issue_date),
+            "due_date": _dt(invoice.due_date),
+            "payment_method": invoice.payment_method,
         } if invoice else None,
     }
 
@@ -332,6 +363,7 @@ def get_service_reports(
         .options(
             joinedload(ServiceRequest.facility),
             joinedload(ServiceRequest.equipment),
+            joinedload(ServiceRequest.requester),
             joinedload(ServiceRequest.assigned_technician),
         )
         .filter(ServiceRequest.status == ServiceRequestStatus.COMPLETED)
@@ -339,13 +371,21 @@ def get_service_reports(
     query = _apply_service_filters(query, search, facility_id, technician_id, date_from, date_to)
     total = query.count()
     items = query.order_by(ServiceRequest.completed_at.desc().nullslast(), ServiceRequest.id.desc()).offset(skip).limit(limit).all()
-    invoice_map = {
-        invoice.service_request_id: invoice
-        for invoice in scope_invoice_approval_visibility(db.query(Invoice), current_user)
-        .filter(Invoice.invoice_type == InvoiceType.SERVICE, Invoice.service_request_id.in_([item.id for item in items]))
-        .all()
-        if invoice.service_request_id
-    } if items else {}
+    invoice_map: dict[int, Invoice] = {}
+    if items:
+        invoices = (
+            scope_invoice_approval_visibility(db.query(Invoice), current_user)
+            .filter(
+                Invoice.invoice_type == InvoiceType.SERVICE,
+                Invoice.service_request_id.in_([item.id for item in items]),
+                Invoice.status != InvoiceStatus.CANCELLED,
+            )
+            .order_by(Invoice.updated_at.desc(), Invoice.id.desc())
+            .all()
+        )
+        for invoice in invoices:
+            if invoice.service_request_id:
+                invoice_map.setdefault(invoice.service_request_id, invoice)
     return {
         "items": [_service_report_row(item, invoice_map.get(item.id)) for item in items],
         "total": total,

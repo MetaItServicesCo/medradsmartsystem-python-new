@@ -4,8 +4,15 @@ export interface ReportInvoiceBrief {
   id: number
   invoice_number: string
   status: string
+  subtotal?: number
+  tax_amount?: number
+  discount_amount?: number
   total_amount: number
+  amount_paid?: number
   balance_due: number
+  issue_date?: string | null
+  due_date?: string | null
+  payment_method?: string | null
 }
 
 export interface ServiceReportSession {
@@ -33,10 +40,15 @@ export interface ServiceReport {
   equipment_name: string | null
   asset_tag: string | null
   serial_number: string | null
+  make?: string | null
+  model?: string | null
   technician_id: number | null
   technician_name: string | null
   status: string
   priority: string
+  requester_id?: number | null
+  requested_by_name?: string | null
+  reference_number?: string | null
   problem_description: string
   service_required: string | null
   resolution_description: string | null
@@ -44,6 +56,7 @@ export interface ServiceReport {
   total_cost: number
   billing_status: string | null
   created_at: string | null
+  assigned_at?: string | null
   started_at: string | null
   completed_at: string | null
   diagnosis: string | null

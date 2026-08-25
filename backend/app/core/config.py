@@ -64,7 +64,10 @@ class Settings(BaseSettings):
     PAYMENT_PROOF_S3_ACCESS_KEY_ID: str = ""
     PAYMENT_PROOF_S3_SECRET_ACCESS_KEY: str = ""
     PAYMENT_PROOF_S3_PREFIX: str = "payment-proofs"
-    PAYMENT_PROOF_S3_SERVER_SIDE_ENCRYPTION: str = "AES256"
+    # Optional provider-side encryption header. Payment proofs are always
+    # application-encrypted before upload. Leave blank for DigitalOcean Spaces;
+    # AWS S3 deployments may explicitly set this to AES256.
+    PAYMENT_PROOF_S3_SERVER_SIDE_ENCRYPTION: str = ""
     PAYMENT_PROOF_OCR_POLL_SECONDS: int = 2
     PAYMENT_PROOF_OCR_BATCH_SIZE: int = 4
     PAYMENT_PROOF_OCR_MAX_ATTEMPTS: int = 4
