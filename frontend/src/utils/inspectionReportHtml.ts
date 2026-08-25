@@ -41,6 +41,8 @@ export type InspectionReportLike = {
   batch_id?: number | null
   form_data?: Record<string, any> | null
   form_schema?: Record<string, any> | null
+  form_template_schema?: Record<string, any> | null
+  attached_form_schema?: Record<string, any> | null
   invoice?: ReportInvoiceLike | null
   parts_amount?: number | string | null
   inspection_charge?: number | string | null
@@ -315,7 +317,10 @@ const isPassFailNa = (options: any): boolean =>
 // Returns '' when the inspection has no custom grid, so callers fall back to the
 // fixed default-report template.
 const customGridHtml = (inspection: InspectionReportLike): string => {
-  const grid = inspection.form_schema?.custom_grid
+  // The single-report endpoint sends `form_schema`; the batch endpoint sends the
+  // same schema as `attached_form_schema` / `form_template_schema`. Accept any.
+  const schema = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  const grid = schema?.custom_grid
   if (!grid || !Array.isArray(grid.cells)) return ''
   const values = reportData(inspection).custom_grid_values || {}
   if (!Object.keys(values).length) return ''
