@@ -19,6 +19,10 @@ export interface AuditLogResponse {
 export const fetchAuditLogs = async (params?: {
   skip?: number
   limit?: number
+  search?: string
+  action?: string
+  from_date?: string
+  to_date?: string
 }): Promise<AuditLogResponse> => {
   const res = await apiClient.get('/audit-logs/', { params })
   return res.data

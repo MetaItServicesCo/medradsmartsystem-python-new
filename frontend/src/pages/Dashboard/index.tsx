@@ -7,12 +7,15 @@ import {
   Grid,
   IconButton,
   LinearProgress,
+  MenuItem,
+  Pagination,
   Skeleton,
   Stack,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material'
-import { useState, type MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import BuildIcon from '@mui/icons-material/Build'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
@@ -31,6 +34,7 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import TimerIcon from '@mui/icons-material/Timer'
 import BeachAccessIcon from '@mui/icons-material/BeachAccess'
+import SearchIcon from '@mui/icons-material/Search'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
@@ -104,6 +108,62 @@ type AnalyticsKey =
 
 const hiddenNumber = '•••'
 
+type DashboardTooltipEntry = {
+  color?: string
+  name?: string
+  value?: number | string
+  payload?: {
+    color?: string
+    label?: string
+    name?: string
+    value?: number | string
+  }
+}
+
+type DashboardTooltipProps = {
+  active?: boolean
+  label?: string | number
+  payload?: DashboardTooltipEntry[]
+  valueLabel?: string
+}
+
+const DashboardChartTooltip = ({ active, label, payload, valueLabel = 'Items' }: DashboardTooltipProps) => {
+  const entry = payload?.find((item) => item.value !== null && item.value !== undefined)
+  if (!active || !entry) return null
+
+  const datum = entry.payload || {}
+  const resolvedLabel = String(label || datum.name || datum.label || entry.name || 'Current value')
+  const resolvedValue = entry.value ?? datum.value ?? 0
+  const accent = datum.color || entry.color || '#6757D8'
+
+  return (
+    <Box
+      sx={{
+        minWidth: 132,
+        px: 1.5,
+        py: 1.15,
+        bgcolor: '#FFFFFF',
+        border: '1px solid #E8ECF4',
+        borderRadius: '14px',
+        boxShadow: '0 14px 34px rgba(15,23,42,0.16)',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: accent, flexShrink: 0 }} />
+        <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 850, lineHeight: 1.2 }}>
+          {resolvedLabel}
+        </Typography>
+      </Box>
+      <Typography sx={{ color: '#1E1B4B', fontSize: 22, fontWeight: 950, lineHeight: 1.15, mt: 0.7 }}>
+        {resolvedValue}
+      </Typography>
+      <Typography sx={{ color: '#94A3B8', fontSize: 10.5, fontWeight: 750 }}>{valueLabel}</Typography>
+    </Box>
+  )
+}
+
+const ACTIVITY_PAGE_SIZE = 10
+
 const activityTitle = (log: AuditLogItem) => {
   const actor = log.changed_by_username || 'system'
   const changes = parseChanges(log.changes_json)
@@ -158,6 +218,12 @@ const Dashboard = () => {
   const currentUser = useAuthStore((s) => s.user)
   const isSuperAdmin = currentUser?.role === 'superadmin'
   const [hiddenAnalytics, setHiddenAnalytics] = useState<Record<string, boolean>>({})
+  const [activityPage, setActivityPage] = useState(1)
+  const [activitySearchInput, setActivitySearchInput] = useState('')
+  const [activitySearch, setActivitySearch] = useState('')
+  const [activityAction, setActivityAction] = useState('')
+  const [activityFrom, setActivityFrom] = useState('')
+  const [activityTo, setActivityTo] = useState('')
   const canAccess = (module: Module) => hasPermission(currentUser, module)
   const isAnalyticsHidden = (key: AnalyticsKey) => Boolean(hiddenAnalytics[key])
   const toggleAnalytics = (key: AnalyticsKey) => (event: MouseEvent<HTMLButtonElement>) => {
@@ -191,10 +257,28 @@ const Dashboard = () => {
     queryFn: fetchDashboardSummary,
   })
 
-  const { data: logData, isLoading: logsLoading } = useQuery({
-    queryKey: ['audit-logs-dashboard'],
-    queryFn: () => fetchAuditLogs({ limit: 50 }),
-    enabled: isSuperAdmin,
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setActivitySearch(activitySearchInput.trim())
+      setActivityPage(1)
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [activitySearchInput])
+
+  const activityDatesValid = !activityFrom || !activityTo || activityFrom <= activityTo
+
+  const { data: logData, isLoading: logsLoading, isError: logsError } = useQuery({
+    queryKey: ['audit-logs-dashboard', activityPage, activitySearch, activityAction, activityFrom, activityTo],
+    queryFn: () => fetchAuditLogs({
+      skip: (activityPage - 1) * ACTIVITY_PAGE_SIZE,
+      limit: ACTIVITY_PAGE_SIZE,
+      search: activitySearch || undefined,
+      action: activityAction || undefined,
+      from_date: activityFrom || undefined,
+      to_date: activityTo || undefined,
+    }),
+    enabled: isSuperAdmin && activityDatesValid,
+    staleTime: 30_000,
   })
 
   const stats = [
@@ -385,6 +469,8 @@ const Dashboard = () => {
   const focusHidden = isAnalyticsHidden('focus-queue')
 
   const logs = logData?.items || []
+  const activityTotal = logData?.total || 0
+  const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE))
 
   return (
     <Box sx={{ maxWidth: 1440, mx: 'auto' }}>
@@ -446,7 +532,7 @@ const Dashboard = () => {
                     </defs>
                     <CartesianGrid stroke="rgba(255,255,255,0.16)" vertical={false} />
                     <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.72)', fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <RechartsTooltip contentStyle={{ border: 0, borderRadius: 12, boxShadow: '0 12px 30px rgba(15,23,42,0.16)' }} />
+                    <RechartsTooltip content={<DashboardChartTooltip valueLabel="Records" />} />
                     <Area type="monotone" dataKey="value" stroke="#FFFFFF" strokeWidth={3} fill="url(#dashboardArea)" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -574,7 +660,7 @@ const Dashboard = () => {
                             <CartesianGrid stroke="#E8ECF4" vertical={false} />
                             <XAxis dataKey="label" hide />
                             <YAxis allowDecimals={false} tick={{ fill: '#A3ADBD', fontSize: 10 }} tickLine={false} axisLine={false} />
-                            <RechartsTooltip cursor={{ fill: 'rgba(113,97,216,0.06)' }} contentStyle={{ border: 0, borderRadius: 12, boxShadow: '0 12px 30px rgba(15,23,42,0.14)' }} />
+                            <RechartsTooltip cursor={{ fill: 'rgba(113,97,216,0.06)' }} content={<DashboardChartTooltip />} />
                             <Bar dataKey="value" radius={[10, 10, 4, 4]}>
                               {visiblePipelineItems.map((entry) => (
                                 <Cell key={entry.label} fill={entry.color} />
@@ -623,7 +709,7 @@ const Dashboard = () => {
                                   <Cell key={entry.name} fill={entry.color} />
                                 ))}
                               </Pie>
-                              <RechartsTooltip contentStyle={{ border: 0, borderRadius: 12, boxShadow: '0 12px 30px rgba(15,23,42,0.14)' }} />
+                              <RechartsTooltip content={<DashboardChartTooltip valueLabel="Risk items" />} />
                             </PieChart>
                           </ResponsiveContainer>
                           <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
@@ -726,56 +812,207 @@ const Dashboard = () => {
               </Stack>
             </Card>
 
-            {isSuperAdmin && (
-              <Card sx={{ p: 2.5, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 2 }}>
-                  <Avatar sx={{ bgcolor: '#F0EDFF', color: '#6757D8', borderRadius: '14px' }}><HistoryIcon /></Avatar>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Recent Activity</Typography>
-                    <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>User actions and system events</Typography>
-                  </Box>
-                </Box>
-
-                {logsLoading ? (
-                  <Stack spacing={1.2}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} variant="rounded" height={72} sx={{ borderRadius: '16px' }} />)}</Stack>
-                ) : logs.length === 0 ? (
-                  <Typography variant="body2" sx={{ color: '#9CA3AF', py: 2 }}>No recent activity found.</Typography>
-                ) : (
-                  <Stack
-                    spacing={1.2}
-                    sx={{
-                      maxHeight: 460,
-                      overflowY: 'auto',
-                      pr: 0.5,
-                      '&::-webkit-scrollbar': { width: 7 },
-                      '&::-webkit-scrollbar-track': { backgroundColor: '#F3F4F6', borderRadius: 8 },
-                      '&::-webkit-scrollbar-thumb': { backgroundColor: '#CBD5E1', borderRadius: 8 },
-                    }}
-                  >
-                    {logs.map((log) => {
-                      const colors = actionColor(log.action)
-                      const details = summarizeChanges(log)
-                      return (
-                        <Box key={log.id} sx={{ p: 1.6, borderRadius: '18px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
-                          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.8 }}>
-                            <Chip label={log.action} size="small" sx={{ height: 22, bgcolor: colors.bg, color: colors.color, fontSize: 10, fontWeight: 900 }} />
-                            <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 700 }}>{safeFormatDate(log.timestamp)}</Typography>
-                          </Box>
-                          <Typography sx={{ color: '#1E1B4B', fontSize: 13, fontWeight: 900 }}>{activityTitle(log)}</Typography>
-                          {details[0] && (
-                            <Typography sx={{ color: '#8B95A7', fontSize: 11, fontWeight: 700, mt: 0.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {details[0]}
-                            </Typography>
-                          )}
-                        </Box>
-                      )
-                    })}
-                  </Stack>
-                )}
-              </Card>
-            )}
           </Stack>
         </Grid>
+
+        {isSuperAdmin && (
+          <Grid item xs={12}>
+            <Card sx={{ p: { xs: 2, md: 2.7 }, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+              <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.4, mb: 2.2 }}>
+                <Avatar sx={{ bgcolor: '#F0EDFF', color: '#6757D8', borderRadius: '14px' }}><HistoryIcon /></Avatar>
+                <Box sx={{ flex: 1 }}>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 19 }}>System Activity</Typography>
+                  <Typography sx={{ color: '#8B95A7', fontSize: 12.5, fontWeight: 700 }}>
+                    Read-only audit trail of user actions and system events
+                  </Typography>
+                </Box>
+                <Chip
+                  label={`${activityTotal.toLocaleString()} events`}
+                  sx={{ bgcolor: '#F0EDFF', color: '#6757D8', fontWeight: 900 }}
+                />
+              </Box>
+
+              <Grid container spacing={1.4} sx={{ mb: 2 }}>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={activitySearchInput}
+                    onChange={(event) => setActivitySearchInput(event.target.value)}
+                    placeholder="Search user, module, action, or record"
+                    InputProps={{ startAdornment: <SearchIcon sx={{ color: '#94A3B8', fontSize: 20, mr: 1 }} /> }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4} md={2}>
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    label="Event type"
+                    value={activityAction}
+                    onChange={(event) => {
+                      setActivityAction(event.target.value)
+                      setActivityPage(1)
+                    }}
+                  >
+                    <MenuItem value="">All events</MenuItem>
+                    <MenuItem value="VIEW">Views</MenuItem>
+                    <MenuItem value="CREATE">Created</MenuItem>
+                    <MenuItem value="UPDATE">Updated</MenuItem>
+                    <MenuItem value="DELETE">Deleted</MenuItem>
+                    <MenuItem value="FAILED">Failed</MenuItem>
+                    <MenuItem value="LOGIN">Sign-ins</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={4} md={2}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="date"
+                    label="From"
+                    value={activityFrom}
+                    onChange={(event) => {
+                      setActivityFrom(event.target.value)
+                      setActivityPage(1)
+                    }}
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ max: activityTo || undefined }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4} md={2}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="date"
+                    label="To"
+                    value={activityTo}
+                    onChange={(event) => {
+                      setActivityTo(event.target.value)
+                      setActivityPage(1)
+                    }}
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ min: activityFrom || undefined }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    disabled={!activitySearchInput && !activityAction && !activityFrom && !activityTo}
+                    onClick={() => {
+                      setActivitySearchInput('')
+                      setActivitySearch('')
+                      setActivityAction('')
+                      setActivityFrom('')
+                      setActivityTo('')
+                      setActivityPage(1)
+                    }}
+                    sx={{ minHeight: 40, borderRadius: '12px', fontWeight: 850 }}
+                  >
+                    Clear filters
+                  </Button>
+                </Grid>
+              </Grid>
+
+              {!activityDatesValid ? (
+                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+                  <Typography sx={{ color: '#C2410C', fontSize: 13, fontWeight: 850 }}>The From date must be before or equal to the To date.</Typography>
+                </Box>
+              ) : logsLoading ? (
+                <Stack spacing={1}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} variant="rounded" height={76} sx={{ borderRadius: '16px' }} />)}</Stack>
+              ) : logsError ? (
+                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <Typography sx={{ color: '#B91C1C', fontSize: 13, fontWeight: 850 }}>System activity could not be loaded. Please refresh and try again.</Typography>
+                </Box>
+              ) : logs.length === 0 ? (
+                <Box sx={{ py: 4, textAlign: 'center', borderRadius: '18px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                  <HistoryIcon sx={{ color: '#CBD5E1', fontSize: 34 }} />
+                  <Typography sx={{ color: '#64748B', fontWeight: 850, mt: 0.8 }}>No activity matches these filters.</Typography>
+                </Box>
+              ) : (
+                <Stack spacing={1}>
+                  {logs.map((log) => {
+                    const colors = actionColor(log.action)
+                    const details = summarizeChanges(log)
+                    const actor = log.changed_by_username || 'system'
+                    return (
+                      <Box
+                        key={log.id}
+                        sx={{
+                          display: 'flex',
+                          alignItems: { xs: 'flex-start', md: 'center' },
+                          flexDirection: { xs: 'column', md: 'row' },
+                          gap: { xs: 1.2, md: 1.6 },
+                          p: 1.5,
+                          borderRadius: '18px',
+                          bgcolor: '#F8FAFC',
+                          border: '1px solid #EEF2F7',
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, width: { xs: '100%', md: 190 }, flexShrink: 0 }}>
+                          <Avatar sx={{ width: 38, height: 38, bgcolor: '#EEEAFE', color: '#6757D8', fontSize: 14, fontWeight: 950 }}>
+                            {actor.charAt(0).toUpperCase()}
+                          </Avatar>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography noWrap sx={{ color: '#1E1B4B', fontSize: 13, fontWeight: 900 }}>{actor}</Typography>
+                            <Typography sx={{ color: '#94A3B8', fontSize: 10.5, fontWeight: 750 }}>User activity</Typography>
+                          </Box>
+                        </Box>
+
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap', mb: 0.55 }}>
+                            <Chip
+                              label={log.action.replace(/_/g, ' ')}
+                              size="small"
+                              sx={{ height: 23, bgcolor: colors.bg, color: colors.color, fontSize: 10, fontWeight: 900 }}
+                            />
+                            <Chip
+                              label={entityLabel(log.table_name)}
+                              size="small"
+                              variant="outlined"
+                              sx={{ height: 23, borderColor: '#E2E8F0', color: '#64748B', fontSize: 10, fontWeight: 850 }}
+                            />
+                            {log.record_id > 0 && (
+                              <Typography sx={{ color: '#94A3B8', fontSize: 10.5, fontWeight: 750 }}>Record #{log.record_id}</Typography>
+                            )}
+                          </Box>
+                          <Typography sx={{ color: '#1E1B4B', fontSize: 13, fontWeight: 900 }}>{activityTitle(log)}</Typography>
+                          {details.length > 0 && (
+                            <Tooltip title={details.join(' · ')} placement="top-start">
+                              <Typography noWrap sx={{ color: '#7C8799', fontSize: 11.5, fontWeight: 700, mt: 0.35 }}>
+                                {details.slice(0, 2).join(' · ')}
+                              </Typography>
+                            </Tooltip>
+                          )}
+                        </Box>
+
+                        <Typography sx={{ color: '#64748B', fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {safeFormatDate(log.timestamp)}
+                        </Typography>
+                      </Box>
+                    )
+                  })}
+                </Stack>
+              )}
+
+              {activityDatesValid && !logsLoading && !logsError && activityTotal > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.2, mt: 2 }}>
+                  <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 750 }}>
+                    Showing {((activityPage - 1) * ACTIVITY_PAGE_SIZE) + 1}–{Math.min(activityPage * ACTIVITY_PAGE_SIZE, activityTotal)} of {activityTotal.toLocaleString()}
+                  </Typography>
+                  <Pagination
+                    count={activityPageCount}
+                    page={Math.min(activityPage, activityPageCount)}
+                    onChange={(_, page) => setActivityPage(page)}
+                    color="primary"
+                    shape="rounded"
+                    size="small"
+                  />
+                </Box>
+              )}
+            </Card>
+          </Grid>
+        )}
       </Grid>
     </Box>
   )
