@@ -507,6 +507,93 @@ class OperationalWriter:
             self._map(target, "test_equipment", legacy_id, target_id)
             self.counts["test_equipment"] += 1
 
+    def _backfill_inspection_forms(
+        self, source: Connection, target: Connection
+    ) -> None:
+        """Retarget already-migrated inspections onto their asset's form and
+        fold their recorded answers into ``form_data``.
+
+        The insert-time logic only fires for new rows, so an already-migrated
+        target (production) needs these applied as UPDATEs. Idempotent and
+        additive: it only sets ``form_template_id`` and adds a
+        ``custom_grid_values`` key to the existing ``form_data`` JSON.
+        """
+        inspection_table = self.tables["inspections"]
+        reports = {
+            int(row["inspection_id"]): row.get("tests")
+            for row in self._rows(
+                source,
+                "SELECT inspection_id, tests FROM inspection_reports "
+                "WHERE tests IS NOT NULL AND tests <> ''",
+            )
+        }
+        legacy_inventory = {
+            int(row["id"]): (int(row["inventory_id"]) if row.get("inventory_id") else None)
+            for row in self._rows(source, "SELECT id, inventory_id FROM inspections")
+        }
+        prod_ids = {
+            legacy_id: self.maps["inspection"][legacy_id]
+            for legacy_id in legacy_inventory
+            if legacy_id in self.maps["inspection"]
+        }
+        existing_form_data: dict[int, dict[str, Any]] = {}
+        if prod_ids:
+            for row in target.execute(
+                select(inspection_table.c.id, inspection_table.c.form_data).where(
+                    inspection_table.c.id.in_(list(prod_ids.values()))
+                )
+            ):
+                existing_form_data[int(row.id)] = row.form_data or {}
+        linked = backfilled = 0
+        for legacy_id, prod_id in prod_ids.items():
+            inventory_id = legacy_inventory.get(legacy_id)
+            form_id = self.asset_form_id.get(inventory_id) if inventory_id else None
+            values: dict[str, Any] = {}
+            if form_id:
+                values["form_template_id"] = form_id
+            tests = reports.get(legacy_id)
+            if tests:
+                answers = extract_answers(tests)
+                if answers:
+                    form_data = dict(existing_form_data.get(prod_id) or {})
+                    form_data["custom_grid_values"] = answers
+                    values["form_data"] = form_data
+                    backfilled += 1
+            if values:
+                target.execute(
+                    update(inspection_table)
+                    .where(inspection_table.c.id == prod_id)
+                    .values(**values)
+                )
+                if "form_template_id" in values:
+                    linked += 1
+        self.counts["inspections_form_linked"] = linked
+        self.counts["inspections_answers_backfilled"] = backfilled
+
+    def apply_enrichment(self) -> dict[str, Any]:
+        """Idempotent, additive enrichment for an already-migrated database.
+
+        Runs only the form/asset-link/test-equipment steps plus the inspection
+        backfill, in a single transaction. Safe to run against production and
+        safe to re-run (every step is id_map- or key-guarded).
+        """
+        with self.legacy.connect() as source, self.target.begin() as target:
+            self._prepare(target)
+            self._load_tables(target)
+            self._load_maps(target)
+            self._require_foundation()
+            self._ensure_default_form(target)
+            self._migrate_inspection_forms(source, target)
+            self._load_asset_forms(source)
+            self._link_asset_forms(target)
+            self._migrate_test_equipment(source, target)
+            self._backfill_inspection_forms(source, target)
+        return {
+            "status": "completed",
+            "transactional": True,
+            "counts": dict(sorted(self.counts.items())),
+        }
+
     @staticmethod
     def _service_status(value: Any) -> str:
         return {

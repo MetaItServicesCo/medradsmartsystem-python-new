@@ -40,6 +40,15 @@ def _parser() -> argparse.ArgumentParser:
     migrate_operational.add_argument("--output", type=Path, required=True)
     migrate_operational.add_argument("--apply", action="store_true", required=True)
     migrate_operational.add_argument("--confirm-target", required=True)
+    apply_enrichment = subparsers.add_parser(
+        "apply-enrichment",
+        help="Idempotently add legacy inspection forms, asset-form links, "
+        "test equipment, and inspection answers to an already-migrated database "
+        "(additive; production-allowed)",
+    )
+    apply_enrichment.add_argument("--output", type=Path, required=True)
+    apply_enrichment.add_argument("--apply", action="store_true", required=True)
+    apply_enrichment.add_argument("--confirm-target", required=True)
     validate_operational = subparsers.add_parser(
         "validate-operational",
         help="Reconcile migrated operational and financial records",
@@ -65,6 +74,12 @@ def main() -> None:
         elif args.command == "migrate-operational":
             config.require_local_staging_target(args.confirm_target)
             report = OperationalWriter(legacy, target).run()
+        elif args.command == "apply-enrichment":
+            if args.confirm_target != config.target_url.database:
+                raise RuntimeError(
+                    "Target confirmation does not match TARGET_DATABASE_URL"
+                )
+            report = OperationalWriter(legacy, target).apply_enrichment()
         elif args.command == "validate-operational":
             report = build_operational_validation(legacy, target)
         else:
@@ -75,6 +90,7 @@ def main() -> None:
             "plan-foundation",
             "migrate-foundation",
             "migrate-operational",
+            "apply-enrichment",
             "validate-operational",
         }:
             args.output.parent.mkdir(parents=True, exist_ok=True)
