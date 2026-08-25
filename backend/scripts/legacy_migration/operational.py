@@ -20,6 +20,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection
 
+from .form_convert import (
+    build_grid_schema_from_items,
+    extract_answers,
+    merge_item_lists,
+    parse_form,
+)
 from .writer import (
     SOURCE_SYSTEM,
     _available_values,
@@ -145,6 +151,7 @@ class OperationalWriter:
         "rentals",
         "invoices",
         "invoice_transactions",
+        "test_equipment",
     )
 
     def __init__(self, legacy: Engine, target: Engine) -> None:
@@ -159,6 +166,8 @@ class OperationalWriter:
         self.part_prices: dict[int, Decimal] = {}
         self.inspection_by_work_order: dict[str, int] = {}
         self.customer_cache: dict[int, dict[str, str]] = {}
+        # legacy inventory_id -> migrated inspection_form id (from pm_desc link)
+        self.asset_form_id: dict[int, int] = {}
 
     def run(self) -> dict[str, Any]:
         with self.legacy.connect() as source, self.target.begin() as target:
@@ -168,6 +177,10 @@ class OperationalWriter:
             self._require_foundation()
             self._load_part_prices(source)
             self._ensure_default_form(target)
+            self._migrate_inspection_forms(source, target)
+            self._load_asset_forms(source)
+            self._link_asset_forms(target)
+            self._migrate_test_equipment(source, target)
             self._migrate_services(source, target)
             self._sync_service_histories(source, target)
             self._migrate_service_quotations(source, target)
@@ -341,6 +354,158 @@ class OperationalWriter:
             },
         )
         self.counts["inspection_forms"] += 1
+
+    def _migrate_inspection_forms(
+        self, source: Connection, target: Connection
+    ) -> None:
+        """Migrate the 36 legacy ``pm_descs`` forms into ``inspection_forms``.
+
+        Each legacy HTML checklist is converted to the application's native
+        custom-grid schema, so the migrated form is a first-class, fillable
+        form rendered by the existing engine - no application code changes.
+
+        Each form is built as the union of its own template items and every
+        item its completed inspections actually recorded, so historical answers
+        always have a field to render into despite template drift since 2021.
+        """
+        # Map each completed report's items back to the pm_desc form it belongs
+        # to (report -> inspection -> inventory -> service_mentenances.pm_desc).
+        inv_to_pm: dict[int, int] = {}
+        for row in self._rows(
+            source,
+            "SELECT inventory_id, pm_desc_id FROM service_mentenances "
+            "WHERE pm_desc_id IS NOT NULL",
+        ):
+            if row.get("inventory_id"):
+                inv_to_pm[int(row["inventory_id"])] = int(row["pm_desc_id"])
+        insp_to_pm: dict[int, int] = {}
+        for row in self._rows(source, "SELECT id, inventory_id FROM inspections"):
+            pm_id = inv_to_pm.get(int(row["inventory_id"])) if row.get("inventory_id") else None
+            if pm_id:
+                insp_to_pm[int(row["id"])] = pm_id
+        recorded: dict[int, dict[str, dict[str, Any]]] = defaultdict(dict)
+        for row in self._rows(
+            source,
+            "SELECT inspection_id, tests FROM inspection_reports "
+            "WHERE tests IS NOT NULL AND tests <> ''",
+        ):
+            pm_id = insp_to_pm.get(int(row["inspection_id"]))
+            if not pm_id:
+                continue
+            bucket = recorded[pm_id]
+            for item in parse_form(row["tests"]):
+                if item.get("kind") == "heading":
+                    continue
+                name = item["name"]
+                if name not in bucket:
+                    bucket[name] = {
+                        "name": name,
+                        "kind": item["kind"],
+                        "label": item["label"],
+                        "raw_options": list(item.get("raw_options", [])),
+                    }
+                else:
+                    existing = bucket[name]
+                    if item["kind"] == "radio":
+                        existing["kind"] = "radio"
+                    for option in item.get("raw_options", []):
+                        if option not in existing["raw_options"]:
+                            existing["raw_options"].append(option)
+
+        table = self.tables["inspection_forms"]
+        for row in self._rows(
+            source,
+            "SELECT id, title, html, created_at, updated_at FROM pm_descs ORDER BY id",
+        ):
+            legacy_id = int(row["id"])
+            if legacy_id in self.maps["inspection_form"]:
+                continue
+            title = _clean(row.get("title")) or f"Legacy Form {legacy_id}"
+            items = merge_item_lists(
+                parse_form(row.get("html") or ""),
+                list(recorded.get(legacy_id, {}).values()),
+            )
+            schema = build_grid_schema_from_items(items, title, legacy_id)
+            created = _safe_datetime(row.get("created_at")) or datetime.utcnow()
+            form_id = self._insert(
+                target,
+                table,
+                {
+                    "name": title,
+                    "description": f"Imported legacy inspection form #{legacy_id}.",
+                    "schema": schema,
+                    "created_at": created,
+                    "updated_at": _safe_datetime(row.get("updated_at")) or created,
+                },
+            )
+            self._map(target, "inspection_form", legacy_id, form_id)
+            self.counts["inspection_forms_migrated"] += 1
+
+    def _load_asset_forms(self, source: Connection) -> None:
+        """Build legacy inventory_id -> migrated form id from service_mentenances."""
+        for row in self._rows(
+            source,
+            "SELECT inventory_id, pm_desc_id FROM service_mentenances "
+            "WHERE pm_desc_id IS NOT NULL",
+        ):
+            if not row.get("inventory_id"):
+                continue
+            form_id = self.maps["inspection_form"].get(int(row["pm_desc_id"]))
+            if form_id:
+                self.asset_form_id[int(row["inventory_id"])] = form_id
+
+    def _link_asset_forms(self, target: Connection) -> None:
+        """Enrich each migrated asset with its legacy inspection form."""
+        equipment = self.tables["equipment"]
+        linked = 0
+        for inventory_id, form_id in self.asset_form_id.items():
+            equipment_id = self.maps["equipment"].get(inventory_id)
+            if not equipment_id:
+                continue
+            target.execute(
+                update(equipment)
+                .where(equipment.c.id == equipment_id)
+                .values(inspection_form_id=form_id)
+            )
+            linked += 1
+        self.counts["equipment_forms_linked"] = linked
+
+    def _migrate_test_equipment(
+        self, source: Connection, target: Connection
+    ) -> None:
+        """Migrate legacy ``test_kits`` into ``test_equipment`` (1:1)."""
+        table = self.tables["test_equipment"]
+        for row in self._rows(source, "SELECT * FROM test_kits ORDER BY id"):
+            legacy_id = int(row["id"])
+            if legacy_id in self.maps["test_equipment"]:
+                continue
+            creator = (
+                self.maps["user"].get(int(row["user_id"]))
+                if row.get("user_id")
+                else None
+            )
+            created = _safe_datetime(row.get("created_at")) or datetime.utcnow()
+            active = str(row.get("status")).strip().lower() in {"1", "true", "active"}
+            target_id = self._insert(
+                target,
+                table,
+                {
+                    "tem": _clean(row.get("tem")) or "Unknown",
+                    "mrf": _clean(row.get("mrf")) or None,
+                    "model": _clean(row.get("model")) or None,
+                    "serial_number": _clean(row.get("serial")) or None,
+                    "description": _clean(row.get("testkit_desc")) or None,
+                    "asset": _clean(row.get("asset")) or None,
+                    "technician_id": creator,
+                    "created_by_id": creator or self.default_user_id,
+                    "status": "active" if active else "inactive",
+                    "image_url": _clean(row.get("image")) or None,
+                    "created_at": created,
+                    "updated_at": _safe_datetime(row.get("updated_at")) or created,
+                },
+            )
+            self._map(target, "test_equipment", legacy_id, target_id)
+            self.counts["test_equipment"] += 1
 
     @staticmethod
     def _service_status(value: Any) -> str:
@@ -820,7 +985,9 @@ class OperationalWriter:
                         "batch_number": work_order,
                         "facility_id": facility_id,
                         "inspector_id": inspector_id,
-                        "form_template_id": self.default_form_id,
+                        "form_template_id": self.asset_form_id.get(
+                            int(rows[0]["inventory_id"]), self.default_form_id
+                        ),
                         "status": batch_status,
                         "scheduled_date": scheduled,
                         "started_at": _safe_datetime(info.get("start_date")),
@@ -894,6 +1061,12 @@ class OperationalWriter:
                         legacy_id, insp_parts, insp_kits, insp_images
                     )
                 )
+                # Fold the completed checklist answers into the native grid
+                # value map so the migrated form opens with them populated.
+                if report.get("tests"):
+                    answers = extract_answers(report.get("tests"))
+                    if answers:
+                        form_data["custom_grid_values"] = answers
                 inspection_id = self._insert(
                     target,
                     inspection_table,
@@ -905,7 +1078,9 @@ class OperationalWriter:
                         "inspector_id": self.maps["user"].get(int(row["user_id"]))
                         if row.get("user_id")
                         else inspector_id,
-                        "form_template_id": self.default_form_id,
+                        "form_template_id": self.asset_form_id.get(
+                            int(row["inventory_id"]), self.default_form_id
+                        ),
                         "status": status,
                         "result": self._inspection_result(row.get("result"), status),
                         "scheduled_date": _safe_datetime(row.get("a_date"))
