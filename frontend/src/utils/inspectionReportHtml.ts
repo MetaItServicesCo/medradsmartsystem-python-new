@@ -40,6 +40,7 @@ export type InspectionReportLike = {
   id?: number | null
   batch_id?: number | null
   form_data?: Record<string, any> | null
+  form_schema?: Record<string, any> | null
   invoice?: ReportInvoiceLike | null
   parts_amount?: number | string | null
   inspection_charge?: number | string | null
@@ -304,7 +305,85 @@ const identityHtml = (inspection: InspectionReportLike) => {
   return `<div class="identity">${boxes}</div>`
 }
 
+const PFN_RE = /^(pass|fail|n\/?a)$/i
+const isPassFailNa = (options: any): boolean =>
+  Array.isArray(options) && options.length > 0 && options.every((o: any) => PFN_RE.test(String(o).trim()))
+
+// Render a custom-grid inspection form (native app grid builder + migrated
+// legacy forms) from its schema + stored answers. Pass/Fail/N/A radios reuse the
+// standard check-grid look; everything else renders as a labelled value table.
+// Returns '' when the inspection has no custom grid, so callers fall back to the
+// fixed default-report template.
+const customGridHtml = (inspection: InspectionReportLike): string => {
+  const grid = inspection.form_schema?.custom_grid
+  if (!grid || !Array.isArray(grid.cells)) return ''
+  const values = reportData(inspection).custom_grid_values || {}
+  if (!Object.keys(values).length) return ''
+
+  const checkItems: Array<{ label: string; value: any }> = []
+  const fieldItems: Array<{ label: string; value: any }> = []
+
+  for (const cell of grid.cells.flat().filter(Boolean)) {
+    if (cell.hidden || !cell.id) continue
+    const blocks = Array.isArray(cell.blocks) && cell.blocks.length ? cell.blocks : null
+    if (blocks) {
+      blocks.forEach((block: any, blockIndex: number) => {
+        if (block?.type === 'label') return
+        const key = `${cell.id}__${block?.id || `block_${blockIndex + 1}`}`
+        const label = String(block?.label || cell.label || '').trim()
+        if (block?.type === 'radio') {
+          if (isPassFailNa(block.options)) checkItems.push({ label, value: values[key] })
+          else if (hasVal(values[key])) fieldItems.push({ label, value: values[key] })
+        } else if (block?.type === 'checkbox') {
+          const chosen = (block.options || [])
+            .map((opt: any, i: number) => (values[`${key}__${i}`] ? String(opt) : ''))
+            .filter(Boolean).join(', ')
+          if (hasVal(chosen)) fieldItems.push({ label, value: chosen })
+        } else if (hasVal(values[key])) {
+          fieldItems.push({ label, value: values[key] })
+        }
+      })
+    } else {
+      const label = String(cell.label || '').trim()
+      const value = values[cell.id]
+      if (cell.type === 'radio') {
+        if (isPassFailNa(cell.options)) checkItems.push({ label, value })
+        else if (hasVal(value)) fieldItems.push({ label, value })
+      } else if (cell.type !== 'text' && hasVal(value)) {
+        fieldItems.push({ label, value })
+      }
+    }
+  }
+
+  if (!checkItems.length && !fieldItems.length) return ''
+
+  let checkRows = ''
+  for (let i = 0; i < checkItems.length; i += 2) {
+    const l = checkItems[i]
+    const r = checkItems[i + 1]
+    checkRows += `<tr>
+      <td class="t">${esc(l.label)}</td>${checkTriplet(l.value)}
+      ${r ? `<td class="t">${esc(r.label)}</td>${checkTriplet(r.value)}` : '<td></td><td></td><td></td><td></td>'}
+    </tr>`
+  }
+  const checkTable = checkItems.length ? `
+    <table class="grid">
+      <thead><tr>
+        <th style="text-align:left">Test</th><th>Pass</th><th>Fail</th><th>N/A</th>
+        <th style="text-align:left">Test</th><th>Pass</th><th>Fail</th><th>N/A</th>
+      </tr></thead>
+      <tbody>${checkRows}</tbody>
+    </table>` : ''
+  const fieldTable = fieldItems.length ? `
+    <table class="doc notes" style="margin-top:8px"><tbody>
+      ${fieldItems.map(f => `<tr><td class="k">${esc(f.label || '-')}</td><td>${esc(f.value)}</td></tr>`).join('')}
+    </tbody></table>` : ''
+  return checkTable + fieldTable
+}
+
 const gridHtml = (inspection: InspectionReportLike) => {
+  const custom = customGridHtml(inspection)
+  if (custom) return custom
   const data = reportData(inspection)
   const checks = data.checks || {}
   const measurements: any[] = data.measurements || []

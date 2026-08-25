@@ -155,6 +155,7 @@ def _inspection_report_row(inspection: Inspection, invoice: Optional[Invoice] = 
         "result": _value(inspection.result),
         "form_template_id": inspection.form_template_id,
         "form_template_name": inspection.form_template.name if inspection.form_template else None,
+        "form_schema": inspection.form_template.schema if inspection.form_template else None,
         "scheduled_date": _dt(inspection.scheduled_date),
         "started_at": _dt(inspection.started_at),
         "completed_at": _dt(inspection.completed_at),
