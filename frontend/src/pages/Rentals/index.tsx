@@ -1,4 +1,4 @@
-import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -623,6 +623,8 @@ const Rentals = () => {
   // Item picker row state (add-an-item), separate from the committed items list.
   const [selectedRentalPart, setSelectedRentalPart] = useState<RentalPart | null>(null)
   const [itemDraft, setItemDraft] = useState<RentalItemForm>(newRentalItem())
+  const billingFrequencyRef = useRef<BillingFrequency>(agreementForm.billing_frequency)
+  const rateSyncRequestRef = useRef(0)
 
   const [returnDialog, setReturnDialog] = useState<Rental | null>(null)
   const [returnForm, setReturnForm] = useState<RentalReturnPayload>({
@@ -692,6 +694,10 @@ const Rentals = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agreementForm.start_date, agreementForm.billing_frequency, agreementForm.committed_periods])
+
+  useEffect(() => {
+    billingFrequencyRef.current = agreementForm.billing_frequency
+  }, [agreementForm.billing_frequency])
 
   useEffect(() => {
     if (isRentalCustomer && tab > 1) navigate('/rentals/agreements', { replace: true })
@@ -1219,6 +1225,12 @@ const Rentals = () => {
     })
   }
 
+  const loadRentalProductRate = (partId: number) => queryClient.fetchQuery<RentalProductRate>({
+    queryKey: ['rental-product-rate', partId],
+    queryFn: () => fetchRentalProductRate(partId),
+    staleTime: 60_000,
+  })
+
   const handlePartSelect = async (part: RentalPart | null) => {
     setSelectedRentalPart(part)
     if (!part) {
@@ -1236,15 +1248,74 @@ const Rentals = () => {
     }))
     // Auto-fill the rate from the product's tiered rate card for the chosen frequency.
     try {
-      const card = await fetchRentalProductRate(part.id)
-      const tierRate = rateForFrequency(card, agreementForm.billing_frequency)
+      const card = await loadRentalProductRate(part.id)
+      const tierRate = rateForFrequency(card, billingFrequencyRef.current)
       setItemDraft(prev => ({
-        ...prev,
-        ...(tierRate != null ? { rental_rate: Number(tierRate) } : {}),
-        ...(card.default_deposit != null ? { security_deposit: Number(card.default_deposit) } : {}),
+        ...(prev.part_id === part.id
+          ? {
+              ...prev,
+              ...(tierRate != null ? { rental_rate: Number(tierRate) } : {}),
+              ...(card.default_deposit != null ? { security_deposit: Number(card.default_deposit) } : {}),
+            }
+          : prev),
       }))
     } catch {
       /* no rate card configured yet — keep the unit price as the default */
+    }
+  }
+
+  const handleBillingFrequencyChange = async (nextFrequency: BillingFrequency) => {
+    billingFrequencyRef.current = nextFrequency
+    const requestId = ++rateSyncRequestRef.current
+    setAgreementForm(prev => ({ ...prev, billing_frequency: nextFrequency }))
+
+    // Custom schedules intentionally use operator-entered rates because the product rate
+    // card has no custom-frequency tier. All standard frequencies must re-resolve every
+    // selected product so a stale monthly amount can never carry into another schedule.
+    if (nextFrequency === 'custom') return
+
+    const partIds = Array.from(new Set([
+      ...agreementForm.items.map(item => item.part_id),
+      itemDraft.part_id,
+    ].filter((partId): partId is number => Boolean(partId))))
+    if (partIds.length === 0) return
+
+    const results = await Promise.all(partIds.map(async partId => {
+      try {
+        return { partId, card: await loadRentalProductRate(partId), failed: false }
+      } catch {
+        return { partId, card: null, failed: true }
+      }
+    }))
+    if (rateSyncRequestRef.current !== requestId || billingFrequencyRef.current !== nextFrequency) return
+
+    const resolvedRates = new Map<number, number | null>()
+    for (const result of results) {
+      if (!result.failed) resolvedRates.set(result.partId, rateForFrequency(result.card, nextFrequency))
+    }
+
+    setAgreementForm(prev => {
+      if (prev.billing_frequency !== nextFrequency) return prev
+      return {
+        ...prev,
+        items: prev.items.map(item => {
+          if (!item.part_id || !resolvedRates.has(item.part_id)) return item
+          const rate = resolvedRates.get(item.part_id)
+          return { ...item, rental_rate: rate == null ? 0 : Number(rate) }
+        }),
+      }
+    })
+    setItemDraft(prev => {
+      if (!prev.part_id || !resolvedRates.has(prev.part_id)) return prev
+      const rate = resolvedRates.get(prev.part_id)
+      return { ...prev, rental_rate: rate == null ? 0 : Number(rate) }
+    })
+
+    const missingRateIds = results
+      .filter(result => !result.failed && rateForFrequency(result.card, nextFrequency) == null)
+      .map(result => result.partId)
+    if (missingRateIds.length > 0) {
+      toast.info(`${missingRateIds.length} product${missingRateIds.length === 1 ? '' : 's'} has no ${nextFrequency === 'biweekly' ? 'bi-weekly' : nextFrequency} rate configured. Enter the rate manually or update its rate card.`)
     }
   }
 
@@ -1375,6 +1446,7 @@ const Rentals = () => {
     onSuccess: () => {
       toast.success('Rate card saved')
       if (rateCardPart) {
+        void queryClient.invalidateQueries({ queryKey: ['rental-product-rate', rateCardPart.id] })
         focusRecord(`rental-product-${rateCardPart.id}`, rateCardPart.part_number, {
           message: 'Rental product rate card updated.',
           announce: true,
@@ -2863,7 +2935,13 @@ const Rentals = () => {
               <TableBody>
                 <TableRow sx={{ '& td': { verticalAlign: 'top', py: 1.5 } }}>
                   <TableCell>
-                    <TextField fullWidth size="small" select value={agreementForm.billing_frequency} onChange={e => setAgreementForm(prev => ({ ...prev, billing_frequency: e.target.value as BillingFrequency }))}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      select
+                      value={agreementForm.billing_frequency}
+                      onChange={e => void handleBillingFrequencyChange(e.target.value as BillingFrequency)}
+                    >
                       <MenuItem value="daily">Daily</MenuItem>
                       <MenuItem value="weekly">Weekly</MenuItem>
                       <MenuItem value="biweekly">Bi-weekly</MenuItem>

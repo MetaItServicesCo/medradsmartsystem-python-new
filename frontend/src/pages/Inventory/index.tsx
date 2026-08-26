@@ -7,7 +7,7 @@ import {
   TableHead, TablePagination, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import CloseIcon from '@mui/icons-material/Close'
 import EditIcon from '@mui/icons-material/Edit'
 import InventoryIcon from '@mui/icons-material/Inventory'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
@@ -612,32 +612,57 @@ const Inventory = () => {
         )}
       </Menu>
 
-      <Dialog open={partDialogOpen} onClose={() => setPartDialogOpen(false)} maxWidth="xl" fullWidth PaperProps={{ sx: { borderRadius: '18px', overflow: 'hidden' } }}>
-        <DialogTitle sx={{ fontWeight: 800, borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {editingPart ? 'Edit Part' : 'Add New Part'}
-          <Button onClick={() => setPartDialogOpen(false)} variant="contained" sx={{ minWidth: 42, width: 42, height: 42, borderRadius: '8px', backgroundColor: '#4338CA' }}>
-            <ArrowBackIcon />
-          </Button>
+      <Dialog
+        open={partDialogOpen}
+        onClose={() => setPartDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        scroll="paper"
+        PaperProps={{
+          sx: {
+            borderRadius: { xs: 0, sm: '22px' },
+            overflow: 'hidden',
+            maxHeight: { xs: '100dvh', sm: 'calc(100dvh - 48px)' },
+            backgroundColor: '#F8FAFC',
+            boxShadow: '0 28px 80px rgba(30, 27, 75, 0.22)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: { xs: 2, sm: 2.5 }, borderBottom: '1px solid #E5E7EB', bgcolor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: { xs: 20, sm: 24 }, lineHeight: 1.2 }}>
+              {editingPart ? 'Edit Part' : 'Add New Part'}
+            </Typography>
+            <Typography sx={{ mt: 0.4, color: '#64748B', fontSize: 13, fontWeight: 600 }}>
+              Product details, supplier information, acquisition history, and imagery.
+            </Typography>
+          </Box>
+          <IconButton aria-label="Close add part dialog" onClick={() => setPartDialogOpen(false)} sx={{ flexShrink: 0, width: 42, height: 42, color: '#4F46E5', bgcolor: '#EEF2FF', '&:hover': { bgcolor: '#E0E7FF' } }}>
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ p: { xs: 2, md: 2.5 } }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 230px' }, gap: 2, '& .MuiInputBase-root:not(.MuiInputBase-multiline)': { minHeight: 40 }, '& .MuiOutlinedInput-input:not(textarea)': { py: 1.1 } }}>
-            <Box sx={{ display: 'grid', gap: 1.75, minWidth: 0 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
+        <DialogContent sx={{ p: { xs: 1.5, sm: 2.5 }, bgcolor: '#F8FAFC' }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 260px' }, gap: 2, alignItems: 'start', '& .MuiInputBase-root:not(.MuiInputBase-multiline)': { minHeight: 44 }, '& .MuiOutlinedInput-input:not(textarea)': { py: 1.25 } }}>
+            <Box sx={{ display: 'grid', gap: 2, minWidth: 0 }}>
+              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.75 }}>
+                  <Avatar sx={{ width: 34, height: 34, bgcolor: '#EEF2FF', color: '#4F46E5' }}><InventoryIcon fontSize="small" /></Avatar>
+                  <Box>
+                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Part Information</Typography>
+                    <Typography sx={{ color: '#64748B', fontSize: 12 }}>Core product identity, classification, condition, and pricing.</Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
                 <TextField label="Part Number *" placeholder="Part number" value={partForm.part_number} onChange={(e) => setPartForm({ ...partForm, part_number: e.target.value })} />
                 <TextField select label="Part Type *" value={partForm.part_type} onChange={(e) => setPartForm({ ...partForm, part_type: e.target.value })}>
-                  <MenuItem value="">Select part type(s)</MenuItem>
+                  <MenuItem value="">Select part type</MenuItem>
                   <MenuItem value="sales">Sales</MenuItem>
                   <MenuItem value="rental">Rental</MenuItem>
                 </TextField>
-                <TextField label="Part Description *" placeholder="Part description" value={partForm.description} onChange={(e) => setPartForm({ ...partForm, description: e.target.value })} />
+                <TextField label="Part Description *" placeholder="Part description" value={partForm.description} onChange={(e) => setPartForm({ ...partForm, description: e.target.value })} sx={{ gridColumn: { sm: '1 / -1', md: 'auto' } }} />
                 <TextField label="Make" placeholder="Make" value={partForm.make} onChange={(e) => setPartForm({ ...partForm, make: e.target.value })} />
                 <TextField label="Model" placeholder="Model" value={partForm.model} onChange={(e) => setPartForm({ ...partForm, model: e.target.value })} />
                 <TextField type="number" label="Amount" placeholder="Amount" value={partForm.unit_price} onChange={(e) => setPartForm({ ...partForm, unit_price: Number(e.target.value) })} />
-                <TextField label="Company" placeholder="Company Name" value={partForm.supplier_name} onChange={(e) => setPartForm({ ...partForm, supplier_name: e.target.value })} />
-                <TextField label="Phone" placeholder="Phone number" value={partForm.supplier_phone} onChange={(e) => setPartForm({ ...partForm, supplier_phone: formatUSPhoneInput(e.target.value) })} />
-                <TextField label="Sales Person Name" placeholder="Contact Name" value={partForm.supplier_contact} onChange={(e) => setPartForm({ ...partForm, supplier_contact: e.target.value })} />
-                <TextField label="Address" placeholder="Address" value={partForm.supplier_address || ''} onChange={(e) => setPartForm({ ...partForm, supplier_address: e.target.value })} />
-                <TextField label="Email" placeholder="Email" value={partForm.supplier_email} onChange={(e) => setPartForm({ ...partForm, supplier_email: e.target.value })} />
                 <TextField select label="Part Condition *" value={partForm.condition} onChange={(e) => setPartForm({ ...partForm, condition: e.target.value })}>
                   <MenuItem value="">Select Condition</MenuItem>
                   <MenuItem value="new">New</MenuItem>
@@ -645,37 +670,57 @@ const Inventory = () => {
                   <MenuItem value="used">Used</MenuItem>
                   <MenuItem value="damaged">Damaged</MenuItem>
                 </TextField>
+                </Box>
               </Box>
 
-              <Box>
-                <Typography sx={{ color: '#1E293B', fontSize: '0.85rem', mb: 0.75 }}>Image</Typography>
-                <Button component="label" variant="outlined" sx={{ borderRadius: '8px', textTransform: 'none', color: '#475569', borderColor: '#CBD5E1' }}>
-                  Choose File
-                  <input hidden type="file" accept="image/*" onChange={(e) => handlePartImage(e.target.files?.[0])} />
-                </Button>
+              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
+                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.35 }}>Supplier &amp; Contact</Typography>
+                <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1.75 }}>Company and primary sales contact for this part.</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.25 }}>
+                <TextField label="Company" placeholder="Company Name" value={partForm.supplier_name} onChange={(e) => setPartForm({ ...partForm, supplier_name: e.target.value })} />
+                <TextField label="Sales Person Name" placeholder="Contact Name" value={partForm.supplier_contact} onChange={(e) => setPartForm({ ...partForm, supplier_contact: e.target.value })} />
+                <TextField label="Phone" placeholder="Phone number" value={partForm.supplier_phone} onChange={(e) => setPartForm({ ...partForm, supplier_phone: formatUSPhoneInput(e.target.value) })} />
+                <TextField label="Email" placeholder="Email" value={partForm.supplier_email} onChange={(e) => setPartForm({ ...partForm, supplier_email: e.target.value })} />
+                <TextField label="Address" placeholder="Address" value={partForm.supplier_address || ''} onChange={(e) => setPartForm({ ...partForm, supplier_address: e.target.value })} sx={{ gridColumn: '1 / -1' }} />
+                </Box>
               </Box>
 
-              <Typography sx={{ fontWeight: 900, color: '#1E293B', mt: 1 }}>Acquired From (Optional)</Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
+              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
+                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.35 }}>Acquired From <Box component="span" sx={{ color: '#94A3B8', fontWeight: 700 }}>(Optional)</Box></Typography>
+                <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1.75 }}>Purchase source, shipment method, and receiving dates.</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
                 <TextField label="Vendor Name" placeholder="Vendor Name" value={partForm.vendor_name || ''} onChange={(e) => setPartForm({ ...partForm, vendor_name: e.target.value })} />
                 <TextField label="Purchase Location" placeholder="Purchase Location" value={partForm.purchase_location || ''} onChange={(e) => setPartForm({ ...partForm, purchase_location: e.target.value })} />
                 <TextField label="Shipping Method" placeholder="Shipping Method" value={partForm.shipping_method || ''} onChange={(e) => setPartForm({ ...partForm, shipping_method: e.target.value })} />
                 <TextField type="date" label="Purchase Date" InputLabelProps={{ shrink: true }} value={partForm.acquisition_date || ''} onChange={(e) => setPartForm({ ...partForm, acquisition_date: e.target.value || null })} />
                 <TextField type="date" label="Warehouse Arrival Date" InputLabelProps={{ shrink: true }} value={partForm.warehouse_arrival_date || ''} onChange={(e) => setPartForm({ ...partForm, warehouse_arrival_date: e.target.value || null })} />
+                </Box>
               </Box>
             </Box>
 
-            <Box sx={{ height: 230, borderRadius: '14px', border: '1px solid #E2E8F0', backgroundColor: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              {partForm.default_picture_url ? (
-                <Box component="img" src={partForm.default_picture_url} alt="Part preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <ImageOutlinedIcon sx={{ color: '#CBD5E1', fontSize: 56 }} />
-              )}
+            <Box sx={{ p: 1.5, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF', position: { lg: 'sticky' }, top: { lg: 0 } }}>
+              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Part Image</Typography>
+              <Box sx={{ height: { xs: 220, lg: 250 }, borderRadius: '12px', border: '1px dashed #C7D2FE', backgroundColor: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {partForm.default_picture_url ? (
+                  <Box component="img" src={partForm.default_picture_url} alt="Part preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <Box sx={{ textAlign: 'center', color: '#94A3B8' }}>
+                    <ImageOutlinedIcon sx={{ fontSize: 54 }} />
+                    <Typography sx={{ mt: 0.5, fontSize: 12, fontWeight: 700 }}>No image selected</Typography>
+                  </Box>
+                )}
+              </Box>
+              <Button fullWidth component="label" variant="outlined" startIcon={<ImageOutlinedIcon />} sx={{ mt: 1.25, minHeight: 42, borderRadius: '10px', textTransform: 'none', fontWeight: 800, color: '#4F46E5', borderColor: '#C7D2FE' }}>
+                {partForm.default_picture_url ? 'Replace Image' : 'Choose Image'}
+                <input hidden type="file" accept="image/*" onChange={(e) => handlePartImage(e.target.files?.[0])} />
+              </Button>
+              <Typography sx={{ mt: 1, color: '#94A3B8', fontSize: 11, textAlign: 'center' }}>Use a clear product photo for Sales and Rental lists.</Typography>
             </Box>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: { xs: 2, md: 3 }, pb: 2.5, justifyContent: 'flex-end' }}>
-          <Button variant="contained" onClick={handleSavePart} disabled={createMut.isPending || updateMut.isPending} sx={{ backgroundColor: '#4338CA', borderRadius: '8px', px: 3, fontWeight: 900 }}>
+        <DialogActions sx={{ px: { xs: 2, md: 3 }, py: 1.75, justifyContent: 'flex-end', gap: 1, borderTop: '1px solid #E5E7EB', bgcolor: '#FFFFFF' }}>
+          <Button onClick={() => setPartDialogOpen(false)} sx={{ color: '#64748B', fontWeight: 800, borderRadius: '10px' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleSavePart} disabled={createMut.isPending || updateMut.isPending} sx={{ minHeight: 42, background: 'linear-gradient(135deg, #4F46E5 0%, #9333EA 100%)', borderRadius: '10px', px: 3, fontWeight: 900 }}>
             {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : (editingPart ? 'Update Part' : 'Add Part')}
           </Button>
         </DialogActions>
