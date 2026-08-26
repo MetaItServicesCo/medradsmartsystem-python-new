@@ -1374,6 +1374,14 @@ const Rentals = () => {
     },
     onSuccess: () => {
       toast.success('Rate card saved')
+      if (rateCardPart) {
+        focusRecord(`rental-product-${rateCardPart.id}`, rateCardPart.part_number, {
+          message: 'Rental product rate card updated.',
+          announce: true,
+          pathname: '/rentals/products',
+          query: { search: rateCardPart.part_number },
+        })
+      }
       setRateCardPart(null)
     },
     onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not save rate card')),
@@ -1381,10 +1389,19 @@ const Rentals = () => {
 
   const sendMut = useMutation({
     mutationFn: (id: number) => sendRentalPortalLink(id),
-    onSuccess: (result) => {
+    onSuccess: (result, rentalId) => {
       setDeliveryLinkKind('agreement')
       setDeliveryLink(result.link)
       toast.success('Secure link emailed to the customer')
+      const rental = rentals.find(item => item.id === rentalId)
+      if (rental) {
+        focusRecord(`rental-agreement-${rental.id}`, rental.rental_number, {
+          message: 'Secure rental agreement link sent to the customer.',
+          announce: true,
+          pathname: '/rentals/agreements',
+          query: { search: rental.rental_number },
+        })
+      }
       closeActions()
       invalidateRentals()
     },
@@ -1405,6 +1422,14 @@ const Rentals = () => {
       setDeliveryLinkKind('extension')
       setDeliveryLink(result.link)
       toast.success('Extension offer emailed to the customer')
+      if (viewAgreement) {
+        focusRecord(`rental-agreement-${viewAgreement.id}`, viewAgreement.rental_number, {
+          message: 'Rental extension offer sent to the customer.',
+          announce: true,
+          pathname: '/rentals/agreements',
+          query: { search: viewAgreement.rental_number },
+        })
+      }
       invalidateRentals()
       if (viewAgreement) setViewAgreement(await fetchRentalDetail(viewAgreement.id))
     },
@@ -1418,6 +1443,14 @@ const Rentals = () => {
     },
     onSuccess: async () => {
       toast.success('Extension request rejected')
+      if (viewAgreement) {
+        focusRecord(`rental-agreement-${viewAgreement.id}`, viewAgreement.rental_number, {
+          message: 'Rental extension request rejected.',
+          announce: true,
+          pathname: '/rentals/agreements',
+          query: { search: viewAgreement.rental_number },
+        })
+      }
       invalidateRentals()
       if (viewAgreement) setViewAgreement(await fetchRentalDetail(viewAgreement.id))
     },
@@ -1438,6 +1471,14 @@ const Rentals = () => {
       setDeliveryLinkKind('extension')
       setDeliveryLink(result.link)
       toast.success('Extension offer emailed to the customer')
+      if (viewAgreement) {
+        focusRecord(`rental-agreement-${viewAgreement.id}`, viewAgreement.rental_number, {
+          message: 'Rental extension started and sent to the customer.',
+          announce: true,
+          pathname: '/rentals/agreements',
+          query: { search: viewAgreement.rental_number },
+        })
+      }
       setStartExtEnd(''); setStartExtPeriods(''); setStartExtTerms(''); setStartExtNotes('')
       invalidateRentals()
       if (viewAgreement) setViewAgreement(await fetchRentalDetail(viewAgreement.id))
@@ -1452,6 +1493,14 @@ const Rentals = () => {
     },
     onSuccess: async () => {
       toast.success('Extension withdrawn')
+      if (viewAgreement) {
+        focusRecord(`rental-agreement-${viewAgreement.id}`, viewAgreement.rental_number, {
+          message: 'Rental extension offer withdrawn.',
+          announce: true,
+          pathname: '/rentals/agreements',
+          query: { search: viewAgreement.rental_number },
+        })
+      }
       invalidateRentals()
       if (viewAgreement) setViewAgreement(await fetchRentalDetail(viewAgreement.id))
     },

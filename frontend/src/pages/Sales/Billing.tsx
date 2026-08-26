@@ -59,6 +59,7 @@ import InvoicePrintDialog, {
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
 import SearchableSelect from '@/components/SearchableSelect'
+import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
@@ -452,6 +453,7 @@ const Billing = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { focusRecord } = useListContext()
   const user = useAuthStore(s => s.user)
   const isInternalBillingAdmin = user?.role === 'superadmin' || (user?.role === 'admin' && !user.facility_id)
   const isFacilityBillingUser = ['facility_admin', 'facility_manager', 'client'].includes(user?.role || '')
@@ -483,6 +485,7 @@ const Billing = () => {
   const rowsPerPage = 25
   const search = searchParams.get('search') || ''
   const searchField = searchParams.get('search_field') || 'all'
+  const focusedBillingRecord = searchParams.get('focus') || ''
   const [searchInput, setSearchInput] = useState(search)
   const activeSearch = search.trim()
   const querySearch = activeSearch || undefined
@@ -511,6 +514,18 @@ const Billing = () => {
   const [proofReviewNotes, setProofReviewNotes] = useState<Record<number, string>>({})
   const [expandedProofOcr, setExpandedProofOcr] = useState<Record<number, boolean>>({})
 
+  const publishBillingActivity = (item: BillingItem, message: string) => {
+    focusRecord(`billing-${item.key}`, item.number, {
+      message,
+      announce: true,
+      pathname: '/billing',
+      query: {
+        search: item.number,
+        search_field: 'billing_number',
+      },
+    })
+  }
+
   const openLedgerPrint = useCallback((item: BillingItem) => {
     setPrintDocumentType('ledger')
     setPrintItem(item)
@@ -519,6 +534,17 @@ const Billing = () => {
   useEffect(() => {
     setSearchInput(search)
   }, [search])
+
+  // A deliberate "Show" from Recent activity must not leave the requested
+  // record hidden behind a previously selected source/status/summary tab.
+  // This only resets list presentation; it never changes billing data.
+  useEffect(() => {
+    if (!focusedBillingRecord.startsWith('billing-')) return
+    setSourceFilter('all')
+    setStatusFilter('all')
+    setTab(0)
+    setPage(0)
+  }, [focusedBillingRecord])
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -870,34 +896,40 @@ const Billing = () => {
   ])
 
   const servicePayMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: QuotationPaymentCreate }) => createQuotationPayment(id, data),
-    onSuccess: () => {
+    mutationFn: ({ item, data }: { item: BillingItem; data: QuotationPaymentCreate }) => createQuotationPayment(item.id, data),
+    onSuccess: (_, variables) => {
       toast.success('Payment recorded')
       closePayDialog()
       invalidateBilling()
+      publishBillingActivity(variables.item, 'Payment recorded in the billing ledger.')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to record payment'),
   })
 
   const requestAuthorizationMut = useMutation({
-    mutationFn: ({ id }: { id: number }) => requestQuotationAuthorization(id),
-    onSuccess: async () => {
+    mutationFn: ({ item }: { item: BillingItem }) => requestQuotationAuthorization(item.id),
+    onSuccess: async (_, variables) => {
       await invalidateBilling()
       toast.success('Authorization request sent to the facility')
+      publishBillingActivity(variables.item, 'Payment authorization requested from the facility.')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not request authorization'),
   })
 
   const decideAuthorizationMut = useMutation({
-    mutationFn: ({ id }: { id: number }) => decideQuotationAuthorization(id, {
+    mutationFn: ({ item }: { item: BillingItem }) => decideQuotationAuthorization(item.id, {
       decision: authorizationDecision,
       channel: authorizationChannel,
       authorized_by_user_id: authorizationChannel === 'phone' ? Number(phoneAuthorizerId) : undefined,
       notes: authorizationNotes.trim() || undefined,
     }),
-    onSuccess: async () => {
+    onSuccess: async (_, variables) => {
       await invalidateBilling()
       toast.success(authorizationDecision === 'authorized' ? 'Quotation authorized' : 'Authorization declined')
+      publishBillingActivity(
+        variables.item,
+        authorizationDecision === 'authorized' ? 'Quotation payment authorized.' : 'Quotation authorization declined.',
+      )
       closeAuthorizationDialog()
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not save authorization decision'),
@@ -913,11 +945,12 @@ const Billing = () => {
         card_last4: cardLast4,
       })
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       toast.success('Invoice payment updated')
       closePayDialog()
       invalidateBilling()
       queryClient.invalidateQueries({ queryKey: ['invoice-payment-evidence'] })
+      publishBillingActivity(variables.item, 'Invoice payment updated in the billing ledger.')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice payment'),
   })
@@ -929,7 +962,7 @@ const Billing = () => {
       }
       return submitInvoicePaymentProof(item.id, { amount, payment_method: method, notes, file })
     },
-    onSuccess: async () => {
+    onSuccess: async (_, variables) => {
       toast.success('Payment proof submitted for Admin review; no balance was changed')
       closePayDialog()
       await Promise.all([
@@ -937,6 +970,7 @@ const Billing = () => {
         queryClient.invalidateQueries({ queryKey: ['billing-payment-proof-queue'] }),
         queryClient.invalidateQueries({ queryKey: ['invoice-payment-evidence'] }),
       ])
+      publishBillingActivity(variables.item, 'Payment proof submitted for review.')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to submit payment proof'),
   })
@@ -974,10 +1008,11 @@ const Billing = () => {
   })
 
   const approveBillingMut = useMutation({
-    mutationFn: (invoiceId: number) => approveInvoiceForBilling(invoiceId),
-    onSuccess: async approval => {
+    mutationFn: (item: BillingItem) => approveInvoiceForBilling(item.id),
+    onSuccess: async (approval, item) => {
       await invalidateBilling()
       toast.success(`${approval.invoice_number} is approved and available for payment`)
+      publishBillingActivity(item, 'Invoice approved and made available for payment.')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not approve invoice for billing'),
   })
@@ -1023,6 +1058,7 @@ const Billing = () => {
           ? 'Invoice updated; billing approval is required'
           : 'Invoice updated',
       )
+      publishBillingActivity(variables.item, 'Invoice details updated.')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update invoice'),
   })
@@ -1156,7 +1192,7 @@ const Billing = () => {
         data.account_last_four = digits.slice(-4) || undefined
         data.bank_name = ccName || undefined
       }
-      servicePayMut.mutate({ id: payOpen.id, data })
+      servicePayMut.mutate({ item: payOpen, data })
       return
     }
 
@@ -1744,7 +1780,7 @@ const Billing = () => {
             sx={ACTION_MENU_ITEM}
             disabled={approveBillingMut.isPending}
             onClick={() => {
-              approveBillingMut.mutate(actionItem.id)
+              approveBillingMut.mutate(actionItem)
               closeActions()
             }}
           >
@@ -1755,7 +1791,7 @@ const Billing = () => {
         {actionItem && actionItem.source === 'service' && actionItem.billingKind === 'service_quotation' && canManageQuotationAuthorization
           && !['authorization_requested', 'authorized', 'paid', 'included_in_invoice', 'cancelled'].includes(actionItem.status)
           && !(actionItem.status === 'partially_paid' && (actionItem.raw as ServiceRequestQuotationList).authorizations?.some(item => ['requested', 'authorized'].includes(item.status))) && (
-          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { requestAuthorizationMut.mutate({ id: actionItem.id }); closeActions() }}>
+          <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { requestAuthorizationMut.mutate({ item: actionItem }); closeActions() }}>
             <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#B45309' }} /></ListItemIcon>
             Request Authorization
           </MenuItem>
@@ -1928,7 +1964,7 @@ const Billing = () => {
           <Button onClick={closeAuthorizationDialog} sx={{ fontWeight: 900 }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => authorizationItem && decideAuthorizationMut.mutate({ id: authorizationItem.id })}
+            onClick={() => authorizationItem && decideAuthorizationMut.mutate({ item: authorizationItem })}
             disabled={decideAuthorizationMut.isPending || (authorizationChannel === 'phone' && !phoneAuthorizerId)}
             sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
           >

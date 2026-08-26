@@ -793,6 +793,12 @@ const Sales = () => {
       closeActions()
       invalidateSales()
       toast.success(`Revision ${quotation.revision} created. Edit and resend this draft.`)
+      locateSalesRecord(
+        '/sales/quotations',
+        `sales-quotation-${quotation.id}`,
+        quotation.work_order,
+        `Revision ${quotation.revision} created`,
+      )
       openEdit(quotation)
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not create quotation revision'),
@@ -828,7 +834,7 @@ const Sales = () => {
   const cardAuthMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: CreditCardAuthorizationPayload }) =>
       requestSalesCardAuthorization(id, data),
-    onSuccess: result => {
+    onSuccess: (result, variables) => {
       if (result.authorization.status === 'submitted') {
         toast.success(`Authorization ${result.authorization.authorization_reference || ''} recorded for ${money(result.amount)}`)
       } else {
@@ -838,6 +844,23 @@ const Sales = () => {
       setCardAuthDialog(null)
       closeActions()
       invalidateSales()
+      const invoice = cardAuthDialog?.invoice
+      const quotation = cardAuthorizationQuotation || quotations.find(item => item.id === variables.id)
+      if (invoice) {
+        locateSalesRecord(
+          '/sales/invoices',
+          `sales-invoice-${invoice.id}`,
+          invoice.invoice_number,
+          'Card authorization request recorded',
+        )
+      } else if (quotation) {
+        locateSalesRecord(
+          '/sales/quotations',
+          `sales-quotation-${quotation.id}`,
+          quotation.work_order,
+          'Card authorization request recorded',
+        )
+      }
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not request authorization'),
   })

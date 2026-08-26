@@ -984,6 +984,17 @@ const Inspections = () => {
     pathname: '/inspections',
     query: { context_search: label, ...options.query },
   })
+  const publishInspectionInvoiceActivity = (invoice: InspectionInvoice, message: string) => {
+    publishRecentActivity(`billing-inspection-${invoice.id}`, invoice.invoice_number, {
+      message,
+      announce: true,
+      pathname: '/billing',
+      query: {
+        search: invoice.invoice_number,
+        search_field: 'billing_number',
+      },
+    })
+  }
   const currentUser = useAuthStore((state) => state.user)
   const canAddInspections = hasPermission(currentUser, 'inspections', 'add')
   const canEditInspections = hasPermission(currentUser, 'inspections', 'edit')
@@ -1681,6 +1692,7 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+      publishInspectionInvoiceActivity(invoice, 'Inspection invoice generated and ready in Billing.')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not generate invoice'),
   })
@@ -1692,6 +1704,7 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['billing-inspection-invoices'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+      publishInspectionInvoiceActivity(invoice, 'Batch inspection invoice generated and ready in Billing.')
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not generate batch invoice'),
   })
@@ -1743,24 +1756,38 @@ const Inspections = () => {
 
   const removeBatchAssetMut = useMutation({
     mutationFn: ({ batchId, inspectionId }: { batchId: number; inspectionId: number }) => removeInspectionBatchAsset(batchId, inspectionId),
-    onSuccess: () => {
+    onSuccess: (batch) => {
       toast.success('Asset removed from batch')
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+      focusRecord(`inspection-batch-${batch.id}`, batch.batch_number, {
+        message: 'Asset removed from this inspection batch.',
+        announce: true,
+        query: { tab: batch.status === 'completed' ? 3 : 2 },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not remove asset from batch'),
   })
 
   const techMut = useMutation({
     mutationFn: ({ inspectionId, inspectorId }: { inspectionId: number; inspectorId: number | null }) => updateInspectionTechnician(inspectionId, inspectorId),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       toast.success('Technician updated')
       setTechEdit(null)
       setSelectedTechId('')
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
+      focusRecord(
+        updated.batch_id ? `inspection-batch-${updated.batch_id}` : `inspection-${updated.id}`,
+        updated.inspection_number,
+        {
+          message: 'Assigned technician updated.',
+          announce: true,
+          query: { tab: updated.status === 'completed' ? 3 : updated.status === 'closed' ? 5 : 2 },
+        },
+      )
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Could not change technician'),
   })
@@ -1794,6 +1821,11 @@ const Inspections = () => {
       if (reportInspection && reportFormSource === 'custom') {
         setSelectedReportFormId(saved.id)
       }
+      focusRecord(`inspection-form-${saved.id}`, saved.name, {
+        message: formBuilderMode === 'create' ? 'Inspection form created.' : 'Inspection form updated.',
+        announce: true,
+        query: { tab: 4 },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not save inspection form'),
   })
@@ -1825,6 +1857,11 @@ const Inspections = () => {
       setCustomFormDescription(saved.description || '')
       setReportCustomSchema(schemaForForm(saved))
       queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+      focusRecord(`inspection-form-${saved.id}`, saved.name, {
+        message: 'Reusable inspection form saved.',
+        announce: true,
+        query: { tab: 4 },
+      })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not save custom inspection form'),
   })
