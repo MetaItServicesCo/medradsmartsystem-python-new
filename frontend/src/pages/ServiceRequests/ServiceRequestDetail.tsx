@@ -1735,55 +1735,51 @@ const ServiceRequestDetail = () => {
           {/* Billing & Reporting Actions (if completed — admin/superadmin only) */}
           {sr.status === 'completed' && canManageServiceBilling && (
             <Card sx={{ p: 3 }}>
-              <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
-                Billing & Reports Actions
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<AssessmentIcon />}
-                  onClick={() => navigate(`/reports?serviceRequest=${sr.id}`)}
-                  sx={{ borderRadius: '12px', fontWeight: 600 }}
-                >
-                  View Report
-                </Button>
-
-                {resolvedInvoice && !sr.invoice_deleted ? (
-                  <Button
-                    variant="contained"
-                    startIcon={<EditIcon />}
-                    onClick={openEditInvoice}
-                    sx={{
-                      borderRadius: '12px',
-                      fontWeight: 800,
-                      background: 'linear-gradient(135deg, #059669 0%, #0891B2 100%)',
-                    }}
-                  >
-                    Edit Invoice ({resolvedInvoice.invoice_number})
-                  </Button>
-                ) : (
-                  <Button
-                    variant="contained"
-                    startIcon={<ReceiptLongIcon />}
-                    onClick={openInvoiceDialog}
-                    disabled={invoiceMutation.isPending || sr.invoice_deleted}
-                    sx={{
-                      borderRadius: '12px',
-                      fontWeight: 800,
-                      background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
-                    }}
-                  >
-                    Generate Invoice
-                  </Button>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2.5 }}>
+                <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '1rem' }}>
+                  Billing & Reports Actions
+                </Typography>
+                {resolvedInvoice && !sr.invoice_deleted && (
+                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.85, pl: 1.25, pr: 1.4, py: 0.5, borderRadius: '999px', border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
+                    <ReceiptLongIcon sx={{ fontSize: '0.95rem', color: '#64748B' }} />
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{resolvedInvoice.invoice_number}</Typography>
+                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', ml: 0.25, backgroundColor: sr.billing_status === 'approved' ? '#059669' : sr.billing_status === 'not_approved' ? '#DC2626' : '#F59E0B' }} />
+                    <Typography sx={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {sr.billing_status === 'approved' ? 'Approved' : sr.billing_status === 'not_approved' ? 'Not approved' : 'Pending'}
+                    </Typography>
+                  </Box>
                 )}
+              </Box>
 
+              {/* Primary invoice action */}
+              {resolvedInvoice && !sr.invoice_deleted ? (
                 <Button
-                  variant="outlined"
-                  color={sr.billing_status === 'approved' ? 'success' : 'primary'}
-                  startIcon={<ThumbUpIcon />}
+                  fullWidth variant="contained" startIcon={<EditIcon />} onClick={openEditInvoice}
+                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(79,70,229,0.65)', background: 'linear-gradient(135deg, #4F46E5 0%, #6E4BCC 100%)', '&:hover': { background: 'linear-gradient(135deg, #4338CA 0%, #5B3EB8 100%)', boxShadow: '0 14px 30px -14px rgba(79,70,229,0.75)' } }}
+                >
+                  Edit Invoice ({resolvedInvoice.invoice_number})
+                </Button>
+              ) : (
+                <Button
+                  fullWidth variant="contained" startIcon={<ReceiptLongIcon />} onClick={openInvoiceDialog}
+                  disabled={invoiceMutation.isPending || sr.invoice_deleted}
+                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(79,70,229,0.65)', background: 'linear-gradient(135deg, #4F46E5 0%, #6E4BCC 100%)', '&:hover': { background: 'linear-gradient(135deg, #4338CA 0%, #5B3EB8 100%)' } }}
+                >
+                  Generate Invoice
+                </Button>
+              )}
+
+              {/* Billing approval — decision pair */}
+              <Typography sx={{ mt: 2.5, mb: 1, fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94A3B8' }}>Billing approval</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
+                <Button
+                  fullWidth variant={sr.billing_status === 'approved' ? 'contained' : 'outlined'}
+                  startIcon={sr.billing_status === 'approved' ? <CheckCircleIcon /> : <ThumbUpIcon />}
                   onClick={() => handleUpdateFlag({ billing_status: 'approved' })}
                   disabled={updateMutation.isPending || sr.billing_status === 'approved' || !resolvedInvoice}
-                  sx={{ borderRadius: '12px', fontWeight: 600 }}
+                  sx={sr.billing_status === 'approved'
+                    ? { borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.1, boxShadow: 'none', backgroundColor: '#059669', color: '#fff', '&.Mui-disabled': { backgroundColor: '#059669', color: '#fff', opacity: 0.92 } }
+                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#047857', borderColor: '#A7F3D0', backgroundColor: '#F0FDF4', '&:hover': { borderColor: '#059669', backgroundColor: '#DCFCE7' } }}
                 >
                   {sr.billing_status === 'approved'
                     ? 'Approved for Billing'
@@ -1791,35 +1787,52 @@ const ServiceRequestDetail = () => {
                       ? 'Approve for Billing'
                       : 'Generate Invoice First'}
                 </Button>
-
                 <Button
-                  variant="outlined"
-                  color={sr.billing_status === 'not_approved' ? 'error' : 'inherit'}
+                  fullWidth variant={sr.billing_status === 'not_approved' ? 'contained' : 'outlined'}
                   startIcon={<ThumbDownIcon />}
                   onClick={() => handleUpdateFlag({ billing_status: 'not_approved' })}
                   disabled={updateMutation.isPending || sr.billing_status === 'not_approved'}
-                  sx={{ borderRadius: '12px', fontWeight: 600 }}
+                  sx={sr.billing_status === 'not_approved'
+                    ? { borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.1, boxShadow: 'none', backgroundColor: '#FEE2E2', color: '#B91C1C', '&.Mui-disabled': { backgroundColor: '#FEE2E2', color: '#B91C1C', opacity: 0.95 } }
+                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#64748B', borderColor: '#E2E8F0', backgroundColor: '#fff', '&:hover': { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', color: '#DC2626' } }}
                 >
                   {sr.billing_status === 'not_approved' ? 'Not Approved' : 'Not Approved for Billing'}
                 </Button>
+              </Box>
 
+              {/* Reports & payment */}
+              <Typography sx={{ mt: 2.5, mb: 1, fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94A3B8' }}>Reports & payment</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
                 <Button
-                  variant="outlined"
-                  startIcon={<CreditCardIcon />}
+                  fullWidth variant="outlined" startIcon={<AssessmentIcon />}
+                  onClick={() => navigate(`/reports?serviceRequest=${sr.id}`)}
+                  sx={{ borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#475569', borderColor: '#E2E8F0', backgroundColor: '#fff', '&:hover': { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' } }}
+                >
+                  View Report
+                </Button>
+                <Button
+                  fullWidth variant="outlined" startIcon={<CreditCardIcon />}
                   onClick={() => handleUpdateFlag({ cc_auth_requested: true })}
                   disabled={updateMutation.isPending || sr.cc_auth_requested}
-                  sx={{ borderRadius: '12px', fontWeight: 600 }}
+                  sx={sr.cc_auth_requested
+                    ? { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#047857', borderColor: '#A7F3D0', backgroundColor: '#F0FDF4', '&.Mui-disabled': { color: '#047857', borderColor: '#A7F3D0', opacity: 0.95 } }
+                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#475569', borderColor: '#E2E8F0', backgroundColor: '#fff', '&:hover': { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' } }}
                 >
                   {sr.cc_auth_requested ? 'CC Auth Requested' : 'Request CC Auth'}
                 </Button>
+              </Box>
 
+              {/* Danger zone */}
+              <Box sx={{ mt: 2.5, pt: 2, borderTop: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: '#334155' }}>Delete this invoice</Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: '#94A3B8' }}>Removes the invoice from billing — this can't be undone.</Typography>
+                </Box>
                 <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<DeleteOutlineIcon />}
+                  variant="outlined" startIcon={<DeleteOutlineIcon />}
                   onClick={() => handleUpdateFlag({ invoice_deleted: true })}
                   disabled={updateMutation.isPending || sr.invoice_deleted}
-                  sx={{ borderRadius: '12px', fontWeight: 600 }}
+                  sx={{ borderRadius: '12px', fontWeight: 700, textTransform: 'none', py: 0.9, color: '#DC2626', borderColor: '#FECACA', backgroundColor: '#fff', '&:hover': { borderColor: '#EF4444', backgroundColor: '#FEF2F2' } }}
                 >
                   {sr.invoice_deleted ? 'Invoice Deleted' : 'Delete Invoice'}
                 </Button>
