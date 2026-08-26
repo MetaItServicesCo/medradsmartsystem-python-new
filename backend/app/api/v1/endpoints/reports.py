@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.deps import get_current_user
@@ -144,7 +144,11 @@ def _service_report_row(sr: ServiceRequest, invoice: Optional[Invoice] = None) -
     }
 
 
-def _inspection_report_row(inspection: Inspection, invoice: Optional[Invoice] = None) -> dict[str, Any]:
+def _inspection_report_row(
+    inspection: Inspection,
+    invoice: Optional[Invoice] = None,
+    batch_asset_count: Optional[int] = None,
+) -> dict[str, Any]:
     asset_name = _part_name(inspection.inventory_part) if inspection.inventory_part else _equipment_name(inspection.equipment)
     serial_number = (
         inspection.inventory_part.serial_number
@@ -164,14 +168,27 @@ def _inspection_report_row(inspection: Inspection, invoice: Optional[Invoice] = 
         if inspection.facility and inspection.facility.tier
         else None
     )
+    is_batch_report = inspection.batch_id is not None
+    report_number = (
+        inspection.batch.batch_number
+        if is_batch_report and inspection.batch
+        else inspection.inspection_number
+    )
     return {
         "id": inspection.id,
+        "report_key": f"batch:{inspection.batch_id}" if is_batch_report else f"inspection:{inspection.id}",
+        "report_number": report_number,
         "inspection_number": inspection.inspection_number,
         "batch_id": inspection.batch_id,
         "batch_number": inspection.batch.batch_number if inspection.batch else None,
+        "asset_count": batch_asset_count if is_batch_report else 1,
         "facility_id": inspection.facility_id,
         "facility_name": inspection.facility.name if inspection.facility else None,
-        "asset_name": asset_name or "Inspection asset",
+        "asset_name": (
+            f"{batch_asset_count} inspected assets"
+            if is_batch_report and batch_asset_count is not None
+            else asset_name or "Inspection asset"
+        ),
         "equipment_name": _equipment_name(inspection.equipment) if inspection.equipment else None,
         "inventory_part_name": _part_name(inspection.inventory_part) if inspection.inventory_part else None,
         "asset_tag": inspection.equipment.asset_tag if inspection.equipment else inspection.inventory_part.part_number if inspection.inventory_part else None,
@@ -221,6 +238,32 @@ def _scope_inspection_query(query, db: Session, current_user: User):
     elif current_user.role == UserRole.EMPLOYEE:
         query = query.filter(False)
     return query
+
+
+def _inspection_report_groups(query):
+    """Collapse completed asset inspections into their logical report record.
+
+    A batch owns one printable report even though its form data is stored on
+    multiple Inspection rows. Standalone inspections remain independent.
+    Positive batch ids and negative inspection ids keep both namespaces
+    collision-free without changing any persisted records.
+    """
+    logical_report_id = case(
+        (Inspection.batch_id.isnot(None), Inspection.batch_id),
+        else_=-Inspection.id,
+    )
+    return (
+        query.with_entities(
+            logical_report_id.label("logical_report_id"),
+            func.max(Inspection.id).label("inspection_id"),
+        )
+        .group_by(logical_report_id)
+    )
+
+
+def _inspection_report_count(query, db: Session) -> int:
+    groups = _inspection_report_groups(query).subquery()
+    return int(db.query(func.count()).select_from(groups).scalar() or 0)
 
 
 def _apply_service_filters(query, search: Optional[str], facility_id: Optional[int], technician_id: Optional[int], date_from: Optional[date], date_to: Optional[date]):
@@ -339,7 +382,7 @@ def reports_summary(
                 break
     return {
         "service_reports": service_query.count(),
-        "inspection_reports": inspection_query.count(),
+        "inspection_reports": _inspection_report_count(inspection_query, db),
         "service_history": history_count,
     }
 
@@ -411,6 +454,14 @@ def get_inspection_reports(
         raise HTTPException(status_code=400, detail="From date cannot be later than To date")
     query = (
         _scope_inspection_query(db.query(Inspection), db, current_user)
+        .filter(Inspection.status == InspectionStatus.COMPLETED)
+    )
+    query = _apply_inspection_filters(query, search, facility_id, technician_id, result, date_from, date_to)
+    report_groups = _inspection_report_groups(query).subquery()
+    total = int(db.query(func.count()).select_from(report_groups).scalar() or 0)
+    items = (
+        db.query(Inspection)
+        .join(report_groups, report_groups.c.inspection_id == Inspection.id)
         .options(
             joinedload(Inspection.facility).joinedload(Facility.tier),
             joinedload(Inspection.equipment).joinedload(Equipment.tier),
@@ -419,20 +470,60 @@ def get_inspection_reports(
             joinedload(Inspection.form_template),
             joinedload(Inspection.batch),
         )
-        .filter(Inspection.status == InspectionStatus.COMPLETED)
-    )
-    query = _apply_inspection_filters(query, search, facility_id, technician_id, result, date_from, date_to)
-    total = query.count()
-    items = query.order_by(Inspection.completed_at.desc().nullslast(), Inspection.id.desc()).offset(skip).limit(limit).all()
-    invoice_map = {
-        invoice.inspection_id: invoice
-        for invoice in scope_invoice_approval_visibility(db.query(Invoice), current_user)
-        .filter(Invoice.invoice_type == InvoiceType.INSPECTION, Invoice.inspection_id.in_([item.id for item in items]))
+        .order_by(Inspection.completed_at.desc().nullslast(), Inspection.id.desc())
+        .offset(skip)
+        .limit(limit)
         .all()
-        if invoice.inspection_id
-    } if items else {}
+    )
+
+    batch_ids = {item.batch_id for item in items if item.batch_id is not None}
+    standalone_ids = {item.id for item in items if item.batch_id is None}
+    batch_asset_counts = {
+        int(batch_id): int(asset_count)
+        for batch_id, asset_count in (
+            db.query(Inspection.batch_id, func.count(Inspection.id))
+            .filter(Inspection.batch_id.in_(batch_ids))
+            .group_by(Inspection.batch_id)
+            .all()
+            if batch_ids
+            else []
+        )
+        if batch_id is not None
+    }
+
+    inspection_invoice_map: dict[int, Invoice] = {}
+    batch_invoice_map: dict[int, Invoice] = {}
+    if standalone_ids or batch_ids:
+        invoice_filters = []
+        if standalone_ids:
+            invoice_filters.append(Invoice.inspection_id.in_(standalone_ids))
+        if batch_ids:
+            invoice_filters.append(Invoice.inspection_batch_id.in_(batch_ids))
+        invoices = (
+            scope_invoice_approval_visibility(db.query(Invoice), current_user)
+            .filter(
+                Invoice.invoice_type == InvoiceType.INSPECTION,
+                Invoice.status != InvoiceStatus.CANCELLED,
+                or_(*invoice_filters),
+            )
+            .order_by(Invoice.updated_at.desc(), Invoice.id.desc())
+            .all()
+        )
+        for invoice in invoices:
+            if invoice.inspection_batch_id is not None:
+                batch_invoice_map.setdefault(invoice.inspection_batch_id, invoice)
+            elif invoice.inspection_id is not None:
+                inspection_invoice_map.setdefault(invoice.inspection_id, invoice)
+
     return {
-        "items": [_inspection_report_row(item, invoice_map.get(item.id)) for item in items],
+        "items": [
+            _inspection_report_row(
+                item,
+                batch_invoice_map.get(item.batch_id) if item.batch_id is not None else inspection_invoice_map.get(item.id),
+                batch_asset_counts.get(item.batch_id) if item.batch_id is not None else None,
+            )
+            for item in items
+        ],
         "total": total,
         "skip": skip,
         "limit": limit,

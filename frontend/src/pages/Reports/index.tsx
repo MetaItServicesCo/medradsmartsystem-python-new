@@ -226,8 +226,8 @@ const Reports = () => {
         item.request_number, item.facility_name, item.equipment_name, item.technician_name, item.time_spent_hours, item.total_cost, item.completed_at, item.invoice?.invoice_number,
       ]))
     } else if (tab === 'inspection') {
-      downloadCsv('inspection-reports.csv', ['Inspection #', 'Facility', 'Asset', 'Technician', 'Result', 'Form', 'Completed', 'Invoice'], (inspectionQ.data?.items || []).map(item => [
-        item.inspection_number, item.facility_name, item.asset_name, item.technician_name, item.result, item.form_template_name, item.completed_at, item.invoice?.invoice_number,
+      downloadCsv('inspection-reports.csv', ['Report #', 'Facility', 'Asset', 'Technician', 'Result', 'Form', 'Completed', 'Invoice'], (inspectionQ.data?.items || []).map(item => [
+        item.report_number, item.facility_name, item.asset_name, item.technician_name, item.result, item.form_template_name, item.completed_at, item.invoice?.invoice_number,
       ]))
     } else {
       downloadCsv('service-request-history.csv', ['Date', 'Service #', 'Facility', 'User', 'Action', 'Summary'], (historyQ.data?.items || []).map(item => [
@@ -379,12 +379,12 @@ const Reports = () => {
               const chip = statusChip(item.result)
               return (
                 <ContextTableRow
-                  key={item.id}
-                  recordKey={`report-inspection-${item.id}`}
-                  recordLabel={item.inspection_number}
+                  key={item.report_key}
+                  recordKey={`report-${item.report_key}`}
+                  recordLabel={item.report_number}
                   hover
                 >
-                  <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#6757D8" fontWeight={950} onClick={() => setSelectedInspection(item)} /></TableCell>
+                  <TableCell><ClippedTooltipText value={item.report_number} monospace color="#6757D8" fontWeight={950} onClick={() => setSelectedInspection(item)} /></TableCell>
                   <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={800} field /></TableCell>
                   <TableCell><ClippedTooltipText value={item.asset_name || '-'} field /></TableCell>
                   <TableCell><ClippedTooltipText value={item.technician_name || 'Unassigned'} /></TableCell>
@@ -554,12 +554,12 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
       if (!batchQ.data) return '' // wait for the batch so we never flash the single report
       return buildInspectionReportDocumentHtml(
         buildInspectionBatchReportHtml(batchQ.data, facilityQ.data ?? null),
-        `${report.batch_number || report.inspection_number} Inspection Report`,
+        `${report.report_number} Inspection Report`,
       )
     }
     return buildInspectionReportDocumentHtml(
       buildInspectionSingleReportHtml(report, facilityQ.data ?? null, invoiceQ.data ?? report.invoice),
-      `${report.inspection_number} Inspection Report`,
+      `${report.report_number} Inspection Report`,
     )
   }, [report, facilityQ.data, invoiceQ.data, batchQ.data])
   return (
@@ -567,14 +567,14 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
       <DialogTitle sx={{ p: 0 }}>
         <Box sx={{ p: 3, color: '#fff', background: GRADIENT }}>
           <Typography sx={{ fontWeight: 950, fontSize: 26 }}>Inspection Report</Typography>
-          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{report?.inspection_number} - {report?.facility_name || 'Facility'}</Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{report?.report_number} - {report?.facility_name || 'Facility'}</Typography>
         </Box>
       </DialogTitle>
       <DialogContent sx={{ bgcolor: '#E5E7EB', p: 0 }}>
         {report && (
           <Box
             component="iframe"
-            title={`${report.inspection_number} inspection report preview`}
+            title={`${report.report_number} inspection report preview`}
             srcDoc={reportHtml}
             sx={{
               display: 'block',

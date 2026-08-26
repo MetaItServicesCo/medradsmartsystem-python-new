@@ -68,9 +68,12 @@ export interface ServiceReport {
 
 export interface InspectionReport {
   id: number
+  report_key: string
+  report_number: string
   inspection_number: string
   batch_id: number | null
   batch_number: string | null
+  asset_count: number
   facility_id: number
   facility_name: string | null
   asset_name: string | null
