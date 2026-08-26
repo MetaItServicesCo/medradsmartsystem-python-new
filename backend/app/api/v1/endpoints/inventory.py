@@ -1,6 +1,6 @@
 import csv
 import io
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -28,7 +28,7 @@ from app.schemas.inventory import (
 )
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
-from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.facility_access import require_facility_access
 from app.utils.list_search import (
     contains_ci,
     normalize_list_search,
@@ -68,6 +68,7 @@ def _apply_inventory_filters(
     part_type: Optional[str] = None,
     search: Optional[str] = None,
     search_field: Optional[str] = None,
+    stock_view: Optional[Literal["in_stock", "low_stock", "stock_value"]] = None,
     low_stock: bool = False,
     expiring_days: Optional[int] = None,
 ):
@@ -77,29 +78,20 @@ def _apply_inventory_filters(
         query = query.filter(InventoryPart.tier_id == tier_id)
     if part_type:
         query = query.filter(InventoryPart.part_type == part_type)
-    if low_stock:
+    if stock_view == "in_stock":
+        query = query.filter(InventoryPart.quantity_on_hand > 0)
+    elif stock_view == "low_stock" or low_stock:
         query = query.filter(InventoryPart.quantity_on_hand <= InventoryPart.reorder_level)
+    elif stock_view == "stock_value":
+        query = query.filter(
+            InventoryPart.quantity_on_hand > 0,
+            InventoryPart.unit_price > 0,
+        )
     if expiring_days:
         query = query.filter(InventoryPart.expiry_date <= date.today() + timedelta(days=expiring_days))
     search_term = normalize_list_search(search)
     if search_term:
         identifier_term = search_term.lstrip("#")
-        facility_match = (
-            query.session.query(Facility.id)
-            .filter(
-                Facility.id == InventoryPart.facility_id,
-                contains_ci(Facility.name, search_term),
-            )
-            .exists()
-        )
-        tier_match = (
-            query.session.query(Tier.id)
-            .filter(
-                Tier.id == InventoryPart.tier_id,
-                contains_ci(Tier.name, search_term),
-            )
-            .exists()
-        )
         modality_match = (
             query.session.query(Modality.id)
             .filter(
@@ -136,9 +128,10 @@ def _apply_inventory_filters(
                 value_contains_ci(InventoryPart.reorder_level, search_term),
             ],
             "price": [value_contains_ci(InventoryPart.unit_price, search_term)],
-            "expiry": [value_contains_ci(InventoryPart.expiry_date, search_term)],
-            "facility": [facility_match],
-            "tier": [tier_match],
+            "expiry": [
+                value_contains_ci(InventoryPart.expiry_date, search_term),
+                value_contains_ci(InventoryPart.inventory_date, search_term),
+            ],
             "modality": [modality_match],
         }
         searched_date = parsed_date_value(search_term)
@@ -178,6 +171,7 @@ def list_inventory_parts(
     part_type: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    stock_view: Optional[Literal["in_stock", "low_stock", "stock_value"]] = Query(None),
     low_stock: bool = Query(False),
     expiring_days: Optional[int] = Query(None, ge=1, le=3650),
     skip: int = Query(0, ge=0),
@@ -185,12 +179,13 @@ def list_inventory_parts(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = _apply_inventory_filters(
-        scope_query_to_user_facilities(db.query(InventoryPart), InventoryPart.facility_id, db, current_user),
+        db.query(InventoryPart),
         facility_id=facility_id,
         tier_id=tier_id,
         part_type=part_type,
         search=search,
         search_field=search_field,
+        stock_view=stock_view,
         low_stock=low_stock,
         expiring_days=expiring_days,
     )
@@ -218,17 +213,19 @@ def get_inventory_summary(
     part_type: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    stock_view: Optional[Literal["in_stock", "low_stock", "stock_value"]] = Query(None),
     low_stock: bool = Query(False),
     expiring_days: Optional[int] = Query(None, ge=1, le=3650),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     query = _apply_inventory_filters(
-        scope_query_to_user_facilities(db.query(InventoryPart), InventoryPart.facility_id, db, current_user),
+        db.query(InventoryPart),
         facility_id=facility_id,
         tier_id=tier_id,
         part_type=part_type,
         search=search,
         search_field=search_field,
+        stock_view=stock_view,
         low_stock=low_stock,
         expiring_days=expiring_days,
     )

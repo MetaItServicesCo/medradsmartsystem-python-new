@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert, Avatar, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions,
-  DialogContent, DialogTitle, FormControlLabel, IconButton, InputAdornment,
-  ListItemIcon, Menu, MenuItem, Skeleton, Switch, Table, TableBody, TableCell, TableContainer,
+  DialogContent, DialogTitle, IconButton, InputAdornment,
+  ListItemIcon, Menu, MenuItem, Skeleton, Table, TableBody, TableCell, TableContainer,
   TableHead, TablePagination, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -21,7 +21,6 @@ import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import { toast } from 'react-toastify'
 import { useSearchParams } from 'react-router-dom'
 import { fetchFacilities } from '@/api/facilities'
-import { fetchTiers } from '@/api/tiers'
 
 import {
   createInventoryPart, createInventoryTransaction, deleteInventoryPart,
@@ -52,11 +51,13 @@ const INVENTORY_SEARCH_FIELDS = [
   { value: 'stock', label: 'Stock' },
   { value: 'price', label: 'Price' },
   { value: 'expiry', label: 'Expiry / inventory date' },
-  { value: 'facility', label: 'Facility' },
-  { value: 'tier', label: 'Tier' },
   { value: 'modality', label: 'Modality' },
   { value: 'status', label: 'Status' },
 ]
+
+type InventoryStockView = 'all' | 'in_stock' | 'low_stock' | 'stock_value'
+
+const INVENTORY_STOCK_VIEWS: InventoryStockView[] = ['all', 'in_stock', 'low_stock', 'stock_value']
 const ACTION_MENU_PAPER = {
   sx: {
     borderRadius: '16px',
@@ -149,10 +150,14 @@ const Inventory = () => {
   const isSuperAdmin = user?.role === 'superadmin'
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('search') || '')
-  const searchField = searchParams.get('search_field') || 'all'
-  const [facilityId, setFacilityId] = useState<number | ''>('')
-  const [tierId, setTierId] = useState<number | ''>('')
-  const [lowStock, setLowStock] = useState(false)
+  const requestedSearchField = searchParams.get('search_field') || 'all'
+  const searchField = INVENTORY_SEARCH_FIELDS.some((field) => field.value === requestedSearchField)
+    ? requestedSearchField
+    : 'all'
+  const requestedStockView = searchParams.get('stock_view') as InventoryStockView | null
+  const stockView: InventoryStockView = requestedStockView && INVENTORY_STOCK_VIEWS.includes(requestedStockView)
+    ? requestedStockView
+    : 'all'
   const [page, setPage] = useState(0)
   const [partDialogOpen, setPartDialogOpen] = useState(false)
   const [editingPart, setEditingPart] = useState<InventoryPart | null>(null)
@@ -189,41 +194,46 @@ const Inventory = () => {
     queryKey: ['facilities', 'inventory-filter'],
     queryFn: () => fetchFacilities({ limit: 500 }),
   })
-  const { data: tiersData } = useQuery({ queryKey: ['tiers', 'inventory-options'], queryFn: () => fetchTiers({ limit: 500 }) })
   const inventoryFilters = {
     search: debouncedSearch || undefined,
     search_field: searchField === 'all' ? undefined : searchField,
-    facility_id: facilityId || undefined,
-    tier_id: tierId || undefined,
-    low_stock: lowStock || undefined,
   }
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['inventory-parts', debouncedSearch, searchField, facilityId, tierId, lowStock, page],
+    queryKey: ['inventory-parts', debouncedSearch, searchField, stockView, page],
     queryFn: () => fetchInventoryParts({
       ...inventoryFilters,
+      stock_view: stockView === 'all' ? undefined : stockView,
       skip: page * PAGE_SIZE,
       limit: PAGE_SIZE,
     }),
     placeholderData: previousData => previousData,
   })
   const { data: summaryData } = useQuery({
-    queryKey: ['inventory-summary', debouncedSearch, searchField, facilityId, tierId, lowStock],
+    queryKey: ['inventory-summary', debouncedSearch, searchField],
     queryFn: () => fetchInventorySummary(inventoryFilters),
     placeholderData: previousData => previousData,
   })
   const facilities = facilitiesData?.items ?? []
-  const tiers = tiersData?.items ?? []
   const parts = data?.items ?? []
   const totalParts = summaryData ? Number(summaryData.total_parts) : data?.total ?? 0
+  const filteredPartsTotal = data?.total ?? 0
 
   useEffect(() => {
     setPage(0)
-  }, [debouncedSearch, searchField, facilityId, tierId, lowStock])
+  }, [debouncedSearch, searchField, stockView])
 
   const handleSearchFieldChange = (value: string) => {
     const next = new URLSearchParams(searchParams)
     if (value === 'all') next.delete('search_field')
     else next.set('search_field', value)
+    setSearchParams(next, { replace: true })
+    setPage(0)
+  }
+
+  const handleStockViewChange = (value: InventoryStockView) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'all') next.delete('stock_view')
+    else next.set('stock_view', value)
     setSearchParams(next, { replace: true })
     setPage(0)
   }
@@ -437,18 +447,45 @@ const Inventory = () => {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, md: 1.75 }, mb: 2.5 }}>
         {[
-          ['Parts', totalParts, <InventoryIcon />],
-          ['Units On Hand', stats.totalUnits, <ReceiptLongIcon />],
-          ['Low Stock', stats.low, <LowPriorityIcon />],
-          ['Stock Value', `$${stats.value.toFixed(2)}`, <MoveUpIcon />],
-        ].map(([label, value, icon]) => (
-          <Card key={label as string} sx={{ p: { xs: 1.35, sm: 1.6, lg: 1.8 }, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1.1, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+          { key: 'all' as const, label: 'Parts', value: totalParts, icon: <InventoryIcon /> },
+          { key: 'in_stock' as const, label: 'Units On Hand', value: stats.totalUnits, icon: <ReceiptLongIcon /> },
+          { key: 'low_stock' as const, label: 'Low Stock', value: stats.low, icon: <LowPriorityIcon /> },
+          { key: 'stock_value' as const, label: 'Stock Value', value: `$${stats.value.toFixed(2)}`, icon: <MoveUpIcon /> },
+        ].map((card) => (
+          <Card
+            key={card.key}
+            role="button"
+            tabIndex={0}
+            aria-pressed={stockView === card.key}
+            onClick={() => handleStockViewChange(card.key)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleStockViewChange(card.key)
+              }
+            }}
+            sx={{
+              p: { xs: 1.35, sm: 1.6, lg: 1.8 },
+              minWidth: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.1,
+              borderRadius: '16px',
+              border: stockView === card.key ? '2px solid #7C3AED' : '1px solid #EEF0F6',
+              boxShadow: stockView === card.key ? '0 14px 34px rgba(124,58,237,0.16)' : 'none',
+              cursor: 'pointer',
+              transform: stockView === card.key ? 'translateY(-2px)' : 'none',
+              transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 16px 38px rgba(124,58,237,0.14)' },
+              '&:focus-visible': { outline: '3px solid rgba(124,58,237,0.24)', outlineOffset: 2 },
+            }}
+          >
             <Box sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: '12px', backgroundColor: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {icon}
+              {card.icon}
             </Box>
             <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap title={String(label)} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-              <Typography noWrap title={String(value)} sx={{ fontSize: { xs: 20, lg: 22 }, lineHeight: 1.2, fontWeight: 900, color: '#1E1B4B' }}>{value}</Typography>
+              <Typography noWrap title={card.label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{card.label}</Typography>
+              <Typography noWrap title={String(card.value)} sx={{ fontSize: { xs: 20, lg: 22 }, lineHeight: 1.2, fontWeight: 900, color: '#1E1B4B' }}>{card.value}</Typography>
             </Box>
           </Card>
         ))}
@@ -463,7 +500,7 @@ const Inventory = () => {
             Spare parts, consumables, stock operations, and transaction history.
           </Typography>
         </Box>
-        <Box sx={{ p: { xs: 1.5, md: 2 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px minmax(220px, 1fr)', lg: '160px minmax(260px, 1fr) 190px 170px auto auto' }, gap: 1, borderBottom: '1px solid #E5E7EB', alignItems: 'center' }}>
+        <Box sx={{ p: { xs: 1.5, md: 2 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px minmax(220px, 1fr)', lg: '180px minmax(320px, 1fr) auto' }, gap: 1, borderBottom: '1px solid #E5E7EB', alignItems: 'center' }}>
           <Box sx={{ minWidth: 0 }}><SearchFieldSelect
               value={searchField}
               options={INVENTORY_SEARCH_FIELDS}
@@ -474,15 +511,6 @@ const Inventory = () => {
             fullWidth sx={{ minWidth: 0 }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#9CA3AF' }} /></InputAdornment> }}
           />
-          <TextField size="small" select label="Facility" value={facilityId} onChange={(e) => setFacilityId(e.target.value ? Number(e.target.value) : '')} fullWidth sx={{ minWidth: 0 }}>
-            <MenuItem value="">All Facilities</MenuItem>
-            {facilities.map((f) => <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>)}
-          </TextField>
-          <TextField size="small" select label="Tier" value={tierId} onChange={(e) => setTierId(e.target.value ? Number(e.target.value) : '')} fullWidth sx={{ minWidth: 0 }}>
-            <MenuItem value="">All Tiers</MenuItem>
-            {tiers.map((t) => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-          </TextField>
-          <FormControlLabel sx={{ m: 0, whiteSpace: 'nowrap' }} control={<Switch size="small" checked={lowStock} onChange={(e) => setLowStock(e.target.checked)} />} label={<Typography sx={{ fontSize: 13, fontWeight: 750 }}>Low stock</Typography>} />
           {isFetching && !isLoading && (
             <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
           )}
@@ -493,7 +521,7 @@ const Inventory = () => {
             <TableHead>
               <TableRow>
                 <TableCell sx={{ width: 300 }}>Part</TableCell>
-                <TableCell sx={{ width: 170 }}>Assignment</TableCell>
+                <TableCell sx={{ width: 170 }}>Part Details</TableCell>
                 <TableCell sx={{ width: 175 }}>Batch / Serial</TableCell>
                 <TableCell sx={{ width: 190 }}>Supplier</TableCell>
                 <TableCell sx={{ width: 135 }}>Stock</TableCell>
@@ -539,8 +567,8 @@ const Inventory = () => {
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <ClippedTooltipText value={part.facility_name || 'Independent part'} />
-                      <ClippedTooltipText value={part.tier_name || 'No tier'} variant="caption" color={part.tier_name ? '#7C3AED' : '#9CA3AF'} fontWeight={500} />
+                      <ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' ') || part.condition || 'Unspecified'} />
+                      <ClippedTooltipText value={part.location || part.modality_name || 'No location'} variant="caption" color="#6B7280" fontWeight={500} />
                     </TableCell>
                     <TableCell>
                       <ClippedTooltipText value={part.batch_number || 'No batch'} />
@@ -575,7 +603,7 @@ const Inventory = () => {
         </TableContainer>
         <TablePagination
           component="div"
-          count={totalParts}
+          count={filteredPartsTotal}
           page={page}
           onPageChange={(_, nextPage) => setPage(nextPage)}
           rowsPerPage={PAGE_SIZE}

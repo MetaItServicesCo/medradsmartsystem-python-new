@@ -162,6 +162,7 @@ export interface InventoryListParams {
   part_type?: string
   search?: string
   search_field?: string
+  stock_view?: 'in_stock' | 'low_stock' | 'stock_value'
   low_stock?: boolean
   expiring_days?: number
   skip?: number
