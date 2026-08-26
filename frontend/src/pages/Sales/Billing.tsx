@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -50,6 +50,7 @@ import {
   type ServiceRequestQuotationList,
 } from '@/api/serviceRequests'
 import InvoicePrintDialog, {
+  type PrintDocumentType,
   type PrintableInvoiceEditPayload,
   type PrintableLedgerTransaction,
   type PrintableLineItem,
@@ -60,7 +61,6 @@ import ContextTableRow from '@/components/ContextTableRow'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
-import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { buildServiceReportSheet } from '@/utils/serviceReportHtml'
 import {
   approveInvoiceForBilling,
@@ -422,19 +422,13 @@ const serviceTransactions = (quotation: ServiceRequestQuotationList): BillingTra
   ]
 }
 
-const sameAccount = (left: BillingItem, right: BillingItem) => {
-  return isSameBillingAccount(
-    {
-      facilityId: left.facilityId,
-      customerEmail: left.customerEmail,
-      recordKey: left.key,
-    },
-    {
-      facilityId: right.facilityId,
-      customerEmail: right.customerEmail,
-      recordKey: right.key,
-    },
-  )
+// Keep account grouping on unique identifiers only. This mirrors the existing
+// account-isolation rules while allowing the list to build each ledger once.
+const billingAccountKey = (item: BillingItem) => {
+  if (item.facilityId != null) return `facility:${item.facilityId}`
+  const email = item.customerEmail?.trim().toLowerCase()
+  if (email) return `email:${email}`
+  return `record:${item.key}`
 }
 
 const ACTION_MENU_PAPER = {
@@ -475,6 +469,7 @@ const Billing = () => {
   const [payOpen, setPayOpen] = useState<BillingItem | null>(null)
   const [viewItem, setViewItem] = useState<BillingItem | null>(null)
   const [printItem, setPrintItem] = useState<BillingItem | null>(null)
+  const [printDocumentType, setPrintDocumentType] = useState<PrintDocumentType>('invoice')
   const [editItem, setEditItem] = useState<BillingItem | null>(null)
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionItem, setActionItem] = useState<BillingItem | null>(null)
@@ -515,6 +510,11 @@ const Billing = () => {
   const [proofQueueStatus, setProofQueueStatus] = useState<'pending_verification' | 'approved' | 'rejected'>('pending_verification')
   const [proofReviewNotes, setProofReviewNotes] = useState<Record<number, string>>({})
   const [expandedProofOcr, setExpandedProofOcr] = useState<Record<number, boolean>>({})
+
+  const openLedgerPrint = useCallback((item: BillingItem) => {
+    setPrintDocumentType('ledger')
+    setPrintItem(item)
+  }, [])
 
   useEffect(() => {
     setSearchInput(search)
@@ -801,17 +801,35 @@ const Billing = () => {
   const isInitialLoading = allBillingSourcesLoading && items.length === 0
   const inspectionLoadFailed = sourceFilter === 'inspection' && inspectionQ.isError && items.length === 0
 
-  const filteredItems = inspectionServerPage ? items : items.filter(item => {
-    if (sourceFilter !== 'all' && item.source !== sourceFilter) return false
-    if (statusFilter === 'billing_pending' && (!requiresBillingApproval(item) || item.billingApprovalStatus !== 'pending')) return false
-    if (statusFilter !== 'all' && statusFilter !== 'billing_pending' && item.status !== statusFilter) return false
-    if (tab === 1) return item.balance > 0 && item.status !== 'cancelled' && item.status !== 'rejected'
-    if (tab === 2) return item.status === 'paid' || item.balance <= 0
-    return true
-  })
-  const pagedItems = inspectionServerPage
-    ? filteredItems
-    : filteredItems.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
+  const accountItemsByKey = useMemo(() => {
+    const grouped = new Map<string, BillingItem[]>()
+    items.forEach(item => {
+      const key = billingAccountKey(item)
+      const accountItems = grouped.get(key)
+      if (accountItems) accountItems.push(item)
+      else grouped.set(key, [item])
+    })
+    grouped.forEach(accountItems => {
+      accountItems.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+    })
+    return grouped
+  }, [items])
+
+  const filteredItems = useMemo(() => (
+    inspectionServerPage ? items : items.filter(item => {
+      if (sourceFilter !== 'all' && item.source !== sourceFilter) return false
+      if (statusFilter === 'billing_pending' && (!requiresBillingApproval(item) || item.billingApprovalStatus !== 'pending')) return false
+      if (statusFilter !== 'all' && statusFilter !== 'billing_pending' && item.status !== statusFilter) return false
+      if (tab === 1) return item.balance > 0 && item.status !== 'cancelled' && item.status !== 'rejected'
+      if (tab === 2) return item.status === 'paid' || item.balance <= 0
+      return true
+    })
+  ), [inspectionServerPage, items, sourceFilter, statusFilter, tab])
+  const pagedItems = useMemo(() => (
+    inspectionServerPage
+      ? filteredItems
+      : filteredItems.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
+  ), [filteredItems, inspectionServerPage, page, rowsPerPage])
   const paginationCount = inspectionServerPage
     ? Number(inspectionQ.data?.total || 0)
     : filteredItems.length
@@ -1356,8 +1374,7 @@ const Billing = () => {
 
   const printableLedgerTransactions = (item: BillingItem | null): PrintableLedgerTransaction[] => {
     if (!item) return []
-    return items
-      .filter(other => sameAccount(item, other))
+    return (accountItemsByKey.get(billingAccountKey(item)) || [item])
       .flatMap(other => (other.transactions || []).map((transaction, index) => ({
         id: transaction.id || index,
         invoice_id: transaction.invoice_id,
@@ -1583,9 +1600,7 @@ const Billing = () => {
               ) : pagedItems.map(item => {
                 const expanded = expandedKey === item.key
                 const chip = STATUS_CHIP[item.status] || STATUS_CHIP.pending
-                const accountItems = items
-                  .filter(other => sameAccount(item, other))
-                  .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+                const accountItems = accountItemsByKey.get(billingAccountKey(item)) || [item]
                 return (
                   <Fragment key={item.key}>
                     <ContextTableRow
@@ -1695,8 +1710,12 @@ const Billing = () => {
                     </ContextTableRow>
                     <TableRow key={`${item.key}-details`}>
                       <TableCell colSpan={10} sx={{ py: 0, border: expanded ? undefined : 'none' }}>
-                        <Collapse in={expanded}>
-                          <BillingDetailsV2 item={item} accountItems={accountItems} />
+                        <Collapse in={expanded} timeout="auto" unmountOnExit>
+                          <BillingDetailsV2
+                            item={item}
+                            accountItems={accountItems}
+                            onPrintLedger={openLedgerPrint}
+                          />
                         </Collapse>
                       </TableCell>
                     </TableRow>
@@ -1781,6 +1800,7 @@ const Billing = () => {
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
             const item = actionItem
             closeActions()
+            setPrintDocumentType('invoice')
             void hydrateInspectionBillingItem(item).then(setPrintItem)
           }}>
             <ListItemIcon><PrintIcon fontSize="small" sx={{ color: '#059669' }} /></ListItemIcon>
@@ -1820,7 +1840,10 @@ const Billing = () => {
 
       <InvoicePrintDialog
         open={Boolean(printItem)}
-        onClose={() => setPrintItem(null)}
+        onClose={() => {
+          setPrintItem(null)
+          setPrintDocumentType('invoice')
+        }}
         invoice={printableItem(printItem)}
         lineItems={printableLineItems(printItem)}
         ledgerTransactions={printableLedgerTransactions(printItem)}
@@ -1829,7 +1852,9 @@ const Billing = () => {
         primaryDocumentLabel={printItem?.source === 'service' && printItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
         accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
         quantityLabel={printItem?.source === 'service' && printItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
-        appendHtml={printSrData ? buildServiceReportSheet(printSrData) : undefined}
+        appendHtml={printDocumentType !== 'ledger' && printSrData ? buildServiceReportSheet(printSrData) : undefined}
+        initialDocumentType={printDocumentType}
+        documentTypeLocked={printDocumentType === 'ledger'}
         paymentEvidence={(printPaymentEvidenceQ.data?.items || []) as InvoicePaymentEvidenceItem[]}
         paymentEvidenceLoading={printPaymentEvidenceQ.isLoading}
         onOpenPaymentProof={(proofId, filename) => {
@@ -2255,7 +2280,15 @@ const Kpi = ({ label, value, color }: { label: string; value: string; color: str
   </Box>
 )
 
-const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountItems: BillingItem[] }) => {
+const BillingDetailsV2 = memo(({
+  item,
+  accountItems,
+  onPrintLedger,
+}: {
+  item: BillingItem
+  accountItems: BillingItem[]
+  onPrintLedger: (item: BillingItem) => void
+}) => {
   const serviceQuotation = item.source === 'service' && item.billingKind !== 'service_invoice' ? item.raw as ServiceRequestQuotationList : null
   const serviceInvoice = item.source === 'service' && item.billingKind === 'service_invoice' ? item.raw as ServiceInvoice : null
   const inspectionInvoice = item.source === 'inspection' ? item.raw as InspectionInvoice : null
@@ -2355,8 +2388,8 @@ const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountIt
                 />
               </Box>
             </Box>
-            <Button size="small" variant="contained" onClick={() => window.print()} sx={{ bgcolor: '#111827', fontWeight: 900 }}>
-              Print
+            <Button size="small" variant="contained" startIcon={<PrintIcon />} onClick={() => onPrintLedger(item)} sx={{ bgcolor: '#111827', fontWeight: 900 }}>
+              Print Ledger
             </Button>
           </Box>
 
@@ -2485,7 +2518,9 @@ const BillingDetailsV2 = ({ item, accountItems }: { item: BillingItem; accountIt
       </Box>
     </Box>
   )
-}
+})
+
+BillingDetailsV2.displayName = 'BillingDetailsV2'
 
 const BillingDetails = ({ item }: { item: BillingItem }) => {
   const service = item.source === 'service' ? item.raw as ServiceRequestQuotationList : null

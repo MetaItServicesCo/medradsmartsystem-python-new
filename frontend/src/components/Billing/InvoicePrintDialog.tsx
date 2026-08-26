@@ -221,6 +221,10 @@ interface InvoicePrintDialogProps {
   /** Optional HTML appended after the invoice sheet (e.g. service report). */
   appendHtml?: string
   mode?: 'print' | 'edit' | 'view'
+  /** Open the print preview on a specific document without changing existing callers. */
+  initialDocumentType?: PrintDocumentType
+  /** Keep a targeted print action scoped to its requested document. */
+  documentTypeLocked?: boolean
   onSave?: (payload: PrintableInvoiceEditPayload) => void
   saving?: boolean
 }
@@ -741,10 +745,12 @@ const InvoicePrintDialog = ({
   paymentEvidenceLoading = false,
   onOpenPaymentProof,
   mode = 'print',
+  initialDocumentType = 'invoice',
+  documentTypeLocked = false,
   onSave,
   saving = false,
 }: InvoicePrintDialogProps) => {
-  const [documentType, setDocumentType] = useState<PrintDocumentType>('invoice')
+  const [documentType, setDocumentType] = useState<PrintDocumentType>(initialDocumentType)
   const [editForm, setEditForm] = useState({
     customer_name: '',
     customer_email: '',
@@ -770,11 +776,15 @@ const InvoicePrintDialog = ({
   const previewAccentSoft = softAccentFor(accent)
   const isEditMode = mode === 'edit'
   const isViewMode = mode === 'view'
-  const activeDocumentType: PrintDocumentType = (isEditMode || isViewMode) ? 'invoice' : documentType
+  const activeDocumentType: PrintDocumentType = (isEditMode || isViewMode)
+    ? 'invoice'
+    : documentTypeLocked
+      ? initialDocumentType
+      : documentType
 
   useEffect(() => {
     if (!invoice || !open) return
-    setDocumentType('invoice')
+    setDocumentType(initialDocumentType)
     setEditForm({
       customer_name: invoice.customer_name || '',
       customer_email: invoice.customer_email || '',
@@ -800,7 +810,7 @@ const InvoicePrintDialog = ({
   // Initialize only when the editor opens or switches invoices. Parent query/mutation
   // rerenders create new line-item array references and must not overwrite active edits.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, invoice?.invoice_number])
+  }, [open, invoice?.invoice_number, initialDocumentType])
 
   const displayInvoice = useMemo<PrintableInvoice | null>(() => {
     if (!invoice || !isEditMode) return invoice
@@ -950,6 +960,11 @@ const InvoicePrintDialog = ({
                 <Chip label="Invoice editor" sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900 }} />
               ) : isViewMode ? (
                 <Chip label={`${primaryDocumentLabel} preview`} sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900 }} />
+              ) : documentTypeLocked ? (
+                <Chip
+                  label={documentLabel(activeDocumentType, primaryDocumentLabel)}
+                  sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900 }}
+                />
               ) : (
                 <TextField
                   select
