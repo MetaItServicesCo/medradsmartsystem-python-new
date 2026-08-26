@@ -16,6 +16,7 @@ import PersonIcon from '@mui/icons-material/Person'
 import EngineeringIcon from '@mui/icons-material/Engineering'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CheckRoundedIcon from '@mui/icons-material/CheckRounded'
 import CancelIcon from '@mui/icons-material/Cancel'
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
@@ -810,113 +811,107 @@ const ServiceRequestDetail = () => {
       {/* Header Card */}
       <Card
         sx={{
-          mb: 3, overflow: 'hidden',
-          background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #EC4899 100%)',
-          color: '#fff', position: 'relative',
-          boxShadow: '0 24px 60px rgba(79,70,229,0.18)',
+          mb: 3, overflow: 'hidden', position: 'relative', color: '#fff',
+          borderRadius: '24px',
+          border: '1px solid rgba(255,255,255,0.14)',
+          background: 'linear-gradient(135deg, #4F46E5 0%, #6E4BCC 52%, #9A55B0 100%)',
+          boxShadow: '0 26px 60px -20px rgba(79,70,229,0.55)',
+          '@keyframes srPulse': {
+            '0%': { boxShadow: '0 0 0 0 rgba(255,255,255,0.5)' },
+            '70%': { boxShadow: '0 0 0 12px rgba(255,255,255,0)' },
+            '100%': { boxShadow: '0 0 0 0 rgba(255,255,255,0)' },
+          },
         }}
       >
-        <Box sx={{ position: 'absolute', right: -30, top: -30, opacity: 0.08 }}>
-          <BuildIcon sx={{ fontSize: '12rem' }} />
+        <Box aria-hidden sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(130% 130% at 0% 0%, rgba(255,255,255,0.24), rgba(255,255,255,0) 46%)' }} />
+        <Box aria-hidden sx={{ position: 'absolute', right: -26, top: -34, opacity: 0.1, transform: 'rotate(-8deg)', pointerEvents: 'none' }}>
+          <BuildIcon sx={{ fontSize: '13rem' }} />
         </Box>
-        <Box sx={{ p: 3, position: 'relative', zIndex: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Box>
-              <Typography
-                sx={{
-                  fontFamily: 'monospace', fontSize: '0.85rem',
-                  fontWeight: 800, color: 'rgba(255,255,255,0.78)', mb: 0.5,
-                }}
-              >
-                {sr.request_number}
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800, color: '#fff' }}>
+        <Box sx={{ p: { xs: 2.5, md: 3.5 }, position: 'relative', zIndex: 1 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: { xs: 3, md: 3.5 } }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, mb: 1.25, px: 1.25, py: 0.5, borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)', backdropFilter: 'blur(8px)' }}>
+                <BuildIcon sx={{ fontSize: '0.85rem', opacity: 0.9 }} />
+                <Typography sx={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.95)' }}>
+                  {sr.request_number}
+                </Typography>
+              </Box>
+              <Typography sx={{ fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.05, fontSize: { xs: '1.55rem', md: '1.95rem' }, color: '#fff' }}>
                 Service Request
               </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1.5 }}>
-              {isFacilityCustomerView && (
-                <Chip
-                  label="Facility Portal"
-                  sx={{
-                    backgroundColor: 'rgba(255,255,255,0.16)',
-                    color: '#fff',
-                    fontWeight: 800,
-                    backdropFilter: 'blur(10px)',
-                  }}
-                />
+              {(sr.facility_name || sr.equipment_name || sr.created_at) && (
+                <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.85, fontSize: '0.8rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>
+                  {sr.facility_name && (
+                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                      <BusinessIcon sx={{ fontSize: '0.95rem', opacity: 0.85 }} />{sr.facility_name}
+                    </Box>
+                  )}
+                  {sr.equipment_name && (<><Box component="span" sx={{ opacity: 0.45 }}>•</Box><Box component="span">{sr.equipment_name}</Box></>)}
+                  {sr.created_at && (<><Box component="span" sx={{ opacity: 0.45 }}>•</Box><Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}><AccessTimeIcon sx={{ fontSize: '0.9rem', opacity: 0.85 }} />Opened {new Date(sr.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Box></>)}
+                </Box>
               )}
-              <Chip
-                label={sr.priority.charAt(0).toUpperCase() + sr.priority.slice(1)}
-                sx={{
-                  backgroundColor: 'rgba(255,255,255,0.2)',
-                  color: '#fff',
-                  fontWeight: 700,
-                  backdropFilter: 'blur(10px)',
-                }}
-              />
-              <Chip
-                label={STATUS_LABELS[sr.status] || sr.status}
-                sx={{
-                  backgroundColor: 'rgba(255,255,255,0.25)',
-                  color: '#fff',
-                  fontWeight: 700,
-                  backdropFilter: 'blur(10px)',
-                }}
-              />
+            </Box>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'flex-end' }}>
+              {isFacilityCustomerView && (
+                <Chip label="Facility Portal" size="small" sx={{ height: 30, fontWeight: 800, fontSize: '0.72rem', color: '#fff', backgroundColor: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.24)', backdropFilter: 'blur(10px)' }} />
+              )}
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.85, px: 1.4, height: 30, borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.24)', backdropFilter: 'blur(10px)' }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: pColor.color, boxShadow: '0 0 0 3px rgba(255,255,255,0.16)' }} />
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: '#fff' }}><Box component="span" sx={{ opacity: 0.72, mr: 0.5, fontWeight: 700 }}>Priority</Box>{sr.priority.charAt(0).toUpperCase() + sr.priority.slice(1)}</Typography>
+              </Box>
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.85, px: 1.4, height: 30, borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)', backdropFilter: 'blur(10px)' }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: sColor.color, boxShadow: '0 0 0 3px rgba(255,255,255,0.16)' }} />
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: '#fff' }}>{STATUS_LABELS[sr.status] || sr.status}</Typography>
+              </Box>
             </Box>
           </Box>
 
-          {/* Status Progress Bar */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 2 }}>
+          {/* Status Progress Tracker */}
+          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'flex-start' }}>
             {STATUS_STEPS.map((step, i) => {
-              const isActive = i <= currentStepIndex && sr.status !== 'cancelled'
-              const isCurrent = step === progressStatus
+              const isCancelled = sr.status === 'cancelled'
+              const isCompletedReq = sr.status === 'completed'
+              const isActive = i <= currentStepIndex && !isCancelled
+              const isDone = isActive && (i < currentStepIndex || isCompletedReq)
+              const isCurrent = !isCompletedReq && !isCancelled && step === progressStatus
+              const fillNext = (i < currentStepIndex && !isCancelled) || isCompletedReq
               return (
-                <Box key={step} sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                <Box key={step} sx={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  {i < STATUS_STEPS.length - 1 && (
+                    <Box aria-hidden sx={{ position: 'absolute', top: 16, left: '50%', width: '100%', height: 4, borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.18)', overflow: 'hidden', zIndex: 0 }}>
+                      <Box sx={{ height: '100%', borderRadius: '999px', backgroundColor: '#fff', transition: 'width .5s ease', width: fillNext ? '100%' : '0%' }} />
+                    </Box>
+                  )}
                   <Box
                     sx={{
-                      width: 28, height: 28, borderRadius: '50%',
+                      zIndex: 1, width: 36, height: 36, borderRadius: '50%',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
-                      color: isActive ? '#7C3AED' : 'rgba(255,255,255,0.5)',
-                      fontWeight: 800, fontSize: '0.7rem',
-                      border: isCurrent ? '2px solid #fff' : 'none',
-                      boxShadow: isCurrent ? '0 0 0 4px rgba(255,255,255,0.3)' : 'none',
-                      transition: 'all 0.3s',
+                      fontWeight: 800, fontSize: '0.82rem',
+                      backgroundColor: isActive ? '#fff' : 'rgba(255,255,255,0.12)',
+                      color: isActive ? '#6D28D9' : 'rgba(255,255,255,0.7)',
+                      border: isActive ? 'none' : '1.5px solid rgba(255,255,255,0.4)',
+                      boxShadow: isActive ? '0 8px 20px -8px rgba(15,23,42,0.5)' : 'none',
+                      transition: 'all .3s ease',
+                      animation: isCurrent ? 'srPulse 2.2s ease-out infinite' : 'none',
+                      '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                     }}
                   >
-                    {isActive && i < currentStepIndex ? '✓' : i + 1}
+                    {isDone ? <CheckRoundedIcon sx={{ fontSize: '1.15rem' }} /> : i + 1}
                   </Box>
-                  {i < STATUS_STEPS.length - 1 && (
-                    <Box
-                      sx={{
-                        flex: 1, height: 3, mx: 0.5,
-                        backgroundColor: i < currentStepIndex && sr.status !== 'cancelled'
-                          ? 'rgba(255,255,255,0.8)'
-                          : 'rgba(255,255,255,0.15)',
-                        borderRadius: 2,
-                        transition: 'all 0.3s',
-                      }}
-                    />
-                  )}
+                  <Typography
+                    sx={{
+                      mt: 1.25, px: 0.5, textAlign: 'center', lineHeight: 1.25,
+                      fontSize: { xs: '0.56rem', sm: '0.66rem' }, fontWeight: 800,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      color: isCurrent ? '#fff' : isActive ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.62)',
+                      textShadow: '0 1px 8px rgba(15,23,42,0.28)',
+                    }}
+                  >
+                    {STATUS_LABELS[step]}
+                  </Typography>
                 </Box>
               )
             })}
-          </Box>
-          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
-            {STATUS_STEPS.map((step) => (
-              <Typography
-                key={step}
-                sx={{
-                  flex: 1, textAlign: 'center', fontSize: '0.65rem',
-                  fontWeight: 800, color: 'rgba(255,255,255,0.82)', textTransform: 'uppercase',
-                  textShadow: '0 1px 8px rgba(15,23,42,0.18)',
-                }}
-              >
-                {STATUS_LABELS[step]}
-              </Typography>
-            ))}
           </Box>
         </Box>
       </Card>
