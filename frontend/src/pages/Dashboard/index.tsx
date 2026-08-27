@@ -852,8 +852,8 @@ const Dashboard = () => {
           </Grid>
 
           <Grid container spacing={2.5} sx={{ mt: 0 }}>
-            <Grid item xs={12} md={7}>
-              <Card sx={{ p: 2.5, height: '100%', minHeight: 300, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+            <Grid item xs={12}>
+              <Card sx={{ p: 2.5, minHeight: 300, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2 }}>
                   <Box>
                     <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 18 }}>Module Health Charts</Typography>
@@ -954,39 +954,6 @@ const Dashboard = () => {
                       size="small"
                       sx={{ bgcolor: `${item.color}14`, color: item.color, fontWeight: 900 }}
                     />
-                  ))}
-                </Stack>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={5}>
-              <Card sx={{ p: 2.5, height: '100%', minHeight: 260, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-                <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 18 }}>Quick Actions</Typography>
-                <Typography sx={{ color: '#8B95A7', fontSize: 13, fontWeight: 700, mt: 0.4, mb: 2 }}>Jump into common daily workflows</Typography>
-                <Stack spacing={1.3}>
-                  {visibleQuickActions.map((action) => (
-                    <Box
-                      key={action.label}
-                      onClick={() => navigate(action.path)}
-                      sx={{
-                        p: 1.6,
-                        borderRadius: '18px',
-                        bgcolor: '#fff',
-                        border: '1px solid #EEF2F7',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1.4,
-                        cursor: 'pointer',
-                        '&:hover': { bgcolor: '#F8FAFC' },
-                      }}
-                    >
-                      <Avatar sx={{ width: 40, height: 40, bgcolor: '#F0EDFF', color: '#6757D8', borderRadius: '14px' }}>{action.icon}</Avatar>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{action.label}</Typography>
-                        <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>{action.detail}</Typography>
-                      </Box>
-                      <ArrowForwardIcon sx={{ color: '#CBD5E1', fontSize: 18 }} />
-                    </Box>
                   ))}
                 </Stack>
               </Card>
@@ -1139,6 +1106,42 @@ const Dashboard = () => {
             </Card>
 
           </Stack>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card sx={{ p: { xs: 2, md: 2.7 }, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+            <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 19 }}>Quick Actions</Typography>
+            <Typography sx={{ color: '#8B95A7', fontSize: 12.5, fontWeight: 700, mb: 2.2 }}>Jump into common daily workflows</Typography>
+            <Grid container spacing={1.6}>
+              {visibleQuickActions.map((action) => (
+                <Grid item xs={12} sm={6} md={4} lg={3} key={action.label}>
+                  <Box
+                    onClick={() => navigate(action.path)}
+                    sx={{
+                      p: 1.6,
+                      height: '100%',
+                      borderRadius: '18px',
+                      bgcolor: '#fff',
+                      border: '1px solid #EEF2F7',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.4,
+                      cursor: 'pointer',
+                      transition: 'background 0.2s ease, box-shadow 0.2s ease',
+                      '&:hover': { bgcolor: '#F8FAFC', boxShadow: '0 10px 24px rgba(49,46,129,0.06)' },
+                    }}
+                  >
+                    <Avatar sx={{ width: 40, height: 40, bgcolor: '#F0EDFF', color: '#6757D8', borderRadius: '14px' }}>{action.icon}</Avatar>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{action.label}</Typography>
+                      <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>{action.detail}</Typography>
+                    </Box>
+                    <ArrowForwardIcon sx={{ color: '#CBD5E1', fontSize: 18 }} />
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Card>
         </Grid>
 
         <Grid item xs={12}>
