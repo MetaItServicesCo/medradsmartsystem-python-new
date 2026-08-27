@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     AI_EXTRACTION_MODEL: str = "claude-sonnet-5"
     AI_EXTRACTION_TIMEOUT_SECONDS: int = 60
+
+    # Dashboard AI narrative. Reuses ANTHROPIC_API_KEY and the AI_EXTRACTION_ENABLED
+    # gate, but gets its own model and a tight timeout: a dashboard blurb must
+    # degrade to the calculated fallback fast rather than hold a request worker.
+    # Leave DASHBOARD_AI_MODEL blank to reuse AI_EXTRACTION_MODEL.
+    DASHBOARD_AI_MODEL: str = ""
+    DASHBOARD_AI_TIMEOUT_SECONDS: int = 15
     AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED: bool = False
 
     # Face Recognition

@@ -225,6 +225,16 @@ const summarizeChanges = (log: AuditLogItem) => {
     .map(([key, value]) => `${prettyKey(key)}: ${prettyValue(value)}`)
 }
 
+const AI_SECTION_LABEL = {
+  color: '#94A3B8',
+  fontSize: 10.5,
+  fontWeight: 900,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase' as const,
+  mt: 1.7,
+  mb: 0.8,
+}
+
 const Dashboard = () => {
   const navigate = useNavigate()
   const currentUser = useAuthStore((s) => s.user)
@@ -1021,19 +1031,51 @@ const Dashboard = () => {
               </Box>
               {aiAnalysis ? (
                 <Box sx={{ mt: 1.8 }}>
-                  <Typography sx={{ color: '#5B42C5', fontSize: 14, fontWeight: 950 }}>{aiAnalysis.headline}</Typography>
+                  <Typography sx={{ color: '#5B42C5', fontSize: 14, fontWeight: 950, lineHeight: 1.4 }}>{aiAnalysis.headline}</Typography>
                   <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, mt: 0.7, lineHeight: 1.55 }}>{aiAnalysis.summary}</Typography>
-                  {aiAnalysis.actions.length > 0 && (
-                    <Stack spacing={0.8} sx={{ mt: 1.4 }}>
-                      {aiAnalysis.actions.map((action, index) => (
-                        <Box key={`${action}-${index}`} sx={{ display: 'flex', gap: 0.8 }}>
-                          <Typography sx={{ color: '#7C3AED', fontSize: 12, fontWeight: 950 }}>{index + 1}.</Typography>
-                          <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 750, lineHeight: 1.45 }}>{action}</Typography>
-                        </Box>
-                      ))}
-                    </Stack>
+
+                  {aiAnalysis.positives.length > 0 && (
+                    <>
+                      <Typography sx={AI_SECTION_LABEL}>Strengths</Typography>
+                      <Stack spacing={0.7}>
+                        {aiAnalysis.positives.map((item, index) => (
+                          <Box key={`pos-${index}`} sx={{ display: 'flex', gap: 0.9, alignItems: 'flex-start', p: 1.1, borderRadius: '14px', bgcolor: '#F0FDF4', border: '1px solid #DCFCE7' }}>
+                            <TrendingUpIcon sx={{ fontSize: 16, color: '#059669', mt: '1px', flexShrink: 0 }} />
+                            <Typography sx={{ color: '#065F46', fontSize: 11.5, fontWeight: 800, lineHeight: 1.4 }}>{item}</Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </>
                   )}
-                  {!aiAnalysis.available && <Chip label="Calculated fallback" size="small" sx={{ mt: 1.3, bgcolor: '#F1F5F9', color: '#64748B', fontWeight: 850 }} />}
+
+                  {aiAnalysis.risks.length > 0 && (
+                    <>
+                      <Typography sx={AI_SECTION_LABEL}>Risks</Typography>
+                      <Stack spacing={0.7}>
+                        {aiAnalysis.risks.map((item, index) => (
+                          <Box key={`risk-${index}`} sx={{ display: 'flex', gap: 0.9, alignItems: 'flex-start', p: 1.1, borderRadius: '14px', bgcolor: '#FEF2F2', border: '1px solid #FEE2E2' }}>
+                            <WarningAmberIcon sx={{ fontSize: 16, color: '#DC2626', mt: '1px', flexShrink: 0 }} />
+                            <Typography sx={{ color: '#991B1B', fontSize: 11.5, fontWeight: 800, lineHeight: 1.4 }}>{item}</Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </>
+                  )}
+
+                  {aiAnalysis.actions.length > 0 && (
+                    <>
+                      <Typography sx={AI_SECTION_LABEL}>Recommended actions</Typography>
+                      <Stack spacing={0.9}>
+                        {aiAnalysis.actions.map((action, index) => (
+                          <Box key={`${action}-${index}`} sx={{ display: 'flex', gap: 0.9, alignItems: 'flex-start' }}>
+                            <Box sx={{ width: 19, height: 19, borderRadius: '7px', bgcolor: '#EEEAFE', color: '#7C3AED', fontSize: 11, fontWeight: 950, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, mt: '1px' }}>{index + 1}</Box>
+                            <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 750, lineHeight: 1.45 }}>{action}</Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </>
+                  )}
+                  {!aiAnalysis.available && <Chip label="Calculated fallback" size="small" sx={{ mt: 1.5, bgcolor: '#F1F5F9', color: '#64748B', fontWeight: 850 }} />}
                 </Box>
               ) : (
                 <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, mt: 1.8, lineHeight: 1.55 }}>
