@@ -4520,22 +4520,33 @@ const Inspections = () => {
             </Box>
           ) : selectedBatch ? (
             <Box sx={{ display: 'grid', gap: 2 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Work Order</Typography>
-                  <Typography sx={{ color: '#7161D8', fontFamily: 'monospace', fontWeight: 900 }}>{selectedBatch.batch_number}</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+                  <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Work Order</Typography>
+                  <Typography sx={{ color: '#6D28D9', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontWeight: 900, fontSize: '1.02rem', mt: 0.75 }}>{selectedBatch.batch_number}</Typography>
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Assets</Typography>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{selectedBatch.asset_count}</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+                  <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Assets</Typography>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: '1.6rem', lineHeight: 1, mt: 0.75 }}>{selectedBatch.asset_count}</Typography>
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Completed</Typography>
-                  <Typography sx={{ color: '#059669', fontWeight: 900 }}>{selectedBatch.completed_count}</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+                  <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Completed</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mt: 0.75 }}>
+                    <Typography sx={{ color: '#059669', fontWeight: 900, fontSize: '1.6rem', lineHeight: 1 }}>{selectedBatch.completed_count}</Typography>
+                    <Typography sx={{ color: '#94A3B8', fontWeight: 800, fontSize: '0.85rem' }}>/ {selectedBatch.asset_count}</Typography>
+                  </Box>
+                  <Box sx={{ mt: 1, height: 6, borderRadius: '999px', bgcolor: '#ECFDF5', overflow: 'hidden' }}>
+                    <Box sx={{ height: '100%', borderRadius: '999px', bgcolor: '#10B981', transition: 'width .4s ease', width: `${selectedBatch.asset_count ? Math.round((selectedBatch.completed_count / selectedBatch.asset_count) * 100) : 0}%` }} />
+                  </Box>
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Technician</Typography>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{selectedBatch.inspector_name || '-'}</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+                  <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Technician</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.75, minWidth: 0 }}>
+                    <Box sx={{ width: 26, height: 26, borderRadius: '50%', bgcolor: '#F4F1FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <PersonIcon sx={{ fontSize: '0.95rem' }} />
+                    </Box>
+                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedBatch.inspector_name || '—'}</Typography>
+                  </Box>
                 </Card>
               </Box>
 
@@ -4564,39 +4575,31 @@ const Inspections = () => {
                         >
                           <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.serial_number || '-'} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
-                          <TableCell><ClippedTooltipText value={asset.asset_name || asset.equipment_name || '-'} fontWeight={800} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
-                          <TableCell>{asset.tier_name || '-'}</TableCell>
+                          <TableCell>
+                            <ClippedTooltipText
+                              value={asset.asset_name || asset.equipment_name || '-'}
+                              fontWeight={800}
+                              color="#312E81"
+                              maxWidth={210}
+                              sx={{ display: 'inline-block', width: 210, maxWidth: 210, px: 1.1, py: 0.5, borderRadius: '8px', bgcolor: '#F5F3FF' }}
+                              onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <ClippedTooltipText
+                              value={asset.tier_name || '-'}
+                              fontWeight={700}
+                              color="#475569"
+                              maxWidth={210}
+                              sx={{ display: 'inline-block', width: 210, maxWidth: 210, px: 1.1, py: 0.5, borderRadius: '8px', bgcolor: '#F1F5F9' }}
+                            />
+                          </TableCell>
                           <TableCell>{asset.inspector_name || '-'}</TableCell>
-                          <TableCell><Chip size="small" label={asset.status} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900 }} /></TableCell>
+                          <TableCell><Chip size="small" label={String(asset.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 800, textTransform: 'none', borderRadius: '8px' }} /></TableCell>
                           <TableCell align="right">
-                            {selectedBatch.status === 'completed' ? (
-                              <IconButton size="small" onClick={(event) => openAssetActions(event, asset)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED' }}>
-                                <MoreVertIcon fontSize="small" />
-                              </IconButton>
-                            ) : (
-                              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
-                                {canEditInspections && (
-                                  <>
-                                    <Button size="small" variant="contained" startIcon={<AssignmentTurnedInIcon />} onClick={() => setReportInspection(asset)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                                      Report Activity
-                                    </Button>
-                                    <Button size="small" variant="outlined" startIcon={<PersonIcon />} onClick={() => openTechnicianDialog(asset)} sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900 }}>
-                                      Change Tech
-                                    </Button>
-                                  </>
-                                )}
-                                {canDeleteInspections && (
-                                  <IconButton
-                                    size="small"
-                                    disabled={asset.status === 'completed' || removeBatchAssetMut.isPending}
-                                    onClick={() => selectedBatch && removeBatchAssetMut.mutate({ batchId: selectedBatch.id, inspectionId: asset.id })}
-                                    sx={{ bgcolor: '#FEE2E2', color: '#DC2626', '&:disabled': { bgcolor: '#F3F4F6' } }}
-                                  >
-                                    <DeleteIcon fontSize="small" />
-                                  </IconButton>
-                                )}
-                              </Box>
-                            )}
+                            <IconButton size="small" onClick={(event) => openAssetActions(event, asset)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                              <MoreVertIcon fontSize="small" />
+                            </IconButton>
                           </TableCell>
                         </ContextTableRow>
                       )
@@ -4654,6 +4657,16 @@ const Inspections = () => {
             <AssignmentTurnedInIcon fontSize="small" sx={{ mr: 1 }} /> Report Activity
           </MenuItem>
         )}
+        {canEditInspections && assetActionItem?.status !== 'completed' && (
+          <MenuItem
+            onClick={() => {
+              if (assetActionItem) openTechnicianDialog(assetActionItem)
+              closeAssetActions()
+            }}
+          >
+            <PersonIcon fontSize="small" sx={{ mr: 1 }} /> Change Technician
+          </MenuItem>
+        )}
         <MenuItem onClick={() => assetActionItem && handlePrintReport(assetActionItem)}>
           <AssessmentIcon fontSize="small" sx={{ mr: 1 }} /> Print Report
         </MenuItem>
@@ -4670,6 +4683,20 @@ const Inspections = () => {
         >
           <ReceiptLongIcon fontSize="small" sx={{ mr: 1 }} /> {assetActionItem?.invoice ? 'Invoice Generated' : 'Generate Invoice'}
         </MenuItem>
+        {canDeleteInspections && assetActionItem?.status !== 'completed' && (
+          <MenuItem
+            disabled={removeBatchAssetMut.isPending}
+            onClick={() => {
+              if (selectedBatch && assetActionItem) {
+                removeBatchAssetMut.mutate({ batchId: selectedBatch.id, inspectionId: assetActionItem.id })
+              }
+              closeAssetActions()
+            }}
+            sx={{ color: '#DC2626', borderTop: '1px solid #F1F5F9', mt: 0.5, pt: 1 }}
+          >
+            <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Remove from Batch
+          </MenuItem>
+        )}
       </Menu>
 
       <Menu

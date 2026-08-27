@@ -814,8 +814,8 @@ const ServiceRequestDetail = () => {
           mb: 3, overflow: 'hidden', position: 'relative', color: '#fff',
           borderRadius: '24px',
           border: '1px solid rgba(255,255,255,0.14)',
-          background: 'linear-gradient(135deg, #4F46E5 0%, #6E4BCC 52%, #9A55B0 100%)',
-          boxShadow: '0 26px 60px -20px rgba(79,70,229,0.55)',
+          background: 'linear-gradient(135deg, #7C3AED 0%, #8A46C2 52%, #9A55B0 100%)',
+          boxShadow: '0 26px 60px -20px rgba(124,58,237,0.55)',
           '@keyframes srPulse': {
             '0%': { boxShadow: '0 0 0 0 rgba(255,255,255,0.5)' },
             '70%': { boxShadow: '0 0 0 12px rgba(255,255,255,0)' },
@@ -1755,7 +1755,7 @@ const ServiceRequestDetail = () => {
               {resolvedInvoice && !sr.invoice_deleted ? (
                 <Button
                   fullWidth variant="contained" startIcon={<EditIcon />} onClick={openEditInvoice}
-                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(79,70,229,0.65)', background: 'linear-gradient(135deg, #4F46E5 0%, #6E4BCC 100%)', '&:hover': { background: 'linear-gradient(135deg, #4338CA 0%, #5B3EB8 100%)', boxShadow: '0 14px 30px -14px rgba(79,70,229,0.75)' } }}
+                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(124,58,237,0.65)', background: 'linear-gradient(135deg, #7C3AED 0%, #9A55B0 100%)', '&:hover': { background: 'linear-gradient(135deg, #6D28D9 0%, #8A46C2 100%)', boxShadow: '0 14px 30px -14px rgba(124,58,237,0.75)' } }}
                 >
                   Edit Invoice ({resolvedInvoice.invoice_number})
                 </Button>
@@ -1763,7 +1763,7 @@ const ServiceRequestDetail = () => {
                 <Button
                   fullWidth variant="contained" startIcon={<ReceiptLongIcon />} onClick={openInvoiceDialog}
                   disabled={invoiceMutation.isPending || sr.invoice_deleted}
-                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(79,70,229,0.65)', background: 'linear-gradient(135deg, #4F46E5 0%, #6E4BCC 100%)', '&:hover': { background: 'linear-gradient(135deg, #4338CA 0%, #5B3EB8 100%)' } }}
+                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(124,58,237,0.65)', background: 'linear-gradient(135deg, #7C3AED 0%, #9A55B0 100%)', '&:hover': { background: 'linear-gradient(135deg, #6D28D9 0%, #8A46C2 100%)' } }}
                 >
                   Generate Invoice
                 </Button>
