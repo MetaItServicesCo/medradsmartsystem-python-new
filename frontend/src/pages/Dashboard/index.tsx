@@ -816,29 +816,35 @@ const Dashboard = () => {
             {visibleCompactStats.map((stat) => {
               const cardHidden = isAnalyticsHidden(`compact-${stat.key}`)
               return (
-              <Grid item xs={12} md={4} key={stat.label}>
+              <Grid item xs={12} sm={6} md={3} key={stat.label}>
                 <Card
                   onClick={() => navigate(stat.path)}
                   sx={{
-                    p: 2,
+                    p: 2.2,
+                    height: '100%',
+                    minHeight: 172,
                     borderRadius: '22px',
                     border: '1px solid #EEF0F6',
-                    boxShadow: '0 14px 34px rgba(49,46,129,0.07)',
+                    boxShadow: '0 18px 40px rgba(49,46,129,0.08)',
                     cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1.5,
+                    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                    '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 24px 50px rgba(49,46,129,0.13)' },
                   }}
                 >
-                  <Avatar sx={{ bgcolor: `${stat.color}16`, color: stat.color, borderRadius: '16px' }}>{stat.icon}</Avatar>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{stat.label}</Typography>
-                    <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>{cardHidden ? 'Analytics hidden' : stat.detail}</Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                    <Avatar sx={{ width: 44, height: 44, bgcolor: `${stat.color}18`, color: stat.color, borderRadius: '16px' }}>{stat.icon}</Avatar>
+                    <Stack direction="row" spacing={0.8} alignItems="center">
+                      {renderAnalyticsToggle(`compact-${stat.key}`, `${stat.label} analytics`)}
+                      <ArrowForwardIcon sx={{ color: '#CBD5E1', fontSize: 18 }} />
+                    </Stack>
                   </Box>
-                  <Stack direction="row" spacing={0.8} alignItems="center">
-                    {renderAnalyticsToggle(`compact-${stat.key}`, `${stat.label} analytics`)}
-                    <Typography sx={{ color: stat.color, fontSize: 26, fontWeight: 900 }}>{summaryLoading ? '-' : cardHidden ? hiddenNumber : <AnimatedNumber value={stat.value} />}</Typography>
-                  </Stack>
+                  <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 800 }}>{stat.label}</Typography>
+                  {summaryLoading ? (
+                    <Skeleton variant="text" width={72} height={42} />
+                  ) : (
+                    <Typography sx={{ color: '#1E1B4B', fontSize: 34, lineHeight: 1, fontWeight: 900, mt: 0.5 }}>{cardHidden ? hiddenNumber : <AnimatedNumber value={stat.value} />}</Typography>
+                  )}
+                  <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700, mt: 0.8 }}>{cardHidden ? 'Analytics hidden' : stat.detail}</Typography>
                 </Card>
               </Grid>
               )
