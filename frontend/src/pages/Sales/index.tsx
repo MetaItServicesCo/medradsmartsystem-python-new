@@ -34,6 +34,7 @@ import SalesPricingBreakdown from '@/components/Sales/SalesPricingBreakdown'
 import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
 import QuotationHistoryTimeline from '@/components/Sales/QuotationHistoryTimeline'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import DebouncedSearchField from '@/components/DebouncedSearchField'
 import ContextTableRow from '@/components/ContextTableRow'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import {
@@ -357,7 +358,6 @@ const Sales = () => {
   const dateFrom = routeParams.get('date_from') || ''
   const dateTo = routeParams.get('date_to') || ''
   const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
-  const [search, setSearch] = useState(routeSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [quotationDialog, setQuotationDialog] = useState(false)
   const [salesDocumentMode, setSalesDocumentMode] = useState<'quotation' | 'invoice'>('quotation')
@@ -433,22 +433,10 @@ const Sales = () => {
   }, [])
 
   useEffect(() => {
-    setSearch(routeSearch)
     setDebouncedSearch(routeSearch)
   }, [routeSearch])
-
-  useEffect(() => {
-    const handle = window.setTimeout(() => {
-      setDebouncedSearch(search.trim())
-      setQuotationsPage(0)
-      setInvoicesPage(0)
-      setInProgressPage(0)
-      setCompletedPage(0)
-      setHistoryPage(0)
-    }, 350)
-
-    return () => window.clearTimeout(handle)
-  }, [search])
+  // The search input debounces itself now; the effect below already resets
+  // pagination whenever the debounced term changes.
 
   // Facilities and the full parts list are only needed inside the quotation /
   // convert dialogs (facility picker, line-item avatars). Loading them eagerly
@@ -1760,12 +1748,14 @@ const Sales = () => {
         ariaLabel="Sales search field"
         sx={{ width: { xs: '100%', sm: 160 }, minWidth: { xs: '100%', sm: 160 } }}
       />
-      <TextField
+      <DebouncedSearchField
+        key={`sales-${routeSearch}`}
+        defaultValue={routeSearch}
+        delay={350}
+        onDebouncedChange={setDebouncedSearch}
         size="small"
         label={label}
         placeholder={`Search ${activeSearchFields.find((field) => field.value === searchField)?.label.toLowerCase() || 'sales'}...`}
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
         sx={{ flex: '1 1 220px', minWidth: { xs: '100%', sm: 220 }, maxWidth: { xl: 320 }, bgcolor: '#fff' }}
       />
       <DateRangeFilter

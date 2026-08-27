@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -57,6 +57,7 @@ import InvoicePrintDialog, {
   type PrintablePaidQuotation,
 } from '@/components/Billing/InvoicePrintDialog'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import DebouncedSearchField from '@/components/DebouncedSearchField'
 import ContextTableRow from '@/components/ContextTableRow'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
@@ -486,7 +487,6 @@ const Billing = () => {
   const search = searchParams.get('search') || ''
   const searchField = searchParams.get('search_field') || 'all'
   const focusedBillingRecord = searchParams.get('focus') || ''
-  const [searchInput, setSearchInput] = useState(search)
   const activeSearch = search.trim()
   const querySearch = activeSearch || undefined
   const querySearchField = searchField === 'all' ? undefined : searchField
@@ -531,10 +531,6 @@ const Billing = () => {
     setPrintItem(item)
   }, [])
 
-  useEffect(() => {
-    setSearchInput(search)
-  }, [search])
-
   // A deliberate "Show" from Recent activity must not leave the requested
   // record hidden behind a previously selected source/status/summary tab.
   // This only resets list presentation; it never changes billing data.
@@ -546,19 +542,28 @@ const Billing = () => {
     setPage(0)
   }, [focusedBillingRecord])
 
+  // The search input debounces itself and pushes the term into the URL, so
+  // typing no longer re-renders the whole Billing page on every keystroke.
+  // Re-seed the input (via `billingSearchSeed`) only when the URL search
+  // changes from the outside (e.g. a Recent-activity "Show"), never from our
+  // own push — otherwise the field would remount mid-type and lose focus.
+  const lastPushedSearch = useRef(search)
+  const [billingSearchSeed, setBillingSearchSeed] = useState(0)
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const trimmed = searchInput.trim()
-      if (trimmed === search) return
-
-      const next = new URLSearchParams(searchParams)
-      if (trimmed) next.set('search', trimmed)
-      else next.delete('search')
-      setSearchParams(next, { replace: true })
-    }, 350)
-
-    return () => window.clearTimeout(timeout)
-  }, [searchInput, search, searchParams, setSearchParams])
+    if (search !== lastPushedSearch.current) {
+      lastPushedSearch.current = search
+      setBillingSearchSeed((seed) => seed + 1)
+    }
+  }, [search])
+  const applyBillingSearch = (value: string) => {
+    const trimmed = value.trim()
+    if (trimmed === search) return
+    lastPushedSearch.current = trimmed
+    const next = new URLSearchParams(searchParams)
+    if (trimmed) next.set('search', trimmed)
+    else next.delete('search')
+    setSearchParams(next, { replace: true })
+  }
 
   const serviceQ = useQuery({
     queryKey: ['billing-service-quotations', querySearch, querySearchField],
@@ -1462,11 +1467,13 @@ const Billing = () => {
           ariaLabel="Billing search field"
           sx={{ minWidth: 175 }}
         />
-        <TextField
+        <DebouncedSearchField
+          key={`billing-${billingSearchSeed}`}
+          defaultValue={search}
+          delay={350}
+          onDebouncedChange={applyBillingSearch}
           size="small"
           placeholder={`Search ${BILLING_SEARCH_FIELDS.find((field) => field.value === searchField)?.label.toLowerCase() || 'billing'}...`}
-          value={searchInput}
-          onChange={event => setSearchInput(event.target.value)}
           sx={{ minWidth: 260 }}
         />
         {anyBillingSourceFetching && !isInitialLoading && (

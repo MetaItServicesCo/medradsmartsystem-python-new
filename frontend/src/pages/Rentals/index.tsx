@@ -34,6 +34,7 @@ import DateRangeFilter from '@/components/DateRangeFilter'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import DebouncedSearchField from '@/components/DebouncedSearchField'
 import ContextTableRow from '@/components/ContextTableRow'
 import { useListContext } from '@/contexts/ListContext'
 import { SALES_TAX_RATE, SALES_TAX_FACTOR, roundSalesMoney } from '@/utils/salesPricing'
@@ -605,7 +606,6 @@ const Rentals = () => {
   const dateFrom = routeParams.get('date_from') || ''
   const dateTo = routeParams.get('date_to') || ''
   const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
-  const [search, setSearch] = useState(routeSearch)
   const [debouncedSearch, setDebouncedSearch] = useState(routeSearch)
   const [agreementPage, setAgreementPage] = useState(0)
   const [agreementRowsPerPage, setAgreementRowsPerPage] = useState(25)
@@ -704,21 +704,17 @@ const Rentals = () => {
   }, [isRentalCustomer, navigate, tab])
 
   useEffect(() => {
-    setSearch(routeSearch)
     setDebouncedSearch(routeSearch)
   }, [routeSearch])
 
+  // The search input debounces itself now; reset pagination whenever the
+  // debounced term changes (same effect the old debounce block had).
   useEffect(() => {
-    const handle = window.setTimeout(() => {
-      setDebouncedSearch(search.trim())
-      setAgreementPage(0)
-      setInvoicesPage(0)
-      setHistoryPage(0)
-      setProductsPage(0)
-    }, 350)
-
-    return () => window.clearTimeout(handle)
-  }, [search])
+    setAgreementPage(0)
+    setInvoicesPage(0)
+    setHistoryPage(0)
+    setProductsPage(0)
+  }, [debouncedSearch])
 
   const facilityCustomersQ = useQuery({
     queryKey: ['rental-facility-customers', agreementForm.facility_id],
@@ -2301,12 +2297,14 @@ const Rentals = () => {
         ariaLabel="Rental search field"
         sx={{ width: { xs: '100%', sm: 160 }, minWidth: { xs: '100%', sm: 160 } }}
       />
-      <TextField
+      <DebouncedSearchField
+        key={`rentals-${routeSearch}`}
+        defaultValue={routeSearch}
+        delay={350}
+        onDebouncedChange={setDebouncedSearch}
         size="small"
         label={label}
         placeholder={`Search ${activeSearchFields.find((field) => field.value === searchField)?.label.toLowerCase() || 'rentals'}...`}
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
         sx={{ flex: '1 1 220px', minWidth: { xs: '100%', sm: 220 }, maxWidth: { xl: 320 }, bgcolor: '#fff' }}
       />
       <DateRangeFilter
