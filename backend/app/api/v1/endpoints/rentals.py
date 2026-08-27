@@ -41,7 +41,7 @@ from app.utils.facility_access import (
     get_user_facility_ids,
 )
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.payment_receipts import deliver_payment_receipt, queue_rental_payment_receipt
 from app.utils.invoice_refunds import execute_square_invoice_refund, issue_invoice_refund
 from app.utils.invoice_approval import (
@@ -2813,6 +2813,9 @@ def update_rental_invoice(
 
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
+    edit_before_values = {field: getattr(invoice, field) for field in ("subtotal", "tax_amount", "discount_amount", "total_amount")}
+    edit_before_line_items = editable_line_items(invoice.notes)
+    edit_before_summary_rows = editable_summary_rows(invoice.notes)
     update_data = payload.model_dump(exclude_unset=True)
     internal_editor = is_invoice_approver(current_user)
     facility_payer = is_facility_billing_user(current_user)
@@ -2874,6 +2877,7 @@ def update_rental_invoice(
             _append_history(invoice.rental, "invoice_updated", current_user, {"invoice_id": invoice.id, "status": invoice.status.value})
             
     invoice.updated_at = datetime.utcnow()
+    record_invoice_edit(db, invoice, before_values=edit_before_values, before_line_items=edit_before_line_items, before_summary_rows=edit_before_summary_rows, user=current_user)
     payment_transaction = record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
     receipt_delivery = None
     if payment_transaction is not None and invoice.rental and _money(invoice.amount_paid) > _money(previous_paid):

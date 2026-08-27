@@ -22,7 +22,7 @@ from app.models.tier import Tier
 from app.models.user import User, UserRole
 from app.utils.inspection_schedule import inspection_frequency_from_schedule, next_inspection_date
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
     BILLING_APPROVAL_APPROVED,
     approval_response,
@@ -2903,6 +2903,8 @@ def update_inspection_invoice(
     require_facility_access(db, current_user, invoice.facility_id)
 
     before = {c.name: getattr(invoice, c.name) for c in invoice.__table__.columns}
+    before_line_items = editable_line_items(invoice.notes)
+    before_summary_rows = editable_summary_rows(invoice.notes)
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
     update_data = payload.model_dump(exclude_unset=True)
@@ -2998,6 +3000,7 @@ def update_inspection_invoice(
     invoice.updated_at = datetime.utcnow()
     record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
     record_status_change(db, invoice, previous_status, current_user)
+    record_invoice_edit(db, invoice, before_values=before, before_line_items=before_line_items, before_summary_rows=before_summary_rows, user=current_user)
     db.flush()
     log_activity(db, "invoices", invoice.id, "UPDATE", current_user, {"before": before, "after": update_data})
     db.commit()

@@ -43,7 +43,7 @@ from app.schemas.service_request import (
 from app.utils.notifications import create_notification, create_notifications, notify_admins
 from app.utils.facility_access import get_user_facility_ids, require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
     approval_response,
     approve_invoice_for_billing,
@@ -1061,6 +1061,9 @@ def update_service_invoice(
 
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
+    edit_before_values = {field: getattr(invoice, field) for field in ("subtotal", "tax_amount", "discount_amount", "total_amount")}
+    edit_before_line_items = editable_line_items(invoice.notes)
+    edit_before_summary_rows = editable_summary_rows(invoice.notes)
     update_data = payload.model_dump(exclude_unset=True)
     ensure_financial_edit_allowed(invoice, update_data)
     financial_edit = has_financial_edits(invoice, update_data)
@@ -1139,6 +1142,7 @@ def update_service_invoice(
 
     record_payment_delta(db, invoice, previous_paid, invoice.amount_paid, current_user, invoice.payment_method, update_data.get("notes"))
     record_status_change(db, invoice, previous_status, current_user)
+    record_invoice_edit(db, invoice, before_values=edit_before_values, before_line_items=edit_before_line_items, before_summary_rows=edit_before_summary_rows, user=current_user)
     db.commit()
     db.refresh(invoice)
     return _service_invoice_response(invoice)

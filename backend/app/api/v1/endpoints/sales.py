@@ -29,7 +29,7 @@ from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
-from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_payment_delta, record_status_change, transaction_response
+from app.utils.invoice_ledger import add_invoice_transaction, record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_refunds import issue_invoice_refund
 from app.utils.square_payments import SquareRequestError
 from app.utils.invoice_approval import (
@@ -2771,6 +2771,9 @@ def update_sales_invoice(
 
     previous_paid = invoice.amount_paid
     previous_status = invoice.status
+    edit_before_values = {field: getattr(invoice, field) for field in ("subtotal", "tax_amount", "discount_amount", "total_amount")}
+    edit_before_line_items = editable_line_items(invoice.notes)
+    edit_before_summary_rows = editable_summary_rows(invoice.notes)
     update_data = payload.model_dump(exclude_unset=True)
     internal_editor = is_invoice_approver(current_user)
     facility_payer = is_facility_billing_user(current_user)
@@ -2837,6 +2840,7 @@ def update_sales_invoice(
             current_user,
         )
     invoice.updated_at = datetime.utcnow()
+    record_invoice_edit(db, invoice, before_values=edit_before_values, before_line_items=edit_before_line_items, before_summary_rows=edit_before_summary_rows, user=current_user)
     payment_transaction = record_payment_delta(
         db,
         invoice,

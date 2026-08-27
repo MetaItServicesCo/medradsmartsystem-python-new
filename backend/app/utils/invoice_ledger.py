@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -5,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.invoice import Invoice, InvoiceTransaction
 from app.models.user import User
+from app.utils.invoice_editing import editable_line_items, editable_summary_rows
 
 
 def _money(value: Any) -> Decimal:
@@ -132,4 +134,121 @@ def record_status_change(
         description or f"Invoice status changed from {old_status} to {new_status}",
         user,
         "STS",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Invoice edit audit trail
+# ---------------------------------------------------------------------------
+_EDIT_TRACKED_FIELDS = [
+    ("subtotal", "Subtotal"),
+    ("tax_amount", "Tax"),
+    ("discount_amount", "Discount"),
+]
+
+
+def _fmt_money(value: Any) -> str:
+    return f"${_money(value):,.2f}"
+
+
+def _item_label(item: Any) -> str:
+    if isinstance(item, dict):
+        for key in ("description", "name", "label", "item", "title"):
+            value = item.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+    return "Item"
+
+
+def _item_amount(item: Any) -> Optional[Decimal]:
+    if not isinstance(item, dict):
+        return None
+    for key in ("total", "amount", "line_total", "subtotal"):
+        if item.get(key) not in (None, ""):
+            return _money(item[key])
+    quantity = next((item[k] for k in ("quantity", "qty") if item.get(k) not in (None, "")), None)
+    unit = next((item[k] for k in ("unit_price", "unitPrice", "price", "rate") if item.get(k) not in (None, "")), None)
+    if quantity is not None and unit is not None:
+        return _money(quantity) * _money(unit)
+    return None
+
+
+def _item_summary(item: Any) -> str:
+    label = _item_label(item)
+    amount = _item_amount(item)
+    return f"{label} ({_fmt_money(amount)})" if amount is not None else label
+
+
+def _index_by_label(items: Any) -> dict[str, Any]:
+    indexed: dict[str, Any] = {}
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        label = _item_label(item)
+        key = label
+        suffix = 1
+        while key in indexed:
+            suffix += 1
+            key = f"{label} #{suffix}"
+        indexed[key] = item
+    return indexed
+
+
+def _diff_items(before: Any, after: Any, noun: str) -> list[str]:
+    before_map = _index_by_label(before)
+    after_map = _index_by_label(after)
+    lines: list[str] = []
+    for key, item in after_map.items():
+        if key not in before_map:
+            lines.append(f"Added {noun} — {_item_summary(item)}")
+        elif json.dumps(item, sort_keys=True, default=str) != json.dumps(before_map[key], sort_keys=True, default=str):
+            lines.append(f"Changed {noun} — {_item_summary(before_map[key])} → {_item_summary(item)}")
+    for key, item in before_map.items():
+        if key not in after_map:
+            lines.append(f"Removed {noun} — {_item_summary(item)}")
+    return lines
+
+
+def record_invoice_edit(
+    db: Session,
+    invoice: Invoice,
+    *,
+    before_values: dict[str, Any],
+    before_line_items: Any,
+    before_summary_rows: Any,
+    user: Optional[User],
+) -> Optional[InvoiceTransaction]:
+    """Log a before -> after audit entry when an invoice's contents change.
+
+    Captures amount-field changes (subtotal/tax/discount/total) plus line-item
+    and summary-row additions, removals, and edits. Writes nothing when the edit
+    left the invoice's financial content unchanged. The editor and timestamp are
+    recorded on the ledger transaction itself.
+    """
+    lines: list[str] = []
+    for field, label in _EDIT_TRACKED_FIELDS:
+        old_value = _money(before_values.get(field))
+        new_value = _money(getattr(invoice, field, 0))
+        if old_value != new_value:
+            lines.append(f"{label}: {_fmt_money(old_value)} → {_fmt_money(new_value)}")
+
+    lines += _diff_items(before_line_items, editable_line_items(invoice.notes), "line")
+    lines += _diff_items(before_summary_rows, editable_summary_rows(invoice.notes), "summary row")
+
+    old_total = _money(before_values.get("total_amount"))
+    new_total = _money(getattr(invoice, "total_amount", 0))
+    total_changed = old_total != new_total
+    if not lines and not total_changed:
+        return None
+
+    header = f"Invoice {invoice.invoice_number} edited. Total {_fmt_money(old_total)} → {_fmt_money(new_total)}."
+    description = header + ("".join(f"\n• {line}" for line in lines) if lines else "")
+    return add_invoice_transaction(
+        db,
+        invoice,
+        "invoice_edited",
+        new_total,
+        description=description,
+        user=user,
+        reference_prefix="EDT",
     )
