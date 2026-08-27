@@ -206,6 +206,13 @@ def invalidate_invoice_approval(
     invoice.approved_for_billing_at = None
     invoice.approved_total_amount = None
     invoice.approval_invalidated_at = datetime.utcnow()
+
+    # Keep the linked service request in step: an approved SR can no longer
+    # claim approval once the invoice's approval is invalidated. An explicit
+    # "not_approved" rejection is left untouched.
+    service_request = getattr(invoice, "service_request", None)
+    if service_request is not None and service_request.billing_status == "approved":
+        service_request.billing_status = "pending"
     if getattr(invoice, "sales_quotation_id", None):
         # Authorization is consent for one exact approved balance. Financial
         # edits invalidate that consent so it can never drift to a new amount.
@@ -253,6 +260,15 @@ def approve_invoice_for_billing(db: Session, invoice: Invoice, user: User) -> No
             status_code=status.HTTP_409_CONFLICT,
             detail="A cancelled invoice cannot be approved for billing",
         )
+
+    # Mirror the approval onto the linked service request so the Service Request
+    # page and the Billing page always agree on the billing-approval state,
+    # regardless of which screen the approval was made from. Runs even on the
+    # already-approved fast path below, in case the two had drifted.
+    service_request = getattr(invoice, "service_request", None)
+    if service_request is not None:
+        service_request.billing_status = "approved"
+
     if (
         invoice.billing_approval_status == BILLING_APPROVAL_APPROVED
         and _money(invoice.approved_total_amount) == _money(invoice.total_amount)
