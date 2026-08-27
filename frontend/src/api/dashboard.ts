@@ -37,10 +37,19 @@ export interface DashboardAlert {
   route: string
 }
 
+export interface RevenueStream {
+  stream: string
+  label: string
+  current: number
+  previous: number
+  delta: number
+}
+
 export interface DashboardIntelligence {
   period: { from: string; to: string }
   comparison: { mode: DashboardComparisonMode; from: string; to: string }
   metrics: Record<string, DashboardMetricComparison>
+  revenue_breakdown: RevenueStream[]
   trajectory: { direction: 'upward' | 'downward' | 'stable'; score: number; basis: string[] }
   alerts: DashboardAlert[]
   generated_at: string
@@ -76,8 +85,13 @@ export const fetchDashboardIntelligence = async (params: DashboardPeriodParams):
   return res.data
 }
 
-export const fetchDashboardAnalysis = async (params: DashboardPeriodParams): Promise<DashboardAnalysis> => {
-  const res = await apiClient.get('/dashboard/analysis', { params })
+export const fetchDashboardAnalysis = async (
+  params: DashboardPeriodParams,
+  module?: string,
+): Promise<DashboardAnalysis> => {
+  const res = await apiClient.get('/dashboard/analysis', {
+    params: module ? { ...params, module } : params,
+  })
   return res.data
 }
 

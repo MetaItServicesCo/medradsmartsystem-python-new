@@ -251,6 +251,7 @@ const Dashboard = () => {
   const [comparisonMode, setComparisonMode] = useState<DashboardComparisonMode>('previous_period')
   const [comparisonFrom, setComparisonFrom] = useState('')
   const [comparisonTo, setComparisonTo] = useState('')
+  const [focusModule, setFocusModule] = useState<string>('all')
   const canAccess = (module: Module) => hasPermission(currentUser, module)
   const isAnalyticsHidden = (key: AnalyticsKey) => Boolean(hiddenAnalytics[key])
   const toggleAnalytics = (key: AnalyticsKey) => (event: MouseEvent<HTMLButtonElement>) => {
@@ -313,8 +314,8 @@ const Dashboard = () => {
     isFetching: aiAnalysisLoading,
     refetch: generateAiAnalysis,
   } = useQuery({
-    queryKey: ['dashboard-ai-analysis', currentUser?.id, dashboardFrom, dashboardTo, comparisonMode, comparisonFrom, comparisonTo],
-    queryFn: () => fetchDashboardAnalysis(dashboardParams),
+    queryKey: ['dashboard-ai-analysis', currentUser?.id, dashboardFrom, dashboardTo, comparisonMode, comparisonFrom, comparisonTo, focusModule],
+    queryFn: () => fetchDashboardAnalysis(dashboardParams, focusModule === 'all' ? undefined : focusModule),
     enabled: false,
     staleTime: 15 * 60_000,
   })
@@ -362,8 +363,8 @@ const Dashboard = () => {
       key: 'service-requests',
       module: 'service-requests' as Module,
       label: 'Service Requests',
-      value: summary?.service_requests.open ?? 0,
-      detail: `${summary?.service_requests.critical ?? 0} critical`,
+      value: summary?.service_requests.total ?? 0,
+      detail: `${summary?.service_requests.open ?? 0} open · ${summary?.service_requests.critical ?? 0} critical`,
       progress: summary?.service_requests.total ? Math.round((summary.service_requests.open / summary.service_requests.total) * 100) : 0,
       icon: <BuildIcon />,
       color: '#F0528A',
@@ -445,7 +446,6 @@ const Dashboard = () => {
     { name: 'Requests', value: summary?.service_requests.total ?? 0, module: 'service-requests' as Module },
     { name: 'Inspections', value: summary?.inspections.total ?? 0, module: 'inspections' as Module },
     { name: 'Assignments', value: summary?.user_assignments.total ?? 0, module: 'users' as Module },
-    { name: 'Invoices', value: summary?.invoices.pending ?? 0, module: 'sales' as Module },
   ]
 
   const focusItems = [
@@ -531,6 +531,80 @@ const Dashboard = () => {
   const overviewHidden = isAnalyticsHidden('overview')
   const moduleHealthHidden = isAnalyticsHidden('module-health')
   const focusHidden = isAnalyticsHidden('focus-queue')
+
+  // ---- Revenue by stream (answers "how much is sales vs rental") ----
+  const streamPalette: Record<string, string> = {
+    sales: '#6757D8', rental: '#0EA5E9', service: '#F0528A', inspection: '#13A77B',
+  }
+  const revenueStreams = intelligence?.revenue_breakdown ?? []
+  const netRevenueMetric = intelligence?.metrics?.net_revenue
+  const revenueTotalCurrent = revenueStreams.reduce((total, stream) => total + stream.current, 0)
+  const hasRevenueView = canAccess('billing')
+  const formatMoney = (amount: number) => `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+  // ---- Module lens: one selector drives both performance + AI focus ----
+  const moduleLensOptions = [
+    { value: 'all', label: 'All modules', module: 'dashboard' as Module },
+    { value: 'service-requests', label: 'Service Requests', module: 'service-requests' as Module },
+    { value: 'inspections', label: 'Inspections', module: 'inspections' as Module },
+    { value: 'rentals', label: 'Rentals', module: 'rentals' as Module },
+    { value: 'billing', label: 'Billing & Revenue', module: 'billing' as Module },
+    { value: 'facilities', label: 'Facilities', module: 'facilities' as Module },
+    { value: 'inventory', label: 'Inventory', module: 'inventory' as Module },
+  ].filter((option) => option.value === 'all' || canAccess(option.module))
+  const activeLens = moduleLensOptions.some((option) => option.value === focusModule) ? focusModule : 'all'
+  const activeLensLabel = moduleLensOptions.find((option) => option.value === activeLens)?.label ?? 'All modules'
+
+  const metricKeyByLens: Record<string, string> = {
+    'service-requests': 'completed_service_requests',
+    inspections: 'completed_inspections',
+    facilities: 'new_facilities',
+    billing: 'net_revenue',
+  }
+  const focusMetricKey = metricKeyByLens[activeLens]
+  const focusMetric = focusMetricKey ? intelligence?.metrics?.[focusMetricKey] : undefined
+  const focusMetricLabels: Record<string, string> = {
+    completed_service_requests: 'Services completed',
+    completed_inspections: 'Inspections completed',
+    new_facilities: 'New facilities',
+    net_revenue: 'Net revenue collected',
+  }
+  const focusAlerts = (intelligence?.alerts ?? []).filter((alert) => alert.module === activeLens)
+  const focusStats: { label: string; value: number }[] = (() => {
+    switch (activeLens) {
+      case 'service-requests':
+        return [
+          { label: 'Open', value: summary?.service_requests.open ?? 0 },
+          { label: 'Critical', value: summary?.service_requests.critical ?? 0 },
+          { label: 'Total', value: summary?.service_requests.total ?? 0 },
+        ]
+      case 'inspections':
+        return [
+          { label: 'Upcoming', value: summary?.inspections.upcoming ?? 0 },
+          { label: 'Overdue', value: summary?.inspections.overdue ?? 0 },
+          { label: 'Total', value: summary?.inspections.total ?? 0 },
+        ]
+      case 'rentals':
+        return [{ label: 'Active agreements', value: summary?.rentals.active ?? 0 }]
+      case 'billing':
+        return [
+          { label: 'Pending invoices', value: summary?.invoices.pending ?? 0 },
+          { label: 'Overdue invoices', value: summary?.invoices.overdue ?? 0 },
+        ]
+      case 'facilities':
+        return [
+          { label: 'Active', value: summary?.facilities.active ?? 0 },
+          { label: 'Total', value: summary?.facilities.total ?? 0 },
+        ]
+      case 'inventory':
+        return [
+          { label: 'Low stock parts', value: summary?.inventory.low_stock_parts ?? 0 },
+          { label: 'Expiring parts', value: summary?.inventory.expiring_parts ?? 0 },
+        ]
+      default:
+        return []
+    }
+  })()
 
   const logs = logData?.items || []
   const activityTotal = logData?.total || 0
@@ -710,10 +784,10 @@ const Dashboard = () => {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 1 }}>
               <Box>
                 <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontWeight: 800, fontSize: 12, textTransform: 'uppercase' }}>
-                  Primary Dashboard
+                  {hasRevenueView ? 'Cash collected this period' : 'Primary Dashboard'}
                 </Typography>
                 <Typography variant="h4" sx={{ color: '#fff', fontWeight: 900, mt: 0.5 }}>
-                  Operational Overview
+                  {hasRevenueView ? 'Revenue & Collections' : 'Operational Overview'}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1} alignItems="center">
@@ -730,41 +804,90 @@ const Dashboard = () => {
               </Stack>
             </Box>
 
-            <Box sx={{ height: 156, mt: 1 }}>
-              {summaryLoading ? (
-                <Skeleton variant="rounded" height={156} sx={{ bgcolor: 'rgba(255,255,255,0.18)', borderRadius: '18px' }} />
-              ) : overviewHidden ? (
-                <Box sx={{ height: '100%', borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontWeight: 900 }}>Analytics hidden</Typography>
+            {hasRevenueView ? (
+              <Box sx={{ mt: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, flexWrap: 'wrap' }}>
+                  <Typography sx={{ color: '#fff', fontSize: 40, fontWeight: 950, lineHeight: 1 }}>
+                    {intelligenceLoading ? '—' : formatMoney(netRevenueMetric?.current ?? revenueTotalCurrent)}
+                  </Typography>
+                  {netRevenueMetric && (
+                    <Chip
+                      size="small"
+                      label={`${netRevenueMetric.change_percent === null ? 'New' : `${netRevenueMetric.change_percent > 0 ? '+' : ''}${netRevenueMetric.change_percent}%`} vs ${comparisonLabel}`}
+                      sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: '#fff', fontWeight: 900 }}
+                    />
+                  )}
                 </Box>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={visibleChartData} margin={{ top: 16, right: 12, left: 4, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="dashboardArea" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#fff" stopOpacity={0.42} />
-                        <stop offset="95%" stopColor="#fff" stopOpacity={0.04} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.16)" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.72)', fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <RechartsTooltip content={<DashboardChartTooltip valueLabel="Records" />} />
-                    <Area type="monotone" dataKey="value" stroke="#FFFFFF" strokeWidth={3} fill="url(#dashboardArea)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </Box>
-
-            <Grid container spacing={1.5} sx={{ mt: 1 }}>
-              {visibleOverviewMetrics.map(({ label, value }) => (
-                <Grid item xs={12} sm={visibleOverviewMetrics.length === 1 ? 12 : 4} key={label}>
-                  <Box sx={{ p: 1.5, borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.13)', backdropFilter: 'blur(12px)' }}>
-                    <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: 12, fontWeight: 700 }}>{label}</Typography>
-                    <Typography sx={{ color: '#fff', fontSize: 28, lineHeight: 1.1, fontWeight: 900 }}>{summaryLoading ? '-' : overviewHidden ? hiddenNumber : <AnimatedNumber value={value} />}</Typography>
-                  </Box>
+                <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 12.5, fontWeight: 700, mt: 0.6 }}>
+                  Payments received minus refunds across all invoice streams
+                </Typography>
+                <Box sx={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', mt: 1.6, bgcolor: 'rgba(255,255,255,0.16)' }}>
+                  {revenueStreams.filter((stream) => stream.current > 0).map((stream) => (
+                    <Box
+                      key={stream.stream}
+                      sx={{
+                        width: `${revenueTotalCurrent ? (stream.current / revenueTotalCurrent) * 100 : 0}%`,
+                        bgcolor: streamPalette[stream.stream] ?? '#fff',
+                      }}
+                    />
+                  ))}
+                </Box>
+                <Grid container spacing={1.2} sx={{ mt: 1.4 }}>
+                  {revenueStreams.map((stream) => (
+                    <Grid item xs={6} sm={3} key={stream.stream}>
+                      <Box sx={{ p: 1.3, borderRadius: '16px', bgcolor: 'rgba(255,255,255,0.13)', backdropFilter: 'blur(12px)' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
+                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: streamPalette[stream.stream] ?? '#fff', flexShrink: 0 }} />
+                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: 11.5, fontWeight: 800 }}>{stream.label}</Typography>
+                        </Box>
+                        <Typography sx={{ color: '#fff', fontSize: 18, fontWeight: 900, mt: 0.4 }}>{formatMoney(stream.current)}</Typography>
+                        <Typography sx={{ color: stream.delta >= 0 ? '#BBF7D0' : '#FECACA', fontSize: 11, fontWeight: 800 }}>
+                          {stream.delta === 0 ? 'No change' : `${stream.delta > 0 ? '+' : '−'}${formatMoney(Math.abs(stream.delta))}`}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
                 </Grid>
-              ))}
-            </Grid>
+              </Box>
+            ) : (
+              <>
+                <Box sx={{ height: 156, mt: 1 }}>
+                  {summaryLoading ? (
+                    <Skeleton variant="rounded" height={156} sx={{ bgcolor: 'rgba(255,255,255,0.18)', borderRadius: '18px' }} />
+                  ) : overviewHidden ? (
+                    <Box sx={{ height: '100%', borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontWeight: 900 }}>Analytics hidden</Typography>
+                    </Box>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={visibleChartData} margin={{ top: 16, right: 12, left: 4, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="dashboardArea" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#fff" stopOpacity={0.42} />
+                            <stop offset="95%" stopColor="#fff" stopOpacity={0.04} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(255,255,255,0.16)" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.72)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                        <RechartsTooltip content={<DashboardChartTooltip valueLabel="Records" />} />
+                        <Area type="monotone" dataKey="value" stroke="#FFFFFF" strokeWidth={3} fill="url(#dashboardArea)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </Box>
+
+                <Grid container spacing={1.5} sx={{ mt: 1 }}>
+                  {visibleOverviewMetrics.map(({ label, value }) => (
+                    <Grid item xs={12} sm={visibleOverviewMetrics.length === 1 ? 12 : 4} key={label}>
+                      <Box sx={{ p: 1.5, borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.13)', backdropFilter: 'blur(12px)' }}>
+                        <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: 12, fontWeight: 700 }}>{label}</Typography>
+                        <Typography sx={{ color: '#fff', fontSize: 28, lineHeight: 1.1, fontWeight: 900 }}>{summaryLoading ? '-' : overviewHidden ? hiddenNumber : <AnimatedNumber value={value} />}</Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </>
+            )}
             </Box>
           </Card>
 
@@ -854,17 +977,25 @@ const Dashboard = () => {
           <Grid container spacing={2.5} sx={{ mt: 0 }}>
             <Grid item xs={12}>
               <Card sx={{ p: 2.5, minHeight: 300, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.4, mb: 2 }}>
                   <Box>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 18 }}>Module Health Charts</Typography>
-                    <Typography sx={{ color: '#8B95A7', fontSize: 13, fontWeight: 700, mt: 0.4 }}>Service Requests, Inspections, and Inventory risk from live data</Typography>
+                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 18 }}>Module performance</Typography>
+                    <Typography sx={{ color: '#8B95A7', fontSize: 13, fontWeight: 700, mt: 0.4 }}>
+                      {activeLens === 'all' ? 'Live operational pipeline and risk across modules' : `${activeLensLabel} performance for the selected period`}
+                    </Typography>
                   </Box>
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip label="Today" sx={{ bgcolor: '#F0EDFF', color: '#6757D8', fontWeight: 900 }} />
-                    {renderAnalyticsToggle('module-health', 'module health analytics')}
+                    <TextField select size="small" value={activeLens} onChange={(event) => setFocusModule(event.target.value)} sx={{ minWidth: 190 }}>
+                      {moduleLensOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                      ))}
+                    </TextField>
+                    {renderAnalyticsToggle('module-health', 'module performance analytics')}
                   </Stack>
                 </Box>
 
+                {activeLens === 'all' ? (
+                <>
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={7}>
                     <Box sx={{ height: 214, borderRadius: '22px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7', p: 1.5 }}>
@@ -956,6 +1087,70 @@ const Dashboard = () => {
                     />
                   ))}
                 </Stack>
+                </>
+                ) : (
+                <Box>
+                  {focusMetric && focusMetricKey && (
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.4, flexWrap: 'wrap', mb: 1.8 }}>
+                      <Typography sx={{ color: '#8B95A7', fontSize: 12.5, fontWeight: 800 }}>{focusMetricLabels[focusMetricKey]}</Typography>
+                      <Typography sx={{ color: '#1E1B4B', fontSize: 30, fontWeight: 950, lineHeight: 1 }}>
+                        {focusMetricKey === 'net_revenue' ? formatMoney(focusMetric.current) : focusMetric.current.toLocaleString()}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={`${focusMetric.change_percent === null ? 'New' : `${focusMetric.change_percent > 0 ? '+' : ''}${focusMetric.change_percent}%`} vs ${comparisonLabel}`}
+                        sx={{ bgcolor: focusMetric.direction === 'down' ? '#FEF2F2' : '#ECFDF5', color: focusMetric.direction === 'down' ? '#DC2626' : '#059669', fontWeight: 900 }}
+                      />
+                    </Box>
+                  )}
+
+                  <Grid container spacing={1.5}>
+                    {focusStats.map((item) => (
+                      <Grid item xs={6} sm={4} key={item.label}>
+                        <Box sx={{ p: 1.6, borderRadius: '18px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                          <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 800 }}>{item.label}</Typography>
+                          <Typography sx={{ color: '#1E1B4B', fontSize: 24, fontWeight: 950, mt: 0.3 }}>{summaryLoading ? '-' : <AnimatedNumber value={item.value} />}</Typography>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+
+                  {activeLens === 'billing' && revenueStreams.length > 0 && (
+                    <Grid container spacing={1.2} sx={{ mt: 0.4 }}>
+                      {revenueStreams.map((stream) => (
+                        <Grid item xs={6} sm={3} key={stream.stream}>
+                          <Box sx={{ p: 1.3, borderRadius: '16px', border: `1px solid ${streamPalette[stream.stream] ?? '#E2E8F0'}22`, bgcolor: `${streamPalette[stream.stream] ?? '#64748B'}0D` }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
+                              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: streamPalette[stream.stream] ?? '#64748B', flexShrink: 0 }} />
+                              <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 800 }}>{stream.label}</Typography>
+                            </Box>
+                            <Typography sx={{ color: '#1E1B4B', fontSize: 15, fontWeight: 900, mt: 0.3 }}>{formatMoney(stream.current)}</Typography>
+                          </Box>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  )}
+
+                  <Stack spacing={1} sx={{ mt: 2 }}>
+                    {focusAlerts.length === 0 ? (
+                      <Box sx={{ p: 1.6, borderRadius: '16px', bgcolor: '#ECFDF5', border: '1px solid #D1FAE5' }}>
+                        <Typography sx={{ color: '#047857', fontSize: 12.5, fontWeight: 900 }}>No open risks for {activeLensLabel.toLowerCase()}.</Typography>
+                      </Box>
+                    ) : focusAlerts.map((alert) => {
+                      const color = alert.severity === 'critical' ? '#DC2626' : alert.severity === 'warning' ? '#D97706' : '#2563EB'
+                      return (
+                        <Box key={alert.key} onClick={() => navigate(alert.route)} sx={{ p: 1.5, borderRadius: '16px', bgcolor: `${color}08`, border: `1px solid ${color}20`, cursor: 'pointer', '&:hover': { bgcolor: `${color}10` } }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography sx={{ flex: 1, color: '#1E1B4B', fontSize: 12.5, fontWeight: 900 }}>{alert.title}</Typography>
+                            <Chip label={alert.count} size="small" sx={{ bgcolor: `${color}14`, color, fontWeight: 950, height: 24 }} />
+                          </Box>
+                          <Typography sx={{ color: '#7C8799', fontSize: 11, fontWeight: 700, mt: 0.5 }}>{alert.detail}</Typography>
+                        </Box>
+                      )
+                    })}
+                  </Stack>
+                </Box>
+                )}
               </Card>
             </Grid>
           </Grid>
@@ -999,9 +1194,24 @@ const Dashboard = () => {
                 <Avatar sx={{ bgcolor: '#EEEAFE', color: '#7C3AED', borderRadius: '14px' }}><AutoAwesomeIcon /></Avatar>
                 <Box sx={{ flex: 1 }}>
                   <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 18 }}>AI Business Analysis</Typography>
-                  <Typography sx={{ color: '#8B95A7', fontSize: 11.5, fontWeight: 700 }}>Aggregated metrics only</Typography>
+                  <Typography sx={{ color: '#8B95A7', fontSize: 11.5, fontWeight: 700 }}>
+                    {activeLens === 'all' ? 'Aggregated metrics, all modules' : `Focused on ${activeLensLabel}`}
+                  </Typography>
                 </Box>
               </Box>
+              <TextField
+                select
+                size="small"
+                fullWidth
+                label="Analysis focus"
+                value={activeLens}
+                onChange={(event) => setFocusModule(event.target.value)}
+                sx={{ mt: 1.6 }}
+              >
+                {moduleLensOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                ))}
+              </TextField>
               {aiAnalysis ? (
                 <Box sx={{ mt: 1.8 }}>
                   <Typography sx={{ color: '#5B42C5', fontSize: 14, fontWeight: 950, lineHeight: 1.4 }}>{aiAnalysis.headline}</Typography>

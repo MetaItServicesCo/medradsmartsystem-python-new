@@ -14,7 +14,7 @@ from app.models.facility import Facility
 from app.models.inspection import Inspection, InspectionStatus
 from app.models.inventory import InventoryPart
 from app.models.audit_log import AuditLog
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction
+from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, InvoiceType
 from app.models.rental import Rental, RentalStatus
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus
 from app.models.user import User, UserRole
@@ -369,6 +369,7 @@ def _build_dashboard_intelligence(
             facility_counts.previous_created,
         )
 
+    revenue_breakdown: list[dict[str, Any]] = []
     if has_module_permission(current_user, "billing", "index"):
         transactions = db.query(InvoiceTransaction).join(Invoice, Invoice.id == InvoiceTransaction.invoice_id)
         transactions = facility_scope(transactions, Invoice)
@@ -378,23 +379,58 @@ def _build_dashboard_intelligence(
             (InvoiceTransaction.transaction_type == "refund", -InvoiceTransaction.amount),
             else_=InvoiceTransaction.amount,
         )
+
+        def _net_windows():
+            """Fresh (current, previous) collected-cash aggregates each call so the
+            same expression object is never shared across two queries."""
+            return (
+                func.coalesce(func.sum(signed_amount).filter(
+                    InvoiceTransaction.created_at >= current_start,
+                    InvoiceTransaction.created_at < current_end,
+                    InvoiceTransaction.transaction_type.in_(["payment", "refund"]),
+                ), 0),
+                func.coalesce(func.sum(signed_amount).filter(
+                    InvoiceTransaction.created_at >= previous_start,
+                    InvoiceTransaction.created_at < previous_end,
+                    InvoiceTransaction.transaction_type.in_(["payment", "refund"]),
+                ), 0),
+            )
+
+        current_net_expr, previous_net_expr = _net_windows()
         transaction_counts = transactions.with_entities(
-            func.coalesce(func.sum(signed_amount).filter(
-                InvoiceTransaction.created_at >= current_start,
-                InvoiceTransaction.created_at < current_end,
-                InvoiceTransaction.transaction_type.in_(["payment", "refund"]),
-            ), 0).label("current_net"),
-            func.coalesce(func.sum(signed_amount).filter(
-                InvoiceTransaction.created_at >= previous_start,
-                InvoiceTransaction.created_at < previous_end,
-                InvoiceTransaction.transaction_type.in_(["payment", "refund"]),
-            ), 0).label("previous_net"),
+            current_net_expr.label("current_net"),
+            previous_net_expr.label("previous_net"),
         ).one()
 
         metrics["net_revenue"] = _metric(
             Decimal(str(transaction_counts.current_net or 0)),
             Decimal(str(transaction_counts.previous_net or 0)),
         )
+
+        # Collected cash split by invoice stream (sales / rental / service /
+        # inspection) so the blended net-revenue figure is explainable. Uses the
+        # indexed invoice_type column; refunds stay signed-negative.
+        stream_current_expr, stream_previous_expr = _net_windows()
+        stream_rows = transactions.with_entities(
+            Invoice.invoice_type.label("stream"),
+            stream_current_expr.label("current_net"),
+            stream_previous_expr.label("previous_net"),
+        ).group_by(Invoice.invoice_type).all()
+        stream_map = {
+            (row.stream.value if hasattr(row.stream, "value") else row.stream): row
+            for row in stream_rows
+        }
+        for inv_type in (InvoiceType.SALES, InvoiceType.RENTAL, InvoiceType.SERVICE, InvoiceType.INSPECTION):
+            row = stream_map.get(inv_type.value)
+            stream_current = float(row.current_net) if row else 0.0
+            stream_previous = float(row.previous_net) if row else 0.0
+            revenue_breakdown.append({
+                "stream": inv_type.value,
+                "label": inv_type.value.title(),
+                "current": round(stream_current, 2),
+                "previous": round(stream_previous, 2),
+                "delta": round(stream_current - stream_previous, 2),
+            })
 
     weighted_score = 0.0
     total_weight = 0.0
@@ -526,6 +562,7 @@ def _build_dashboard_intelligence(
             "to": previous_to,
         },
         "metrics": metrics,
+        "revenue_breakdown": revenue_breakdown,
         "trajectory": {
             "direction": _trend_label(trajectory_score),
             "score": trajectory_score,
@@ -605,6 +642,52 @@ def read_dashboard_activity(
     }
 
 
+# Metric keys that belong to each selectable dashboard module. Alerts and the
+# revenue breakdown carry their own module/stream, so they are filtered directly.
+_MODULE_METRIC_KEYS: dict[str, set[str]] = {
+    "service-requests": {"completed_service_requests"},
+    "inspections": {"completed_inspections"},
+    "facilities": {"new_facilities"},
+    "billing": {"net_revenue"},
+    "sales": {"net_revenue"},
+    "rentals": set(),
+    "inventory": set(),
+}
+
+# Revenue streams surfaced when a revenue-bearing module is in focus. ``None``
+# means all streams; a missing module means no revenue breakdown in focus.
+_MODULE_REVENUE_STREAMS: dict[str, Optional[set[str]]] = {
+    "billing": None,
+    "sales": {"sales"},
+    "rentals": {"rental"},
+}
+
+
+def _scope_intelligence_to_module(intelligence: dict[str, Any], module: str) -> dict[str, Any]:
+    """Shallow copy of the intelligence payload narrowed to one module, so the AI
+    narrative can focus on a single area of the business."""
+    metric_keys = _MODULE_METRIC_KEYS.get(module, set())
+    scoped = dict(intelligence)
+    scoped["metrics"] = {
+        key: value for key, value in (intelligence.get("metrics") or {}).items()
+        if key in metric_keys
+    }
+    scoped["alerts"] = [
+        alert for alert in (intelligence.get("alerts") or [])
+        if alert.get("module") == module
+    ]
+    streams = _MODULE_REVENUE_STREAMS.get(module, set())
+    breakdown = intelligence.get("revenue_breakdown") or []
+    if streams is None:
+        scoped["revenue_breakdown"] = breakdown
+    elif streams:
+        scoped["revenue_breakdown"] = [b for b in breakdown if b.get("stream") in streams]
+    else:
+        scoped["revenue_breakdown"] = []
+    scoped["focus_module"] = module
+    return scoped
+
+
 @router.get("/analysis")
 @cached_read("dashboard-ai", ttl_seconds=900)
 def read_dashboard_ai_analysis(
@@ -613,10 +696,15 @@ def read_dashboard_ai_analysis(
     comparison: Literal["previous_period", "previous_year", "custom"] = Query("previous_period"),
     comparison_from: Optional[date] = Query(None),
     comparison_to: Optional[date] = Query(None),
+    module: Optional[str] = Query(None, max_length=40),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Explain aggregated, permission-scoped metrics using the configured AI model."""
+    """Explain aggregated, permission-scoped metrics using the configured AI model.
+
+    An optional ``module`` narrows the narrative to a single business area
+    (e.g. ``rentals``); omitted, the analysis covers the whole period.
+    """
     intelligence = _build_dashboard_intelligence(
         db,
         current_user,
@@ -626,6 +714,9 @@ def read_dashboard_ai_analysis(
         comparison_from=comparison_from,
         comparison_to=comparison_to,
     )
+    focus_module = (module or "").strip().lower() or None
+    if focus_module:
+        intelligence = _scope_intelligence_to_module(intelligence, focus_module)
     from app.utils.dashboard_ai import generate_dashboard_analysis
 
-    return generate_dashboard_analysis(intelligence)
+    return generate_dashboard_analysis(intelligence, focus_module=focus_module)

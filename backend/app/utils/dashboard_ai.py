@@ -76,11 +76,17 @@ def _label(metric_key: str) -> str:
     return metric_key.replace("_", " ").title()
 
 
+def _module_label(module: str | None) -> str:
+    return (module or "").replace("-", " ").replace("_", " ").title()
+
+
 def _fallback(intelligence: dict[str, Any]) -> dict[str, Any]:
     trajectory = intelligence.get("trajectory") or {}
     direction = trajectory.get("direction", "stable")
     metrics = intelligence.get("metrics") or {}
     alerts = intelligence.get("alerts") or []
+    revenue_breakdown = intelligence.get("revenue_breakdown") or []
+    focus_module = intelligence.get("focus_module")
     positives: list[str] = []
     risks: list[str] = []
 
@@ -91,17 +97,32 @@ def _fallback(intelligence: dict[str, Any]) -> dict[str, Any]:
             positives.append(sentence)
         elif delta < 0:
             risks.append(sentence)
+    for stream in revenue_breakdown:
+        delta = float(stream.get("delta") or 0)
+        if not delta:
+            continue
+        sentence = f"{stream.get('label', 'Stream')} revenue is {abs(delta):,.2f} {'higher' if delta > 0 else 'lower'} than the comparison period."
+        (positives if delta > 0 else risks).append(sentence)
     risks.extend(f"{item['count']} {item['title'].lower()} require attention." for item in alerts[:3])
 
     actions = [
         f"Review {item['title'].lower()} and assign an owner."
         for item in alerts[:3]
     ] or ["Continue monitoring the selected period; no urgent operational alerts are active."]
+    scope_label = _module_label(focus_module)
+    headline = (
+        f"{scope_label} trajectory is {direction}" if focus_module else f"Business trajectory is {direction}"
+    )
+    summary = (
+        f"This assessment is calculated from the {scope_label.lower()} metrics shown on the dashboard."
+        if focus_module
+        else "This assessment is calculated from the permission-scoped comparison metrics shown on the dashboard."
+    )
     return {
         "available": False,
         "source": "calculated_fallback",
-        "headline": f"Business trajectory is {direction}",
-        "summary": "This assessment is calculated from the permission-scoped comparison metrics shown on the dashboard.",
+        "headline": headline,
+        "summary": summary,
         "positives": positives[:3],
         "risks": risks[:3],
         "actions": actions[:3],
@@ -109,7 +130,10 @@ def _fallback(intelligence: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def generate_dashboard_analysis(intelligence: dict[str, Any]) -> dict[str, Any]:
+def generate_dashboard_analysis(
+    intelligence: dict[str, Any],
+    focus_module: str | None = None,
+) -> dict[str, Any]:
     fallback = _fallback(intelligence)
     if not (settings.AI_EXTRACTION_ENABLED and settings.ANTHROPIC_API_KEY.strip()):
         return fallback
@@ -118,6 +142,7 @@ def generate_dashboard_analysis(intelligence: dict[str, Any]) -> dict[str, Any]:
         "period": intelligence.get("period"),
         "comparison": intelligence.get("comparison"),
         "metrics": intelligence.get("metrics"),
+        "revenue_breakdown": intelligence.get("revenue_breakdown"),
         "trajectory": intelligence.get("trajectory"),
         "alerts": [
             {
@@ -129,6 +154,12 @@ def generate_dashboard_analysis(intelligence: dict[str, Any]) -> dict[str, Any]:
             for alert in intelligence.get("alerts", [])
         ],
     }
+    focus_instruction = (
+        f"Focus the entire analysis on the {_module_label(focus_module)} area only; "
+        "ignore other modules.\n\n"
+        if focus_module
+        else ""
+    )
     model = settings.DASHBOARD_AI_MODEL.strip() or settings.AI_EXTRACTION_MODEL
     try:
         import anthropic
@@ -155,6 +186,7 @@ def generate_dashboard_analysis(intelligence: dict[str, Any]) -> dict[str, Any]:
             messages=[{
                 "role": "user",
                 "content": (
+                    f"{focus_instruction}"
                     "Analyse the selected period for the executive. Aggregate, "
                     "already-computed data (numbers are authoritative):\n"
                     f"{json.dumps(safe_payload, default=str, separators=(',', ':'))}"
