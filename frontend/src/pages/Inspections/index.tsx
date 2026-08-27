@@ -86,6 +86,7 @@ import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
+import DebouncedSearchField from '@/components/DebouncedSearchField'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
 import { formatUSPhone } from '@/utils/formatters'
@@ -1046,7 +1047,6 @@ const Inspections = () => {
   const [reopenInspectionTarget, setReopenInspectionTarget] = useState<Inspection | null>(null)
   const [closedActionAnchor, setClosedActionAnchor] = useState<HTMLElement | null>(null)
   const [closedActionItem, setClosedActionItem] = useState<Inspection | null>(null)
-  const [closedSearch, setClosedSearch] = useState('')
   const [closedSearchField, setClosedSearchField] = useState('all')
   const [closedFacilityId, setClosedFacilityId] = useState<number | ''>('')
   const [closedPage, setClosedPage] = useState(0)
@@ -1096,14 +1096,14 @@ const Inspections = () => {
   const [assetActionItem, setAssetActionItem] = useState<Inspection | null>(null)
   const [formActionAnchor, setFormActionAnchor] = useState<HTMLElement | null>(null)
   const [formActionItem, setFormActionItem] = useState<InspectionFormOption | null>(null)
-  const [upcomingSearch, setUpcomingSearch] = useState('')
   const [upcomingSearchField, setUpcomingSearchField] = useState('all')
   const [debouncedUpcomingSearch, setDebouncedUpcomingSearch] = useState('')
   const [debouncedClosedSearch, setDebouncedClosedSearch] = useState('')
-  const [inProgressSearch, setInProgressSearch] = useState('')
   const [inProgressSearchField, setInProgressSearchField] = useState('all')
   const [debouncedInProgressSearch, setDebouncedInProgressSearch] = useState('')
-  const [completedSearch, setCompletedSearch] = useState('')
+  // Bump to force the self-contained search inputs to clear (they own their
+  // keystroke state, so a query reset alone can't empty the visible text).
+  const [searchResetSeed, setSearchResetSeed] = useState(0)
   const [completedSearchField, setCompletedSearchField] = useState('all')
   const [debouncedCompletedSearch, setDebouncedCompletedSearch] = useState('')
   const [scheduleAssetSearch, setScheduleAssetSearch] = useState('')
@@ -1137,21 +1137,17 @@ const Inspections = () => {
     if (!activitySearch) return
 
     if (queryTab === 0) {
-      setUpcomingSearch(activitySearch)
       setDebouncedUpcomingSearch(activitySearch)
       setUpcomingPage(0)
     } else if (queryTab === 2) {
-      setInProgressSearch(activitySearch)
       setDebouncedInProgressSearch(activitySearch)
       setInProgressBatchPage(0)
       setLegacyInProgressPage(0)
     } else if (queryTab === 3) {
-      setCompletedSearch(activitySearch)
       setDebouncedCompletedSearch(activitySearch)
       setCompletedBatchPage(0)
       setLegacyCompletedPage(0)
     } else if (queryTab === 5) {
-      setClosedSearch(activitySearch)
       setDebouncedClosedSearch(activitySearch)
       setClosedPage(0)
     }
@@ -1227,11 +1223,11 @@ const Inspections = () => {
   }, [builderDrag])
   useEffect(() => {
     setUpcomingPage(0)
-  }, [upcomingSearch, upcomingSearchField, upcomingRange])
+  }, [debouncedUpcomingSearch, upcomingSearchField, upcomingRange])
 
   useEffect(() => {
     setClosedPage(0)
-  }, [closedSearch, closedSearchField, closedFacilityId, dateFrom, dateTo])
+  }, [debouncedClosedSearch, closedSearchField, closedFacilityId, dateFrom, dateTo])
 
   useEffect(() => {
     setTab(queryTab)
@@ -1267,25 +1263,8 @@ const Inspections = () => {
     setTestEquipmentSearch('')
   }, [reportInspection])
 
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setDebouncedUpcomingSearch(upcomingSearch.trim()), 300)
-    return () => window.clearTimeout(timeout)
-  }, [upcomingSearch])
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setDebouncedClosedSearch(closedSearch.trim()), 300)
-    return () => window.clearTimeout(timeout)
-  }, [closedSearch])
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setDebouncedInProgressSearch(inProgressSearch.trim()), 300)
-    return () => window.clearTimeout(timeout)
-  }, [inProgressSearch])
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setDebouncedCompletedSearch(completedSearch.trim()), 300)
-    return () => window.clearTimeout(timeout)
-  }, [completedSearch])
+  // Debouncing for these four searches now lives inside DebouncedSearchField,
+  // so typing no longer re-renders this large page on every keystroke.
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedScheduleAssetSearch(scheduleAssetSearch.trim()), 300)
@@ -1492,7 +1471,7 @@ const Inspections = () => {
       const assetCount = batch?.asset_count || 0
       toast.success(`${res.total} inspection batch started with ${assetCount} asset${assetCount === 1 ? '' : 's'}`)
       setSelectedInstantEquipmentIds([])
-      setInProgressSearch('')
+      setSearchResetSeed((seed) => seed + 1)
       setDebouncedInProgressSearch('')
       setInProgressBatchPage(0)
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
@@ -1519,7 +1498,7 @@ const Inspections = () => {
       const assetCount = batch?.asset_count || 0
       toast.success(`${res.total} inspection batch scheduled with ${assetCount} asset${assetCount === 1 ? '' : 's'}`)
       setSelectedEquipmentIds([])
-      setUpcomingSearch('')
+      setSearchResetSeed((seed) => seed + 1)
       setDebouncedUpcomingSearch('')
       setUpcomingPage(0)
       queryClient.invalidateQueries({ queryKey: ['inspections'] })
@@ -1563,7 +1542,7 @@ const Inspections = () => {
       queryClient.invalidateQueries({ queryKey: ['inspection-batches'] })
       queryClient.invalidateQueries({ queryKey: ['inspection-summary'] })
       setTab(2)
-      setInProgressSearch('')
+      setSearchResetSeed((seed) => seed + 1)
       setDebouncedInProgressSearch('')
       setInProgressBatchPage(0)
       setLegacyInProgressPage(0)
@@ -4124,11 +4103,12 @@ const Inspections = () => {
                   onChange={setUpcomingSearchField}
                   ariaLabel="Upcoming inspection search field"
                 />
-                <TextField
+                <DebouncedSearchField
+                  key={`upcoming-${activitySearch}-${searchResetSeed}`}
+                  defaultValue={activitySearch}
+                  onDebouncedChange={setDebouncedUpcomingSearch}
                   label="Search upcoming inspections"
                   placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === upcomingSearchField)?.label.toLowerCase() || 'inspections'}...`}
-                  value={upcomingSearch}
-                  onChange={e => setUpcomingSearch(e.target.value)}
                   fullWidth
                 />
                 <TextField
@@ -4277,11 +4257,12 @@ const Inspections = () => {
                   onChange={setInProgressSearchField}
                   ariaLabel="In-progress inspection search field"
                 />
-                <TextField
+                <DebouncedSearchField
+                  key={`inprogress-${activitySearch}-${searchResetSeed}`}
+                  defaultValue={activitySearch}
+                  onDebouncedChange={setDebouncedInProgressSearch}
                   label="Search in-progress inspections"
                   placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === inProgressSearchField)?.label.toLowerCase() || 'inspections'}...`}
-                  value={inProgressSearch}
-                  onChange={event => setInProgressSearch(event.target.value)}
                   fullWidth
                 />
               </Box>
@@ -4309,11 +4290,12 @@ const Inspections = () => {
                   onChange={setCompletedSearchField}
                   ariaLabel="Completed inspection search field"
                 />
-                <TextField
+                <DebouncedSearchField
+                  key={`completed-${activitySearch}-${searchResetSeed}`}
+                  defaultValue={activitySearch}
+                  onDebouncedChange={setDebouncedCompletedSearch}
                   label="Search completed inspections"
                   placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === completedSearchField)?.label.toLowerCase() || 'inspections'}...`}
-                  value={completedSearch}
-                  onChange={event => setCompletedSearch(event.target.value)}
                   fullWidth
                 />
               </Box>
@@ -4342,11 +4324,12 @@ const Inspections = () => {
                   onChange={setClosedSearchField}
                   ariaLabel="Closed inspection search field"
                 />
-                <TextField
+                <DebouncedSearchField
+                  key={`closed-${activitySearch}-${searchResetSeed}`}
+                  defaultValue={activitySearch}
+                  onDebouncedChange={setDebouncedClosedSearch}
                   label="Search closed inspections"
                   placeholder={`Search ${INSPECTION_SEARCH_FIELDS.find((field) => field.value === closedSearchField)?.label.toLowerCase() || 'inspections'}...`}
-                  value={closedSearch}
-                  onChange={event => setClosedSearch(event.target.value)}
                   fullWidth
                 />
                 <SearchableSelect<number>

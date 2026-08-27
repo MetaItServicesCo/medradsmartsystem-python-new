@@ -31,6 +31,12 @@ const Header = ({ title }: HeaderProps) => {
     queryKey: ['notifications-header'],
     queryFn: () => fetchNotifications({ limit: 12 }),
     refetchInterval: 15000,
+    // Don't poll while the tab is in the background, and treat data as fresh
+    // between ticks so route changes don't trigger extra refetches. React
+    // Query's structural sharing already keeps the header from re-rendering
+    // when the notifications are unchanged.
+    refetchIntervalInBackground: false,
+    staleTime: 15000,
   })
 
   const { data: freshUser } = useQuery({

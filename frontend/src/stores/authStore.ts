@@ -40,7 +40,20 @@ export const useAuthStore = create<AuthState>()(
       login: (user, token) =>
         set({ user, token, isAuthenticated: true }),
       setUser: (user) =>
-        set({ user, isAuthenticated: true }),
+        set((state) => {
+          // The header re-syncs the current user on a schedule. When the payload
+          // is identical (the common case), skip the update so we don't hand
+          // every auth-store subscriber a new object and re-render the app for
+          // no reason. Behaviour is unchanged; only wasted renders are avoided.
+          if (
+            state.isAuthenticated &&
+            state.user &&
+            JSON.stringify(state.user) === JSON.stringify(user)
+          ) {
+            return state
+          }
+          return { user, isAuthenticated: true }
+        }),
       logout: () => {
         const token = get().token
         if (token && typeof window !== 'undefined') {

@@ -20,6 +20,32 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        // Split the large, rarely-changing vendor libraries into their own
+        // long-cached chunks so they load in parallel and stay cached across
+        // routes and deploys. Purely a bundling change — no runtime behaviour.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('@mui') || id.includes('@emotion')) return 'vendor-mui'
+          if (id.includes('@tanstack')) return 'vendor-query'
+          if (
+            id.includes('/react/') ||
+            id.includes('/react-dom/') ||
+            id.includes('react-router') ||
+            id.includes('@remix-run') ||
+            id.includes('/scheduler/')
+          ) return 'vendor-react'
+          // No catch-all: everything else stays with the code that imports it,
+          // exactly as before. Keeps the split acyclic and avoids a giant
+          // shared vendor blob.
+          return undefined
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 3000,
