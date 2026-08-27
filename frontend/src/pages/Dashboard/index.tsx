@@ -27,6 +27,11 @@ import PeopleAltIcon from '@mui/icons-material/PeopleAlt'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import Inventory2Icon from '@mui/icons-material/Inventory2'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import TrendingDownIcon from '@mui/icons-material/TrendingDown'
+import TrendingFlatIcon from '@mui/icons-material/TrendingFlat'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
 import AssessmentIcon from '@mui/icons-material/Assessment'
@@ -38,14 +43,21 @@ import SearchIcon from '@mui/icons-material/Search'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
-import { fetchAuditLogs, type AuditLogItem } from '@/api/audit'
-import { fetchDashboardSummary } from '@/api/dashboard'
+import type { AuditLogItem } from '@/api/audit'
+import {
+  fetchDashboardActivity,
+  fetchDashboardAnalysis,
+  fetchDashboardIntelligence,
+  fetchDashboardSummary,
+  type DashboardComparisonMode,
+  type DashboardPeriodParams,
+} from '@/api/dashboard'
 import { useAuthStore } from '@/stores/authStore'
 import { enabledPermissionCount, hasPermission, type Module } from '@/config/permissions'
 import { AnimatedNumber } from '@/components/motion'
 import AuroraBackground from '@/components/AuroraBackground'
 import { keyframes } from '@emotion/react'
-import { format, isValid } from 'date-fns'
+import { format, isValid, subDays } from 'date-fns'
 
 // A calm, minimal "live" pulse for the status dot.
 const livePulse = keyframes`
@@ -224,6 +236,11 @@ const Dashboard = () => {
   const [activityAction, setActivityAction] = useState('')
   const [activityFrom, setActivityFrom] = useState('')
   const [activityTo, setActivityTo] = useState('')
+  const [dashboardFrom, setDashboardFrom] = useState(() => format(subDays(new Date(), 29), 'yyyy-MM-dd'))
+  const [dashboardTo, setDashboardTo] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [comparisonMode, setComparisonMode] = useState<DashboardComparisonMode>('previous_period')
+  const [comparisonFrom, setComparisonFrom] = useState('')
+  const [comparisonTo, setComparisonTo] = useState('')
   const canAccess = (module: Module) => hasPermission(currentUser, module)
   const isAnalyticsHidden = (key: AnalyticsKey) => Boolean(hiddenAnalytics[key])
   const toggleAnalytics = (key: AnalyticsKey) => (event: MouseEvent<HTMLButtonElement>) => {
@@ -253,8 +270,43 @@ const Dashboard = () => {
   }
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
-    queryKey: ['dashboard-summary'],
+    queryKey: ['dashboard-summary', currentUser?.id],
     queryFn: fetchDashboardSummary,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  })
+
+  const dashboardDatesValid = Boolean(
+    dashboardFrom
+    && dashboardTo
+    && dashboardFrom <= dashboardTo
+    && (comparisonMode !== 'custom' || (comparisonFrom && comparisonTo && comparisonFrom <= comparisonTo)),
+  )
+  const dashboardParams: DashboardPeriodParams = {
+    date_from: dashboardFrom || undefined,
+    date_to: dashboardTo || undefined,
+    comparison: comparisonMode,
+    comparison_from: comparisonMode === 'custom' ? comparisonFrom || undefined : undefined,
+    comparison_to: comparisonMode === 'custom' ? comparisonTo || undefined : undefined,
+  }
+  const { data: intelligence, isLoading: intelligenceLoading } = useQuery({
+    queryKey: ['dashboard-intelligence', currentUser?.id, dashboardFrom, dashboardTo, comparisonMode, comparisonFrom, comparisonTo],
+    queryFn: () => fetchDashboardIntelligence(dashboardParams),
+    enabled: dashboardDatesValid,
+    staleTime: 45_000,
+    refetchInterval: 75_000,
+    refetchIntervalInBackground: false,
+  })
+  const {
+    data: aiAnalysis,
+    isFetching: aiAnalysisLoading,
+    refetch: generateAiAnalysis,
+  } = useQuery({
+    queryKey: ['dashboard-ai-analysis', currentUser?.id, dashboardFrom, dashboardTo, comparisonMode, comparisonFrom, comparisonTo],
+    queryFn: () => fetchDashboardAnalysis(dashboardParams),
+    enabled: false,
+    staleTime: 15 * 60_000,
   })
 
   useEffect(() => {
@@ -268,8 +320,8 @@ const Dashboard = () => {
   const activityDatesValid = !activityFrom || !activityTo || activityFrom <= activityTo
 
   const { data: logData, isLoading: logsLoading, isError: logsError } = useQuery({
-    queryKey: ['audit-logs-dashboard', activityPage, activitySearch, activityAction, activityFrom, activityTo],
-    queryFn: () => fetchAuditLogs({
+    queryKey: ['dashboard-activity', currentUser?.id, activityPage, activitySearch, activityAction, activityFrom, activityTo],
+    queryFn: () => fetchDashboardActivity({
       skip: (activityPage - 1) * ACTIVITY_PAGE_SIZE,
       limit: ACTIVITY_PAGE_SIZE,
       search: activitySearch || undefined,
@@ -277,8 +329,10 @@ const Dashboard = () => {
       from_date: activityFrom || undefined,
       to_date: activityTo || undefined,
     }),
-    enabled: isSuperAdmin && activityDatesValid,
+    enabled: activityDatesValid,
     staleTime: 30_000,
+    refetchInterval: 90_000,
+    refetchIntervalInBackground: false,
   })
 
   const stats = [
@@ -471,10 +525,162 @@ const Dashboard = () => {
   const logs = logData?.items || []
   const activityTotal = logData?.total || 0
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE))
+  const comparisonLabel = comparisonMode === 'previous_year'
+    ? 'same period last year'
+    : comparisonMode === 'custom'
+      ? 'custom comparison period'
+      : 'previous period'
+  const trajectoryDirection = intelligence?.trajectory.direction || 'stable'
+  const trajectoryPresentation = trajectoryDirection === 'upward'
+    ? { label: 'Upward trajectory', color: '#059669', soft: '#ECFDF5', icon: <TrendingUpIcon /> }
+    : trajectoryDirection === 'downward'
+      ? { label: 'Downward trajectory', color: '#DC2626', soft: '#FEF2F2', icon: <TrendingDownIcon /> }
+      : { label: 'Stable trajectory', color: '#6757D8', soft: '#F0EDFF', icon: <TrendingFlatIcon /> }
+  const comparisonMetrics = [
+    { key: 'net_revenue', label: 'Net revenue collected', module: 'billing' as Module, currency: true, color: '#059669' },
+    { key: 'completed_service_requests', label: 'Services completed', module: 'service-requests' as Module, currency: false, color: '#F0528A' },
+    { key: 'completed_inspections', label: 'Inspections completed', module: 'inspections' as Module, currency: false, color: '#3B82F6' },
+    { key: 'new_facilities', label: 'New facilities', module: 'facilities' as Module, currency: false, color: '#6757D8' },
+  ].filter((item) => canAccess(item.module) && intelligence?.metrics[item.key])
+
+  const setDashboardPreset = (days: number) => {
+    const to = new Date()
+    setDashboardTo(format(to, 'yyyy-MM-dd'))
+    setDashboardFrom(format(subDays(to, days - 1), 'yyyy-MM-dd'))
+  }
 
   return (
     <Box sx={{ maxWidth: 1440, mx: 'auto' }}>
+      <Card sx={{ p: { xs: 1.7, md: 2 }, mb: 3, borderRadius: '22px', border: '1px solid #EEF0F6', boxShadow: '0 12px 30px rgba(49,46,129,0.06)' }}>
+        <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', lg: 'center' }, flexDirection: { xs: 'column', lg: 'row' }, gap: 1.4 }}>
+          <Box sx={{ flex: 1, minWidth: 210 }}>
+            <Typography sx={{ color: '#1E1B4B', fontWeight: 950 }}>Dashboard period</Typography>
+            <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>Compare operational performance without changing any source records.</Typography>
+          </Box>
+          <Stack direction="row" spacing={0.7} sx={{ flexWrap: 'wrap', rowGap: 0.7 }}>
+            {[7, 30, 90].map((days) => (
+              <Button key={days} size="small" variant="outlined" onClick={() => setDashboardPreset(days)} sx={{ borderRadius: '11px', fontWeight: 850 }}>
+                {days} days
+              </Button>
+            ))}
+          </Stack>
+          <TextField
+            size="small"
+            type="date"
+            label="From"
+            value={dashboardFrom}
+            onChange={(event) => setDashboardFrom(event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ max: dashboardTo || undefined }}
+            sx={{ minWidth: 155 }}
+          />
+          <TextField
+            size="small"
+            type="date"
+            label="To"
+            value={dashboardTo}
+            onChange={(event) => setDashboardTo(event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: dashboardFrom || undefined }}
+            sx={{ minWidth: 155 }}
+          />
+          <TextField
+            select
+            size="small"
+            label="Compare with"
+            value={comparisonMode}
+            onChange={(event) => setComparisonMode(event.target.value as DashboardComparisonMode)}
+            sx={{ minWidth: 190 }}
+          >
+            <MenuItem value="previous_period">Previous period</MenuItem>
+            <MenuItem value="previous_year">Same period last year</MenuItem>
+            <MenuItem value="custom">Custom dates</MenuItem>
+          </TextField>
+          {comparisonMode === 'custom' && (
+            <>
+              <TextField
+                size="small"
+                type="date"
+                label="Compare from"
+                value={comparisonFrom}
+                onChange={(event) => setComparisonFrom(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ max: comparisonTo || undefined }}
+                sx={{ minWidth: 155 }}
+              />
+              <TextField
+                size="small"
+                type="date"
+                label="Compare to"
+                value={comparisonTo}
+                onChange={(event) => setComparisonTo(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ min: comparisonFrom || undefined }}
+                sx={{ minWidth: 155 }}
+              />
+            </>
+          )}
+        </Box>
+        {!dashboardDatesValid && (
+          <Typography sx={{ color: '#C2410C', fontSize: 12, fontWeight: 850, mt: 1 }}>Choose a valid From and To date.</Typography>
+        )}
+      </Card>
       <Grid container spacing={3}>
+        <Grid item xs={12}>
+          <Grid container spacing={2.2}>
+            <Grid item xs={12} lg={3.2}>
+              <Card sx={{ p: 2.3, height: '100%', minHeight: 164, borderRadius: '24px', border: `1px solid ${trajectoryPresentation.color}22`, bgcolor: trajectoryPresentation.soft, boxShadow: 'none' }}>
+                {intelligenceLoading ? (
+                  <Stack spacing={1.3}><Skeleton variant="rounded" height={48} /><Skeleton variant="rounded" height={55} /></Stack>
+                ) : (
+                  <>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                      <Avatar sx={{ bgcolor: '#fff', color: trajectoryPresentation.color, borderRadius: '14px' }}>{trajectoryPresentation.icon}</Avatar>
+                      <Box>
+                        <Typography sx={{ color: trajectoryPresentation.color, fontWeight: 950, fontSize: 17 }}>{trajectoryPresentation.label}</Typography>
+                        <Typography sx={{ color: '#64748B', fontSize: 11.5, fontWeight: 750 }}>versus {comparisonLabel}</Typography>
+                      </Box>
+                    </Box>
+                    <Typography sx={{ color: '#475569', fontSize: 12.5, fontWeight: 700, mt: 2, lineHeight: 1.5 }}>
+                      Based only on the permission-scoped metrics available to your account for the selected dates.
+                    </Typography>
+                  </>
+                )}
+              </Card>
+            </Grid>
+            <Grid item xs={12} lg={8.8}>
+              <Grid container spacing={1.5} sx={{ height: '100%' }}>
+                {intelligenceLoading && Array.from({ length: 4 }).map((_, index) => (
+                  <Grid item xs={12} sm={6} md={3} key={index}><Skeleton variant="rounded" height={164} sx={{ borderRadius: '20px' }} /></Grid>
+                ))}
+                {!intelligenceLoading && comparisonMetrics.map((item) => {
+                  const value = intelligence!.metrics[item.key]
+                  const favorable = value.direction === 'up'
+                  const directionColor = value.direction === 'flat' ? '#64748B' : favorable ? '#059669' : '#DC2626'
+                  const formattedCurrent = item.currency ? `$${value.current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : value.current.toLocaleString()
+                  const changeLabel = value.change_percent === null ? 'New in this period' : `${value.change_percent > 0 ? '+' : ''}${value.change_percent}%`
+                  return (
+                    <Grid item xs={12} sm={6} md={3} key={item.key}>
+                      <Card sx={{ p: 2, height: '100%', minHeight: 164, borderRadius: '20px', border: '1px solid #EEF2F7', boxShadow: '0 10px 24px rgba(49,46,129,0.05)' }}>
+                        <Box sx={{ width: 9, height: 9, bgcolor: item.color, borderRadius: '50%', mb: 1.3 }} />
+                        <Typography sx={{ color: '#64748B', fontSize: 11.5, fontWeight: 850, minHeight: 34 }}>{item.label}</Typography>
+                        <Typography sx={{ color: '#1E1B4B', fontSize: 24, fontWeight: 950, mt: 0.5 }}>{formattedCurrent}</Typography>
+                        <Chip label={changeLabel} size="small" sx={{ mt: 1, bgcolor: `${directionColor}12`, color: directionColor, fontWeight: 900, height: 25 }} />
+                      </Card>
+                    </Grid>
+                  )
+                })}
+                {!intelligenceLoading && comparisonMetrics.length === 0 && (
+                  <Grid item xs={12}>
+                    <Box sx={{ height: 164, borderRadius: '20px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7', display: 'flex', alignItems: 'center', justifyContent: 'center', px: 2 }}>
+                      <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 800, textAlign: 'center' }}>No comparison metrics are available for this account's module permissions.</Typography>
+                    </Box>
+                  </Grid>
+                )}
+              </Grid>
+            </Grid>
+          </Grid>
+        </Grid>
         <Grid item xs={12} lg={8.4}>
           <Card
             sx={{
@@ -775,6 +981,78 @@ const Dashboard = () => {
         <Grid item xs={12} lg={3.6}>
           <Stack spacing={2.5}>
             <Card sx={{ p: 2.5, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                <Avatar sx={{ bgcolor: '#FFF7ED', color: '#EA580C', borderRadius: '14px' }}><NotificationsActiveIcon /></Avatar>
+                <Box sx={{ flex: 1 }}>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 18 }}>Operational Alerts</Typography>
+                  <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>Refreshes automatically</Typography>
+                </Box>
+                <Chip label={`${intelligence?.alerts.length || 0} active`} size="small" sx={{ bgcolor: '#FFF7ED', color: '#C2410C', fontWeight: 900 }} />
+              </Box>
+              <Stack spacing={1.1} sx={{ mt: 2 }}>
+                {intelligenceLoading && Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} variant="rounded" height={76} sx={{ borderRadius: '16px' }} />)}
+                {!intelligenceLoading && (intelligence?.alerts.length || 0) === 0 && (
+                  <Box sx={{ p: 1.8, borderRadius: '17px', bgcolor: '#ECFDF5', border: '1px solid #D1FAE5' }}>
+                    <Typography sx={{ color: '#047857', fontSize: 13, fontWeight: 900 }}>No active operational alerts.</Typography>
+                  </Box>
+                )}
+                {!intelligenceLoading && intelligence?.alerts.slice(0, 5).map((alert) => {
+                  const color = alert.severity === 'critical' ? '#DC2626' : alert.severity === 'warning' ? '#D97706' : '#2563EB'
+                  return (
+                    <Box key={alert.key} onClick={() => navigate(alert.route)} sx={{ p: 1.5, borderRadius: '17px', bgcolor: `${color}08`, border: `1px solid ${color}20`, cursor: 'pointer', '&:hover': { bgcolor: `${color}10` } }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography sx={{ flex: 1, color: '#1E1B4B', fontSize: 12.5, fontWeight: 900 }}>{alert.title}</Typography>
+                        <Chip label={alert.count} size="small" sx={{ bgcolor: `${color}14`, color, fontWeight: 950, height: 24 }} />
+                      </Box>
+                      <Typography sx={{ color: '#7C8799', fontSize: 11, fontWeight: 700, mt: 0.6, lineHeight: 1.4 }}>{alert.detail}</Typography>
+                    </Box>
+                  )
+                })}
+              </Stack>
+            </Card>
+
+            <Card sx={{ p: 2.5, borderRadius: '28px', border: '1px solid #EDE9FE', background: 'linear-gradient(145deg, #FFFFFF 0%, #F8F5FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                <Avatar sx={{ bgcolor: '#EEEAFE', color: '#7C3AED', borderRadius: '14px' }}><AutoAwesomeIcon /></Avatar>
+                <Box sx={{ flex: 1 }}>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 18 }}>AI Business Analysis</Typography>
+                  <Typography sx={{ color: '#8B95A7', fontSize: 11.5, fontWeight: 700 }}>Aggregated metrics only</Typography>
+                </Box>
+              </Box>
+              {aiAnalysis ? (
+                <Box sx={{ mt: 1.8 }}>
+                  <Typography sx={{ color: '#5B42C5', fontSize: 14, fontWeight: 950 }}>{aiAnalysis.headline}</Typography>
+                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, mt: 0.7, lineHeight: 1.55 }}>{aiAnalysis.summary}</Typography>
+                  {aiAnalysis.actions.length > 0 && (
+                    <Stack spacing={0.8} sx={{ mt: 1.4 }}>
+                      {aiAnalysis.actions.map((action, index) => (
+                        <Box key={`${action}-${index}`} sx={{ display: 'flex', gap: 0.8 }}>
+                          <Typography sx={{ color: '#7C3AED', fontSize: 12, fontWeight: 950 }}>{index + 1}.</Typography>
+                          <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 750, lineHeight: 1.45 }}>{action}</Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  )}
+                  {!aiAnalysis.available && <Chip label="Calculated fallback" size="small" sx={{ mt: 1.3, bgcolor: '#F1F5F9', color: '#64748B', fontWeight: 850 }} />}
+                </Box>
+              ) : (
+                <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, mt: 1.8, lineHeight: 1.55 }}>
+                  Generate a concise explanation of trajectory, risks, and recommended next actions for the selected period.
+                </Typography>
+              )}
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<AutoAwesomeIcon />}
+                disabled={!dashboardDatesValid || aiAnalysisLoading}
+                onClick={() => generateAiAnalysis()}
+                sx={{ mt: 1.8, borderRadius: '13px', fontWeight: 900, boxShadow: 'none', background: 'linear-gradient(135deg, #7257D8, #E44F92)' }}
+              >
+                {aiAnalysisLoading ? 'Analyzing...' : aiAnalysis ? 'Refresh analysis' : 'Generate analysis'}
+              </Button>
+            </Card>
+
+            <Card sx={{ p: 2.5, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}>
                 <Box>
                   <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 18 }}>Focus Queue</Typography>
@@ -815,19 +1093,18 @@ const Dashboard = () => {
           </Stack>
         </Grid>
 
-        {isSuperAdmin && (
-          <Grid item xs={12}>
+        <Grid item xs={12}>
             <Card sx={{ p: { xs: 2, md: 2.7 }, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
               <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.4, mb: 2.2 }}>
                 <Avatar sx={{ bgcolor: '#F0EDFF', color: '#6757D8', borderRadius: '14px' }}><HistoryIcon /></Avatar>
                 <Box sx={{ flex: 1 }}>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 19 }}>System Activity</Typography>
+                  <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 19 }}>{isSuperAdmin ? 'System Activity' : 'Recent Activity'}</Typography>
                   <Typography sx={{ color: '#8B95A7', fontSize: 12.5, fontWeight: 700 }}>
-                    Read-only audit trail of user actions and system events
+                    {isSuperAdmin ? 'Read-only audit trail across all users and system events' : 'Read-only history of activity performed by your account'}
                   </Typography>
                 </Box>
                 <Chip
-                  label={`${activityTotal.toLocaleString()} events`}
+                  label={`${activityTotal.toLocaleString()} ${logData?.scope === 'global' ? 'global' : 'personal'} events`}
                   sx={{ bgcolor: '#F0EDFF', color: '#6757D8', fontWeight: 900 }}
                 />
               </Box>
@@ -1011,8 +1288,7 @@ const Dashboard = () => {
                 </Box>
               )}
             </Card>
-          </Grid>
-        )}
+        </Grid>
       </Grid>
     </Box>
   )

@@ -127,6 +127,10 @@ def test_mutation_namespace_mapping_is_targeted():
         "users",
         "equipment",
         "dashboard",
+        "dashboard-ai",
     )
-    assert read_cache.mutation_cache_namespaces("/api/v1/billing/invoices/10/pay") == ("dashboard",)
+    assert read_cache.mutation_cache_namespaces("/api/v1/billing/invoices/10/pay") == (
+        "dashboard",
+        "dashboard-ai",
+    )
     assert read_cache.mutation_cache_namespaces("/api/v1/chat/messages") == ()

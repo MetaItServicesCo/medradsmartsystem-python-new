@@ -241,5 +241,11 @@ def mutation_cache_namespaces(path: str) -> tuple[str, ...]:
         normalized = normalized[len(api_prefix):]
     for prefix, namespaces in prefixes:
         if normalized == prefix or normalized.startswith(f"{prefix}/"):
+            # The narrative is cached separately from the deterministic
+            # dashboard data to avoid cross-endpoint key collisions. Any
+            # mutation that invalidates dashboard KPIs must invalidate the
+            # corresponding AI explanation as well.
+            if "dashboard" in namespaces:
+                return (*namespaces, "dashboard-ai")
             return namespaces
     return ()
