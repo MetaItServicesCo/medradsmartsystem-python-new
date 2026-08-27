@@ -649,7 +649,9 @@ _MODULE_METRIC_KEYS: dict[str, set[str]] = {
     "inspections": {"completed_inspections"},
     "facilities": {"new_facilities"},
     "billing": {"net_revenue"},
-    "sales": {"net_revenue"},
+    # Sales and rentals have no blended comparison metric of their own; their
+    # revenue is expressed through the per-stream breakdown below.
+    "sales": set(),
     "rentals": set(),
     "inventory": set(),
 }

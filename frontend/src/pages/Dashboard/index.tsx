@@ -547,6 +547,7 @@ const Dashboard = () => {
     { value: 'all', label: 'All modules', module: 'dashboard' as Module },
     { value: 'service-requests', label: 'Service Requests', module: 'service-requests' as Module },
     { value: 'inspections', label: 'Inspections', module: 'inspections' as Module },
+    { value: 'sales', label: 'Sales', module: 'sales' as Module },
     { value: 'rentals', label: 'Rentals', module: 'rentals' as Module },
     { value: 'billing', label: 'Billing & Revenue', module: 'billing' as Module },
     { value: 'facilities', label: 'Facilities', module: 'facilities' as Module },
@@ -554,6 +555,14 @@ const Dashboard = () => {
   ].filter((option) => option.value === 'all' || canAccess(option.module))
   const activeLens = moduleLensOptions.some((option) => option.value === focusModule) ? focusModule : 'all'
   const activeLensLabel = moduleLensOptions.find((option) => option.value === activeLens)?.label ?? 'All modules'
+
+  // Which collected-cash streams a revenue-bearing lens surfaces in its panel.
+  const lensStreamKeys: Record<string, string[]> = {
+    billing: ['sales', 'rental', 'service', 'inspection'],
+    sales: ['sales'],
+    rentals: ['rental'],
+  }
+  const focusRevenueStreams = revenueStreams.filter((stream) => (lensStreamKeys[activeLens] ?? []).includes(stream.stream))
 
   const metricKeyByLens: Record<string, string> = {
     'service-requests': 'completed_service_requests',
@@ -805,6 +814,11 @@ const Dashboard = () => {
             </Box>
 
             {hasRevenueView ? (
+              overviewHidden ? (
+                <Box sx={{ height: 156, mt: 1.5, borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontWeight: 900 }}>Analytics hidden</Typography>
+                </Box>
+              ) : (
               <Box sx={{ mt: 1.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, flexWrap: 'wrap' }}>
                   <Typography sx={{ color: '#fff', fontSize: 40, fontWeight: 950, lineHeight: 1 }}>
@@ -849,6 +863,7 @@ const Dashboard = () => {
                   ))}
                 </Grid>
               </Box>
+              )
             ) : (
               <>
                 <Box sx={{ height: 156, mt: 1 }}>
@@ -994,7 +1009,11 @@ const Dashboard = () => {
                   </Stack>
                 </Box>
 
-                {activeLens === 'all' ? (
+                {moduleHealthHidden ? (
+                  <Box sx={{ minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Typography sx={{ color: '#8B95A7', fontWeight: 900 }}>Analytics hidden</Typography>
+                  </Box>
+                ) : activeLens === 'all' ? (
                 <>
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={7}>
@@ -1115,20 +1134,26 @@ const Dashboard = () => {
                     ))}
                   </Grid>
 
-                  {activeLens === 'billing' && revenueStreams.length > 0 && (
-                    <Grid container spacing={1.2} sx={{ mt: 0.4 }}>
-                      {revenueStreams.map((stream) => (
-                        <Grid item xs={6} sm={3} key={stream.stream}>
-                          <Box sx={{ p: 1.3, borderRadius: '16px', border: `1px solid ${streamPalette[stream.stream] ?? '#E2E8F0'}22`, bgcolor: `${streamPalette[stream.stream] ?? '#64748B'}0D` }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
-                              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: streamPalette[stream.stream] ?? '#64748B', flexShrink: 0 }} />
-                              <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 800 }}>{stream.label}</Typography>
+                  {focusRevenueStreams.length > 0 && (
+                    <Box sx={{ mt: focusStats.length > 0 ? 2 : 0 }}>
+                      <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 800, mb: 0.8 }}>Collected this period</Typography>
+                      <Grid container spacing={1.2}>
+                        {focusRevenueStreams.map((stream) => (
+                          <Grid item xs={6} sm={focusRevenueStreams.length === 1 ? 6 : 3} key={stream.stream}>
+                            <Box sx={{ p: 1.4, borderRadius: '16px', border: `1px solid ${streamPalette[stream.stream] ?? '#E2E8F0'}22`, bgcolor: `${streamPalette[stream.stream] ?? '#64748B'}0D` }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
+                                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: streamPalette[stream.stream] ?? '#64748B', flexShrink: 0 }} />
+                                <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 800 }}>{stream.label}</Typography>
+                              </Box>
+                              <Typography sx={{ color: '#1E1B4B', fontSize: 18, fontWeight: 900, mt: 0.3 }}>{formatMoney(stream.current)}</Typography>
+                              <Typography sx={{ color: stream.delta >= 0 ? '#059669' : '#DC2626', fontSize: 11, fontWeight: 800 }}>
+                                {stream.delta === 0 ? 'No change' : `${stream.delta > 0 ? '+' : '−'}${formatMoney(Math.abs(stream.delta))} vs ${comparisonLabel}`}
+                              </Typography>
                             </Box>
-                            <Typography sx={{ color: '#1E1B4B', fontSize: 15, fontWeight: 900, mt: 0.3 }}>{formatMoney(stream.current)}</Typography>
-                          </Box>
-                        </Grid>
-                      ))}
-                    </Grid>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
                   )}
 
                   <Stack spacing={1} sx={{ mt: 2 }}>
