@@ -35,6 +35,17 @@ BUTTON_PATTERN = re.compile(
 # text, so they are invisible to a ">text<" match.
 MENU_ITEM_PATTERN = re.compile(r'primary="([A-Z][A-Za-z0-9 /&\'-]{2,40})"')
 
+# The primary action on a screen is often labelled by a conditional rather than
+# literal text — {tab === 1 ? 'New Invoice' : 'New Quotation'}. Both branches are
+# labels a user really sees, so both are captured. Missing these hid the entry
+# point for creating a sales invoice entirely.
+CONDITIONAL_LABEL_PATTERN = re.compile(
+    r'<Button\b.{0,900}?>\s*\{[^{}]{0,200}?\?\s*'
+    r'[\'"]([A-Z][A-Za-z0-9 /&\'-]{1,34})[\'"]\s*:\s*'
+    r'[\'"]([A-Z][A-Za-z0-9 /&\'-]{1,34})[\'"][^{}]{0,40}\}\s*</Button>',
+    re.S,
+)
+
 # A button immediately followed by a Menu is a dropdown: the button label is the
 # entry point and the menu's items are the actions reached through it. Capturing
 # that containment is what lets the assistant answer with a real click-path.
@@ -62,6 +73,19 @@ HEADING_PATTERN = re.compile(
 TAB_LABEL_PATTERN = re.compile(r'<Tab\b[^>]*label="([^"]{2,40})"')
 
 # Module each page directory belongs to.
+# Some page directories host screens belonging to a different module, so a
+# directory-level mapping alone attributes them wrongly: pages/Sales/Billing.tsx
+# is the Billing screen, and its buttons must not be described as Sales.
+PAGE_FILE_MODULE: dict[str, str] = {
+    "Billing.tsx": "billing",
+}
+
+# Client-facing pages are a different audience entirely and must not be
+# described as things a Super Admin does.
+EXCLUDED_PAGE_FILES: frozenset[str] = frozenset({
+    "ClientQuotation.tsx", "ClientRental.tsx", "PublicSalesPayment.tsx",
+})
+
 PAGE_DIR_MODULE: dict[str, str] = {
     "Facilities": "facilities",
     "ServiceRequests": "service-requests",
@@ -96,10 +120,11 @@ def parse_navigation(frontend_src: Path) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for match in NAV_ITEM_PATTERN.finditer(source):
         text, description, path, module, group = match.groups()
-        # Sub-items belong to this entry only. Stop at the next entry's `text:`
-        # key, otherwise a later module's sections bleed into this one.
+        # Sub-items belong to this entry only. The boundary is the next entry's
+        # `module:` key, not its `text:` key: sub-items carry `text:` themselves,
+        # so bounding on that truncated the tail before any sub-item was seen.
         tail = source[match.end():]
-        boundary = re.search(r"\n\s*(?:\{\s*)?text:\s*'", tail)
+        boundary = re.search(r"\bmodule:\s*'", tail)
         if boundary:
             tail = tail[: boundary.start()]
         subitems = [
@@ -133,11 +158,21 @@ def parse_screens(frontend_src: Path) -> dict[str, dict[str, Any]]:
         tabs: list[str] = []
         menus: list[dict[str, Any]] = []
         for file in sorted(directory.rglob("*.tsx")):
+            if file.name in EXCLUDED_PAGE_FILES:
+                continue
+            # A file mapped to another module is collected under that module
+            # instead, so Billing screens are never described as Sales.
+            override = PAGE_FILE_MODULE.get(file.name)
+            if override:
+                _collect_into(screens.setdefault("__file__" + file.name, _empty_screen()), _read(file))
+                continue
             source = _read(file)
             if not source:
                 continue
             headings.extend(h.strip() for h in HEADING_PATTERN.findall(source))
             buttons.extend(BUTTON_PATTERN.findall(source))
+            for first, second in CONDITIONAL_LABEL_PATTERN.findall(source):
+                buttons.extend([first, second])
             items.extend(MENU_ITEM_PATTERN.findall(source))
             tabs.extend(TAB_LABEL_PATTERN.findall(source))
             for label, block in MENU_BLOCK_PATTERN.findall(source):
@@ -156,6 +191,26 @@ def parse_screens(frontend_src: Path) -> dict[str, dict[str, Any]]:
                 "tabs": _unique(tabs)[:12],
             }
     return screens
+
+
+def _empty_screen() -> dict[str, Any]:
+    return {"headings": [], "buttons": [], "items": [], "menus": [], "tabs": []}
+
+
+def _collect_into(bucket: dict[str, Any], source: str) -> None:
+    """Scan one file's controls into an existing bucket."""
+    if not source:
+        return
+    bucket["headings"].extend(h.strip() for h in HEADING_PATTERN.findall(source))
+    bucket["buttons"].extend(BUTTON_PATTERN.findall(source))
+    for first, second in CONDITIONAL_LABEL_PATTERN.findall(source):
+        bucket["buttons"].extend([first, second])
+    bucket["items"].extend(MENU_ITEM_PATTERN.findall(source))
+    bucket["tabs"].extend(TAB_LABEL_PATTERN.findall(source))
+    for label, block in MENU_BLOCK_PATTERN.findall(source):
+        entries = _unique(MENU_ITEM_PATTERN.findall(block))
+        if entries:
+            bucket["menus"].append({"opens": label.strip(), "items": entries[:12]})
 
 
 def _unique(values: Iterable[str]) -> list[str]:
@@ -182,7 +237,10 @@ def howto_documents(frontend_src: Path) -> list[KBDocument]:
 
     screens_by_module: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for name, data in screens.items():
-        module = PAGE_DIR_MODULE.get(name)
+        if name.startswith("__file__"):
+            module = PAGE_FILE_MODULE.get(name[len("__file__"):])
+        else:
+            module = PAGE_DIR_MODULE.get(name)
         if module:
             screens_by_module.setdefault(module, []).append((name, data))
 
@@ -220,6 +278,12 @@ def howto_documents(frontend_src: Path) -> list[KBDocument]:
         tabs = _unique([t for _name, data in entries for t in data["tabs"]])
         entry_label = nav["text"] if nav else module
 
+        headings = _unique([h for _name, data in entries for h in data["headings"]])
+        if headings:
+            lines += ["", "## What this screen is called",
+                      "On screen it is titled: "
+                      + ", ".join('"{}"'.format(h) for h in headings[:6]) + "."]
+
         if menus:
             lines += ["", "## Step by step"]
             for menu in menus:
@@ -231,9 +295,34 @@ def howto_documents(frontend_src: Path) -> list[KBDocument]:
                     )
 
         standalone = [b for b in buttons if b not in {m["opens"] for m in menus}]
-        if standalone or items:
+
+        # Creation actions are what "how do I add/create X" is asking for, so
+        # they lead rather than sitting in an undifferentiated button list.
+        primary = [
+            b for b in standalone
+            if re.match(r"^(New|Create|Add|Generate|Schedule|Record|Import) ", b + " ")
+        ]
+        if primary:
+            lines += ["", "## Main actions"]
+            for label in primary[:10]:
+                lines.append(
+                    '- **{}** - open **{}**, then click **"{}"**.'.format(
+                        label, entry_label, label
+                    )
+                )
+            if nav and nav["subitems"]:
+                # Where a screen has sections, its primary button is usually
+                # labelled for the section in view, so naming the section is
+                # part of the answer.
+                lines.append(
+                    "The main action button is labelled for the section you are "
+                    "viewing, so open the matching section first."
+                )
+
+        rest = [b for b in standalone if b not in primary]
+        if rest or items:
             lines += ["", "## Other buttons on this screen"]
-            lines += ['- **"{}"**'.format(label) for label in (standalone + items)[:18]]
+            lines += ['- **"{}"**'.format(label) for label in (rest + items)[:18]]
 
         if tabs:
             lines += [
