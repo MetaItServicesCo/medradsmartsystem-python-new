@@ -65,10 +65,10 @@ const ripple = keyframes`
 `
 
 const SUGGESTIONS = [
-  'How much business have we done with Grace Ambulatory?',
-  'How many inspections were completed this month?',
-  'Which invoices are overdue?',
-  'How do I add a facility?',
+  'Who has been our busiest technician?',
+  'Which facility do we earn the most revenue from?',
+  'Which product sells the most?',
+  'How do I create a sales invoice?',
 ]
 
 // Node names map to what the user should understand is happening.

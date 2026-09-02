@@ -47,9 +47,11 @@ Intent = Literal["chitchat", "database", "knowledge", "hybrid", "clarify", "refu
 ALWAYS_AVAILABLE = {"resolve_entity"}
 
 # Only narrow the toolset once there are enough tools for selection accuracy to
-# suffer. Cross-module questions are common, so narrowing a small set costs more
-# than it saves.
-NARROW_ABOVE_TOOL_COUNT = 12
+# suffer. Cross-module questions are common ("how many services are assigned to
+# technician X" spans users and service-requests), so narrowing a small set
+# costs more than it saves. Kept above the current tool count deliberately;
+# revisit with an evaluation set rather than by guessing when it should engage.
+NARROW_ABOVE_TOOL_COUNT = 18
 
 
 class AgentState(TypedDict, total=False):

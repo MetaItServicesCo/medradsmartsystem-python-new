@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.assistant.tools import commerce, entities
+from app.assistant.tools import analytics, commerce, entities
 from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
@@ -310,6 +310,80 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             },
         },
         handler=entities.search_users,
+    ),
+    ToolDefinition(
+        name="rank_technicians",
+        module="service-requests",
+        description=(
+            "Rank technicians by workload to answer 'who is the busiest "
+            "technician'. Combines service requests and inspection visits. "
+            "measure=completed ranks finished work (the default); "
+            "measure=assigned ranks everything on their plate. Report the "
+            "measure you used, since 'busiest' depends on it."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "measure": {
+                    "type": "string",
+                    "enum": list(analytics.TECHNICIAN_MEASURES),
+                    "default": "completed",
+                },
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+            },
+        },
+        handler=analytics.rank_technicians,
+    ),
+    ToolDefinition(
+        name="rank_facilities_by_revenue",
+        module="billing",
+        description=(
+            "Rank facilities by revenue to answer 'which facility do we earn "
+            "the most from'. measure=collected is cash received (the default "
+            "and usually what is meant); invoiced is billed value; outstanding "
+            "is unpaid balance. Cancelled invoices are excluded."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "measure": {
+                    "type": "string",
+                    "enum": list(analytics.REVENUE_MEASURES),
+                    "default": "collected",
+                },
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+            },
+        },
+        handler=analytics.rank_facilities_by_revenue,
+    ),
+    ToolDefinition(
+        name="rank_products",
+        module="sales",
+        description=(
+            "Rank inventory parts by demand. basis=sales answers 'which "
+            "product sells most'; basis=rental answers 'which product is most "
+            "in demand for rental'. Returns quantity and value, which can rank "
+            "differently. If it returns nothing, say the underlying items are "
+            "not recorded rather than reporting zero demand."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "basis": {
+                    "type": "string",
+                    "enum": list(analytics.PRODUCT_BASES),
+                    "default": "sales",
+                },
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+            },
+        },
+        handler=analytics.rank_products,
     ),
 )
 
