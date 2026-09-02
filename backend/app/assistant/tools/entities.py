@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any, Optional
+from urllib.parse import urlencode
 
 from sqlalchemy import func, or_
 
@@ -30,6 +31,20 @@ from app.utils.invoice_approval import scope_invoice_approval_visibility
 
 
 RESOLVABLE_KINDS = ("facility", "user", "service_request", "inspection", "invoice")
+
+
+def _deep_link(path: str, **params: Any) -> str:
+    """Build a link the frontend can actually open.
+
+    The app has no per-record routes: every module is a wildcard route rendering
+    a list page, so "/facilities/477" resolves to no child route and renders a
+    blank screen. Each list page does read query parameters, so a citation links
+    to the module pre-filtered to the record instead.
+    """
+    query = {key: str(value) for key, value in params.items() if value not in (None, "")}
+    if not query:
+        return path
+    return "{}?{}".format(path, urlencode(query))
 
 
 def resolve_entity(
@@ -69,7 +84,7 @@ def resolve_entity(
                 "city": facility.city,
                 "state": facility.state,
                 "status": facility.status,
-                "route": "/facilities/{}".format(facility.id),
+                "route": _deep_link("/facilities", search=facility.name),
             })
 
     elif kind == "user":
@@ -86,7 +101,7 @@ def resolve_entity(
                 "username": user.username,
                 "role": getattr(user.role, "value", str(user.role)),
                 "is_active": bool(getattr(user, "is_active", True)),
-                "route": "/users/{}".format(user.id),
+                "route": _deep_link("/users", search=user.full_name),
             })
 
     elif kind == "service_request":
@@ -104,7 +119,7 @@ def resolve_entity(
                 "request_number": request.request_number,
                 "status": getattr(request.status, "value", str(request.status)),
                 "priority": getattr(request.priority, "value", str(request.priority)),
-                "route": "/service-requests/{}".format(request.id),
+                "route": _deep_link("/service-requests", search=request.request_number),
             })
 
     elif kind == "inspection":
@@ -118,7 +133,7 @@ def resolve_entity(
                 "inspection_id": inspection.id,
                 "inspection_number": inspection.inspection_number,
                 "status": getattr(inspection.status, "value", str(inspection.status)),
-                "route": "/inspections/{}".format(inspection.id),
+                "route": _deep_link("/inspections", context_search=inspection.inspection_number),
             })
 
     else:  # invoice
@@ -133,7 +148,7 @@ def resolve_entity(
                 "invoice_number": invoice.invoice_number,
                 "status": getattr(invoice.status, "value", str(invoice.status)),
                 "balance_due": money(invoice.balance_due),
-                "route": "/billing/invoices/{}".format(invoice.id),
+                "route": _deep_link("/billing", search=invoice.invoice_number),
             })
 
     notes: list[str] = []
@@ -194,7 +209,7 @@ def facility_detail(ctx: ToolContext, facility_id: int) -> ToolResult:
             "status": facility.status,
             "timezone": facility.timezone,
             "operating_hours": facility.operating_hours,
-            "route": "/facilities/{}".format(facility.id),
+            "route": _deep_link("/facilities", search=facility.name),
         }],
         applied_filters={"facility_id": facility_id},
         notes=notes,
@@ -391,7 +406,10 @@ def search_inspections(
         "inspector_name": inspector_names.get(row.inspector_id),
         "scheduled_date": row.scheduled_date.isoformat() if row.scheduled_date else None,
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
-        "route": "/inspections",
+        "route": _deep_link(
+            "/inspections",
+            context_search=(row.inspection_number if count_assets else row.batch_number),
+        ),
     } for row in rows]
 
     notes = [
@@ -482,7 +500,7 @@ def service_request_detail(
             "problem_description": (request.problem_description or "")[:600],
             "created_at": request.created_at.isoformat() if request.created_at else None,
             "completed_at": request.completed_at.isoformat() if request.completed_at else None,
-            "route": "/service-requests/{}".format(request.id),
+            "route": _deep_link("/service-requests", search=request.request_number),
         }],
         applied_filters={
             "service_request_id": service_request_id,
@@ -548,7 +566,7 @@ def search_service_requests(
         "facility_name": facility_names.get(row.facility_id),
         "assigned_technician_name": tech_names.get(row.assigned_technician_id),
         "created_at": row.created_at.isoformat() if row.created_at else None,
-        "route": "/service-requests/{}".format(row.id),
+        "route": _deep_link("/service-requests", search=row.request_number),
     } for row in rows]
 
     return ToolResult(
@@ -646,7 +664,7 @@ def search_invoices(
         "balance_due": money(row.balance_due),
         "due_date": row.due_date.isoformat() if row.due_date else None,
         "days_overdue": (today - row.due_date).days if row.due_date and row.due_date < today else 0,
-        "route": "/billing/invoices/{}".format(row.id),
+        "route": _deep_link("/billing", search=row.invoice_number),
     } for row in rows]
 
     return ToolResult(
