@@ -165,13 +165,26 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         module="service-requests",
         description=(
             "Find or count service requests by facility, assigned technician, "
-            "status or priority. Read total_count for 'how many' questions."
+            "status or priority. For anything described as open, active or "
+            "completed, use status_group rather than listing statuses by hand: "
+            "'open' means different things on different screens and the groups "
+            "match them exactly. Read total_count for 'how many' questions."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "facility_id": {"type": "integer"},
                 "assigned_technician_id": {"type": "integer"},
+                "status_group": {
+                    "type": "string",
+                    "enum": ["new_open", "active", "completed", "open_all"],
+                    "description": (
+                        "new_open = new and assigned (the module's Open tab); "
+                        "active = in progress or waiting; completed = completed; "
+                        "open_all = everything not yet completed (the dashboard's "
+                        "Open Requests). Prefer this over status."
+                    ),
+                },
                 "status": {
                     "type": "array",
                     "items": {"type": "string", "enum": _values(ServiceRequestStatus)},

@@ -32,6 +32,38 @@ from app.utils.invoice_approval import scope_invoice_approval_visibility
 
 RESOLVABLE_KINDS = ("facility", "user", "service_request", "inspection", "invoice")
 
+# Service-request status groups, mirroring the Service Requests module exactly
+# (see the status_group filter on the list endpoint). These matter because
+# "open" is not one thing in this product: the module's Open tab means NEW and
+# ASSIGNED only, while the dashboard's "Open Requests" tile also counts the five
+# waiting states. A tool that silently picked either would contradict one screen
+# or the other, so the group is named in the result and both totals are given.
+SERVICE_STATUS_GROUPS: dict[str, tuple[ServiceRequestStatus, ...]] = {
+    "new_open": (
+        ServiceRequestStatus.NEW,
+        ServiceRequestStatus.ASSIGNED,
+    ),
+    "active": (
+        ServiceRequestStatus.IN_PROGRESS,
+        ServiceRequestStatus.WAITING_ON_PARTS,
+        ServiceRequestStatus.WAITING_FOR_APPROVAL,
+        ServiceRequestStatus.WAITING_FOR_DEPOT_REPAIR,
+        ServiceRequestStatus.WAITING_FOR_VENDOR_REPAIR,
+    ),
+    "completed": (ServiceRequestStatus.COMPLETED,),
+}
+# Everything not yet completed: the dashboard's broader sense of "open".
+SERVICE_STATUS_GROUPS["open_all"] = (
+    SERVICE_STATUS_GROUPS["new_open"] + SERVICE_STATUS_GROUPS["active"]
+)
+
+_GROUP_DESCRIPTION = {
+    "new_open": "new and assigned requests (the module's Open tab)",
+    "active": "requests in progress or waiting (the module's Active tab)",
+    "completed": "completed requests",
+    "open_all": "everything not yet completed (the dashboard's Open Requests)",
+}
+
 
 def _deep_link(path: str, **params: Any) -> str:
     """Build a link the frontend can actually open.
@@ -515,12 +547,17 @@ def search_service_requests(
     facility_id: Optional[int] = None,
     assigned_technician_id: Optional[int] = None,
     status: Optional[list[str]] = None,
+    status_group: Optional[str] = None,
     priority: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     limit: int = 25,
 ) -> ToolResult:
-    """Find service requests by facility, technician, status or priority."""
+    """Find service requests by facility, technician, status or priority.
+
+    Prefer ``status_group`` over listing statuses by hand: "open" is ambiguous
+    in this product, and the group names map to exactly what each screen shows.
+    """
     ctx.require_module("service-requests")
     validate_date_range(date_from, date_to)
     ctx.apply_statement_timeout()
@@ -542,6 +579,19 @@ def search_service_requests(
                     value, ", ".join(s.value for s in ServiceRequestStatus)
                 )
             )
+
+    group_note: Optional[str] = None
+    if status_group:
+        group = status_group.strip().lower()
+        if group not in SERVICE_STATUS_GROUPS:
+            raise ToolInputError(
+                "'{}' is not a valid status group. Valid values: {}".format(
+                    status_group, ", ".join(sorted(SERVICE_STATUS_GROUPS))
+                )
+            )
+        normalized = list(SERVICE_STATUS_GROUPS[group])
+        group_note = "Counted {}.".format(_GROUP_DESCRIPTION[group])
+
     if normalized:
         query = query.filter(ServiceRequest.status.in_(normalized))
     if priority:
@@ -569,6 +619,30 @@ def search_service_requests(
         "route": _deep_link("/service-requests", search=row.request_number),
     } for row in rows]
 
+    notes: list[str] = []
+    if group_note:
+        notes.append(group_note)
+        # "Open" differs between the module and the dashboard, so when either
+        # open-ish group is asked for, give both totals rather than letting the
+        # answer contradict whichever screen the reader checks.
+        if status_group in {"new_open", "open_all"}:
+            counterpart = "open_all" if status_group == "new_open" else "new_open"
+            other = query.session.query(ServiceRequest)
+            other = ctx.scope_to_facilities(other, ServiceRequest.facility_id).filter(
+                ServiceRequest.status.in_(SERVICE_STATUS_GROUPS[counterpart])
+            )
+            if facility_id is not None:
+                other = other.filter(ServiceRequest.facility_id == facility_id)
+            if assigned_technician_id is not None:
+                other = other.filter(
+                    ServiceRequest.assigned_technician_id == assigned_technician_id
+                )
+            notes.append(
+                "For comparison, {} gives {}.".format(
+                    _GROUP_DESCRIPTION[counterpart], other.count()
+                )
+            )
+
     return ToolResult(
         tool="search_service_requests",
         total_count=total,
@@ -576,11 +650,13 @@ def search_service_requests(
         applied_filters={
             "facility_id": facility_id,
             "assigned_technician_id": assigned_technician_id,
+            "status_group": status_group,
             "status": [s.value for s in normalized] or None,
             "priority": priority,
             "date_from": date_from.isoformat() if date_from else None,
             "date_to": date_to.isoformat() if date_to else None,
         },
+        notes=notes,
     )
 
 
