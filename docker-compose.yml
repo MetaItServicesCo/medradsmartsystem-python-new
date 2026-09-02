@@ -258,7 +258,11 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-production}
       - MEDRAD_INTERNAL_URL=http://backend:8000/internal/v1
-      - MEDRAD_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:?ASSISTANT_INTERNAL_KEY must be configured}
+      # Intentionally not a required variable: compose interpolates the
+      # whole file, so making this mandatory would break `up` for every
+      # other service on deployments that do not run the assistant. The
+      # agent refuses all requests when it is empty.
+      - MEDRAD_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - AGENT_MODEL=${AGENT_MODEL:-claude-haiku-4-5}
       - LOG_LEVEL=${AGENT_LOG_LEVEL:-INFO}
