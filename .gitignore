@@ -91,3 +91,6 @@ out/
 
 # Generated assistant knowledge base (rebuilt at deploy; Postgres is the store)
 docs/generated/
+
+# Agent service local venv
+agent-service/.venv/

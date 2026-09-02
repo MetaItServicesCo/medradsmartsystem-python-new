@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     # Leave DASHBOARD_AI_MODEL blank to reuse AI_EXTRACTION_MODEL.
     DASHBOARD_AI_MODEL: str = ""
     DASHBOARD_AI_TIMEOUT_SECONDS: int = 15
+
+    # Super Admin assistant. The agent runs as a separate service and reaches
+    # the read-only tool API over the private Docker network; it never receives
+    # database credentials. Requests must carry BOTH this shared key and the
+    # end user's own bearer token, so every tool executes under that user's
+    # permissions and facility scope.
+    ASSISTANT_ENABLED: bool = False
+    ASSISTANT_INTERNAL_KEY: str = ""
     AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED: bool = False
 
     # Face Recognition

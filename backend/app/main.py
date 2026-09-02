@@ -75,6 +75,16 @@ async def safe_validation_exception_handler(request: Request, exc: RequestValida
 # Include API router (REST + WebSocket)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Read-only tool API for the assistant microservice. Deliberately mounted
+# outside the public API prefix: it is reachable only from the private Docker
+# network and requires the internal shared key in addition to a Super Admin
+# bearer token. The edge proxy must not expose /internal.
+from app.api.v1.endpoints import assistant_internal  # noqa: E402
+
+app.include_router(
+    assistant_internal.router, prefix="/internal/v1", tags=["assistant-internal"]
+)
+
 # Serve only explicitly classified public presentation media. Sensitive upload
 # subtrees are deny-by-default and are delivered by authorization-aware APIs.
 UPLOADS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "uploads")
