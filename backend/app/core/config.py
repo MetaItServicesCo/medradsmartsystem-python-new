@@ -103,6 +103,11 @@ class Settings(BaseSettings):
     # appended to TRUSTED_HOSTS automatically when the assistant is enabled.
     # Without it every internal call fails with "Invalid host header".
     ASSISTANT_INTERNAL_HOSTNAME: str = "backend"
+    # The knowledge base describes the code, so it is regenerated on startup:
+    # deployment is exactly when the code changes. Hash-gated, so a restart that
+    # changed nothing writes nothing.
+    ASSISTANT_KB_AUTO_REFRESH: bool = True
+    ASSISTANT_KB_REFRESH_DELAY_SECONDS: int = 10
     AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED: bool = False
 
     # Face Recognition

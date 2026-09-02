@@ -80,10 +80,17 @@ def _enforce_rate_limit(user_id: int) -> None:
 @router.get("/status")
 def assistant_status(current_user: User = Depends(get_current_user)) -> Any:
     """Whether the UI should offer the assistant to this user."""
-    return {
+    from app.assistant.kb.refresh import last_refresh
+
+    payload = {
         "enabled": bool(settings.ASSISTANT_ENABLED and settings.ASSISTANT_INTERNAL_KEY.strip()),
         "available_to_user": current_user.role == UserRole.SUPERADMIN,
     }
+    # Super Admins can confirm the knowledge base tracks the deployed code
+    # without reading container logs.
+    if current_user.role == UserRole.SUPERADMIN:
+        payload["knowledge_base"] = last_refresh()
+    return payload
 
 
 @router.post("/ask")

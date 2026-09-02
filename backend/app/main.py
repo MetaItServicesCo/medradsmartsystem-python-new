@@ -97,6 +97,14 @@ async def start_realtime_backplane():
     await websocket_manager.start()
 
 
+@app.on_event("startup")
+async def refresh_assistant_knowledge_base():
+    """Keep the assistant's knowledge base in step with the deployed code."""
+    from app.assistant.kb.refresh import schedule_startup_refresh
+
+    schedule_startup_refresh()
+
+
 @app.on_event("shutdown")
 async def stop_realtime_backplane():
     await websocket_manager.close()

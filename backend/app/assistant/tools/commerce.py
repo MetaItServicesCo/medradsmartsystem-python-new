@@ -7,10 +7,13 @@ links carry no filter.
 """
 from __future__ import annotations
 
+import logging
+import time
 from datetime import date
 from typing import Any, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, text
+from sqlalchemy.orm import Session
 
 from app.assistant.tools.base import (
     ToolContext,
@@ -25,15 +28,60 @@ from app.models.rental import Rental, RentalStatus
 from app.models.sales import SalesQuotation
 
 
-# Sales quotation status is a free-text column rather than an enum, so the
-# accepted vocabulary comes from the values the sales endpoints actually write.
-# Restricting it to the values currently present in data would reject
-# legitimate states that simply have no rows yet.
-SALES_QUOTATION_STATUSES: tuple[str, ...] = (
+logger = logging.getLogger("medrad.assistant.commerce")
+
+
+# Sales quotation status is a free-text column rather than an enum, so unlike
+# every other status in the system it cannot be read from a Python enum. These
+# are the values the sales endpoints are known to write; they are the floor, not
+# the whole vocabulary.
+KNOWN_SALES_QUOTATION_STATUSES: tuple[str, ...] = (
     "draft", "pending", "sent", "submitted", "in_progress", "approved",
     "accepted", "rejected", "completed", "paid", "superseded",
 )
 SALES_PAID_STATUSES: tuple[str, ...] = ("paid", "unpaid")
+
+# How long an observed-vocabulary lookup is reused. Statuses change on the scale
+# of releases, so a few minutes of staleness costs nothing and this keeps the
+# query off the hot path.
+_VOCABULARY_TTL_SECONDS = 300
+_vocabulary_cache: dict[str, Any] = {"expires_at": 0.0, "values": KNOWN_SALES_QUOTATION_STATUSES}
+
+
+def sales_quotation_statuses(db: Optional[Session] = None) -> tuple[str, ...]:
+    """Known statuses plus any others actually present in the data.
+
+    A hand-maintained list silently goes stale: introduce "on_hold" in the
+    application and the assistant would reject it as invalid rather than
+    adapting. Taking the union with what the table actually contains means new
+    statuses become answerable as soon as a record uses one, while the curated
+    list keeps valid-but-unused states available.
+    """
+    if db is None:
+        return tuple(_vocabulary_cache["values"])
+
+    now = time.monotonic()
+    if now < _vocabulary_cache["expires_at"]:
+        return tuple(_vocabulary_cache["values"])
+
+    values = set(KNOWN_SALES_QUOTATION_STATUSES)
+    try:
+        observed = db.execute(
+            text("SELECT DISTINCT status FROM sales_quotations WHERE status IS NOT NULL")
+        ).scalars().all()
+        values.update(v.strip() for v in observed if v and v.strip())
+    except Exception:
+        # The curated list is a safe fallback; never fail a question over this.
+        logger.debug("Could not read observed quotation statuses; using known list")
+
+    resolved = tuple(sorted(values))
+    _vocabulary_cache["values"] = resolved
+    _vocabulary_cache["expires_at"] = now + _VOCABULARY_TTL_SECONDS
+    return resolved
+
+
+# Backwards-compatible name for the registry's schema construction.
+SALES_QUOTATION_STATUSES = KNOWN_SALES_QUOTATION_STATUSES
 
 
 def _like(value: str) -> str:
@@ -157,11 +205,12 @@ def search_sales_quotations(
         ctx.db.query(SalesQuotation), SalesQuotation.facility_id
     )
 
+    allowed_statuses = sales_quotation_statuses(ctx.db)
     for value in status or []:
-        if value not in SALES_QUOTATION_STATUSES:
+        if value not in allowed_statuses:
             raise ToolInputError(
                 "'{}' is not a valid quotation status. Valid values: {}".format(
-                    value, ", ".join(SALES_QUOTATION_STATUSES)
+                    value, ", ".join(allowed_statuses)
                 )
             )
     if status:
