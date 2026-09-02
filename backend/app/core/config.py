@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     ASSISTANT_INTERNAL_KEY: str = ""
     ASSISTANT_SERVICE_URL: str = "http://agent:8100"
     ASSISTANT_TIMEOUT_SECONDS: float = 90.0
+    # Hostname the agent uses to reach this backend on the container network.
+    # TrustedHostMiddleware rejects any Host it does not know, so this value is
+    # appended to TRUSTED_HOSTS automatically when the assistant is enabled.
+    # Without it every internal call fails with "Invalid host header".
+    ASSISTANT_INTERNAL_HOSTNAME: str = "backend"
     AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED: bool = False
 
     # Face Recognition
@@ -161,6 +166,20 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.APP_ENV.strip().lower() in {"production", "prod"}
+
+    @model_validator(mode="after")
+    def trust_internal_service_hostname(self):
+        """Let the agent reach this backend by its container hostname.
+
+        The agent calls http://<hostname>:8000/internal/v1/..., so that Host must
+        be trusted or TrustedHostMiddleware rejects it with 400. Added only when
+        the assistant is enabled, and it grants nothing on its own: the internal
+        API still requires the shared key and a Super Admin bearer token.
+        """
+        hostname = self.ASSISTANT_INTERNAL_HOSTNAME.strip()
+        if self.ASSISTANT_ENABLED and hostname and hostname not in self.TRUSTED_HOSTS:
+            self.TRUSTED_HOSTS = [*self.TRUSTED_HOSTS, hostname]
+        return self
 
     @model_validator(mode="after")
     def validate_production_security(self):
