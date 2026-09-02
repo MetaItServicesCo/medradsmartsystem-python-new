@@ -46,6 +46,11 @@ Intent = Literal["chitchat", "database", "knowledge", "hybrid", "clarify", "refu
 # every question begins by resolving a name to an id.
 ALWAYS_AVAILABLE = {"resolve_entity"}
 
+# Only narrow the toolset once there are enough tools for selection accuracy to
+# suffer. Cross-module questions are common, so narrowing a small set costs more
+# than it saves.
+NARROW_ABOVE_TOOL_COUNT = 12
+
 
 class AgentState(TypedDict, total=False):
     question: str
@@ -226,10 +231,12 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
             return {"tool_results": [], "errors": [str(exc)]}
 
         module = state.get("module")
-        if module:
-            # Narrow to the classified module, always keeping the resolver. The
-            # module for each tool comes from the backend, so adding a tool
-            # never requires a matching change here.
+        # Narrowing exists because selection accuracy degrades once a model is
+        # offered many tools. Below that threshold it only causes harm: a
+        # question like "how many services are assigned to technician X" spans
+        # users and service-requests, and narrowing to either one hides the
+        # tool needed to answer it.
+        if module and len(available) > NARROW_ABOVE_TOOL_COUNT:
             narrowed = [
                 tool for tool in available
                 if tool["name"] in ALWAYS_AVAILABLE

@@ -26,7 +26,7 @@ from app.models.facility import Facility
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.service_request import ServiceRequest, ServiceRequestStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.utils.invoice_approval import scope_invoice_approval_visibility
 
 
@@ -776,3 +776,98 @@ def _user_names(ctx: ToolContext, ids: set[Optional[int]]) -> dict[int, str]:
         return {}
     rows = ctx.db.query(User.id, User.full_name).filter(User.id.in_(clean)).all()
     return {row.id: row.full_name for row in rows}
+
+
+def search_users(
+    ctx: ToolContext,
+    role: Optional[list[str]] = None,
+    is_active: Optional[bool] = None,
+    facility_id: Optional[int] = None,
+    name: Optional[str] = None,
+    limit: int = 25,
+) -> ToolResult:
+    """Find or count people by role, activity or facility.
+
+    Answers "how many technicians are there". resolve_entity finds a named
+    person; this counts a population, which resolve_entity cannot do because it
+    requires a search term.
+
+    Active and total are always reported separately: an inactive account still
+    exists but is not someone who can be assigned work, so a single number would
+    mean different things to different readers.
+    """
+    ctx.require_module("users")
+    ctx.apply_statement_timeout()
+    take = clamp_limit(limit)
+
+    query = ctx.db.query(User)
+
+    normalized: list[UserRole] = []
+    for value in role or []:
+        try:
+            normalized.append(UserRole(value))
+        except ValueError:
+            raise ToolInputError(
+                "'{}' is not a valid role. Valid values: {}".format(
+                    value, ", ".join(r.value for r in UserRole)
+                )
+            )
+    if normalized:
+        query = query.filter(User.role.in_(normalized))
+    if is_active is not None:
+        query = query.filter(User.is_active.is_(bool(is_active)))
+    if facility_id is not None:
+        query = query.filter(User.facility_id == facility_id)
+    if name:
+        pattern = "%{}%".format(name.replace("%", r"\%").replace("_", r"\_"))
+        query = query.filter(or_(
+            User.full_name.ilike(pattern, escape="\\"),
+            User.username.ilike(pattern, escape="\\"),
+        ))
+
+    totals = query.with_entities(
+        func.count().label("total"),
+        func.count().filter(User.is_active.is_(True)).label("active"),
+    ).one()
+
+    by_role = {
+        (getattr(row.role, "value", row.role)): int(row.count)
+        for row in query.with_entities(
+            User.role.label("role"), func.count().label("count")
+        ).group_by(User.role).all()
+    }
+
+    rows = query.order_by(User.full_name).limit(take).all()
+    facility_names = _facility_names(ctx, {r.facility_id for r in rows if r.facility_id})
+
+    items = [{
+        "user_id": row.id,
+        "full_name": row.full_name,
+        "username": row.username,
+        "role": getattr(row.role, "value", str(row.role)),
+        "is_active": bool(row.is_active),
+        "facility_name": facility_names.get(row.facility_id),
+        "route": _deep_link("/users", search=row.full_name),
+    } for row in rows]
+
+    return ToolResult(
+        tool="search_users",
+        total_count=int(totals.total or 0),
+        items=items,
+        aggregates={
+            "total": int(totals.total or 0),
+            "active": int(totals.active or 0),
+            "inactive": int((totals.total or 0) - (totals.active or 0)),
+            "by_role": by_role,
+        },
+        applied_filters={
+            "role": [r.value for r in normalized] or None,
+            "is_active": is_active,
+            "facility_id": facility_id,
+            "name": name,
+        },
+        notes=[
+            "Counts people, not their assignments. Use search_service_requests "
+            "with assigned_technician_id for a person's workload.",
+        ],
+    )

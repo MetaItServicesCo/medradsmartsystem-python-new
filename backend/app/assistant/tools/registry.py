@@ -19,6 +19,7 @@ from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
 from app.models.rental import RentalStatus
 from app.models.service_request import Priority, ServiceRequestStatus
+from app.models.user import UserRole
 
 
 def _values(enum_class: Any) -> list[str]:
@@ -283,6 +284,32 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             },
         },
         handler=commerce.search_sales_quotations,
+    ),
+    ToolDefinition(
+        name="search_users",
+        module="users",
+        description=(
+            "Count or list people by role, activity or facility. Use for "
+            "'how many technicians are there', 'who are the admins', 'list "
+            "active staff at facility X'. Returns total and active separately, "
+            "plus a per-role breakdown. This counts PEOPLE, not their work: for "
+            "someone's assigned workload use search_service_requests with "
+            "assigned_technician_id."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "role": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": _values(UserRole)},
+                },
+                "is_active": {"type": "boolean"},
+                "facility_id": {"type": "integer"},
+                "name": {"type": "string", "description": "Name or username, partial match."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+            },
+        },
+        handler=entities.search_users,
     ),
 )
 
