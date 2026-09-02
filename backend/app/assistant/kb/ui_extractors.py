@@ -46,6 +46,21 @@ CONDITIONAL_LABEL_PATTERN = re.compile(
     re.S,
 )
 
+# The same conditional usually keys off the active tab index, e.g.
+# {tab === 1 ? 'New Invoice' : 'New Quotation'}. Capturing the index lets the
+# label be tied to the section it appears on, which is the difference between a
+# usable instruction and one that sends the reader to the wrong tab: opening
+# Sales lands on Quotations, where the button does NOT say "New Invoice".
+TAB_CONDITIONAL_PATTERN = re.compile(
+    r'<Button\b.{0,900}?>\s*\{\s*\w*[Tt]ab\s*===?\s*(\d+)\s*\?\s*'
+    r'[\'"]([A-Z][A-Za-z0-9 /&\'-]{1,34})[\'"]\s*:\s*'
+    r'[\'"]([A-Z][A-Za-z0-9 /&\'-]{1,34})[\'"]\s*\}\s*</Button>',
+    re.S,
+)
+
+# The ordered route list a tabbed page uses to map its tab index to a path.
+ROUTE_TABS_PATTERN = re.compile(r'ROUTE_TABS\s*=\s*\[([^\]]{0,400})\]')
+
 # A button immediately followed by a Menu is a dropdown: the button label is the
 # entry point and the menu's items are the actions reached through it. Capturing
 # that containment is what lets the assistant answer with a real click-path.
@@ -156,6 +171,7 @@ def parse_screens(frontend_src: Path) -> dict[str, dict[str, Any]]:
         buttons: list[str] = []
         items: list[str] = []
         tabs: list[str] = []
+        tab_actions: list[dict[str, str]] = []
         menus: list[dict[str, Any]] = []
         for file in sorted(directory.rglob("*.tsx")):
             if file.name in EXCLUDED_PAGE_FILES:
@@ -173,6 +189,7 @@ def parse_screens(frontend_src: Path) -> dict[str, dict[str, Any]]:
             buttons.extend(BUTTON_PATTERN.findall(source))
             for first, second in CONDITIONAL_LABEL_PATTERN.findall(source):
                 buttons.extend([first, second])
+            tab_actions.extend(_tab_bound_actions(source))
             items.extend(MENU_ITEM_PATTERN.findall(source))
             tabs.extend(TAB_LABEL_PATTERN.findall(source))
             for label, block in MENU_BLOCK_PATTERN.findall(source):
@@ -184,6 +201,7 @@ def parse_screens(frontend_src: Path) -> dict[str, dict[str, Any]]:
             # Items already listed under a menu are not repeated standalone.
             in_menus = {entry for menu in menus for entry in menu["items"]}
             screens[directory.name] = {
+                "tab_actions": tab_actions[:8],
                 "headings": _unique(headings)[:8],
                 "buttons": _unique(buttons)[:14],
                 "items": [i for i in _unique(items) if i not in in_menus][:14],
@@ -194,7 +212,32 @@ def parse_screens(frontend_src: Path) -> dict[str, dict[str, Any]]:
 
 
 def _empty_screen() -> dict[str, Any]:
-    return {"headings": [], "buttons": [], "items": [], "menus": [], "tabs": []}
+    return {
+        "headings": [], "buttons": [], "items": [], "menus": [], "tabs": [],
+        "tab_actions": [],
+    }
+
+
+def _tab_bound_actions(source: str) -> list[dict[str, str]]:
+    """Pair a tab-conditional button label with the route of its tab.
+
+    Returns entries like {"label": "New Invoice", "path": "/sales/invoices"}.
+    Without the path the instruction is wrong in practice: the reader opens the
+    module, lands on the default tab, and the button carries the other label.
+    """
+    routes_match = ROUTE_TABS_PATTERN.search(source)
+    if not routes_match:
+        return []
+    routes = re.findall(r"'([^']+)'", routes_match.group(1))
+    actions: list[dict[str, str]] = []
+    for index, when_true, when_false in TAB_CONDITIONAL_PATTERN.findall(source):
+        position = int(index)
+        if position < len(routes):
+            actions.append({"label": when_true, "path": routes[position]})
+        # The else branch belongs to the default tab, which is the first route.
+        if routes:
+            actions.append({"label": when_false, "path": routes[0]})
+    return actions
 
 
 def _collect_into(bucket: dict[str, Any], source: str) -> None:
@@ -206,6 +249,7 @@ def _collect_into(bucket: dict[str, Any], source: str) -> None:
     for first, second in CONDITIONAL_LABEL_PATTERN.findall(source):
         bucket["buttons"].extend([first, second])
     bucket["items"].extend(MENU_ITEM_PATTERN.findall(source))
+    bucket["tab_actions"].extend(_tab_bound_actions(source))
     bucket["tabs"].extend(TAB_LABEL_PATTERN.findall(source))
     for label, block in MENU_BLOCK_PATTERN.findall(source):
         entries = _unique(MENU_ITEM_PATTERN.findall(block))
@@ -302,21 +346,38 @@ def howto_documents(frontend_src: Path) -> list[KBDocument]:
             b for b in standalone
             if re.match(r"^(New|Create|Add|Generate|Schedule|Record|Import) ", b + " ")
         ]
+        # A label bound to a tab needs that tab named: the reader otherwise
+        # opens the module, lands on the default section, and cannot find the
+        # button because it is labelled for a different one.
+        tab_actions = [a for _name, data in entries for a in data.get("tab_actions", [])]
+        section_by_path = {
+            sub["path"]: sub["text"] for sub in (nav["subitems"] if nav else [])
+        }
+        sectioned: dict[str, str] = {}
+        for action in tab_actions:
+            section = section_by_path.get(action["path"])
+            if section:
+                sectioned[action["label"]] = section
+
         if primary:
             lines += ["", "## Main actions"]
             for label in primary[:10]:
-                lines.append(
-                    '- **{}** - open **{}**, then click **"{}"**.'.format(
-                        label, entry_label, label
+                section = sectioned.get(label)
+                if section:
+                    lines.append(
+                        '- **{}** - open **{}**, select the **{}** section, then '
+                        'click **"{}"**.'.format(label, entry_label, section, label)
                     )
-                )
-            if nav and nav["subitems"]:
-                # Where a screen has sections, its primary button is usually
-                # labelled for the section in view, so naming the section is
-                # part of the answer.
+                else:
+                    lines.append(
+                        '- **{}** - open **{}**, then click **"{}"**.'.format(
+                            label, entry_label, label
+                        )
+                    )
+            if sectioned:
                 lines.append(
-                    "The main action button is labelled for the section you are "
-                    "viewing, so open the matching section first."
+                    "This screen's main button is labelled for the section in "
+                    "view, so the section must be selected first."
                 )
 
         rest = [b for b in standalone if b not in primary]

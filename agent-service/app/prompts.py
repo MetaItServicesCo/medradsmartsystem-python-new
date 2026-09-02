@@ -26,6 +26,12 @@ exist, who is allowed to do something, or what values are valid.
 - "refuse"    : asks to change data, or asks for credentials, passwords, tokens \
 or payment secrets.
 
+Earlier turns are context, not decoration. Resolve elliptical follow-ups against
+them before classifying: after "how do I create a sales invoice", the message
+"and sales quotation?" means "how do I create a sales quotation" and is a
+knowledge question, not a clarify. Only use clarify when the question stays
+genuinely ambiguous even with the earlier turns in hand.
+
 Decide on the intent verb, not the nouns. "How do I add a facility" is knowledge \
 even though it names a facility. "How many facilities are active" is database.
 
