@@ -111,6 +111,38 @@ constraint, and models below roughly 7B are unreliable at it whoever hosts them.
 Every hosted option sends question text and tool results to a third party. Only
 the local option avoids that.
 
+### Running the model locally
+
+Ollama ships as an opt-in compose profile, so ordinary deploys are unaffected:
+
+```bash
+docker compose --profile local-llm up -d ollama
+bash agent-service/scripts/benchmark_local_llm.sh qwen2.5:7b-instruct
+```
+
+Then, if the benchmark is acceptable:
+
+```ini
+AGENT_PROVIDER=openai
+AGENT_BASE_URL=http://ollama:11434/v1
+AGENT_MODEL=qwen2.5:7b-instruct
+AGENT_API_KEY=
+```
+
+Memory is not the obstacle on this host — a 7B model at Q4 needs about 5GB and
+there is room. CPU is. One question costs roughly three model calls (classify,
+choose a tool, write the answer), so generation speed multiplies by three before
+anyone sees an answer. Benchmark before committing: the script prints an
+estimated time per question and a verdict.
+
+Two things to weigh against the saving. The four cores are shared with the other
+projects on this machine, so inference competes with them. And tool calling is
+the demanding part of this agent — models small enough to be quick on CPU choose
+the wrong tool, or malformed arguments, often enough to be unreliable.
+
+Switching back is one environment variable, so this is worth measuring rather
+than arguing about.
+
 ## Retrieval
 
 Two legs fused with Reciprocal Rank Fusion:
