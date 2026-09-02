@@ -18,6 +18,11 @@ import StopCircleIcon from '@mui/icons-material/StopCircle'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
+import MicIcon from '@mui/icons-material/Mic'
+import KeyboardIcon from '@mui/icons-material/Keyboard'
+import GraphicEqIcon from '@mui/icons-material/GraphicEq'
+import VolumeUpIcon from '@mui/icons-material/VolumeUp'
+import VolumeOffIcon from '@mui/icons-material/VolumeOff'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -26,6 +31,7 @@ import {
   type AssistantCitation,
 } from '@/api/assistant'
 import { useAuthStore } from '@/stores/authStore'
+import { useVoice } from '@/hooks/useVoice'
 import { keyframes } from '@emotion/react'
 
 interface Turn {
@@ -57,6 +63,14 @@ const blink = keyframes`
 const bob = keyframes`
   0%, 100% { transform: translateY(0) scale(1); }
   50%      { transform: translateY(-3px) scale(1.06); }
+`
+const listenPulse = keyframes`
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220,38,38,0.45); }
+  50%      { transform: scale(1.05); box-shadow: 0 0 0 14px rgba(220,38,38,0); }
+`
+const bars = keyframes`
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
 `
 const ripple = keyframes`
   0%   { transform: scale(0.85); opacity: 0.55; }
@@ -94,6 +108,15 @@ const AssistantWidget = () => {
   const [streaming, setStreaming] = useState('')
   const cancelRef = useRef<(() => void) | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [voiceMode, setVoiceMode] = useState(false)
+  const [speakReplies, setSpeakReplies] = useState(true)
+  // submit is declared below; the ref lets the voice hook call it without a
+  // use-before-declaration cycle.
+  const submitRef = useRef<((text: string) => void) | null>(null)
+
+  const voice = useVoice({
+    onFinalTranscript: (text) => submitRef.current?.(text),
+  })
 
   const { data: status } = useQuery({
     queryKey: ['assistant-status', currentUser?.id],
@@ -132,6 +155,7 @@ const AssistantWidget = () => {
       onToken: (text) => setStreaming((prev) => prev + text),
       onAnswer: (answer) => {
         setStreaming('')
+        if (voiceMode && speakReplies) voice.speak(answer.answer)
         setTurns((prev) => [...prev, {
           role: 'assistant',
           text: answer.answer,
@@ -150,8 +174,11 @@ const AssistantWidget = () => {
     }, history)
   }
 
+  useEffect(() => { submitRef.current = submit })
+
   const stop = () => {
     cancelRef.current?.()
+    voice.stopSpeaking()
     // Keep whatever streamed so far rather than discarding a partial answer.
     if (streaming.trim()) {
       setTurns((prev) => [...prev, { role: 'assistant', text: streaming.trim() }])
@@ -211,6 +238,32 @@ const AssistantWidget = () => {
               Read-only · answers cite live data and documentation
             </Typography>
           </Box>
+          {voice.recognitionSupported && (
+            <Tooltip title={voiceMode ? 'Switch to typing' : 'Switch to voice'}>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  const next = !voiceMode
+                  setVoiceMode(next)
+                  if (!next) { voice.stopListening(); voice.stopSpeaking() }
+                }}
+                sx={{ color: '#fff', bgcolor: voiceMode ? 'rgba(255,255,255,0.22)' : 'transparent' }}
+              >
+                {voiceMode ? <KeyboardIcon fontSize="small" /> : <MicIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          )}
+          {voiceMode && voice.synthesisSupported && (
+            <Tooltip title={speakReplies ? 'Mute spoken replies' : 'Speak replies'}>
+              <IconButton
+                size="small"
+                onClick={() => { setSpeakReplies(v => !v); voice.stopSpeaking() }}
+                sx={{ color: '#fff' }}
+              >
+                {speakReplies ? <VolumeUpIcon fontSize="small" /> : <VolumeOffIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          )}
           {turns.length > 0 && (
             <Tooltip title="New conversation">
               <IconButton size="small" onClick={() => { stop(); setTurns([]) }} sx={{ color: '#fff' }}>
@@ -343,6 +396,55 @@ const AssistantWidget = () => {
           )}
         </Box>
 
+        {voiceMode ? (
+          <Box sx={{
+            p: 2, borderTop: '1px solid #E9EDF5', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', gap: 1.2,
+          }}>
+            {voice.listening && (
+              <Stack direction="row" spacing={0.6} alignItems="flex-end" sx={{ height: 26 }}>
+                {[0, 1, 2, 3, 4].map((bar) => (
+                  <Box key={bar} sx={{
+                    width: 4, height: 22, borderRadius: 2, bgcolor: '#DC2626',
+                    transformOrigin: 'bottom',
+                    animation: `${bars} 0.9s ease-in-out ${bar * 0.11}s infinite`,
+                  }} />
+                ))}
+              </Stack>
+            )}
+
+            <Tooltip title={voice.listening ? 'Stop listening' : 'Hold a question and speak'}>
+              <span>
+                <IconButton
+                  onClick={() => (voice.listening ? voice.stopListening() : voice.startListening())}
+                  disabled={busy}
+                  sx={{
+                    width: 62, height: 62, color: '#fff',
+                    background: voice.listening
+                      ? 'linear-gradient(135deg,#DC2626,#F87171)'
+                      : 'linear-gradient(135deg,#7C3AED,#9A55B0)',
+                    animation: voice.listening ? `${listenPulse} 1.4s ease-in-out infinite` : 'none',
+                    '&:hover': { background: voice.listening ? '#B91C1C' : '#6D28D9' },
+                    '&.Mui-disabled': { background: '#E2E8F0', color: '#94A3B8' },
+                  }}
+                >
+                  {voice.listening ? <GraphicEqIcon /> : <MicIcon />}
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: voice.error ? '#DC2626' : '#64748B', textAlign: 'center' }}>
+              {voice.error
+                || (voice.listening
+                  ? (voice.transcript || 'Listening…')
+                  : busy
+                    ? 'Working…'
+                    : voice.speaking
+                      ? 'Speaking… tap the mic to interrupt'
+                      : `Tap to ask ${AGENT_NAME}`)}
+            </Typography>
+          </Box>
+        ) : (
         <Box sx={{ p: 1.6, borderTop: '1px solid #E9EDF5', display: 'flex', gap: 1, alignItems: 'flex-end' }}>
           <TextField
             fullWidth
@@ -373,6 +475,7 @@ const AssistantWidget = () => {
             </IconButton>
           )}
         </Box>
+        )}
       </Drawer>
     </>
   )
