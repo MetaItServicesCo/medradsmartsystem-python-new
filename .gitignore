@@ -88,3 +88,6 @@ out/
 
 # Local MCP config (contains API keys — never commit)
 .mcp.json
+
+# Generated assistant knowledge base (rebuilt at deploy; Postgres is the store)
+docs/generated/
