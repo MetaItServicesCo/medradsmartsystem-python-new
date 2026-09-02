@@ -132,8 +132,6 @@ const AssistantWidget = () => {
   // Abort any in-flight run if the widget unmounts.
   useEffect(() => () => cancelRef.current?.(), [])
 
-  if (!isSuperAdmin || !status?.enabled || !status?.available_to_user) return null
-
   const submit = (text: string) => {
     const trimmed = text.trim()
     if (!trimmed || busy) return
@@ -174,7 +172,14 @@ const AssistantWidget = () => {
     }, history)
   }
 
+  // Kept current without a dependency array so the voice callback always
+  // reaches the latest submit closure.
   useEffect(() => { submitRef.current = submit })
+
+  // Every hook above runs unconditionally. Returning earlier changed the
+  // hook count once the status query resolved, which React rejects
+  // (error #310) and which took the whole page down with it.
+  if (!isSuperAdmin || !status?.enabled || !status?.available_to_user) return null
 
   const stop = () => {
     cancelRef.current?.()
