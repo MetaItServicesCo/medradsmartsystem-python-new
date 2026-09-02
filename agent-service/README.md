@@ -93,6 +93,24 @@ reimplemented across the service boundary.
 Re-run step 4 on every deploy that changes models, schemas or routes — that is
 what keeps the knowledge base and the code from disagreeing.
 
+## Choosing a model
+
+The agent needs three things from a model: choose one of 13 tools with valid
+typed arguments, follow a structured schema, and write prose from supplied
+evidence. Tool calling is the demanding one — chat quality is not the
+constraint, and models below roughly 7B are unreliable at it whoever hosts them.
+
+| Option | Cost | Notes |
+|---|---|---|
+| Groq | free tier | Fast, generous limits for one user |
+| DeepSeek via OpenRouter | free tier | Rate limited, can be busy at peak |
+| DeepSeek direct | ~4x cheaper than Haiku | Paid, but steadier than a free tier |
+| Claude Haiku | ~$0.01 a question | Best tool selection |
+| Local Ollama | none | 30-90s an answer on CPU, and no third party |
+
+Every hosted option sends question text and tool results to a third party. Only
+the local option avoids that.
+
 ## Retrieval
 
 Two legs fused with Reciprocal Rank Fusion:
@@ -113,7 +131,10 @@ permission matrix only lists `add`/`edit`/`delete`). Installing pgvector
 |---|---|---|
 | `MEDRAD_INTERNAL_URL` | `http://backend:8000/internal/v1` | Tool API |
 | `MEDRAD_INTERNAL_KEY` | — | Shared key, must match the backend |
-| `ANTHROPIC_API_KEY` | — | Required; the agent 503s without it |
+| `AGENT_PROVIDER` | `anthropic` | `anthropic`, or `openai` for any compatible endpoint |
+| `AGENT_BASE_URL` | — | Endpoint when provider is `openai` |
+| `AGENT_API_KEY` | — | Falls back to `ANTHROPIC_API_KEY`; blank is fine for a local endpoint |
+| `ANTHROPIC_API_KEY` | — | Required when provider is `anthropic` |
 | `AGENT_MODEL` | `claude-haiku-4-5` | Swap without code changes |
 | `MAX_TOOL_ITERATIONS` | `5` | Tool-loop rounds per question |
 | `MAX_TOOL_CALLS` | `8` | Total tool calls per question |
