@@ -19,6 +19,10 @@ from typing import Any
 CHUNK_TARGET_CHARS = 1400
 CHUNK_OVERLAP_CHARS = 160
 
+# Bump whenever chunking logic changes. It participates in ``source_hash`` so a
+# chunker change re-chunks every document even though no document body moved.
+CHUNKER_VERSION = "2"
+
 
 @dataclass
 class KBDocument:
@@ -34,8 +38,13 @@ class KBDocument:
 
     @property
     def source_hash(self) -> str:
-        """Content fingerprint used to detect drift between deploys."""
-        return hashlib.sha256(self.body.encode("utf-8")).hexdigest()[:16]
+        """Content fingerprint used to detect drift between deploys.
+
+        Includes the chunker version so a change to chunking invalidates stored
+        chunks even when every document body is byte-identical.
+        """
+        payload = "{}|{}".format(CHUNKER_VERSION, self.body)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
     def to_record(self) -> dict[str, Any]:
         return {
@@ -96,26 +105,67 @@ def _split_sections(body: str) -> list[tuple[str, str]]:
 
 
 def chunk_document(document: KBDocument) -> list[KBChunk]:
-    """Chunk on section boundaries, splitting only sections that exceed the target.
+    """Chunk on section boundaries, packing small sections together.
 
-    Splitting on headings keeps a chunk semantically whole, which matters more
-    for retrieval precision than uniform chunk size.
+    One chunk per heading produced many one-line chunks ("Relationships:
+    invoices links to facilities"), which then dominated length-normalized
+    ranking despite carrying almost no information. Packing adjacent sections up
+    to the target size keeps every chunk a substantive unit.
     """
+    sections = _split_sections(document.body)
     chunks: list[KBChunk] = []
     ordinal = 0
-    for heading, text in _split_sections(document.body):
-        for piece in _split_long_text(text):
-            chunks.append(KBChunk(
-                chunk_id=f"{document.doc_id}#{ordinal}",
-                doc_id=document.doc_id,
-                kind=document.kind,
-                module=document.module,
-                title=document.title,
-                heading=heading,
-                text=piece,
-                ordinal=ordinal,
-            ))
-            ordinal += 1
+
+    pending_headings: list[str] = []
+    pending_text: list[str] = []
+    pending_length = 0
+
+    def flush() -> None:
+        nonlocal ordinal, pending_headings, pending_text, pending_length
+        if not pending_text:
+            return
+        chunks.append(KBChunk(
+            chunk_id=f"{document.doc_id}#{ordinal}",
+            doc_id=document.doc_id,
+            kind=document.kind,
+            module=document.module,
+            title=document.title,
+            heading=" / ".join(pending_headings),
+            text="\n\n".join(pending_text),
+            ordinal=ordinal,
+        ))
+        ordinal += 1
+        pending_headings = []
+        pending_text = []
+        pending_length = 0
+
+    for heading, text in sections:
+        pieces = _split_long_text(text)
+        for index, piece in enumerate(pieces):
+            # A section large enough to have been split stands on its own.
+            if len(pieces) > 1:
+                flush()
+                chunks.append(KBChunk(
+                    chunk_id=f"{document.doc_id}#{ordinal}",
+                    doc_id=document.doc_id,
+                    kind=document.kind,
+                    module=document.module,
+                    title=document.title,
+                    heading=heading if index == 0 else f"{heading} (cont.)",
+                    text=piece,
+                    ordinal=ordinal,
+                ))
+                ordinal += 1
+                continue
+
+            if pending_length and pending_length + len(piece) > CHUNK_TARGET_CHARS:
+                flush()
+            body = f"{heading}\n{piece}" if heading else piece
+            pending_headings.append(heading)
+            pending_text.append(body)
+            pending_length += len(body)
+
+    flush()
     return chunks
 
 

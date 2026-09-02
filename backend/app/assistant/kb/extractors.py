@@ -8,6 +8,7 @@ Regenerating on deploy is what keeps the knowledge base from going stale.
 from __future__ import annotations
 
 import importlib
+import re
 import pkgutil
 from typing import Any, Iterable
 
@@ -85,7 +86,9 @@ def in_scope(mapper: Any) -> bool:
 
 
 def humanize(identifier: str) -> str:
-    return identifier.replace("_", " ").strip().title()
+    """Readable label. Splits CamelCase so "InvoiceStatus" indexes as two words."""
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", identifier or "")
+    return spaced.replace("_", " ").strip().title()
 
 
 def _type_label(column: Any) -> str:
@@ -212,8 +215,14 @@ def vocabulary_documents(mappers: Iterable[Any]) -> list[KBDocument]:
             enum_values = getattr(column.type, "enums", None)
             if not enum_values:
                 continue
-            name = getattr(column.type, "name", None) or "{}_{}".format(
-                column.table.name, column.name
+            # Prefer the Python enum class name: the PostgreSQL type name is
+            # lower-cased and concatenated ("invoicestatus"), so the token
+            # "invoice" never matches it in full-text search.
+            enum_class = getattr(column.type, "enum_class", None)
+            name = (
+                getattr(enum_class, "__name__", None)
+                or getattr(column.type, "name", None)
+                or "{}_{}".format(column.table.name, column.name)
             )
             entry = seen.setdefault(
                 name, {"values": list(enum_values), "module": module, "usages": []}

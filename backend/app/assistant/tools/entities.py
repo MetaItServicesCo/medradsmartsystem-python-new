@@ -282,7 +282,10 @@ def facility_business_summary(
 
     return ToolResult(
         tool="facility_business_summary",
-        total_count=totals["count"],
+        # Items are the four revenue streams and are always returned in full, so
+        # total_count describes the rows returned, not the invoices behind them.
+        # The underlying invoice count is reported in aggregates.
+        total_count=len(by_stream),
         items=by_stream,
         aggregates={
             "facility_id": facility.id,
