@@ -51,6 +51,7 @@ class AgentState(TypedDict, total=False):
     question: str
     user_token: str
     today: str
+    history: list[dict[str, str]]
 
     intent: Intent
     module: Optional[str]
@@ -75,7 +76,31 @@ def _cached_system(text: str) -> list[dict[str, Any]]:
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
 
 
-async def _stream_text(system: str, user_content: str, max_tokens: int) -> str:
+def _history_messages(state: AgentState) -> list[dict[str, Any]]:
+    """Prior turns as conversation messages, so follow-ups and greetings work.
+
+    Without these the assistant treats every question as the first one: it
+    re-introduces itself each reply and cannot resolve "that facility" or
+    "what about last month".
+    """
+    messages: list[dict[str, Any]] = []
+    for turn in (state.get("history") or [])[-8:]:
+        role = turn.get("role")
+        text = (turn.get("text") or "").strip()
+        if role in ("user", "assistant") and text:
+            messages.append({"role": role, "content": text[:2000]})
+    # A conversation handed to the model must not start with an assistant turn.
+    while messages and messages[0]["role"] == "assistant":
+        messages.pop(0)
+    return messages
+
+
+async def _stream_text(
+    system: str,
+    user_content: str,
+    max_tokens: int,
+    history: list[dict[str, Any]] | None = None,
+) -> str:
     """Stream a completion, emitting each delta to the caller as it arrives.
 
     Tokens are pushed through LangGraph's custom stream channel so the widget can
@@ -94,7 +119,7 @@ async def _stream_text(system: str, user_content: str, max_tokens: int) -> str:
         model=settings.AGENT_MODEL,
         max_tokens=max_tokens,
         system=_cached_system(system),
-        messages=[{"role": "user", "content": user_content}],
+        messages=[*(history or []), {"role": "user", "content": user_content}],
     ) as stream:
         async for delta in stream.text_stream:
             if not delta:
@@ -382,7 +407,9 @@ async def refuse_node(state: AgentState) -> dict[str, Any]:
 async def chitchat_node(state: AgentState) -> dict[str, Any]:
     """Answer a greeting like a person, not like a form."""
     try:
-        text = await _stream_text(chitchat_prompt(), state["question"], 250)
+        text = await _stream_text(
+            chitchat_prompt(), state["question"], 250, _history_messages(state)
+        )
         if text:
             return {"answer": text}
     except Exception:
@@ -456,12 +483,17 @@ def build_graph():
 COMPILED_GRAPH = build_graph()
 
 
-async def run_agent(question: str, user_token: str) -> AsyncIterator[dict[str, Any]]:
+async def run_agent(
+    question: str,
+    user_token: str,
+    history: list[dict[str, str]] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
     """Execute the graph, yielding progress events for SSE streaming."""
     state: AgentState = {
         "question": question,
         "user_token": user_token,
         "today": date.today().isoformat(),
+        "history": history or [],
         "tool_results": [],
         "knowledge": [],
         "citations": [],

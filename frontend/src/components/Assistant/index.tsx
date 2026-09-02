@@ -120,6 +120,13 @@ const AssistantWidget = () => {
     setProgress('Understanding the question')
     setStreaming('')
 
+    // Last few turns give the assistant continuity: without them it treats
+    // every question as the first and re-introduces itself each reply.
+    const history = turns.slice(-8).map((turn) => ({
+      role: turn.role,
+      text: turn.text,
+    }))
+
     cancelRef.current = askAssistant(trimmed, {
       onProgress: (node) => setProgress(PROGRESS_LABEL[node] || 'Working'),
       onToken: (text) => setStreaming((prev) => prev + text),
@@ -140,7 +147,7 @@ const AssistantWidget = () => {
         setBusy(false)
         setProgress('')
       },
-    })
+    }, history)
   }
 
   const stop = () => {

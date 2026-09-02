@@ -37,8 +37,16 @@ ASK_LIMIT_PER_WINDOW = 40
 ASK_WINDOW_SECONDS = 300
 
 
+class ConversationTurn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    text: str = Field(max_length=4000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
+    # Recent turns from this conversation, oldest first. Capped here so a
+    # client cannot grow the model context without bound.
+    history: list[ConversationTurn] = Field(default_factory=list, max_length=12)
 
 
 def require_superadmin(current_user: User = Depends(get_current_user)) -> User:
@@ -111,7 +119,11 @@ async def ask(
     async def relay() -> AsyncIterator[bytes]:
         url = "{}/internal/v1/runs/stream".format(settings.ASSISTANT_SERVICE_URL.rstrip("/"))
         headers = {"X-Internal-Key": settings.ASSISTANT_INTERNAL_KEY}
-        body = {"question": payload.question, "user_token": token}
+        body = {
+            "question": payload.question,
+            "user_token": token,
+            "history": [turn.model_dump() for turn in payload.history],
+        }
         try:
             async with httpx.AsyncClient(timeout=settings.ASSISTANT_TIMEOUT_SECONDS) as client:
                 async with client.stream("POST", url, json=body, headers=headers) as response:

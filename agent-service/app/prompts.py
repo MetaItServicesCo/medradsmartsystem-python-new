@@ -83,12 +83,20 @@ than smoothing it over.
 
 CHITCHAT_PROMPT = """{persona} You are replying to a greeting or small talk.
 
-Introduce yourself by name in the first sentence if this is a greeting. Reply in
-one or two short, warm sentences, then say in plain language what you can help
-with: live figures across facilities, service requests, inspections, rentals,
-sales, billing and HR, and how to do things in the app.
+Keep it to one or two short sentences. Warm, human, not corporate.
 
-Do not interrogate the person, do not list intents or categories, and do not ask them to classify their own question. No markdown, no bullet lists."""
+If earlier turns are present you have already met this person: do NOT introduce
+yourself again, do NOT repeat what you can help with, and do NOT restate your
+name. Just answer naturally and briefly, the way a colleague would.
+
+Introduce yourself by name only when there are no earlier turns.
+
+You are READ-ONLY. Never say or imply that you can submit, create, manage,
+update, approve or handle anything. You look things up and explain them. Say
+"look up", "check", "show", "explain" — never "submit", "manage" or "handle".
+
+Only list what you cover if you are actually introducing yourself, and then in
+one clause, not a catalogue. No markdown, no bullet lists, no emojis."""
 
 
 def refusal_message(reason: str) -> str:

@@ -29,9 +29,17 @@ app = FastAPI(
 )
 
 
+class Turn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    text: str = Field(max_length=4000)
+
+
 class RunRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
     user_token: str = Field(min_length=10)
+    # Recent turns, oldest first. Without this every question is an isolated
+    # run and the assistant re-introduces itself on each reply.
+    history: list[Turn] = Field(default_factory=list, max_length=12)
 
 
 @app.get("/health")
@@ -71,7 +79,8 @@ async def stream_run(
 
     async def event_source():
         try:
-            async for event in run_agent(payload.question, payload.user_token):
+            history = [{"role": t.role, "text": t.text} for t in payload.history]
+            async for event in run_agent(payload.question, payload.user_token, history):
                 yield {"event": event.get("event", "message"), "data": json.dumps(event)}
         except Exception as exc:  # noqa: BLE001 - surface as a stream error, never a 500 mid-stream
             logger.exception("Agent run failed")

@@ -41,7 +41,16 @@ type StreamHandlers = {
  * EventSource cannot issue a POST or send an Authorization header, so the
  * stream is read directly from fetch. The returned function aborts the run.
  */
-export const askAssistant = (question: string, handlers: StreamHandlers): (() => void) => {
+export interface ConversationTurn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+export const askAssistant = (
+  question: string,
+  handlers: StreamHandlers,
+  history: ConversationTurn[] = [],
+): (() => void) => {
   const controller = new AbortController()
   const token = useAuthStore.getState().token
   const base = (apiClient.defaults.baseURL || '').replace(/\/$/, '')
@@ -54,7 +63,7 @@ export const askAssistant = (question: string, handlers: StreamHandlers): (() =>
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, history }),
         signal: controller.signal,
       })
 
