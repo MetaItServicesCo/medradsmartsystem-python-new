@@ -12,7 +12,8 @@ pydantic-settings==2.15.0
 sse-starlette==3.4.8
 
 anthropic==1.3.0
-# Any OpenAI-compatible endpoint: Groq, OpenRouter, Together, vLLM, Ollama.
-openai==1.109.1
+# Any OpenAI-compatible endpoint: Groq, OpenRouter, DeepSeek, vLLM, Ollama.
+# Pinned to the version the provider layer was verified against.
+openai==3.7.0
 langgraph==1.2.11
 langchain-core==1.6.1
