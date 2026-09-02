@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     # permissions and facility scope.
     ASSISTANT_ENABLED: bool = False
     ASSISTANT_INTERNAL_KEY: str = ""
+    ASSISTANT_SERVICE_URL: str = "http://agent:8100"
+    ASSISTANT_TIMEOUT_SECONDS: float = 90.0
     AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED: bool = False
 
     # Face Recognition
@@ -186,6 +188,12 @@ class Settings(BaseSettings):
             raise ValueError("PAYMENT_PROOF_S3_BUCKET is required for S3 payment-proof storage")
         if self.AI_EXTRACTION_ENABLED and not self.ANTHROPIC_API_KEY.strip():
             raise ValueError("ANTHROPIC_API_KEY is required when AI_EXTRACTION_ENABLED is true")
+        if self.ASSISTANT_ENABLED and len(self.ASSISTANT_INTERNAL_KEY.strip()) < 32:
+            # This key is the only thing separating the internal tool API from
+            # anything else that reaches the container network.
+            raise ValueError(
+                "ASSISTANT_INTERNAL_KEY must be at least 32 characters when the assistant is enabled"
+            )
         if self.AI_EXTRACTION_ENABLED and not self.AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED:
             raise ValueError(
                 "AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED must be true when AI extraction is enabled in production"

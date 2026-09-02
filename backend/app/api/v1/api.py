@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
+    assistant,
     auth,
     users,
     facilities,
@@ -58,3 +59,4 @@ api_router.include_router(hr.router, prefix="/hr", tags=["hr"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(square_webhooks.router, prefix="/webhooks", tags=["webhooks"])
+api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])

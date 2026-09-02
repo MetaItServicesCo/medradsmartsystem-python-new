@@ -88,6 +88,9 @@ services:
       - RUN_STARTUP_MIGRATIONS=${RUN_STARTUP_MIGRATIONS:-false}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - JWT_ISSUER=${JWT_ISSUER:-medrad-api}
+      - ASSISTANT_ENABLED=${ASSISTANT_ENABLED:-false}
+      - ASSISTANT_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
+      - ASSISTANT_SERVICE_URL=http://agent:8100
       - JWT_AUDIENCE=${JWT_AUDIENCE:-medrad-web}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["https://medcodesolution.com","https://www.medcodesolution.com"]}
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-["medcodesolution.com","www.medcodesolution.com","api.medcodesolution.com","localhost","127.0.0.1"]}
@@ -240,6 +243,42 @@ services:
         condition: service_healthy
     networks:
       - medrad_network
+
+  # Super Admin assistant. Deliberately has NO database credentials and NO
+  # published port: it is reachable only from the backend on the private
+  # network, and reaches operational data solely through the backend's
+  # read-only /internal/v1 tool API.
+  agent:
+    build:
+      context: ./agent-service
+      dockerfile: Dockerfile
+    container_name: medrad_agent
+    restart: unless-stopped
+    init: true
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - MEDRAD_INTERNAL_URL=http://backend:8000/internal/v1
+      - MEDRAD_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:?ASSISTANT_INTERNAL_KEY must be configured}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AGENT_MODEL=${AGENT_MODEL:-claude-haiku-4-5}
+      - LOG_LEVEL=${AGENT_LOG_LEVEL:-INFO}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - medrad_network
+    # Bounded so a runaway agent cannot starve PostgreSQL on the 4-vCPU host.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 20s
 
   frontend:
     build:

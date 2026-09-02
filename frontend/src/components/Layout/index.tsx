@@ -9,6 +9,7 @@ import { PageTransition } from '../motion'
 import { ListContextProvider } from '@/contexts/ListContext'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { useContentReveal } from '@/hooks/useContentReveal'
+import AssistantWidget from '@/components/Assistant'
 
 // Sign the user out after this much inactivity.
 const SESSION_IDLE_TIMEOUT_MS = 180_000 // 180 seconds
@@ -122,6 +123,9 @@ const Layout = () => {
             </Box>
           </Box>
         </Box>
+        {/* Renders only for Super Admins, and only when the backend reports
+            the assistant is configured. */}
+        <AssistantWidget />
       </Box>
     </ListContextProvider>
   )
