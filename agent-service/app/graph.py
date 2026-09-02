@@ -1,10 +1,11 @@
 """LangGraph orchestration for the Super Admin assistant.
 
-    classify ─┬─> refuse ──────────────> END
+    classify ─┬─> chitchat ────────────> END
+              ├─> refuse ──────────────> END
               ├─> clarify ─────────────> END
               ├─> retrieve ─┐
               ├─> use_tools ┼─> synthesize ─> END
-              └─> both ─────┘
+              └─> gather ───┘
 
 LangGraph owns control flow, state and streaming. The Anthropic SDK is called
 directly inside nodes rather than through a chat wrapper, because this agent
@@ -27,6 +28,7 @@ from langgraph.graph import END, START, StateGraph
 from app.config import settings
 from app.medrad_client import MedRadClient, MedRadError
 from app.prompts import (
+    CHITCHAT_PROMPT,
     CLASSIFIER_PROMPT,
     SYNTHESIS_PROMPT,
     TOOL_PROMPT,
@@ -36,7 +38,7 @@ from app.prompts import (
 
 logger = logging.getLogger("agent.graph")
 
-Intent = Literal["database", "knowledge", "hybrid", "clarify", "refuse"]
+Intent = Literal["chitchat", "database", "knowledge", "hybrid", "clarify", "refuse"]
 
 # Tools that are always available regardless of the classified module: almost
 # every question begins by resolving a name to an id.
@@ -79,7 +81,7 @@ _CLASSIFY_TOOL = {
         "properties": {
             "intent": {
                 "type": "string",
-                "enum": ["database", "knowledge", "hybrid", "clarify", "refuse"],
+                "enum": ["chitchat", "database", "knowledge", "hybrid", "clarify", "refuse"],
             },
             "module": {
                 "type": ["string", "null"],
@@ -353,6 +355,29 @@ async def refuse_node(state: AgentState) -> dict[str, Any]:
     return {"answer": refusal_message(state.get("refusal_reason") or "write")}
 
 
+async def chitchat_node(state: AgentState) -> dict[str, Any]:
+    """Answer a greeting like a person, not like a form."""
+    try:
+        message = await _client().messages.create(
+            model=settings.AGENT_MODEL,
+            max_tokens=250,
+            system=_cached_system(CHITCHAT_PROMPT),
+            messages=[{"role": "user", "content": state["question"]}],
+        )
+        text = "".join(
+            b.text for b in message.content if getattr(b, "type", None) == "text"
+        ).strip()
+        if text:
+            return {"answer": text}
+    except Exception:
+        logger.exception("Chitchat reply failed; using static greeting")
+    return {"answer": (
+        "Doing well, thanks. I can look up live figures across facilities, "
+        "service requests, inspections, rentals, sales, billing and HR, and "
+        "explain how things are done in the app. What would you like to know?"
+    )}
+
+
 async def clarify_node(state: AgentState) -> dict[str, Any]:
     return {
         "answer": state.get("answer")
@@ -374,6 +399,8 @@ async def gather_node(state: AgentState) -> dict[str, Any]:
 
 def _route(state: AgentState) -> str:
     intent = state.get("intent", "hybrid")
+    if intent == "chitchat":
+        return "chitchat"
     if intent == "refuse":
         return "refuse"
     if intent == "clarify":
@@ -394,6 +421,7 @@ def build_graph():
     graph.add_node("synthesize", synthesize_node)
     graph.add_node("refuse", refuse_node)
     graph.add_node("clarify", clarify_node)
+    graph.add_node("chitchat", chitchat_node)
 
     graph.add_edge(START, "classify")
     graph.add_conditional_edges("classify", _route, {
@@ -402,12 +430,14 @@ def build_graph():
         "gather": "gather",
         "refuse": "refuse",
         "clarify": "clarify",
+        "chitchat": "chitchat",
     })
     for node in ("use_tools", "retrieve", "gather"):
         graph.add_edge(node, "synthesize")
     graph.add_edge("synthesize", END)
     graph.add_edge("refuse", END)
     graph.add_edge("clarify", END)
+    graph.add_edge("chitchat", END)
     return graph.compile()
 
 

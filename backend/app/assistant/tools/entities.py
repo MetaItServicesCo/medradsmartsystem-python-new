@@ -22,7 +22,7 @@ from app.assistant.tools.base import (
 )
 from app.models.equipment import Equipment
 from app.models.facility import Facility
-from app.models.inspection import Inspection, InspectionStatus
+from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
 from app.models.service_request import ServiceRequest, ServiceRequestStatus
 from app.models.user import User
@@ -313,24 +313,32 @@ def search_inspections(
     status: Optional[list[str]] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    count_assets: bool = False,
     limit: int = 25,
 ) -> ToolResult:
-    """Find inspections. Completed work is filtered on ``completed_at``.
+    """Find inspections, counted the way the Inspections module counts them.
 
-    Filtering completed inspections by their scheduled date rather than their
-    completion date is a common and silent source of wrong counts, so the date
-    range deliberately follows the status being asked about.
+    An "inspection" in this business is a scheduled visit to a facility -- an
+    inspection batch -- which covers many assets. The ``inspections`` table holds
+    one row per asset inspected inside a batch, so counting it returns a number
+    an order of magnitude larger than anything shown in the UI.
+
+    This tool therefore counts batches by default, matching the module, and
+    always reports the per-asset total alongside it so the two numbers are
+    reconciled rather than contradictory. Set ``count_assets`` only when the
+    question is explicitly about individual assets or devices.
+
+    Completed work is dated on ``completed_at``; anything else on
+    ``scheduled_date``. Dating completed work by its scheduled date is a silent
+    source of wrong counts.
     """
     ctx.require_module("inspections")
     validate_date_range(date_from, date_to)
     ctx.apply_statement_timeout()
     take = clamp_limit(limit)
 
-    query = ctx.scope_to_facilities(ctx.db.query(Inspection), Inspection.facility_id)
-    if inspector_id is not None:
-        query = query.filter(Inspection.inspector_id == inspector_id)
-    if facility_id is not None:
-        query = query.filter(Inspection.facility_id == facility_id)
+    model = Inspection if count_assets else InspectionBatch
+    unit = "asset inspections" if count_assets else "inspection visits (batches)"
 
     normalized_status: list[InspectionStatus] = []
     for value in status or []:
@@ -342,43 +350,72 @@ def search_inspections(
                     value, ", ".join(s.value for s in InspectionStatus)
                 )
             )
-    if normalized_status:
-        query = query.filter(Inspection.status.in_(normalized_status))
 
     completed_only = normalized_status == [InspectionStatus.COMPLETED]
-    date_column = Inspection.completed_at if completed_only else Inspection.scheduled_date
     start, end = datetime_bounds(date_from, date_to)
-    if start is not None:
-        query = query.filter(date_column >= start)
-    if end is not None:
-        query = query.filter(date_column < end)
 
+    def build(target):
+        query = ctx.scope_to_facilities(ctx.db.query(target), target.facility_id)
+        if inspector_id is not None:
+            query = query.filter(target.inspector_id == inspector_id)
+        if facility_id is not None:
+            query = query.filter(target.facility_id == facility_id)
+        if normalized_status:
+            query = query.filter(target.status.in_(normalized_status))
+        date_column = target.completed_at if completed_only else target.scheduled_date
+        if start is not None:
+            query = query.filter(date_column >= start)
+        if end is not None:
+            query = query.filter(date_column < end)
+        return query
+
+    query = build(model)
     total = query.count()
-    rows = (
-        query.order_by(Inspection.scheduled_date.desc()).limit(take).all()
-    )
+    # The counterpart total, so an answer can never imply the other number is
+    # wrong when a user compares it against the module.
+    other_total = build(Inspection if not count_assets else InspectionBatch).count()
+
+    rows = query.order_by(model.scheduled_date.desc()).limit(take).all()
     facility_names = _facility_names(ctx, {r.facility_id for r in rows})
     inspector_names = _user_names(ctx, {r.inspector_id for r in rows if r.inspector_id})
 
     items = [{
-        "inspection_id": row.id,
-        "inspection_number": row.inspection_number,
+        ("inspection_id" if count_assets else "batch_id"): row.id,
+        ("inspection_number" if count_assets else "batch_number"): (
+            row.inspection_number if count_assets else row.batch_number
+        ),
         "status": getattr(row.status, "value", str(row.status)),
-        "result": getattr(row.result, "value", str(row.result)) if row.result else None,
         "facility_id": row.facility_id,
         "facility_name": facility_names.get(row.facility_id),
         "inspector_id": row.inspector_id,
         "inspector_name": inspector_names.get(row.inspector_id),
         "scheduled_date": row.scheduled_date.isoformat() if row.scheduled_date else None,
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
-        "route": "/inspections/{}".format(row.id),
+        "route": "/inspections",
     } for row in rows]
+
+    notes = [
+        "Counted {} — the same unit the Inspections module displays.".format(unit)
+        if not count_assets
+        else "Counted individual asset inspections, not the visits shown in the module.",
+        "For the same filters: {} inspection visits (batches) and {} asset "
+        "inspections.".format(
+            total if not count_assets else other_total,
+            other_total if not count_assets else total,
+        ),
+    ]
 
     return ToolResult(
         tool="search_inspections",
         total_count=total,
         items=items,
+        aggregates={
+            "unit": unit,
+            "batch_count": total if not count_assets else other_total,
+            "asset_inspection_count": other_total if not count_assets else total,
+        },
         applied_filters={
+            "counted": "batches" if not count_assets else "asset_inspections",
             "inspector_id": inspector_id,
             "facility_id": facility_id,
             "status": [s.value for s in normalized_status] or None,
@@ -386,6 +423,7 @@ def search_inspections(
             "date_from": date_from.isoformat() if date_from else None,
             "date_to": date_to.isoformat() if date_to else None,
         },
+        notes=notes,
     )
 
 

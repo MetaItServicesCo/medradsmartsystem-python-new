@@ -111,9 +111,13 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         module="inspections",
         description=(
             "Find or count inspections, optionally by inspector, facility, status "
-            "and date. When status is exactly ['completed'] the date range filters "
-            "on completion date; otherwise it filters on scheduled date. Read "
-            "total_count for 'how many' questions."
+            "and date. Counts inspection VISITS (batches) by default, which is "
+            "what the Inspections module displays and what people mean by 'how "
+            "many inspections'. Each visit covers many assets, so the per-asset "
+            "figure is much larger and is always returned alongside in "
+            "aggregates. Only set count_assets when the question is explicitly "
+            "about individual assets or devices. Read total_count for 'how many' "
+            "questions."
         ),
         parameters={
             "type": "object",
@@ -126,6 +130,14 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
                 },
                 "date_from": _DATE,
                 "date_to": _DATE,
+                "count_assets": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Count individual asset inspections instead of visits. "
+                        "Leave false unless the question names assets or devices."
+                    ),
+                },
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
             },
         },
