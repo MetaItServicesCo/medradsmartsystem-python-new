@@ -269,6 +269,11 @@ services:
       # agent refuses all requests when it is empty.
       - MEDRAD_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # anthropic | openai. "openai" targets any OpenAI-compatible endpoint,
+      # so Groq, OpenRouter, vLLM and a local Ollama are all the same setting.
+      - AGENT_PROVIDER=${AGENT_PROVIDER:-anthropic}
+      - AGENT_BASE_URL=${AGENT_BASE_URL:-}
+      - AGENT_API_KEY=${AGENT_API_KEY:-}
       - AGENT_MODEL=${AGENT_MODEL:-claude-haiku-4-5}
       # The assistant introduces itself by this name. The widget header
       # is set in the frontend, so change both together.

@@ -20,7 +20,14 @@ class Settings(BaseSettings):
     MEDRAD_INTERNAL_KEY: str = ""
     MEDRAD_TIMEOUT_SECONDS: float = 20.0
 
+    # Which backend drives the agent. "anthropic" uses the Claude SDK;
+    # "openai" targets any OpenAI-compatible /chat/completions endpoint, which
+    # covers Groq, OpenRouter, Together, vLLM and a local Ollama alike.
+    AGENT_PROVIDER: str = "anthropic"
     ANTHROPIC_API_KEY: str = ""
+    # Used when AGENT_PROVIDER=openai. A local endpoint needs no key.
+    AGENT_BASE_URL: str = ""
+    AGENT_API_KEY: str = ""
     # Haiku is fast and strong at tool selection, which is the model's real job
     # here; the tools do the arithmetic. Swap without code changes if evaluation
     # shows selection errors.
@@ -31,6 +38,13 @@ class Settings(BaseSettings):
     # A single question must never loop indefinitely through tools.
     MAX_TOOL_ITERATIONS: int = 5
     MAX_TOOL_CALLS: int = 8
+
+    def agent_api_key(self) -> str:
+        """Key for the active provider, falling back to the Anthropic one."""
+        return (self.AGENT_API_KEY or self.ANTHROPIC_API_KEY).strip()
+
+    def agent_base_url(self) -> str:
+        return self.AGENT_BASE_URL.strip()
 
     class Config:
         env_file = ".env"
