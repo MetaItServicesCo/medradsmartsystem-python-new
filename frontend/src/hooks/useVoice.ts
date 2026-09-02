@@ -85,8 +85,10 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
       audio.onended = () => { setSpeaking(false); releaseAudio() }
       audio.onerror = () => { setSpeaking(false); releaseAudio() }
       await audio.play()
-    } catch {
+    } catch (err) {
       // A failed voice must never swallow the answer; the text is already shown.
+      const code = (err as { response?: { status?: number } })?.response?.status
+      if (code) setError(`Voice playback failed (${code}).`)
       setSpeaking(false)
       releaseAudio()
     }
@@ -134,8 +136,22 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
           const text = await transcribeSpeech(blob)
           if (text) onTranscriptRef.current?.(text)
           else setError('Nothing was picked up. Try again.')
-        } catch {
-          setError('Could not transcribe that. Try again or type instead.')
+        } catch (err) {
+          // Surface what the server actually said. Collapsing every failure
+          // into one message makes a misconfiguration indistinguishable from
+          // a bad recording, which costs far more time than the wording saves.
+          const detail =
+            (err as { response?: { data?: { detail?: string }; status?: number } })
+              ?.response?.data?.detail
+          const code =
+            (err as { response?: { status?: number } })?.response?.status
+          setError(
+            detail
+              ? `Transcription failed: ${detail}`
+              : code
+                ? `Transcription failed (${code}). Try again or type instead.`
+                : 'Could not reach the transcription service.',
+          )
         } finally {
           setTranscribing(false)
         }

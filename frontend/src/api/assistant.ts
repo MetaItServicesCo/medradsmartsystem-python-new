@@ -37,7 +37,13 @@ export const synthesizeSpeech = async (text: string): Promise<Blob> => {
 export const transcribeSpeech = async (audio: Blob): Promise<string> => {
   const form = new FormData()
   form.append('audio', audio, 'question.webm')
-  const res = await apiClient.post('/assistant/speech/stt', form)
+  // The shared client defaults every request to application/json, which stops
+  // axios generating the multipart boundary and leaves the server unable to
+  // parse the upload. Every other upload in this codebase overrides it the
+  // same way.
+  const res = await apiClient.post('/assistant/speech/stt', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return (res.data?.text || '').trim()
 }
 
