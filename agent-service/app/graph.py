@@ -23,6 +23,7 @@ from datetime import date
 from typing import Any, AsyncIterator, Literal, Optional, TypedDict
 
 import anthropic
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 
 from app.config import settings
@@ -72,6 +73,36 @@ def _client() -> anthropic.AsyncAnthropic:
 
 def _cached_system(text: str) -> list[dict[str, Any]]:
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+
+
+async def _stream_text(system: str, user_content: str, max_tokens: int) -> str:
+    """Stream a completion, emitting each delta to the caller as it arrives.
+
+    Tokens are pushed through LangGraph's custom stream channel so the widget can
+    render them live. The full text is still returned, so a consumer that
+    ignores the stream (or a failure part-way) still gets a complete answer.
+    """
+    writer = None
+    try:
+        writer = get_stream_writer()
+    except Exception:
+        # Not running inside a streaming graph execution; fall back to buffering.
+        writer = None
+
+    collected: list[str] = []
+    async with _client().messages.stream(
+        model=settings.AGENT_MODEL,
+        max_tokens=max_tokens,
+        system=_cached_system(system),
+        messages=[{"role": "user", "content": user_content}],
+    ) as stream:
+        async for delta in stream.text_stream:
+            if not delta:
+                continue
+            collected.append(delta)
+            if writer is not None:
+                writer({"type": "token", "text": delta})
+    return "".join(collected).strip()
 
 
 _CLASSIFY_TOOL = {
@@ -351,15 +382,7 @@ async def refuse_node(state: AgentState) -> dict[str, Any]:
 async def chitchat_node(state: AgentState) -> dict[str, Any]:
     """Answer a greeting like a person, not like a form."""
     try:
-        message = await _client().messages.create(
-            model=settings.AGENT_MODEL,
-            max_tokens=250,
-            system=_cached_system(chitchat_prompt()),
-            messages=[{"role": "user", "content": state["question"]}],
-        )
-        text = "".join(
-            b.text for b in message.content if getattr(b, "type", None) == "text"
-        ).strip()
+        text = await _stream_text(chitchat_prompt(), state["question"], 250)
         if text:
             return {"answer": text}
     except Exception:
@@ -445,8 +468,16 @@ async def run_agent(question: str, user_token: str) -> AsyncIterator[dict[str, A
         "errors": [],
     }
     final: dict[str, Any] = {}
-    async for update in COMPILED_GRAPH.astream(state, stream_mode="updates"):
-        for node_name, node_state in update.items():
+    # "updates" reports which node ran; "custom" carries the answer tokens the
+    # synthesis and greeting nodes emit as the model produces them.
+    async for mode, chunk in COMPILED_GRAPH.astream(
+        state, stream_mode=["updates", "custom"]
+    ):
+        if mode == "custom":
+            if isinstance(chunk, dict) and chunk.get("type") == "token":
+                yield {"event": "token", "text": chunk.get("text", "")}
+            continue
+        for node_name, node_state in (chunk or {}).items():
             final.update(node_state or {})
             yield {"event": "progress", "node": node_name}
     yield {

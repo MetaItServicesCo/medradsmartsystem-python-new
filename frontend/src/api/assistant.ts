@@ -29,6 +29,8 @@ export const fetchAssistantStatus = async (): Promise<AssistantStatus> => {
 
 type StreamHandlers = {
   onProgress?: (node: string) => void
+  /** Fired for each token as the model produces it. */
+  onToken?: (text: string) => void
   onAnswer: (answer: AssistantAnswer) => void
   onError: (message: string) => void
 }
@@ -111,5 +113,6 @@ const handleFrame = (frame: string, handlers: StreamHandlers) => {
 
   if (event === 'error') handlers.onError(payload.error || 'The assistant failed.')
   else if (event === 'progress') handlers.onProgress?.(payload.node)
+  else if (event === 'token') handlers.onToken?.(payload.text || '')
   else if (event === 'answer') handlers.onAnswer(payload as AssistantAnswer)
 }

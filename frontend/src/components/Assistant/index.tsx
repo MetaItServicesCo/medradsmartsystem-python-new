@@ -26,6 +26,7 @@ import {
   type AssistantCitation,
 } from '@/api/assistant'
 import { useAuthStore } from '@/stores/authStore'
+import { keyframes } from '@emotion/react'
 
 interface Turn {
   role: 'user' | 'assistant'
@@ -37,7 +38,31 @@ interface Turn {
 
 // Kept in sync with AGENT_NAME in the agent service. The agent introduces
 // itself by this name, so the header must not disagree with what it says.
-const AGENT_NAME = 'Rad'
+const AGENT_NAME = 'Mr. Medrad'
+
+// Motion is deliberately restrained: it signals progress, it does not decorate.
+const fadeUp = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+`
+const shimmer = keyframes`
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+`
+const blink = keyframes`
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0.15; }
+  100% { opacity: 1; }
+`
+const bob = keyframes`
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-3px) scale(1.06); }
+`
+const ripple = keyframes`
+  0%   { transform: scale(0.85); opacity: 0.55; }
+  70%  { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(1.7); opacity: 0; }
+`
 
 const SUGGESTIONS = [
   'How much business have we done with Grace Ambulatory?',
@@ -65,6 +90,8 @@ const AssistantWidget = () => {
   const [turns, setTurns] = useState<Turn[]>([])
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
+  // Tokens land here as they arrive and are promoted to a turn on completion.
+  const [streaming, setStreaming] = useState('')
   const cancelRef = useRef<(() => void) | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -77,7 +104,7 @@ const AssistantWidget = () => {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [turns, progress])
+  }, [turns, progress, streaming])
 
   // Abort any in-flight run if the widget unmounts.
   useEffect(() => () => cancelRef.current?.(), [])
@@ -91,10 +118,13 @@ const AssistantWidget = () => {
     setQuestion('')
     setBusy(true)
     setProgress('Understanding the question')
+    setStreaming('')
 
     cancelRef.current = askAssistant(trimmed, {
       onProgress: (node) => setProgress(PROGRESS_LABEL[node] || 'Working'),
+      onToken: (text) => setStreaming((prev) => prev + text),
       onAnswer: (answer) => {
+        setStreaming('')
         setTurns((prev) => [...prev, {
           role: 'assistant',
           text: answer.answer,
@@ -105,6 +135,7 @@ const AssistantWidget = () => {
         setProgress('')
       },
       onError: (message) => {
+        setStreaming('')
         setTurns((prev) => [...prev, { role: 'assistant', text: message, isError: true }])
         setBusy(false)
         setProgress('')
@@ -114,6 +145,11 @@ const AssistantWidget = () => {
 
   const stop = () => {
     cancelRef.current?.()
+    // Keep whatever streamed so far rather than discarding a partial answer.
+    if (streaming.trim()) {
+      setTurns((prev) => [...prev, { role: 'assistant', text: streaming.trim() }])
+    }
+    setStreaming('')
     setBusy(false)
     setProgress('')
   }
@@ -127,10 +163,23 @@ const AssistantWidget = () => {
             position: 'fixed', bottom: 26, right: 26, zIndex: 1250,
             color: '#fff', boxShadow: '0 16px 36px rgba(109,64,200,0.42)',
             background: 'linear-gradient(135deg, #7C3AED, #9A55B0)',
-            '&:hover': { background: 'linear-gradient(135deg, #6D28D9, #8A46C2)' },
+            transition: 'transform 0.25s ease',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #6D28D9, #8A46C2)',
+              transform: 'scale(1.06) rotate(-6deg)',
+            },
+            // A ring pulses out of the button while a run is in flight, so the
+            // user can tell it is still working with the panel closed.
+            '&::after': busy ? {
+              content: '""', position: 'absolute', inset: -4, borderRadius: '50%',
+              border: '2px solid rgba(124,58,237,0.55)',
+              animation: `${ripple} 1.6s ease-out infinite`,
+            } : {},
           }}
         >
-          <AutoAwesomeIcon />
+          <Box sx={{ display: 'inline-flex', animation: busy ? `${bob} 1.4s ease-in-out infinite` : 'none' }}>
+            <AutoAwesomeIcon />
+          </Box>
         </Fab>
       </Tooltip>
 
@@ -201,6 +250,8 @@ const AssistantWidget = () => {
                   borderRadius: '16px',
                   bgcolor: turn.role === 'user' ? '#EEEAFE' : turn.isError ? '#FEF2F2' : '#fff',
                   border: `1px solid ${turn.isError ? '#FECACA' : '#E9EDF5'}`,
+                  animation: `${fadeUp} 0.28s ease both`,
+                  boxShadow: turn.role === 'user' ? 'none' : '0 2px 10px rgba(30,27,75,0.05)',
                 }}
               >
                 <Typography sx={{
@@ -235,10 +286,49 @@ const AssistantWidget = () => {
             ))}
           </Stack>
 
-          {busy && (
-            <Typography sx={{ mt: 1.6, color: '#7C3AED', fontSize: 12, fontWeight: 800 }}>
-              {progress}…
-            </Typography>
+          {/* Live answer: tokens render as they arrive, with a blinking caret. */}
+          {streaming && (
+            <Box sx={{
+              mt: 1.6, maxWidth: '92%', p: 1.5, borderRadius: '16px', bgcolor: '#fff',
+              border: '1px solid #E9EDF5', boxShadow: '0 2px 10px rgba(30,27,75,0.05)',
+              animation: `${fadeUp} 0.28s ease both`,
+            }}>
+              <Typography component="span" sx={{
+                whiteSpace: 'pre-wrap', fontSize: 13.5, lineHeight: 1.6,
+                fontWeight: 600, color: '#1E293B',
+              }}>
+                {streaming}
+              </Typography>
+              <Box component="span" sx={{
+                display: 'inline-block', width: 7, height: 15, ml: '2px',
+                verticalAlign: 'text-bottom', borderRadius: '2px', bgcolor: '#7C3AED',
+                animation: `${blink} 1s steps(1) infinite`,
+              }} />
+            </Box>
+          )}
+
+          {busy && !streaming && (
+            <Box sx={{ mt: 1.6, display: 'flex', alignItems: 'center', gap: 1.1 }}>
+              <Stack direction="row" spacing={0.5}>
+                {[0, 1, 2].map((dot) => (
+                  <Box key={dot} sx={{
+                    width: 7, height: 7, borderRadius: '50%', bgcolor: '#7C3AED',
+                    animation: `${bob} 1s ease-in-out ${dot * 0.15}s infinite`,
+                  }} />
+                ))}
+              </Stack>
+              <Typography sx={{
+                fontSize: 12, fontWeight: 800,
+                // Shimmer sweeps across the label so a slow step still looks alive.
+                background: 'linear-gradient(90deg,#A78BFA 25%,#4C1D95 50%,#A78BFA 75%)',
+                backgroundSize: '200% 100%',
+                WebkitBackgroundClip: 'text', backgroundClip: 'text',
+                color: 'transparent',
+                animation: `${shimmer} 2s linear infinite`,
+              }}>
+                {progress}…
+              </Typography>
+            </Box>
           )}
         </Box>
 
