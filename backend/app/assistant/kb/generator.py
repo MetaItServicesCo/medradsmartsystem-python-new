@@ -9,6 +9,7 @@ from typing import Any
 
 from app.assistant.kb.api_extractors import operation_documents, permission_documents
 from app.assistant.kb.documents import KBChunk, KBDocument, chunk_document
+from app.assistant.kb.ui_extractors import howto_documents, resolve_frontend_src
 from app.assistant.kb.extractors import (
     entity_documents,
     humanize,
@@ -61,8 +62,16 @@ def _module_overview_documents(mappers: list[Any], operations: list[KBDocument])
     return documents
 
 
-def generate_all(openapi_spec: dict[str, Any] | None = None) -> list[KBDocument]:
-    """Produce every generated document, covering all in-scope tables."""
+def generate_all(
+    openapi_spec: dict[str, Any] | None = None,
+    frontend_src: str | None = None,
+) -> list[KBDocument]:
+    """Produce every generated document, covering all in-scope tables.
+
+    Navigation documents are generated from the frontend source when it is
+    reachable. They answer "how do I ..." in the words a user sees on screen,
+    which the API-derived documents cannot do.
+    """
     mappers = load_all_mappers()
 
     documents: list[KBDocument] = []
@@ -75,6 +84,10 @@ def generate_all(openapi_spec: dict[str, Any] | None = None) -> list[KBDocument]
     if openapi_spec is not None:
         operations = operation_documents(openapi_spec)
         documents.extend(operations)
+
+    resolved = resolve_frontend_src(frontend_src)
+    if resolved is not None:
+        documents.extend(howto_documents(resolved))
 
     documents.extend(_module_overview_documents(mappers, operations))
     return documents

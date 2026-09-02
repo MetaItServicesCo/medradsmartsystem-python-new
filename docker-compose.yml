@@ -75,6 +75,10 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${BACKEND_WORKERS:-2} --proxy-headers --forwarded-allow-ips=* --no-access-log
     volumes:
       - ./backend:/app
+      # Read-only, and only used by scripts/generate_kb: the assistant's
+      # navigation documents are derived from the frontend's sidebar and
+      # screen labels so "how do I ..." is answered in UI terms.
+      - ./frontend/src:/frontend-src:ro
     ports:
       - "127.0.0.1:8000:8000"
     environment:

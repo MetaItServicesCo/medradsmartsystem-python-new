@@ -36,12 +36,13 @@ def main() -> int:
     parser.add_argument("--write", action="store_true", help="ingest into PostgreSQL")
     parser.add_argument("--create-tables", action="store_true", help="create KB tables first")
     parser.add_argument("--no-operations", action="store_true", help="skip OpenAPI extraction")
+    parser.add_argument("--frontend-src", metavar="DIR", help="path to frontend/src for navigation docs")
     arguments = parser.parse_args()
 
     from app.assistant.kb.generator import chunk_all, coverage_report, generate_all
 
     spec = None if arguments.no_operations else _openapi_spec()
-    documents = generate_all(spec)
+    documents = generate_all(spec, arguments.frontend_src)
     chunks = chunk_all(documents)
     report = coverage_report(documents)
 

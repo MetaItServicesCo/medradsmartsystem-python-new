@@ -49,6 +49,10 @@ MODULE_BY_MODEL_FILE: dict[str, str] = {
 # messages must never be readable by the assistant.
 EXCLUDED_MODEL_FILES: frozenset[str] = frozenset({"chat"})
 
+# The assistant's own storage is not part of the business domain and would only
+# add noise to retrieval.
+EXCLUDED_TABLES: frozenset[str] = frozenset({"kb_documents", "kb_chunks"})
+
 # Columns the assistant must never read or describe as retrievable. Documenting
 # them at all would invite the model to request them.
 SENSITIVE_COLUMN_PATTERNS: tuple[str, ...] = (
@@ -82,6 +86,8 @@ def module_for(mapper: Any) -> str:
 
 
 def in_scope(mapper: Any) -> bool:
+    if mapper.class_.__table__.name in EXCLUDED_TABLES:
+        return False
     return model_file(mapper) not in EXCLUDED_MODEL_FILES
 
 

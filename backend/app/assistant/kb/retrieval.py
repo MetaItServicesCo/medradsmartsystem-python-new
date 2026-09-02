@@ -129,8 +129,11 @@ def _query_terms(query: str) -> list[str]:
 # matrix, which legitimately contains both "add" and "facilities"; knowing the
 # asker wants a procedure is what breaks the tie.
 _INTENT_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    (r"\b(how (do|to|can)|steps?|procedure|process|create|add|new|update|delete)\b",
-     ("operation", "module")),
+    # "howto" ranks first: someone asking how to do something wants the screen
+    # and the click-path, not the HTTP endpoint.
+    (r"\b(how (do|to|can)|steps?|procedure|process|where|screen|page|button|"
+     r"click|navigate|menu|create|add|new|update|delete)\b",
+     ("howto", "operation", "module")),
     (r"\b(who can|permission|allowed|role|access)\b", ("permission",)),
     (r"\b(status|statuses|state|valid values?|options?)\b", ("vocabulary",)),
     (r"\b(field|fields|column|columns|schema|stores?|required)\b", ("entity",)),
@@ -140,7 +143,7 @@ _INTENT_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
 # Multiplier applied to a hit whose kind matches the detected intent. Large
 # enough to reorder near-ties, small enough that a much stronger lexical match
 # still wins.
-_INTENT_BOOST = 1.6
+_INTENT_BOOST = 2.4
 
 
 def infer_preferred_kinds(query: str) -> tuple[str, ...]:
@@ -248,9 +251,13 @@ def _fuse(
             rows[key] = chunk
 
     if preferred_kinds:
+        # Preferred kinds are listed in priority order, so the boost decays with
+        # position. A flat boost let a strongly-matching operations document tie
+        # with the navigation document that actually answers a how-to.
         for key, chunk in rows.items():
             if chunk.kind in preferred_kinds:
-                scores[key] *= _INTENT_BOOST
+                rank = preferred_kinds.index(chunk.kind)
+                scores[key] *= _INTENT_BOOST ** (1.0 / (rank + 1))
 
     ordered = sorted(scores.items(), key=lambda item: item[1], reverse=True)[:limit]
     fused: list[RetrievedChunk] = []
