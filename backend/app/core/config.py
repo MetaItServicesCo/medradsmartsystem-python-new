@@ -108,6 +108,10 @@ class Settings(BaseSettings):
     # changed nothing writes nothing.
     ASSISTANT_KB_AUTO_REFRESH: bool = True
     ASSISTANT_KB_REFRESH_DELAY_SECONDS: int = 10
+    # Speech service: natural voice out, transcription in. Shares the assistant
+    # internal key; blank URL disables voice without affecting the typed path.
+    SPEECH_SERVICE_URL: str = "http://speech:8200"
+    SPEECH_TIMEOUT_SECONDS: float = 60.0
     AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED: bool = False
 
     # Face Recognition

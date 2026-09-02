@@ -115,7 +115,7 @@ const AssistantWidget = () => {
   const submitRef = useRef<((text: string) => void) | null>(null)
 
   const voice = useVoice({
-    onFinalTranscript: (text) => submitRef.current?.(text),
+    onTranscript: (text) => submitRef.current?.(text),
   })
 
   const { data: status } = useQuery({
@@ -155,7 +155,7 @@ const AssistantWidget = () => {
       onToken: (text) => setStreaming((prev) => prev + text),
       onAnswer: (answer) => {
         setStreaming('')
-        if (voiceMode && speakReplies) voice.speak(answer.answer)
+        if (voiceMode && speakReplies) void voice.speak(answer.answer)
         setTurns((prev) => [...prev, {
           role: 'assistant',
           text: answer.answer,
@@ -238,7 +238,7 @@ const AssistantWidget = () => {
               Read-only · answers cite live data and documentation
             </Typography>
           </Box>
-          {voice.recognitionSupported && (
+          {voice.supported && status?.voice_enabled && (
             <Tooltip title={voiceMode ? 'Switch to typing' : 'Switch to voice'}>
               <IconButton
                 size="small"
@@ -253,7 +253,7 @@ const AssistantWidget = () => {
               </IconButton>
             </Tooltip>
           )}
-          {voiceMode && voice.synthesisSupported && (
+          {voiceMode && (
             <Tooltip title={speakReplies ? 'Mute spoken replies' : 'Speak replies'}>
               <IconButton
                 size="small"
@@ -401,7 +401,7 @@ const AssistantWidget = () => {
             p: 2, borderTop: '1px solid #E9EDF5', display: 'flex', flexDirection: 'column',
             alignItems: 'center', gap: 1.2,
           }}>
-            {voice.listening && (
+            {(voice.listening || voice.transcribing) && (
               <Stack direction="row" spacing={0.6} alignItems="flex-end" sx={{ height: 26 }}>
                 {[0, 1, 2, 3, 4].map((bar) => (
                   <Box key={bar} sx={{
@@ -416,8 +416,8 @@ const AssistantWidget = () => {
             <Tooltip title={voice.listening ? 'Stop listening' : 'Hold a question and speak'}>
               <span>
                 <IconButton
-                  onClick={() => (voice.listening ? voice.stopListening() : voice.startListening())}
-                  disabled={busy}
+                  onClick={() => (voice.listening ? voice.stopListening() : void voice.startListening())}
+                  disabled={busy || voice.transcribing}
                   sx={{
                     width: 62, height: 62, color: '#fff',
                     background: voice.listening
@@ -436,12 +436,14 @@ const AssistantWidget = () => {
             <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: voice.error ? '#DC2626' : '#64748B', textAlign: 'center' }}>
               {voice.error
                 || (voice.listening
-                  ? (voice.transcript || 'Listening…')
-                  : busy
-                    ? 'Working…'
-                    : voice.speaking
-                      ? 'Speaking… tap the mic to interrupt'
-                      : `Tap to ask ${AGENT_NAME}`)}
+                  ? 'Listening… tap to finish'
+                  : voice.transcribing
+                    ? 'Transcribing…'
+                    : busy
+                      ? 'Working…'
+                      : voice.speaking
+                        ? 'Speaking… tap the mic to interrupt'
+                        : `Tap to ask ${AGENT_NAME}`)}
             </Typography>
           </Box>
         ) : (

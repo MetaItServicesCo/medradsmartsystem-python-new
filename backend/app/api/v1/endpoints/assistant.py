@@ -14,8 +14,10 @@ import logging
 from typing import Any, AsyncIterator, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi import (
+    APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status,
+)
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -90,6 +92,7 @@ def assistant_status(current_user: User = Depends(get_current_user)) -> Any:
     # without reading container logs.
     if current_user.role == UserRole.SUPERADMIN:
         payload["knowledge_base"] = last_refresh()
+        payload["voice_enabled"] = bool((settings.SPEECH_SERVICE_URL or "").strip())
     return payload
 
 
@@ -156,6 +159,86 @@ async def ask(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+class SpeakRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+def _speech_url(path: str) -> str:
+    base = (settings.SPEECH_SERVICE_URL or "").strip().rstrip("/")
+    if not base:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice is not enabled on this deployment.",
+        )
+    return "{}{}".format(base, path)
+
+
+@router.post("/speech/tts")
+async def text_to_speech(
+    payload: SpeakRequest,
+    current_user: User = Depends(require_superadmin),
+) -> Response:
+    """Speak an answer. Returns WAV audio produced by the speech service."""
+    _enforce_rate_limit(current_user.id)
+    url = _speech_url("/internal/v1/tts")
+    try:
+        async with httpx.AsyncClient(timeout=settings.SPEECH_TIMEOUT_SECONDS) as client:
+            upstream = await client.post(
+                url,
+                json={"text": payload.text},
+                headers={"X-Internal-Key": settings.ASSISTANT_INTERNAL_KEY},
+            )
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The voice service is unreachable.",
+        )
+    if upstream.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Voice synthesis failed.",
+        )
+    return Response(
+        content=upstream.content,
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/speech/stt")
+async def speech_to_text(
+    audio: UploadFile = File(...),
+    current_user: User = Depends(require_superadmin),
+) -> Any:
+    """Transcribe a spoken question. The recording is never stored."""
+    _enforce_rate_limit(current_user.id)
+    raw = await audio.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty recording.")
+    if len(raw) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Recording is too long.")
+
+    url = _speech_url("/internal/v1/stt")
+    try:
+        async with httpx.AsyncClient(timeout=settings.SPEECH_TIMEOUT_SECONDS) as client:
+            upstream = await client.post(
+                url,
+                files={"audio": (audio.filename or "speech.webm", raw, audio.content_type or "audio/webm")},
+                data={"language": "en"},
+                headers={"X-Internal-Key": settings.ASSISTANT_INTERNAL_KEY},
+            )
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The transcription service is unreachable.",
+        )
+    if upstream.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="Transcription failed."
+        )
+    return upstream.json()
 
 
 def _sse(event: str, data: dict[str, Any]) -> bytes:

@@ -95,6 +95,7 @@ services:
       - ASSISTANT_ENABLED=${ASSISTANT_ENABLED:-false}
       - ASSISTANT_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
       - ASSISTANT_SERVICE_URL=http://agent:8100
+      - SPEECH_SERVICE_URL=http://speech:8200
       - JWT_AUDIENCE=${JWT_AUDIENCE:-medrad-web}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["https://medcodesolution.com","https://www.medcodesolution.com"]}
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-["medcodesolution.com","www.medcodesolution.com","api.medcodesolution.com","localhost","127.0.0.1"]}
@@ -290,6 +291,37 @@ services:
       timeout: 6s
       retries: 3
       start_period: 20s
+
+  # Natural voice for the assistant: Piper for speech, faster-whisper for
+  # transcription. CPU-only and torch-free. Holds no application data and has no
+  # database access — it receives text or audio and returns the other.
+  speech:
+    build:
+      context: ./speech-service
+      dockerfile: Dockerfile
+    container_name: medrad_speech
+    restart: unless-stopped
+    init: true
+    environment:
+      - SPEECH_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
+      - PIPER_VOICE=${PIPER_VOICE:-en_US-ryan-medium}
+      - WHISPER_MODEL=${WHISPER_MODEL:-base.en}
+      - LOG_LEVEL=${SPEECH_LOG_LEVEL:-INFO}
+    networks:
+      - medrad_network
+    # Both models are loaded lazily and held in memory once used. The cap keeps
+    # them from competing with PostgreSQL under load.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1400M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8200/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 30s
 
   frontend:
     build:

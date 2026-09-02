@@ -1,0 +1,19 @@
+# Speech service: text-to-speech and speech-to-text, both CPU-only.
+#
+# Neither pulls torch. Piper runs ONNX directly and faster-whisper uses
+# CTranslate2, which together keep the image near 400MB instead of ~2.5GB and
+# let this run alongside PostgreSQL rather than competing with it.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.20
+
+# MIT licensed, ONNX, ~60MB voices, faster than real time on CPU.
+piper-tts==1.2.0
+
+# MIT licensed reimplementation of Whisper on CTranslate2: roughly 4x faster
+# and materially lighter than openai-whisper.
+faster-whisper==1.1.1
+
+# faster-whisper fetches model weights through huggingface_hub, which needs
+# requests. It is not pulled in automatically by the minimal install.
+requests==2.32.3
