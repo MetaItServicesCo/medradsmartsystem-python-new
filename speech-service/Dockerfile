@@ -1,8 +1,14 @@
 FROM python:3.11-slim
 
+# Any Piper voice can be baked in by name, e.g. en_US-lessac-high,
+# en_GB-alan-medium. Browse them at https://rhasspy.github.io/piper-samples/.
+# "high" variants are noticeably more natural than "medium" and cost little on
+# CPU, so they are the default here.
+ARG PIPER_VOICE=en_US-lessac-high
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIPER_VOICE=en_US-ryan-medium \
+    PIPER_VOICE=${PIPER_VOICE} \
     PIPER_VOICE_DIR=/voices \
     WHISPER_MODEL=base.en \
     HF_HOME=/models
@@ -19,11 +25,17 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Bake the voice into the image so a container restart never depends on a
-# third-party host being reachable.
+# third-party host being reachable. The download path is derived from the voice
+# name (en_US-lessac-high -> en/en_US/lessac/high) so switching voices is a
+# build argument rather than an edit here.
 RUN mkdir -p /voices \
- && BASE=https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium \
- && curl -fsSL -o /voices/en_US-ryan-medium.onnx      "$BASE/en_US-ryan-medium.onnx" \
- && curl -fsSL -o /voices/en_US-ryan-medium.onnx.json "$BASE/en_US-ryan-medium.onnx.json"
+ && LOCALE="$(echo "$PIPER_VOICE" | cut -d- -f1)" \
+ && NAME="$(echo "$PIPER_VOICE" | cut -d- -f2)" \
+ && QUALITY="$(echo "$PIPER_VOICE" | cut -d- -f3)" \
+ && FAMILY="$(echo "$LOCALE" | cut -d_ -f1)" \
+ && BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/${FAMILY}/${LOCALE}/${NAME}/${QUALITY}" \
+ && curl -fsSL -o "/voices/${PIPER_VOICE}.onnx"      "${BASE}/${PIPER_VOICE}.onnx" \
+ && curl -fsSL -o "/voices/${PIPER_VOICE}.onnx.json" "${BASE}/${PIPER_VOICE}.onnx.json"
 
 # Bake the recogniser in as well. Fetching weights on first use would make the
 # first spoken question slow, and would fail outright if HuggingFace were
