@@ -167,7 +167,10 @@ const AssistantWidget = () => {
         <Fab
           onClick={() => setOpen(true)}
           sx={{
-            position: 'fixed', bottom: 26, right: 26, zIndex: 1250,
+            position: 'fixed',
+            bottom: { xs: 'calc(78px + env(safe-area-inset-bottom))', sm: 26 },
+            right: { xs: 14, sm: 26 },
+            zIndex: 1250,
             color: '#fff', boxShadow: '0 16px 36px rgba(109,64,200,0.42)',
             background: 'linear-gradient(135deg, #7C3AED, #9A55B0)',
             transition: 'transform 0.25s ease',
@@ -194,7 +197,8 @@ const AssistantWidget = () => {
         anchor="right"
         open={open}
         onClose={() => setOpen(false)}
-        PaperProps={{ sx: { width: { xs: '100%', sm: 460 }, display: 'flex', flexDirection: 'column' } }}
+        sx={{ zIndex: 1400 }}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 460 }, pb: { xs: 'env(safe-area-inset-bottom)', sm: 0 }, display: 'flex', flexDirection: 'column' } }}
       >
         <Box sx={{
           p: 2, color: '#fff', display: 'flex', alignItems: 'center', gap: 1.4,

@@ -40,7 +40,7 @@ export const customerPortalSx = {
   WebkitOverflowScrolling: 'touch',
   bgcolor: customerDocumentColors.canvas,
   py: { xs: 2, md: 5 },
-  px: 2,
+  px: { xs: 1, sm: 2 },
   '&::-webkit-scrollbar': { width: 10 },
   '&::-webkit-scrollbar-track': { bgcolor: '#EEEAFE' },
   '&::-webkit-scrollbar-thumb': {
@@ -55,7 +55,7 @@ export const customerDocumentCardSx = {
   width: 'min(980px, 100%)',
   mx: 'auto',
   p: { xs: 2, md: 4 },
-  borderRadius: '24px',
+  borderRadius: { xs: '18px', sm: '24px' },
   boxShadow: '0 24px 70px rgba(30,58,138,0.14)',
   '@media print': { width: '100%', p: 2, borderRadius: 0, boxShadow: 'none' },
 }
@@ -99,11 +99,11 @@ export const CustomerDocumentHeader = ({
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 90, height: 58, objectFit: 'contain' }} />
-          <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.25, sm: 2 }, minWidth: 0 }}>
+          <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: { xs: 64, sm: 90 }, height: { xs: 44, sm: 58 }, objectFit: 'contain', flexShrink: 0 }} />
+          <Box sx={{ minWidth: 0 }}>
             <Typography sx={{ color: customerDocumentColors.accent, fontWeight: 900, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' }}>{label}</Typography>
-            <Typography variant="h4" sx={{ fontWeight: 950, color: customerDocumentColors.primary, letterSpacing: '-0.5px', lineHeight: 1.08 }}>{number}</Typography>
+            <Typography variant="h4" sx={{ fontWeight: 950, color: customerDocumentColors.primary, letterSpacing: '-0.5px', lineHeight: 1.08, overflowWrap: 'anywhere' }}>{number}</Typography>
             <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{companyName}{meta ? ` · ${meta}` : ''}</Typography>
           </Box>
         </Box>
@@ -123,9 +123,9 @@ interface WorkflowStep {
 }
 
 export const CustomerDocumentProgress = ({ steps }: { steps: WorkflowStep[] }) => (
-  <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`, mb: 3, border: '1px solid #DDD6FE', borderRadius: '14px', overflow: 'hidden' }}>
+  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: `repeat(${steps.length}, minmax(0, 1fr))` }, mb: 3, border: '1px solid #DDD6FE', borderRadius: '14px', overflow: 'hidden' }}>
     {steps.map((step, index) => (
-      <Box key={`${index}-${step.label}`} sx={{ px: { xs: 1, md: 2 }, py: 1.5, textAlign: 'center', bgcolor: step.complete ? '#F0FDF4' : '#FAF9FF', borderLeft: index ? '1px solid #DDD6FE' : 0 }}>
+      <Box key={`${index}-${step.label}`} sx={{ px: { xs: 1, md: 2 }, py: { xs: 1, sm: 1.5 }, textAlign: 'center', bgcolor: step.complete ? '#F0FDF4' : '#FAF9FF', borderLeft: { xs: 0, sm: index ? '1px solid #DDD6FE' : 0 }, borderTop: { xs: index ? '1px solid #DDD6FE' : 0, sm: 0 } }}>
         <Typography sx={{ fontWeight: 950, color: step.complete ? '#15803D' : customerDocumentColors.purple, fontSize: { xs: 12, md: 14 } }}>
           {step.complete ? '✓' : index + 1} {step.label}
         </Typography>
@@ -152,11 +152,11 @@ export const CustomerRecipientCard = ({ name, email, organization, address }: Cu
 )
 
 export const CustomerDetailsCard = ({ rows }: { rows: Array<{ label: string; value: ReactNode }> }) => (
-  <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 2, rowGap: 0.8, alignContent: 'start' }}>
+  <Box sx={{ p: 2.2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', display: 'grid', gridTemplateColumns: 'minmax(88px, auto) minmax(0, 1fr)', columnGap: { xs: 1, sm: 2 }, rowGap: 0.8, alignContent: 'start' }}>
     {rows.map((row, index) => (
       <Box key={`${row.label}-${index}`} sx={{ display: 'contents' }}>
         <Typography sx={{ fontWeight: 900, color: '#64748B' }}>{row.label}</Typography>
-        <Typography component="div" sx={{ textAlign: 'right', color: '#1E1B4B' }}>{row.value}</Typography>
+        <Typography component="div" sx={{ textAlign: 'right', color: '#1E1B4B', overflowWrap: 'anywhere' }}>{row.value}</Typography>
       </Box>
     ))}
   </Box>

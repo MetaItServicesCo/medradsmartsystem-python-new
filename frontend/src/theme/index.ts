@@ -33,12 +33,12 @@ const theme = createTheme({
     fontWeightRegular: 400,
     fontWeightMedium: 600,
     fontWeightBold: 800,
-    h1: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.035em' },
-    h2: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.03em' },
-    h3: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.025em' },
-    h4: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.02em' },
-    h5: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.015em' },
-    h6: { fontWeight: 700, color: '#1E1B4B', letterSpacing: '-0.01em' },
+    h1: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.035em', '@media (max-width:600px)': { fontSize: '2.2rem', lineHeight: 1.08 } },
+    h2: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.03em', '@media (max-width:600px)': { fontSize: '1.9rem', lineHeight: 1.12 } },
+    h3: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.025em', '@media (max-width:600px)': { fontSize: '1.65rem', lineHeight: 1.15 } },
+    h4: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.02em', '@media (max-width:600px)': { fontSize: '1.4rem', lineHeight: 1.2 } },
+    h5: { fontWeight: 800, color: '#1E1B4B', letterSpacing: '-0.015em', '@media (max-width:600px)': { fontSize: '1.2rem', lineHeight: 1.25 } },
+    h6: { fontWeight: 700, color: '#1E1B4B', letterSpacing: '-0.01em', '@media (max-width:600px)': { fontSize: '1.05rem', lineHeight: 1.3 } },
     subtitle1: { color: '#6B7280', fontWeight: 600 },
     subtitle2: { color: '#6B7280', fontWeight: 600 },
     body1: { color: '#374151' },
@@ -90,6 +90,11 @@ const theme = createTheme({
           fontSize: '0.875rem',
           transition: 'background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease',
           minHeight: 42,
+          '@media (max-width:600px)': {
+            minHeight: 40,
+            padding: '9px 14px',
+            fontSize: '0.8125rem',
+          },
           '&:hover': {
             boxShadow: '0 14px 28px rgba(113,97,216,0.18)',
             transform: 'translateY(-1px)',
@@ -129,6 +134,10 @@ const theme = createTheme({
           boxShadow: '0 18px 45px rgba(49,46,129,0.08)',
           border: '1px solid #EEF0F6',
           backgroundImage: 'none',
+          minWidth: 0,
+          '@media (max-width:600px)': {
+            borderRadius: 18,
+          },
         },
       },
     },
@@ -195,6 +204,7 @@ const theme = createTheme({
           border: '1px solid #E5E7EB',
           boxShadow: '0 20px 50px rgba(15,23,42,0.16)',
           padding: 6,
+          maxWidth: 'calc(100vw - 16px)',
         },
       },
     },
@@ -219,6 +229,13 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           minHeight: 58,
+          maxWidth: '100%',
+          '@media (max-width:600px)': {
+            minHeight: 48,
+          },
+        },
+        scroller: {
+          WebkitOverflowScrolling: 'touch',
         },
         indicator: {
           height: 3,
@@ -234,6 +251,12 @@ const theme = createTheme({
           textTransform: 'none',
           fontWeight: 700,
           color: '#64748B',
+          '@media (max-width:600px)': {
+            minHeight: 48,
+            minWidth: 96,
+            padding: '10px 14px',
+            fontSize: '0.8125rem',
+          },
           '&.Mui-selected': {
             color: '#5445B3',
           },
@@ -272,6 +295,19 @@ const theme = createTheme({
         root: {
           borderBottom: '1px solid #F3F4F6',
           padding: '13px 16px',
+          '@media (max-width:600px)': {
+            padding: '10px 12px',
+          },
+        },
+      },
+    },
+    MuiTableContainer: {
+      styleOverrides: {
+        root: {
+          width: '100%',
+          maxWidth: '100%',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
         },
       },
     },
@@ -297,6 +333,14 @@ const theme = createTheme({
           boxShadow: '0 24px 64px rgba(124,58,237,0.18)',
           border: '1px solid rgba(226,232,240,0.9)',
           backgroundImage: 'none',
+          maxWidth: 'calc(100vw - 24px)',
+          '@media (max-width:600px)': {
+            width: 'calc(100vw - 16px)',
+            maxWidth: 'calc(100vw - 16px)',
+            maxHeight: 'calc(100dvh - 16px)',
+            margin: 8,
+            borderRadius: 18,
+          },
         },
       },
     },
@@ -306,6 +350,9 @@ const theme = createTheme({
           color: '#1E1B4B',
           fontWeight: 800,
           padding: '22px 28px 18px',
+          '@media (max-width:600px)': {
+            padding: '18px 16px 14px',
+          },
         },
       },
     },
@@ -313,6 +360,9 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           padding: '24px 28px',
+          '@media (max-width:600px)': {
+            padding: '16px',
+          },
         },
       },
     },
@@ -322,6 +372,11 @@ const theme = createTheme({
           padding: '16px 28px 22px',
           gap: 10,
           borderTop: '1px solid #EEF0F6',
+          flexWrap: 'wrap',
+          '@media (max-width:600px)': {
+            padding: '12px 16px 16px',
+            gap: 8,
+          },
         },
       },
     },
@@ -361,6 +416,10 @@ const theme = createTheme({
         root: {
           borderRadius: 20,
           backgroundImage: 'none',
+          minWidth: 0,
+          '@media (max-width:600px)': {
+            borderRadius: 16,
+          },
         },
       },
     },

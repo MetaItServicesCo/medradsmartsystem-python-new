@@ -112,13 +112,13 @@ const Header = ({ title }: HeaderProps) => {
       sx={{
         display: 'flex',
         alignItems: 'center',
-        gap: 3,
-        px: { xs: 2, md: 3 },
-        py: 2,
+        gap: { xs: 0.75, sm: 1.5, md: 3 },
+        px: { xs: 1.5, sm: 2, md: 3 },
+        py: { xs: 1.25, sm: 2 },
         background: 'rgba(248, 250, 252, 0.92)',
         backdropFilter: 'blur(18px)',
         borderBottom: '1px solid rgba(226, 232, 240, 0.9)',
-        minHeight: 80,
+        minHeight: { xs: 64, sm: 80 },
         flexShrink: 0,
         position: 'sticky',
         top: 0,
@@ -126,8 +126,8 @@ const Header = ({ title }: HeaderProps) => {
       }}
     >
       {/* Page title */}
-      <Box sx={{ flex: 1 }}>
-        <Typography variant="h5" sx={{ fontWeight: 900, color: '#1E1B4B', lineHeight: 1.2, letterSpacing: '-0.5px' }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography noWrap variant="h5" sx={{ fontWeight: 900, color: '#1E1B4B', lineHeight: 1.2, letterSpacing: '-0.5px', fontSize: { xs: '1rem', sm: '1.5rem' } }}>
           {title}
         </Typography>
       </Box>
@@ -139,8 +139,8 @@ const Header = ({ title }: HeaderProps) => {
       <IconButton
         onClick={handleOpenNotifications}
         sx={{
-          width: 44,
-          height: 44,
+          width: { xs: 38, sm: 44 },
+          height: { xs: 38, sm: 44 },
           backgroundColor: '#fff',
           borderRadius: '16px',
           border: '1px solid #E8ECF4',
@@ -247,8 +247,8 @@ const Header = ({ title }: HeaderProps) => {
           onClick={handleOpenMenu}
           src={resolveUploadUrl(user?.avatar_url)}
           sx={{
-            width: 44,
-            height: 44,
+            width: { xs: 38, sm: 44 },
+            height: { xs: 38, sm: 44 },
             background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
             fontSize: '1rem',
             fontWeight: 800,

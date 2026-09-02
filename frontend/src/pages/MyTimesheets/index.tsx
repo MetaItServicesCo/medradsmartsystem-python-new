@@ -162,7 +162,7 @@ export default function MyTimesheets() {
   const draftCnt    = allItems.filter((i: any) => i.status === 'draft').length
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
+    <Box sx={{ p: { xs: 1.5, sm: 3 }, maxWidth: 1100, mx: 'auto', minWidth: 0 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
         <Box sx={{ width: 48, height: 48, borderRadius: 2, background: 'linear-gradient(135deg,#7161D8,#F05D92)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

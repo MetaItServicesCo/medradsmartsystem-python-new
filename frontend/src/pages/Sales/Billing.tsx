@@ -2529,7 +2529,7 @@ const BillingDetailsV2 = memo(({
         <Box sx={{ display: 'grid', gap: 2 }}>
           <Card sx={{ p: 2.4, borderRadius: '18px', border: '1px solid #E5E7EB' }}>
             <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Account Summary</Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
               <Kpi label="Account Total" value={money(accountTotal)} color="#7C3AED" />
               <Kpi label="Collected" value={money(accountPaid)} color="#059669" />
               <Kpi label="Balance" value={money(accountBalance)} color={accountBalance > 0 ? '#DC2626' : '#059669'} />

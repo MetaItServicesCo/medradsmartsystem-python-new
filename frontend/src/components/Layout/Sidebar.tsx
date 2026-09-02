@@ -139,22 +139,24 @@ const Sidebar = () => {
     <Box
       component="aside"
       sx={{
-        width: 72,
-        height: { xs: '100vh', md: 'calc(100vh - 24px)' },
+        width: { xs: '100%', sm: 72 },
+        height: { xs: 'calc(64px + env(safe-area-inset-bottom))', sm: '100dvh', md: 'calc(100dvh - 24px)' },
         background: 'linear-gradient(180deg, #7161D8 0%, #5C4BBC 100%)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        py: 3, gap: 1, flexShrink: 0, overflow: 'visible',
+        display: 'flex', flexDirection: { xs: 'row', sm: 'column' }, alignItems: 'center',
+        py: { xs: 1, sm: 3 }, px: { xs: 1.25, sm: 0 }, gap: 1, flexShrink: 0, overflow: 'visible',
         boxShadow: '0 24px 60px rgba(89,76,190,0.22)',
-        position: 'relative', zIndex: 20,
-        borderRadius: { xs: 0, md: '28px' },
+        position: { xs: 'fixed', sm: 'relative' },
+        left: 0, right: 0, bottom: 0,
+        zIndex: 1300,
+        borderRadius: { xs: '18px 18px 0 0', sm: 0, md: '28px' },
       }}
     >
       <Box
         aria-label="MedRad"
         sx={{
-          width: 48, height: 48, borderRadius: '18px',
+          width: { xs: 42, sm: 48 }, height: { xs: 42, sm: 48 }, borderRadius: { xs: '14px', sm: '18px' },
           background: 'rgba(255,255,255,0.15)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', mb: 3,
+          alignItems: 'center', justifyContent: 'center', mb: { xs: 0, sm: 3 },
           border: '1px solid rgba(255,255,255,0.25)', backdropFilter: 'blur(10px)',
           fontWeight: 900, fontSize: '1.2rem', color: '#fff',
           boxShadow: '0 12px 28px rgba(35,28,97,0.18)',
@@ -169,7 +171,7 @@ const Sidebar = () => {
           aria-expanded={launcherOpen} aria-controls={launcherOpen ? 'module-launcher' : undefined}
           onClick={() => setLauncherOpen((open) => !open)}
           sx={{
-            width: 48, height: 48, p: 0, borderRadius: '16px',
+            width: { xs: 42, sm: 48 }, height: { xs: 42, sm: 48 }, p: 0, borderRadius: { xs: '14px', sm: '16px' },
             border: '1px solid rgba(255,255,255,0.26)',
             background: launcherOpen ? '#fff' : 'rgba(255,255,255,0.17)',
             color: launcherOpen ? '#6553C8' : '#fff', display: 'flex',
@@ -193,7 +195,7 @@ const Sidebar = () => {
         <Tooltip title={`Current: ${currentItem.text}`} placement="right" arrow>
           <Box
             sx={{
-              mt: 1, width: 40, height: 40, borderRadius: '14px', display: 'flex',
+              mt: { xs: 0, sm: 1 }, width: 40, height: 40, borderRadius: '14px', display: 'flex',
               alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.8)',
               background: 'rgba(35,28,97,0.14)', '& svg': { fontSize: '1.2rem' },
             }}
@@ -210,10 +212,10 @@ const Sidebar = () => {
           component="button" type="button" aria-label="Logout"
           onClick={() => { closeLauncher(); logout(); navigate('/login') }}
           sx={{
-            width: 48, height: 48, p: 0, border: 0, borderRadius: '14px',
+            width: { xs: 42, sm: 48 }, height: { xs: 42, sm: 48 }, p: 0, border: 0, borderRadius: '14px',
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
             color: 'rgba(255,255,255,0.65)', background: 'transparent',
-            transition: 'all 180ms ease', mb: 1,
+            transition: 'all 180ms ease', mb: { xs: 0, sm: 1 },
             '&:hover': { backgroundColor: 'rgba(239,68,68,0.16)', color: '#FFD5D5' },
             '&:focus-visible': { outline: '3px solid rgba(255,255,255,0.35)', outlineOffset: 2 },
             '& svg': { fontSize: '1.4rem' },
@@ -228,7 +230,7 @@ const Sidebar = () => {
           <Box
             aria-hidden="true" onClick={closeLauncher}
             sx={{
-              position: 'fixed', inset: 0, zIndex: 1200,
+              position: 'fixed', inset: 0, zIndex: 1290,
               background: 'rgba(30,27,75,0.14)', backdropFilter: 'blur(2px)',
               animation: 'moduleLauncherFade 160ms ease-out',
               '@keyframes moduleLauncherFade': { from: { opacity: 0 }, to: { opacity: 1 } },
@@ -237,9 +239,12 @@ const Sidebar = () => {
           <Box
             id="module-launcher" role="dialog" aria-label="Module navigation"
             sx={{
-              position: 'fixed', top: { xs: 12, md: 24 }, left: { xs: 82, md: 96 }, zIndex: 1201,
-              width: { xs: 'calc(100vw - 94px)', sm: 480 },
-              maxHeight: { xs: 'calc(100vh - 24px)', md: 'calc(100vh - 48px)' },
+              position: 'fixed',
+              top: { xs: 8, sm: 12, md: 24 },
+              bottom: { xs: 'calc(72px + env(safe-area-inset-bottom))', sm: 'auto' },
+              left: { xs: 8, sm: 82, md: 96 }, zIndex: 1301,
+              width: { xs: 'calc(100vw - 16px)', sm: 480 },
+              maxHeight: { xs: 'calc(100dvh - 88px - env(safe-area-inset-bottom))', sm: 'calc(100dvh - 24px)', md: 'calc(100dvh - 48px)' },
               display: 'flex', flexDirection: 'column', overflow: 'hidden',
               borderRadius: { xs: '22px', md: '28px' }, background: 'rgba(255,255,255,0.97)',
               border: '1px solid rgba(255,255,255,0.86)',

@@ -406,7 +406,7 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
 }
 
 const TierFormFields = ({ form, setForm }: { form: Partial<TierCreate>, setForm: any }) => (
-  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 2 }}>
+  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2, mb: 2 }}>
     <TextField size="small" label="Tier Code (ID) *" value={form.tier_code} onChange={e => setForm({ ...form, tier_code: e.target.value })} />
     <TextField size="small" label="Name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
     <TextField size="small" label="Status" select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>

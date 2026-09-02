@@ -122,7 +122,7 @@ const Profile = () => {
     <Box className="page-enter">
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
-          <Card sx={{ p: 3, borderRadius: '16px', border: '1px solid #E5E7EB' }}>
+          <Card sx={{ p: { xs: 2, sm: 3 }, borderRadius: '16px', border: '1px solid #E5E7EB' }}>
             <Stack alignItems="center" spacing={2.5}>
               <Box sx={{ position: 'relative' }}>
                 <Avatar
@@ -195,7 +195,7 @@ const Profile = () => {
         </Grid>
 
         <Grid item xs={12} md={8}>
-          <Card sx={{ p: 3, borderRadius: '16px', border: '1px solid #E5E7EB' }}>
+          <Card sx={{ p: { xs: 2, sm: 3 }, borderRadius: '16px', border: '1px solid #E5E7EB' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
               <Box sx={{ width: 42, height: 42, borderRadius: '12px', backgroundColor: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7C3AED' }}>
                 <PersonOutlineIcon />

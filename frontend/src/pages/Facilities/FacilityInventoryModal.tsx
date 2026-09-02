@@ -629,7 +629,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
         <DialogContent sx={{ p: 3 }}>
           <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Inventory Item</Typography>
           {viewItem && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
               {[
                 ['Asset Tag', viewItem.asset_tag],
                 ['Make / Model', `${viewItem.make} ${viewItem.model}`],

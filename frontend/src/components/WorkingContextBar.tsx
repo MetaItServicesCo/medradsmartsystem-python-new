@@ -28,14 +28,14 @@ const WorkingContextBar = () => {
       sx={{
         position: 'fixed',
         right: { xs: 12, sm: 24 },
-        bottom: { xs: 12, sm: 24 },
+        bottom: { xs: 'calc(76px + env(safe-area-inset-bottom))', sm: 24 },
         zIndex: 1450,
         width: { xs: 'calc(100vw - 24px)', sm: 440 },
-        px: 2,
-        py: 1.5,
+        px: { xs: 1.25, sm: 2 },
+        py: { xs: 1.1, sm: 1.5 },
         display: 'flex',
         alignItems: 'center',
-        gap: 1.25,
+        gap: { xs: 0.75, sm: 1.25 },
         borderRadius: '16px',
         bgcolor: missing ? '#FFF7ED' : '#FFFFFF',
         border: `1px solid ${missing ? '#FED7AA' : '#D1FAE5'}`,
@@ -46,10 +46,10 @@ const WorkingContextBar = () => {
         ? <SearchOffIcon sx={{ color: '#EA580C', fontSize: 22 }} />
         : <CheckCircleOutlineIcon sx={{ color: '#059669', fontSize: 22 }} />}
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography noWrap sx={{ color: '#1E1B4B', fontSize: 13, fontWeight: 900 }}>
+        <Typography noWrap sx={{ color: '#1E1B4B', fontSize: { xs: 12, sm: 13 }, fontWeight: 900 }}>
           {found ? 'Record located' : missing ? 'Record is not in the loaded list' : noticeActivity.label}
         </Typography>
-        <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 650, lineHeight: 1.35 }}>
+        <Typography sx={{ color: '#64748B', fontSize: { xs: 11, sm: 12 }, fontWeight: 650, lineHeight: 1.35 }}>
           {missing
             ? 'It may be filtered, unavailable, or outside your permissions.'
             : opening
@@ -62,7 +62,7 @@ const WorkingContextBar = () => {
           size="small"
           startIcon={<MyLocationIcon />}
           onClick={() => showActivity(noticeActivity)}
-          sx={{ flexShrink: 0, borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}
+          sx={{ flexShrink: 0, minWidth: { xs: 40, sm: 'auto' }, px: { xs: 1, sm: 2 }, borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}
         >
           Show
         </Button>

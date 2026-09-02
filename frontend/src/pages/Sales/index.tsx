@@ -3045,7 +3045,7 @@ const Sales = () => {
 
               <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, alignSelf: 'start', boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
                 <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900, textAlign: 'center' }}>Invoice Details</Box>
-                <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+                <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
                   <TextField size="small" select label="Select Action" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, action: e.target.value }))} sx={{ gridColumn: '1 / -1' }}>
                     <MenuItem value="">Select Action</MenuItem>
                     <MenuItem value="approve">Approve Quotation</MenuItem>
@@ -3181,7 +3181,7 @@ const Sales = () => {
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Invoice Details</DialogTitle>
         <DialogContent dividers>
           {viewInvoice && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
               <Typography><strong>Invoice:</strong> {viewInvoice.invoice_number}</Typography>
               <Typography><strong>Work Order:</strong> {viewInvoice.work_order || '-'}</Typography>
               <Typography><strong>Customer:</strong> {viewInvoice.customer_name}</Typography>

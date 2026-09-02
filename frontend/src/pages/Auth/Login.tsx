@@ -72,12 +72,14 @@ const Login = () => {
     <Box
       sx={{
         position: 'relative',
-        minHeight: '100vh',
+        minHeight: '100dvh',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         p: { xs: 2, sm: 4 },
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'auto',
         background: 'linear-gradient(125deg, #ECEAFF 0%, #F3EEFF 42%, #FDEBF2 100%)',
       }}
     >
@@ -96,7 +98,7 @@ const Login = () => {
           width: '100%',
           maxWidth: 480,
           p: { xs: 2, sm: 3 },
-          borderRadius: '34px',
+          borderRadius: { xs: '24px', sm: '34px' },
           background: 'linear-gradient(135deg, rgba(255,255,255,0.66), rgba(255,255,255,0.38))',
           border: '1px solid rgba(255,255,255,0.6)',
           boxShadow: '0 44px 110px rgba(84,69,179,0.22)',
@@ -106,7 +108,7 @@ const Login = () => {
         <Box
           sx={{
             p: { xs: 2.75, sm: 4 },
-            borderRadius: '26px',
+            borderRadius: { xs: '20px', sm: '26px' },
             background: 'rgba(255,255,255,0.96)',
             border: '1px solid rgba(255,255,255,0.9)',
             boxShadow: '0 22px 55px rgba(84,69,179,0.12)',
@@ -225,7 +227,7 @@ const Login = () => {
         </Box>
       </Box>
 
-      <Typography variant="caption" sx={{ position: 'absolute', bottom: 16, left: 0, right: 0, textAlign: 'center', color: '#A79FC9', fontWeight: 600 }}>
+      <Typography variant="caption" sx={{ position: { xs: 'relative', sm: 'absolute' }, mt: { xs: 2, sm: 0 }, bottom: { sm: 16 }, left: { sm: 0 }, right: { sm: 0 }, textAlign: 'center', color: '#A79FC9', fontWeight: 600 }}>
         © 2026 Medrad Systems · All rights reserved
       </Typography>
     </Box>

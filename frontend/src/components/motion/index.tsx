@@ -27,7 +27,7 @@ export const PageTransition = ({ children, routeKey, className, style }: MotionP
   <motion.div
     key={routeKey}
     className={className}
-    style={style}
+    style={{ width: '100%', minWidth: 0, ...style }}
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     transition={{ duration: 0.18, ease: EASE_OUT }}

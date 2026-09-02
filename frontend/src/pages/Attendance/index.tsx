@@ -591,7 +591,7 @@ const Attendance = () => {
   }
 
   return (
-    <Box sx={{ p: 4, minHeight: '100vh', background: '#F8FAFF' }}>
+    <Box sx={{ p: { xs: 0, sm: 2, md: 4 }, minHeight: '100%', background: '#F8FAFF' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', mb: 3, flexWrap: 'wrap' }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Smart Attendance</Typography>
@@ -602,7 +602,7 @@ const Attendance = () => {
           size="small"
           value={selectedDate}
           onChange={(e) => setSelectedDate(e.target.value)}
-          sx={{ width: 180, '& .MuiOutlinedInput-root': { borderRadius: '14px', background: '#fff' } }}
+          sx={{ width: { xs: '100%', sm: 180 }, '& .MuiOutlinedInput-root': { borderRadius: '14px', background: '#fff' } }}
         />
       </Box>
 

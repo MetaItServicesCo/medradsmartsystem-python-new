@@ -1134,7 +1134,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
   }
 
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: '168px 1fr 260px', height: '100%', bgcolor: '#F1F5F9' }}>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '148px minmax(760px, 1fr) 230px', md: '168px 1fr 260px' }, minWidth: { xs: 1138, md: 0 }, height: '100%', bgcolor: '#F1F5F9' }}>
 
       {/* ── Left palette ── */}
       <Box sx={{

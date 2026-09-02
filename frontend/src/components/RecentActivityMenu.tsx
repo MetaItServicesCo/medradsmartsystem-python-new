@@ -42,8 +42,8 @@ const RecentActivityMenu = () => {
           aria-expanded={anchor ? 'true' : undefined}
           onClick={openMenu}
           sx={{
-            width: 44,
-            height: 44,
+            width: { xs: 38, sm: 44 },
+            height: { xs: 38, sm: 44 },
             backgroundColor: '#fff',
             borderRadius: '16px',
             border: '1px solid #E8ECF4',

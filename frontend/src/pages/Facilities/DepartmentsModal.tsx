@@ -105,14 +105,14 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
         </IconButton>
       </Box>
 
-      <DialogContent sx={{ p: 3.5 }}>
+      <DialogContent sx={{ p: { xs: 2, sm: 3.5 } }}>
         {/* Form */}
         {showForm && (
           <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid rgba(124,58,237,0.12)' }}>
             <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, mb: 1.5, display: 'block' }}>
               {editingId ? 'Edit Department' : 'New Department'}
             </Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 2 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2, mb: 2 }}>
               <TextField size="small" label="Name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               <FacilitySearchAutocomplete
                 label="Facility"

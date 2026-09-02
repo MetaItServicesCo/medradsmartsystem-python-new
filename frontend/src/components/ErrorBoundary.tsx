@@ -32,18 +32,18 @@ class ErrorBoundary extends React.Component<Props, State> {
     return (
       <Box
         sx={{
-          minHeight: '100vh',
+          minHeight: '100dvh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           bgcolor: '#EEF2FF',
-          p: 3,
+          p: { xs: 2, sm: 3 },
         }}
       >
         <Box
           sx={{
             width: 'min(560px, 100%)',
-            p: 3,
+            p: { xs: 2.25, sm: 3 },
             borderRadius: '22px',
             bgcolor: '#fff',
             border: '1px solid #E5E7EB',

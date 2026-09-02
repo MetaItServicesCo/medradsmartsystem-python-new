@@ -78,8 +78,9 @@ const Layout = () => {
     <ListContextProvider>
       <Box sx={{
         display: 'flex',
-        height: '100vh',
-        minHeight: '100vh',
+        flexDirection: { xs: 'column', sm: 'row' },
+        height: '100dvh',
+        minHeight: '100dvh',
         overflow: 'hidden',
         background: 'linear-gradient(135deg, #E9EEFA 0%, #F4F7FC 52%, #E8EEFA 100%)',
         p: { xs: 0, md: 1.5 },
@@ -111,9 +112,11 @@ const Layout = () => {
               component="main"
               sx={{
                 flex: 1,
-                p: { xs: 2, md: 3 },
+                p: { xs: 1.25, sm: 2, md: 3 },
+                pb: { xs: 'calc(76px + env(safe-area-inset-bottom))', sm: 2, md: 3 },
                 overflowY: 'auto',
                 overflowX: 'hidden',
+                minWidth: 0,
               }}
               className="app-main-scroll"
             >

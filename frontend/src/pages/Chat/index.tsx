@@ -130,10 +130,10 @@ const Chat = () => {
   )
 
   return (
-    <Box className="page-enter" sx={{ display: 'flex', height: 'calc(100vh - 130px)', gap: 2 }}>
+    <Box className="page-enter" sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, height: { xs: 'calc(100dvh - 156px)', md: 'calc(100dvh - 130px)' }, minHeight: 480, gap: { xs: 1, md: 2 } }}>
       {/* Left sidebar — Conversations list */}
       <Box sx={{
-        width: 320, flexShrink: 0, backgroundColor: '#fff',
+        width: { xs: '100%', md: 320 }, height: { xs: 220, md: 'auto' }, flexShrink: 0, backgroundColor: '#fff',
         borderRadius: '20px', display: 'flex', flexDirection: 'column',
         boxShadow: '0 4px 24px rgba(124,58,237,0.08)',
         border: '1px solid rgba(124,58,237,0.06)',

@@ -65,11 +65,11 @@ const PublicSalesPayment = () => {
   })
 
   if (paymentQ.isLoading) {
-    return <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}><CircularProgress /></Box>
+    return <Box sx={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}><CircularProgress /></Box>
   }
   if (paymentQ.isError || !data) {
     return (
-      <Box sx={{ minHeight: '100vh', p: 3, display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}>
+      <Box sx={{ minHeight: '100dvh', p: { xs: 2, sm: 3 }, display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}>
         <Alert severity="error">{(paymentQ.error as any)?.response?.data?.detail || 'This payment authorization link is unavailable.'}</Alert>
       </Box>
     )
@@ -79,7 +79,7 @@ const PublicSalesPayment = () => {
   const submitted = authorization.status !== 'requested'
 
   return (
-    <Box sx={{ minHeight: '100vh', height: '100vh', overflowY: 'auto', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: { xs: 1.5, md: 3 } }}>
+    <Box sx={{ minHeight: '100dvh', height: '100dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: { xs: 1.5, md: 3 } }}>
       <Card sx={{ maxWidth: 1080, mx: 'auto', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 28px 80px rgba(76,29,149,0.14)' }}>
         <Box sx={{ p: { xs: 2.5, md: 4 }, color: '#fff', background: 'linear-gradient(135deg, #7C3AED 0%, #0EA5E9 70%, #EC4899 130%)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

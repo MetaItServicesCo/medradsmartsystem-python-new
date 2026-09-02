@@ -3458,7 +3458,7 @@ const Rentals = () => {
         <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>Rental Invoice Details</DialogTitle>
         <DialogContent dividers>
           {viewInvoice && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
               <Typography><strong>Invoice:</strong> {viewInvoice.invoice_number}</Typography>
               <Typography><strong>Agreement:</strong> {viewInvoice.rental_number || '-'}</Typography>
               <Typography><strong>Customer:</strong> {viewInvoice.customer_name}</Typography>

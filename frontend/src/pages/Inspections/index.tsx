@@ -5087,7 +5087,7 @@ const Inspections = () => {
               </Box>
 
               {formBuilderEngine === 'canvas' && (
-                <Box sx={{ height: 640, borderRadius: '12px', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+                <Box sx={{ height: 640, borderRadius: '12px', overflow: 'auto', border: '1px solid #E2E8F0', WebkitOverflowScrolling: 'touch' }}>
                   <CanvasFormBuilder
                     schema={canvasFormSchema}
                     onChange={setCanvasFormSchema}

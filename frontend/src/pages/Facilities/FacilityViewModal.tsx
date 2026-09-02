@@ -91,12 +91,12 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
     >
       <Box sx={{
         background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)',
-        px: 3.5, py: 3, display: 'flex', alignItems: 'center', gap: 2,
+        px: { xs: 2, sm: 3.5 }, py: { xs: 2, sm: 3 }, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap',
         position: 'relative', overflow: 'hidden',
       }}>
         <Box sx={{ position: 'absolute', right: -20, top: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
         <Box sx={{
-          width: 48, height: 48, borderRadius: '14px',
+          width: { xs: 40, sm: 48 }, height: { xs: 40, sm: 48 }, borderRadius: '14px',
           background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           border: '1px solid rgba(255,255,255,0.2)',
@@ -126,7 +126,7 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
         </IconButton>
       </Box>
 
-      <DialogContent sx={{ p: 3.5 }}>
+      <DialogContent sx={{ p: { xs: 2, sm: 3.5 } }}>
         <Box sx={{ mb: 2.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Chip label={facility.status || 'Active'} size="small"
             sx={{ backgroundColor: facility.status === 'inactive' ? '#FEF2F2' : '#F0FDF4', color: facility.status === 'inactive' ? '#991B1B' : '#10B981', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize' }}

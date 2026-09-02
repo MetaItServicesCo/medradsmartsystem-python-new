@@ -497,7 +497,7 @@ function EmployeesSection() {
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Employees</Typography>
       <TextField size="small" placeholder="Search employees…" value={search}
-        onChange={e => setSearch(e.target.value)} sx={{ mb: 2, width: 320 }} />
+        onChange={e => setSearch(e.target.value)} sx={{ mb: 2, width: { xs: '100%', sm: 320 } }} />
       {isLoading ? <CircularProgress /> : (
         <TableContainer component={Paper}>
           <Table size="small">
@@ -668,7 +668,7 @@ function HolidaysTab() {
           <Typography color="text.secondary">No holidays added yet.</Typography>
         </Paper>
       ) : (
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: 2 }}>
           {list.map((h: any) => {
             const type = h.type ?? h.holiday_type ?? 'public'
             const meta = HOLIDAY_TYPE_META[type] ?? { color: '#9e9e9e', label: type }
@@ -737,7 +737,7 @@ function AnnouncementsTab() {
           <Typography color="text.secondary">No announcements yet.</Typography>
         </Paper>
       ) : (
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 2 }}>
           {list.map((a: any) => {
             const p = a.priority ?? 'normal'
             const meta = PRIORITY_META[p] ?? PRIORITY_META.normal
@@ -1016,7 +1016,7 @@ function AttendancePoliciesTab() {
       </Box>
 
       {/* Policy Cards Grid */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 2 }}>
         {list.map((p: any) => (
           <Card key={p.id} sx={{ position: 'relative', borderLeft: `4px solid ${p.is_default ? '#F05D92' : p.is_active ? '#7161D8' : '#e0e0e0'}` }}>
             <CardContent>
@@ -1054,7 +1054,7 @@ function AttendancePoliciesTab() {
               )}
 
               {/* Grace / Rate grid */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 1 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1, mb: 1 }}>
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <Typography fontSize={14}>⏰</Typography>
@@ -1523,7 +1523,7 @@ function LeaveTypesTab() {
       </Box>
 
       {/* Cards Grid */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: 2 }}>
         {list.length === 0 ? (
           <Typography color="text.secondary" sx={{ gridColumn: '1/-1', py: 4, textAlign: 'center' }}>
             No leave types yet. Add one to let employees apply for leave.
@@ -1549,7 +1549,7 @@ function LeaveTypesTab() {
                 <Chip size="small" label={t.is_paid ? 'Paid' : 'Unpaid'} color={t.is_paid ? 'primary' : 'default'} variant="outlined" />
               </Box>
 
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
                 <Box>
                   <Typography variant="body2" fontWeight={700}>{t.max_days_per_year > 0 ? `${t.max_days_per_year} days` : 'Unlimited'}</Typography>
                   <Typography variant="caption" color="text.secondary">Per Year</Typography>

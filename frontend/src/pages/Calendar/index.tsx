@@ -136,8 +136,8 @@ const CalendarPage = () => {
   }))
 
   return (
-    <Box className="page-enter" sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <Box className="page-enter" sx={{ height: { xs: 'calc(100dvh - 156px)', sm: 'calc(100dvh - 120px)' }, minHeight: 480, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ mb: { xs: 2, sm: 4 }, display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B', letterSpacing: '-0.5px' }}>Calendar</Typography>
           <Typography variant="body2" sx={{ color: '#6B7280', fontWeight: 500 }}>Your beautifully merged personal & group schedules</Typography>
@@ -158,7 +158,7 @@ const CalendarPage = () => {
           sx={{ 
             borderRadius: '14px', 
             textTransform: 'none', 
-            px: 4, py: 1.2, 
+            px: { xs: 2, sm: 4 }, py: 1.2,
             fontWeight: 800,
             background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
             boxShadow: '0 8px 20px rgba(79,70,229,0.25)',
@@ -170,7 +170,7 @@ const CalendarPage = () => {
       </Box>
 
       <Paper sx={{ 
-        p: 4, 
+        p: { xs: 1, sm: 2, md: 4 },
         borderRadius: '32px', 
         flex: 1, 
         overflow: 'hidden', 

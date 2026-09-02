@@ -261,11 +261,11 @@ const ClientQuotation = () => {
   }
 
   if (quoteQ.isLoading) {
-    return <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}><CircularProgress /></Box>
+    return <Box sx={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}><CircularProgress /></Box>
   }
   if (quoteQ.isError || !data || !quotation) {
     return (
-      <Box sx={{ minHeight: '100vh', p: 4, bgcolor: '#F5F3FF' }}>
+      <Box sx={{ minHeight: '100dvh', p: { xs: 2, sm: 4 }, bgcolor: '#F5F3FF' }}>
         <Alert severity="error" sx={{ maxWidth: 760, mx: 'auto' }}>
           {(quoteQ.error as any)?.response?.data?.detail || 'This sales document is unavailable or its link has expired.'}
         </Alert>

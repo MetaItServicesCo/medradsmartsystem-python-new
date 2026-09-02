@@ -8,7 +8,7 @@ const Landing = () => (
     sx={{
       display: 'block',
       width: '100%',
-      minHeight: '100vh',
+      minHeight: '100dvh',
       border: 0,
       bgcolor: '#EFEAFF',
     }}
