@@ -107,7 +107,15 @@ def list_tools(
         if definition.module == "platform"
         or has_module_permission(current_user, definition.module, "index")
     )
-    return {"tools": anthropic_tool_schemas(allowed)}
+    schemas = anthropic_tool_schemas(allowed)
+    # The module each tool belongs to travels with the schema so the agent can
+    # narrow by module without maintaining its own copy of the mapping, which
+    # would silently drift as tools are added.
+    modules = {name: definition.module for name, definition in TOOLS_BY_NAME.items()}
+    return {
+        "tools": schemas,
+        "tool_modules": {schema["name"]: modules[schema["name"]] for schema in schemas},
+    }
 
 
 @router.post("/tools/{tool_name}", dependencies=[Depends(require_internal_caller)])

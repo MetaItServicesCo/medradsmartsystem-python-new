@@ -45,10 +45,12 @@ class MedRadClient:
     async def __aexit__(self, *exc_info: Any) -> None:
         await self._client.aclose()
 
-    async def list_tools(self) -> list[dict[str, Any]]:
+    async def list_tools(self) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        """Return the tool schemas and the module each one belongs to."""
         response = await self._client.get("/tools")
         self._raise_for_status(response, "list tools")
-        return response.json().get("tools", [])
+        payload = response.json()
+        return payload.get("tools", []), payload.get("tool_modules", {})
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         response = await self._client.post(

@@ -164,16 +164,19 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
 
     async with MedRadClient(state["user_token"]) as client:
         try:
-            available = await client.list_tools()
+            available, tool_modules = await client.list_tools()
         except MedRadError as exc:
             return {"tool_results": [], "errors": [str(exc)]}
 
         module = state.get("module")
         if module:
-            # Narrow to the classified module, always keeping the resolver.
+            # Narrow to the classified module, always keeping the resolver. The
+            # module for each tool comes from the backend, so adding a tool
+            # never requires a matching change here.
             narrowed = [
                 tool for tool in available
-                if tool["name"] in ALWAYS_AVAILABLE or _tool_matches_module(tool["name"], module)
+                if tool["name"] in ALWAYS_AVAILABLE
+                or tool_modules.get(tool["name"]) == module
             ]
             if len(narrowed) > 1:
                 available = narrowed
@@ -249,17 +252,6 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
 
     return {"tool_results": collected, "citations": citations, "errors": errors}
 
-
-def _tool_matches_module(tool_name: str, module: str) -> bool:
-    mapping = {
-        "facility_detail": "facilities",
-        "facility_business_summary": "billing",
-        "search_invoices": "billing",
-        "search_inspections": "inspections",
-        "service_request_detail": "service-requests",
-        "search_service_requests": "service-requests",
-    }
-    return mapping.get(tool_name) == module
 
 
 def _serialize_block(block: Any) -> dict[str, Any]:

@@ -13,10 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.assistant.tools import entities
+from app.assistant.tools import commerce, entities
 from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
+from app.models.rental import RentalStatus
 from app.models.service_request import Priority, ServiceRequestStatus
 
 
@@ -224,6 +225,64 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             },
         },
         handler=entities.search_invoices,
+    ),
+    ToolDefinition(
+        name="search_rentals",
+        module="rentals",
+        description=(
+            "Find or count rental agreements, the unit the Rentals module "
+            "lists. Use failed_payments_only for questions about failed or "
+            "retrying rental payments. Read total_count for 'how many'."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": _values(RentalStatus)},
+                },
+                "facility_id": {"type": "integer"},
+                "customer": {"type": "string", "description": "Customer name, partial match."},
+                "failed_payments_only": {"type": "boolean", "default": False},
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+            },
+        },
+        handler=commerce.search_rentals,
+    ),
+    ToolDefinition(
+        name="search_sales_quotations",
+        module="sales",
+        description=(
+            "Find or count sales quotations, the unit the Sales module lists. "
+            "A quotation is NOT an invoice: total_quoted_value is pipeline "
+            "value, not billed or collected revenue, and must never be "
+            "reported as revenue. For revenue use search_invoices or "
+            "facility_business_summary."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": list(commerce.SALES_QUOTATION_STATUSES),
+                    },
+                },
+                "paid_status": {
+                    "type": "string",
+                    "enum": list(commerce.SALES_PAID_STATUSES),
+                },
+                "facility_id": {"type": "integer"},
+                "customer": {"type": "string", "description": "Customer name, partial match."},
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+            },
+        },
+        handler=commerce.search_sales_quotations,
     ),
 )
 
