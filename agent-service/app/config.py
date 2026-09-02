@@ -6,6 +6,11 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     SERVICE_NAME: str = "medrad-agent"
+    # The assistant introduces itself by this name. "Rad" ties to MedRad and to
+    # radiology, and is short enough to say. Changing it here changes it
+    # everywhere the agent speaks; the widget header is set in the frontend.
+    AGENT_NAME: str = "Rad"
+    AGENT_TAGLINE: str = "your MedRad operations assistant"
     APP_ENV: str = "development"
     LOG_LEVEL: str = "INFO"
 

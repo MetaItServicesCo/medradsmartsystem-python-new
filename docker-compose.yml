@@ -269,6 +269,9 @@ services:
       - MEDRAD_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - AGENT_MODEL=${AGENT_MODEL:-claude-haiku-4-5}
+      # The assistant introduces itself by this name. The widget header
+      # is set in the frontend, so change both together.
+      - AGENT_NAME=${AGENT_NAME:-Rad}
       - LOG_LEVEL=${AGENT_LOG_LEVEL:-INFO}
     depends_on:
       backend:

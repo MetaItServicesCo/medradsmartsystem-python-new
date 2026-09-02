@@ -28,11 +28,12 @@ from langgraph.graph import END, START, StateGraph
 from app.config import settings
 from app.medrad_client import MedRadClient, MedRadError
 from app.prompts import (
-    CHITCHAT_PROMPT,
-    CLASSIFIER_PROMPT,
-    SYNTHESIS_PROMPT,
-    TOOL_PROMPT,
+    chitchat_prompt,
+    classifier_prompt,
+    greeting_fallback,
     refusal_message,
+    synthesis_prompt,
+    tool_prompt,
 )
 
 
@@ -111,7 +112,7 @@ async def classify_node(state: AgentState) -> dict[str, Any]:
         message = await _client().messages.create(
             model=settings.AGENT_MODEL,
             max_tokens=300,
-            system=_cached_system(CLASSIFIER_PROMPT),
+            system=_cached_system(classifier_prompt()),
             tools=[_CLASSIFY_TOOL],
             tool_choice={"type": "tool", "name": "route_question"},
             messages=[{
@@ -194,7 +195,7 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                 message = await _client().messages.create(
                     model=settings.AGENT_MODEL,
                     max_tokens=settings.AGENT_MAX_TOKENS,
-                    system=_cached_system(TOOL_PROMPT),
+                    system=_cached_system(tool_prompt()),
                     tools=available,
                     messages=conversation,
                 )
@@ -320,7 +321,7 @@ async def synthesize_node(state: AgentState) -> dict[str, Any]:
         message = await _client().messages.create(
             model=settings.AGENT_MODEL,
             max_tokens=settings.AGENT_MAX_TOKENS,
-            system=_cached_system(SYNTHESIS_PROMPT),
+            system=_cached_system(synthesis_prompt()),
             messages=[{
                 "role": "user",
                 "content": (
@@ -353,7 +354,7 @@ async def chitchat_node(state: AgentState) -> dict[str, Any]:
         message = await _client().messages.create(
             model=settings.AGENT_MODEL,
             max_tokens=250,
-            system=_cached_system(CHITCHAT_PROMPT),
+            system=_cached_system(chitchat_prompt()),
             messages=[{"role": "user", "content": state["question"]}],
         )
         text = "".join(
@@ -363,11 +364,7 @@ async def chitchat_node(state: AgentState) -> dict[str, Any]:
             return {"answer": text}
     except Exception:
         logger.exception("Chitchat reply failed; using static greeting")
-    return {"answer": (
-        "Doing well, thanks. I can look up live figures across facilities, "
-        "service requests, inspections, rentals, sales, billing and HR, and "
-        "explain how things are done in the app. What would you like to know?"
-    )}
+    return {"answer": greeting_fallback()}
 
 
 async def clarify_node(state: AgentState) -> dict[str, Any]:

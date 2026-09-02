@@ -35,6 +35,10 @@ interface Turn {
   isError?: boolean
 }
 
+// Kept in sync with AGENT_NAME in the agent service. The agent introduces
+// itself by this name, so the header must not disagree with what it says.
+const AGENT_NAME = 'Rad'
+
 const SUGGESTIONS = [
   'How much business have we done with Grace Ambulatory?',
   'How many inspections were completed this month?',
@@ -116,7 +120,7 @@ const AssistantWidget = () => {
 
   return (
     <>
-      <Tooltip title="Ask the assistant">
+      <Tooltip title={`Ask ${AGENT_NAME}`}>
         <Fab
           onClick={() => setOpen(true)}
           sx={{
@@ -142,7 +146,7 @@ const AssistantWidget = () => {
         }}>
           <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.18)' }}><AutoAwesomeIcon /></Avatar>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontWeight: 900, fontSize: 16 }}>Super Admin Assistant</Typography>
+            <Typography sx={{ fontWeight: 900, fontSize: 16 }}>Ask {AGENT_NAME}</Typography>
             <Typography sx={{ fontSize: 11.5, fontWeight: 700, opacity: 0.82 }}>
               Read-only · answers cite live data and documentation
             </Typography>
@@ -162,8 +166,11 @@ const AssistantWidget = () => {
         <Box ref={scrollRef} sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: '#F8FAFC' }}>
           {turns.length === 0 && (
             <Box>
+              <Typography sx={{ color: '#1E1B4B', fontSize: 15, fontWeight: 900, mb: 0.4 }}>
+                Hi, I'm {AGENT_NAME}.
+              </Typography>
               <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 700, mb: 1.4 }}>
-                Ask about facilities, service requests, inspections, rentals, sales, billing or HR.
+                Ask me about facilities, service requests, inspections, rentals, sales, billing or HR — or how to do something in the app.
               </Typography>
               <Stack spacing={1}>
                 {SUGGESTIONS.map((suggestion) => (
@@ -241,7 +248,7 @@ const AssistantWidget = () => {
             multiline
             maxRows={4}
             size="small"
-            placeholder="Ask a question…"
+            placeholder={`Ask ${AGENT_NAME} anything…`}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             onKeyDown={(event) => {
