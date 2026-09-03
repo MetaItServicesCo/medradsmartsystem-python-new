@@ -217,6 +217,8 @@ const AssistantWidget = () => {
 
   const stop = () => {
     cancelRef.current?.()
+    // Also drops anything already queued for speaking, not just the audio
+    // currently playing: the queue is what kept it talking after a stop.
     voice.stopSpeaking()
     // Keep whatever streamed so far rather than discarding a partial answer.
     if (streaming.trim()) {
@@ -481,6 +483,20 @@ const AssistantWidget = () => {
               </span>
             </Tooltip>
 
+            {/* Talking over it is the natural way to interrupt, but it needs a
+                control that always works: echo cancellation varies by device,
+                and outside a conversation the microphone is not even open. */}
+            {(voice.speaking || busy) && (
+              <Button
+                size="small"
+                startIcon={<StopCircleIcon />}
+                onClick={stop}
+                sx={{ fontSize: 12, fontWeight: 800, color: '#DC2626', textTransform: 'none' }}
+              >
+                {voice.speaking ? 'Stop talking' : 'Stop'}
+              </Button>
+            )}
+
             <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: voice.error ? '#DC2626' : '#64748B', textAlign: 'center' }}>
               {voice.error
                 || (voice.listening
@@ -488,13 +504,22 @@ const AssistantWidget = () => {
                   : voice.transcribing
                     ? 'Transcribing…'
                     : voice.speaking
-                      ? 'Speaking — just talk over me'
+                      ? (voice.conversing ? 'Speaking — talk over me to interrupt' : 'Speaking…')
                       : busy
                         ? 'Working…'
                         : voice.conversing
                           ? 'Go ahead, I am listening'
                           : `Tap to talk to ${AGENT_NAME}`)}
             </Typography>
+
+            {/* The live path failing back to whole recordings is silent by
+                design. Saying which one is in use turns "it feels slow" into
+                something checkable. */}
+            {voice.conversing && !voice.streaming && (
+              <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: '#B45309', textAlign: 'center' }}>
+                Live audio unavailable — sending complete recordings, which is slower
+              </Typography>
+            )}
 
             {!voice.conversing && (
               <Button

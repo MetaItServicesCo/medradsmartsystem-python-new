@@ -32,9 +32,12 @@ from app.medrad_client import MedRadClient, MedRadError
 from app.providers import complete, stream_text
 from app.prompts import (
     chitchat_prompt,
+    clarify_fallback,
     voice_synthesis_prompt,
     classifier_prompt,
     greeting_fallback,
+    lookup_failed_message,
+    nothing_found_message,
     refusal_message,
     synthesis_prompt,
     tool_prompt,
@@ -216,7 +219,9 @@ async def classify_node(state: AgentState) -> dict[str, Any]:
             # Routing is a structured one-word decision, so it can run on a
             # smaller model than the one that writes the answer.
             model=settings.agent_classifier_model(),
-            max_tokens=300,
+            # A forced tool call is a few dozen tokens. The old ceiling was
+            # sized for prose and some providers reserve against it.
+            max_tokens=120,
             tools=[_CLASSIFY_TOOL],
             force_tool="route_question",
             # Earlier turns are what make an elliptical follow-up classifiable:
@@ -433,16 +438,11 @@ async def synthesize_node(state: AgentState) -> dict[str, Any]:
     has_live = bool(state.get("tool_results"))
     has_knowledge = bool(state.get("knowledge"))
     if not has_live and not has_knowledge:
+        spoken = bool(state.get("voice"))
         errors = state.get("errors") or []
         if errors:
-            return {"answer": "I could not retrieve the information: {}".format(errors[0])}
-        return {
-            "answer": (
-                "I could not find anything in the live data or the knowledge base "
-                "that answers that. Try naming a specific facility, person or "
-                "record number."
-            )
-        }
+            return {"answer": lookup_failed_message(errors[0], spoken)}
+        return {"answer": nothing_found_message(spoken)}
 
     try:
         # Streamed, so the answer appears as it is written. This is the node
@@ -462,14 +462,18 @@ async def synthesize_node(state: AgentState) -> dict[str, Any]:
             settings.AGENT_MAX_TOKENS,
             _history_messages(state),
         )
-        return {"answer": text or "I could not compose an answer from the available evidence."}
+        return {"answer": text or nothing_found_message(bool(state.get("voice")))}
     except Exception as exc:
         logger.exception("Synthesis failed")
-        return {"answer": "The assistant model was unavailable: {}".format(exc)}
+        return {"answer": lookup_failed_message(str(exc), bool(state.get("voice")))}
 
 
 async def refuse_node(state: AgentState) -> dict[str, Any]:
-    return {"answer": refusal_message(state.get("refusal_reason") or "write")}
+    return {
+        "answer": refusal_message(
+            state.get("refusal_reason") or "write", bool(state.get("voice"))
+        )
+    }
 
 
 async def chitchat_node(state: AgentState) -> dict[str, Any]:
@@ -482,14 +486,11 @@ async def chitchat_node(state: AgentState) -> dict[str, Any]:
             return {"answer": text}
     except Exception:
         logger.exception("Chitchat reply failed; using static greeting")
-    return {"answer": greeting_fallback()}
+    return {"answer": greeting_fallback(bool(state.get("voice")))}
 
 
 async def clarify_node(state: AgentState) -> dict[str, Any]:
-    return {
-        "answer": state.get("answer")
-        or "Could you be more specific? Naming the facility, person, period or record helps."
-    }
+    return {"answer": state.get("answer") or clarify_fallback(bool(state.get("voice")))}
 
 
 async def gather_node(state: AgentState) -> dict[str, Any]:

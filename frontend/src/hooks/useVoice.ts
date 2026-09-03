@@ -141,6 +141,37 @@ interface VadState {
   loudSince: number
   quietSince: number
   recording: boolean
+  /** Onset tracking for barge-in, kept apart from the turn detector's own.
+   *  Sharing one field made interrupting cost a second onset window before
+   *  the replacement turn could open. */
+  bargeSince: number
+}
+
+/**
+ * Decide whether someone is talking over the assistant.
+ *
+ * Separate from turn detection because it applies whenever the assistant is
+ * speaking and the microphone is open, not only in a hands-free conversation.
+ * It was previously reachable only while conversing, which meant that after a
+ * press-to-talk question there was no way to stop the answer at all.
+ */
+const bargeInStep = (vad: VadState, rms: number, now: number): boolean => {
+  if (vad.samples * VAD_POLL_MS < VAD_CALIBRATION_MS) {
+    vad.floor = (vad.floor * vad.samples + rms) / (vad.samples + 1)
+    vad.samples += 1
+    vad.threshold = Math.max(VAD_MIN_THRESHOLD, vad.floor * VAD_FLOOR_MULTIPLIER)
+    return false
+  }
+  // Echo cancellation is good but not perfect, so the bar rises while the
+  // assistant talks. Without this it hears itself and interrupts itself.
+  if (rms <= vad.threshold * VAD_BARGE_IN_MULTIPLIER) {
+    vad.bargeSince = 0
+    return false
+  }
+  if (!vad.bargeSince) vad.bargeSince = now
+  if (now - vad.bargeSince < VAD_ONSET_MS) return false
+  vad.bargeSince = 0
+  return true
 }
 
 /**
@@ -212,6 +243,10 @@ export interface UseVoiceOptions {
 export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   const [listening, setListening] = useState(false)
   const [conversing, setConversing] = useState(false)
+  // Whether audio is going up live or falling back to whole recordings. The
+  // fallback is silent by design, which made a broken proxy indistinguishable
+  // from a working one.
+  const [streaming, setStreaming] = useState(false)
   // Live microphone energy, 0..1, so the widget can show that it is hearing
   // something rather than just claiming to listen.
   const [level, setLevel] = useState(0)
@@ -238,9 +273,9 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   const monitorRef = useRef<number | null>(null)
   // Everything the detector needs between polls. Kept in a ref because it
   // changes every 50ms and no render depends on it.
-  const vadRef = useRef({
+  const vadRef = useRef<VadState>({
     floor: 0, samples: 0, threshold: VAD_MIN_THRESHOLD,
-    loudSince: 0, quietSince: 0, recording: false,
+    loudSince: 0, quietSince: 0, bargeSince: 0, recording: false,
   })
   const speakingRef = useRef(false)
   // Read inside the 50ms detector loop, which a state value would never see
@@ -280,6 +315,8 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     // Bumping the token abandons any sequence still in flight, so a stopped
     // answer cannot resume speaking a later sentence.
     speakRunRef.current += 1
+    // Sentences already queued are part of the answer being stopped.
+    queueRef.current = { pieces: [], consumed: 0, done: true }
     releaseAudio()
     setSpeaking(false)
   }, [releaseAudio])
@@ -299,6 +336,9 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     }
     audio.onended = finish
     audio.onerror = finish
+    // Stopping pauses rather than ends the clip, which fires no "ended" event
+    // and would leave this promise, and the drain awaiting it, alive forever.
+    audio.onpause = finish
     void audio.play().catch(finish)
   }), [])
 
@@ -540,7 +580,7 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
 
     vadRef.current = {
       floor: 0, samples: 0, threshold: VAD_MIN_THRESHOLD,
-      loudSince: 0, quietSince: 0, recording: false,
+      loudSince: 0, quietSince: 0, bargeSince: 0, recording: false,
     }
     // Armed either way: press-to-talk commits to a turn immediately, a
     // conversation waits, but both are capturing before the first word.
@@ -560,30 +600,16 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
       const rms = Math.sqrt(sum / buffer.length)
       setLevel(Math.min(1, rms * 6))
 
-      if (streamingRef.current) {
-        // The server decides where turns begin and end. All that is worth
-        // doing here is stopping playback the moment someone talks over it:
-        // waiting for the server to agree would leave the assistant speaking
-        // over them for a few hundred milliseconds, which is the rudest
-        // possible failure mode.
-        if (speakingRef.current) {
-          const vad = vadRef.current
-          if (vad.samples * VAD_POLL_MS < VAD_CALIBRATION_MS) {
-            vad.floor = (vad.floor * vad.samples + rms) / (vad.samples + 1)
-            vad.samples += 1
-            vad.threshold = Math.max(VAD_MIN_THRESHOLD, vad.floor * VAD_FLOOR_MULTIPLIER)
-          } else if (rms > vad.threshold * VAD_BARGE_IN_MULTIPLIER) {
-            if (!vad.loudSince) vad.loudSince = Date.now()
-            if (Date.now() - vad.loudSince >= VAD_ONSET_MS) {
-              vad.loudSince = 0
-              stopSpeaking()
-            }
-          } else {
-            vad.loudSince = 0
-          }
-        }
-        return
+      // Barge-in first, and in every mode. Waiting for the server to agree
+      // would leave the assistant talking over the person for a few hundred
+      // milliseconds, and outside a hands-free conversation nothing else was
+      // listening at all.
+      if (speakingRef.current && bargeInStep(vadRef.current, rms, Date.now())) {
+        stopSpeaking()
       }
+
+      // Beyond that the server owns where turns begin and end.
+      if (streamingRef.current) return
 
       const action = vadStep(vadRef.current, rms, Date.now(), {
         speaking: speakingRef.current,
@@ -593,8 +619,7 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
       if (action === 'start') {
         // Speech, sustained long enough to be real. The recorder has been
         // running all along, so the word that triggered this is already in the
-        // file. If the assistant is talking, this is an interruption: it stops
-        // mid-sentence, the way a person does when you speak over them.
+        // file.
         if (speakingRef.current) stopSpeaking()
         // Marks the turn open. Without this the detector keeps re-reporting
         // the same onset and never reaches the branch that ends the turn.
@@ -697,10 +722,16 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
             onEvent: handleStreamEvent,
           })
           streamingRef.current = true
+          setStreaming(true)
           discardRecording()
-        } catch {
+        } catch (streamError) {
           // Left to the recorder path, which is already running.
           streamingRef.current = false
+          setStreaming(false)
+          console.warn(
+            'Voice streaming unavailable; using whole recordings instead.',
+            streamError,
+          )
         }
       }
     } catch (err) {
@@ -718,6 +749,7 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   const stopConversation = useCallback(() => {
     conversingRef.current = false
     streamingRef.current = false
+    setStreaming(false)
     voiceStreamRef.current?.close()
     voiceStreamRef.current = null
     setConversing(false)
@@ -747,6 +779,7 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     supported,
     listening,
     conversing,
+    streaming,
     level,
     transcribing,
     speaking,

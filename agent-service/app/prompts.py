@@ -145,17 +145,56 @@ Only list what you cover if you are actually introducing yourself, and then in
 one clause, not a catalogue. No markdown, no bullet lists, no emojis."""
 
 
-def refusal_message(reason: str) -> str:
+# Every answer that does not come from the synthesis model still gets spoken
+# aloud, so each one needs a spoken form. Written for the eye and read out, a
+# three-sentence refusal or a raw error string is exactly what makes the
+# assistant sound like a screen reader rather than a colleague.
+
+def refusal_message(reason: str, voice: bool = False) -> str:
     if reason == "write":
+        if voice:
+            return (
+                "I can only look things up at the moment, not change anything. "
+                "I can show you the records though."
+            )
         return (
             "I can only read data in this release. I cannot create, edit, approve "
             "or delete records. I can show you the relevant records so you can act "
             "on them in the module."
         )
+    if voice:
+        return "I can't help with that one."
     return (
         "I cannot help with that. Credentials, tokens and payment secrets are "
         "never accessible to the assistant."
     )
+
+
+def clarify_fallback(voice: bool = False) -> str:
+    if voice:
+        return "Sorry, which one did you mean?"
+    return (
+        "Could you be more specific? Naming the facility, person, period or "
+        "record helps."
+    )
+
+
+def nothing_found_message(voice: bool = False) -> str:
+    if voice:
+        return "I couldn't find anything on that. Try naming a facility or a person."
+    return (
+        "I could not find anything in the live data or the knowledge base "
+        "that answers that. Try naming a specific facility, person or "
+        "record number."
+    )
+
+
+def lookup_failed_message(detail: str, voice: bool = False) -> str:
+    # Spoken, the detail is a stack-trace fragment read letter by letter. On
+    # screen it is the thing that lets someone fix the problem.
+    if voice:
+        return "Something went wrong looking that up. Try again in a moment."
+    return "I could not retrieve the information: {}".format(detail)
 
 
 def tool_prompt() -> str:
@@ -178,8 +217,10 @@ def classifier_prompt() -> str:
     return CLASSIFIER_PROMPT
 
 
-def greeting_fallback() -> str:
+def greeting_fallback(voice: bool = False) -> str:
     """Used when the model is unreachable, so the assistant still has a name."""
+    if voice:
+        return "I'm {}. What would you like to know?".format(settings.AGENT_NAME)
     return (
         "I'm {}, {}. I can look up live figures across facilities, service "
         "requests, inspections, rentals, sales, billing and HR, and explain how "
