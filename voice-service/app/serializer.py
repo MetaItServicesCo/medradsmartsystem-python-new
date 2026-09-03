@@ -23,7 +23,7 @@ Server -> client
     {"type":"user_started"}      speech detected; the client stops playback
     {"type":"user_stopped"}
     {"type":"transcript","text":...,"final":true}
-    {"type":"assistant","text":...}       answer text, as it is written
+    {"type":"assistant","text":...}       answer text, as it is spoken
     {"type":"interrupted"}       drop anything buffered and stop immediately
     {"type":"bot_stopped"}       the answer finished speaking
 """
@@ -38,11 +38,11 @@ from pipecat.frames.frames import (
     Frame,
     InputAudioRawFrame,
     InterruptionFrame,
-    LLMTextFrame,
     OutputAudioRawFrame,
     StartFrame,
     TranscriptionFrame,
     TTSAudioRawFrame,
+    TTSTextFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
@@ -79,8 +79,25 @@ class RawPcmSerializer(FrameSerializer):
             return json.dumps({"type": "bot_stopped"})
         if isinstance(frame, TranscriptionFrame):
             return json.dumps({"type": "transcript", "text": frame.text, "final": True})
-        if isinstance(frame, LLMTextFrame):
-            return json.dumps({"type": "assistant", "text": frame.text})
+        if isinstance(frame, TTSTextFrame):
+            # Deliberately the text the synthesiser is speaking, not the text
+            # the model is writing.
+            #
+            # The model finishes writing long before the voice finishes saying
+            # it, so sending the model's tokens put the whole answer on screen
+            # while the assistant was still on its first sentence -- which read
+            # as the voice lagging behind, and was the loudest complaint about
+            # the old version. Taking it from this end makes the transcript a
+            # by-product of the speech rather than a preview of it, so the words
+            # appear as they are heard. It is the same relationship a
+            # speech-to-speech model has between its audio and its transcript,
+            # arrived at from the other direction.
+            # The synthesiser sets this immediately before it speaks the
+            # frame, so it marks precisely the moment the words become audible.
+            # Text it decided to skip never reaches the screen either.
+            if frame.will_be_spoken:
+                return json.dumps({"type": "assistant", "text": frame.text})
+            return None
         if isinstance(frame, StartFrame):
             return json.dumps({"type": "ready", "sample_rate": self._sample_rate})
         return None
