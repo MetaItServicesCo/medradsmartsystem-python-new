@@ -143,6 +143,23 @@ def _history_messages(state: AgentState) -> list[dict[str, Any]]:
     return messages
 
 
+def _emit_phase(node: str) -> None:
+    """Announce that a node has *started*.
+
+    LangGraph's update stream reports a node once it has finished, which is the
+    wrong end for anything meant to cover the wait. The spoken "let me check"
+    was being queued after the lookup had already returned, so it filled no
+    silence and merely delayed the answer behind its own playback. The custom
+    channel delivers immediately, so this reaches the browser while the work is
+    still going on.
+    """
+    try:
+        writer = get_stream_writer()
+    except Exception:
+        return  # Not inside a streaming run; the caller does not depend on this.
+    writer({"type": "phase", "node": node})
+
+
 async def _stream_text(
     system: str,
     user_content: str,
@@ -265,6 +282,7 @@ async def classify_node(state: AgentState) -> dict[str, Any]:
 
 async def retrieve_node(state: AgentState) -> dict[str, Any]:
     """Fetch supporting passages from the generated knowledge base."""
+    _emit_phase("retrieve")
     async with MedRadClient(state["user_token"]) as client:
         try:
             payload = await client.search_knowledge(
@@ -284,6 +302,7 @@ async def retrieve_node(state: AgentState) -> dict[str, Any]:
 
 async def tools_node(state: AgentState) -> dict[str, Any]:
     """Run Claude's tool-use loop against the read-only MedRad tool API."""
+    _emit_phase("use_tools")
     collected: list[dict[str, Any]] = []
     citations: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -514,6 +533,7 @@ async def gather_node(state: AgentState) -> dict[str, Any]:
     so running them concurrently costs a hybrid question the slower leg rather
     than the sum of both.
     """
+    _emit_phase("gather")
     tools, knowledge = await asyncio.gather(tools_node(state), retrieve_node(state))
     return {
         "tool_results": tools.get("tool_results", []),
@@ -600,8 +620,13 @@ async def run_agent(
         state, stream_mode=["updates", "custom"]
     ):
         if mode == "custom":
-            if isinstance(chunk, dict) and chunk.get("type") == "token":
-                yield {"event": "token", "text": chunk.get("text", "")}
+            if isinstance(chunk, dict):
+                if chunk.get("type") == "token":
+                    yield {"event": "token", "text": chunk.get("text", "")}
+                elif chunk.get("type") == "phase":
+                    # Reaches the browser while the node is still running, which
+                    # is the only kind of progress worth speaking over.
+                    yield {"event": "progress", "node": chunk.get("node", "")}
             continue
         for node_name, node_state in (chunk or {}).items():
             final.update(node_state or {})
