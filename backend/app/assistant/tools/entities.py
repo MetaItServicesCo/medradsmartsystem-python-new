@@ -850,6 +850,33 @@ def search_users(
         "route": _deep_link("/users", search=row.full_name),
     } for row in rows]
 
+    notes = [
+        "Counts people, not their assignments. Use search_service_requests "
+        "with assigned_technician_id for a person's workload.",
+    ]
+
+    # A named person filtered out by role reads as "no such person", which is a
+    # confidently wrong answer: people are described by the work they do, not by
+    # the role recorded on their account, and the two often differ. Say who was
+    # actually found instead.
+    if name and normalized and int(totals.total or 0) == 0:
+        fallback = ctx.db.query(User).filter(or_(
+            User.full_name.ilike(pattern, escape="\\"),
+            User.username.ilike(pattern, escape="\\"),
+        ))
+        matches = fallback.order_by(User.full_name).limit(5).all()
+        if matches:
+            described = ", ".join(
+                "{} ({})".format(row.full_name, getattr(row.role, "value", row.role))
+                for row in matches
+            )
+            notes.append(
+                "No user named '{}' holds the requested role, but these exist "
+                "under other roles: {}. Do not report the person as missing; "
+                "their account role simply differs from how they are described."
+                .format(name, described)
+            )
+
     return ToolResult(
         tool="search_users",
         total_count=int(totals.total or 0),
@@ -866,8 +893,5 @@ def search_users(
             "facility_id": facility_id,
             "name": name,
         },
-        notes=[
-            "Counts people, not their assignments. Use search_service_requests "
-            "with assigned_technician_id for a person's workload.",
-        ],
+        notes=notes,
     )
