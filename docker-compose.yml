@@ -318,7 +318,12 @@ services:
       - PIPER_LENGTH_SCALE=${PIPER_LENGTH_SCALE:-1.06}
       - PIPER_NOISE_W=${PIPER_NOISE_W:-0.9}
       - PIPER_SENTENCE_SILENCE=${PIPER_SENTENCE_SILENCE:-0.15}
-      - WHISPER_MODEL=${WHISPER_MODEL:-base.en}
+      # Must match the model baked by speech-service/Dockerfile, which is what
+      # this default silently overrode: the image built small.en and the
+      # container then ran base.en, so an accuracy change never took effect.
+      # base.en is roughly twice as fast and noticeably weaker on short, noisy
+      # speech, which is most of a spoken turn.
+      - WHISPER_MODEL=${WHISPER_MODEL:-small.en}
       - LOG_LEVEL=${SPEECH_LOG_LEVEL:-INFO}
     networks:
       - medrad_network

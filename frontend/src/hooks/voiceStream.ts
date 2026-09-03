@@ -28,34 +28,12 @@ export type VoiceStreamEvent =
 const BLOCK_SECONDS = 0.04
 const TARGET_SAMPLE_RATE = 16000
 
-// Runs on the audio thread. It only buffers and forwards: any real work here
-// would be work done in the path that must never glitch.
-const WORKLET_SOURCE = `
-class PcmTap extends AudioWorkletProcessor {
-  constructor() {
-    super()
-    this._parts = []
-    this._count = 0
-    this._target = Math.round(sampleRate * ${BLOCK_SECONDS})
-  }
-  process(inputs) {
-    const channel = inputs[0] && inputs[0][0]
-    if (!channel) return true
-    this._parts.push(channel.slice())
-    this._count += channel.length
-    if (this._count >= this._target) {
-      const block = new Float32Array(this._count)
-      let offset = 0
-      for (const part of this._parts) { block.set(part, offset); offset += part.length }
-      this._parts = []
-      this._count = 0
-      this.port.postMessage(block, [block.buffer])
-    }
-    return true
-  }
-}
-registerProcessor('pcm-tap', PcmTap)
-`
+// Served from this origin as a real file. Building it at runtime from a blob:
+// URL was blocked by the page's Content-Security-Policy, which allows scripts
+// from 'self' but not blob: -- and worklet modules are fetched under
+// script-src. The only symptom was voice quietly falling back to whole
+// recordings, which is precisely the kind of silent failure that cost days.
+const WORKLET_URL = '/voice-worklet.js'
 
 /** Linear resample to the rate the recogniser expects. */
 const resample = (input: Float32Array, from: number, to: number): Float32Array => {
@@ -157,15 +135,11 @@ export const openVoiceStream = ({
     if (payload.type === 'ready' && !settled) {
       // Only start pushing audio once the far end has agreed to take it.
       try {
-        const blob = new Blob([WORKLET_SOURCE], { type: 'application/javascript' })
-        const moduleUrl = URL.createObjectURL(blob)
-        try {
-          await context.audioWorklet.addModule(moduleUrl)
-        } finally {
-          URL.revokeObjectURL(moduleUrl)
-        }
+        await context.audioWorklet.addModule(WORKLET_URL)
         source = context.createMediaStreamSource(stream)
-        node = new AudioWorkletNode(context, 'pcm-tap')
+        node = new AudioWorkletNode(context, 'pcm-tap', {
+          processorOptions: { blockSeconds: BLOCK_SECONDS },
+        })
         node.port.onmessage = (message) => {
           if (socket.readyState !== WebSocket.OPEN) return
           const block = message.data as Float32Array

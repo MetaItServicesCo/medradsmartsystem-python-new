@@ -102,7 +102,9 @@ _vad: dict[str, Any] = {"model": None, "lock": threading.Lock()}
 # to cut audio: the default 400ms of padding would report speech ending nearly
 # half a second after it did, and every turn would wait that out.
 _STREAM_VAD_KWARGS = {
-    "threshold": 0.45,
+    # Silero's own tuned default. Lowering it to 0.45 made the detector open a
+    # turn on a pure tone, which means it would open one on a fan or a hum.
+    "threshold": 0.5,
     "min_speech_duration_ms": 120,
     "min_silence_duration_ms": 100,
     "speech_pad_ms": 0,
@@ -209,7 +211,7 @@ class SpeakRequest(BaseModel):
 def health() -> dict[str, Any]:
     resolved = _resolve_voice_path()
     try:
-        baked = sorted(f[:-6] for f in os.listdir(VOICE_DIR) if f.endswith(".onnx"))
+        baked = sorted(f[: -len(".onnx")] for f in os.listdir(VOICE_DIR) if f.endswith(".onnx"))
     except OSError:
         baked = []
     return {
