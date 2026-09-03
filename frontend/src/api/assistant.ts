@@ -15,6 +15,8 @@ export interface AssistantAnswer {
   module?: string
   tools_used?: string[]
   errors?: string[]
+  /** Wall time per graph node, in milliseconds, including "total". */
+  timings?: Record<string, number>
 }
 
 export interface AssistantStatus {

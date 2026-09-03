@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import secrets
 import time
 from typing import Any, Callable, Optional
@@ -53,8 +54,9 @@ PRE_ROLL_S = 0.6
 
 # Silence that closes a turn. Shorter than the browser-side detector could
 # safely use, because Silero distinguishes a pause from an ending far better
-# than loudness does.
-SILENCE_S = 0.6
+# than loudness does. It is dead air on every single turn, so it is worth
+# tuning per deployment.
+SILENCE_S = float(os.environ.get("STREAM_SILENCE_SECONDS", "0.5"))
 
 # A turn longer than this is closed regardless, so one stuck open cannot grow
 # without bound.
@@ -69,11 +71,21 @@ class TurnDetector:
 
     Kept free of sockets and of the recogniser so the decision that governs
     when the assistant may speak can be tested with an array of numbers.
+
+    ``vad`` is given a window and returns how long ago, in seconds, speech
+    started and stopped inside it -- or None if the window holds no speech.
+
+    Both halves matter. Asking only whether the window contained speech would
+    keep the answer True for a whole window after the speaker stopped, so every
+    turn would end a window late; that lag is dead air on each turn and it
+    dwarfed the silence threshold it hid behind. Knowing where speech began is
+    what makes the length check measure speech rather than buffer, so a cough
+    padded out with pre-roll is not mistaken for a sentence.
     """
 
     def __init__(
         self,
-        vad: Callable[[np.ndarray], bool],
+        vad: Callable[[np.ndarray], Optional[tuple[float, float]]],
         *,
         sample_rate: int = SAMPLE_RATE,
         pre_roll_s: float = PRE_ROLL_S,
@@ -88,13 +100,14 @@ class TurnDetector:
         self._hop = int(ANALYSIS_HOP_S * sample_rate)
         self._silence = silence_s
         self._max_turn = int(max_turn_s * sample_rate)
-        self._min_turn = int(min_turn_s * sample_rate)
+        self._min_turn = min_turn_s
 
         self._recent = np.zeros(0, dtype=np.float32)
         self._turn: Optional[np.ndarray] = None
         self._since_hop = 0
         self._elapsed = 0.0
         self._last_voice_at = 0.0
+        self._first_voice_at = 0.0
         self.speaking = False
 
     def feed(self, samples: np.ndarray) -> list[tuple[str, Optional[np.ndarray]]]:
@@ -122,16 +135,26 @@ class TurnDetector:
         self._since_hop = 0
 
         window = self._recent[-self._window:]
-        voiced = bool(window.size) and self._vad(window)
+        heard = self._vad(window) if window.size else None
+        voiced = heard is not None
         if voiced:
-            self._last_voice_at = self._elapsed
+            since_start, since_end = heard
+            # Where speech actually ended, not merely that the window held some.
+            self._last_voice_at = self._elapsed - since_end
+            if not self.speaking:
+                self._first_voice_at = self._elapsed - since_start
 
         if not self.speaking:
             if voiced:
                 self.speaking = True
                 # Seed with what was already heard, so the opening word is in
-                # the turn rather than in the buffer that detected it.
-                self._turn = self._recent[-(self._window + self._pre_roll):].copy()
+                # the turn rather than in the buffer that detected it. Only as
+                # far back as detection can lag -- one hop plus Silero's
+                # minimum speech duration, with the pre-roll as margin. Seeding
+                # the whole analysis window instead prepended a second of
+                # silence to every turn, and silence still costs the recogniser
+                # time to read.
+                self._turn = self._recent[-(self._hop + self._pre_roll):].copy()
                 events.append(("speech_start", None))
             return events
 
@@ -153,6 +176,10 @@ class TurnDetector:
 
     def _close(self) -> tuple[str, Optional[np.ndarray]]:
         audio = self._turn
+        # How long there was actually speech, not how much buffer was captured.
+        # The captured turn is padded at the front with pre-roll, so measuring
+        # it by size let a cough grow past the threshold and be transcribed.
+        spoken = max(0.0, self._last_voice_at - self._first_voice_at)
         self.speaking = False
         self._turn = None
         # Everything still in the window has been folded into the turn just
@@ -160,7 +187,7 @@ class TurnDetector:
         # already been transcribed, which reads as a stutter in the transcript
         # and matters most when a long monologue is split at the cap.
         self._recent = np.zeros(0, dtype=np.float32)
-        if audio is None or audio.size < self._min_turn:
+        if audio is None or spoken < self._min_turn:
             return ("speech_discarded", None)
         return ("speech_end", audio)
 

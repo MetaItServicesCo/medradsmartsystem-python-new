@@ -98,7 +98,15 @@ _vad: dict[str, Any] = {"model": None, "lock": threading.Lock()}
 # finished recording: a turn boundary missed is a turn the assistant never
 # answers, while a little extra audio costs almost nothing. Passed as keyword
 # arguments so this module never has to import faster_whisper at load time.
-_STREAM_VAD_KWARGS = {"threshold": 0.45, "min_speech_duration_ms": 120}
+# speech_pad_ms is zero because these timestamps are read for timing, not used
+# to cut audio: the default 400ms of padding would report speech ending nearly
+# half a second after it did, and every turn would wait that out.
+_STREAM_VAD_KWARGS = {
+    "threshold": 0.45,
+    "min_speech_duration_ms": 120,
+    "min_silence_duration_ms": 100,
+    "speech_pad_ms": 0,
+}
 
 
 def _load_vad():
@@ -340,8 +348,16 @@ async def stream(websocket: WebSocket) -> None:
         await websocket.close()
         return
 
-    def detect(window: Any) -> bool:
-        return bool(get_speech_timestamps(window, **_STREAM_VAD_KWARGS))
+    def detect(window: Any) -> Optional[tuple[float, float]]:
+        """How long ago speech started and ended here, or None if silent."""
+        stamps = get_speech_timestamps(window, **_STREAM_VAD_KWARGS)
+        if not stamps:
+            return None
+        size = len(window)
+        return (
+            max(0.0, (size - stamps[0]["start"]) / SAMPLE_RATE),
+            max(0.0, (size - stamps[-1]["end"]) / SAMPLE_RATE),
+        )
 
     def transcribe_turn(audio: Any) -> dict[str, Any]:
         return _run_recognizer(model, audio, "en")

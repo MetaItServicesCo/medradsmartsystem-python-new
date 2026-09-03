@@ -32,12 +32,19 @@ class Settings(BaseSettings):
     # here; the tools do the arithmetic. Swap without code changes if evaluation
     # shows selection errors.
     AGENT_MODEL: str = "claude-haiku-4-5"
+    # Routing is a one-word structured decision, not reasoning, but it sits in
+    # front of every question and costs a full round trip. Pointing it at a
+    # smaller, faster model shortens every turn. Empty means use AGENT_MODEL.
+    AGENT_CLASSIFIER_MODEL: str = ""
     AGENT_MAX_TOKENS: int = 1200
     AGENT_TIMEOUT_SECONDS: float = 45.0
 
     # A single question must never loop indefinitely through tools.
     MAX_TOOL_ITERATIONS: int = 5
     MAX_TOOL_CALLS: int = 8
+
+    def agent_classifier_model(self) -> str:
+        return (self.AGENT_CLASSIFIER_MODEL or "").strip() or self.AGENT_MODEL
 
     def agent_api_key(self) -> str:
         """Key for the active provider, falling back to the Anthropic one."""

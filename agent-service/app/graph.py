@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import date
 from typing import Any, AsyncIterator, Literal, Optional, TypedDict
 
@@ -54,6 +55,47 @@ ALWAYS_AVAILABLE = {"resolve_entity"}
 # costs more than it saves. Kept above the current tool count deliberately;
 # revisit with an evaluation set rather than by guessing when it should engage.
 NARROW_ABOVE_TOOL_COUNT = 18
+
+
+# Openers that carry no question. Routing these through the model costs a full
+# round trip to be told what a five-word regex already knows, and in a spoken
+# conversation they are the most common thing said. Deliberately a closed set
+# matched whole: anything that is not exactly one of these still goes to the
+# model, because guessing wrong about a real question is far worse than paying
+# for a round trip.
+_SMALL_TALK = frozenset({
+    "hi", "hii", "hey", "hello", "yo", "hiya", "howdy",
+    "hey there", "hi there", "hello there",
+    "good morning", "good afternoon", "good evening", "morning", "evening",
+    "how are you", "how are you doing", "how are things", "how is it going",
+    "hows it going", "how you doing", "you there", "are you there",
+    "thanks", "thank you", "thanks a lot", "thank you very much", "cheers",
+    "ok thanks", "okay thanks", "great thanks", "perfect thanks", "nice one",
+    "bye", "goodbye", "see you", "see you later", "good night", "goodnight",
+    "who are you", "what is your name", "whats your name",
+    "what can you do", "what do you do", "help", "hello mr medrad",
+})
+
+_SMALL_TALK_PUNCTUATION = str.maketrans("", "", ",.!?;:'\"")
+
+
+# A greeting in front of something else does not change what the something
+# else is: "hi how are you" is small talk, "hi how many facilities" is not.
+_GREETING_PREFIXES = ("hi", "hey", "hello", "yo", "hiya", "morning", "evening")
+
+
+def local_intent(question: str) -> Optional[Intent]:
+    """Route without a model where it is unambiguous, else return None."""
+    normalised = " ".join(
+        question.lower().translate(_SMALL_TALK_PUNCTUATION).split()
+    )
+    if normalised in _SMALL_TALK:
+        return "chitchat"
+    words = normalised.split()
+    if len(words) > 1 and words[0] in _GREETING_PREFIXES:
+        if " ".join(words[1:]) in _SMALL_TALK:
+            return "chitchat"
+    return None
 
 
 class AgentState(TypedDict, total=False):
@@ -163,9 +205,17 @@ _CLASSIFY_TOOL = {
 
 async def classify_node(state: AgentState) -> dict[str, Any]:
     """Decide intent and module. Falls back to hybrid, which is always safe."""
+    # A greeting does not need a model to recognise, and this is the only place
+    # in a turn where a whole round trip can be removed rather than shortened.
+    if (shortcut := local_intent(state["question"])) is not None:
+        return {"intent": shortcut, "module": None}
+
     try:
         reply = await complete(
             system=classifier_prompt(),
+            # Routing is a structured one-word decision, so it can run on a
+            # smaller model than the one that writes the answer.
+            model=settings.agent_classifier_model(),
             max_tokens=300,
             tools=[_CLASSIFY_TOOL],
             force_tool="route_question",
@@ -355,7 +405,16 @@ def _citations_from(result: dict[str, Any]) -> list[dict[str, Any]]:
     return citations
 
 
+# A written answer can justify itself at length; a spoken one is three
+# sentences. Sending the same wall of evidence for both makes the model read
+# far more than it can possibly use, and reading is time the person spends
+# waiting in silence.
+EVIDENCE_LIMIT = 24000
+VOICE_EVIDENCE_LIMIT = 8000
+
+
 def _evidence_payload(state: AgentState) -> str:
+    limit = VOICE_EVIDENCE_LIMIT if state.get("voice") else EVIDENCE_LIMIT
     return json.dumps(
         {
             "live_data": [
@@ -366,7 +425,7 @@ def _evidence_payload(state: AgentState) -> str:
             "errors": state.get("errors", []),
         },
         default=str,
-    )[:24000]
+    )[:limit]
 
 
 async def synthesize_node(state: AgentState) -> dict[str, Any]:
@@ -515,6 +574,11 @@ async def run_agent(
         "errors": [],
     }
     final: dict[str, Any] = {}
+    # Wall time per node. Every latency decision so far has been an argument
+    # about which stage dominates; this settles it from real turns.
+    timings: dict[str, int] = {}
+    started = time.perf_counter()
+    marker = started
     # "updates" reports which node ran; "custom" carries the answer tokens the
     # synthesis and greeting nodes emit as the model produces them.
     async for mode, chunk in COMPILED_GRAPH.astream(
@@ -526,10 +590,20 @@ async def run_agent(
             continue
         for node_name, node_state in (chunk or {}).items():
             final.update(node_state or {})
+            now = time.perf_counter()
+            timings[node_name] = int((now - marker) * 1000)
+            marker = now
             yield {"event": "progress", "node": node_name}
+    timings["total"] = int((time.perf_counter() - started) * 1000)
+    logger.info(
+        "turn voice=%s intent=%s %s",
+        bool(voice), final.get("intent"),
+        " ".join("{}={}ms".format(name, ms) for name, ms in timings.items()),
+    )
     yield {
         "event": "answer",
         "answer": final.get("answer", ""),
+        "timings": timings,
         "citations": _dedupe(final.get("citations") or []),
         "intent": final.get("intent"),
         "module": final.get("module"),

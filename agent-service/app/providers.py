@@ -170,19 +170,20 @@ def _cached_system(text: str) -> list[dict[str, Any]]:
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
 
 
-async def complete(
+async def complete(  # noqa: PLR0913 - one call shape for two backends
     *,
     system: str,
     messages: list[dict[str, Any]],
     max_tokens: int,
     tools: Optional[list[dict[str, Any]]] = None,
     force_tool: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> ModelReply:
     """One completion, optionally with tools. ``force_tool`` requires that tool."""
     if provider_name() == "openai":
         client = _openai_client()
         request: dict[str, Any] = {
-            "model": settings.AGENT_MODEL,
+            "model": model or settings.AGENT_MODEL,
             "max_tokens": max_tokens,
             "messages": _to_openai_messages(system, messages),
         }
@@ -212,7 +213,7 @@ async def complete(
 
     client = _anthropic_client()
     request = {
-        "model": settings.AGENT_MODEL,
+        "model": model or settings.AGENT_MODEL,
         "max_tokens": max_tokens,
         "system": _cached_system(system),
         "messages": messages,
