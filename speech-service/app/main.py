@@ -26,7 +26,7 @@ from fastapi import (
     FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket,
     WebSocketDisconnect, status,
 )
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.streaming import SAMPLE_RATE, StreamSession
@@ -284,6 +284,9 @@ def health() -> dict[str, Any]:
         "warm_ms": _warm["ms"],
         "warm_error": _warm["error"],
         "stream_sample_rate": SAMPLE_RATE,
+        "tts_sample_rate": (
+            _tts["voice"].config.sample_rate if _tts["voice"] is not None else None
+        ),
         "turn_detector_loaded": _vad["model"] is not None,
         "recognizer_loaded": _stt["model"] is not None,
     }
@@ -445,6 +448,66 @@ async def stream(websocket: WebSocket) -> None:
             await websocket.close()
         except RuntimeError:
             pass
+
+
+@app.post("/internal/v1/tts/stream")
+def synthesize_stream(
+    payload: SpeakRequest,
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
+) -> StreamingResponse:
+    """Speak text, returning raw PCM as it is produced.
+
+    The other endpoint returns a finished WAV, so nothing can be played until
+    the whole thing exists. Piper generates sentence by sentence, and forwarding
+    each piece as it appears means audio starts while the rest is still being
+    synthesised -- the difference between a voice that answers and one that
+    waits, and the reason the voice pipeline uses this rather than the file.
+
+    Raw samples, not WAV: the length is unknown while streaming, so a header
+    could only lie about it.
+    """
+    _require_internal(x_internal_key)
+    try:
+        voice = _load_voice()
+    except Exception as exc:
+        logger.exception("Voice unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice model unavailable: {}".format(exc),
+        )
+
+    def pieces():
+        started = time.perf_counter()
+        total = 0
+        try:
+            for chunk in voice.synthesize_stream_raw(
+                payload.text,
+                length_scale=LENGTH_SCALE,
+                noise_scale=NOISE_SCALE,
+                noise_w=NOISE_W,
+                sentence_silence=SENTENCE_SILENCE,
+            ):
+                total += len(chunk)
+                yield chunk
+        except Exception:
+            logger.exception("Streaming synthesis failed")
+        finally:
+            logger.info(
+                "tts stream chars=%d bytes=%d ms=%d",
+                len(payload.text), total, int((time.perf_counter() - started) * 1000),
+            )
+
+    return StreamingResponse(
+        pieces(),
+        media_type="application/octet-stream",
+        headers={
+            # The consumer has to know what it is playing, and the voice's rate
+            # is a property of the model rather than of this service.
+            "X-Sample-Rate": str(voice.config.sample_rate),
+            "X-Audio-Format": "pcm_s16le",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.post("/internal/v1/stt")

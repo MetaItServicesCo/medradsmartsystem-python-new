@@ -1,0 +1,21 @@
+# Real-time voice pipeline.
+#
+# The extras are chosen deliberately narrowly.
+#
+#   whisper    -> faster-whisper, the same recogniser the speech service uses
+#   websocket  -> the FastAPI WebSocket transport
+#
+# Two extras are pointedly absent. "local-smart-turn" would pull torch and
+# torchaudio for semantic end-of-turn detection: a better detector than silence
+# timing, but not at that weight on a four-core shared host. And "piper" would
+# pull piper-tts 1.3, which is GPL-3.0-or-later; linking it into a commercial
+# product raises the GPL's source-disclosure question for the whole
+# application. Speech is streamed from the speech service instead, which runs
+# piper-tts 1.2 under MIT.
+pipecat-ai[whisper,websocket]==1.8.1
+
+uvicorn[standard]==0.52.4
+
+# The agent is reached over its internal streaming endpoint.
+httpx==0.28.1
+pydantic-settings==2.7.1
