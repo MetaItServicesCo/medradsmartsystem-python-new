@@ -6,11 +6,16 @@ FROM python:3.11-slim
 # CPU, so they are the default here.
 ARG PIPER_VOICE=en_US-lessac-high
 
+# base.en is fast but guesses on short utterances, which is most of a spoken
+# conversation. small.en costs roughly twice the time on a two-second clip and
+# is markedly more accurate on exactly those, so it is the better default here.
+ARG WHISPER_MODEL=small.en
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIPER_VOICE=${PIPER_VOICE} \
     PIPER_VOICE_DIR=/voices \
-    WHISPER_MODEL=base.en \
+    WHISPER_MODEL=${WHISPER_MODEL} \
     HF_HOME=/models
 
 WORKDIR /app
@@ -41,7 +46,7 @@ RUN mkdir -p /voices \
 # first spoken question slow, and would fail outright if HuggingFace were
 # unreachable from the host.
 RUN mkdir -p /models \
- && python -c "from faster_whisper import WhisperModel; WhisperModel('base.en', device='cpu', compute_type='int8')"
+ && python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8')"
 
 COPY app ./app
 

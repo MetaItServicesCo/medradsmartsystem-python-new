@@ -35,6 +35,11 @@ const VAD_MIN_THRESHOLD = 0.014
 // assistant is talking. Without this it hears itself and interrupts itself.
 const VAD_BARGE_IN_MULTIPLIER = 2.2
 const VAD_CALIBRATION_MS = 300
+// While waiting for someone to speak, the recorder is restarted this often.
+// It has to already be running when a word arrives -- a recorder started on
+// detection has by definition missed the sound that triggered it -- so this
+// bounds how much silence precedes a turn without ever clipping its opening.
+const IDLE_RECYCLE_MS = 2000
 
 /**
  * Split an answer into speakable pieces.
@@ -110,6 +115,14 @@ const readyPieces = (
 // Said while the answer is still being worked out. Silence during a lookup is
 // the single most machine-like moment in a spoken exchange: a person says
 // something. Varied so the same clip is not heard twice in a row.
+// Said aloud when the recogniser returned nothing it was confident about.
+// In a conversation this is what a person does; showing a red error banner and
+// waiting is what a form does.
+const MISHEARD_PHRASES = [
+  "Sorry, I didn't catch that.",
+  "I missed that, say again?",
+]
+
 const WORKING_PHRASES = [
   'Let me check.',
   'One moment.',
@@ -229,6 +242,13 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   // Read inside the 50ms detector loop, which a state value would never see
   // because the interval closes over the render that created it.
   const conversingRef = useRef(false)
+  // When the currently armed recorder started, used to bound how much silence
+  // precedes a turn.
+  const capturingSinceRef = useRef(0)
+  // Assigned below, once speak() exists. The recorder callback is created
+  // before it and must not close over a stale definition.
+  const misheardRef = useRef<(() => void) | null>(null)
+  const speakRef = useRef<((text: string) => Promise<void>) | null>(null)
   useEffect(() => { speakingRef.current = speaking }, [speaking])
   useEffect(() => { onTranscriptRef.current = onTranscript }, [onTranscript])
 
@@ -365,6 +385,14 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     endSpeech(text)
   }, [beginSpeech, endSpeech])
 
+  const sayMisheard = useCallback(() => {
+    const phrase = MISHEARD_PHRASES[Math.floor(Math.random() * MISHEARD_PHRASES.length)]
+    void speakRef.current?.(phrase)
+  }, [])
+
+  useEffect(() => { speakRef.current = speak }, [speak])
+  useEffect(() => { misheardRef.current = sayMisheard }, [sayMisheard])
+
   const releaseMicrophone = useCallback(() => {
     if (monitorRef.current) {
       window.clearInterval(monitorRef.current)
@@ -382,6 +410,16 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     setLevel(0)
   }, [])
 
+  /** Throw away an armed recorder that only ever heard silence. */
+  const discardRecording = useCallback(() => {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state !== 'recording') return
+    recorder.onstop = null
+    recorder.stop()
+    recorderRef.current = null
+    chunksRef.current = []
+  }, [])
+
   /** Close the current turn and send what was captured for transcription. */
   const finishRecording = useCallback(() => {
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
@@ -395,8 +433,14 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     if (!conversingRef.current) releaseMicrophone()
   }, [finishRecording, releaseMicrophone])
 
-  /** Attach a recorder to the already-open microphone and start capturing. */
-  const beginRecording = useCallback(() => {
+  /**
+   * Attach a recorder to the open microphone and start capturing.
+   *
+   * `active` distinguishes a turn that has begun (press-to-talk, where the
+   * person has already committed to speaking) from a recorder merely armed and
+   * waiting, which is what makes an unclipped opening possible.
+   */
+  const beginRecording = useCallback((active: boolean) => {
     const stream = streamRef.current
     if (!stream || recorderRef.current?.state === 'recording') return
     const mimeType = pickMimeType()
@@ -419,7 +463,9 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
         setTranscribing(true)
         const text = await transcribeSpeech(blob)
         if (text) onTranscriptRef.current?.(text)
-        else if (!conversingRef.current) setError('Nothing was picked up. Try again.')
+        else if (conversingRef.current) {
+          misheardRef.current?.()
+        } else setError('Nothing was picked up. Try again.')
       } catch (err) {
         // Surface what the server actually said. Collapsing every failure
         // into one message makes a misconfiguration indistinguishable from
@@ -442,9 +488,12 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
 
     recorderRef.current = recorder
     recorder.start()
-    setListening(true)
-    vadRef.current.recording = true
-    timerRef.current = window.setTimeout(() => finishRecording(), MAX_RECORDING_MS)
+    capturingSinceRef.current = Date.now()
+    if (active) {
+      setListening(true)
+      vadRef.current.recording = true
+      timerRef.current = window.setTimeout(() => finishRecording(), MAX_RECORDING_MS)
+    }
   }, [finishRecording])
 
   /**
@@ -478,7 +527,9 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
       floor: 0, samples: 0, threshold: VAD_MIN_THRESHOLD,
       loudSince: 0, quietSince: 0, recording: false,
     }
-    if (autoStart) beginRecording()
+    // Armed either way: press-to-talk commits to a turn immediately, a
+    // conversation waits, but both are capturing before the first word.
+    beginRecording(autoStart)
     if (!analyserRef.current) return
 
     const buffer = new Uint8Array(analyserRef.current.fftSize)
@@ -500,16 +551,32 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
         canStart: conversingRef.current,
       })
       if (action === 'start') {
-        // Speech, sustained long enough to be real. If the assistant is
-        // talking, this is an interruption: it stops mid-sentence, the way a
-        // person does when you start speaking over them.
+        // Speech, sustained long enough to be real. The recorder has been
+        // running all along, so the word that triggered this is already in the
+        // file. If the assistant is talking, this is an interruption: it stops
+        // mid-sentence, the way a person does when you speak over them.
         if (speakingRef.current) stopSpeaking()
-        beginRecording()
+        // Marks the turn open. Without this the detector keeps re-reporting
+        // the same onset and never reaches the branch that ends the turn.
+        vadRef.current.recording = true
+        setListening(true)
+        if (timerRef.current) window.clearTimeout(timerRef.current)
+        timerRef.current = window.setTimeout(() => finishRecording(), MAX_RECORDING_MS)
       } else if (action === 'stop') {
         finishRecording()
+        if (conversingRef.current) beginRecording(false)
+      } else if (
+        conversingRef.current
+        && !vadRef.current.recording
+        && Date.now() - capturingSinceRef.current > IDLE_RECYCLE_MS
+      ) {
+        // Nothing said for a while. Start a fresh recorder so the file sent
+        // for a turn is that turn, not everything since the conversation began.
+        discardRecording()
+        beginRecording(false)
       }
     }, VAD_POLL_MS)
-  }, [beginRecording, finishRecording, stopSpeaking])
+  }, [beginRecording, discardRecording, finishRecording, stopSpeaking])
 
   /** One press-to-talk turn: records now, ends on silence or a second press. */
   const startListening = useCallback(async () => {
@@ -558,14 +625,21 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   const stopConversation = useCallback(() => {
     conversingRef.current = false
     setConversing(false)
-    finishRecording()
+    // Mid-turn audio is worth transcribing; an armed recorder holding nothing
+    // but room tone is not.
+    if (vadRef.current.recording) finishRecording()
+    else discardRecording()
     releaseMicrophone()
     stopSpeaking()
-  }, [finishRecording, releaseMicrophone, stopSpeaking])
+  }, [finishRecording, discardRecording, releaseMicrophone, stopSpeaking])
 
   // Never leave the microphone open or audio playing after unmount.
   useEffect(() => () => {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+    const recorder = recorderRef.current
+    if (recorder?.state === 'recording') {
+      recorder.onstop = null
+      recorder.stop()
+    }
     releaseMicrophone()
     releaseAudio()
   }, [releaseMicrophone, releaseAudio])

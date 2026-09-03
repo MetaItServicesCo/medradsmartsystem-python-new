@@ -31,8 +31,26 @@ logger = logging.getLogger("speech")
 INTERNAL_KEY = os.environ.get("SPEECH_INTERNAL_KEY", "")
 VOICE_NAME = os.environ.get("PIPER_VOICE", "en_US-ryan-medium")
 VOICE_DIR = os.environ.get("PIPER_VOICE_DIR", "/voices")
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base.en")
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small.en")
 WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "int8")
+# Beam search. This was greedy for speed, which is the wrong trade on the short
+# utterances a conversation is made of: "hey, how are you" is a second of audio
+# with no context to recover from, and a greedy decode of it came back as
+# "I know you". The library's own default is 5.
+WHISPER_BEAM_SIZE = int(os.environ.get("WHISPER_BEAM_SIZE", "5"))
+# Below this average token log-probability the transcript is a guess, not a
+# hearing. Sending a guess on to the assistant produces a confident answer to a
+# question nobody asked, which is worse than admitting it was not caught.
+WHISPER_MIN_LOGPROB = float(os.environ.get("WHISPER_MIN_LOGPROB", "-1.0"))
+WHISPER_MAX_NO_SPEECH = float(os.environ.get("WHISPER_MAX_NO_SPEECH", "0.7"))
+# Whisper biases towards words in this prompt, which is how a recogniser is
+# told what the conversation is likely to be about.
+WHISPER_PROMPT = os.environ.get(
+    "WHISPER_PROMPT",
+    "MedRad radiology operations. Facilities, equipment, service requests, "
+    "inspections, rentals, sales quotations, invoices, technicians, "
+    "engineers, revenue, Mr. Medrad.",
+)
 MAX_TTS_CHARS = int(os.environ.get("MAX_TTS_CHARS", "2000"))
 
 
@@ -169,6 +187,7 @@ def health() -> dict[str, Any]:
             "sentence_silence": SENTENCE_SILENCE,
         },
         "recognizer": WHISPER_MODEL,
+        "recognizer_beam_size": WHISPER_BEAM_SIZE,
         "recognizer_loaded": _stt["model"] is not None,
     }
 
@@ -253,10 +272,39 @@ async def transcribe(
         segments, info = model.transcribe(
             path,
             language=language or None,
-            beam_size=1,          # greedy: this is short dictation, not subtitling
+            beam_size=WHISPER_BEAM_SIZE,
+            initial_prompt=WHISPER_PROMPT,
+            # Each turn is independent. Carrying context lets one bad transcript
+            # seed the next, so a single mishearing becomes a run of them.
+            condition_on_previous_text=False,
             vad_filter=True,      # drop silence so trailing pauses cost nothing
+            # Silero trims to what it judges speech; without padding it shaves
+            # the quiet edges of real words, which is exactly the part a short
+            # greeting cannot spare.
+            vad_parameters={"speech_pad_ms": 400, "min_silence_duration_ms": 500},
         )
-        text = " ".join(segment.text.strip() for segment in segments).strip()
+
+        # Materialise once: segments is a generator and confidence has to be
+        # read from the same pass that produced the text.
+        collected = list(segments)
+        text = " ".join(segment.text.strip() for segment in collected).strip()
+
+        # Confidence, weighted by how much audio each segment accounts for.
+        spans = [(max(seg.end - seg.start, 0.01), seg) for seg in collected]
+        total = sum(span for span, _ in spans) or 1.0
+        avg_logprob = sum(seg.avg_logprob * span for span, seg in spans) / total
+        no_speech = sum(seg.no_speech_prob * span for span, seg in spans) / total
+        confident = (
+            bool(collected)
+            and avg_logprob >= WHISPER_MIN_LOGPROB
+            and no_speech <= WHISPER_MAX_NO_SPEECH
+        )
+        if text and not confident:
+            logger.info(
+                "discarding low-confidence transcript %r (logprob=%.2f no_speech=%.2f)",
+                text[:80], avg_logprob, no_speech,
+            )
+            text = ""
     except Exception:
         logger.exception("Transcription failed")
         raise HTTPException(
@@ -270,9 +318,16 @@ async def transcribe(
             pass
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
-    logger.info("stt bytes=%d chars=%d ms=%d", len(raw), len(text), elapsed_ms)
+    logger.info(
+        "stt bytes=%d chars=%d ms=%d logprob=%.2f no_speech=%.2f",
+        len(raw), len(text), elapsed_ms, avg_logprob, no_speech,
+    )
     return {
         "text": text,
         "language": getattr(info, "language", language),
         "elapsed_ms": elapsed_ms,
+        # Returned so the thresholds can be tuned from real traffic rather than
+        # from guesses about what a bad transcript looks like.
+        "avg_logprob": round(avg_logprob, 3),
+        "no_speech_prob": round(no_speech, 3),
     }
