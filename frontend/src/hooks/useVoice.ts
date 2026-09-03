@@ -18,6 +18,24 @@ const MAX_RECORDING_MS = 30_000
 // Below this a recording is a stray tap rather than speech.
 const MIN_RECORDING_BYTES = 1200
 
+// Voice-activity detection. Energy is sampled from the live microphone so the
+// conversation can take its own turns: no button decides when a sentence ended.
+const VAD_POLL_MS = 50
+// Silence that ends a turn. Long enough to survive the pause in "how many...
+// uh... open requests", short enough not to feel like waiting for a machine.
+const VAD_SILENCE_MS = 850
+// Energy must persist this long to count as speech, so a cough or a door does
+// not open a recording.
+const VAD_ONSET_MS = 140
+// The microphone's own noise floor is measured on open; speech has to clear it
+// by this much. A fixed threshold works in one room and fails in the next.
+const VAD_FLOOR_MULTIPLIER = 2.6
+const VAD_MIN_THRESHOLD = 0.014
+// Echo cancellation is good but not perfect, so the bar is raised while the
+// assistant is talking. Without this it hears itself and interrupts itself.
+const VAD_BARGE_IN_MULTIPLIER = 2.2
+const VAD_CALIBRATION_MS = 300
+
 /**
  * Split an answer into speakable pieces.
  *
@@ -89,6 +107,73 @@ const readyPieces = (
   }
 }
 
+// Said while the answer is still being worked out. Silence during a lookup is
+// the single most machine-like moment in a spoken exchange: a person says
+// something. Varied so the same clip is not heard twice in a row.
+const WORKING_PHRASES = [
+  'Let me check.',
+  'One moment.',
+  'Let me pull that up.',
+  'Checking that now.',
+]
+
+interface VadState {
+  floor: number
+  samples: number
+  threshold: number
+  loudSince: number
+  quietSince: number
+  recording: boolean
+}
+
+/**
+ * Decide, from one energy sample, whether a turn has begun or ended.
+ *
+ * Kept pure and separate from the audio plumbing: this is the part that
+ * decides when the assistant gets to speak, and it has to be verifiable
+ * without a microphone.
+ */
+const vadStep = (
+  vad: VadState,
+  rms: number,
+  now: number,
+  opts: { speaking: boolean; canStart: boolean },
+): 'none' | 'start' | 'stop' => {
+  // The first fraction of a second measures the room, not the voice. A fixed
+  // threshold works in one office and fails in the next.
+  if (vad.samples * VAD_POLL_MS < VAD_CALIBRATION_MS) {
+    vad.floor = (vad.floor * vad.samples + rms) / (vad.samples + 1)
+    vad.samples += 1
+    vad.threshold = Math.max(VAD_MIN_THRESHOLD, vad.floor * VAD_FLOOR_MULTIPLIER)
+    return 'none'
+  }
+
+  // Echo cancellation is good but not perfect, so the bar rises while the
+  // assistant talks. Without this it hears itself and interrupts itself.
+  const threshold = opts.speaking
+    ? vad.threshold * VAD_BARGE_IN_MULTIPLIER
+    : vad.threshold
+  const loud = rms > threshold
+
+  if (!vad.recording) {
+    if (!opts.canStart) return 'none'
+    if (!loud) { vad.loudSince = 0; return 'none' }
+    if (!vad.loudSince) vad.loudSince = now
+    // Energy has to persist to count as speech, so a cough or a closing door
+    // does not open a recording.
+    if (now - vad.loudSince < VAD_ONSET_MS) return 'none'
+    vad.loudSince = 0
+    vad.quietSince = 0
+    return 'start'
+  }
+
+  if (loud) { vad.quietSince = 0; return 'none' }
+  if (!vad.quietSince) vad.quietSince = now
+  if (now - vad.quietSince < VAD_SILENCE_MS) return 'none'
+  vad.quietSince = 0
+  return 'stop'
+}
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 const pickMimeType = (): string => {
@@ -109,6 +194,10 @@ export interface UseVoiceOptions {
 
 export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   const [listening, setListening] = useState(false)
+  const [conversing, setConversing] = useState(false)
+  // Live microphone energy, 0..1, so the widget can show that it is hearing
+  // something rather than just claiming to listen.
+  const [level, setLevel] = useState(0)
   const [transcribing, setTranscribing] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [error, setError] = useState('')
@@ -127,6 +216,20 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     pieces: [], consumed: 0, done: false,
   })
   const onTranscriptRef = useRef(onTranscript)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const monitorRef = useRef<number | null>(null)
+  // Everything the detector needs between polls. Kept in a ref because it
+  // changes every 50ms and no render depends on it.
+  const vadRef = useRef({
+    floor: 0, samples: 0, threshold: VAD_MIN_THRESHOLD,
+    loudSince: 0, quietSince: 0, recording: false,
+  })
+  const speakingRef = useRef(false)
+  // Read inside the 50ms detector loop, which a state value would never see
+  // because the interval closes over the render that created it.
+  const conversingRef = useRef(false)
+  useEffect(() => { speakingRef.current = speaking }, [speaking])
   useEffect(() => { onTranscriptRef.current = onTranscript }, [onTranscript])
 
   const supported =
@@ -242,6 +345,19 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     state.done = true
   }, [])
 
+  /**
+   * Fill the gap while the answer is still being worked out.
+   *
+   * Only ever fills silence: it does nothing once any real content has been
+   * queued, so it can never delay or talk over the answer itself.
+   */
+  const sayWhileWorking = useCallback(() => {
+    const state = queueRef.current
+    if (state.done || state.consumed > 0 || state.pieces.length) return
+    const phrase = WORKING_PHRASES[Math.floor(Math.random() * WORKING_PHRASES.length)]
+    state.pieces.push(phrase)
+  }, [])
+
   /** Speak a complete answer that was never streamed. */
   const speak = useCallback(async (text: string) => {
     if (!text.trim()) return
@@ -250,72 +366,161 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   }, [beginSpeech, endSpeech])
 
   const releaseMicrophone = useCallback(() => {
+    if (monitorRef.current) {
+      window.clearInterval(monitorRef.current)
+      monitorRef.current = null
+    }
+    analyserRef.current = null
+    void audioCtxRef.current?.close().catch(() => {})
+    audioCtxRef.current = null
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (timerRef.current) {
       window.clearTimeout(timerRef.current)
       timerRef.current = null
     }
+    setLevel(0)
   }, [])
 
-  const stopListening = useCallback(() => {
+  /** Close the current turn and send what was captured for transcription. */
+  const finishRecording = useCallback(() => {
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+    vadRef.current.recording = false
     setListening(false)
   }, [])
 
+  const stopListening = useCallback(() => {
+    finishRecording()
+    // A single press-to-talk turn owns the microphone; a conversation keeps it.
+    if (!conversingRef.current) releaseMicrophone()
+  }, [finishRecording, releaseMicrophone])
+
+  /** Attach a recorder to the already-open microphone and start capturing. */
+  const beginRecording = useCallback(() => {
+    const stream = streamRef.current
+    if (!stream || recorderRef.current?.state === 'recording') return
+    const mimeType = pickMimeType()
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    chunksRef.current = []
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunksRef.current.push(event.data)
+    }
+    recorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' })
+      chunksRef.current = []
+      recorderRef.current = null
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+      if (blob.size < MIN_RECORDING_BYTES) return
+      try {
+        setTranscribing(true)
+        const text = await transcribeSpeech(blob)
+        if (text) onTranscriptRef.current?.(text)
+        else if (!conversingRef.current) setError('Nothing was picked up. Try again.')
+      } catch (err) {
+        // Surface what the server actually said. Collapsing every failure
+        // into one message makes a misconfiguration indistinguishable from
+        // a bad recording, which costs far more time than the wording saves.
+        const detail =
+          (err as { response?: { data?: { detail?: string }; status?: number } })
+            ?.response?.data?.detail
+        const code = (err as { response?: { status?: number } })?.response?.status
+        setError(
+          detail
+            ? 'Transcription failed: ' + detail
+            : code
+              ? 'Transcription failed (' + code + '). Try again or type instead.'
+              : 'Could not reach the transcription service.',
+        )
+      } finally {
+        setTranscribing(false)
+      }
+    }
+
+    recorderRef.current = recorder
+    recorder.start()
+    setListening(true)
+    vadRef.current.recording = true
+    timerRef.current = window.setTimeout(() => finishRecording(), MAX_RECORDING_MS)
+  }, [finishRecording])
+
+  /**
+   * Open the microphone and watch its energy.
+   *
+   * autoStart records immediately, which is the press-to-talk button. Without
+   * it the microphone stays open but idle until the detector hears speech,
+   * which is what lets the assistant take turns without being told to.
+   */
+  const openMicrophone = useCallback(async (autoStart: boolean) => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      // Without echo cancellation the detector hears the assistant's own voice
+      // through the speakers and reads it as the user interrupting.
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    })
+    streamRef.current = stream
+
+    const AudioCtor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (AudioCtor) {
+      const ctx = new AudioCtor()
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 1024
+      ctx.createMediaStreamSource(stream).connect(analyser)
+      audioCtxRef.current = ctx
+      analyserRef.current = analyser
+    }
+
+    vadRef.current = {
+      floor: 0, samples: 0, threshold: VAD_MIN_THRESHOLD,
+      loudSince: 0, quietSince: 0, recording: false,
+    }
+    if (autoStart) beginRecording()
+    if (!analyserRef.current) return
+
+    const buffer = new Uint8Array(analyserRef.current.fftSize)
+    monitorRef.current = window.setInterval(() => {
+      const analyser = analyserRef.current
+      if (!analyser) return
+      analyser.getByteTimeDomainData(buffer)
+      let sum = 0
+      for (let i = 0; i < buffer.length; i += 1) {
+        const centred = (buffer[i] - 128) / 128
+        sum += centred * centred
+      }
+      const rms = Math.sqrt(sum / buffer.length)
+      setLevel(Math.min(1, rms * 6))
+
+      const action = vadStep(vadRef.current, rms, Date.now(), {
+        speaking: speakingRef.current,
+        // Only a hands-free conversation opens a recording on its own.
+        canStart: conversingRef.current,
+      })
+      if (action === 'start') {
+        // Speech, sustained long enough to be real. If the assistant is
+        // talking, this is an interruption: it stops mid-sentence, the way a
+        // person does when you start speaking over them.
+        if (speakingRef.current) stopSpeaking()
+        beginRecording()
+      } else if (action === 'stop') {
+        finishRecording()
+      }
+    }, VAD_POLL_MS)
+  }, [beginRecording, finishRecording, stopSpeaking])
+
+  /** One press-to-talk turn: records now, ends on silence or a second press. */
   const startListening = useCallback(async () => {
     if (!supported) {
       setError('This browser cannot record audio.')
       return
     }
-    // Recording while playing would capture the assistant's own voice.
     stopSpeaking()
     setError('')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-      const mimeType = pickMimeType()
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
-      chunksRef.current = []
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data)
-      }
-      recorder.onstop = async () => {
-        releaseMicrophone()
-        const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' })
-        chunksRef.current = []
-        if (blob.size < MIN_RECORDING_BYTES) return
-        try {
-          setTranscribing(true)
-          const text = await transcribeSpeech(blob)
-          if (text) onTranscriptRef.current?.(text)
-          else setError('Nothing was picked up. Try again.')
-        } catch (err) {
-          // Surface what the server actually said. Collapsing every failure
-          // into one message makes a misconfiguration indistinguishable from
-          // a bad recording, which costs far more time than the wording saves.
-          const detail =
-            (err as { response?: { data?: { detail?: string }; status?: number } })
-              ?.response?.data?.detail
-          const code =
-            (err as { response?: { status?: number } })?.response?.status
-          setError(
-            detail
-              ? `Transcription failed: ${detail}`
-              : code
-                ? `Transcription failed (${code}). Try again or type instead.`
-                : 'Could not reach the transcription service.',
-          )
-        } finally {
-          setTranscribing(false)
-        }
-      }
-
-      recorderRef.current = recorder
-      recorder.start()
-      setListening(true)
-      timerRef.current = window.setTimeout(() => stopListening(), MAX_RECORDING_MS)
+      await openMicrophone(true)
     } catch (err) {
       releaseMicrophone()
       setListening(false)
@@ -325,7 +530,38 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
           : 'Could not access the microphone.',
       )
     }
-  }, [supported, stopSpeaking, stopListening, releaseMicrophone])
+  }, [supported, stopSpeaking, openMicrophone, releaseMicrophone])
+
+  /**
+   * Hands-free conversation: the microphone stays open for the whole exchange
+   * and the detector decides where each turn begins and ends.
+   */
+  const startConversation = useCallback(async () => {
+    if (!supported || conversingRef.current) return
+    setError('')
+    try {
+      conversingRef.current = true
+      setConversing(true)
+      await openMicrophone(false)
+    } catch (err) {
+      conversingRef.current = false
+      setConversing(false)
+      releaseMicrophone()
+      setError(
+        (err as Error)?.name === 'NotAllowedError'
+          ? 'Microphone permission was denied.'
+          : 'Could not access the microphone.',
+      )
+    }
+  }, [supported, openMicrophone, releaseMicrophone])
+
+  const stopConversation = useCallback(() => {
+    conversingRef.current = false
+    setConversing(false)
+    finishRecording()
+    releaseMicrophone()
+    stopSpeaking()
+  }, [finishRecording, releaseMicrophone, stopSpeaking])
 
   // Never leave the microphone open or audio playing after unmount.
   useEffect(() => () => {
@@ -337,14 +573,19 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   return {
     supported,
     listening,
+    conversing,
+    level,
     transcribing,
     speaking,
     error,
     startListening,
     stopListening,
+    startConversation,
+    stopConversation,
     speak,
     beginSpeech,
     pushSpeech,
+    sayWhileWorking,
     endSpeech,
     stopSpeaking,
   }

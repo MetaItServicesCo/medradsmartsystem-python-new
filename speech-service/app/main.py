@@ -34,6 +34,32 @@ VOICE_DIR = os.environ.get("PIPER_VOICE_DIR", "/voices")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base.en")
 WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "int8")
 MAX_TTS_CHARS = int(os.environ.get("MAX_TTS_CHARS", "2000"))
+
+
+def _optional_float(name: str, default: Optional[float]) -> Optional[float]:
+    """Read a tuning value, where absent means 'use the voice's own default'."""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Ignoring %s=%r: not a number", name, raw)
+        return default
+
+
+# Prosody. Piper's defaults are tuned for reading text out; a conversation
+# wants a slightly slower, less metronomic delivery. length_scale stretches
+# each phoneme, noise_w varies phoneme duration so the rhythm stops being
+# perfectly even, and sentence_silence puts a breath between sentences.
+# All are overridable per deployment, since the right values depend on the
+# voice and on the room. Passing None keeps whatever the voice ships with.
+# These are keyword arguments of PiperVoice.synthesize in piper-tts 1.2.0,
+# which requirements.txt pins exactly.
+LENGTH_SCALE = _optional_float("PIPER_LENGTH_SCALE", 1.06)
+NOISE_SCALE = _optional_float("PIPER_NOISE_SCALE", None)
+NOISE_W = _optional_float("PIPER_NOISE_W", 0.9)
+SENTENCE_SILENCE = _optional_float("PIPER_SENTENCE_SILENCE", 0.15) or 0.0
 MAX_AUDIO_BYTES = int(os.environ.get("MAX_AUDIO_BYTES", str(8 * 1024 * 1024)))
 
 app = FastAPI(title="MedRad Speech", docs_url=None, redoc_url=None, openapi_url=None)
@@ -136,6 +162,12 @@ def health() -> dict[str, Any]:
         "voice_in_image": baked,
         "voice_available": resolved is not None,
         "voice_loaded": _tts.get("loaded_name"),
+        "prosody": {
+            "length_scale": LENGTH_SCALE,
+            "noise_scale": NOISE_SCALE,
+            "noise_w": NOISE_W,
+            "sentence_silence": SENTENCE_SILENCE,
+        },
         "recognizer": WHISPER_MODEL,
         "recognizer_loaded": _stt["model"] is not None,
     }
@@ -161,7 +193,14 @@ def synthesize(
     buffer = io.BytesIO()
     try:
         with wave.open(buffer, "wb") as wav_file:
-            voice.synthesize(payload.text, wav_file)
+            voice.synthesize(
+                payload.text,
+                wav_file,
+                length_scale=LENGTH_SCALE,
+                noise_scale=NOISE_SCALE,
+                noise_w=NOISE_W,
+                sentence_silence=SENTENCE_SILENCE,
+            )
     except Exception:
         logger.exception("Synthesis failed")
         raise HTTPException(

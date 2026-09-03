@@ -313,6 +313,11 @@ services:
       # whatever PIPER_VOICE is at build time, so change both together, or
       # rebuild with --build-arg PIPER_VOICE=<name>.
       - PIPER_VOICE=${PIPER_VOICE:-en_US-lessac-high}
+      # Delivery, tunable without a rebuild. Higher length_scale is slower,
+      # higher noise_w is less metronomic. See speech-service/app/main.py.
+      - PIPER_LENGTH_SCALE=${PIPER_LENGTH_SCALE:-1.06}
+      - PIPER_NOISE_W=${PIPER_NOISE_W:-0.9}
+      - PIPER_SENTENCE_SILENCE=${PIPER_SENTENCE_SILENCE:-0.15}
       - WHISPER_MODEL=${WHISPER_MODEL:-base.en}
       - LOG_LEVEL=${SPEECH_LOG_LEVEL:-INFO}
     networks:

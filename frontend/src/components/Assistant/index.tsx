@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Avatar,
   Box,
+  Button,
   Chip,
   Drawer,
   Fab,
@@ -21,6 +22,7 @@ import MenuBookIcon from '@mui/icons-material/MenuBook'
 import MicIcon from '@mui/icons-material/Mic'
 import KeyboardIcon from '@mui/icons-material/Keyboard'
 import GraphicEqIcon from '@mui/icons-material/GraphicEq'
+import CallEndIcon from '@mui/icons-material/CallEnd'
 import VolumeUpIcon from '@mui/icons-material/VolumeUp'
 import VolumeOffIcon from '@mui/icons-material/VolumeOff'
 import { useQuery } from '@tanstack/react-query'
@@ -94,6 +96,10 @@ const PROGRESS_LABEL: Record<string, string> = {
   synthesize: 'Composing the answer',
 }
 
+// Nodes where the assistant is genuinely away looking something up. Chitchat
+// and classification are too quick to be worth talking over.
+const WORKING_NODES = new Set(['use_tools', 'retrieve', 'gather'])
+
 const AssistantWidget = () => {
   const navigate = useNavigate()
   const currentUser = useAuthStore((state) => state.user)
@@ -115,10 +121,10 @@ const AssistantWidget = () => {
   const [speakReplies, setSpeakReplies] = useState(true)
   // submit is declared below; the ref lets the voice hook call it without a
   // use-before-declaration cycle.
-  const submitRef = useRef<((text: string) => void) | null>(null)
+  const submitRef = useRef<((text: string, interrupt?: boolean) => void) | null>(null)
 
   const voice = useVoice({
-    onTranscript: (text) => submitRef.current?.(text),
+    onTranscript: (text) => submitRef.current?.(text, true),
   })
 
   const { data: status } = useQuery({
@@ -135,9 +141,17 @@ const AssistantWidget = () => {
   // Abort any in-flight run if the widget unmounts.
   useEffect(() => () => cancelRef.current?.(), [])
 
-  const submit = (text: string) => {
+  const submit = (text: string, interrupt = false) => {
     const trimmed = text.trim()
-    if (!trimmed || busy) return
+    if (!trimmed) return
+    if (busy) {
+      // Typing while it works waits its turn; speaking over it does not. A
+      // question asked out loud is an interruption, so the running answer is
+      // abandoned rather than the new question being silently dropped.
+      if (!interrupt) return
+      cancelRef.current?.()
+      voice.stopSpeaking()
+    }
     setTurns((prev) => [...prev, { role: 'user', text: trimmed }])
     setQuestion('')
     setBusy(true)
@@ -159,7 +173,12 @@ const AssistantWidget = () => {
     }))
 
     cancelRef.current = askAssistant(trimmed, {
-      onProgress: (node) => setProgress(PROGRESS_LABEL[node] || 'Working'),
+      onProgress: (node) => {
+        // Standing in silence while it reads the database is the most
+        // machine-like moment in a spoken exchange.
+        if (spoken && WORKING_NODES.has(node)) voice.sayWhileWorking()
+        setProgress(PROGRESS_LABEL[node] || 'Working')
+      },
       onToken: (text) => {
         streamedRef.current += text
         if (spoken) voice.pushSpeech(streamedRef.current)
@@ -265,7 +284,7 @@ const AssistantWidget = () => {
                 onClick={() => {
                   const next = !voiceMode
                   setVoiceMode(next)
-                  if (!next) { voice.stopListening(); voice.stopSpeaking() }
+                  if (!next) { voice.stopConversation(); voice.stopListening() }
                 }}
                 sx={{ color: '#fff', bgcolor: voiceMode ? 'rgba(255,255,255,0.22)' : 'transparent' }}
               >
@@ -421,34 +440,43 @@ const AssistantWidget = () => {
             p: 2, borderTop: '1px solid #E9EDF5', display: 'flex', flexDirection: 'column',
             alignItems: 'center', gap: 1.2,
           }}>
-            {(voice.listening || voice.transcribing) && (
+            {/* The bars follow real microphone energy, so the widget shows
+                that it is hearing you rather than merely claiming to. */}
+            {(voice.listening || voice.transcribing || voice.conversing) && (
               <Stack direction="row" spacing={0.6} alignItems="flex-end" sx={{ height: 26 }}>
                 {[0, 1, 2, 3, 4].map((bar) => (
                   <Box key={bar} sx={{
-                    width: 4, height: 22, borderRadius: 2, bgcolor: '#DC2626',
+                    width: 4, borderRadius: 2,
+                    height: voice.listening
+                      ? Math.max(5, Math.min(24, 5 + voice.level * 26 * (bar === 2 ? 1.15 : 0.85)))
+                      : 22,
+                    bgcolor: voice.listening ? '#DC2626' : '#CBD5E1',
                     transformOrigin: 'bottom',
-                    animation: `${bars} 0.9s ease-in-out ${bar * 0.11}s infinite`,
+                    transition: 'height 90ms linear',
+                    animation: voice.transcribing
+                      ? `${bars} 0.9s ease-in-out ${bar * 0.11}s infinite`
+                      : 'none',
                   }} />
                 ))}
               </Stack>
             )}
 
-            <Tooltip title={voice.listening ? 'Stop listening' : 'Hold a question and speak'}>
+            <Tooltip title={voice.conversing ? 'End the conversation' : 'Start a hands-free conversation'}>
               <span>
                 <IconButton
-                  onClick={() => (voice.listening ? voice.stopListening() : void voice.startListening())}
-                  disabled={busy || voice.transcribing}
+                  onClick={() => (voice.conversing
+                    ? voice.stopConversation()
+                    : void voice.startConversation())}
                   sx={{
                     width: 62, height: 62, color: '#fff',
-                    background: voice.listening
+                    background: voice.conversing
                       ? 'linear-gradient(135deg,#DC2626,#F87171)'
                       : 'linear-gradient(135deg,#7C3AED,#9A55B0)',
                     animation: voice.listening ? `${listenPulse} 1.4s ease-in-out infinite` : 'none',
-                    '&:hover': { background: voice.listening ? '#B91C1C' : '#6D28D9' },
-                    '&.Mui-disabled': { background: '#E2E8F0', color: '#94A3B8' },
+                    '&:hover': { background: voice.conversing ? '#B91C1C' : '#6D28D9' },
                   }}
                 >
-                  {voice.listening ? <GraphicEqIcon /> : <MicIcon />}
+                  {voice.conversing ? <CallEndIcon /> : <MicIcon />}
                 </IconButton>
               </span>
             </Tooltip>
@@ -456,15 +484,28 @@ const AssistantWidget = () => {
             <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: voice.error ? '#DC2626' : '#64748B', textAlign: 'center' }}>
               {voice.error
                 || (voice.listening
-                  ? 'Listening… tap to finish'
+                  ? 'Listening…'
                   : voice.transcribing
                     ? 'Transcribing…'
-                    : busy
-                      ? 'Working…'
-                      : voice.speaking
-                        ? 'Speaking… tap the mic to interrupt'
-                        : `Tap to ask ${AGENT_NAME}`)}
+                    : voice.speaking
+                      ? 'Speaking — just talk over me'
+                      : busy
+                        ? 'Working…'
+                        : voice.conversing
+                          ? 'Go ahead, I am listening'
+                          : `Tap to talk to ${AGENT_NAME}`)}
             </Typography>
+
+            {!voice.conversing && (
+              <Button
+                size="small"
+                onClick={() => (voice.listening ? voice.stopListening() : void voice.startListening())}
+                disabled={busy || voice.transcribing}
+                sx={{ fontSize: 11.5, fontWeight: 800, color: '#64748B', textTransform: 'none' }}
+              >
+                {voice.listening ? 'Finish' : 'Or hold one question at a time'}
+              </Button>
+            )}
           </Box>
         ) : (
         <Box sx={{ p: 1.6, borderTop: '1px solid #E9EDF5', display: 'flex', gap: 1, alignItems: 'flex-end' }}>
