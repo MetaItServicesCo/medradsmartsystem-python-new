@@ -40,7 +40,7 @@ app = FastAPI(title="MedRad Speech", docs_url=None, redoc_url=None, openapi_url=
 
 # Model handles plus the locks that guard first load. Two concurrent requests
 # must not both start loading the same model.
-_tts: dict[str, Any] = {"voice": None, "lock": threading.Lock()}
+_tts: dict[str, Any] = {"voice": None, "lock": threading.Lock(), "loaded_name": None}
 _stt: dict[str, Any] = {"model": None, "lock": threading.Lock()}
 
 
@@ -52,6 +52,33 @@ def _require_internal(key: Optional[str]) -> None:
         )
 
 
+def _resolve_voice_path() -> Optional[str]:
+    """Path to a usable voice, preferring the configured one.
+
+    The configured name and the voice baked into the image can disagree — a
+    changed build argument, an older compose default — and that mismatch used to
+    disable speech entirely while a perfectly good voice sat unused on disk.
+    Falling back to whatever is present keeps the assistant talking, loudly
+    logged so the mismatch still gets fixed.
+    """
+    preferred = os.path.join(VOICE_DIR, "{}.onnx".format(VOICE_NAME))
+    if os.path.exists(preferred):
+        return preferred
+    try:
+        available = sorted(f for f in os.listdir(VOICE_DIR) if f.endswith(".onnx"))
+    except OSError:
+        available = []
+    if not available:
+        return None
+    logger.warning(
+        "Configured voice %s is not in the image; using %s instead. "
+        "Set PIPER_VOICE to a baked voice, or rebuild with "
+        "--build-arg PIPER_VOICE=%s",
+        VOICE_NAME, available[0], VOICE_NAME,
+    )
+    return os.path.join(VOICE_DIR, available[0])
+
+
 def _load_voice():
     if _tts["voice"] is not None:
         return _tts["voice"]
@@ -59,14 +86,17 @@ def _load_voice():
         if _tts["voice"] is None:
             from piper import PiperVoice
 
-            model_path = os.path.join(VOICE_DIR, "{}.onnx".format(VOICE_NAME))
-            if not os.path.exists(model_path):
-                raise RuntimeError("Voice model missing at {}".format(model_path))
+            model_path = _resolve_voice_path()
+            if model_path is None:
+                raise RuntimeError(
+                    "No Piper voice found in {}. Rebuild the speech image.".format(VOICE_DIR)
+                )
             started = time.perf_counter()
             _tts["voice"] = PiperVoice.load(model_path)
+            _tts["loaded_name"] = os.path.basename(model_path)[:-len(".onnx")]
             logger.info(
                 "Loaded voice %s in %dms",
-                VOICE_NAME, int((time.perf_counter() - started) * 1000),
+                _tts["loaded_name"], int((time.perf_counter() - started) * 1000),
             )
     return _tts["voice"]
 
@@ -95,12 +125,17 @@ class SpeakRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    voice_path = os.path.join(VOICE_DIR, "{}.onnx".format(VOICE_NAME))
+    resolved = _resolve_voice_path()
+    try:
+        baked = sorted(f[:-6] for f in os.listdir(VOICE_DIR) if f.endswith(".onnx"))
+    except OSError:
+        baked = []
     return {
         "status": "ok",
-        "voice": VOICE_NAME,
-        "voice_available": os.path.exists(voice_path),
-        "voice_loaded": _tts["voice"] is not None,
+        "voice_configured": VOICE_NAME,
+        "voice_in_image": baked,
+        "voice_available": resolved is not None,
+        "voice_loaded": _tts.get("loaded_name"),
         "recognizer": WHISPER_MODEL,
         "recognizer_loaded": _stt["model"] is not None,
     }

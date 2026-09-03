@@ -49,6 +49,9 @@ class AskRequest(BaseModel):
     # Recent turns from this conversation, oldest first. Capped here so a
     # client cannot grow the model context without bound.
     history: list[ConversationTurn] = Field(default_factory=list, max_length=12)
+    # The answer will be read aloud, so it is composed for the ear: short,
+    # spoken numbers, no lists or field names.
+    voice: bool = False
 
 
 def require_superadmin(current_user: User = Depends(get_current_user)) -> User:
@@ -133,6 +136,7 @@ async def ask(
             "question": payload.question,
             "user_token": token,
             "history": [turn.model_dump() for turn in payload.history],
+            "voice": payload.voice,
         }
         try:
             async with httpx.AsyncClient(timeout=settings.ASSISTANT_TIMEOUT_SECONDS) as client:

@@ -40,6 +40,8 @@ class RunRequest(BaseModel):
     # Recent turns, oldest first. Without this every question is an isolated
     # run and the assistant re-introduces itself on each reply.
     history: list[Turn] = Field(default_factory=list, max_length=12)
+    # Answer will be spoken, so it is composed for the ear rather than the page.
+    voice: bool = False
 
 
 @app.get("/health")
@@ -80,7 +82,9 @@ async def stream_run(
     async def event_source():
         try:
             history = [{"role": t.role, "text": t.text} for t in payload.history]
-            async for event in run_agent(payload.question, payload.user_token, history):
+            async for event in run_agent(
+                payload.question, payload.user_token, history, payload.voice
+            ):
                 yield {"event": event.get("event", "message"), "data": json.dumps(event)}
         except Exception as exc:  # noqa: BLE001 - surface as a stream error, never a 500 mid-stream
             logger.exception("Agent run failed")

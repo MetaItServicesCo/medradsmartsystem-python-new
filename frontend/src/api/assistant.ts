@@ -75,6 +75,8 @@ export const askAssistant = (
   question: string,
   handlers: StreamHandlers,
   history: ConversationTurn[] = [],
+  /** Answer will be spoken, so the agent writes it to be heard, not read. */
+  voice = false,
 ): (() => void) => {
   const controller = new AbortController()
   const token = useAuthStore.getState().token
@@ -88,7 +90,7 @@ export const askAssistant = (
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question, history }),
+        body: JSON.stringify({ question, history, voice }),
         signal: controller.signal,
       })
 

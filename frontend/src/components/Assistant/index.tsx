@@ -141,6 +141,9 @@ const AssistantWidget = () => {
     setProgress('Understanding the question')
     setStreaming('')
 
+    // The answer is only written for the ear when it will actually be heard.
+    const spoken = voiceMode && speakReplies
+
     // Last few turns give the assistant continuity: without them it treats
     // every question as the first and re-introduces itself each reply.
     const history = turns.slice(-8).map((turn) => ({
@@ -153,7 +156,7 @@ const AssistantWidget = () => {
       onToken: (text) => setStreaming((prev) => prev + text),
       onAnswer: (answer) => {
         setStreaming('')
-        if (voiceMode && speakReplies) void voice.speak(answer.answer)
+        if (spoken) void voice.speak(answer.answer)
         setTurns((prev) => [...prev, {
           role: 'assistant',
           text: answer.answer,
@@ -169,7 +172,7 @@ const AssistantWidget = () => {
         setBusy(false)
         setProgress('')
       },
-    }, history)
+    }, history, spoken)
   }
 
   // Kept current without a dependency array so the voice callback always

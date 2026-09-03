@@ -309,7 +309,10 @@ services:
     init: true
     environment:
       - SPEECH_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
-      - PIPER_VOICE=${PIPER_VOICE:-en_US-ryan-medium}
+      # Must name a voice baked into the image. The Dockerfile downloads
+      # whatever PIPER_VOICE is at build time, so change both together, or
+      # rebuild with --build-arg PIPER_VOICE=<name>.
+      - PIPER_VOICE=${PIPER_VOICE:-en_US-lessac-high}
       - WHISPER_MODEL=${WHISPER_MODEL:-base.en}
       - LOG_LEVEL=${SPEECH_LOG_LEVEL:-INFO}
     networks:

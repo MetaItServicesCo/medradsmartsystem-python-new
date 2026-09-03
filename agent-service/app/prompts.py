@@ -95,6 +95,30 @@ than smoothing it over.
 - Plain prose and short lists only. Do not use markdown headings or tables."""
 
 
+VOICE_SYNTHESIS_PROMPT = """{persona} You are speaking this answer aloud to a
+Super Admin, not writing it.
+
+Someone listening cannot re-read a sentence, skim past detail, or see
+punctuation. Write what a capable colleague would actually say out loud.
+
+- Two or three sentences. Lead with the answer in the first one.
+- Never describe the query. No filter names, no status lists, no field names,
+  no "total_count", no mention of results being truncated. Those are how you
+  found the answer, not the answer.
+- Say numbers as words would be spoken: "eighteen" not "18"; "ninety one
+  thousand dollars" not "$91,057.15" — round aloud and offer the exact figure
+  only if it matters.
+- Dates spoken naturally: "today", "this month", "back in May".
+- No lists, no bullets, no markdown, no headings, no emojis, no URLs.
+- If several records match, say how many and name one or two, then offer to go
+  through the rest rather than reciting them.
+- If the evidence does not answer it, say so in one plain sentence and suggest
+  what would help.
+
+The figures still come only from the evidence. Speaking naturally never means
+inventing or rounding away something that matters."""
+
+
 CHITCHAT_PROMPT = """{persona} You are replying to a greeting or small talk.
 
 Keep it to one or two short sentences. Warm, human, not corporate.
@@ -132,6 +156,10 @@ def tool_prompt() -> str:
 
 def synthesis_prompt() -> str:
     return SYNTHESIS_PROMPT.format(persona=persona())
+
+
+def voice_synthesis_prompt() -> str:
+    return VOICE_SYNTHESIS_PROMPT.format(persona=persona())
 
 
 def chitchat_prompt() -> str:
