@@ -6,9 +6,10 @@
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 python-multipart==0.0.20
-# WebSocket support for the live audio stream. Pinned rather than inherited
-# from uvicorn[standard], since the streaming endpoint requires it.
-websockets==12.0
+# WebSocket support for the live audio stream comes from uvicorn[standard],
+# which requires websockets>=13. Nothing here imports it directly -- the
+# streaming endpoint is FastAPI's, served by uvicorn -- so pinning it here only
+# created a conflict with the server that provides it.
 # Imported directly by app.streaming for the audio buffers.
 numpy>=1.26.0,<3
 

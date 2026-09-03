@@ -54,10 +54,11 @@ pytz==2023.3
 pytest==7.4.3
 pytest-asyncio==0.21.1
 httpx==0.25.2
-# Used directly to relay the assistant voice stream to the speech service.
-# It arrives with uvicorn[standard] too, but application code should not
-# depend on another package's extras staying the same.
-websockets==12.0
+# Imported directly, as a client, to relay the assistant voice stream to the
+# speech service, so it is pinned here rather than left to uvicorn's extras.
+# Capped below 14, where websockets.connect became the new asyncio client; the
+# relay is written against the API in this range.
+websockets>=12,<14
 
 # Code Quality
 black==23.12.0
