@@ -17,6 +17,7 @@ tools at once measurably degrades selection accuracy once a system has many.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import date
@@ -273,9 +274,31 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
             if not blocks:
                 break
 
-            tool_results_content: list[dict[str, Any]] = []
+            # Budget is spent in block order so the same blocks are refused
+            # regardless of how the calls are then scheduled.
+            runnable: list[dict[str, Any]] = []
+            refused: set[str] = set()
             for block in blocks:
                 if calls_made >= settings.MAX_TOOL_CALLS:
+                    refused.add(block["id"])
+                    continue
+                calls_made += 1
+                runnable.append(block)
+
+            # A turn that asks for several tools asked for them together, and
+            # they do not depend on each other. Running them one after another
+            # added up every round trip for no reason.
+            outcomes = await asyncio.gather(*(
+                client.call_tool(block["name"], block["input"]) for block in runnable
+            ), return_exceptions=True)
+            by_id = {
+                block["id"]: outcome
+                for block, outcome in zip(runnable, outcomes)
+            }
+
+            tool_results_content: list[dict[str, Any]] = []
+            for block in blocks:
+                if block["id"] in refused:
                     tool_results_content.append({
                         "type": "tool_result",
                         "tool_use_id": block["id"],
@@ -283,29 +306,30 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                         "is_error": True,
                     })
                     continue
-                calls_made += 1
-                try:
-                    result = await client.call_tool(block["name"], block["input"])
-                    collected.append({"tool": block["name"], "result": result})
-                    citations.extend(_citations_from(result))
+                outcome = by_id[block["id"]]
+                if isinstance(outcome, BaseException):
+                    if not isinstance(outcome, MedRadError):
+                        raise outcome
+                    if not outcome.recoverable:
+                        errors.append(str(outcome))
                     tool_results_content.append({
                         "type": "tool_result",
                         "tool_use_id": block["id"],
-                        # Wrapped explicitly as data so user-authored text inside
-                        # records is never read as instructions.
-                        "content": "<tool_result_data>{}</tool_result_data>".format(
-                            json.dumps(result, default=str)[:12000]
-                        ),
-                    })
-                except MedRadError as exc:
-                    if not exc.recoverable:
-                        errors.append(str(exc))
-                    tool_results_content.append({
-                        "type": "tool_result",
-                        "tool_use_id": block["id"],
-                        "content": str(exc),
+                        "content": str(outcome),
                         "is_error": True,
                     })
+                    continue
+                collected.append({"tool": block["name"], "result": outcome})
+                citations.extend(_citations_from(outcome))
+                tool_results_content.append({
+                    "type": "tool_result",
+                    "tool_use_id": block["id"],
+                    # Wrapped explicitly as data so user-authored text inside
+                    # records is never read as instructions.
+                    "content": "<tool_result_data>{}</tool_result_data>".format(
+                        json.dumps(outcome, default=str)[:12000]
+                    ),
+                })
             conversation.append({"role": "user", "content": tool_results_content})
 
     return {"tool_results": collected, "citations": citations, "errors": errors}
@@ -410,9 +434,13 @@ async def clarify_node(state: AgentState) -> dict[str, Any]:
 
 
 async def gather_node(state: AgentState) -> dict[str, Any]:
-    """Hybrid questions need both legs; run them and merge."""
-    tools = await tools_node(state)
-    knowledge = await retrieve_node(state)
+    """Hybrid questions need both legs; run them and merge.
+
+    The legs are independent -- knowledge search does not read tool output --
+    so running them concurrently costs a hybrid question the slower leg rather
+    than the sum of both.
+    """
+    tools, knowledge = await asyncio.gather(tools_node(state), retrieve_node(state))
     return {
         "tool_results": tools.get("tool_results", []),
         "knowledge": knowledge.get("knowledge", []),

@@ -133,25 +133,37 @@ def _to_openai_messages(
 # Clients
 # --------------------------------------------------------------------------
 
-def _anthropic_client():
-    import anthropic
+# One question costs three or more model calls. Building a client per call
+# threw away the connection pool each time, so every one of them paid a fresh
+# TCP and TLS handshake to a remote endpoint -- pure latency, repeated. The
+# clients are safe to share and configuration is fixed at startup, so they are
+# built once and reused for the life of the process.
+_clients: dict[str, Any] = {}
 
-    return anthropic.AsyncAnthropic(
-        api_key=settings.agent_api_key(),
-        timeout=settings.AGENT_TIMEOUT_SECONDS,
-        max_retries=1,
-    )
+
+def _anthropic_client():
+    if "anthropic" not in _clients:
+        import anthropic
+
+        _clients["anthropic"] = anthropic.AsyncAnthropic(
+            api_key=settings.agent_api_key(),
+            timeout=settings.AGENT_TIMEOUT_SECONDS,
+            max_retries=1,
+        )
+    return _clients["anthropic"]
 
 
 def _openai_client():
-    from openai import AsyncOpenAI
+    if "openai" not in _clients:
+        from openai import AsyncOpenAI
 
-    return AsyncOpenAI(
-        api_key=settings.agent_api_key() or "not-required",
-        base_url=settings.agent_base_url(),
-        timeout=settings.AGENT_TIMEOUT_SECONDS,
-        max_retries=1,
-    )
+        _clients["openai"] = AsyncOpenAI(
+            api_key=settings.agent_api_key() or "not-required",
+            base_url=settings.agent_base_url(),
+            timeout=settings.AGENT_TIMEOUT_SECONDS,
+            max_retries=1,
+        )
+    return _clients["openai"]
 
 
 def _cached_system(text: str) -> list[dict[str, Any]]:

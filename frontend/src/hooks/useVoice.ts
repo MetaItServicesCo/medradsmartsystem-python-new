@@ -26,7 +26,7 @@ const MIN_RECORDING_BYTES = 1200
  * begin after the first sentence and lets the rest be prepared while it plays,
  * which is what makes it feel continuous rather than batched.
  */
-const splitForSpeech = (text: string): string[] => {
+const groupSentences = (text: string, minChars: number): string[] => {
   const sentences = text
     .replace(/\s+/g, ' ')
     .split(/(?<=[.!?])\s+/)
@@ -34,11 +34,12 @@ const splitForSpeech = (text: string): string[] => {
     .filter(Boolean)
 
   // Very short fragments ("Yes.") are merged forward so the voice does not
-  // stutter between one-word clips.
+  // stutter between one-word clips. How short counts depends on the caller: a
+  // finished answer can afford long pieces, a stream cannot.
   const pieces: string[] = []
   for (const sentence of sentences) {
     const last = pieces[pieces.length - 1]
-    if (last && (last.length < 60 || sentence.length < 25)) {
+    if (last && (last.length < minChars || sentence.length < 25)) {
       pieces[pieces.length - 1] = `${last} ${sentence}`
     } else {
       pieces.push(sentence)
@@ -46,6 +47,49 @@ const splitForSpeech = (text: string): string[] => {
   }
   return pieces.map((piece) => piece.slice(0, 600)).slice(0, 12)
 }
+
+const splitForSpeech = (text: string): string[] => groupSentences(text, 60)
+
+// Below this a completed sentence waits to join the next one, so playback does
+// not open with a clipped three-word clip. Kept short deliberately: every
+// character of the first sentence is silence the listener sits through.
+const MIN_STREAMED_CHARS = 25
+
+const stripMarkup = (text: string): string =>
+  text.replace(/\*\*/g, '').replace(/[*_`#]/g, '').trim()
+
+/**
+ * Pull the sentences that are definitely finished out of a growing answer.
+ *
+ * Returns how far into the raw text it consumed, so markup stripping (which
+ * changes length) never corrupts the position of the next read.
+ */
+const readyPieces = (
+  text: string,
+  consumed: number,
+  flush: boolean,
+): { pieces: string[]; consumed: number } => {
+  const remainder = text.slice(consumed)
+  if (!remainder.trim()) return { pieces: [], consumed }
+  if (flush) {
+    return { pieces: groupSentences(stripMarkup(remainder), 25), consumed: text.length }
+  }
+
+  let cut = -1
+  for (let i = remainder.length - 2; i >= 0; i -= 1) {
+    if ('.!?'.includes(remainder[i]) && /\s/.test(remainder[i + 1])) {
+      cut = i + 1
+      break
+    }
+  }
+  if (cut < MIN_STREAMED_CHARS) return { pieces: [], consumed }
+  return {
+    pieces: groupSentences(stripMarkup(remainder.slice(0, cut)), 25),
+    consumed: consumed + cut,
+  }
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 const pickMimeType = (): string => {
   if (typeof MediaRecorder === 'undefined') return ''
@@ -77,6 +121,11 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   const objectUrlRef = useRef<string | null>(null)
   // Identifies the current speech sequence; incremented to cancel one mid-flight.
   const speakRunRef = useRef(0)
+  // Sentences waiting to be spoken, plus how much of the answer has been turned
+  // into them and whether any more is coming.
+  const queueRef = useRef<{ pieces: string[]; consumed: number; done: boolean }>({
+    pieces: [], consumed: 0, done: false,
+  })
   const onTranscriptRef = useRef(onTranscript)
   useEffect(() => { onTranscriptRef.current = onTranscript }, [onTranscript])
 
@@ -122,26 +171,28 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     void audio.play().catch(finish)
   }), [])
 
-  const speak = useCallback(async (text: string) => {
-    if (!text.trim()) return
-    stopSpeaking()
-    // Emphasis markers are for the eye; spoken aloud they become noise.
-    const spoken = text.replace(/\*\*/g, '').replace(/[*_`#]/g, '').trim()
-    const pieces = splitForSpeech(spoken)
-    if (!pieces.length) return
-
-    const runId = ++speakRunRef.current
-    setSpeaking(true)
+  /** Drain the queue, keeping one clip synthesising while another plays. */
+  const drain = useCallback(async (runId: number) => {
+    const take = (): string | null => queueRef.current.pieces.shift() ?? null
+    let pending: Promise<Blob> | null = null
     try {
-      // The next clip is fetched while the current one plays, so the gap
-      // between sentences is the browser swapping sources, not a round trip.
-      let current: Promise<Blob> | null = synthesizeSpeech(pieces[0])
-      for (let index = 0; index < pieces.length; index += 1) {
+      for (;;) {
         if (runId !== speakRunRef.current) return
-        if (!current) return
-        const blob = await current
-        current = pieces[index + 1] ? synthesizeSpeech(pieces[index + 1]) : null
-        if (runId !== speakRunRef.current) return
+        if (!pending) {
+          const piece = take()
+          if (piece === null) {
+            if (queueRef.current.done) break
+            // The answer is still being written. Polling at this granularity is
+            // invisible next to the time synthesis itself takes.
+            await sleep(80)
+            continue
+          }
+          pending = synthesizeSpeech(piece)
+        }
+        const blob = await pending
+        pending = null
+        const next = take()
+        if (next !== null) pending = synthesizeSpeech(next)
         await playBlob(blob, runId)
       }
     } catch (err) {
@@ -153,7 +204,50 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
         releaseAudio()
       }
     }
-  }, [stopSpeaking, releaseAudio, playBlob])
+  }, [playBlob, releaseAudio])
+
+  /**
+   * Open a spoken reply that is still being written.
+   *
+   * Waiting for the finished answer meant the whole generation time was dead
+   * air before a single word was heard. Starting on the first finished sentence
+   * makes the assistant answer at roughly the speed a person would.
+   */
+  const beginSpeech = useCallback(() => {
+    stopSpeaking()
+    queueRef.current = { pieces: [], consumed: 0, done: false }
+    const runId = ++speakRunRef.current
+    setSpeaking(true)
+    void drain(runId)
+  }, [stopSpeaking, drain])
+
+  /** Offer the answer so far; whole sentences in it start playing at once. */
+  const pushSpeech = useCallback((soFar: string) => {
+    const state = queueRef.current
+    if (state.done) return
+    const { pieces, consumed } = readyPieces(soFar, state.consumed, false)
+    if (!pieces.length) return
+    state.pieces.push(...pieces)
+    state.consumed = consumed
+  }, [])
+
+  /** Speak whatever is left and close the reply. */
+  const endSpeech = useCallback((final: string) => {
+    const state = queueRef.current
+    // A stream that diverged from the final text (an error, a retry) is spoken
+    // from the top rather than half-spoken from a stale offset.
+    const consumed = final.startsWith(final.slice(0, state.consumed)) ? state.consumed : 0
+    const { pieces } = readyPieces(final, consumed, true)
+    state.pieces.push(...pieces)
+    state.done = true
+  }, [])
+
+  /** Speak a complete answer that was never streamed. */
+  const speak = useCallback(async (text: string) => {
+    if (!text.trim()) return
+    beginSpeech()
+    endSpeech(text)
+  }, [beginSpeech, endSpeech])
 
   const releaseMicrophone = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
@@ -249,6 +343,9 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     startListening,
     stopListening,
     speak,
+    beginSpeech,
+    pushSpeech,
+    endSpeech,
     stopSpeaking,
   }
 }

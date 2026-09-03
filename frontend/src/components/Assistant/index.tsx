@@ -107,6 +107,9 @@ const AssistantWidget = () => {
   // Tokens land here as they arrive and are promoted to a turn on completion.
   const [streaming, setStreaming] = useState('')
   const cancelRef = useRef<(() => void) | null>(null)
+  // The streamed answer accumulates here rather than inside the state updater,
+  // which React may run twice and which must therefore stay free of effects.
+  const streamedRef = useRef('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [voiceMode, setVoiceMode] = useState(false)
   const [speakReplies, setSpeakReplies] = useState(true)
@@ -140,9 +143,13 @@ const AssistantWidget = () => {
     setBusy(true)
     setProgress('Understanding the question')
     setStreaming('')
+    streamedRef.current = ''
 
     // The answer is only written for the ear when it will actually be heard.
     const spoken = voiceMode && speakReplies
+    // Opened now so the first finished sentence can be spoken while the rest
+    // of the answer is still being written.
+    if (spoken) voice.beginSpeech()
 
     // Last few turns give the assistant continuity: without them it treats
     // every question as the first and re-introduces itself each reply.
@@ -153,10 +160,14 @@ const AssistantWidget = () => {
 
     cancelRef.current = askAssistant(trimmed, {
       onProgress: (node) => setProgress(PROGRESS_LABEL[node] || 'Working'),
-      onToken: (text) => setStreaming((prev) => prev + text),
+      onToken: (text) => {
+        streamedRef.current += text
+        if (spoken) voice.pushSpeech(streamedRef.current)
+        setStreaming(streamedRef.current)
+      },
       onAnswer: (answer) => {
         setStreaming('')
-        if (spoken) void voice.speak(answer.answer)
+        if (spoken) voice.endSpeech(answer.answer)
         setTurns((prev) => [...prev, {
           role: 'assistant',
           text: answer.answer,
@@ -167,6 +178,7 @@ const AssistantWidget = () => {
         setProgress('')
       },
       onError: (message) => {
+        if (spoken) voice.stopSpeaking()
         setStreaming('')
         setTurns((prev) => [...prev, { role: 'assistant', text: message, isError: true }])
         setBusy(false)
