@@ -6,10 +6,13 @@ FROM python:3.11-slim
 # CPU, so they are the default here.
 ARG PIPER_VOICE=en_US-lessac-high
 
-# base.en is fast but guesses on short utterances, which is most of a spoken
-# conversation. small.en costs roughly twice the time on a two-second clip and
-# is markedly more accurate on exactly those, so it is the better default here.
-ARG WHISPER_MODEL=small.en
+# Measured on the deployment host: base.en transcribes at about 0.4x real time,
+# small.en at about 1.5x -- roughly three and a half times slower, which on a
+# four second turn is several seconds of silence before the assistant can even
+# begin thinking. base.en is the default for that reason. Both are baked, so
+# switching is an environment variable and not a rebuild or a cold download.
+ARG WHISPER_MODEL=base.en
+ARG WHISPER_MODEL_ALT=small.en
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -46,7 +49,8 @@ RUN mkdir -p /voices \
 # first spoken question slow, and would fail outright if HuggingFace were
 # unreachable from the host.
 RUN mkdir -p /models \
- && python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8')"
+ && python -c "import os; from faster_whisper import WhisperModel; WhisperModel(os.environ['WHISPER_MODEL'], device='cpu', compute_type='int8')" \
+ && python -c "from faster_whisper import WhisperModel; WhisperModel('$WHISPER_MODEL_ALT', device='cpu', compute_type='int8')"
 
 COPY app ./app
 

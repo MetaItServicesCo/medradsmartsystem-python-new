@@ -38,7 +38,7 @@ logger = logging.getLogger("speech")
 INTERNAL_KEY = os.environ.get("SPEECH_INTERNAL_KEY", "")
 VOICE_NAME = os.environ.get("PIPER_VOICE", "en_US-ryan-medium")
 VOICE_DIR = os.environ.get("PIPER_VOICE_DIR", "/voices")
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small.en")
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base.en")
 WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "int8")
 # Beam search. This was greedy for speed, which is the wrong trade on the short
 # utterances a conversation is made of: "hey, how are you" is a second of audio
@@ -145,12 +145,18 @@ _vad: dict[str, Any] = {"model": None, "lock": threading.Lock()}
 # speech_pad_ms is zero because these timestamps are read for timing, not used
 # to cut audio: the default 400ms of padding would report speech ending nearly
 # half a second after it did, and every turn would wait that out.
+# All tunable without a rebuild, because the right values depend on the room.
 _STREAM_VAD_KWARGS = {
     # Silero's own tuned default. Lowering it to 0.45 made the detector open a
     # turn on a pure tone, which means it would open one on a fan or a hum.
-    "threshold": 0.5,
-    "min_speech_duration_ms": 120,
+    "threshold": _optional_float("STREAM_VAD_THRESHOLD", 0.55) or 0.55,
+    # 120ms is roughly one syllable, so a cough or a keystroke was enough to
+    # open a turn. A quarter of a second is still well inside a first word.
+    "min_speech_duration_ms": int(os.environ.get("STREAM_MIN_SPEECH_MS", "250")),
     "min_silence_duration_ms": 100,
+    # Zero because these timestamps are read for timing, not used to cut audio:
+    # the default 400ms of padding would report speech ending nearly half a
+    # second after it did, and every turn would wait that out.
     "speech_pad_ms": 0,
 }
 

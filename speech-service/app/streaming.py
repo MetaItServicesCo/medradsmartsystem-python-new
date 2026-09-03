@@ -52,18 +52,26 @@ ANALYSIS_HOP_S = 0.192
 # a clipped first syllable is what turns "hey, how are you" into nonsense.
 PRE_ROLL_S = 0.6
 
-# Silence that closes a turn. Shorter than the browser-side detector could
-# safely use, because Silero distinguishes a pause from an ending far better
-# than loudness does. It is dead air on every single turn, so it is worth
-# tuning per deployment.
-SILENCE_S = float(os.environ.get("STREAM_SILENCE_SECONDS", "0.5"))
+# Silence that closes a turn.
+#
+# This was 0.5s, which was wrong once endpoint detection became precise. While
+# the detector reported "speech somewhere in the last second" it was accidentally
+# tolerant: a turn only ended about a second and a half after the speaker
+# stopped. Making it exact removed that slack without replacing it, so a normal
+# pause mid-sentence -- "how many... facilities are active" -- ended the turn and
+# sent half a question to the recogniser. Short fragments transcribe badly, and
+# a badly transcribed fragment is what the assistant then failed to understand.
+#
+# People pause while thinking. This has to outlast that, and only then is it
+# dead air worth trimming.
+SILENCE_S = float(os.environ.get("STREAM_SILENCE_SECONDS", "0.9"))
 
 # A turn longer than this is closed regardless, so one stuck open cannot grow
 # without bound.
 MAX_TURN_S = 45.0
 
-# Below this a "turn" is a door or a cough, not speech.
-MIN_TURN_S = 0.25
+# Below this a "turn" is a door, a cough or a chair, not a question.
+MIN_TURN_S = float(os.environ.get("STREAM_MIN_TURN_SECONDS", "0.4"))
 
 
 class TurnDetector:

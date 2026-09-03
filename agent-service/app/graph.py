@@ -213,6 +213,20 @@ async def classify_node(state: AgentState) -> dict[str, Any]:
     if (shortcut := local_intent(state["question"])) is not None:
         return {"intent": shortcut, "module": None}
 
+    # Spoken turns skip routing entirely. It measured three to five seconds --
+    # by far the largest cost in a voice turn -- to produce a single word that
+    # only chooses between gathering live data, documentation, or both. The
+    # hybrid path gathers both, in parallel, so the answer is the same and the
+    # round trip is gone.
+    #
+    # Nothing is weakened by losing the refusal branch here: the tools are
+    # read-only by construction and sensitive columns are never returned, so
+    # refusal was a courtesy message rather than the control. Typed questions
+    # still route properly, where a few seconds costs far less than it does
+    # mid-conversation.
+    if state.get("voice"):
+        return {"intent": "hybrid", "module": None}
+
     try:
         reply = await complete(
             system=classifier_prompt(),
