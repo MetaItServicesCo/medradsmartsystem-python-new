@@ -856,9 +856,9 @@ def search_users(
     ]
 
     # A named person filtered out by role reads as "no such person", which is a
-    # confidently wrong answer: people are described by the work they do, not by
-    # the role recorded on their account, and the two often differ. Say who was
-    # actually found instead.
+    # different claim from the true one. The recorded role is authoritative --
+    # an admin with service requests assigned is an admin, not a mislabelled
+    # technician -- so name the person and state the role they actually hold.
     if name and normalized and int(totals.total or 0) == 0:
         fallback = ctx.db.query(User).filter(or_(
             User.full_name.ilike(pattern, escape="\\"),
@@ -871,9 +871,10 @@ def search_users(
                 for row in matches
             )
             notes.append(
-                "No user named '{}' holds the requested role, but these exist "
-                "under other roles: {}. Do not report the person as missing; "
-                "their account role simply differs from how they are described."
+                "No user named '{}' holds the requested role. These users "
+                "match the name and hold these roles: {}. Say that the person "
+                "exists and give their actual role -- do not report them as "
+                "missing, and do not treat them as holding the asked-for role."
                 .format(name, described)
             )
 
