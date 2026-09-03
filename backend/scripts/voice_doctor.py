@@ -82,6 +82,13 @@ async def check_health() -> dict[str, Any]:
         "sample_rate={}".format(body.get("stream_sample_rate")),
     )
     record(PASS, "recogniser configured", str(body.get("recognizer")))
+    if body.get("warm"):
+        record(PASS, "models already loaded", "warmed in {}ms".format(body.get("warm_ms")))
+    else:
+        record(
+            WARN, "models already loaded",
+            body.get("warm_error") or "still loading; the next check pays for it",
+        )
     return body
 
 

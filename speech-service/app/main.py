@@ -19,6 +19,7 @@ import tempfile
 import threading
 import time
 import wave
+from contextlib import asynccontextmanager
 from typing import Any, Optional
 
 from fastapi import (
@@ -86,7 +87,50 @@ NOISE_W = _optional_float("PIPER_NOISE_W", 0.9)
 SENTENCE_SILENCE = _optional_float("PIPER_SENTENCE_SILENCE", 0.15) or 0.0
 MAX_AUDIO_BYTES = int(os.environ.get("MAX_AUDIO_BYTES", str(8 * 1024 * 1024)))
 
-app = FastAPI(title="MedRad Speech", docs_url=None, redoc_url=None, openapi_url=None)
+# How the background warm-up went, reported by /health so a slow first request
+# can be told apart from a broken one.
+_warm: dict[str, Any] = {"done": False, "ms": 0, "error": ""}
+
+
+async def _warm_models() -> None:
+    """Load every model in the background as soon as the process starts.
+
+    Loading on first use keeps the container starting fast, but it moves the
+    cost onto whoever speaks first: after any deploy the first question waited
+    tens of seconds for weights to load, which in a conversation is
+    indistinguishable from the thing being broken. Starting now means the
+    container is still up immediately and the models are ready long before
+    anyone reaches for the microphone.
+    """
+    started = time.perf_counter()
+    try:
+        for load in (_load_voice, _load_recognizer, _load_vad):
+            await asyncio.to_thread(load)
+        _warm["ms"] = int((time.perf_counter() - started) * 1000)
+        _warm["done"] = True
+        logger.info("Models warm in %dms", _warm["ms"])
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        # Not fatal: every endpoint still loads what it needs on demand. This
+        # only means the first request pays for it, as it used to.
+        _warm["error"] = str(exc)
+        logger.exception("Warm-up failed; models will load on first use")
+
+
+@asynccontextmanager
+async def lifespan(_: "FastAPI"):
+    task = asyncio.create_task(_warm_models())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
+app = FastAPI(
+    title="MedRad Speech", docs_url=None, redoc_url=None, openapi_url=None,
+    lifespan=lifespan,
+)
 
 # Model handles plus the locks that guard first load. Two concurrent requests
 # must not both start loading the same model.
@@ -228,6 +272,11 @@ def health() -> dict[str, Any]:
         },
         "recognizer": WHISPER_MODEL,
         "recognizer_beam_size": WHISPER_BEAM_SIZE,
+        # Until this is true the first request pays for loading the weights,
+        # which on a cold container is tens of seconds.
+        "warm": _warm["done"],
+        "warm_ms": _warm["ms"],
+        "warm_error": _warm["error"],
         "stream_sample_rate": SAMPLE_RATE,
         "turn_detector_loaded": _vad["model"] is not None,
         "recognizer_loaded": _stt["model"] is not None,
