@@ -10,6 +10,7 @@ memory for it.
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import os
@@ -20,9 +21,14 @@ import time
 import wave
 from typing import Any, Optional
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import (
+    FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket,
+    WebSocketDisconnect, status,
+)
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+
+from app.streaming import SAMPLE_RATE, StreamSession
 
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
@@ -47,7 +53,7 @@ WHISPER_MAX_NO_SPEECH = float(os.environ.get("WHISPER_MAX_NO_SPEECH", "0.7"))
 # told what the conversation is likely to be about.
 WHISPER_PROMPT = os.environ.get(
     "WHISPER_PROMPT",
-    "MedRad radiology operations. Facilities, equipment, service requests, "
+    "MedRad operations. Facilities, equipment, service requests, "
     "inspections, rentals, sales quotations, invoices, technicians, "
     "engineers, revenue, Mr. Medrad.",
 )
@@ -86,6 +92,30 @@ app = FastAPI(title="MedRad Speech", docs_url=None, redoc_url=None, openapi_url=
 # must not both start loading the same model.
 _tts: dict[str, Any] = {"voice": None, "lock": threading.Lock(), "loaded_name": None}
 _stt: dict[str, Any] = {"model": None, "lock": threading.Lock()}
+_vad: dict[str, Any] = {"model": None, "lock": threading.Lock()}
+
+# Turn detection is deliberately more eager than the trimming applied to a
+# finished recording: a turn boundary missed is a turn the assistant never
+# answers, while a little extra audio costs almost nothing. Passed as keyword
+# arguments so this module never has to import faster_whisper at load time.
+_STREAM_VAD_KWARGS = {"threshold": 0.45, "min_speech_duration_ms": 120}
+
+
+def _load_vad():
+    """Warm Silero. get_speech_timestamps loads it on first use behind an
+    lru_cache, so doing it here moves that cost out of the first spoken turn."""
+    if _vad["model"] is None:
+        with _vad["lock"]:
+            if _vad["model"] is None:
+                from faster_whisper.vad import get_vad_model
+
+                started = time.perf_counter()
+                _vad["model"] = get_vad_model()
+                logger.info(
+                    "Loaded turn detector in %dms",
+                    int((time.perf_counter() - started) * 1000),
+                )
+    return _vad["model"]
 
 
 def _require_internal(key: Optional[str]) -> None:
@@ -188,6 +218,8 @@ def health() -> dict[str, Any]:
         },
         "recognizer": WHISPER_MODEL,
         "recognizer_beam_size": WHISPER_BEAM_SIZE,
+        "stream_sample_rate": SAMPLE_RATE,
+        "turn_detector_loaded": _vad["model"] is not None,
         "recognizer_loaded": _stt["model"] is not None,
     }
 
@@ -238,6 +270,110 @@ def synthesize(
     )
 
 
+def _run_recognizer(model: Any, source: Any, language: Optional[str]) -> dict[str, Any]:
+    """Transcribe a file path or an audio array, and judge the result.
+
+    Both entry points share this so a streamed turn and an uploaded recording
+    are held to exactly the same standard; a confidence rule that applied to
+    only one of them would be worse than none.
+    """
+    segments, info = model.transcribe(
+        source,
+        language=language or None,
+        beam_size=WHISPER_BEAM_SIZE,
+        initial_prompt=WHISPER_PROMPT,
+        # Each turn is independent. Carrying context lets one bad transcript
+        # seed the next, so a single mishearing becomes a run of them.
+        condition_on_previous_text=False,
+        vad_filter=True,      # drop silence so trailing pauses cost nothing
+        # Silero trims to what it judges speech; without padding it shaves the
+        # quiet edges of real words, which is exactly what a short greeting
+        # cannot spare.
+        vad_parameters={"speech_pad_ms": 400, "min_silence_duration_ms": 500},
+    )
+
+    # Materialise once: segments is a generator and confidence has to be read
+    # from the same pass that produced the text.
+    collected = list(segments)
+    text = " ".join(segment.text.strip() for segment in collected).strip()
+
+    # Confidence, weighted by how much audio each segment accounts for.
+    spans = [(max(seg.end - seg.start, 0.01), seg) for seg in collected]
+    total = sum(span for span, _ in spans) or 1.0
+    avg_logprob = sum(seg.avg_logprob * span for span, seg in spans) / total
+    no_speech = sum(seg.no_speech_prob * span for span, seg in spans) / total
+    confident = (
+        bool(collected)
+        and avg_logprob >= WHISPER_MIN_LOGPROB
+        and no_speech <= WHISPER_MAX_NO_SPEECH
+    )
+    if text and not confident:
+        logger.info(
+            "discarding low-confidence transcript %r (logprob=%.2f no_speech=%.2f)",
+            text[:80], avg_logprob, no_speech,
+        )
+        text = ""
+
+    return {
+        "text": text,
+        "language": getattr(info, "language", language),
+        "avg_logprob": round(avg_logprob, 3),
+        "no_speech_prob": round(no_speech, 3),
+    }
+
+
+@app.websocket("/internal/v1/stream")
+async def stream(websocket: WebSocket) -> None:
+    """Live microphone: turn detection and transcription as it is spoken."""
+    await websocket.accept()
+
+    # Loading on connect rather than on the first turn keeps the pause out of
+    # the conversation, where it would be heard.
+    try:
+        from faster_whisper.vad import get_speech_timestamps
+
+        model = await asyncio.to_thread(_load_recognizer)
+        await asyncio.to_thread(_load_vad)
+    except Exception as exc:
+        logger.exception("Streaming unavailable")
+        await websocket.send_json({"type": "error", "detail": str(exc)})
+        await websocket.close()
+        return
+
+    def detect(window: Any) -> bool:
+        return bool(get_speech_timestamps(window, **_STREAM_VAD_KWARGS))
+
+    def transcribe_turn(audio: Any) -> dict[str, Any]:
+        return _run_recognizer(model, audio, "en")
+
+    session = StreamSession(
+        internal_key=INTERNAL_KEY,
+        vad=detect,
+        transcribe=transcribe_turn,
+        send=websocket.send_json,
+    )
+
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            if (payload := message.get("bytes")) is not None:
+                await session.on_audio(payload)
+            elif (text := message.get("text")) is not None:
+                if not await session.on_text(text):
+                    break
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Streaming session failed")
+    finally:
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
+
+
 @app.post("/internal/v1/stt")
 async def transcribe(
     audio: UploadFile = File(...),
@@ -269,42 +405,10 @@ async def transcribe(
     try:
         with os.fdopen(handle, "wb") as temp_file:
             temp_file.write(raw)
-        segments, info = model.transcribe(
-            path,
-            language=language or None,
-            beam_size=WHISPER_BEAM_SIZE,
-            initial_prompt=WHISPER_PROMPT,
-            # Each turn is independent. Carrying context lets one bad transcript
-            # seed the next, so a single mishearing becomes a run of them.
-            condition_on_previous_text=False,
-            vad_filter=True,      # drop silence so trailing pauses cost nothing
-            # Silero trims to what it judges speech; without padding it shaves
-            # the quiet edges of real words, which is exactly the part a short
-            # greeting cannot spare.
-            vad_parameters={"speech_pad_ms": 400, "min_silence_duration_ms": 500},
-        )
-
-        # Materialise once: segments is a generator and confidence has to be
-        # read from the same pass that produced the text.
-        collected = list(segments)
-        text = " ".join(segment.text.strip() for segment in collected).strip()
-
-        # Confidence, weighted by how much audio each segment accounts for.
-        spans = [(max(seg.end - seg.start, 0.01), seg) for seg in collected]
-        total = sum(span for span, _ in spans) or 1.0
-        avg_logprob = sum(seg.avg_logprob * span for span, seg in spans) / total
-        no_speech = sum(seg.no_speech_prob * span for span, seg in spans) / total
-        confident = (
-            bool(collected)
-            and avg_logprob >= WHISPER_MIN_LOGPROB
-            and no_speech <= WHISPER_MAX_NO_SPEECH
-        )
-        if text and not confident:
-            logger.info(
-                "discarding low-confidence transcript %r (logprob=%.2f no_speech=%.2f)",
-                text[:80], avg_logprob, no_speech,
-            )
-            text = ""
+        result = await asyncio.to_thread(_run_recognizer, model, path, language)
+        text = result["text"]
+        avg_logprob = result["avg_logprob"]
+        no_speech = result["no_speech_prob"]
     except Exception:
         logger.exception("Transcription failed")
         raise HTTPException(
@@ -324,7 +428,7 @@ async def transcribe(
     )
     return {
         "text": text,
-        "language": getattr(info, "language", language),
+        "language": result["language"],
         "elapsed_ms": elapsed_ms,
         # Returned so the thresholds can be tuned from real traffic rather than
         # from guesses about what a bad transcript looks like.

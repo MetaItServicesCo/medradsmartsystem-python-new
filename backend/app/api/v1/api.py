@@ -60,3 +60,5 @@ api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(square_webhooks.router, prefix="/webhooks", tags=["webhooks"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
+# No prefix: the path must stay under /api/v1/ws/ for the proxy to upgrade it.
+api_router.include_router(assistant.voice_router, tags=["assistant"])

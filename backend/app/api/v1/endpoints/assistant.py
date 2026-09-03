@@ -9,22 +9,29 @@ agent runs is scoped to that user by the internal tool API.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator, Optional
 
 import httpx
+import websockets
 from fastapi import (
-    APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status,
+    APIRouter, Depends, File, Header, HTTPException, Request, UploadFile,
+    WebSocket, WebSocketDisconnect, status,
 )
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
+from jose import JWTError
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.deps import get_current_user
-from app.db.base import get_db
+from app.core.security import decode_token, password_token_version
+from app.db.base import SessionLocal, get_db
 from app.models.user import User, UserRole
+from app.utils.token_revocation import access_token_is_revoked
 from app.utils.logging import log_activity
 from app.utils.rate_limit import _redis_client
 
@@ -32,6 +39,13 @@ from app.utils.rate_limit import _redis_client
 logger = logging.getLogger("medrad.assistant")
 
 router = APIRouter()
+
+# The voice socket lives on its own router so it can be mounted at /ws/, which
+# is the only prefix the production nginx upgrades to a WebSocket. Mounted
+# under /assistant/ it would fall into the catch-all location, which sets
+# Connection "" and turns the upgrade into a plain request that fails without
+# saying why.
+voice_router = APIRouter()
 
 # A Super Admin asking questions is low-volume by nature. This ceiling exists to
 # bound model spend if the UI misbehaves, not to police normal use.
@@ -177,6 +191,116 @@ def _speech_url(path: str) -> str:
             detail="Voice is not enabled on this deployment.",
         )
     return "{}{}".format(base, path)
+
+
+def _voice_stream_user(token: str) -> Optional[User]:
+    """Resolve a Super Admin from a token handed over in the URL.
+
+    A browser cannot set headers on a WebSocket, so the token travels in the
+    path exactly as it already does for the chat socket. Everything the HTTP
+    guard checks is checked here too -- token type, revocation, password
+    version, active flag -- because a second door into the same data must not
+    be an easier one.
+    """
+    try:
+        payload = decode_token(token)
+    except JWTError:
+        return None
+    if payload.get("token_type") != "access" or access_token_is_revoked(payload):
+        return None
+    username = payload.get("sub")
+    if not username:
+        return None
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user or not user.is_active:
+            return None
+        if payload.get("ver") != password_token_version(user.hashed_password):
+            return None
+        if user.role != UserRole.SUPERADMIN:
+            return None
+        # Detached from the session it was loaded in, so only the values read
+        # here remain valid.
+        db.expunge(user)
+        return user
+    finally:
+        db.close()
+
+
+@voice_router.websocket("/ws/assistant-voice/{token}")
+async def speech_stream(websocket: WebSocket, token: str) -> None:
+    """Relay a live microphone to the speech service and events back.
+
+    The browser never reaches the speech service directly: it has no session,
+    no role check and an internal key that must not leave the network. This
+    terminates the authenticated socket and opens a second, internal one.
+    """
+    user = await run_in_threadpool(_voice_stream_user, token)
+    if user is None:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+    if not (settings.SPEECH_SERVICE_URL or "").strip():
+        await websocket.close(code=4004, reason="Voice is not configured")
+        return
+
+    await websocket.accept()
+    url = "{}/internal/v1/stream".format(
+        settings.SPEECH_SERVICE_URL.rstrip("/").replace("http://", "ws://", 1)
+                                   .replace("https://", "wss://", 1)
+    )
+
+    try:
+        async with websockets.connect(url, max_size=None, ping_interval=20) as upstream:
+            await upstream.send(json.dumps({
+                "type": "auth", "key": settings.ASSISTANT_INTERNAL_KEY,
+            }))
+
+            async def to_upstream() -> None:
+                while True:
+                    message = await websocket.receive()
+                    if message.get("type") == "websocket.disconnect":
+                        return
+                    if (audio := message.get("bytes")) is not None:
+                        await upstream.send(audio)
+                    elif (text := message.get("text")) is not None:
+                        # Control frames only. The browser must never be able to
+                        # re-authenticate the internal socket.
+                        try:
+                            kind = json.loads(text).get("type")
+                        except ValueError:
+                            continue
+                        if kind in ("endpoint", "reset"):
+                            await upstream.send(json.dumps({"type": kind}))
+
+            async def to_client() -> None:
+                async for event in upstream:
+                    if isinstance(event, bytes):
+                        continue
+                    await websocket.send_text(event)
+
+            pump = [asyncio.create_task(to_upstream()), asyncio.create_task(to_client())]
+            done, pending = await asyncio.wait(pump, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            for task in done:
+                if (error := task.exception()) is not None:
+                    raise error
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Voice stream relay failed for user %s", user.id)
+        try:
+            await websocket.send_json({
+                "type": "error", "detail": "The voice service is unreachable.",
+            })
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
 
 
 @router.post("/speech/tts")

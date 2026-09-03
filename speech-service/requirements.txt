@@ -6,6 +6,11 @@
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 python-multipart==0.0.20
+# WebSocket support for the live audio stream. Pinned rather than inherited
+# from uvicorn[standard], since the streaming endpoint requires it.
+websockets==12.0
+# Imported directly by app.streaming for the audio buffers.
+numpy>=1.26.0,<3
 
 # MIT licensed, ONNX, ~60MB voices, faster than real time on CPU.
 piper-tts==1.2.0

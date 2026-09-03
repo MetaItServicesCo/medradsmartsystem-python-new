@@ -47,6 +47,22 @@ export const transcribeSpeech = async (audio: Blob): Promise<string> => {
   return (res.data?.text || '').trim()
 }
 
+/**
+ * WebSocket URL for the live microphone stream.
+ *
+ * A browser cannot set an Authorization header on a WebSocket, so the token
+ * goes in the path, exactly as the existing chat socket does.
+ */
+export const voiceStreamUrl = (): string => {
+  const token = useAuthStore.getState().token || ''
+  const base = (apiClient.defaults.baseURL || '').replace(/\/$/, '')
+  const absolute = base.startsWith('http')
+    ? base
+    : `${window.location.origin}${base}`
+  // Under /ws/ because that is the path the production proxy upgrades.
+  return `${absolute.replace(/^http/, 'ws')}/ws/assistant-voice/${encodeURIComponent(token)}`
+}
+
 export const fetchAssistantStatus = async (): Promise<AssistantStatus> => {
   const res = await apiClient.get('/assistant/status')
   return res.data

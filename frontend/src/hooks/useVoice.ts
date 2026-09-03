@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { synthesizeSpeech, transcribeSpeech } from '@/api/assistant'
+import { synthesizeSpeech, transcribeSpeech, voiceStreamUrl } from '@/api/assistant'
+import {
+  openVoiceStream, TARGET_RATE,
+  type VoiceStream, type VoiceStreamEvent,
+} from './voiceStream'
 
 /**
  * Voice input and output backed by the self-hosted speech service.
@@ -242,6 +246,10 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   // Read inside the 50ms detector loop, which a state value would never see
   // because the interval closes over the render that created it.
   const conversingRef = useRef(false)
+  // Set while the server owns turn detection. The browser detector then does
+  // only what it is genuinely better at: reacting instantly, locally.
+  const streamingRef = useRef(false)
+  const voiceStreamRef = useRef<VoiceStream | null>(null)
   // When the currently armed recorder started, used to bound how much silence
   // precedes a turn.
   const capturingSinceRef = useRef(0)
@@ -515,7 +523,14 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
       window.AudioContext ||
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (AudioCtor) {
-      const ctx = new AudioCtor()
+      // Asking for the recogniser's rate avoids a resample; browsers that
+      // refuse simply hand back their own rate and voiceStream converts.
+      let ctx: AudioContext
+      try {
+        ctx = new AudioCtor({ sampleRate: TARGET_RATE })
+      } catch {
+        ctx = new AudioCtor()
+      }
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 1024
       ctx.createMediaStreamSource(stream).connect(analyser)
@@ -544,6 +559,31 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
       }
       const rms = Math.sqrt(sum / buffer.length)
       setLevel(Math.min(1, rms * 6))
+
+      if (streamingRef.current) {
+        // The server decides where turns begin and end. All that is worth
+        // doing here is stopping playback the moment someone talks over it:
+        // waiting for the server to agree would leave the assistant speaking
+        // over them for a few hundred milliseconds, which is the rudest
+        // possible failure mode.
+        if (speakingRef.current) {
+          const vad = vadRef.current
+          if (vad.samples * VAD_POLL_MS < VAD_CALIBRATION_MS) {
+            vad.floor = (vad.floor * vad.samples + rms) / (vad.samples + 1)
+            vad.samples += 1
+            vad.threshold = Math.max(VAD_MIN_THRESHOLD, vad.floor * VAD_FLOOR_MULTIPLIER)
+          } else if (rms > vad.threshold * VAD_BARGE_IN_MULTIPLIER) {
+            if (!vad.loudSince) vad.loudSince = Date.now()
+            if (Date.now() - vad.loudSince >= VAD_ONSET_MS) {
+              vad.loudSince = 0
+              stopSpeaking()
+            }
+          } else {
+            vad.loudSince = 0
+          }
+        }
+        return
+      }
 
       const action = vadStep(vadRef.current, rms, Date.now(), {
         speaking: speakingRef.current,
@@ -603,6 +643,41 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
    * Hands-free conversation: the microphone stays open for the whole exchange
    * and the detector decides where each turn begins and ends.
    */
+  const handleStreamEvent = useCallback((event: VoiceStreamEvent) => {
+    if (event.type === 'speech_start') {
+      // Confirms what the local detector may already have acted on. Both
+      // paths are idempotent, so agreeing twice is harmless.
+      if (speakingRef.current) stopSpeaking()
+      setListening(true)
+      return
+    }
+    if (event.type === 'speech_end') {
+      setListening(false)
+      if (!event.discarded) setTranscribing(true)
+      return
+    }
+    if (event.type === 'transcript') {
+      setTranscribing(false)
+      const text = (event.text || '').trim()
+      if (text) onTranscriptRef.current?.(text)
+      else misheardRef.current?.()
+      return
+    }
+    if (event.type === 'error') {
+      setTranscribing(false)
+      setError(event.detail || 'The voice service failed.')
+    }
+  }, [stopSpeaking])
+
+  /**
+   * Hands-free conversation: audio streams up as it is spoken and the server
+   * decides where turns begin and end.
+   *
+   * If streaming cannot start -- no WebSocket, no AudioWorklet, a service that
+   * is down -- the conversation still works through the recorder and the batch
+   * endpoint. Degrading to a slower path is much better than a microphone
+   * button that does nothing.
+   */
   const startConversation = useCallback(async () => {
     if (!supported || conversingRef.current) return
     setError('')
@@ -610,6 +685,24 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
       conversingRef.current = true
       setConversing(true)
       await openMicrophone(false)
+
+      const context = audioCtxRef.current
+      const stream = streamRef.current
+      if (context && stream && typeof WebSocket !== 'undefined') {
+        try {
+          voiceStreamRef.current = await openVoiceStream({
+            stream,
+            context,
+            url: voiceStreamUrl(),
+            onEvent: handleStreamEvent,
+          })
+          streamingRef.current = true
+          discardRecording()
+        } catch {
+          // Left to the recorder path, which is already running.
+          streamingRef.current = false
+        }
+      }
     } catch (err) {
       conversingRef.current = false
       setConversing(false)
@@ -620,11 +713,15 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
           : 'Could not access the microphone.',
       )
     }
-  }, [supported, openMicrophone, releaseMicrophone])
+  }, [supported, openMicrophone, releaseMicrophone, discardRecording, handleStreamEvent])
 
   const stopConversation = useCallback(() => {
     conversingRef.current = false
+    streamingRef.current = false
+    voiceStreamRef.current?.close()
+    voiceStreamRef.current = null
     setConversing(false)
+    setListening(false)
     // Mid-turn audio is worth transcribing; an armed recorder holding nothing
     // but room tone is not.
     if (vadRef.current.recording) finishRecording()
@@ -640,6 +737,8 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
       recorder.onstop = null
       recorder.stop()
     }
+    voiceStreamRef.current?.close()
+    voiceStreamRef.current = null
     releaseMicrophone()
     releaseAudio()
   }, [releaseMicrophone, releaseAudio])
