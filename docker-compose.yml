@@ -345,6 +345,48 @@ services:
       retries: 3
       start_period: 30s
 
+  # Real-time voice. Audio streams in, the recogniser, the agent and the voice
+  # hand work to each other as they produce it, and audio streams back out.
+  # Speech synthesis is fetched from the speech service rather than run here,
+  # which keeps GPL-licensed piper-tts out of this image.
+  voice:
+    build:
+      context: ./voice-service
+      dockerfile: Dockerfile
+    container_name: medrad_voice
+    restart: unless-stopped
+    init: true
+    environment:
+      - VOICE_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
+      - ASSISTANT_SERVICE_URL=http://agent:8100
+      - ASSISTANT_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
+      - SPEECH_SERVICE_URL=http://speech:8200
+      - SPEECH_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
+      - WHISPER_MODEL=${VOICE_WHISPER_MODEL:-base.en}
+      # Turn taking. The silence that ends a turn has to outlast a pause
+      # mid-sentence, or half a question reaches the recogniser.
+      - USER_SPEECH_TIMEOUT=${VOICE_SPEECH_TIMEOUT:-0.8}
+      - VAD_CONFIDENCE=${VOICE_VAD_CONFIDENCE:-0.6}
+      - VAD_STOP_SECS=${VOICE_VAD_STOP_SECS:-0.6}
+      - LOG_LEVEL=${VOICE_LOG_LEVEL:-INFO}
+    depends_on:
+      speech:
+        condition: service_healthy
+    networks:
+      - medrad_network
+    # Holds a recogniser and a turn detector per process, not per conversation.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1400M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8300/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 60s
+
   # Optional local inference. Opt-in via a profile so ordinary deploys are
   # unaffected:  docker compose --profile local-llm up -d ollama
   #

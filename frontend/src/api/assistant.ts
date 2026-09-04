@@ -65,6 +65,19 @@ export const voiceStreamUrl = (): string => {
   return `${absolute.replace(/^http/, 'ws')}/ws/assistant-voice/${encodeURIComponent(token)}`
 }
 
+/**
+ * WebSocket URL for a live spoken conversation.
+ *
+ * Under /ws/ because that is the only path the production proxy upgrades, and
+ * the token travels in it because a browser cannot set headers on a WebSocket.
+ */
+export const liveVoiceUrl = (): string => {
+  const token = useAuthStore.getState().token || ''
+  const base = (apiClient.defaults.baseURL || '').replace(/\/$/, '')
+  const absolute = base.startsWith('http') ? base : `${window.location.origin}${base}`
+  return `${absolute.replace(/^http/, 'ws')}/ws/assistant-live/${encodeURIComponent(token)}`
+}
+
 export const fetchAssistantStatus = async (): Promise<AssistantStatus> => {
   const res = await apiClient.get('/assistant/status')
   return res.data

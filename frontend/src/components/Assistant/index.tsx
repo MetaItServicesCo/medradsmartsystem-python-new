@@ -34,6 +34,7 @@ import {
 } from '@/api/assistant'
 import { useAuthStore } from '@/stores/authStore'
 import { useVoice } from '@/hooks/useVoice'
+import useVoicePipeline from '@/hooks/useVoicePipeline'
 import { keyframes } from '@emotion/react'
 
 interface Turn {
@@ -122,6 +123,15 @@ const AssistantWidget = () => {
   // submit is declared below; the ref lets the voice hook call it without a
   // use-before-declaration cycle.
   const submitRef = useRef<((text: string, interrupt?: boolean) => void) | null>(null)
+
+  // The live pipeline holds one connection for the whole conversation and
+  // decides turns server-side. Turns arrive here only once they have been
+  // spoken, so nothing needs to be rendered progressively.
+  const pipeline = useVoicePipeline({
+    onTurn: (turn) => {
+      setTurns((prev) => [...prev, { role: turn.role, text: turn.text }])
+    },
+  })
 
   const voice = useVoice({
     onTranscript: (text) => submitRef.current?.(text, true),
@@ -466,19 +476,27 @@ const AssistantWidget = () => {
             <Tooltip title={voice.conversing ? 'End the conversation' : 'Start a hands-free conversation'}>
               <span>
                 <IconButton
-                  onClick={() => (voice.conversing
-                    ? voice.stopConversation()
-                    : void voice.startConversation())}
+                  onClick={() => {
+                    // Prefer the live pipeline; the older local loop is the
+                    // fallback when the browser or the service cannot support it.
+                    if (pipeline.live || pipeline.connecting) { pipeline.stop(); return }
+                    if (voice.conversing) { voice.stopConversation(); return }
+                    if (pipeline.supported) void pipeline.start()
+                    else void voice.startConversation()
+                  }}
                   sx={{
                     width: 62, height: 62, color: '#fff',
-                    background: voice.conversing
+                    background: (voice.conversing || pipeline.live)
                       ? 'linear-gradient(135deg,#DC2626,#F87171)'
                       : 'linear-gradient(135deg,#7C3AED,#9A55B0)',
-                    animation: voice.listening ? `${listenPulse} 1.4s ease-in-out infinite` : 'none',
-                    '&:hover': { background: voice.conversing ? '#B91C1C' : '#6D28D9' },
+                    animation: (voice.listening || pipeline.listening)
+                      ? `${listenPulse} 1.4s ease-in-out infinite` : 'none',
+                    '&:hover': {
+                      background: (voice.conversing || pipeline.live) ? '#B91C1C' : '#6D28D9',
+                    },
                   }}
                 >
-                  {voice.conversing ? <CallEndIcon /> : <MicIcon />}
+                  {(voice.conversing || pipeline.live) ? <CallEndIcon /> : <MicIcon />}
                 </IconButton>
               </span>
             </Tooltip>
@@ -497,8 +515,17 @@ const AssistantWidget = () => {
               </Button>
             )}
 
-            <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: voice.error ? '#DC2626' : '#64748B', textAlign: 'center' }}>
-              {voice.error
+            <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: (voice.error || pipeline.error) ? '#DC2626' : '#64748B', textAlign: 'center' }}>
+              {pipeline.error
+                || (pipeline.connecting ? 'Connecting…'
+                  : pipeline.live
+                    ? (pipeline.listening
+                      ? 'Listening…'
+                      : pipeline.speaking
+                        ? 'Speaking — talk over me to interrupt'
+                        : 'Go ahead, I am listening')
+                    : null)
+                || voice.error
                 || (voice.listening
                   ? 'Listening…'
                   : voice.transcribing
@@ -515,13 +542,13 @@ const AssistantWidget = () => {
             {/* The live path failing back to whole recordings is silent by
                 design. Saying which one is in use turns "it feels slow" into
                 something checkable. */}
-            {voice.conversing && !voice.streaming && (
+            {voice.conversing && !voice.streaming && !pipeline.live && (
               <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: '#B45309', textAlign: 'center' }}>
                 Live audio unavailable — sending complete recordings, which is slower
               </Typography>
             )}
 
-            {!voice.conversing && (
+            {!voice.conversing && !pipeline.live && !pipeline.connecting && (
               <Button
                 size="small"
                 onClick={() => (voice.listening ? voice.stopListening() : void voice.startListening())}

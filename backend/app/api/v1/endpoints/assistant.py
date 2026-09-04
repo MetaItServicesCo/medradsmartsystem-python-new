@@ -228,6 +228,88 @@ def _voice_stream_user(token: str) -> Optional[User]:
         db.close()
 
 
+@voice_router.websocket("/ws/assistant-live/{token}")
+async def assistant_live(websocket: WebSocket, token: str) -> None:
+    """Relay a spoken conversation to the real-time voice pipeline.
+
+    The browser holds one socket for the whole exchange: audio up, audio down,
+    and a few control messages. This end authenticates it, then opens a second
+    socket to the voice service and moves frames between them. The browser
+    never reaches that service directly -- it has no session, no role check, and
+    an internal key that must not leave the network.
+
+    Deliberately separate from the older press-to-talk relay rather than
+    replacing it, so the two can be compared on the same deployment and the
+    previous path keeps working while this one is proven.
+    """
+    user = await run_in_threadpool(_voice_stream_user, token)
+    if user is None:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+    if not (settings.VOICE_SERVICE_URL or "").strip():
+        await websocket.close(code=4004, reason="Live voice is not configured")
+        return
+
+    await websocket.accept()
+    url = "{}/internal/v1/converse".format(
+        settings.VOICE_SERVICE_URL.rstrip("/")
+        .replace("http://", "ws://", 1)
+        .replace("https://", "wss://", 1)
+    )
+
+    try:
+        async with websockets.connect(url, max_size=None, ping_interval=20) as upstream:
+            # The user's own bearer token goes with it, so every tool the agent
+            # runs during the conversation stays scoped to this user.
+            await upstream.send(json.dumps({
+                "type": "auth",
+                "key": settings.ASSISTANT_INTERNAL_KEY,
+                "user_token": token,
+            }))
+
+            async def to_upstream() -> None:
+                while True:
+                    message = await websocket.receive()
+                    if message.get("type") == "websocket.disconnect":
+                        return
+                    if (audio := message.get("bytes")) is not None:
+                        await upstream.send(audio)
+                    # Text from the browser is dropped rather than forwarded:
+                    # the only text the voice service accepts is the
+                    # authentication frame, and the browser must never be able
+                    # to send one.
+
+            async def to_client() -> None:
+                async for event in upstream:
+                    if isinstance(event, bytes):
+                        await websocket.send_bytes(event)
+                    else:
+                        await websocket.send_text(event)
+
+            pump = [asyncio.create_task(to_upstream()), asyncio.create_task(to_client())]
+            done, pending = await asyncio.wait(pump, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            for task in done:
+                if (error := task.exception()) is not None:
+                    raise error
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Live voice relay failed for user %s", user.id)
+        try:
+            await websocket.send_json({
+                "type": "error", "detail": "The voice service is unreachable.",
+            })
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
+
+
 @voice_router.websocket("/ws/assistant-voice/{token}")
 async def speech_stream(websocket: WebSocket, token: str) -> None:
     """Relay a live microphone to the speech service and events back.

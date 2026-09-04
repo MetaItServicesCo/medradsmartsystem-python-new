@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     # Speech service: natural voice out, transcription in. Shares the assistant
     # internal key; blank URL disables voice without affecting the typed path.
     SPEECH_SERVICE_URL: str = "http://speech:8200"
+    # The real-time voice pipeline. Empty disables the conversational path and
+    # leaves the older press-to-talk one working.
+    VOICE_SERVICE_URL: str = "http://voice:8300"
     SPEECH_TIMEOUT_SECONDS: float = 60.0
     AI_EXTRACTION_EXTERNAL_PROCESSING_ACKNOWLEDGED: bool = False
 
