@@ -29,7 +29,7 @@ class KBDocument:
     """One generated knowledge-base article."""
 
     doc_id: str
-    kind: str          # entity | vocabulary | operation | permission | relationship | module
+    kind: str          # entity | vocabulary | operation | permission | relationship | module | rule
     module: str
     title: str
     body: str

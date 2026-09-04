@@ -5,10 +5,12 @@ ever reads the indexed output, so nothing here contributes to query latency.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from app.assistant.kb.api_extractors import operation_documents, permission_documents
 from app.assistant.kb.documents import KBChunk, KBDocument, chunk_document
+from app.assistant.kb.rule_extractors import rule_documents
 from app.assistant.kb.ui_extractors import howto_documents, resolve_frontend_src
 from app.assistant.kb.extractors import (
     entity_documents,
@@ -79,6 +81,10 @@ def generate_all(
     documents.extend(vocabulary_documents(mappers))
     documents.append(relationship_document(mappers))
     documents.extend(permission_documents())
+    # How the numbers are worked out: rates, limits, and what is taxable. The
+    # schema says a quotation has a tax_amount; only these say it is 8.25% and
+    # that shipping is inside the taxable base.
+    documents.extend(rule_documents(Path(__file__).resolve().parents[3]))
 
     operations: list[KBDocument] = []
     if openapi_spec is not None:

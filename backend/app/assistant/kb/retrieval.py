@@ -134,6 +134,14 @@ _INTENT_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (r"\b(how (do|to|can)|steps?|procedure|process|where|screen|page|button|"
      r"click|navigate|menu|create|add|new|update|delete)\b",
      ("howto", "operation", "module")),
+    # Money questions want the rule, not the column that stores the result.
+    # Ranked above "field" so "how much tax is applied to shipping" is not
+    # answered with the schema of a quotation line, which is exactly how it
+    # came back saying no documentation covered it.
+    (r"\b(tax|taxable|taxed|vat|rate|rates|percent|percentage|how much|"
+     r"charged|charge|fee|fees|discount|markup|surcharge|deposit|"
+     r"refundable|prorat\w*|calculat\w*|comput\w*)\b",
+     ("rule",)),
     (r"\b(who can|permission|allowed|role|access)\b", ("permission",)),
     (r"\b(status|statuses|state|valid values?|options?)\b", ("vocabulary",)),
     (r"\b(field|fields|column|columns|schema|stores?|required)\b", ("entity",)),
