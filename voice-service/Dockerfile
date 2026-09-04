@@ -30,9 +30,13 @@ RUN python -c "from pipecat.audio.vad.silero import SileroVADAnalyzer; SileroVAD
 
 COPY app ./app
 
-RUN useradd --create-home --uid 10003 voice \
- && chown -R voice:voice /app /models
-USER voice
+# Not "voice": Debian ships a system group by that name, and useradd refuses
+# to create a user whose implicit group already exists. The name is arbitrary;
+# the point is only that this does not run as root.
+RUN groupadd --gid 10003 voiceapp \
+ && useradd --create-home --uid 10003 --gid 10003 voiceapp \
+ && chown -R voiceapp:voiceapp /app /models
+USER voiceapp
 
 EXPOSE 8300
 
