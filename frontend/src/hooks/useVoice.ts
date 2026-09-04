@@ -127,6 +127,12 @@ const MISHEARD_PHRASES = [
   "I missed that, say again?",
 ]
 
+// How long a lookup has to be taking before saying anything about it is worth
+// it. A question answered quickly needs no holding phrase, and hearing
+// "checking that now" in front of a one-second answer -- or worse, in front of
+// "I'm doing well" -- is stranger than a moment of silence would have been.
+const WORKING_PHRASE_DELAY_MS = 1400
+
 const WORKING_PHRASES = [
   'Let me check.',
   'One moment.',
@@ -291,6 +297,8 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   // Assigned below, once speak() exists. The recorder callback is created
   // before it and must not close over a stale definition.
   const misheardRef = useRef<(() => void) | null>(null)
+  // An armed holding phrase, waiting to see whether the wait is real.
+  const fillerTimerRef = useRef<number | null>(null)
   const speakRef = useRef<((text: string) => Promise<void>) | null>(null)
   useEffect(() => { speakingRef.current = speaking }, [speaking])
   useEffect(() => { onTranscriptRef.current = onTranscript }, [onTranscript])
@@ -315,6 +323,10 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     // Bumping the token abandons any sequence still in flight, so a stopped
     // answer cannot resume speaking a later sentence.
     speakRunRef.current += 1
+    if (fillerTimerRef.current) {
+      window.clearTimeout(fillerTimerRef.current)
+      fillerTimerRef.current = null
+    }
     // Sentences already queued are part of the answer being stopped.
     queueRef.current = { pieces: [], consumed: 0, done: true }
     releaseAudio()
@@ -384,6 +396,14 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
    * air before a single word was heard. Starting on the first finished sentence
    * makes the assistant answer at roughly the speed a person would.
    */
+  /** Drop an armed holding phrase; the answer got here first. */
+  const cancelWorkingPhrase = useCallback(() => {
+    if (fillerTimerRef.current) {
+      window.clearTimeout(fillerTimerRef.current)
+      fillerTimerRef.current = null
+    }
+  }, [])
+
   const beginSpeech = useCallback(() => {
     stopSpeaking()
     queueRef.current = { pieces: [], consumed: 0, done: false }
@@ -396,14 +416,16 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   const pushSpeech = useCallback((soFar: string) => {
     const state = queueRef.current
     if (state.done) return
+    cancelWorkingPhrase()
     const { pieces, consumed } = readyPieces(soFar, state.consumed, false)
     if (!pieces.length) return
     state.pieces.push(...pieces)
     state.consumed = consumed
-  }, [])
+  }, [cancelWorkingPhrase])
 
   /** Speak whatever is left and close the reply. */
   const endSpeech = useCallback((final: string) => {
+    cancelWorkingPhrase()
     const state = queueRef.current
     // A stream that diverged from the final text (an error, a retry) is spoken
     // from the top rather than half-spoken from a stale offset.
@@ -411,7 +433,7 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
     const { pieces } = readyPieces(final, consumed, true)
     state.pieces.push(...pieces)
     state.done = true
-  }, [])
+  }, [cancelWorkingPhrase])
 
   /**
    * Fill the gap while the answer is still being worked out.
@@ -422,8 +444,18 @@ export const useVoice = ({ onTranscript }: UseVoiceOptions = {}) => {
   const sayWhileWorking = useCallback(() => {
     const state = queueRef.current
     if (state.done || state.consumed > 0 || state.pieces.length) return
-    const phrase = WORKING_PHRASES[Math.floor(Math.random() * WORKING_PHRASES.length)]
-    state.pieces.push(phrase)
+    if (fillerTimerRef.current) return
+
+    // Armed, not spoken. If the answer arrives first the timer is cancelled and
+    // nothing is said, so the phrase only ever covers a wait that actually
+    // happened rather than announcing one that did not.
+    fillerTimerRef.current = window.setTimeout(() => {
+      fillerTimerRef.current = null
+      const queue = queueRef.current
+      if (queue.done || queue.consumed > 0 || queue.pieces.length) return
+      const phrase = WORKING_PHRASES[Math.floor(Math.random() * WORKING_PHRASES.length)]
+      queue.pieces.push(phrase)
+    }, WORKING_PHRASE_DELAY_MS)
   }, [])
 
   /** Speak a complete answer that was never streamed. */
