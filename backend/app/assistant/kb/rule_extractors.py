@@ -39,7 +39,11 @@ from app.assistant.kb.documents import KBDocument
 _PARAMETER_NAME = re.compile(
     r"(?:^|_)(RATE|TAX|VAT|FEE|FEES|PERCENT|PCT|DISCOUNT|MARKUP|MARGIN|"
     r"LIMIT|MAX|MIN|THRESHOLD|WINDOW|DAYS|HOURS|MONTHS|YEARS|TERM|"
-    r"EXPIRY|GRACE|DEFAULT|INTERVAL|QUOTA|CAP)(?:_|$)"
+    r"EXPIRY|GRACE|DEFAULT|INTERVAL|QUOTA|CAP|"
+    # Sets of allowed values are vocabulary the schema cannot supply: a column
+    # typed as a plain string says nothing about which strings are meaningful,
+    # so "trade_in" existed in Sales and nowhere the assistant could find it.
+    r"KIND|KINDS|TYPE|TYPES|STATUS|STATUSES|STATES|VALUES|OPTIONS|CATEGORIES)(?:_|$)"
 )
 
 # Functions whose docstrings describe how money is worked out.
@@ -61,6 +65,20 @@ _RULE_WORDING = re.compile(
 _IGNORED_NAMES = frozenset({
     "DEFAULT_ENCODING", "MAX_RETRIES", "DEFAULT_TIMEOUT", "MIN_PASSWORD_LENGTH",
 })
+
+# Upload plumbing wears the same clothes as vocabulary -- a set of strings
+# under a name like ALLOWED_IMAGE_TYPES -- but nobody asks the assistant which
+# MIME types an avatar accepts, and four copies of the same list across four
+# modules only makes the real rules harder to retrieve.
+_NOISY_NAME = re.compile(r"(MIME|CONTENT_TYPE|IMAGE_TYPES?|FILE_TYPES?|EXTENSIONS?)")
+
+
+def _is_noise(name: str, value: str) -> bool:
+    if _NOISY_NAME.search(name):
+        return True
+    members = [part.strip() for part in value.split(",")]
+    # Every member a MIME type: plumbing, whatever the constant is called.
+    return len(members) > 1 and all("/" in member for member in members)
 
 # Rules do not all live beside the endpoints that expose them. Rental tax is
 # defined in a billing helper and imported, so scanning only the endpoint
@@ -101,7 +119,25 @@ def _literal(node: ast.AST) -> Optional[str]:
         name = getattr(node.func, "id", "") or getattr(node.func, "attr", "")
         if name in ("Decimal", "float", "int") and isinstance(node.args[0], ast.Constant):
             return str(node.args[0].value)
+        if name in ("frozenset", "set") and isinstance(node.args[0], (ast.Set, ast.List, ast.Tuple)):
+            return _string_members(node.args[0])
+    # A set of strings is almost always the allowed values for a column the
+    # schema types only as text, which is the one thing the schema cannot say.
+    if isinstance(node, (ast.Set, ast.List, ast.Tuple)):
+        return _string_members(node)
     return None
+
+
+def _string_members(node: ast.AST) -> Optional[str]:
+    values = [
+        element.value for element in getattr(node, "elts", [])
+        if isinstance(element, ast.Constant) and isinstance(element.value, str)
+    ]
+    if not values or len(values) != len(getattr(node, "elts", [])):
+        return None
+    if len(values) > 24:            # a long list is data, not vocabulary
+        return None
+    return ", ".join(sorted(values))
 
 
 def _leading_comment(lines: list[str], lineno: int) -> str:
@@ -134,6 +170,8 @@ def _constants(tree: ast.Module, lines: list[str]) -> list[tuple[str, str, str]]
                 continue
             literal = _literal(value) if value is not None else None
             if literal is None:
+                continue
+            if _is_noise(name, literal):
                 continue
             found.append((name, literal, _leading_comment(lines, node.lineno)))
     return found
