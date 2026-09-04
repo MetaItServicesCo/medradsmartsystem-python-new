@@ -814,10 +814,22 @@ def _line_pricing(
 ) -> tuple[Decimal, Decimal, Decimal]:
     """Return signed total, taxable merchandise, and taxable line fees.
 
-    Products, Shipping & Packing, and Delivery & Setup are taxable. Labor is
-    deliberately excluded. Trade-ins reduce the merchandise taxable base;
-    refund credits do not rewrite tax because they represent a payment
-    adjustment rather than a merchandise trade-in.
+    A line contributes three separate things, and the three do not move
+    together, which is the part that is easy to get wrong:
+
+    - product: the whole line is charged, and merchandise plus Shipping &
+      Packing plus Delivery & Setup are taxable. Labor is deliberately
+      excluded from tax while still being charged.
+    - trade_in: the line total is negative, so it reduces what is owed, and
+      its merchandise value is negative in the taxable base, so it reduces
+      tax as well. Its fees are never taxable.
+    - refund: the line total is negative, so it reduces what is owed, but it
+      contributes nothing to either taxable figure and therefore does not
+      change the tax at all. A refund is a payment adjustment, not a
+      merchandise trade-in, and taxing it would rewrite tax that was
+      already correctly charged.
+
+    Anything else contributes its total and no tax.
     """
     quantity = max(int(line.quantity or 0), 0)
     merchandise = _money(line.unit_price) * quantity
@@ -847,7 +859,26 @@ def _quotation_pricing(
     lines: list[SalesQuotationLineItem],
     discount_amount: Decimal | int | float | None = None,
 ) -> tuple[Decimal, Decimal, Decimal, Decimal]:
-    """Calculate subtotal, taxable base, tax, and total authoritatively."""
+    """Calculate subtotal, taxable base, tax, and total authoritatively.
+
+    The order matters, so it is written out rather than left to be read off
+    the arithmetic:
+
+        subtotal     = sum of signed line totals, so trade-ins and refunds
+                       reduce it
+        taxable base = taxable merchandise, floored at zero
+                       + taxable fees, floored at zero
+        tax          = taxable base x the sales tax rate
+        total        = subtotal + tax - discount
+
+    The two halves of the taxable base are floored separately and on
+    purpose. A trade-in larger than the merchandise it offsets brings that
+    half to zero, and the leftover credit must not then be allowed to eat
+    into Shipping & Packing or Delivery & Setup, which remain taxable.
+
+    The discount is subtracted after tax, so discounting never reduces the
+    tax charged.
+    """
     subtotal = Decimal("0")
     taxable_merchandise = Decimal("0")
     taxable_fees = Decimal("0")
