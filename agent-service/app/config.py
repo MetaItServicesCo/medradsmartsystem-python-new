@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # smaller, faster model shortens every turn. Empty means use AGENT_MODEL.
     AGENT_CLASSIFIER_MODEL: str = ""
     AGENT_MAX_TOKENS: int = 1200
+    # A spoken answer is two or three sentences, which is well under two
+    # hundred tokens. Left at the written ceiling the model wrote at length
+    # anyway and took twelve seconds over it, and every one of those tokens is
+    # time the person spends waiting to hear the first word. A hard limit is
+    # worth more here than an instruction the model is free to ignore.
+    AGENT_VOICE_MAX_TOKENS: int = 200
     AGENT_TIMEOUT_SECONDS: float = 45.0
 
     # A single question must never loop indefinitely through tools.

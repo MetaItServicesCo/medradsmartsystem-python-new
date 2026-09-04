@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from datetime import date
 from typing import Any, AsyncIterator, Literal, Optional, TypedDict
@@ -86,18 +87,67 @@ _SMALL_TALK_PUNCTUATION = str.maketrans("", "", ",.!?;:'\"")
 # else is: "hi how are you" is small talk, "hi how many facilities" is not.
 _GREETING_PREFIXES = ("hi", "hey", "hello", "yo", "hiya", "morning", "evening")
 
+# Small talk recognised by shape rather than by exact wording. The closed set
+# above could not survive a recogniser that heard "how are you doing today",
+# and a miss is expensive: spoken questions skip the model router, so anything
+# unrecognised runs a full tools-and-knowledge lookup. That is how being asked
+# how it was doing came to cost a database query and twelve seconds.
+_SMALL_TALK_PATTERNS = (
+    re.compile(r"^(hi|hey|hello|yo|hiya|howdy)\b"),
+    re.compile(r"^good (morning|afternoon|evening|night)\b"),
+    re.compile(r"^how (are|r) (you|u)\b"),
+    re.compile(r"^how('?s| is| are) (it going|things|your day|you doing)\b"),
+    re.compile(r"^(thanks|thank you|cheers|ta)\b"),
+    re.compile(r"^(bye|goodbye|see you|good night|goodnight)\b"),
+    re.compile(r"^(who are you|what('?s| is) your name|what can you do|what do you do)\b"),
+    re.compile(r"^(are you (there|ok|okay)|you there)\b"),
+    re.compile(r"^(nice|great|perfect|lovely|awesome|cool|ok|okay)\b.{0,20}$"),
+)
+
+# If any of these appear, it is a question about the business no matter how
+# conversationally it is phrased, and it must never be answered as small talk.
+# Being wrong in this direction is far worse: a greeting answered with a lookup
+# is slow, but a real question answered with pleasantries is useless.
+_BUSINESS_TERMS = frozenset("""
+facility facilities site sites hospital hospitals clinic clinics
+request requests service services ticket tickets job jobs
+inspection inspections inspect visit visits
+rental rentals rent hire lease
+sale sales sell sold quotation quotations quote quotes
+invoice invoices bill bills billing payment payments paid outstanding overdue
+revenue income earnings profit turnover cost costs
+inventory stock product products item items equipment device devices asset assets
+technician technicians engineer engineers staff employee employees user users
+customer customers client clients supplier suppliers vendor vendors
+hr leave attendance payroll salary contract contracts
+report reports dashboard analytics performance summary
+how-many count total number active open closed pending approved
+""".split())
+
 
 def local_intent(question: str) -> Optional[Intent]:
     """Route without a model where it is unambiguous, else return None."""
     normalised = " ".join(
         question.lower().translate(_SMALL_TALK_PUNCTUATION).split()
     )
+    if not normalised:
+        return None
+
+    words = normalised.split()
+    # Any business vocabulary and this is not small talk, whatever it looks like.
+    if any(word in _BUSINESS_TERMS for word in words):
+        return None
+
     if normalised in _SMALL_TALK:
         return "chitchat"
-    words = normalised.split()
     if len(words) > 1 and words[0] in _GREETING_PREFIXES:
         if " ".join(words[1:]) in _SMALL_TALK:
             return "chitchat"
+
+    # Shape-matched, but only for short utterances: small talk is short, and a
+    # long sentence opening with a greeting is usually a real question.
+    if len(words) <= 8 and any(p.match(normalised) for p in _SMALL_TALK_PATTERNS):
+        return "chitchat"
     return None
 
 
@@ -492,7 +542,8 @@ async def synthesize_node(state: AgentState) -> dict[str, Any]:
                     _evidence_payload(state),
                 )
             ),
-            settings.AGENT_MAX_TOKENS,
+            (settings.AGENT_VOICE_MAX_TOKENS if state.get("voice")
+             else settings.AGENT_MAX_TOKENS),
             _history_messages(state),
         )
         return {"answer": text or nothing_found_message(bool(state.get("voice")))}
