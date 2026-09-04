@@ -67,7 +67,9 @@ def _load_models() -> None:
         return
     logger.info("Loading recogniser {}", settings.WHISPER_MODEL)
     _models["stt"] = WhisperSTTService(
-        model=settings.WHISPER_MODEL,
+        # Through Settings rather than the model= argument, which is
+        # deprecated and goes away in pipecat 2.0.
+        settings=WhisperSTTService.Settings(model=settings.WHISPER_MODEL),
         device="cpu",
         compute_type=settings.WHISPER_COMPUTE,
     )
