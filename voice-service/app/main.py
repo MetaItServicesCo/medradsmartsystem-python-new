@@ -22,7 +22,7 @@ import json
 import secrets
 import sys
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from loguru import logger
@@ -94,6 +94,21 @@ async def lifespan(_: FastAPI):
         # Not fatal at boot: the failure is reported per connection, where it
         # can be told to the person trying to talk.
         logger.exception("Model loading failed at startup")
+
+    if settings.tts_provider() == "elevenlabs":
+        reason = await _verify_elevenlabs()
+        if reason is None:
+            _models["tts_provider"] = "elevenlabs"
+            logger.info("ElevenLabs voice verified")
+        else:
+            # Loud, and then it carries on with a voice that works. Silence
+            # would look like every other way this pipeline can fail.
+            _models["tts_provider"] = "piper"
+            logger.error(
+                "ElevenLabs cannot synthesise ({}); speaking with Piper "
+                "instead. Set VOICE_TTS_PROVIDER=piper to stop trying.",
+                reason,
+            )
     yield
 
 
@@ -109,10 +124,41 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "ready": "stt" in _models,
         "recognizer": settings.WHISPER_MODEL,
-        "voice": settings.tts_provider(),
+        "voice": _models.get("tts_provider") or settings.tts_provider(),
+        "voice_configured": settings.tts_provider(),
         "sample_rate": settings.SAMPLE_RATE,
         "user_speech_timeout": settings.USER_SPEECH_TIMEOUT,
     }
+
+
+async def _verify_elevenlabs() -> Optional[str]:
+    """Check the configured voice can actually speak, once, at startup.
+
+    A key that authenticates but cannot synthesise -- the wrong scope, a
+    free plan, a voice the account does not hold -- produces no audio and no
+    error a caller can see. Every reply is simply silent, which is
+    indistinguishable from the microphone not working, the agent not
+    answering, or the browser not playing. That ambiguity cost days.
+
+    Returns the reason it cannot be used, or None if it can.
+    """
+    import httpx
+
+    url = "https://api.elevenlabs.io/v1/text-to-speech/{}".format(
+        settings.ELEVENLABS_VOICE_ID
+    )
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                url,
+                headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
+                json={"text": "Ready.", "model_id": settings.ELEVENLABS_MODEL},
+            )
+    except Exception as exc:
+        return "unreachable: {}".format(exc)
+    if response.status_code == 200 and response.content:
+        return None
+    return "HTTP {}: {}".format(response.status_code, response.text[:160])
 
 
 def _build_tts() -> Any:
@@ -128,7 +174,7 @@ def _build_tts() -> Any:
     this network, which for a system holding medical operations data is a
     property worth having by default rather than by choice.
     """
-    provider = settings.tts_provider()
+    provider = _models.get("tts_provider") or settings.tts_provider()
     if provider == "elevenlabs":
         if not settings.ELEVENLABS_API_KEY.strip():
             logger.warning("ElevenLabs selected but no key configured; using Piper")
