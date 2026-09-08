@@ -53,7 +53,7 @@ from app.utils.part_vision import (
     is_confident,
     rank_candidates,
 )
-from app.utils.permissions import has_module_permission
+from app.utils.facility_access import require_facility_access
 
 
 logger = logging.getLogger("medrad.inventory_capture")
@@ -76,12 +76,14 @@ _CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 _CODE_PREFIX = "MRP"
 
 
-def _require_inventory(user: User, action: str = "index") -> None:
-    if not has_module_permission(user, "inventory", action):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to inventory.",
-        )
+# Authorisation here is deliberately whatever the inventory endpoints
+# already do: an authenticated user, and facility access checked wherever a
+# facility is named. This started out with a module-permission gate of its
+# own, which is not a check the rest of the module makes -- so a user the
+# inventory screens admit was refused by the capture screen beside them.
+# Being stricter than the thing you are extending is still a behaviour
+# change, just one that shows up as a locked door rather than a wrong
+# number.
 
 
 def _generate_code(db: Session) -> str:
@@ -236,7 +238,8 @@ async def create_capture(
     and describe later, which is more than the alternative of not capturing it
     because the form was too long.
     """
-    _require_inventory(current_user, "create")
+    if facility_id is not None:
+        require_facility_access(db, current_user, facility_id)
     if quantity < 1 or quantity > MAX_BATCH:
         raise HTTPException(
             status_code=400,
@@ -347,7 +350,6 @@ def list_captures(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """The review queue: what has been captured and still needs describing."""
-    _require_inventory(current_user)
 
     query = db.query(InventoryCapture)
     if status_filter:
@@ -398,8 +400,6 @@ async def match_photo(
 
     Nothing is written. Recognising something is not capturing it.
     """
-    _require_inventory(current_user)
-
     content_type = (photo.content_type or "").lower()
     if content_type not in ALLOWED_PHOTO_TYPES:
         raise HTTPException(
@@ -462,7 +462,6 @@ def get_definition(
     This is what recognition opens: "xyz, ten items stored", with whatever
     has been filled in so far ready to be added to.
     """
-    _require_inventory(current_user)
     definition = db.query(PartDefinition).filter(PartDefinition.id == definition_id).first()
     if definition is None:
         raise HTTPException(status_code=404, detail="Part definition not found")
@@ -482,7 +481,6 @@ def update_definition(
     copy to update and no way for one of them to end up saying something
     different from the rest.
     """
-    _require_inventory(current_user, "update")
     definition = db.query(PartDefinition).filter(PartDefinition.id == definition_id).first()
     if definition is None:
         raise HTTPException(status_code=404, detail="Part definition not found")
@@ -504,7 +502,6 @@ def list_definitions(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Every kind captured so far, with how many of each there are."""
-    _require_inventory(current_user)
     query = db.query(PartDefinition)
     if search:
         pattern = "%{}%".format(search.replace("%", "\\%").replace("_", "\\_"))
@@ -521,7 +518,6 @@ def get_capture(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    _require_inventory(current_user)
     capture = db.query(InventoryCapture).filter(InventoryCapture.id == capture_id).first()
     if capture is None:
         raise HTTPException(status_code=404, detail="Capture not found")
@@ -536,7 +532,6 @@ def update_capture(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Correct a draft. Confirmed captures are history and do not change."""
-    _require_inventory(current_user, "update")
     capture = db.query(InventoryCapture).filter(InventoryCapture.id == capture_id).first()
     if capture is None:
         raise HTTPException(status_code=404, detail="Capture not found")
@@ -548,6 +543,7 @@ def update_capture(
 
     changes = payload.model_dump(exclude_unset=True)
     if "facility_id" in changes and changes["facility_id"] is not None:
+        require_facility_access(db, current_user, changes["facility_id"])
         _validate_references(db, changes["facility_id"], None, None, None)
     for field, value in changes.items():
         setattr(capture, field, value)
@@ -572,7 +568,6 @@ def confirm_capture(
     keeps pointing at what it became, so the photograph stays attached to the
     record it produced.
     """
-    _require_inventory(current_user, "create")
     capture = db.query(InventoryCapture).filter(InventoryCapture.id == capture_id).first()
     if capture is None:
         raise HTTPException(status_code=404, detail="Capture not found")
@@ -586,6 +581,9 @@ def confirm_capture(
 
     facility_id = payload.facility_id if payload.facility_id is not None else capture.facility_id
     if facility_id is not None:
+        # This is the moment a part comes into existence, so it is checked
+        # exactly as the existing create endpoint checks it.
+        require_facility_access(db, current_user, facility_id)
         _validate_references(db, facility_id, None, None, None)
 
     part = InventoryPart(
@@ -622,7 +620,6 @@ def discard_capture(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Drop a draft. Kept rather than deleted, so a code is never reissued."""
-    _require_inventory(current_user, "delete")
     capture = db.query(InventoryCapture).filter(InventoryCapture.id == capture_id).first()
     if capture is None:
         raise HTTPException(status_code=404, detail="Capture not found")
