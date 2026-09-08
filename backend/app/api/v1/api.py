@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     audit,
     service_requests,
     inventory,
+    inventory_capture,
     dashboard,
     notifications,
     inspections,
@@ -46,6 +47,10 @@ api_router.include_router(calendar.router, prefix="/calendar", tags=["calendar"]
 api_router.include_router(audit.router, prefix="/audit-logs", tags=["audit-logs"])
 api_router.include_router(service_requests.router, prefix="/service-requests", tags=["service-requests"])
 api_router.include_router(inventory.router, prefix="/inventory", tags=["inventory"])
+# Its own prefix, so nothing that already answers under /inventory changes.
+api_router.include_router(
+    inventory_capture.router, prefix="/inventory-captures", tags=["inventory"],
+)
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(inspections.router, prefix="/inspections", tags=["inspections"])
