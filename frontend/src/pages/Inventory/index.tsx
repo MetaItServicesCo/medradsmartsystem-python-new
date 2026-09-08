@@ -7,6 +7,7 @@ import {
   TableHead, TablePagination, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import CloseIcon from '@mui/icons-material/Close'
 import EditIcon from '@mui/icons-material/Edit'
 import InventoryIcon from '@mui/icons-material/Inventory'
@@ -19,7 +20,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import { toast } from 'react-toastify'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchFacilities } from '@/api/facilities'
 
 import {
@@ -144,6 +145,7 @@ const transactionLabels: Record<InventoryTransactionType, string> = {
 
 const Inventory = () => {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { focusRecord } = useListContext()
   const [searchParams, setSearchParams] = useSearchParams()
   const user = useAuthStore((state) => state.user)
@@ -438,6 +440,13 @@ const Inventory = () => {
               Download Inventory
             </Button>
           )}
+          {/* Capture is the fast path for many items at once; Register Part
+              remains exactly as it was for a single, fully described one. */}
+          <Button variant="outlined" startIcon={<PhotoCameraIcon />}
+            onClick={() => navigate('/inventory-capture')}
+            sx={{ minHeight: 40, borderRadius: '10px', px: 2, fontWeight: 850, whiteSpace: 'nowrap' }}>
+            Capture by Photo
+          </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenNew}
             sx={{ minHeight: 40, backgroundColor: '#7C3AED', borderRadius: '10px', px: 2.25, fontWeight: 850, whiteSpace: 'nowrap' }}>
             Register Part
