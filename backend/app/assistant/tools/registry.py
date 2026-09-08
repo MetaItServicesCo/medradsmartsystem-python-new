@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.assistant.tools import analytics, commerce, entities
+from app.assistant.tools import analytics, attendance, commerce, entities
 from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
@@ -323,6 +323,41 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             },
         },
         handler=commerce.search_service_quotations,
+    ),
+    ToolDefinition(
+        name="search_attendance",
+        module="attendance",
+        description=(
+            "Who checked in, checked out, or took a break, and when. This "
+            "is the only record of attendance: it is not derivable from "
+            "service requests, inspections or any other module, so if the "
+            "question is who was at work, who is in today, when someone "
+            "arrived or left, or anything about check-ins, use this. "
+            "Defaults to today when no dates are given. Reports how a "
+            "check-in was recorded (manual, face, admin) but never the "
+            "stored images or face data."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "event_type": {
+                    "type": "string",
+                    "enum": list(attendance.EVENT_TYPES),
+                    "description": "Defaults to all events; use check_in for arrivals.",
+                },
+                "person": {"type": "string", "description": "Name, partial match."},
+                "facility_id": {"type": "integer"},
+                "source": {"type": "string", "enum": list(attendance.SOURCES)},
+                "verification_status": {
+                    "type": "string",
+                    "enum": list(attendance.VERIFICATION_STATUSES),
+                },
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+            },
+        },
+        handler=attendance.search_attendance,
     ),
     ToolDefinition(
         name="search_users",
