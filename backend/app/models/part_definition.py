@@ -65,6 +65,12 @@ class PartDefinition(Base):
     embedding = Column(JSON, nullable=True)
     embedding_model = Column(String(64), nullable=True)
 
+    # Which reader produced this identity: "udi" when a barcode was decoded
+    # and confirmed against the UDI database, "label" when it was read off
+    # the printed plate, null when a person simply typed it. A model number
+    # guessed from smudged print is not the same claim as a decoded one.
+    identified_from = Column(String(32), nullable=True)
+
     # An exact code beats any visual guess, so it is matched before the photo.
     gtin = Column(String(32), nullable=True, index=True)
 

@@ -32,8 +32,12 @@ OWNED_FILES = {
     'backend/app/models/inventory_capture.py',
     'backend/app/models/part_definition.py',
     'backend/app/utils/part_vision.py',
+    'backend/app/utils/part_labels.py',
+    'backend/app/utils/gudid.py',
+    'backend/scripts/part_label_doctor.py',
     'backend/tests/test_part_vision.py',
     'backend/tests/test_capture_publish.py',
+    'backend/tests/test_part_labels.py',
     'frontend/src/api/inventoryCapture.ts',
     'frontend/src/hooks/useCaptureCamera.ts',
     'frontend/src/pages/InventoryCapture/index.tsx',
@@ -57,6 +61,13 @@ REGISTRATION_FILES = {
     # One button added beside Register Part. Checked line by line below,
     # because this is the only pre-existing screen the feature appears on.
     'frontend/src/pages/Inventory/index.tsx',
+    # Reading a part label needs two native libraries, two Python
+    # packages and four settings. Additions only -- checked below like
+    # every other file here, so a dependency cannot be quietly swapped.
+    'backend/requirements.txt',
+    'backend/Dockerfile',
+    'backend/app/core/config.py',
+    '.env.example',
 }
 
 

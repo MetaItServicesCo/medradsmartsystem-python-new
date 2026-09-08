@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
-  Avatar, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, IconButton, MenuItem, TextField, Typography,
+  Avatar, Box, Button, Chip, CircularProgress, Dialog, DialogActions,
+  DialogContent, DialogTitle, IconButton, MenuItem, TextField, Typography,
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import InventoryIcon from '@mui/icons-material/Inventory'
@@ -11,6 +11,7 @@ import { toast } from 'react-toastify'
 import { formatUSPhoneInput } from '@/utils/formatters'
 import {
   fetchDefinitionPhoto,
+  getDefinition,
   type DefinitionDetails,
   type PartDefinition,
 } from '@/api/inventoryCapture'
@@ -98,11 +99,15 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
   // photographed the thing, and asking them for a second picture of it
   // is asking twice for the same answer.
   const [capturedPhoto, setCapturedPhoto] = useState("")
+  // Whether the label reader is still working, and what it concluded.
+  const [reading, setReading] = useState(false)
+  const [identifiedFrom, setIdentifiedFrom] = useState<string | null>(null)
 
   // Reload whenever a different part is opened, so the dialog never shows a
   // half-typed draft of something else.
   useEffect(() => {
     setForm(definition ? fromDefinition(definition) : blank)
+    setIdentifiedFrom(definition?.identified_from ?? null)
   }, [definition?.id])
 
   useEffect(() => {
@@ -127,6 +132,68 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
       if (url) URL.revokeObjectURL(url)
     }
   }, [definition?.id, definition?.has_reference_photo])
+
+  // Reading the label runs after the capture is saved, so the answer
+  // usually lands a second or two after this form is already open. Rather
+  // than make somebody close and reopen it, the form asks a few times and
+  // fills in the blanks as they arrive.
+  useEffect(() => {
+    const id = definition?.id
+    if (!id || definition?.identified_from) return
+    let stopped = false
+    let attempts = 0
+
+    const poll = async () => {
+      attempts += 1
+      try {
+        const fresh = await getDefinition(id)
+        if (stopped) return
+        if (fresh.identified_from) {
+          setIdentifiedFrom(fresh.identified_from)
+          // Only the blanks. Anything already on screen was either
+          // typed by the person or read a moment ago, and a reader that
+          // overwrote either would be doing the one thing it must not.
+          setForm((prev) => {
+            const merged = { ...prev }
+            const incoming: Array<[keyof FormState, string | null]> = [
+              ['name', fresh.name],
+              ['part_number', fresh.part_number],
+              ['make', fresh.make],
+              ['model', fresh.model],
+              ['description', fresh.description],
+            ]
+            for (const [field, value] of incoming) {
+              const current = String(merged[field] ?? '').trim()
+              const next = String(value ?? '').trim()
+              const placeholder = field === 'name' && current === 'Unnamed part'
+              if (next && (!current || placeholder)) {
+                (merged as any)[field] = next
+              }
+            }
+            return merged
+          })
+          setReading(false)
+          return
+        }
+      } catch {
+        // A failed poll is not worth telling anyone about: the form is
+        // perfectly usable, it just has to be filled in by hand.
+      }
+      if (!stopped && attempts < 5) {
+        timer = window.setTimeout(poll, 1500)
+      } else {
+        setReading(false)
+      }
+    }
+
+    setReading(true)
+    let timer = window.setTimeout(poll, 1200)
+    return () => {
+      stopped = true
+      window.clearTimeout(timer)
+      setReading(false)
+    }
+  }, [definition?.id, definition?.identified_from])
 
   const set = (changes: Partial<FormState>) => setForm((prev) => ({ ...prev, ...changes }))
 
@@ -201,6 +268,30 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
           <Typography sx={{ mt: 0.4, color: '#64748B', fontSize: 13, fontWeight: 600 }}>
             Product details, supplier information, acquisition history, and imagery. Saved once and carried by {forAll}.
           </Typography>
+          {/* Where these details came from. A decoded barcode is the
+              manufacturer's own answer; printed text is a reading of it,
+              and is worth checking before it becomes stock. */}
+          {reading && (
+            <Box sx={{ mt: 0.9, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={13} />
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#64748B' }}>
+                Reading the label…
+              </Typography>
+            </Box>
+          )}
+          {!reading && identifiedFrom && (
+            <Chip
+              size="small"
+              label={identifiedFrom === 'udi'
+                ? 'Identified from the barcode — confirmed against the UDI database'
+                : 'Read off the label — please check these'}
+              sx={{
+                mt: 0.9, fontWeight: 800, fontSize: 11.5, maxWidth: '100%',
+                bgcolor: identifiedFrom === 'udi' ? '#DCFCE7' : '#FEF3C7',
+                color: identifiedFrom === 'udi' ? '#15803D' : '#92400E',
+              }}
+            />
+          )}
         </Box>
         <IconButton aria-label="Close part details dialog" onClick={onClose} sx={{ flexShrink: 0, width: 42, height: 42, color: '#4F46E5', bgcolor: '#EEF2FF', '&:hover': { bgcolor: '#E0E7FF' } }}>
           <CloseIcon />

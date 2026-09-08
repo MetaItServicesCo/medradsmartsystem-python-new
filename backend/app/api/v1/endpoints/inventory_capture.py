@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -38,8 +39,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints.inventory import _validate_references
+from app.core.config import settings
 from app.core.deps import get_current_user
-from app.db.base import get_db
+from app.db.base import SessionLocal, get_db
 from app.models.inventory import InventoryPart
 from app.models.inventory_capture import (
     CaptureStatus,
@@ -48,6 +50,8 @@ from app.models.inventory_capture import (
 )
 from app.models.part_definition import PartDefinition
 from app.models.user import User
+from app.utils.gudid import lookup_gtin
+from app.utils.part_labels import read_label
 from app.utils.logging import log_activity
 from app.utils.part_vision import (
     EMBEDDING_MODEL,
@@ -259,11 +263,155 @@ def _definition_response(db: Session, definition: PartDefinition) -> dict[str, A
         # Null until then, which is what the screen reads to say whether
         # these items are stock yet or still only photographs.
         "part_id": definition.part_id,
+        # Where these details came from, so the form can say so rather
+        # than presenting a decoded model number and a guessed one as
+        # equally certain.
+        "identified_from": definition.identified_from,
         "unit_count": _unit_count(db, definition.id),
         "created_at": (
             definition.created_at.isoformat() if definition.created_at else None
         ),
     }
+
+
+def _seed_definition(
+    definition: PartDefinition,
+    reading: Any,
+    registered: Optional[dict[str, Any]],
+) -> list[str]:
+    """Fill in what the label said, and only where nothing was said before.
+
+    Never overwrites. A person who has typed a model number has made a
+    decision, and a reader that quietly replaced it would be the worst
+    possible behaviour here -- wrong, invisible, and about a medical part.
+    """
+    filled: list[str] = []
+
+    def put(field: str, value: Optional[str]) -> None:
+        text = (value or "").strip()
+        if not text:
+            return
+        if (getattr(definition, field, None) or "").strip():
+            return
+        setattr(definition, field, text[:255])
+        filled.append(field)
+
+    put("gtin", reading.gtin)
+
+    if registered:
+        # The manufacturer's own registration: the best answer available
+        # to the question "what exactly is this".
+        put("part_number", registered.get("catalog_number") or registered.get("model"))
+        put("make", registered.get("company_name"))
+        put("model", registered.get("model"))
+        put("description", registered.get("description"))
+        if (definition.name or "").strip() in ("", "Unnamed part"):
+            brand = (registered.get("brand_name") or "").strip()
+            if brand:
+                definition.name = brand[:255]
+                filled.append("name")
+    else:
+        fields = reading.fields or {}
+        put("part_number", fields.get("ref") or fields.get("part_number"))
+        put("model", fields.get("model"))
+
+    if filled:
+        definition.identified_from = "udi" if registered else "label"
+    return filled
+
+
+def read_capture_labels(
+    definition_id: int,
+    capture_ids: list[int],
+    photo_path: str,
+) -> None:
+    """Read the label off a stored photograph and write down what it said.
+
+    Runs after the capture request has been answered, on its own session.
+    OCR takes about a second and the UDI lookup has been measured at
+    three, which is time the person holding the phone should not be
+    spending: the photograph is already saved and the codes are already
+    issued, so this is pure addition to something that already succeeded.
+
+    It therefore also cannot fail loudly. Everything below leaves the
+    capture exactly as usable as it was.
+    """
+    if not settings.CAPTURE_LABEL_READING_ENABLED:
+        return
+
+    db = SessionLocal()
+    try:
+        full = os.path.join(_storage_root(), photo_path)
+        try:
+            with open(full, "rb") as handle:
+                data = handle.read()
+        except OSError:
+            logger.warning("label reading: photograph missing at %s", full)
+            _mark_extraction(db, capture_ids, ExtractionStatus.FAILED)
+            return
+
+        reading = read_label(
+            data, with_ocr=bool(settings.CAPTURE_LABEL_OCR_ENABLED),
+        )
+        registered = lookup_gtin(reading.gtin) if reading.gtin else None
+
+        captures = (
+            db.query(InventoryCapture)
+            .filter(InventoryCapture.id.in_(capture_ids))
+            .all()
+        )
+        for capture in captures:
+            capture.barcode_raw = reading.barcode_raw
+            capture.gtin = reading.gtin
+            capture.lot = reading.lot
+            capture.expiry_date = reading.expiry_date
+            # A serial identifies one physical object, so it is only
+            # written when this photograph is of one object. Copying it
+            # across a batch of ten would assert that all ten carry the
+            # same serial, which cannot be true.
+            if len(captures) == 1:
+                capture.serial_number = reading.serial_number
+            capture.ocr_text = reading.ocr_text
+            capture.extraction_status = (
+                ExtractionStatus.DONE if reading.found_anything
+                else ExtractionStatus.SKIPPED
+            )
+
+        definition = (
+            db.query(PartDefinition)
+            .filter(PartDefinition.id == definition_id)
+            .first()
+        )
+        filled: list[str] = []
+        # A kind somebody has already described and published is left
+        # alone entirely. Their answers are not a gap to be filled.
+        if definition is not None and definition.part_id is None:
+            filled = _seed_definition(definition, reading, registered)
+
+        db.commit()
+        logger.info(
+            "label reading: definition=%s barcode=%s gtin=%s registered=%s filled=%s",
+            definition_id, bool(reading.barcode_raw), reading.gtin,
+            bool(registered), ",".join(filled) or "-",
+        )
+    except Exception:
+        logger.exception("label reading failed for definition %s", definition_id)
+        db.rollback()
+        _mark_extraction(db, capture_ids, ExtractionStatus.FAILED)
+    finally:
+        db.close()
+
+
+def _mark_extraction(db: Session, capture_ids: list[int], status_value: str) -> None:
+    """Record how the reading ended, without risking a second failure."""
+    try:
+        db.query(InventoryCapture).filter(
+            InventoryCapture.id.in_(capture_ids),
+        ).update({"extraction_status": status_value}, synchronize_session=False)
+        db.commit()
+    except Exception:
+        logger.exception("could not record extraction status")
+        db.rollback()
 
 
 def _definition_values(definition: PartDefinition) -> dict[str, Any]:
@@ -432,6 +580,7 @@ class CaptureConfirm(BaseModel):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_capture(
+    background: BackgroundTasks,
     photo: Optional[UploadFile] = File(None),
     label: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
@@ -548,6 +697,19 @@ async def create_capture(
     for capture in captures:
         db.refresh(capture)
     db.refresh(definition)
+
+    # Reading the label happens after this response is sent. The capture
+    # is already complete without it; what it adds is the answer to "what
+    # is this", which arrives a second or two later and is shown as a
+    # suggestion rather than applied to anything already described.
+    if photo_path:
+        background.add_task(
+            read_capture_labels,
+            definition.id,
+            [c.id for c in captures],
+            photo_path,
+        )
+
     return {
         "definition": _definition_response(db, definition),
         "captured": [_response(c) for c in captures],

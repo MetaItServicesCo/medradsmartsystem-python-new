@@ -73,6 +73,18 @@ class Settings(BaseSettings):
     PAYMENT_PROOF_OCR_MAX_ATTEMPTS: int = 4
     PAYMENT_PROOF_OCR_LEASE_SECONDS: int = 900
 
+    # Reading the label on a captured part. Both run after the capture has
+    # already been answered, never in front of the shutter: OCR takes about a
+    # second and the UDI lookup is a call to a public API that has been seen
+    # to take three. A capture that waited for either would be a slower
+    # capture for a field somebody was going to check anyway.
+    CAPTURE_LABEL_READING_ENABLED: bool = True
+    CAPTURE_LABEL_OCR_ENABLED: bool = True
+    # GUDID, the FDA device registry, via openFDA. Free and keyless. Turn it
+    # off to keep the capture path entirely inside the building.
+    UDI_LOOKUP_ENABLED: bool = True
+    UDI_LOOKUP_TIMEOUT_SECONDS: float = 6.0
+
     # AI-powered payment-proof extraction (Claude vision). When enabled, cheques
     # and bank slips are read by the vision model instead of on-box OCR, and the
     # amount is reconciled against the invoice. Falls back to OCR when disabled or

@@ -40,6 +40,13 @@ export interface PartDefinition {
    * Null while it is still only photographs.
    */
   part_id: number | null
+  /**
+   * Which reader produced these details: 'udi' when a barcode was decoded and
+   * confirmed against the UDI database, 'label' when it was read off the
+   * printed plate, null when a person typed them. A decoded model number and a
+   * guessed one are not the same claim, and the form says which it is holding.
+   */
+  identified_from: 'udi' | 'label' | null
   /** How many physical units of this kind exist. */
   unit_count: number
   created_at: string | null

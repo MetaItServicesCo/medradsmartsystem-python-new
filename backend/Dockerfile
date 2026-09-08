@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     libmagic1 \
     libglib2.0-0 \
     tesseract-ocr \
+    libzbar0 \
+    libdmtx0b \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies

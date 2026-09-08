@@ -23,6 +23,12 @@ opencv-python-headless>=4.8.1.78
 numpy>=1.26.0
 Pillow>=10.1.0
 pytesseract==0.3.13
+# Reading the label on a captured part. pyzbar covers 1D and QR; DataMatrix
+# needs pylibdmtx, and DataMatrix is what medical UDI actually uses, so both are
+# needed to read a device label. Each wraps a native library installed in the
+# Dockerfile; the reader degrades to "found nothing" without them.
+pyzbar==0.1.9
+pylibdmtx==0.1.10
 PyMuPDF>=1.24.0,<1.27.0
 boto3>=1.35.0,<2.0.0
 
