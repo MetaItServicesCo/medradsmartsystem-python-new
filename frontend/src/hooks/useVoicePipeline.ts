@@ -83,6 +83,12 @@ export const useVoicePipeline = ({ onConversation }: UseVoicePipelineOptions = {
   // Collected here rather than on the server, so a dropped connection still
   // leaves a record of what was actually heard.
   const transcriptRef = useRef<LiveTurn[]>([])
+  // Audio actually received for the turn in progress. A reply that arrives
+  // as text with no samples behind it is the failure this pipeline keeps
+  // producing, and from a chair it looks identical to not being heard at
+  // all. Counting it lets the browser say which of the two happened.
+  const audioBytesRef = useRef(0)
+  const heardAnythingRef = useRef(false)
 
   const supported =
     typeof navigator !== 'undefined' &&
@@ -123,6 +129,12 @@ export const useVoicePipeline = ({ onConversation }: UseVoicePipelineOptions = {
   }, [flushTranscript])
 
   const stop = useCallback(() => {
+    if (!heardAnythingRef.current && transcriptRef.current.length) {
+      // Words came back and not one sample did, for the whole call.
+      setError(
+        "The call produced no audio at all. Check docker compose logs voice.",
+      )
+    }
     teardown()
     setConnecting(false)
   }, [teardown])
@@ -135,6 +147,8 @@ export const useVoicePipeline = ({ onConversation }: UseVoicePipelineOptions = {
     if (socketRef.current || connecting) return
 
     setError('')
+    audioBytesRef.current = 0
+    heardAnythingRef.current = false
     setConnecting(true)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -191,6 +205,8 @@ export const useVoicePipeline = ({ onConversation }: UseVoicePipelineOptions = {
 
       socket.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
+          audioBytesRef.current += event.data.byteLength
+          heardAnythingRef.current = true
           playerRef.current?.port.postMessage(toFloat32(event.data))
           return
         }
@@ -200,8 +216,12 @@ export const useVoicePipeline = ({ onConversation }: UseVoicePipelineOptions = {
         } catch {
           return
         }
+        // Cheap, and the difference between diagnosing a silent call in a
+        // minute and in a day.
+        console.debug('[voice]', payload.type, payload.text ?? '')
         switch (payload.type) {
           case 'user_started':
+            audioBytesRef.current = 0
             setListening(true)
             break
           case 'user_stopped':
@@ -224,6 +244,15 @@ export const useVoicePipeline = ({ onConversation }: UseVoicePipelineOptions = {
           case 'assistant':
             if (typeof payload.text === 'string' && payload.text.trim()) {
               transcriptRef.current.push({ role: 'assistant', text: payload.text })
+              // It answered. Whether it was audible is a separate question,
+              // and one nobody could previously ask.
+              if (audioBytesRef.current === 0) {
+                setError(
+                  "It answered but sent no audio. The voice service log will "
+                  + "name the reason: docker compose logs voice",
+                )
+                console.warn('[voice] answer received with no audio', payload.text)
+              }
             }
             break
           case 'error':
