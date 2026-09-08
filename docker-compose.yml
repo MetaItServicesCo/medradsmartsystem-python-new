@@ -363,6 +363,13 @@ services:
       - SPEECH_SERVICE_URL=http://speech:8200
       - SPEECH_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
       - WHISPER_MODEL=${VOICE_WHISPER_MODEL:-base.en}
+      # Empty picks itself: ElevenLabs when a key is set, Piper otherwise.
+      # ElevenLabs sounds better and is billed per character; Piper keeps
+      # every answer on this network.
+      - VOICE_TTS_PROVIDER=${VOICE_TTS_PROVIDER:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}
+      - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-eleven_flash_v2_5}
       # Turn taking. The silence that ends a turn has to outlast a pause
       # mid-sentence, or half a question reaches the recogniser.
       - USER_SPEECH_TIMEOUT=${VOICE_SPEECH_TIMEOUT:-0.8}

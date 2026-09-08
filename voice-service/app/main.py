@@ -109,9 +109,48 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "ready": "stt" in _models,
         "recognizer": settings.WHISPER_MODEL,
+        "voice": settings.tts_provider(),
         "sample_rate": settings.SAMPLE_RATE,
         "user_speech_timeout": settings.USER_SPEECH_TIMEOUT,
     }
+
+
+def _build_tts() -> Any:
+    """The voice, chosen by configuration.
+
+    ElevenLabs streams over its own WebSocket from a client pipecat
+    maintains, which is the real argument for it here: it replaces an
+    adapter written for this project with one that is exercised by everyone
+    who uses the framework. It also asks for the audio at the transport's
+    own rate, so nothing resamples on the way out.
+
+    Piper remains the default when no key is set. It keeps every answer on
+    this network, which for a system holding medical operations data is a
+    property worth having by default rather than by choice.
+    """
+    provider = settings.tts_provider()
+    if provider == "elevenlabs":
+        if not settings.ELEVENLABS_API_KEY.strip():
+            logger.warning("ElevenLabs selected but no key configured; using Piper")
+        else:
+            from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+
+            logger.info("Speaking with ElevenLabs voice {}", settings.ELEVENLABS_VOICE_ID)
+            return ElevenLabsTTSService(
+                api_key=settings.ELEVENLABS_API_KEY,
+                # Through Settings: voice_id and model as arguments are
+                # both deprecated and go away in pipecat 2.0.
+                settings=ElevenLabsTTSService.Settings(
+                    voice=settings.ELEVENLABS_VOICE_ID,
+                    model=settings.ELEVENLABS_MODEL,
+                    language=None,
+                ),
+                # Asked for at the transport's own rate, so nothing has to
+                # resample on the way to the speaker.
+                sample_rate=settings.SAMPLE_RATE,
+            )
+    logger.info("Speaking with Piper, streamed from the speech service")
+    return MedRadPiperTTS()
 
 
 def _build_pipeline(websocket: WebSocket, user_token: str) -> tuple[Pipeline, Any]:
@@ -151,8 +190,8 @@ def _build_pipeline(websocket: WebSocket, user_token: str) -> tuple[Pipeline, An
         turns,
         _models["stt"],
         MedRadAgentLLM(user_token=user_token),
-        # Built per conversation because it holds its own HTTP connection.
-        MedRadPiperTTS(),
+        # Built per conversation because it holds its own connection.
+        _build_tts(),
         transport.output(),
     ])
     return pipeline, transport

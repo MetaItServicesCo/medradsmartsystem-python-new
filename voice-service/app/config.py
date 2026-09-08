@@ -31,6 +31,30 @@ class Settings(BaseSettings):
     SPEECH_INTERNAL_KEY: str = ""
     SPEECH_TIMEOUT_SECONDS: float = 60.0
 
+    # Which voice to speak with.
+    #
+    # "piper" keeps synthesis on this network, costs nothing, and sounds
+    # like a good open model. "elevenlabs" sounds markedly better and
+    # streams from a maintained client rather than the adapter written
+    # here, but it is billed per character and the answers -- which carry
+    # facility names, people and figures -- are sent to a third party.
+    #
+    # Left empty it picks itself: ElevenLabs when a key is configured,
+    # Piper otherwise, so a missing key degrades instead of failing.
+    VOICE_TTS_PROVIDER: str = ""
+    ELEVENLABS_API_KEY: str = ""
+    # Rachel, one of the stock voices. Any voice id from the account works.
+    ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
+    # Their low-latency model; the quality models are noticeably slower and
+    # this is a conversation, not an audiobook.
+    ELEVENLABS_MODEL: str = "eleven_flash_v2_5"
+
+    def tts_provider(self) -> str:
+        chosen = (self.VOICE_TTS_PROVIDER or "").strip().lower()
+        if chosen:
+            return chosen
+        return "elevenlabs" if self.ELEVENLABS_API_KEY.strip() else "piper"
+
     # Turn taking. Silence that ends a turn has to outlast a natural pause
     # mid-sentence, or half a question reaches the recogniser; it is otherwise
     # dead air on every turn, so it is worth tuning per room.
