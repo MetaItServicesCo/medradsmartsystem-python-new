@@ -32,6 +32,7 @@ from app.models.equipment_facility import EquipmentFacility
 from app.models.facility_tier import FacilityTier
 from app.models.inventory import InventoryPart, InventoryTransaction
 from app.models.inventory_capture import InventoryCapture
+from app.models.part_definition import PartDefinition
 from app.models.test_equipment import TestEquipment
 from app.models.sales import (
     SalesInventoryReservation,

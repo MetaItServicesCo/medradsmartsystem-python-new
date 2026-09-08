@@ -81,6 +81,13 @@ class InventoryCapture(Base):
     ocr_text = Column(Text, nullable=True)
     extraction_status = Column(String(16), nullable=False, default=ExtractionStatus.PENDING)
 
+    # Which kind of part this is. Nullable because a capture exists before
+    # anyone has decided, which is the point of capturing first.
+    definition_id = Column(
+        Integer, ForeignKey("part_definitions.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+
     # What it became, once someone confirmed it.
     part_id = Column(Integer, ForeignKey("inventory_parts.id", ondelete="SET NULL"), nullable=True)
 
@@ -90,3 +97,4 @@ class InventoryCapture(Base):
     facility = relationship("Facility")
     captured_by = relationship("User")
     part = relationship("InventoryPart")
+    definition = relationship("PartDefinition", back_populates="captures")

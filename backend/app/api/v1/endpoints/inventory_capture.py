@@ -44,6 +44,7 @@ from app.models.inventory_capture import (
     ExtractionStatus,
     InventoryCapture,
 )
+from app.models.part_definition import PartDefinition
 from app.models.user import User
 from app.utils.logging import log_activity
 from app.utils.permissions import has_module_permission
@@ -58,6 +59,10 @@ router = APIRouter()
 # it.
 CAPTURE_SUBTREE = "inventory_captures"
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
+# One shutter press should not be able to mint ten thousand codes by
+# typo. Larger batches are several captures, which is also how anyone
+# actually counts a shelf.
+MAX_BATCH = 500
 ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
 
 # Unambiguous when read aloud or typed from a label: no O/0, no I/1/L.
@@ -130,6 +135,57 @@ def _response(capture: InventoryCapture) -> dict[str, Any]:
     }
 
 
+def _unit_count(db: Session, definition_id: int) -> int:
+    """How many of these exist, which is what the capture screen asks."""
+    return int(
+        db.query(func.count(InventoryCapture.id))
+        .filter(
+            InventoryCapture.definition_id == definition_id,
+            InventoryCapture.status != CaptureStatus.DISCARDED,
+        )
+        .scalar()
+        or 0
+    )
+
+
+def _definition_response(db: Session, definition: PartDefinition) -> dict[str, Any]:
+    return {
+        "id": definition.id,
+        "name": definition.name,
+        "part_number": definition.part_number,
+        "part_type": definition.part_type,
+        "description": definition.description,
+        "make": definition.make,
+        "model": definition.model,
+        "unit_price": (
+            str(definition.unit_price) if definition.unit_price is not None else None
+        ),
+        "gtin": definition.gtin,
+        "has_reference_photo": bool(definition.reference_photo_path),
+        "unit_count": _unit_count(db, definition.id),
+        "created_at": (
+            definition.created_at.isoformat() if definition.created_at else None
+        ),
+    }
+
+
+class DefinitionUpdate(BaseModel):
+    """The description shared by every unit of this kind.
+
+    Edited once. Every unit already points here, so nothing is copied
+    outward and nothing can drift apart.
+    """
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    part_number: Optional[str] = Field(default=None, max_length=255)
+    part_type: Optional[str] = Field(default=None, max_length=255)
+    description: Optional[str] = None
+    make: Optional[str] = Field(default=None, max_length=255)
+    model: Optional[str] = Field(default=None, max_length=255)
+    unit_price: Optional[float] = Field(default=None, ge=0)
+    gtin: Optional[str] = Field(default=None, max_length=32)
+
+
 class CaptureUpdate(BaseModel):
     """What can be corrected on a draft before it becomes a part."""
 
@@ -162,6 +218,8 @@ async def create_capture(
     label: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     facility_id: Optional[int] = Form(None),
+    quantity: int = Form(1),
+    definition_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
@@ -173,6 +231,21 @@ async def create_capture(
     because the form was too long.
     """
     _require_inventory(current_user, "create")
+    if quantity < 1 or quantity > MAX_BATCH:
+        raise HTTPException(
+            status_code=400,
+            detail="Quantity must be between 1 and {}.".format(MAX_BATCH),
+        )
+
+    definition: Optional[PartDefinition] = None
+    if definition_id is not None:
+        definition = (
+            db.query(PartDefinition)
+            .filter(PartDefinition.id == definition_id)
+            .first()
+        )
+        if definition is None:
+            raise HTTPException(status_code=404, detail="Part definition not found")
 
     photo_path: Optional[str] = None
     photo_mime: Optional[str] = None
@@ -191,29 +264,59 @@ async def create_capture(
         photo_path = _store_photo(data, content_type)
         photo_mime = content_type
 
-    capture = InventoryCapture(
-        code=_generate_code(db),
-        facility_id=facility_id,
-        captured_by_id=current_user.id,
-        status=CaptureStatus.DRAFT,
-        photo_path=photo_path,
-        photo_mime=photo_mime,
-        label=(label or "").strip() or None,
-        notes=(notes or "").strip() or None,
-        # Nothing reads labels yet, so there is nothing pending. When a reader
-        # exists it will claim these rather than find them already spoken for.
-        extraction_status=(
-            ExtractionStatus.PENDING if photo_path else ExtractionStatus.SKIPPED
-        ),
-    )
-    db.add(capture)
+    # A new kind of part, unless the caller says it is one already seen.
+    # Created from whatever was typed, which is usually just a name -- the
+    # description is written later, once, and reaches every unit.
+    if definition is None:
+        definition = PartDefinition(
+            name=(label or "").strip() or "Unnamed part",
+            reference_photo_path=photo_path,
+            created_by_id=current_user.id,
+        )
+        db.add(definition)
+        db.flush()
+    elif definition.reference_photo_path is None and photo_path:
+        # The first photograph of a kind becomes what recognition compares
+        # against.
+        definition.reference_photo_path = photo_path
+
+    # One row per physical object, each with its own code, all pointing at
+    # the one description. Ten pumps are ten codes and one definition.
+    captures: list[InventoryCapture] = []
+    for _ in range(quantity):
+        capture = InventoryCapture(
+            code=_generate_code(db),
+            definition_id=definition.id,
+            facility_id=facility_id,
+            captured_by_id=current_user.id,
+            status=CaptureStatus.DRAFT,
+            photo_path=photo_path,
+            photo_mime=photo_mime,
+            label=(label or "").strip() or None,
+            notes=(notes or "").strip() or None,
+            # Nothing reads labels yet, so there is nothing pending. When a
+            # reader exists it will claim these rather than find them
+            # already spoken for.
+            extraction_status=(
+                ExtractionStatus.PENDING if photo_path else ExtractionStatus.SKIPPED
+            ),
+        )
+        db.add(capture)
+        captures.append(capture)
     db.flush()
-    log_activity(db, "inventory_captures", capture.id, "CREATE", current_user, {
-        "code": capture.code, "facility_id": facility_id,
+
+    log_activity(db, "part_definitions", definition.id, "CAPTURE", current_user, {
+        "quantity": quantity,
+        "codes": [c.code for c in captures],
     })
     db.commit()
-    db.refresh(capture)
-    return _response(capture)
+    for capture in captures:
+        db.refresh(capture)
+    db.refresh(definition)
+    return {
+        "definition": _definition_response(db, definition),
+        "captured": [_response(c) for c in captures],
+    }
 
 
 @router.get("")
@@ -258,6 +361,73 @@ def list_captures(
     )
     return {"total": int(total), "items": [_response(row) for row in rows]}
 
+
+# Declared before /{capture_id}: FastAPI matches routes in order, and a
+# literal path that sits after a parameterised one is never reached --
+# /definitions would be read as a capture id and rejected.
+@router.get("/definitions/{definition_id}")
+def get_definition(
+    definition_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """A kind of part, and how many of them exist.
+
+    This is what recognition opens: "xyz, ten items stored", with whatever
+    has been filled in so far ready to be added to.
+    """
+    _require_inventory(current_user)
+    definition = db.query(PartDefinition).filter(PartDefinition.id == definition_id).first()
+    if definition is None:
+        raise HTTPException(status_code=404, detail="Part definition not found")
+    return _definition_response(db, definition)
+
+
+@router.patch("/definitions/{definition_id}")
+def update_definition(
+    definition_id: int,
+    payload: DefinitionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Describe the kind once; every unit of it is described.
+
+    Nothing is written to the units. They already point here, so there is no
+    copy to update and no way for one of them to end up saying something
+    different from the rest.
+    """
+    _require_inventory(current_user, "update")
+    definition = db.query(PartDefinition).filter(PartDefinition.id == definition_id).first()
+    if definition is None:
+        raise HTTPException(status_code=404, detail="Part definition not found")
+
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
+        setattr(definition, field, value)
+    log_activity(db, "part_definitions", definition.id, "UPDATE", current_user, changes)
+    db.commit()
+    db.refresh(definition)
+    return _definition_response(db, definition)
+
+
+@router.get("/definitions")
+def list_definitions(
+    search: Optional[str] = Query(None, description="Name or part number."),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Every kind captured so far, with how many of each there are."""
+    _require_inventory(current_user)
+    query = db.query(PartDefinition)
+    if search:
+        pattern = "%{}%".format(search.replace("%", "\\%").replace("_", "\\_"))
+        query = query.filter(
+            PartDefinition.name.ilike(pattern, escape="\\")
+            | func.coalesce(PartDefinition.part_number, "").ilike(pattern, escape="\\")
+        )
+    rows = query.order_by(PartDefinition.updated_at.desc()).limit(limit).all()
+    return {"items": [_definition_response(db, row) for row in rows]}
 
 @router.get("/{capture_id}")
 def get_capture(
