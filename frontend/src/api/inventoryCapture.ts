@@ -17,6 +17,22 @@ export interface PartDefinition {
   make: string | null
   model: string | null
   unit_price: string | null
+  // The rest of what the Add Part form asks for. Same names as an
+  // inventory part uses, because a definition describes the part it will
+  // become and describing it twice in two vocabularies is how the two
+  // stop agreeing.
+  condition: string | null
+  supplier_name: string | null
+  supplier_contact: string | null
+  supplier_email: string | null
+  supplier_phone: string | null
+  supplier_address: string | null
+  vendor_name: string | null
+  purchase_location: string | null
+  shipping_method: string | null
+  acquisition_date: string | null
+  warehouse_arrival_date: string | null
+  default_picture_url: string | null
   gtin: string | null
   has_reference_photo: boolean
   /** How many physical units of this kind exist. */
@@ -107,12 +123,15 @@ export const getDefinition = async (id: number): Promise<PartDefinition> => {
   return res.data as PartDefinition
 }
 
+/** Everything the details form can set on a kind of part. */
+export type DefinitionDetails = Partial<
+  Omit<PartDefinition, 'id' | 'unit_price' | 'has_reference_photo' | 'unit_count' | 'created_at'>
+> & { unit_price?: number }
+
 /** Describe the kind once. Every unit of it is described. */
 export const updateDefinition = async (
   id: number,
-  changes: Partial<Pick<PartDefinition,
-    'name' | 'part_number' | 'part_type' | 'description' | 'make' | 'model' | 'gtin'>
-  > & { unit_price?: number },
+  changes: DefinitionDetails,
 ): Promise<PartDefinition> => {
   const res = await apiClient.patch(`/inventory-captures/definitions/${id}`, changes)
   return res.data as PartDefinition

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions,
-  DialogContent, DialogTitle, Divider, IconButton, Stack, TextField, Typography,
+  Alert, Box, Button, Card, Chip, CircularProgress, Divider, IconButton,
+  Stack, TextField, Typography,
 } from '@mui/material'
 import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
@@ -15,8 +15,10 @@ import { toast } from 'react-toastify'
 import useCaptureCamera from '@/hooks/useCaptureCamera'
 import {
   captureParts, listDefinitions, matchPhoto, updateDefinition,
-  type MatchCandidate, type MatchResult, type PartDefinition,
+  type DefinitionDetails, type MatchCandidate, type MatchResult,
+  type PartDefinition,
 } from '@/api/inventoryCapture'
+import PartDetailsDialog from './PartDetailsDialog'
 
 /**
  * Capture parts by photographing them.
@@ -108,6 +110,11 @@ const CaptureScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['part-definitions'] })
       reset()
       setStage('saved')
+      // The details form, opened on what was just saved and filled in
+      // with whatever is already known about this kind. Photograph the
+      // second of something and its description is already there to
+      // read; close it and the codes are recorded regardless.
+      setEditing(result.definition)
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.detail || error?.message || 'Could not save the capture.')
@@ -121,9 +128,9 @@ const CaptureScreen = () => {
   })
 
   const saveDetails = useMutation({
-    mutationFn: async (changes: Partial<PartDefinition>) => {
+    mutationFn: async (changes: DefinitionDetails) => {
       if (!editing) throw new Error('Nothing is being edited.')
-      return updateDefinition(editing.id, changes as any)
+      return updateDefinition(editing.id, changes)
     },
     onSuccess: (updated) => {
       toast.success(`Updated ${updated.name}. All ${updated.unit_count} items carry this.`)
@@ -353,63 +360,14 @@ const CaptureScreen = () => {
         ))}
       </Stack>
 
-      <Dialog open={Boolean(editing)} onClose={() => setEditing(null)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: 900 }}>
-          {editing?.name}
-          <Typography sx={{ fontSize: 13, color: '#64748B', fontWeight: 600 }}>
-            Saved here once and carried by all {editing?.unit_count} items.
-          </Typography>
-        </DialogTitle>
-        <DialogContent>
-          {editing && (
-            <Stack spacing={2} sx={{ pt: 1 }}>
-              {(
-                [
-                  ['name', 'Name'],
-                  ['part_number', 'Part number'],
-                  ['part_type', 'Part type'],
-                  ['make', 'Make'],
-                  ['model', 'Model'],
-                  ['description', 'Description'],
-                ] as const
-              ).map(([field, label]) => (
-                <TextField
-                  key={field}
-                  label={label}
-                  size="small"
-                  fullWidth
-                  multiline={field === 'description'}
-                  minRows={field === 'description' ? 2 : undefined}
-                  value={(editing as any)[field] ?? ''}
-                  onChange={(event) =>
-                    setEditing({ ...editing, [field]: event.target.value } as PartDefinition)
-                  }
-                />
-              ))}
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setEditing(null)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={saveDetails.isPending}
-            onClick={() => {
-              if (!editing) return
-              saveDetails.mutate({
-                name: editing.name,
-                part_number: editing.part_number,
-                part_type: editing.part_type,
-                make: editing.make,
-                model: editing.model,
-                description: editing.description,
-              })
-            }}
-          >
-            {saveDetails.isPending ? 'Saving…' : 'Save for all items'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* The same form Add Part shows, so the details a captured part
+          carries are the details a registered part carries. */}
+      <PartDetailsDialog
+        definition={editing}
+        onClose={() => setEditing(null)}
+        onSave={(changes) => saveDetails.mutate(changes)}
+        saving={saveDetails.isPending}
+      />
     </Box>
   )
 }

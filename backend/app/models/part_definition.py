@@ -15,6 +15,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -41,6 +42,23 @@ class PartDefinition(Base):
     make = Column(String(255), nullable=True)
     model = Column(String(255), nullable=True)
     unit_price = Column(Numeric(10, 2), nullable=True)
+
+    # The rest of what the Add Part form asks for, named and typed exactly
+    # as inventory_parts names and types them. A definition and the part it
+    # becomes describe the same object, so they describe it in the same
+    # words -- confirming a capture is then a copy, never a translation.
+    condition = Column(String, nullable=True)
+    supplier_name = Column(String, nullable=True)
+    supplier_contact = Column(String, nullable=True)
+    supplier_email = Column(String, nullable=True)
+    supplier_phone = Column(String, nullable=True)
+    supplier_address = Column(Text, nullable=True)
+    vendor_name = Column(String, nullable=True)
+    purchase_location = Column(String, nullable=True)
+    shipping_method = Column(String, nullable=True)
+    acquisition_date = Column(Date, nullable=True)
+    warehouse_arrival_date = Column(Date, nullable=True)
+    default_picture_url = Column(Text, nullable=True)
 
     # What recognition compares against. The vector is written by nothing yet.
     reference_photo_path = Column(String(512), nullable=True)

@@ -143,6 +143,33 @@ def _response(capture: InventoryCapture) -> dict[str, Any]:
     }
 
 
+# The fields the Add Part form asks for, in the order it asks for them.
+# One list, so the definition response, the definition update and the
+# part a confirmed capture becomes cannot fall out of step with each
+# other -- which is what happens when three places each keep their own
+# idea of what a part is made of.
+DETAIL_FIELDS = (
+    "part_number",
+    "part_type",
+    "description",
+    "make",
+    "model",
+    "unit_price",
+    "condition",
+    "supplier_name",
+    "supplier_contact",
+    "supplier_email",
+    "supplier_phone",
+    "supplier_address",
+    "vendor_name",
+    "purchase_location",
+    "shipping_method",
+    "acquisition_date",
+    "warehouse_arrival_date",
+    "default_picture_url",
+)
+
+
 def _unit_count(db: Session, definition_id: int) -> int:
     """How many of these exist, which is what the capture screen asks."""
     return int(
@@ -168,6 +195,24 @@ def _definition_response(db: Session, definition: PartDefinition) -> dict[str, A
         "unit_price": (
             str(definition.unit_price) if definition.unit_price is not None else None
         ),
+        "condition": definition.condition,
+        "supplier_name": definition.supplier_name,
+        "supplier_contact": definition.supplier_contact,
+        "supplier_email": definition.supplier_email,
+        "supplier_phone": definition.supplier_phone,
+        "supplier_address": definition.supplier_address,
+        "vendor_name": definition.vendor_name,
+        "purchase_location": definition.purchase_location,
+        "shipping_method": definition.shipping_method,
+        "acquisition_date": (
+            definition.acquisition_date.isoformat()
+            if definition.acquisition_date else None
+        ),
+        "warehouse_arrival_date": (
+            definition.warehouse_arrival_date.isoformat()
+            if definition.warehouse_arrival_date else None
+        ),
+        "default_picture_url": definition.default_picture_url,
         "gtin": definition.gtin,
         "has_reference_photo": bool(definition.reference_photo_path),
         "unit_count": _unit_count(db, definition.id),
@@ -191,6 +236,19 @@ class DefinitionUpdate(BaseModel):
     make: Optional[str] = Field(default=None, max_length=255)
     model: Optional[str] = Field(default=None, max_length=255)
     unit_price: Optional[float] = Field(default=None, ge=0)
+    condition: Optional[str] = Field(default=None, max_length=64)
+    supplier_name: Optional[str] = Field(default=None, max_length=255)
+    supplier_contact: Optional[str] = Field(default=None, max_length=255)
+    supplier_email: Optional[str] = Field(default=None, max_length=255)
+    supplier_phone: Optional[str] = Field(default=None, max_length=64)
+    supplier_address: Optional[str] = None
+    vendor_name: Optional[str] = Field(default=None, max_length=255)
+    purchase_location: Optional[str] = Field(default=None, max_length=255)
+    shipping_method: Optional[str] = Field(default=None, max_length=255)
+    acquisition_date: Optional[date] = None
+    warehouse_arrival_date: Optional[date] = None
+    # A data URL, the way the existing part form stores an image.
+    default_picture_url: Optional[str] = None
     gtin: Optional[str] = Field(default=None, max_length=32)
 
 
@@ -207,15 +265,34 @@ class CaptureUpdate(BaseModel):
 
 
 class CaptureConfirm(BaseModel):
-    """The little that must be true before a draft can become a part.
+    """What a draft becomes when it turns into a part.
 
-    These three are exactly what InventoryPart requires; everything else on a
-    part stays optional and is edited afterwards through the existing screens.
+    Everything is optional here because the definition usually already
+    holds it -- the details form filled in after the photograph is the
+    same form that describes a part, so by the time anyone confirms, the
+    answers exist. What is sent overrides what is stored; what is neither
+    sent nor stored is refused, because part number, type and description
+    are what InventoryPart requires and always has.
     """
 
-    part_number: str = Field(min_length=1, max_length=255)
-    part_type: str = Field(min_length=1, max_length=255)
-    description: str = Field(min_length=1)
+    part_number: Optional[str] = Field(default=None, max_length=255)
+    part_type: Optional[str] = Field(default=None, max_length=255)
+    description: Optional[str] = None
+    make: Optional[str] = Field(default=None, max_length=255)
+    model: Optional[str] = Field(default=None, max_length=255)
+    unit_price: Optional[float] = Field(default=None, ge=0)
+    condition: Optional[str] = Field(default=None, max_length=64)
+    supplier_name: Optional[str] = Field(default=None, max_length=255)
+    supplier_contact: Optional[str] = Field(default=None, max_length=255)
+    supplier_email: Optional[str] = Field(default=None, max_length=255)
+    supplier_phone: Optional[str] = Field(default=None, max_length=64)
+    supplier_address: Optional[str] = None
+    vendor_name: Optional[str] = Field(default=None, max_length=255)
+    purchase_location: Optional[str] = Field(default=None, max_length=255)
+    shipping_method: Optional[str] = Field(default=None, max_length=255)
+    acquisition_date: Optional[date] = None
+    warehouse_arrival_date: Optional[date] = None
+    default_picture_url: Optional[str] = None
     facility_id: Optional[int] = None
     quantity_on_hand: int = Field(default=1, ge=0)
 
@@ -488,7 +565,12 @@ def update_definition(
     changes = payload.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(definition, field, value)
-    log_activity(db, "part_definitions", definition.id, "UPDATE", current_user, changes)
+    # Logged in JSON mode: the activity log stores JSON, and a date
+    # object reaches it as something it cannot serialise.
+    log_activity(
+        db, "part_definitions", definition.id, "UPDATE", current_user,
+        payload.model_dump(mode="json", exclude_unset=True),
+    )
     db.commit()
     db.refresh(definition)
     return _definition_response(db, definition)
@@ -564,9 +646,11 @@ def confirm_capture(
     """Turn a draft into a real part.
 
     This is the only place a capture affects inventory, and it happens once,
-    deliberately, with the three fields a part actually requires. The capture
-    keeps pointing at what it became, so the photograph stays attached to the
-    record it produced.
+    deliberately. What the part is made of comes from the definition -- the
+    details form filled in after the photograph asks for exactly what the
+    register form asks for -- with anything sent here overriding it. The
+    capture keeps pointing at what it became, so the photograph stays
+    attached to the record it produced.
     """
     capture = db.query(InventoryCapture).filter(InventoryCapture.id == capture_id).first()
     if capture is None:
@@ -579,6 +663,13 @@ def confirm_capture(
     if capture.status == CaptureStatus.DISCARDED:
         raise HTTPException(status_code=400, detail="This capture was discarded.")
 
+    definition = (
+        db.query(PartDefinition)
+        .filter(PartDefinition.id == capture.definition_id)
+        .first()
+        if capture.definition_id else None
+    )
+
     facility_id = payload.facility_id if payload.facility_id is not None else capture.facility_id
     if facility_id is not None:
         # This is the moment a part comes into existence, so it is checked
@@ -586,11 +677,35 @@ def confirm_capture(
         require_facility_access(db, current_user, facility_id)
         _validate_references(db, facility_id, None, None, None)
 
+    # Sent wins, stored fills the gaps. Blank strings count as unanswered,
+    # so an untouched field on the form does not overwrite a description
+    # somebody already wrote.
+    sent = payload.model_dump(exclude_unset=True)
+    details: dict[str, Any] = {}
+    for field in DETAIL_FIELDS:
+        value = sent.get(field)
+        if isinstance(value, str) and not value.strip():
+            value = None
+        if value is None and definition is not None:
+            value = getattr(definition, field, None)
+        # Blank counts as unanswered from either source: a definition
+        # saved with an empty part number must not satisfy the check below.
+        if isinstance(value, str):
+            value = value.strip() or None
+        # Columns with their own defaults must not be handed a NULL, so
+        # unanswered means absent rather than empty.
+        if value is not None:
+            details[field] = value
+
+    missing = [f for f in ("part_number", "part_type", "description") if f not in details]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="Describe this part first. Missing: {}.".format(", ".join(missing)),
+        )
+
     part = InventoryPart(
         facility_id=facility_id,
-        part_number=payload.part_number.strip(),
-        part_type=payload.part_type.strip(),
-        description=payload.description.strip(),
         quantity_on_hand=payload.quantity_on_hand,
         # The code stays with the thing: it is what was written down when
         # somebody was standing in front of it.
@@ -598,7 +713,7 @@ def confirm_capture(
         serial_number=capture.serial_number,
         batch_number=capture.lot,
         expiry_date=capture.expiry_date,
-        default_picture_url=None,
+        **details,
     )
     db.add(part)
     db.flush()
