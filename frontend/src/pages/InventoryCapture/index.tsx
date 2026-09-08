@@ -133,8 +133,15 @@ const CaptureScreen = () => {
       return updateDefinition(editing.id, changes)
     },
     onSuccess: (updated) => {
-      toast.success(`Updated ${updated.name}. All ${updated.unit_count} items carry this.`)
+      toast.success(updated.part_id
+        ? `${updated.name} is in parts inventory, quantity ${updated.unit_count}.`
+        : `Updated ${updated.name}. All ${updated.unit_count} items carry this.`)
       queryClient.invalidateQueries({ queryKey: ['part-definitions'] })
+      // A complete description puts these items in the stock list, so the
+      // list has to be refetched or the inventory screen keeps showing
+      // what was true before this form was saved.
+      queryClient.invalidateQueries({ queryKey: ['inventory-parts'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] })
       setEditing(null)
     },
     onError: (error: any) => {
@@ -353,6 +360,17 @@ const CaptureScreen = () => {
                 {definition.description ? ` · ${definition.description}` : ' · not described yet'}
               </Typography>
             </Box>
+            {/* Whether these items are stock yet, or still photographs
+                waiting on the details a part needs. */}
+            <Chip
+              size="small"
+              label={definition.part_id ? 'In inventory' : 'Draft'}
+              sx={{
+                fontWeight: 800,
+                bgcolor: definition.part_id ? '#DCFCE7' : '#F1F5F9',
+                color: definition.part_id ? '#15803D' : '#64748B',
+              }}
+            />
             <IconButton onClick={() => setEditing(definition)} aria-label="Edit details">
               <EditIcon />
             </IconButton>

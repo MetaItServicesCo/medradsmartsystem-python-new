@@ -9,7 +9,11 @@ import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
 import { toast } from 'react-toastify'
 
 import { formatUSPhoneInput } from '@/utils/formatters'
-import type { DefinitionDetails, PartDefinition } from '@/api/inventoryCapture'
+import {
+  fetchDefinitionPhoto,
+  type DefinitionDetails,
+  type PartDefinition,
+} from '@/api/inventoryCapture'
 
 /**
  * The details of a captured part, asked for exactly the way Add Part asks.
@@ -89,12 +93,40 @@ const fromDefinition = (definition: PartDefinition): FormState => ({
 
 const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
   const [form, setForm] = useState<FormState>(blank)
+  // The photograph this part was captured from. Shown when nobody has
+  // chosen a picture, which is the usual case: somebody already
+  // photographed the thing, and asking them for a second picture of it
+  // is asking twice for the same answer.
+  const [capturedPhoto, setCapturedPhoto] = useState("")
 
   // Reload whenever a different part is opened, so the dialog never shows a
   // half-typed draft of something else.
   useEffect(() => {
     setForm(definition ? fromDefinition(definition) : blank)
   }, [definition?.id])
+
+  useEffect(() => {
+    if (!definition?.id || !definition.has_reference_photo) {
+      setCapturedPhoto("")
+      return
+    }
+    let url = ""
+    let dropped = false
+    fetchDefinitionPhoto(definition.id)
+      .then((next) => {
+        // The dialog may have moved on while this was in flight.
+        if (dropped) { URL.revokeObjectURL(next); return }
+        url = next
+        setCapturedPhoto(next)
+      })
+      // A missing photograph is not worth an error: the panel simply
+      // shows that no image is selected, which is true.
+      .catch(() => setCapturedPhoto(""))
+    return () => {
+      dropped = true
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [definition?.id, definition?.has_reference_photo])
 
   const set = (changes: Partial<FormState>) => setForm((prev) => ({ ...prev, ...changes }))
 
@@ -135,12 +167,14 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
       // Empty is no date, not the epoch.
       acquisition_date: form.acquisition_date || null,
       warehouse_arrival_date: form.warehouse_arrival_date || null,
-      default_picture_url: form.default_picture_url,
+      default_picture_url: form.default_picture_url || null,
     })
   }
 
   const units = definition?.unit_count ?? 0
   const forAll = units === 1 ? 'this item' : `all ${units} items`
+  const shownImage = form.default_picture_url || capturedPhoto
+  const showingCapture = !form.default_picture_url && Boolean(capturedPhoto)
 
   return (
     <Dialog
@@ -233,8 +267,8 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
           <Box sx={{ p: 1.5, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF', position: { lg: 'sticky' }, top: { lg: 0 } }}>
             <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Part Image</Typography>
             <Box sx={{ height: { xs: 220, lg: 250 }, borderRadius: '12px', border: '1px dashed #C7D2FE', backgroundColor: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              {form.default_picture_url ? (
-                <Box component="img" src={form.default_picture_url} alt="Part preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {shownImage ? (
+                <Box component="img" src={shownImage} alt="Part preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <Box sx={{ textAlign: 'center', color: '#94A3B8' }}>
                   <ImageOutlinedIcon sx={{ fontSize: 54 }} />
@@ -243,10 +277,14 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
               )}
             </Box>
             <Button fullWidth component="label" variant="outlined" startIcon={<ImageOutlinedIcon />} sx={{ mt: 1.25, minHeight: 42, borderRadius: '10px', textTransform: 'none', fontWeight: 800, color: '#4F46E5', borderColor: '#C7D2FE' }}>
-              {form.default_picture_url ? 'Replace Image' : 'Choose Image'}
+              {shownImage ? 'Replace Image' : 'Choose Image'}
               <input hidden type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} />
             </Button>
-            <Typography sx={{ mt: 1, color: '#94A3B8', fontSize: 11, textAlign: 'center' }}>Use a clear product photo for Sales and Rental lists.</Typography>
+            <Typography sx={{ mt: 1, color: '#94A3B8', fontSize: 11, textAlign: 'center' }}>
+              {showingCapture
+                ? 'The photograph taken when this part was captured. Replace it with a clearer product photo if you have one.'
+                : 'Use a clear product photo for Sales and Rental lists.'}
+            </Typography>
           </Box>
         </Box>
       </DialogContent>

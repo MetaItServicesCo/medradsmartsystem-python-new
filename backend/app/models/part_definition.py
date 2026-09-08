@@ -68,6 +68,16 @@ class PartDefinition(Base):
     # An exact code beats any visual guess, so it is matched before the photo.
     gtin = Column(String(32), nullable=True, index=True)
 
+    # The inventory row this kind became. Ten photographed pumps are one
+    # part with a quantity of ten, so the definition remembers its row and
+    # updates it rather than creating another one saying the same thing.
+    part_id = Column(
+        Integer,
+        ForeignKey("inventory_parts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

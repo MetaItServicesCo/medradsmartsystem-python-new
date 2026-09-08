@@ -33,12 +33,22 @@ OWNED_FILES = {
     'backend/app/models/part_definition.py',
     'backend/app/utils/part_vision.py',
     'backend/tests/test_part_vision.py',
+    'backend/tests/test_capture_publish.py',
     'frontend/src/api/inventoryCapture.ts',
     'frontend/src/hooks/useCaptureCamera.ts',
     'frontend/src/pages/InventoryCapture/index.tsx',
     'backend/tests/verify_capture_additive.py',
 }
 OWNED_TABLES = {'inventory_captures', 'part_definitions'}
+# Work done on the same branch that has nothing to do with captures. It
+# shares a baseline with this feature and would otherwise be reported as a
+# regression this feature caused, which would be a lie in both directions:
+# it hides nothing and it blames the wrong change.
+UNRELATED_FILES = {
+    # Print Form in the inspections three-dots menu.
+    'frontend/src/pages/Inspections/index.tsx',
+    'frontend/src/utils/inspectionReportHtml.ts',
+}
 # Existing files this feature is allowed to touch, and only to add a line.
 REGISTRATION_FILES = {
     'backend/app/api/v1/api.py',
@@ -85,6 +95,7 @@ owned_prefixes = ('frontend/src/pages/InventoryCapture',)
 touched = {t for t in touched if not (t.endswith('/') and t.rstrip('/').startswith(owned_prefixes))}
 existing_touched = {
     t for t in touched - OWNED_FILES - REGISTRATION_FILES - new_files
+            - UNRELATED_FILES
     if not t.startswith(owned_prefixes)
 }
 
@@ -92,7 +103,8 @@ print('files touched since the feature began:')
 for t in sorted(touched):
     kind = ('feature' if t in OWNED_FILES or t.startswith('backend/alembic/versions/')
             or t.startswith(owned_prefixes)
-            else 'registration' if t in REGISTRATION_FILES else 'PRE-EXISTING')
+            else 'registration' if t in REGISTRATION_FILES
+            else 'other work' if t in UNRELATED_FILES else 'PRE-EXISTING')
     print('   {:<14} {}'.format(kind, t))
 print()
 

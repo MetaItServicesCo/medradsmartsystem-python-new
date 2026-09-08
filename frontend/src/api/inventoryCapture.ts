@@ -35,6 +35,11 @@ export interface PartDefinition {
   default_picture_url: string | null
   gtin: string | null
   has_reference_photo: boolean
+  /**
+   * The inventory part this kind became, once it has been described.
+   * Null while it is still only photographs.
+   */
+  part_id: number | null
   /** How many physical units of this kind exist. */
   unit_count: number
   created_at: string | null
@@ -135,6 +140,20 @@ export const updateDefinition = async (
 ): Promise<PartDefinition> => {
   const res = await apiClient.patch(`/inventory-captures/definitions/${id}`, changes)
   return res.data as PartDefinition
+}
+
+/**
+ * The photograph this kind was captured from, as a blob URL.
+ *
+ * Fetched through the client rather than pointed at by an <img src>,
+ * because the endpoint needs the auth header an image tag cannot send.
+ * The caller owns the URL and must revoke it.
+ */
+export const fetchDefinitionPhoto = async (id: number): Promise<string> => {
+  const res = await apiClient.get(`/inventory-captures/definitions/${id}/photo`, {
+    responseType: 'blob',
+  })
+  return URL.createObjectURL(res.data as Blob)
 }
 
 export const listCaptures = async (params: {

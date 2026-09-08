@@ -14,6 +14,7 @@ assertion that you own something.
 """
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import secrets
@@ -31,6 +32,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -120,6 +122,44 @@ def _store_photo(data: bytes, content_type: str) -> str:
     with open(path, "wb") as handle:
         handle.write(data)
     return os.path.relpath(path, _storage_root())
+
+
+_PHOTO_MIME_BY_SUFFIX = {
+    ".jpg": "image/jpeg", ".png": "image/png",
+    ".webp": "image/webp", ".heic": "image/heic",
+}
+
+# A part carries its picture inline, the way the register form stores one.
+# Above this size it is left on disk and the part simply has no picture:
+# a text column is the wrong home for a photograph somebody took at full
+# resolution, and a slow inventory list is worse than a missing thumbnail.
+MAX_INLINE_PHOTO_BYTES = 2 * 1024 * 1024
+
+
+def _reference_photo_path(definition: PartDefinition) -> Optional[str]:
+    """Where the photograph actually is, if it is still there."""
+    if not definition.reference_photo_path:
+        return None
+    full = os.path.join(_storage_root(), definition.reference_photo_path)
+    return full if os.path.exists(full) else None
+
+
+def _reference_photo_data_url(definition: PartDefinition) -> Optional[str]:
+    """The captured photograph as a data URL, or None if unusable."""
+    full = _reference_photo_path(definition)
+    if full is None:
+        return None
+    try:
+        with open(full, "rb") as handle:
+            data = handle.read()
+    except OSError:
+        logger.warning("could not read reference photo %s", full)
+        return None
+    if not data or len(data) > MAX_INLINE_PHOTO_BYTES:
+        return None
+    suffix = os.path.splitext(full)[1].lower()
+    mime = _PHOTO_MIME_BY_SUFFIX.get(suffix, "image/jpeg")
+    return "data:{};base64,{}".format(mime, base64.b64encode(data).decode("ascii"))
 
 
 def _response(capture: InventoryCapture) -> dict[str, Any]:
@@ -215,11 +255,104 @@ def _definition_response(db: Session, definition: PartDefinition) -> dict[str, A
         "default_picture_url": definition.default_picture_url,
         "gtin": definition.gtin,
         "has_reference_photo": bool(definition.reference_photo_path),
+        # The inventory row this kind became, once it has been described.
+        # Null until then, which is what the screen reads to say whether
+        # these items are stock yet or still only photographs.
+        "part_id": definition.part_id,
         "unit_count": _unit_count(db, definition.id),
         "created_at": (
             definition.created_at.isoformat() if definition.created_at else None
         ),
     }
+
+
+def _definition_values(definition: PartDefinition) -> dict[str, Any]:
+    """What this kind says about itself, blanks dropped."""
+    values: dict[str, Any] = {}
+    for field in DETAIL_FIELDS:
+        value = getattr(definition, field, None)
+        if isinstance(value, str):
+            value = value.strip() or None
+        if value is not None:
+            values[field] = value
+    return values
+
+
+def _sync_part(
+    db: Session,
+    definition: PartDefinition,
+    current_user: User,
+) -> Optional[InventoryPart]:
+    """Put this kind in the stock list, or bring its row up to date.
+
+    Ten photographed pumps are one part with a quantity of ten. That is
+    how they were counted when somebody stood in front of them and it is
+    how the stock list reads, so the definition owns one row and updates
+    it -- describing the same kind twice must not produce two entries
+    that disagree.
+
+    Returns None while the kind is still undescribed. A photograph and a
+    name are not enough to claim stock exists: part number, type and
+    description are what an inventory part has always required, and
+    inventing them here would put rows in the list that nobody wrote.
+    """
+    values = _definition_values(definition)
+    if not all(values.get(field) for field in ("part_number", "part_type", "description")):
+        return None
+
+    if not values.get("default_picture_url"):
+        # Nobody chose a picture, so the photograph that was taken of the
+        # thing is the picture. It is already the best one available.
+        photo = _reference_photo_data_url(definition)
+        if photo:
+            values["default_picture_url"] = photo
+
+    quantity = _unit_count(db, definition.id)
+
+    part: Optional[InventoryPart] = None
+    if definition.part_id:
+        part = (
+            db.query(InventoryPart)
+            .filter(InventoryPart.id == definition.part_id)
+            .first()
+        )
+        if part is None:
+            # Somebody deleted the row. Forget it and make a new one
+            # rather than silently writing nothing from here on.
+            definition.part_id = None
+
+    created = part is None
+    if part is None:
+        part = InventoryPart(quantity_on_hand=quantity, **values)
+        db.add(part)
+        db.flush()
+        definition.part_id = part.id
+    else:
+        for field, value in values.items():
+            setattr(part, field, value)
+        part.quantity_on_hand = quantity
+
+    log_activity(
+        db, "inventory_parts", part.id,
+        "CREATE" if created else "UPDATE", current_user,
+        {
+            "source": "capture",
+            "definition_id": definition.id,
+            "part_number": values.get("part_number"),
+            "quantity_on_hand": quantity,
+        },
+    )
+
+    # Every unit of this kind is now represented by that row, so none of
+    # them is waiting to be described any more.
+    db.query(InventoryCapture).filter(
+        InventoryCapture.definition_id == definition.id,
+        InventoryCapture.status != CaptureStatus.DISCARDED,
+    ).update(
+        {"part_id": part.id, "status": CaptureStatus.CONFIRMED},
+        synchronize_session=False,
+    )
+    return part
 
 
 class DefinitionUpdate(BaseModel):
@@ -401,6 +534,12 @@ async def create_capture(
         captures.append(capture)
     db.flush()
 
+    # Already in the stock list? Then five more of it is a count of five
+    # more, not a second entry. A kind nobody has described yet stays out
+    # of the list until somebody does.
+    if definition.part_id:
+        _sync_part(db, definition, current_user)
+
     log_activity(db, "part_definitions", definition.id, "CAPTURE", current_user, {
         "quantity": quantity,
         "codes": [c.code for c in captures],
@@ -565,6 +704,12 @@ def update_definition(
     changes = payload.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(definition, field, value)
+    db.flush()
+
+    # Saving a complete description is what puts these items in the stock
+    # list, and what keeps the row honest afterwards. An incomplete one
+    # changes nothing there, so a half-filled form cannot create stock.
+    _sync_part(db, definition, current_user)
     # Logged in JSON mode: the activity log stores JSON, and a date
     # object reaches it as something it cannot serialise.
     log_activity(
@@ -574,6 +719,30 @@ def update_definition(
     db.commit()
     db.refresh(definition)
     return _definition_response(db, definition)
+
+
+@router.get("/definitions/{definition_id}/photo")
+def get_definition_photo(
+    definition_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """The photograph this kind was recognised from.
+
+    Served as a file rather than inlined into the definition response:
+    the list screen shows dozens of these at once and none of them need
+    the bytes until something asks for them.
+    """
+    definition = (
+        db.query(PartDefinition).filter(PartDefinition.id == definition_id).first()
+    )
+    if definition is None:
+        raise HTTPException(status_code=404, detail="Part definition not found")
+    full = _reference_photo_path(definition)
+    if full is None:
+        raise HTTPException(status_code=404, detail="No photograph was stored for this part.")
+    suffix = os.path.splitext(full)[1].lower()
+    return FileResponse(full, media_type=_PHOTO_MIME_BY_SUFFIX.get(suffix, "image/jpeg"))
 
 
 @router.get("/definitions")
@@ -669,6 +838,19 @@ def confirm_capture(
         .first()
         if capture.definition_id else None
     )
+
+    # This kind is already in the stock list, counted by quantity. Adding
+    # a second row for one of its units would double-count it, so the
+    # capture joins the row that exists.
+    if definition is not None and definition.part_id:
+        capture.part_id = definition.part_id
+        capture.status = CaptureStatus.CONFIRMED
+        log_activity(db, "inventory_captures", capture.id, "CONFIRM", current_user, {
+            "code": capture.code, "part_id": definition.part_id, "joined": True,
+        })
+        db.commit()
+        db.refresh(capture)
+        return {"capture": _response(capture), "part_id": definition.part_id}
 
     facility_id = payload.facility_id if payload.facility_id is not None else capture.facility_id
     if facility_id is not None:
