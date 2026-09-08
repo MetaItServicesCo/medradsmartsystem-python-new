@@ -19,6 +19,8 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import DeleteIcon from '@mui/icons-material/Delete'
+import CropFreeIcon from '@mui/icons-material/CropFree'
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import DrawIcon from '@mui/icons-material/Draw'
 import FormatAlignCenterIcon from '@mui/icons-material/FormatAlignCenter'
 import FormatAlignLeftIcon from '@mui/icons-material/FormatAlignLeft'
@@ -99,10 +101,26 @@ export interface CanvasFormSchema {
 // Constants
 // ─────────────────────────────────────────────
 
+// The width a canvas gets when nothing else says otherwise. It is a
+// default now rather than the law it used to be: every form saved as
+// 1080 wide no matter what was on it, which is why a section holding one
+// heading still printed as most of a page.
 const CANVAS_W = 1080
+
+// The printable width of the inspection sheet: 8.5in at 96dpi, less the
+// 40px page padding on each side. A canvas this wide prints at 1:1 with
+// no scaling, which is the only way laid-out spacing survives to paper.
+const PAGE_W = 736
+
 const GRID = 10
 const MIN_W = 80
 const MIN_H = 28
+// Floors for the section itself, and the breathing room kept below the
+// lowest element. Fit-to-content and auto-grow use the same margin so
+// they cannot fight each other into a slow upward creep.
+const MIN_CANVAS_W = 320
+const MIN_CANVAS_H = 160
+const CANVAS_PAD = GRID * 2
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'w' | 'e' | 'sw' | 's' | 'se'
 
@@ -213,11 +231,19 @@ const cellColWidths = (el: CanvasElement, cols: number): number[] =>
 interface BuilderProps {
   schema: CanvasFormSchema | null
   onChange: (schema: CanvasFormSchema) => void
+  /**
+   * Remove the form being edited. Optional because a form being created
+   * does not exist yet, so there is nothing to remove; when it is given, the
+   * action appears here as well as in the forms list, so a form can be binned
+   * without closing the builder to go and find its menu.
+   */
+  onRemoveForm?: () => void
 }
 
-export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
+export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderProps) {
   const [elements, setElements] = useState<CanvasElement[]>(() => schema?.elements ?? [])
   const [canvasHeight, setCanvasHeight] = useState(schema?.canvas_height ?? 900)
+  const [canvasWidth, setCanvasWidth] = useState(schema?.canvas_width ?? CANVAS_W)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null)
 
@@ -226,30 +252,39 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
   const elementsRef  = useRef(elements)
   const onChangeRef  = useRef(onChange)
   const heightRef    = useRef(canvasHeight)
+  const widthRef     = useRef(canvasWidth)
   const canvasRef    = useRef<HTMLDivElement>(null)
 
   useEffect(() => { elementsRef.current = elements },  [elements])
   useEffect(() => { onChangeRef.current = onChange },   [onChange])
   useEffect(() => { heightRef.current = canvasHeight }, [canvasHeight])
+  useEffect(() => { widthRef.current = canvasWidth }, [canvasWidth])
 
   // Sync in when schema changes externally (e.g. loading a form)
   useEffect(() => {
     if (schema) {
       setElements(schema.elements)
       setCanvasHeight(schema.canvas_height)
+      setCanvasWidth(schema.canvas_width ?? CANVAS_W)
     }
   }, [schema])
 
-  const commit = useCallback((elems: CanvasElement[], h?: number) => {
+  const commit = useCallback((elems: CanvasElement[], h?: number, w?: number) => {
     onChangeRef.current({
-      canvas_width: CANVAS_W,
+      canvas_width: w ?? widthRef.current,
       canvas_height: h ?? heightRef.current,
       elements: elems,
     })
   }, [])
 
   const growHeight = (elems: CanvasElement[]): number => {
-    const needed = snap(elems.reduce((m, el) => Math.max(m, el.y + el.height + 100), 600))
+    // Grows only when an element actually passes the bottom edge. It used
+    // to start from a 600px floor and never shrink, so a section always
+    // ended up at least 600 tall and usually stayed at its 900 default --
+    // which is the empty space that made this worth fixing.
+    const needed = snap(elems.reduce(
+      (m, el) => Math.max(m, el.y + el.height + CANVAS_PAD), MIN_CANVAS_H,
+    ))
     if (needed > heightRef.current) {
       setCanvasHeight(needed)
       heightRef.current = needed
@@ -257,6 +292,33 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
     }
     return heightRef.current
   }
+
+  // The smallest the section can be without leaving an element outside it.
+  // Shrinking is bounded rather than allowed-then-corrected: silently
+  // moving somebody's elements to make a number fit would be a worse
+  // surprise than refusing the number.
+  const contentRight = elements.reduce((m, el) => Math.max(m, el.x + el.width), 0)
+  const contentBottom = elements.reduce((m, el) => Math.max(m, el.y + el.height), 0)
+  const minWidth = Math.max(MIN_CANVAS_W, snap(contentRight + CANVAS_PAD))
+  const minHeight = Math.max(MIN_CANVAS_H, snap(contentBottom + CANVAS_PAD))
+
+  const applySize = (w: number, h: number) => {
+    const width = Math.max(minWidth, Math.round(w) || minWidth)
+    const height = Math.max(minHeight, Math.round(h) || minHeight)
+    setCanvasWidth(width)
+    widthRef.current = width
+    setCanvasHeight(height)
+    heightRef.current = height
+    commit(elementsRef.current, height, width)
+  }
+
+  // Exactly around what is on the canvas. This is the one that answers
+  // "I added a single field and the section prints as half a page".
+  const fitToContent = () => applySize(minWidth, minHeight)
+
+  // The printable width of the sheet, so the print sheet scales by 1 and
+  // the spacing on paper is the spacing laid out here.
+  const fitPageWidth = () => applySize(Math.max(PAGE_W, minWidth), canvasHeight)
 
   // Global mouse move / up during drag or resize
   useEffect(() => {
@@ -270,7 +332,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
         setElements(prev => prev.map(el =>
           el.id !== op.id ? el : {
             ...el,
-            x: Math.max(0, Math.min(CANVAS_W - el.width, op.origX + dx)),
+            x: Math.max(0, Math.min(widthRef.current - el.width, op.origX + dx)),
             y: Math.max(0, op.origY + dy),
           },
         ))
@@ -1185,7 +1247,83 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
       </Box>
 
       {/* ── Canvas area ── */}
-      <Box sx={{ overflow: 'auto', p: 2.5 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
+
+        {/* Section size. The canvas used to be a fixed 1080 x 900 box with
+            no relationship to what was on it, so a section holding one
+            field still took most of a printed page. */}
+        <Box sx={{
+          display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap',
+          px: 2.5, py: 1.25, bgcolor: '#ffffff', borderBottom: '1px solid #E2E8F0',
+          flex: 'none',
+        }}>
+          <Typography sx={{
+            fontSize: 10, fontWeight: 900, color: '#64748B',
+            textTransform: 'uppercase', letterSpacing: '0.6px', mr: 0.5,
+          }}>
+            Section size
+          </Typography>
+          <TextField
+            label="Width"
+            type="number"
+            size="small"
+            value={canvasWidth}
+            onChange={e => applySize(Number(e.target.value), canvasHeight)}
+            inputProps={{ min: minWidth, step: GRID }}
+            sx={{ width: 108, '& input': { fontSize: 13 } }}
+          />
+          <TextField
+            label="Height"
+            type="number"
+            size="small"
+            value={canvasHeight}
+            onChange={e => applySize(canvasWidth, Number(e.target.value))}
+            inputProps={{ min: minHeight, step: GRID }}
+            sx={{ width: 108, '& input': { fontSize: 13 } }}
+          />
+          <Tooltip title="Shrink the section to fit exactly what is on it">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<CropFreeIcon />}
+              onClick={fitToContent}
+              sx={{ textTransform: 'none', fontWeight: 800, borderRadius: '8px' }}
+            >
+              Fit to content
+            </Button>
+          </Tooltip>
+          <Tooltip title={`Set the width to ${PAGE_W}px, the printable width of the sheet, so this section prints at its real size`}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DescriptionOutlinedIcon />}
+              onClick={fitPageWidth}
+              sx={{ textTransform: 'none', fontWeight: 800, borderRadius: '8px' }}
+            >
+              Fit page width
+            </Button>
+          </Tooltip>
+          <Typography sx={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>
+            {canvasWidth === PAGE_W
+              ? 'Prints at full size'
+              : `Prints at ${Math.round((PAGE_W / canvasWidth) * 100)}% of this size`}
+          </Typography>
+          {onRemoveForm && (
+            <Box sx={{ ml: 'auto' }}>
+              <Button
+                size="small"
+                color="error"
+                startIcon={<DeleteIcon />}
+                onClick={onRemoveForm}
+                sx={{ textTransform: 'none', fontWeight: 800, borderRadius: '8px' }}
+              >
+                Delete form
+              </Button>
+            </Box>
+          )}
+        </Box>
+
+        <Box sx={{ overflow: 'auto', p: 2.5, flex: 1, minHeight: 0 }}>
         <Box
           ref={canvasRef}
           onMouseDown={() => { setSelectedId(null); setSelectedCellId(null) }}
@@ -1198,7 +1336,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
           }}
           sx={{
             position: 'relative',
-            width: CANVAS_W,
+            width: canvasWidth,
             minHeight: canvasHeight,
             bgcolor: '#ffffff',
             borderRadius: '12px',
@@ -1212,6 +1350,7 @@ export function CanvasFormBuilder({ schema, onChange }: BuilderProps) {
           }}
         >
           {elements.map(renderElement)}
+        </Box>
         </Box>
       </Box>
 

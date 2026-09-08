@@ -234,6 +234,18 @@ export interface InspectionFormOption {
   schema: Record<string, any>
   created_at: string
   updated_at: string
+  /** When this form was taken out of circulation, or null. */
+  archived_at?: string | null
+  /** How many inspections and batches were run against it. */
+  usage_count?: number
+  /**
+   * Whether it can be removed outright. False once anything has used it:
+   * inspections hold the form with a NOT NULL column, so deleting one in
+   * use would leave inspections that cannot be opened.
+   */
+  can_delete?: boolean
+  /** The built-in report form, which is recreated on demand. */
+  is_default?: boolean
 }
 
 export interface InspectionFormPayload {
@@ -359,6 +371,34 @@ export const updateInspectionForm = async (
 ): Promise<InspectionFormOption> => {
   const res = await apiClient.patch(`/inspections/forms/${id}`, data)
   return res.data
+}
+
+/**
+ * Delete a form nothing has ever used.
+ *
+ * Rejected with 409 when an inspection or batch holds it -- the message
+ * says how many. Archiving is the answer in that case.
+ */
+export const deleteInspectionForm = async (id: number): Promise<{
+  deleted: boolean
+  name: string
+  detached_equipment: number
+  detached_parts: number
+}> => {
+  const res = await apiClient.delete(`/inspections/forms/${id}`)
+  return res.data
+}
+
+/** Take a form out of the picker without touching what was built on it. */
+export const archiveInspectionForm = async (id: number): Promise<InspectionFormOption> => {
+  const res = await apiClient.post(`/inspections/forms/${id}/archive`)
+  return res.data as InspectionFormOption
+}
+
+/** Put an archived form back in the picker. */
+export const unarchiveInspectionForm = async (id: number): Promise<InspectionFormOption> => {
+  const res = await apiClient.post(`/inspections/forms/${id}/unarchive`)
+  return res.data as InspectionFormOption
 }
 
 export const createInspectionForm = async (data: InspectionFormPayload): Promise<InspectionFormOption> => {

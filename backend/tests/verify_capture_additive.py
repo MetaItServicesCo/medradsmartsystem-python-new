@@ -52,6 +52,12 @@ UNRELATED_FILES = {
     # Print Form in the inspections three-dots menu.
     'frontend/src/pages/Inspections/index.tsx',
     'frontend/src/utils/inspectionReportHtml.ts',
+    # Delete/archive a form, and an adjustable canvas size.
+    'frontend/src/pages/Inspections/CanvasFormBuilder.tsx',
+    'frontend/src/api/inspections.ts',
+    'backend/app/api/v1/endpoints/inspections.py',
+    'backend/app/models/inspection_form.py',
+    'backend/tests/test_form_removal.py',
 }
 # Existing files this feature is allowed to touch, and only to add a line.
 REGISTRATION_FILES = {
@@ -141,7 +147,19 @@ for path in sorted(REGISTRATION_FILES):
 altering = {'add_column', 'drop_column', 'alter_column', 'drop_table',
             'drop_constraint', 'rename_table', 'create_foreign_key'}
 offenders = set()
-for name in ('i4f5a6b7c8d9_inventory_captures.py', 'j5a6b7c8d9e0_part_definitions.py'):
+# Every migration this feature added, not just the first two. The list was
+# hard-coded to the original pair and silently stopped covering the ones
+# added afterwards -- so this check passed for three migrations it had never
+# read. A verifier that reports on work it did not inspect is worse than no
+# verifier, because it is believed.
+CAPTURE_MIGRATIONS = (
+    'i4f5a6b7c8d9_inventory_captures.py',
+    'j5a6b7c8d9e0_part_definitions.py',
+    'k6b7c8d9e0f1_definition_part_fields.py',
+    'l7c8d9e0f1a2_definition_part_link.py',
+    'm8d9e0f1a2b3_definition_identified_from.py',
+)
+for name in CAPTURE_MIGRATIONS:
     src = (REPO / 'backend/alembic/versions' / name).read_text(encoding='utf-8')
     for node in ast.walk(ast.parse(src)):
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)

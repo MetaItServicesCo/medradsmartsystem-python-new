@@ -25,6 +25,8 @@ import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined'
 import PersonIcon from '@mui/icons-material/Person'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import RemoveIcon from '@mui/icons-material/Remove'
@@ -69,6 +71,8 @@ import {
   type InspectionFrequency,
   type InspectionFormOption,
   type InspectionDetailsUpdatePayload,
+  deleteInspectionForm,
+  archiveInspectionForm,
 } from '@/api/inspections'
 import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 import { fetchFacility, type Facility } from '@/api/facilities'
@@ -1053,6 +1057,10 @@ const Inspections = () => {
   const [closedFacilityId, setClosedFacilityId] = useState<number | ''>('')
   const [closedPage, setClosedPage] = useState(0)
   const [viewForm, setViewForm] = useState<InspectionFormOption | null>(null)
+  // The form somebody is about to remove, and how. Deleting a form is not
+  // undoable and archiving changes what everyone else can pick, so neither
+  // happens straight off a menu click.
+  const [removingForm, setRemovingForm] = useState<InspectionFormOption | null>(null)
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [report, setReport] = useState<any>(null)
   const [partSearch, setPartSearch] = useState('')
@@ -1845,6 +1853,35 @@ const Inspections = () => {
       })
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not save custom inspection form'),
+  })
+
+  // Removing a form, two ways. Delete only where nothing has ever used
+  // it; archive otherwise. The refusal comes from the server with the
+  // count in it, so what the user reads is the truth about their data
+  // rather than a guess made on the screen.
+  const deleteFormMut = useMutation({
+    mutationFn: (form: InspectionFormOption) => deleteInspectionForm(form.id),
+    onSuccess: (result) => {
+      const detached = result.detached_equipment + result.detached_parts
+      toast.success(detached
+        ? `${result.name} deleted. ${detached} record${detached === 1 ? '' : 's'} no longer point at it.`
+        : `${result.name} deleted.`)
+      setRemovingForm(null)
+      setFormBuilderOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not delete this form'),
+  })
+
+  const archiveFormMut = useMutation({
+    mutationFn: (form: InspectionFormOption) => archiveInspectionForm(form.id),
+    onSuccess: (saved) => {
+      toast.success(`${saved.name} archived. Inspections built on it are untouched.`)
+      setRemovingForm(null)
+      setFormBuilderOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['inspection-forms'] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not archive this form'),
   })
 
   useEffect(() => {
@@ -4725,7 +4762,100 @@ const Inspections = () => {
         >
           <PrintOutlinedIcon fontSize="small" sx={{ mr: 1 }} /> Print Form
         </MenuItem>
+        {/* Removing a form. The default report is left out entirely: it is
+            recreated on demand, so removing it would achieve nothing. */}
+        {!formActionItem?.is_default && [
+          <Divider key="remove-divider" sx={{ my: 0.5 }} />,
+          <MenuItem
+            key="archive"
+            disabled={!canEditInspections || Boolean(formActionItem?.archived_at)}
+            onClick={() => {
+              if (!formActionItem) return
+              setRemovingForm(formActionItem)
+              setFormActionAnchor(null)
+              setFormActionItem(null)
+            }}
+          >
+            <Inventory2OutlinedIcon fontSize="small" sx={{ mr: 1 }} />
+            {formActionItem?.archived_at ? 'Archived' : 'Archive Form'}
+          </MenuItem>,
+          <MenuItem
+            key="delete"
+            disabled={!canEditInspections}
+            onClick={() => {
+              if (!formActionItem) return
+              setRemovingForm(formActionItem)
+              setFormActionAnchor(null)
+              setFormActionItem(null)
+            }}
+            sx={{ color: '#B91C1C' }}
+          >
+            <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} /> Delete Form
+          </MenuItem>,
+        ]}
       </Menu>
+
+      {/* One dialog for both, because the choice depends on something the
+          user cannot see: whether any inspection was ever run against this
+          form. It says which, and offers only what is actually possible. */}
+      <Dialog
+        open={Boolean(removingForm)}
+        onClose={() => setRemovingForm(null)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '18px' } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          Remove {removingForm?.name}?
+        </DialogTitle>
+        <DialogContent dividers>
+          {removingForm?.can_delete ? (
+            <Typography sx={{ fontSize: 14, color: '#334155' }}>
+              No inspection has ever been run against this form, so it can be
+              deleted for good. Any equipment or parts pointing at it keep
+              working and simply lose the attachment.
+            </Typography>
+          ) : (
+            <Box sx={{ display: 'grid', gap: 1.25 }}>
+              <Typography sx={{ fontSize: 14, color: '#334155' }}>
+                <strong>{removingForm?.usage_count}</strong> inspection
+                {removingForm?.usage_count === 1 ? ' has' : 's have'} been run
+                against this form, so it cannot be deleted — those
+                inspections would no longer open.
+              </Typography>
+              <Typography sx={{ fontSize: 13.5, color: '#64748B' }}>
+                Archiving takes it out of the picker so nobody starts a new
+                inspection with it. Everything already built on it is
+                untouched.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setRemovingForm(null)} sx={{ fontWeight: 900 }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => removingForm && archiveFormMut.mutate(removingForm)}
+            disabled={archiveFormMut.isPending || Boolean(removingForm?.archived_at)}
+            variant="outlined"
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            {removingForm?.archived_at ? 'Already archived' : 'Archive'}
+          </Button>
+          {removingForm?.can_delete && (
+            <Button
+              onClick={() => removingForm && deleteFormMut.mutate(removingForm)}
+              disabled={deleteFormMut.isPending}
+              variant="contained"
+              color="error"
+              sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+            >
+              Delete
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={Boolean(techEdit)} onClose={() => setTechEdit(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Change Technician</DialogTitle>
@@ -5105,6 +5235,17 @@ const Inspections = () => {
                   <CanvasFormBuilder
                     schema={canvasFormSchema}
                     onChange={setCanvasFormSchema}
+                    onRemoveForm={
+                      // Only for a form that exists. A form being created has
+                      // nothing to delete, and Cancel already discards it.
+                      formBuilderMode === 'edit' && formBuilderId && canEditInspections
+                        ? () => {
+                            const target = (formsQ.data?.items || [])
+                              .find((item: InspectionFormOption) => item.id === formBuilderId)
+                            if (target) setRemovingForm(target)
+                          }
+                        : undefined
+                    }
                   />
                 </Box>
               )}

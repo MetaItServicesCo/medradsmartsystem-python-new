@@ -354,6 +354,34 @@ def _get_default_form(db: Session) -> InspectionForm:
     return form
 
 
+def _form_usage(db: Session, form_ids: list[int]) -> dict[int, int]:
+    """How many inspections and batches point at each of these forms.
+
+    Two grouped queries for the whole list rather than one per form: the
+    forms screen shows every form at once, and this decides what its menu
+    is allowed to offer.
+    """
+    usage: dict[int, int] = {form_id: 0 for form_id in form_ids}
+    if not form_ids:
+        return usage
+    for model in (Inspection, InspectionBatch):
+        rows = (
+            db.query(model.form_template_id, func.count(model.id))
+            .filter(model.form_template_id.in_(form_ids))
+            .group_by(model.form_template_id)
+            .all()
+        )
+        for form_id, count in rows:
+            usage[form_id] = usage.get(form_id, 0) + int(count or 0)
+    return usage
+
+
+def _is_default_form(db: Session, form: InspectionForm) -> bool:
+    """The built-in report form, which is recreated on demand and so
+    cannot meaningfully be removed or hidden."""
+    return form.name == ADVANCED_REPORT_SCHEMA["title"]
+
+
 def _form_response(form: InspectionForm) -> dict[str, Any]:
     return {
         "id": form.id,
@@ -364,6 +392,7 @@ def _form_response(form: InspectionForm) -> dict[str, Any]:
         "schema": form.schema,
         "created_at": form.created_at,
         "updated_at": form.updated_at,
+        "archived_at": form.archived_at,
     }
 
 
@@ -997,11 +1026,18 @@ def list_inspection_forms(
     modality_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
+    include_archived: bool = Query(
+        False, description="Include forms that were archived.",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     form = _get_default_form(db)
     query = db.query(InspectionForm).options(joinedload(InspectionForm.modality))
+    if not include_archived:
+        # Archived forms are out of circulation, not gone. They stay
+        # readable by id so an inspection built on one still opens.
+        query = query.filter(InspectionForm.archived_at.is_(None))
 
     if modality_id is not None:
         modality = db.query(Modality).filter(Modality.id == modality_id).first()
@@ -1036,9 +1072,23 @@ def list_inspection_forms(
     forms = query.order_by(InspectionForm.name.asc()).all()
     if form not in forms and not search_term:
         forms.append(form)
+    usage = _form_usage(db, [item.id for item in forms if item.id])
+    items = []
+    for item in forms:
+        payload = _form_response(item)
+        # What the three-dots menu is allowed to offer: a form nothing
+        # has ever used can be deleted outright; one that is in use can
+        # only be archived, because inspections point at it with a NOT
+        # NULL column and would lose the form they were run against.
+        payload["usage_count"] = usage.get(item.id, 0)
+        payload["can_delete"] = (
+            usage.get(item.id, 0) == 0 and not _is_default_form(db, item)
+        )
+        payload["is_default"] = _is_default_form(db, item)
+        items.append(payload)
     return {
-        "items": [_form_response(item) for item in forms],
-        "total": len(forms),
+        "items": items,
+        "total": len(items),
     }
 
 
@@ -1108,6 +1158,116 @@ def update_inspection_form(
         form.schema = form_in.schema
     db.commit()
     db.refresh(form)
+    return _form_response(form)
+
+
+def _load_form_for_removal(db: Session, form_id: int) -> InspectionForm:
+    form = db.query(InspectionForm).filter(InspectionForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Inspection form not found")
+    if _is_default_form(db, form):
+        raise HTTPException(
+            status_code=400,
+            detail="The default inspection report cannot be removed. It is "
+                   "recreated automatically and every inspection falls back to it.",
+        )
+    return form
+
+
+@router.delete("/forms/{form_id}")
+def delete_inspection_form(
+    form_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+) -> Any:
+    """Delete a form nothing has ever used.
+
+    Refused, never forced, when an inspection or a batch holds it.
+    form_template_id is NOT NULL on both, so removing the row would either
+    be rejected by the database or leave inspections that cannot be opened.
+    The refusal says how many, and archiving is offered instead.
+    """
+    form = _load_form_for_removal(db, form_id)
+    used = _form_usage(db, [form.id]).get(form.id, 0)
+    if used:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This form is used by {} inspection{}. Archive it instead to "
+                "take it out of the picker while those inspections keep "
+                "working.".format(used, "" if used == 1 else "s")
+            ),
+        )
+
+    # Equipment and parts may point at it, and those columns are nullable,
+    # so they are detached rather than blocking the delete.
+    detached_equipment = (
+        db.query(Equipment)
+        .filter(Equipment.inspection_form_id == form.id)
+        .update({"inspection_form_id": None}, synchronize_session=False)
+    )
+    detached_parts = (
+        db.query(InventoryPart)
+        .filter(InventoryPart.inspection_form_id == form.id)
+        .update({"inspection_form_id": None}, synchronize_session=False)
+    )
+
+    name = form.name
+    log_activity(db, "inspection_forms", form.id, "DELETE", current_user, {
+        "name": name,
+        "detached_equipment": int(detached_equipment or 0),
+        "detached_parts": int(detached_parts or 0),
+    })
+    db.delete(form)
+    db.commit()
+    return {
+        "deleted": True,
+        "name": name,
+        "detached_equipment": int(detached_equipment or 0),
+        "detached_parts": int(detached_parts or 0),
+    }
+
+
+@router.post("/forms/{form_id}/archive")
+def archive_inspection_form(
+    form_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+) -> Any:
+    """Take a form out of circulation without touching what was built on it.
+
+    It leaves the picker and the forms list; every inspection already run
+    against it opens exactly as before, because the row is still there.
+    """
+    form = _load_form_for_removal(db, form_id)
+    if form.archived_at is None:
+        form.archived_at = datetime.utcnow()
+        log_activity(db, "inspection_forms", form.id, "ARCHIVE", current_user, {
+            "name": form.name,
+            "usage_count": _form_usage(db, [form.id]).get(form.id, 0),
+        })
+        db.commit()
+        db.refresh(form)
+    return _form_response(form)
+
+
+@router.post("/forms/{form_id}/unarchive")
+def unarchive_inspection_form(
+    form_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+) -> Any:
+    """Put an archived form back in the picker."""
+    form = db.query(InspectionForm).filter(InspectionForm.id == form_id).first()
+    if not form:
+        raise HTTPException(status_code=404, detail="Inspection form not found")
+    if form.archived_at is not None:
+        form.archived_at = None
+        log_activity(db, "inspection_forms", form.id, "UNARCHIVE", current_user, {
+            "name": form.name,
+        })
+        db.commit()
+        db.refresh(form)
     return _form_response(form)
 
 
