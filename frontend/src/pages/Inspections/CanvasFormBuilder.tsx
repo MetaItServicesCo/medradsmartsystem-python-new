@@ -122,6 +122,18 @@ const MIN_CANVAS_W = 320
 const MIN_CANVAS_H = 160
 const CANVAS_PAD = GRID * 2
 
+// How often the builder is allowed to hand its work upward.
+//
+// The parent is a single 6,500-line component with 88 pieces of state and
+// seventeen queries, and the tab behind this dialog stays mounted, so one
+// setState there re-renders about eleven hundred elements. Sending every
+// keystroke up meant paying that per character typed, which is what made
+// building a form feel like the page had stopped responding.
+//
+// Local state stays authoritative and immediate; the parent hears about it
+// at most this often, and always within this long of the last edit.
+const COMMIT_INTERVAL = 250
+
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'w' | 'e' | 'sw' | 's' | 'se'
 
 const HANDLE_CURSORS: Record<ResizeHandle, string> = {
@@ -244,6 +256,12 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   const [elements, setElements] = useState<CanvasElement[]>(() => schema?.elements ?? [])
   const [canvasHeight, setCanvasHeight] = useState(schema?.canvas_height ?? 900)
   const [canvasWidth, setCanvasWidth] = useState(schema?.canvas_width ?? CANVAS_W)
+  // What is actually in the two size boxes. Kept separate from the canvas
+  // size because clamping mid-typing makes them unusable: type the "1" of
+  // 1200 and the field would jump to the minimum before the "2" arrived.
+  // The value is read when the box is left, or on Enter.
+  const [widthInput, setWidthInput] = useState(String(schema?.canvas_width ?? CANVAS_W))
+  const [heightInput, setHeightInput] = useState(String(schema?.canvas_height ?? 900))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null)
 
@@ -254,28 +272,78 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   const heightRef    = useRef(canvasHeight)
   const widthRef     = useRef(canvasWidth)
   const canvasRef    = useRef<HTMLDivElement>(null)
+  // The exact schema object this builder last sent upward. The parent
+  // stores it and hands it straight back as the `schema` prop, so without
+  // this the sync effect below cannot tell our own echo from someone
+  // loading a different form -- and treats every edit as an external
+  // change to be written back into state.
+  const emittedRef   = useRef<CanvasFormSchema | null>(null)
 
   useEffect(() => { elementsRef.current = elements },  [elements])
   useEffect(() => { onChangeRef.current = onChange },   [onChange])
   useEffect(() => { heightRef.current = canvasHeight }, [canvasHeight])
   useEffect(() => { widthRef.current = canvasWidth }, [canvasWidth])
+  useEffect(() => { setWidthInput(String(canvasWidth)) }, [canvasWidth])
+  useEffect(() => { setHeightInput(String(canvasHeight)) }, [canvasHeight])
 
-  // Sync in when schema changes externally (e.g. loading a form)
+  // Sync in when the schema changes externally -- loading a form, or
+  // switching builders. Explicitly NOT when it is the schema we just sent
+  // up ourselves: that comes back as a new object on every edit, and
+  // writing it back into state on arrival is half of a render loop.
   useEffect(() => {
-    if (schema) {
-      setElements(schema.elements)
-      setCanvasHeight(schema.canvas_height)
-      setCanvasWidth(schema.canvas_width ?? CANVAS_W)
-    }
+    if (!schema || schema === emittedRef.current) return
+    setElements(schema.elements)
+    elementsRef.current = schema.elements
+    setCanvasHeight(schema.canvas_height)
+    heightRef.current = schema.canvas_height
+    setCanvasWidth(schema.canvas_width ?? CANVAS_W)
+    widthRef.current = schema.canvas_width ?? CANVAS_W
   }, [schema])
 
+  const pendingRef = useRef<CanvasFormSchema | null>(null)
+  const commitTimer = useRef<number | null>(null)
+  // Negative infinity, not zero: "never sent" has to read as long overdue so
+  // the first edit of a session goes up at once. With zero this happened to
+  // work only because Date.now() is a large number -- correct by accident,
+  // and wrong the moment anything switched to a clock that starts near zero.
+  const lastSentRef = useRef(Number.NEGATIVE_INFINITY)
+
+  // Hand the newest pending schema to the parent right now.
+  const flush = useCallback(() => {
+    if (commitTimer.current !== null) {
+      window.clearTimeout(commitTimer.current)
+      commitTimer.current = null
+    }
+    const next = pendingRef.current
+    if (!next) return
+    pendingRef.current = null
+    lastSentRef.current = Date.now()
+    emittedRef.current = next
+    onChangeRef.current(next)
+  }, [])
+
   const commit = useCallback((elems: CanvasElement[], h?: number, w?: number) => {
-    onChangeRef.current({
+    pendingRef.current = {
       canvas_width: w ?? widthRef.current,
       canvas_height: h ?? heightRef.current,
       elements: elems,
-    })
-  }, [])
+    }
+    // The first change of a burst goes up immediately, so a single edit is
+    // never delayed; the rest of the burst is coalesced. Nothing is ever
+    // dropped -- the trailing timer always sends the latest, and unmount
+    // flushes it, so the parent cannot be left holding a stale form.
+    const since = Date.now() - lastSentRef.current
+    if (since >= COMMIT_INTERVAL) {
+      flush()
+      return
+    }
+    if (commitTimer.current === null) {
+      commitTimer.current = window.setTimeout(flush, COMMIT_INTERVAL - since)
+    }
+  }, [flush])
+
+  // Closing the dialog or switching builders must not lose the last edit.
+  useEffect(() => () => flush(), [flush])
 
   const growHeight = (elems: CanvasElement[]): number => {
     // Grows only when an element actually passes the bottom edge. It used
@@ -387,11 +455,10 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
       const active = document.activeElement
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return
       if (!selectedId) return
-      setElements(prev => {
-        const next = prev.filter(el => el.id !== selectedId)
-        commit(next)
-        return next
-      })
+      const next = elementsRef.current.filter(el => el.id !== selectedId)
+      setElements(next)
+      elementsRef.current = next
+      commit(next)
       setSelectedId(null)
     }
     window.addEventListener('keydown', onKey)
@@ -421,8 +488,9 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   const addElement = (type: CanvasElementType, x = 60, y = 60) => {
     const offset = elements.length * 20 % 180
     const el = makeElement(type, x + offset, y + offset)
-    const next = [...elements, el]
+    const next = [...elementsRef.current, el]
     setElements(next)
+    elementsRef.current = next
     const h = growHeight(next)
     commit(next, h)
     setSelectedId(el.id)
@@ -439,20 +507,22 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
 
   const updateEl = (patch: Partial<CanvasElement>) => {
     if (!selectedId) return
-    setElements(prev => {
-      const next = prev.map(el => el.id === selectedId ? { ...el, ...patch } : el)
-      commit(next)
-      return next
-    })
+    const next = elementsRef.current.map(
+      el => el.id === selectedId ? { ...el, ...patch } : el,
+    )
+    setElements(next)
+    // Kept in step by hand as well as by the effect, so two edits in one
+    // tick both see the first one.
+    elementsRef.current = next
+    commit(next)
   }
 
   const deleteSelected = () => {
     if (!selectedId) return
-    setElements(prev => {
-      const next = prev.filter(el => el.id !== selectedId)
-      commit(next)
-      return next
-    })
+    const next = elementsRef.current.filter(el => el.id !== selectedId)
+    setElements(next)
+    elementsRef.current = next
+    commit(next)
     setSelectedId(null)
   }
 
@@ -1267,8 +1337,10 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             label="Width"
             type="number"
             size="small"
-            value={canvasWidth}
-            onChange={e => applySize(Number(e.target.value), canvasHeight)}
+            value={widthInput}
+            onChange={e => setWidthInput(e.target.value)}
+            onBlur={() => applySize(Number(widthInput), canvasHeight)}
+            onKeyDown={e => { if (e.key === 'Enter') applySize(Number(widthInput), canvasHeight) }}
             inputProps={{ min: minWidth, step: GRID }}
             sx={{ width: 108, '& input': { fontSize: 13 } }}
           />
@@ -1276,8 +1348,10 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             label="Height"
             type="number"
             size="small"
-            value={canvasHeight}
-            onChange={e => applySize(canvasWidth, Number(e.target.value))}
+            value={heightInput}
+            onChange={e => setHeightInput(e.target.value)}
+            onBlur={() => applySize(canvasWidth, Number(heightInput))}
+            onKeyDown={e => { if (e.key === 'Enter') applySize(canvasWidth, Number(heightInput)) }}
             inputProps={{ min: minHeight, step: GRID }}
             sx={{ width: 108, '& input': { fontSize: 13 } }}
           />
