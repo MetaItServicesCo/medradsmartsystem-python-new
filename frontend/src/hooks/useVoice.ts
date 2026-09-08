@@ -53,11 +53,26 @@ const IDLE_RECYCLE_MS = 2000
  * begin after the first sentence and lets the rest be prepared while it plays,
  * which is what makes it feel continuous rather than batched.
  */
+// Abbreviations end in a full stop without ending a sentence. This is not a
+// nicety: the assistant is called "Mr. Medrad", so every time it said its own
+// name the splitter cut between "I'm Mr." and "Medrad" and the voice said the
+// two halves as separate utterances.
+const ABBREVIATIONS = /\b(mr|mrs|ms|dr|prof|sr|jr|st|no|vs|etc|inc|ltd|co|approx|dept|est|fig|al|e\.g|i\.e)\.\s/gi
+
+// A single initial, as in "J. Smith", is the same problem in miniature.
+const INITIAL = /\b([A-Z])\.\s/g
+
+// Stands in for the full stop while the text is split, then put back. Chosen
+// because it cannot occur in synthesised text and survives a round trip.
+const DOT = '\u0000'
+
 const groupSentences = (text: string, minChars: number): string[] => {
   const sentences = text
     .replace(/\s+/g, ' ')
+    .replace(ABBREVIATIONS, (match) => match.replace('.', DOT))
+    .replace(INITIAL, (match) => match.replace('.', DOT))
     .split(/(?<=[.!?])\s+/)
-    .map((part) => part.trim())
+    .map((part) => part.split(DOT).join('.').trim())
     .filter(Boolean)
 
   // Very short fragments ("Yes.") are merged forward so the voice does not

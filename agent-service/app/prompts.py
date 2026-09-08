@@ -217,12 +217,19 @@ def classifier_prompt() -> str:
     return CLASSIFIER_PROMPT
 
 
-def greeting_fallback(voice: bool = False) -> str:
-    """Used when the model is unreachable, so the assistant still has a name."""
+def greeting_fallback(voice: bool = False, met_before: bool = False) -> str:
+    """Used when the model is unreachable, so the assistant still has a name.
+
+    This fires precisely when things are already going wrong, which is the
+    worst moment to answer a "hey" with a catalogue of everything the system
+    can do. It also has to respect the conversation: reciting a full
+    introduction to someone who greeted you a moment ago reads as not having
+    been listening, and that is exactly how it read.
+    """
+    if met_before:
+        return "Still here. What would you like to know?"
     if voice:
-        return "I'm {}. What would you like to know?".format(settings.AGENT_NAME)
+        return "I'm {}. What can I look up for you?".format(settings.AGENT_NAME)
     return (
-        "I'm {}, {}. I can look up live figures across facilities, service "
-        "requests, inspections, rentals, sales, billing and HR, and explain how "
-        "things are done in the app. What would you like to know?"
+        "I'm {}, {}. Ask me about anything in the system and I'll look it up."
     ).format(settings.AGENT_NAME, settings.AGENT_TAGLINE)

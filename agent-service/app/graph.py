@@ -570,7 +570,10 @@ async def chitchat_node(state: AgentState) -> dict[str, Any]:
             return {"answer": text}
     except Exception:
         logger.exception("Chitchat reply failed; using static greeting")
-    return {"answer": greeting_fallback(bool(state.get("voice")))}
+    return {"answer": greeting_fallback(
+        bool(state.get("voice")),
+        met_before=bool(state.get("history")),
+    )}
 
 
 async def clarify_node(state: AgentState) -> dict[str, Any]:
