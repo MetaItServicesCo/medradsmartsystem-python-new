@@ -760,7 +760,17 @@ const blankCanvasTableHtml = (element: any): string => {
       const header = element.headerRow && rowIndex === 0
       const cells = (row || [])
         .map((cell: any, colIndex: number) => {
-          const width = widths[colIndex] ? ` width="${Number(widths[colIndex])}"` : ''
+          // A merged-away cell is not printed: the cell that owns the merge
+          // carries colspan/rowspan over its place, the way the builder shows it.
+          if (cell?.hidden) return ''
+          const rowSpan = Math.max(1, Number(cell?.rowSpan) || 1)
+          const colSpan = Math.max(1, Number(cell?.colSpan) || 1)
+          const spans = [
+            colSpan > 1 ? ` colspan="${colSpan}"` : '',
+            rowSpan > 1 ? ` rowspan="${rowSpan}"` : '',
+          ].join('')
+          const width = (widths[colIndex] && colSpan === 1)
+            ? ` width="${Number(widths[colIndex])}"` : ''
           const background = header || cell?.bgColor === 'grey' ? '#F1F5F9' : '#fff'
           const weight = header || cell?.fontWeight === 'bold' ? 800 : 500
           let inner = ''
@@ -773,7 +783,7 @@ const blankCanvasTableHtml = (element: any): string => {
           } else {
             inner = fieldLabel(cell.label, cell.align) + writeBox(cell.type === 'textarea' ? 34 : 20)
           }
-          return `<td${width} style="border:1px solid #CBD5E1;padding:5px 6px;background:${background};font-size:11px;font-weight:${weight};text-align:${
+          return `<td${width}${spans} style="border:1px solid #CBD5E1;padding:5px 6px;background:${background};font-size:11px;font-weight:${weight};text-align:${
             cell?.align || 'left'};vertical-align:middle">${inner}</td>`
         })
         .join('')

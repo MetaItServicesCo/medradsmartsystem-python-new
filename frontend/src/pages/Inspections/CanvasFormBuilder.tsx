@@ -20,6 +20,8 @@ import AddIcon from '@mui/icons-material/Add'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import DeleteIcon from '@mui/icons-material/Delete'
 import CropFreeIcon from '@mui/icons-material/CropFree'
+import CallMergeIcon from '@mui/icons-material/CallMerge'
+import CallSplitIcon from '@mui/icons-material/CallSplit'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import DrawIcon from '@mui/icons-material/Draw'
 import FormatAlignCenterIcon from '@mui/icons-material/FormatAlignCenter'
@@ -63,7 +65,16 @@ export interface TableCell {
   align?: 'left' | 'center' | 'right'
   fontWeight?: 'normal' | 'bold'
   bgColor?: 'white' | 'grey'
+  // Merged cells, named as the grid builder names them so the two
+  // builders describe the same idea the same way. A cell with a span
+  // covers the cells to its right and below, which are marked hidden
+  // rather than deleted -- that is what makes unmerging give them back.
+  colSpan?: number
+  rowSpan?: number
+  hidden?: boolean
 }
+
+export type CellRect = { r1: number; c1: number; r2: number; c2: number }
 
 export interface CanvasElement {
   id: string
@@ -202,6 +213,150 @@ function makeTableCells(rows: number, cols: number): TableCell[][] {
   return Array.from({ length: rows }, () => Array.from({ length: cols }, () => makeTableCell()))
 }
 
+const spanOf = (cell: TableCell) => ({
+  rows: Math.max(1, cell.rowSpan ?? 1),
+  cols: Math.max(1, cell.colSpan ?? 1),
+})
+
+const TEXTUAL: CanvasElementType[] = ['label', 'heading']
+
+/**
+ * Put a grid back into a state that can be rendered.
+ *
+ * Spans are clamped inside the grid, hidden flags are recomputed from
+ * scratch, and a cell that turns out to be covered loses its own span.
+ * Everything that changes the shape of a table runs through here, because
+ * the failure this prevents is silent: a span reaching past the last row
+ * renders as a hole or an overlap rather than an error, and the form looks
+ * subtly wrong long after the row was removed.
+ */
+export function normaliseTableCells(cells: TableCell[][]): TableCell[][] {
+  const rows = cells.length
+  const cols = cells[0]?.length ?? 0
+  if (!rows || !cols) return cells
+
+  const next = cells.map(row => row.map(cell => ({ ...cell, hidden: false })))
+  const covered: boolean[][] = Array.from({ length: rows }, () => Array(cols).fill(false))
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = next[r][c]
+      if (covered[r][c]) {
+        // Already inside somebody else's merge, so it cannot own one.
+        cell.hidden = true
+        delete cell.colSpan
+        delete cell.rowSpan
+        continue
+      }
+      const span = spanOf(cell)
+      const rowSpan = Math.min(span.rows, rows - r)
+      const colSpan = Math.min(span.cols, cols - c)
+      if (rowSpan > 1) cell.rowSpan = rowSpan; else delete cell.rowSpan
+      if (colSpan > 1) cell.colSpan = colSpan; else delete cell.colSpan
+      for (let rr = r; rr < r + rowSpan; rr++) {
+        for (let cc = c; cc < c + colSpan; cc++) {
+          if (rr !== r || cc !== c) covered[rr][cc] = true
+        }
+      }
+    }
+  }
+  return next
+}
+
+/**
+ * Grow a rectangle until it contains every merge it touches.
+ *
+ * Selecting half of an existing merged cell and merging would otherwise
+ * produce a shape no table can render. Word does not let you do it either;
+ * this swallows the merge whole instead of refusing, which is the more
+ * useful of the two answers.
+ */
+export function expandRectOverMerges(cells: TableCell[][], rect: CellRect): CellRect {
+  let { r1, c1, r2, c2 } = rect
+  for (let guard = 0; guard < 50; guard++) {
+    let grew = false
+    for (let r = 0; r < cells.length; r++) {
+      for (let c = 0; c < cells[r].length; c++) {
+        const span = spanOf(cells[r][c])
+        if (cells[r][c].hidden) continue
+        const br = r + span.rows - 1
+        const bc = c + span.cols - 1
+        const overlaps = r <= r2 && br >= r1 && c <= c2 && bc >= c1
+        if (!overlaps) continue
+        if (r < r1) { r1 = r; grew = true }
+        if (c < c1) { c1 = c; grew = true }
+        if (br > r2) { r2 = br; grew = true }
+        if (bc > c2) { c2 = bc; grew = true }
+      }
+    }
+    if (!grew) break
+  }
+  return { r1, c1, r2, c2 }
+}
+
+/**
+ * Merge a rectangle of cells into the one at its top left.
+ *
+ * Text cells behave the way they do in Word: merging a row of headings
+ * joins their text, because that is the whole point of merging headings.
+ * Anything else keeps the top-left cell's definition, because a radio and
+ * a text input have no meaningful concatenation -- and the covered cells
+ * keep theirs, hidden, so unmerging gives them back intact.
+ */
+export function mergeTableCells(cells: TableCell[][], rect: CellRect): TableCell[][] {
+  const area = expandRectOverMerges(cells, {
+    r1: Math.min(rect.r1, rect.r2), r2: Math.max(rect.r1, rect.r2),
+    c1: Math.min(rect.c1, rect.c2), c2: Math.max(rect.c1, rect.c2),
+  })
+  if (area.r1 === area.r2 && area.c1 === area.c2) return cells
+
+  const next = cells.map(row => row.map(cell => ({ ...cell })))
+  const inside: TableCell[] = []
+  for (let r = area.r1; r <= area.r2; r++) {
+    for (let c = area.c1; c <= area.c2; c++) {
+      if (!next[r][c].hidden) inside.push(next[r][c])
+    }
+  }
+
+  const head = next[area.r1][area.c1]
+  const allTextual = inside.every(cell => TEXTUAL.includes(cell.type))
+  if (allTextual) {
+    const joined = inside
+      .map(cell => (cell.label ?? '').trim())
+      .filter(Boolean)
+      .join(' ')
+    head.label = joined || head.label
+    // The text now lives in the merged cell, so the covered ones give it
+    // up. Without this, merging again after an unmerge would repeat every
+    // word it had already collected.
+    for (const cell of inside) if (cell !== head) delete cell.label
+  }
+
+  head.rowSpan = area.r2 - area.r1 + 1
+  head.colSpan = area.c2 - area.c1 + 1
+  head.hidden = false
+  return normaliseTableCells(next)
+}
+
+/** Give back the cells a merge was covering, exactly as they were. */
+export function unmergeTableCell(cells: TableCell[][], r: number, c: number): TableCell[][] {
+  const target = cells[r]?.[c]
+  if (!target) return cells
+  const next = cells.map(row => row.map(cell => ({ ...cell })))
+  delete next[r][c].rowSpan
+  delete next[r][c].colSpan
+  return normaliseTableCells(next)
+}
+
+/** Where a cell is, or null when it is not in this table. */
+export function findCell(cells: TableCell[][], id: string): { r: number; c: number } | null {
+  for (let r = 0; r < cells.length; r++) {
+    const c = cells[r].findIndex(cell => cell.id === id)
+    if (c >= 0) return { r, c }
+  }
+  return null
+}
+
 function makeElement(type: CanvasElementType, x: number, y: number): CanvasElement {
   const sizes = DEFAULT_SIZES[type]
   return {
@@ -264,6 +419,10 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   const [heightInput, setHeightInput] = useState(String(schema?.canvas_height ?? 900))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedCellId, setSelectedCellId] = useState<string | null>(null)
+  // The far corner of a range, set by shift-clicking. Dragging across the
+  // cells would have been the other option, but the table itself is
+  // drag-to-move on the canvas, so the two gestures would fight.
+  const [rangeEndCellId, setRangeEndCellId] = useState<string | null>(null)
 
   // Refs prevent stale closures inside document listeners
   const activeOpRef = useRef<ActiveOp | null>(null)
@@ -535,7 +694,44 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   // Cell selection only applies while a table is selected
   useEffect(() => {
     if (!selected || selected.type !== 'table') setSelectedCellId(null)
+    setRangeEndCellId(null)
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The block a merge would cover: between the two clicked corners, grown
+  // to swallow any merge it touches, so what is highlighted is exactly
+  // what will happen.
+  const selectionRect = (() => {
+    if (selected?.type !== 'table' || !selected.cells || !selectedCellId) return null
+    const anchor = findCell(selected.cells, selectedCellId)
+    if (!anchor) return null
+    const far = rangeEndCellId ? findCell(selected.cells, rangeEndCellId) : null
+    const end = far ?? anchor
+    return expandRectOverMerges(selected.cells, {
+      r1: Math.min(anchor.r, end.r), r2: Math.max(anchor.r, end.r),
+      c1: Math.min(anchor.c, end.c), c2: Math.max(anchor.c, end.c),
+    })
+  })()
+
+  const canMerge = Boolean(
+    selectionRect && (selectionRect.r1 !== selectionRect.r2 || selectionRect.c1 !== selectionRect.c2),
+  )
+  const canUnmerge = Boolean(
+    selectedCell && ((selectedCell.colSpan ?? 1) > 1 || (selectedCell.rowSpan ?? 1) > 1),
+  )
+
+  const mergeSelection = () => {
+    if (!selected?.cells || !selectionRect) return
+    updateEl({ cells: mergeTableCells(selected.cells, selectionRect) })
+    setRangeEndCellId(null)
+  }
+
+  const unmergeSelection = () => {
+    if (!selected?.cells || !selectedCellId) return
+    const at = findCell(selected.cells, selectedCellId)
+    if (!at) return
+    updateEl({ cells: unmergeTableCell(selected.cells, at.r, at.c) })
+    setRangeEndCellId(null)
+  }
 
   // ── table mutations ────────────────────────
 
@@ -544,27 +740,31 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   const addTableRow = () => {
     if (!selected?.cells) return
     const cols = tableColCount(selected)
-    const cells = [...selected.cells.map(r => [...r]), Array.from({ length: cols }, () => makeTableCell())]
+    const cells = normaliseTableCells(
+      [...selected.cells.map(r => [...r]), Array.from({ length: cols }, () => makeTableCell())],
+    )
     updateEl({ cells, rows: cells.length, height: (selected.height ?? 0) + TABLE_ROW_H })
   }
 
   const removeTableRow = () => {
     if (!selected?.cells || selected.cells.length <= 1) return
-    const cells = selected.cells.slice(0, -1).map(r => [...r])
+    // Normalised, because a merge that reached into the row just removed
+    // would otherwise keep claiming it and every row below would shift.
+    const cells = normaliseTableCells(selected.cells.slice(0, -1).map(r => [...r]))
     updateEl({ cells, rows: cells.length, height: Math.max(TABLE_ROW_H, (selected.height ?? 0) - TABLE_ROW_H) })
     setSelectedCellId(null)
   }
 
   const addTableCol = () => {
     if (!selected?.cells) return
-    const cells = selected.cells.map(r => [...r, makeTableCell()])
+    const cells = normaliseTableCells(selected.cells.map(r => [...r, makeTableCell()]))
     const colWidths = [...cellColWidths(selected, tableColCount(selected)), 1]
     updateEl({ cells, cols: cells[0].length, colWidths, width: (selected.width ?? 0) + TABLE_COL_W })
   }
 
   const removeTableCol = () => {
     if (!selected?.cells || tableColCount(selected) <= 1) return
-    const cells = selected.cells.map(r => r.slice(0, -1))
+    const cells = normaliseTableCells(selected.cells.map(r => r.slice(0, -1)))
     const colWidths = cellColWidths(selected, tableColCount(selected)).slice(0, cells[0].length)
     updateEl({ cells, cols: cells[0].length, colWidths, width: Math.max(TABLE_COL_W, (selected.width ?? 0) - TABLE_COL_W) })
     setSelectedCellId(null)
@@ -750,18 +950,43 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             overflow: 'hidden',
           }}>
             {cells.map((row, r) => row.map((cell, c) => {
+              // A covered cell is not drawn at all -- the cell that owns
+              // the merge is stretched over its place instead.
+              if (cell.hidden) return null
               const isHeader = Boolean(el.headerRow) && r === 0
               const isCellSel = cell.id === selectedCellId
+              const span = { rows: Math.max(1, cell.rowSpan ?? 1), cols: Math.max(1, cell.colSpan ?? 1) }
+              // Highlighted when it falls inside the block a merge would
+              // cover, so what is shown is what will happen.
+              const inRange = Boolean(
+                el.id === selectedId && selectionRect
+                && r >= selectionRect.r1 && r <= selectionRect.r2
+                && c >= selectionRect.c1 && c <= selectionRect.c2,
+              )
               return (
                 <Box
                   key={cell.id}
                   onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); setSelectedId(el.id); setSelectedCellId(cell.id) }}
+                  onClick={e => {
+                    e.stopPropagation()
+                    setSelectedId(el.id)
+                    // Shift keeps the first corner and moves the second,
+                    // the way a spreadsheet or Word extends a selection.
+                    if (e.shiftKey && selectedCellId && selectedCellId !== cell.id) {
+                      setRangeEndCellId(cell.id)
+                    } else {
+                      setSelectedCellId(cell.id)
+                      setRangeEndCellId(null)
+                    }
+                  }}
                   sx={{
-                    borderRight: c < cols - 1 ? '1px solid #CBD5E1' : 'none',
-                    borderBottom: r < cells.length - 1 ? '1px solid #CBD5E1' : 'none',
-                    bgcolor: isCellSel ? '#EDE9FE' : (cell.bgColor === 'grey' || isHeader) ? '#E5E7EB' : '#ffffff',
-                    boxShadow: isCellSel ? 'inset 0 0 0 2px #7C3AED' : 'none',
+                    gridColumn: `${c + 1} / span ${span.cols}`,
+                    gridRow: `${r + 1} / span ${span.rows}`,
+                    borderRight: c + span.cols < cols ? '1px solid #CBD5E1' : 'none',
+                    borderBottom: r + span.rows < cells.length ? '1px solid #CBD5E1' : 'none',
+                    bgcolor: (isCellSel || inRange) ? '#EDE9FE' : (cell.bgColor === 'grey' || isHeader) ? '#E5E7EB' : '#ffffff',
+                    boxShadow: isCellSel ? 'inset 0 0 0 2px #7C3AED'
+                      : inRange ? 'inset 0 0 0 1px #A78BFA' : 'none',
                     p: 0.5,
                     overflow: 'hidden',
                     cursor: 'pointer',
@@ -1089,6 +1314,42 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   }
 
   // ── table properties (structure + selected-cell editor) ──
+  const renderMergeControls = () => (
+    <Box sx={{ display: 'grid', gap: 0.75 }}>
+      <Box sx={{ display: 'flex', gap: 0.75 }}>
+        <Button
+          size="small"
+          variant="outlined"
+          fullWidth
+          disabled={!canMerge}
+          onClick={mergeSelection}
+          startIcon={<CallMergeIcon />}
+          sx={{ textTransform: 'none', fontWeight: 800, borderRadius: '8px' }}
+        >
+          Merge
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          fullWidth
+          disabled={!canUnmerge}
+          onClick={unmergeSelection}
+          startIcon={<CallSplitIcon />}
+          sx={{ textTransform: 'none', fontWeight: 800, borderRadius: '8px' }}
+        >
+          Unmerge
+        </Button>
+      </Box>
+      <Typography sx={{ fontSize: 10.5, color: '#94A3B8', fontWeight: 600, lineHeight: 1.4 }}>
+        {canMerge
+          ? `Merging ${selectionRect!.r2 - selectionRect!.r1 + 1} × ${selectionRect!.c2 - selectionRect!.c1 + 1} cells into one.`
+          : canUnmerge
+            ? 'Unmerge puts the covered cells back as they were.'
+            : 'Click a cell, then shift-click another to select a block.'}
+      </Typography>
+    </Box>
+  )
+
   const renderTableProps = () => {
     if (!selected || selected.type !== 'table') return null
     const rows = selected.cells?.length ?? 0
@@ -1125,6 +1386,11 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             control={<Checkbox size="small" checked={Boolean(selected.headerRow)} onChange={e => updateEl({ headerRow: e.target.checked })} />}
             label={<Typography sx={{ fontSize: 12, fontWeight: 700 }}>Shaded header row</Typography>}
           />
+          <Divider sx={{ my: 1 }} />
+          <Typography sx={{ fontSize: 10, fontWeight: 900, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.6px', mb: 0.75 }}>
+            Cells
+          </Typography>
+          {renderMergeControls()}
         </Box>
 
         {!selectedCell ? (
@@ -1878,13 +2144,17 @@ function renderViewerTable(
       overflow: 'hidden',
     }}>
       {cells.map((row, r) => row.map((cell, c) => {
+        if (cell.hidden) return null
         const isHeader = Boolean(el.headerRow) && r === 0
+        const span = { rows: Math.max(1, cell.rowSpan ?? 1), cols: Math.max(1, cell.colSpan ?? 1) }
         return (
           <Box
             key={cell.id}
             sx={{
-              borderRight: c < cols - 1 ? '1px solid #CBD5E1' : 'none',
-              borderBottom: r < cells.length - 1 ? '1px solid #CBD5E1' : 'none',
+              gridColumn: `${c + 1} / span ${span.cols}`,
+              gridRow: `${r + 1} / span ${span.rows}`,
+              borderRight: c + span.cols < cols ? '1px solid #CBD5E1' : 'none',
+              borderBottom: r + span.rows < cells.length ? '1px solid #CBD5E1' : 'none',
               bgcolor: (cell.bgColor === 'grey' || isHeader) ? '#E5E7EB' : '#ffffff',
               p: 0.75,
               display: 'flex',
