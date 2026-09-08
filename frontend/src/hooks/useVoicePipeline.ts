@@ -25,8 +25,15 @@ export interface LiveTurn {
 }
 
 export interface UseVoicePipelineOptions {
-  /** A finished turn, once it has been said. */
-  onTurn?: (turn: LiveTurn) => void
+  /**
+   * The whole exchange, delivered once the call has ended.
+   *
+   * Nothing is shown while the conversation is happening: the voice is the
+   * conversation, and text arriving alongside it is a second thing to
+   * attend to. The record is written when there is nothing left to listen
+   * to.
+   */
+  onConversation?: (turns: LiveTurn[]) => void
 }
 
 const toFloat32 = (buffer: ArrayBuffer): Float32Array => {
@@ -58,7 +65,7 @@ const resample = (input: Float32Array, from: number, to: number): Float32Array =
   return out
 }
 
-export const useVoicePipeline = ({ onTurn }: UseVoicePipelineOptions = {}) => {
+export const useVoicePipeline = ({ onConversation }: UseVoicePipelineOptions = {}) => {
   const [live, setLive] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [listening, setListening] = useState(false)
@@ -71,14 +78,24 @@ export const useVoicePipeline = ({ onTurn }: UseVoicePipelineOptions = {}) => {
   const captureRef = useRef<AudioWorkletNode | null>(null)
   const playerRef = useRef<AudioWorkletNode | null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
-  const onTurnRef = useRef(onTurn)
-  useEffect(() => { onTurnRef.current = onTurn }, [onTurn])
+  const onConversationRef = useRef(onConversation)
+  useEffect(() => { onConversationRef.current = onConversation }, [onConversation])
+  // Collected here rather than on the server, so a dropped connection still
+  // leaves a record of what was actually heard.
+  const transcriptRef = useRef<LiveTurn[]>([])
 
   const supported =
     typeof navigator !== 'undefined' &&
     Boolean(navigator.mediaDevices?.getUserMedia) &&
     typeof AudioWorkletNode !== 'undefined' &&
     typeof WebSocket !== 'undefined'
+
+  /** Hand over the record, once, and only if there is one. */
+  const flushTranscript = useCallback(() => {
+    const collected = transcriptRef.current
+    transcriptRef.current = []
+    if (collected.length) onConversationRef.current?.(collected)
+  }, [])
 
   const teardown = useCallback(() => {
     try { captureRef.current?.disconnect() } catch { /* already gone */ }
@@ -100,7 +117,10 @@ export const useVoicePipeline = ({ onTurn }: UseVoicePipelineOptions = {}) => {
     setLive(false)
     setListening(false)
     setSpeaking(false)
-  }, [])
+    // Whether the call was ended deliberately or the socket dropped, this
+    // is the moment there is nothing left to listen to.
+    flushTranscript()
+  }, [flushTranscript])
 
   const stop = useCallback(() => {
     teardown()
@@ -193,17 +213,17 @@ export const useVoicePipeline = ({ onTurn }: UseVoicePipelineOptions = {}) => {
             playerRef.current?.port.postMessage('flush')
             setSpeaking(false)
             if (typeof payload.text === 'string' && payload.text.trim()) {
-              onTurnRef.current?.({ role: 'assistant', text: payload.text })
+              transcriptRef.current.push({ role: 'assistant', text: payload.text })
             }
             break
           case 'transcript':
             if (typeof payload.text === 'string' && payload.text.trim()) {
-              onTurnRef.current?.({ role: 'user', text: payload.text })
+              transcriptRef.current.push({ role: 'user', text: payload.text })
             }
             break
           case 'assistant':
             if (typeof payload.text === 'string' && payload.text.trim()) {
-              onTurnRef.current?.({ role: 'assistant', text: payload.text })
+              transcriptRef.current.push({ role: 'assistant', text: payload.text })
             }
             break
           case 'error':

@@ -128,8 +128,13 @@ const AssistantWidget = () => {
   // decides turns server-side. Turns arrive here only once they have been
   // spoken, so nothing needs to be rendered progressively.
   const pipeline = useVoicePipeline({
-    onTurn: (turn) => {
-      setTurns((prev) => [...prev, { role: turn.role, text: turn.text }])
+    onConversation: (spoken) => {
+      // The whole exchange arrives in one piece when the call ends, so the
+      // panel stays empty while there is something to listen to.
+      setTurns((prev) => [
+        ...prev,
+        ...spoken.map((turn) => ({ role: turn.role, text: turn.text })),
+      ])
     },
   })
 
