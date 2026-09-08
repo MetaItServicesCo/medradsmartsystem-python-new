@@ -24,6 +24,7 @@ import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft'
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
+import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined'
 import PersonIcon from '@mui/icons-material/Person'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import RemoveIcon from '@mui/icons-material/Remove'
@@ -72,6 +73,7 @@ import {
 import { fetchInventoryParts, type InventoryPart } from '@/api/inventory'
 import { fetchFacility, type Facility } from '@/api/facilities'
 import {
+  printInspectionFormSheet,
   printInspectionReportSheet,
   printInspectionBatchReport,
   buildInspectionSingleReportHtml,
@@ -4710,6 +4712,18 @@ const Inspections = () => {
           }}
         >
           <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit Form
+        </MenuItem>
+        {/* A blank sheet to carry to the equipment. Reading a form is
+            not the same as being able to fill one in on paper. */}
+        <MenuItem
+          onClick={() => {
+            if (!formActionItem) return
+            printInspectionFormSheet(formActionItem)
+            setFormActionAnchor(null)
+            setFormActionItem(null)
+          }}
+        >
+          <PrintOutlinedIcon fontSize="small" sx={{ mr: 1 }} /> Print Form
         </MenuItem>
       </Menu>
 

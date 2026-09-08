@@ -614,3 +614,304 @@ export const printInspectionBatchReport = async (batch: ReportBatchLike) => {
   const facility = await facilityFor(batch.facility_id)
   printDocument(`${batch.batch_number} Batch Inspection Report`, buildInspectionBatchReportHtml(batch, facility))
 }
+
+// ─────────────────────────────────────────────
+// Blank form sheets
+//
+// Printing a *form* is not printing a report. A report prints what was
+// answered and leaves out what was not; a blank form is the opposite -- every
+// field has to appear precisely because none of them are filled in, so it can
+// be carried to the equipment and written on.
+//
+// The fixed top and bottom sections are the same ones a report prints, so a
+// sheet filled in by hand and one produced from the app are recognisably the
+// same document.
+// ─────────────────────────────────────────────
+
+export type InspectionFormLike = {
+  id?: number | null
+  name: string
+  description?: string | null
+  modality_name?: string | null
+  schema?: Record<string, any> | null
+}
+
+// Printable width inside a .page: 8.5in less the 40px side padding.
+const PRINT_WIDTH = 736
+
+// Somewhere to write. Every control the screen shows as an input becomes a
+// ruled line or box of roughly the size it occupies on screen.
+const writeLine = (height = 16) =>
+  `<div style="border-bottom:1px solid #94A3B8;height:${height}px"></div>`
+
+const writeBox = (height = 24) =>
+  `<div style="border:1px solid #CBD5E1;border-radius:4px;background:#fff;min-height:${height}px"></div>`
+
+const optionMark = (shape: string) =>
+  `<span style="display:inline-block;width:11px;height:11px;border:1.5px solid #6B7280;border-radius:${
+    shape === 'checkbox' ? '2px' : '50%'
+  };vertical-align:middle;flex:none"></span>`
+
+const optionsHtml = (options: string[], shape: string, vertical = false) => {
+  const items = (options.length ? options : ['Option'])
+    .map(option =>
+      `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#334155">${optionMark(shape)}${esc(option)}</span>`)
+    .join('')
+  return `<div style="display:flex;flex-wrap:wrap;gap:${vertical ? '3px' : '4px 10px'};flex-direction:${
+    vertical ? 'column' : 'row'
+  }">${items}</div>`
+}
+
+const fieldLabel = (label: unknown, align = 'left') => {
+  const text = String(label ?? '').trim()
+  return text
+    ? `<div style="font-weight:800;color:#334155;font-size:11px;text-align:${align};margin-bottom:3px">${esc(text)}</div>`
+    : ''
+}
+
+// The identity panel a report fills in from the asset, left blank to be
+// written on. Same eight fields in the same order, so the two line up.
+const blankIdentityHtml = () => {
+  const labels = ['Asset #', 'Description', 'Make', 'Location', 'Model', 'Risk Ranking', 'SN#', 'PM Schedule']
+  return `<div class="identity">${labels
+    .map(label => `<div class="idbox"><small>${esc(label)}</small>${writeLine(15)}</div>`)
+    .join('')}</div>`
+}
+
+const blankFacilityHtml = () => `
+  <div class="facbox">
+    <div class="fac">Facility</div>
+    <div style="display:grid;gap:7px;margin-top:6px">
+      ${['Facility', 'Department', 'Technician', 'Date'].map(label =>
+        `<div><small style="display:block;color:#64748B;font-weight:900;text-transform:uppercase;letter-spacing:.05em;font-size:9px">${esc(label)}</small>${writeLine(14)}</div>`).join('')}
+    </div>
+  </div>`
+
+// ── the middle section: whatever this form actually defines ──────────────────
+
+const blankGridCellHtml = (cell: any): string => {
+  const align = cell.align || 'center'
+  const blocks = Array.isArray(cell.blocks) && cell.blocks.length ? cell.blocks : null
+  const title = String(cell.label || '').trim()
+  const parts: string[] = []
+
+  if (blocks) {
+    // The cell title is dropped when a block already carries it, which is the
+    // rule the on-screen preview follows.
+    const repeated = blocks.some((block: any) =>
+      String(block?.label || '').trim().toLowerCase() === title.toLowerCase())
+    if (title && !repeated) parts.push(fieldLabel(title, align))
+    for (const block of blocks) {
+      if (!block) continue
+      if (block.type === 'label') {
+        parts.push(fieldLabel(block.label, align))
+        continue
+      }
+      parts.push(fieldLabel(block.label, align))
+      if (block.type === 'radio' || block.type === 'checkbox') {
+        parts.push(optionsHtml(block.options || [], block.type, block.optionLayout === 'vertical'))
+      } else if (block.type === 'textarea') {
+        parts.push(writeBox(Number(block.height) || 44))
+      } else {
+        parts.push(writeBox(Number(block.height) || 22))
+      }
+    }
+    return parts.join('')
+  }
+
+  if (title) parts.push(fieldLabel(title, align))
+  if (cell.type === 'radio' || cell.type === 'checkbox') {
+    parts.push(optionsHtml(cell.options || [], cell.type))
+  } else if (cell.type === 'input') {
+    parts.push(writeBox(22))
+  }
+  // 'text' cells are printed labels and nothing more.
+  return parts.join('')
+}
+
+const blankCustomGridHtml = (grid: any): string => {
+  if (!grid || !Array.isArray(grid.cells) || !grid.cells.length) return ''
+  const rows = grid.cells
+    .map((row: any[]) => {
+      const cells = (row || [])
+        .filter((cell: any) => cell && !cell.hidden)
+        .map((cell: any) => {
+          const span = [
+            cell.colSpan && cell.colSpan > 1 ? ` colspan="${Number(cell.colSpan)}"` : '',
+            cell.rowSpan && cell.rowSpan > 1 ? ` rowspan="${Number(cell.rowSpan)}"` : '',
+          ].join('')
+          const valign = cell.verticalAlign === 'top' ? 'top' : cell.verticalAlign === 'bottom' ? 'bottom' : 'middle'
+          return `<td${span} style="vertical-align:${valign};text-align:${cell.align || 'center'};padding:7px 8px">${
+            blankGridCellHtml(cell)}</td>`
+        })
+        .join('')
+      return cells ? `<tr>${cells}</tr>` : ''
+    })
+    .join('')
+  return rows ? `<table class="grid"><tbody>${rows}</tbody></table>` : ''
+}
+
+const blankCanvasTableHtml = (element: any): string => {
+  const rows: any[][] = Array.isArray(element.cells) ? element.cells : []
+  if (!rows.length) return ''
+  const widths: number[] = Array.isArray(element.colWidths) ? element.colWidths : []
+  const body = rows
+    .map((row, rowIndex) => {
+      const header = element.headerRow && rowIndex === 0
+      const cells = (row || [])
+        .map((cell: any, colIndex: number) => {
+          const width = widths[colIndex] ? ` width="${Number(widths[colIndex])}"` : ''
+          const background = header || cell?.bgColor === 'grey' ? '#F1F5F9' : '#fff'
+          const weight = header || cell?.fontWeight === 'bold' ? 800 : 500
+          let inner = ''
+          if (!cell) inner = ''
+          else if (cell.type === 'label' || cell.type === 'heading') inner = esc(cell.label || '')
+          else if (cell.type === 'radio' || cell.type === 'checkbox') {
+            inner = fieldLabel(cell.label, cell.align) + optionsHtml(cell.options || [], cell.type, cell.optionLayout === 'vertical')
+          } else if (cell.type === 'signature') {
+            inner = `<div style="border:1px dashed #9CA3AF;border-radius:4px;height:26px"></div>`
+          } else {
+            inner = fieldLabel(cell.label, cell.align) + writeBox(cell.type === 'textarea' ? 34 : 20)
+          }
+          return `<td${width} style="border:1px solid #CBD5E1;padding:5px 6px;background:${background};font-size:11px;font-weight:${weight};text-align:${
+            cell?.align || 'left'};vertical-align:middle">${inner}</td>`
+        })
+        .join('')
+      return `<tr>${cells}</tr>`
+    })
+    .join('')
+  return `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><tbody>${body}</tbody></table>`
+}
+
+const blankCanvasElementHtml = (element: any): string => {
+  const align = element.align || 'left'
+  const description = element.description
+    ? `<div style="font-size:10px;color:#6B7280;font-style:italic;margin-bottom:2px">${esc(element.description)}</div>`
+    : ''
+
+  switch (element.type) {
+    case 'heading':
+    case 'label':
+      return `<div style="font-size:${Number(element.fontSize) || (element.type === 'heading' ? 16 : 12)}px;font-weight:${
+        element.fontWeight === 'normal' ? 500 : 800};color:${
+        element.type === 'heading' ? '#1E1B4B' : '#374151'};text-align:${align};line-height:1.35">${
+        esc(element.label || '')}</div>${description}`
+    case 'input':
+    case 'number':
+    case 'date':
+      return fieldLabel(element.label, align) + description + writeBox(22)
+    case 'textarea':
+      return fieldLabel(element.label, align) + description +
+        writeBox(Math.max(30, Number(element.height) - 26 || 40))
+    case 'radio':
+    case 'checkbox':
+      return fieldLabel(element.label, align) + description +
+        optionsHtml(element.options || [], element.type, element.optionLayout === 'vertical')
+    case 'signature':
+      return fieldLabel(element.label, align) + description +
+        `<div style="border:1px dashed #9CA3AF;border-radius:6px;background:#FAFAFA;height:${
+          Math.max(28, Number(element.height) - 24 || 34)}px"></div>`
+    case 'table':
+      return blankCanvasTableHtml(element)
+    default:
+      return ''
+  }
+}
+
+// The canvas builder places elements at absolute pixel positions on a canvas
+// wider than a sheet of paper, so the whole thing is scaled down as one piece.
+// Scaling the layout keeps it looking like what was designed; reflowing it into
+// a column would not.
+const blankCanvasHtml = (canvas: any): string => {
+  const elements: any[] = Array.isArray(canvas?.elements) ? canvas.elements : []
+  if (!elements.length) return ''
+  const width = Number(canvas.canvas_width) || 1080
+  const contentBottom = elements.reduce(
+    (lowest, element) => Math.max(lowest, Number(element.y || 0) + Number(element.height || 0)), 0)
+  const height = Math.max(Number(canvas.canvas_height) || 0, contentBottom + 16)
+  const scale = Math.min(1, PRINT_WIDTH / width)
+
+  const inner = elements
+    .slice()
+    .sort((a, b) => (Number(a.zIndex) || 1) - (Number(b.zIndex) || 1))
+    .map(element => {
+      const grey = element.bgColor === 'grey'
+      return `<div style="position:absolute;left:${Number(element.x) || 0}px;top:${
+        Number(element.y) || 0}px;width:${Number(element.width) || 100}px;min-height:${
+        Number(element.height) || 24}px;box-sizing:border-box;padding:${
+        element.type === 'table' ? '0' : '4px'};background:${grey ? '#E5E7EB' : 'transparent'};border-radius:${
+        grey ? '6px' : '0'}">${blankCanvasElementHtml(element)}</div>`
+    })
+    .join('')
+
+  // The scaled block still occupies its unscaled height in the flow, so the
+  // leftover is pulled back to stop a page of white space appearing under it.
+  const collapse = Math.round(height * (1 - scale))
+  return `<div style="width:100%;overflow:hidden">
+    <div style="position:relative;width:${width}px;height:${height}px;transform:scale(${
+      scale.toFixed(4)});transform-origin:top left;margin-bottom:-${collapse}px">${inner}</div>
+  </div>`
+}
+
+const blankMiddleHtml = (form: InspectionFormLike): string => {
+  const schema: any = form.schema || {}
+  const canvas = schema.canvas_form
+  if (canvas && Array.isArray(canvas.elements) && canvas.elements.length) {
+    const heading = String(schema.title || form.name || '').trim()
+    return `<h2 class="sec">${esc(heading || 'Custom Form')}</h2>${blankCanvasHtml(canvas)}`
+  }
+  const gridSection = blankCustomGridHtml(schema.custom_grid)
+  if (gridSection) {
+    const heading = String(schema.custom_grid?.title || schema.title || form.name || '').trim()
+    return `<h2 class="sec">${esc(heading || 'Custom Form')}</h2>${gridSection}`
+  }
+  if (schema.formio_form?.components?.length) {
+    return `<h2 class="sec">Custom Form</h2>
+      <p class="muted">This form is still a Form.io form and has no printable layout. Rebuild it in the form builder to print it.</p>`
+  }
+  return ''
+}
+
+const blankNotesHtml = () => `
+  <h2 class="sec">Biomed Notes</h2>
+  <table class="doc notes"><tbody>
+    ${['Reported Problem', 'Problem Found', 'Corrective action taken', 'Summary']
+      .map(label => `<tr><td class="k">${esc(label)}</td><td>${writeLine(20)}</td></tr>`)
+      .join('')}
+  </tbody></table>`
+
+const blankSignOffHtml = () => `
+  <table class="doc" style="margin-top:10px"><tbody>
+    <tr>
+      <td class="k" style="width:190px;font-weight:900;color:#64748B;background:#F8FAFC">Inspected By</td>
+      <td>${writeLine(20)}</td>
+      <td class="k" style="width:120px;font-weight:900;color:#64748B;background:#F8FAFC">Date</td>
+      <td style="width:150px">${writeLine(20)}</td>
+    </tr>
+  </tbody></table>`
+
+/** A blank, fillable sheet of one inspection form. */
+export const buildInspectionFormHtml = (form: InspectionFormLike): string => {
+  const description = String(form.description || '').trim()
+  return page(`
+    <div class="rtitle">
+      <h2 class="sec" style="font-size:20px;color:#1E3A8A">${esc(form.name || 'Inspection Form')}</h2>
+      ${form.modality_name ? `<span class="pill">${esc(form.modality_name)}</span>` : ''}
+    </div>
+    ${description ? `<div class="muted" style="margin:-2px 0 8px">${esc(description)}</div>` : ''}
+    <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:14px;align-items:start">
+      ${blankIdentityHtml()}
+      ${blankFacilityHtml()}
+    </div>
+    <h2 class="sec">Inspection Report</h2>
+    ${gridHtml({ inspection_number: '', form_data: {} })}
+    ${blankMiddleHtml(form)}
+    ${blankNotesHtml()}
+    ${blankSignOffHtml()}
+  `)
+}
+
+/** Print a blank copy of one inspection form. */
+export const printInspectionFormSheet = (form: InspectionFormLike) => {
+  printDocument(`${form.name || 'Inspection'} Form`, buildInspectionFormHtml(form))
+}
