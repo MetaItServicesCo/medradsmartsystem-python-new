@@ -374,7 +374,11 @@ services:
       # mid-sentence, or half a question reaches the recogniser.
       - USER_SPEECH_TIMEOUT=${VOICE_SPEECH_TIMEOUT:-0.8}
       - VAD_CONFIDENCE=${VOICE_VAD_CONFIDENCE:-0.6}
-      - VAD_STOP_SECS=${VOICE_VAD_STOP_SECS:-0.6}
+      # Pipecat's own default, which its latency figures assume. At 0.6 it
+      # stacked on top of USER_SPEECH_TIMEOUT and every turn ended about
+      # 1.4s after the speaker stopped. This default overrode the one in
+      # config.py, which is how it survived being changed there.
+      - VAD_STOP_SECS=${VOICE_VAD_STOP_SECS:-0.2}
       - LOG_LEVEL=${VOICE_LOG_LEVEL:-INFO}
     depends_on:
       speech:
