@@ -26,15 +26,30 @@ from pipecat.frames.frames import (
     TTSStartedFrame,
     TTSStoppedFrame,
 )
+from pipecat.services.settings import TTSSettings
 from pipecat.services.tts_service import TTSService
 
 from app.config import settings
+
+
+# Signed 16-bit mono: every sample is exactly two bytes, and a frame holding
+# half of one is not audio.
+_BYTES_PER_SAMPLE = 2
 
 
 class MedRadPiperTTS(TTSService):
     """Streams PCM from the speech service as it is synthesised."""
 
     def __init__(self, **kwargs) -> None:
+        # Every settings field declared, None where this service has no such
+        # concept. Pipecat logs an error for any left unset, and an error on
+        # every connection is noise that hides the real ones: the voice is
+        # chosen by the speech service, and there is no model or language to
+        # select from here.
+        kwargs.setdefault(
+            "settings",
+            TTSSettings(model=None, voice=None, language=None),
+        )
         super().__init__(**kwargs)
         self._client: Optional[httpx.AsyncClient] = None
         # Piper's rate is a property of the voice, so it is read from the first
@@ -86,20 +101,36 @@ class MedRadPiperTTS(TTSService):
                     self._voice_sample_rate = int(rate)
 
                 first = True
+                # HTTP chunks arrive on arbitrary byte boundaries, which for
+                # 16-bit audio means a chunk can end halfway through a sample.
+                # Passing that on produced an odd-length buffer and the
+                # resampler refused it -- "buffer size must be a multiple of
+                # element size" -- killing the whole reply. The stray byte is
+                # carried into the next chunk instead, where its other half is.
+                pending = b""
                 # Samples are forwarded as they arrive rather than collected,
                 # which is what lets the speaker start before the sentence has
                 # finished being generated.
                 async for chunk in response.aiter_bytes():
                     if not chunk:
                         continue
+                    buffered = pending + chunk
+                    aligned = len(buffered) - (len(buffered) % _BYTES_PER_SAMPLE)
+                    pending = buffered[aligned:]
+                    if not aligned:
+                        continue
                     if first:
                         await self.stop_ttfb_metrics()
                         first = False
                     yield TTSAudioRawFrame(
-                        audio=chunk,
+                        audio=buffered[:aligned],
                         sample_rate=self._voice_sample_rate,
                         num_channels=1,
                     )
+                if pending:
+                    # Half a sample and nothing to complete it: the stream
+                    # ended mid-sample, so there is nothing to play.
+                    logger.debug("Dropped {} trailing byte(s)", len(pending))
         except Exception as exc:
             logger.exception("Streaming synthesis failed")
             yield ErrorFrame("Speech synthesis failed: {}".format(exc))

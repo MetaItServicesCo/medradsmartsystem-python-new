@@ -37,7 +37,11 @@ class Settings(BaseSettings):
     USER_SPEECH_TIMEOUT: float = 0.8
     VAD_CONFIDENCE: float = 0.6
     VAD_START_SECS: float = 0.2
-    VAD_STOP_SECS: float = 0.6
+    # Pipecat's own default, and its latency figures assume it. This was
+    # 0.6, which stacked on top of USER_SPEECH_TIMEOUT: the detector waited
+    # 0.6s to call the speech stopped and the turn strategy then waited 0.8s
+    # more, so every turn ended about 1.4s after the speaker did.
+    VAD_STOP_SECS: float = 0.2
     VAD_MIN_VOLUME: float = 0.55
 
     LOG_LEVEL: str = "INFO"

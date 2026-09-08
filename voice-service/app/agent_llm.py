@@ -24,6 +24,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import LLMService
+from pipecat.services.settings import LLMSettings
 
 from app.config import settings
 
@@ -32,6 +33,23 @@ class MedRadAgentLLM(LLMService):
     """Streams answers from the assistant service into the voice pipeline."""
 
     def __init__(self, *, user_token: str, **kwargs: Any) -> None:
+        # All None: the sampling knobs belong to the agent service, which
+        # owns the model and its prompts. Declaring them keeps pipecat from
+        # logging an error per connection about settings this service could
+        # not honour anyway.
+        kwargs.setdefault("settings", LLMSettings(
+            model=None,
+            system_instruction=None,
+            temperature=None,
+            max_tokens=None,
+            top_p=None,
+            top_k=None,
+            frequency_penalty=None,
+            presence_penalty=None,
+            seed=None,
+            filter_incomplete_user_turns=None,
+            user_turn_completion_config=None,
+        ))
         super().__init__(**kwargs)
         self._user_token = user_token
         # Turns kept here rather than in Pipecat's context, because the agent
