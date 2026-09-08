@@ -23,8 +23,13 @@ from app.assistant.tools.base import (
     money,
     validate_date_range,
 )
-from app.assistant.tools.entities import _facility_names
+from app.assistant.tools.entities import _deep_link, _facility_names
 from app.models.rental import Rental, RentalStatus
+from app.models.service_request import (
+    QuotationStatus,
+    ServiceRequest,
+    ServiceRequestQuotation,
+)
 from app.models.sales import SalesQuotation
 
 
@@ -273,5 +278,122 @@ def search_sales_quotations(
         notes=[
             "Counted sales quotations. Quoted value is not billed revenue: a "
             "quotation becomes revenue only once converted to an invoice.",
+        ],
+    )
+
+
+def search_service_quotations(
+    ctx: ToolContext,
+    quotation_number: Optional[str] = None,
+    status: Optional[list[str]] = None,
+    facility_id: Optional[int] = None,
+    service_request_number: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: int = 25,
+) -> ToolResult:
+    """Find service quotes -- the quotes raised against a service request.
+
+    Not sales quotations. These are two unrelated things that share a word:
+    a service quote is priced work on a service request and is numbered
+    after it, as in SR-001709-Q01, while a sales quotation is a Sales
+    module document with its own customer and line items. Asked to confirm
+    a service quote, the assistant searched sales quotations, found nothing
+    and reported that none existed -- which was false, and false with
+    confidence, because the two live in different tables.
+    """
+    ctx.require_module("service-requests")
+    validate_date_range(date_from, date_to)
+    ctx.apply_statement_timeout()
+    take = clamp_limit(limit)
+
+    # Joined so the query can be scoped and filtered by facility: a service
+    # quote has no facility of its own, it inherits the request's.
+    query = ctx.scope_to_facilities(
+        ctx.db.query(ServiceRequestQuotation).join(
+            ServiceRequest,
+            ServiceRequestQuotation.service_request_id == ServiceRequest.id,
+        ),
+        ServiceRequest.facility_id,
+    )
+
+    allowed = [member.value for member in QuotationStatus]
+    for value in status or []:
+        if value not in allowed:
+            raise ToolInputError(
+                "'{}' is not a valid service quote status. Valid values: {}".format(
+                    value, ", ".join(allowed)
+                )
+            )
+    if status:
+        query = query.filter(ServiceRequestQuotation.status.in_(list(status)))
+    if quotation_number:
+        query = query.filter(
+            ServiceRequestQuotation.quotation_number.ilike(
+                _like(quotation_number), escape="\\"
+            )
+        )
+    if service_request_number:
+        query = query.filter(
+            ServiceRequest.request_number.ilike(
+                _like(service_request_number), escape="\\"
+            )
+        )
+    if facility_id is not None:
+        query = query.filter(ServiceRequest.facility_id == facility_id)
+    if date_from:
+        query = query.filter(ServiceRequestQuotation.created_at >= date_from)
+    if date_to:
+        query = query.filter(ServiceRequestQuotation.created_at <= date_to)
+
+    totals = query.with_entities(
+        func.count().label("count"),
+        func.coalesce(func.sum(ServiceRequestQuotation.amount), 0).label("value"),
+    ).one()
+
+    rows = query.order_by(ServiceRequestQuotation.id.desc()).limit(take).all()
+    facility_ids = {
+        row.service_request.facility_id for row in rows
+        if row.service_request is not None
+    }
+    facility_names = _facility_names(ctx, facility_ids)
+
+    items: list[dict[str, Any]] = [{
+        "quotation_id": row.id,
+        "quotation_number": row.quotation_number,
+        "status": row.status,
+        "amount": money(row.amount),
+        "description": (row.description or "")[:200],
+        "service_request_id": row.service_request_id,
+        "request_number": (
+            row.service_request.request_number if row.service_request else None
+        ),
+        "facility_name": facility_names.get(
+            row.service_request.facility_id if row.service_request else None
+        ),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "route": _deep_link("/service-requests", search=(
+            row.service_request.request_number if row.service_request else None
+        )),
+    } for row in rows]
+
+    return ToolResult(
+        tool="search_service_quotations",
+        total_count=int(totals.count or 0),
+        items=items,
+        aggregates={"total_quoted_amount": money(totals.value)},
+        applied_filters={
+            "quotation_number": quotation_number,
+            "status": list(status) if status else None,
+            "facility_id": facility_id,
+            "service_request_number": service_request_number,
+            "date_field": "created_at",
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+        },
+        notes=[
+            "Service quotes belong to service requests and are numbered after "
+            "them, as in SR-001709-Q01. They are unrelated to sales "
+            "quotations; searching one will never find the other.",
         ],
     )

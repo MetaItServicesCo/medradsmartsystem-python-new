@@ -18,7 +18,7 @@ from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
 from app.models.rental import RentalStatus
-from app.models.service_request import Priority, ServiceRequestStatus
+from app.models.service_request import QuotationStatus, Priority, ServiceRequestStatus
 from app.models.user import UserRole
 
 
@@ -284,6 +284,45 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             },
         },
         handler=commerce.search_sales_quotations,
+    ),
+    ToolDefinition(
+        name="search_service_quotations",
+        module="service-requests",
+        description=(
+            "Find or count SERVICE quotes: priced work raised against a "
+            "service request, numbered after it as in SR-001709-Q01. These "
+            "are NOT sales quotations -- the two share a word and nothing "
+            "else, and live in different tables. Use this whenever someone "
+            "says service quote, quote on a service request, or gives a "
+            "quote number that starts with a request number. Searching "
+            "sales quotations will never find one of these, and finding "
+            "nothing there does not mean none exists."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "quotation_number": {
+                    "type": "string",
+                    "description": "Quote number, partial match, e.g. SR-001709-Q01.",
+                },
+                "status": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [m.value for m in QuotationStatus],
+                    },
+                },
+                "facility_id": {"type": "integer"},
+                "service_request_number": {
+                    "type": "string",
+                    "description": "Parent request number, partial match.",
+                },
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+            },
+        },
+        handler=commerce.search_service_quotations,
     ),
     ToolDefinition(
         name="search_users",
