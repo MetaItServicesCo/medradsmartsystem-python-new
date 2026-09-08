@@ -14,6 +14,7 @@ const Inspections = lazyWithReload(() => import('./pages/Inspections'))
 const Sales = lazyWithReload(() => import('./pages/Sales'))
 const Rentals = lazyWithReload(() => import('./pages/Rentals'))
 const Inventory = lazyWithReload(() => import('./pages/Inventory'))
+const InventoryCapture = lazyWithReload(() => import('./pages/InventoryCapture'))
 const TestEquipment = lazyWithReload(() => import('./pages/TestEquipment'))
 const HR = lazyWithReload(() => import('./pages/HR'))
 const Reports = lazyWithReload(() => import('./pages/Reports'))
@@ -120,6 +121,8 @@ function App() {
           <Route path="sales/*" element={<ProtectedPage module="sales"><Sales /></ProtectedPage>} />
           <Route path="rentals/account/:rentalId" element={<ProtectedPage module="rentals"><ClientRental /></ProtectedPage>} />
           <Route path="rentals/*" element={<ProtectedPage module="rentals"><Rentals /></ProtectedPage>} />
+          {/* Its own route: the inventory page is untouched by this. */}
+          <Route path="inventory-capture" element={<ProtectedPage module="inventory"><InventoryCapture /></ProtectedPage>} />
           <Route path="inventory/*" element={<ProtectedPage module="inventory"><Inventory /></ProtectedPage>} />
           <Route path="test-equipment/*" element={<ProtectedPage module="test-equipment"><TestEquipment /></ProtectedPage>} />
           <Route path="hr/*" element={<ProtectedPage module="hr"><HR /></ProtectedPage>} />

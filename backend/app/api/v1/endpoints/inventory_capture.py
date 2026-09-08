@@ -47,6 +47,12 @@ from app.models.inventory_capture import (
 from app.models.part_definition import PartDefinition
 from app.models.user import User
 from app.utils.logging import log_activity
+from app.utils.part_vision import (
+    EMBEDDING_MODEL,
+    embed_image,
+    is_confident,
+    rank_candidates,
+)
 from app.utils.permissions import has_module_permission
 
 
@@ -249,6 +255,7 @@ async def create_capture(
 
     photo_path: Optional[str] = None
     photo_mime: Optional[str] = None
+    photo_vector: Optional[list[float]] = None
     if photo is not None:
         content_type = (photo.content_type or "").lower()
         if content_type not in ALLOWED_PHOTO_TYPES:
@@ -263,6 +270,10 @@ async def create_capture(
             raise HTTPException(status_code=413, detail="The photograph is too large.")
         photo_path = _store_photo(data, content_type)
         photo_mime = content_type
+        # Described here rather than in a worker: it takes about twenty
+        # milliseconds, and a definition that cannot be recognised until
+        # a queue drains is a definition nobody can capture against.
+        photo_vector = embed_image(data)
 
     # A new kind of part, unless the caller says it is one already seen.
     # Created from whatever was typed, which is usually just a name -- the
@@ -271,14 +282,19 @@ async def create_capture(
         definition = PartDefinition(
             name=(label or "").strip() or "Unnamed part",
             reference_photo_path=photo_path,
+            embedding=photo_vector,
+            embedding_model=EMBEDDING_MODEL if photo_vector else None,
             created_by_id=current_user.id,
         )
         db.add(definition)
         db.flush()
     elif definition.reference_photo_path is None and photo_path:
         # The first photograph of a kind becomes what recognition compares
-        # against.
+        # against. Later ones are not substituted: replacing a good
+        # reference with a worse one silently degrades every future match.
         definition.reference_photo_path = photo_path
+        definition.embedding = photo_vector
+        definition.embedding_model = EMBEDDING_MODEL if photo_vector else None
 
     # One row per physical object, each with its own code, all pointing at
     # the one description. Ten pumps are ten codes and one definition.
@@ -365,6 +381,76 @@ def list_captures(
 # Declared before /{capture_id}: FastAPI matches routes in order, and a
 # literal path that sits after a parameterised one is never reached --
 # /definitions would be read as a capture id and rejected.
+@router.post("/match")
+async def match_photo(
+    photo: UploadFile = File(...),
+    limit: int = Form(5),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """What kind of part is this likely to be?
+
+    Answers with candidates, not a decision. The best one is marked as
+    confident when it stands out from the rest, which only means the screen
+    may pre-select it -- a person still confirms. Absolute similarity is not
+    comparable between photographs, so "stands out" is measured against the
+    other candidates for this photograph rather than against a fixed number.
+
+    Nothing is written. Recognising something is not capturing it.
+    """
+    _require_inventory(current_user)
+
+    content_type = (photo.content_type or "").lower()
+    if content_type not in ALLOWED_PHOTO_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported image type. Use JPEG, PNG, WEBP or HEIC.",
+        )
+    data = await photo.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="The photograph was empty.")
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=413, detail="The photograph is too large.")
+
+    query = embed_image(data)
+    if query is None:
+        # Not an error: an unreadable photograph simply matches nothing, and
+        # the screen should offer to capture it as something new.
+        return {"candidates": [], "confident": False, "readable": False}
+
+    # Only vectors from the current descriptor are comparable. One computed
+    # by an older version describes something else and would score as noise.
+    known = [
+        (row.id, row.embedding)
+        for row in db.query(PartDefinition)
+        .filter(
+            PartDefinition.embedding.isnot(None),
+            PartDefinition.embedding_model == EMBEDDING_MODEL,
+        )
+        .all()
+    ]
+    ranked = rank_candidates(query, known, limit=max(1, min(limit, 10)))
+    if not ranked:
+        return {"candidates": [], "confident": False, "readable": True}
+
+    by_id = {
+        row.id: row
+        for row in db.query(PartDefinition)
+        .filter(PartDefinition.id.in_([identifier for identifier, _ in ranked]))
+        .all()
+    }
+    candidates = [
+        {**_definition_response(db, by_id[identifier]), "score": round(score, 4)}
+        for identifier, score in ranked
+        if identifier in by_id
+    ]
+    return {
+        "candidates": candidates,
+        "confident": is_confident(ranked),
+        "readable": True,
+    }
+
+
 @router.get("/definitions/{definition_id}")
 def get_definition(
     definition_id: int,
