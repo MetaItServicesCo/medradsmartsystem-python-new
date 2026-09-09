@@ -117,6 +117,7 @@ type AnalyticsKey =
   | 'activity'
   | `stat-${string}`
   | `compact-${string}`
+  | `metric-${string}`
 
 const hiddenNumber = '•••'
 
@@ -762,13 +763,23 @@ const Dashboard = () => {
                   const directionColor = value.direction === 'flat' ? '#656578' : favorable ? '#059669' : '#DC2626'
                   const formattedCurrent = item.currency ? `$${value.current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : value.current.toLocaleString()
                   const changeLabel = value.change_percent === null ? 'New in this period' : `${value.change_percent > 0 ? '+' : ''}${value.change_percent}%`
+                  const metricHidden = isAnalyticsHidden(`metric-${item.key}`)
                   return (
                     <Grid item xs={12} sm={6} md={3} key={item.key}>
                       <Card sx={{ p: 2, height: '100%', minHeight: 164, borderRadius: '10px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
-                        <Box sx={{ width: 9, height: 9, bgcolor: item.color, borderRadius: '50%', mb: 1.3 }} />
-                        <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600, minHeight: 34 }}>{item.label}</Typography>
-                        <Typography sx={{ color: '#25233e', fontSize: 24, fontWeight: 650, mt: 0.5 }}>{formattedCurrent}</Typography>
-                        <Chip label={changeLabel} size="small" sx={{ mt: 1, bgcolor: `${directionColor}12`, color: directionColor, fontWeight: 650, height: 25 }} />
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                          <Box sx={{ width: 9, height: 9, bgcolor: item.color, borderRadius: '50%', mt: 0.6 }} />
+                          {renderAnalyticsToggle(`metric-${item.key}`, `${item.label} analytics`)}
+                        </Box>
+                        <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600, minHeight: 34, mt: 0.8 }}>{item.label}</Typography>
+                        <Typography sx={{ color: '#25233e', fontSize: 24, fontWeight: 650, mt: 0.5 }}>
+                          {metricHidden ? hiddenNumber : formattedCurrent}
+                        </Typography>
+                        <Chip
+                          label={metricHidden ? 'Analytics hidden' : changeLabel}
+                          size="small"
+                          sx={{ mt: 1, bgcolor: metricHidden ? '#f8f7fa' : `${directionColor}12`, color: metricHidden ? '#656578' : directionColor, fontWeight: 650, height: 25 }}
+                        />
                       </Card>
                     </Grid>
                   )
