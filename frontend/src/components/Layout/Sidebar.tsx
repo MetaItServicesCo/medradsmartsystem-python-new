@@ -141,10 +141,12 @@ const Sidebar = () => {
       sx={{
         width: { xs: '100%', sm: 72 },
         height: { xs: 'calc(64px + env(safe-area-inset-bottom))', sm: '100dvh', md: 'calc(100dvh - 24px)' },
-        background: 'linear-gradient(180deg, #7161D8 0%, #5C4BBC 100%)',
+        // The landing page purple, --lp-purple, flat rather than the old
+        // violet gradient so the rail is the one colour the public pages use.
+        background: '#6550bd',
         display: 'flex', flexDirection: { xs: 'row', sm: 'column' }, alignItems: 'center',
         py: { xs: 1, sm: 3 }, px: { xs: 1.25, sm: 0 }, gap: 1, flexShrink: 0, overflow: 'visible',
-        boxShadow: '0 24px 60px rgba(89,76,190,0.22)',
+        boxShadow: '0 24px 60px rgba(101,80,189,0.22)',
         position: { xs: 'fixed', sm: 'relative' },
         left: 0, right: 0, bottom: 0,
         zIndex: 1300,
