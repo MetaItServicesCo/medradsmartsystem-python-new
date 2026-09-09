@@ -754,10 +754,27 @@ const blankCustomGridHtml = (grid: any): string => {
 const blankCanvasTableHtml = (element: any): string => {
   const rows: any[][] = Array.isArray(element.cells) ? element.cells : []
   if (!rows.length) return ''
-  const widths: number[] = Array.isArray(element.colWidths) ? element.colWidths : []
+  // Column widths and row heights are relative weights, so they become
+  // percentages here. Printing them as raw numbers would have made a column of
+  // weight 2 exactly two pixels wide.
+  const asPercents = (weights: any, count: number): number[] => {
+    const list: number[] = Array.isArray(weights) && weights.length === count
+      ? weights.map((w: any) => (Number(w) > 0 ? Number(w) : 0))
+      : Array.from({ length: count }, () => 1)
+    const total = list.reduce((sum, w) => sum + w, 0) || count
+    return list.map(w => (w / total) * 100)
+  }
+  const colCount = rows[0]?.length || 1
+  const widths = asPercents(element.colWidths, colCount)
+  const heights = asPercents(element.rowHeights, rows.length)
+  const tableHeight = Math.max(0, Number(element.height) || 0)
   const body = rows
     .map((row, rowIndex) => {
       const header = element.headerRow && rowIndex === 0
+      // A proportional row height, in the same pixels the element occupies, so
+      // a tall signature row stays tall on paper.
+      const rowHeight = tableHeight
+        ? ` height="${Math.round((heights[rowIndex] / 100) * tableHeight)}"` : ''
       const cells = (row || [])
         .map((cell: any, colIndex: number) => {
           // A merged-away cell is not printed: the cell that owns the merge
@@ -769,8 +786,11 @@ const blankCanvasTableHtml = (element: any): string => {
             colSpan > 1 ? ` colspan="${colSpan}"` : '',
             rowSpan > 1 ? ` rowspan="${rowSpan}"` : '',
           ].join('')
-          const width = (widths[colIndex] && colSpan === 1)
-            ? ` width="${Number(widths[colIndex])}"` : ''
+          // A merged cell claims the width of every column it covers.
+          const spanned = widths
+            .slice(colIndex, colIndex + colSpan)
+            .reduce((sum, w) => sum + w, 0)
+          const width = spanned > 0 ? ` width="${spanned.toFixed(2)}%"` : ''
           const background = header || cell?.bgColor === 'grey' ? '#F1F5F9' : '#fff'
           const weight = header || cell?.fontWeight === 'bold' ? 800 : 500
           let inner = ''
@@ -787,7 +807,7 @@ const blankCanvasTableHtml = (element: any): string => {
             cell?.align || 'left'};vertical-align:middle">${inner}</td>`
         })
         .join('')
-      return `<tr>${cells}</tr>`
+      return `<tr${rowHeight}>${cells}</tr>`
     })
     .join('')
   return `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><tbody>${body}</tbody></table>`

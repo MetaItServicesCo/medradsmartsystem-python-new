@@ -97,7 +97,12 @@ export interface CanvasElement {
   // Table-only fields
   rows?: number
   cols?: number
+  // Relative track sizes, in the same units the CSS grid uses: a column
+  // of 2 next to a column of 1 takes two thirds of the table. Columns
+  // already worked this way; rows had no equivalent at all, so every row
+  // was forced to the same height whatever was in it.
   colWidths?: number[]
+  rowHeights?: number[]
   headerRow?: boolean
   cells?: TableCell[][]
 }
@@ -156,6 +161,11 @@ const HANDLE_CURSORS: Record<ResizeHandle, string> = {
 type ActiveOp =
   | { kind: 'move'; id: string; startX: number; startY: number; origX: number; origY: number }
   | { kind: 'resize'; id: string; handle: ResizeHandle; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number }
+  // Dragging the line between two columns or two rows. The table keeps
+  // its overall size and the two tracks either side of the line trade
+  // space, which is what every table editor does and what stops a column
+  // drag from silently resizing the whole element.
+  | { kind: 'track'; id: string; axis: 'col' | 'row'; index: number; start: number; total: number; weights: number[] }
 
 const snap = (v: number) => Math.round(v / GRID) * GRID
 let _seq = 0
@@ -371,7 +381,7 @@ function makeElement(type: CanvasElementType, x: number, y: number): CanvasEleme
     ...(type === 'radio'    ? { options: ['Yes', 'No', 'N/A'], optionLayout: 'horizontal' as const } : {}),
     ...(type === 'checkbox' ? { options: ['Option 1', 'Option 2', 'Option 3'], optionLayout: 'horizontal' as const } : {}),
     ...(type === 'input' || type === 'textarea' ? { placeholder: 'Enter value' } : {}),
-    ...(type === 'table' ? { rows: 3, cols: 3, colWidths: [1, 1, 1], headerRow: false, cells: makeTableCells(3, 3), label: undefined } : {}),
+    ...(type === 'table' ? { rows: 3, cols: 3, colWidths: [1, 1, 1], rowHeights: [1, 1, 1], headerRow: false, cells: makeTableCells(3, 3), label: undefined } : {}),
   }
 }
 
@@ -388,8 +398,76 @@ const PALETTE: { type: CanvasElementType; label: string; icon: React.ReactNode }
   { type: 'table',     label: 'Table',      icon: <GridOnIcon /> },
 ]
 
+// A track may not be squeezed out of existence: below this share of the
+// table it stops giving ground, so a hard drag cannot leave a column
+// nobody can find again to make bigger.
+const MIN_TRACK = 0.08
+
+/**
+ * Move the boundary after `index` by `delta` of the table.
+ *
+ * The two tracks either side trade space and the total never changes, so
+ * dragging a column edge cannot quietly resize the whole table. Delta is a
+ * fraction of the table, not pixels, because the weights are relative and
+ * the element can be any width.
+ */
+export function resizeTrack(weights: number[], index: number, delta: number): number[] {
+  if (index < 0 || index >= weights.length - 1) return weights
+  const total = weights.reduce((sum, w) => sum + (w > 0 ? w : 0), 0) || weights.length
+  const left = weights[index]
+  const right = weights[index + 1]
+  const move = delta * total
+  const floor = MIN_TRACK * total
+  // Clamped against both neighbours, so the drag stops at the boundary
+  // rather than pushing one of them negative and inverting the layout.
+  const lowest = floor - left
+  const highest = right - floor
+  const applied = Math.max(lowest, Math.min(highest, move))
+  if (!Number.isFinite(applied) || applied === 0) return weights
+  const next = [...weights]
+  next[index] = left + applied
+  next[index + 1] = right - applied
+  return next
+}
+
+/**
+ * Give one track an exact share of the table, taking it from all the others.
+ *
+ * Deliberately not the same operation as dragging. A drag moves a boundary, so
+ * it trades with one neighbour; typing "50%" means this column should be half
+ * the table, which the neighbour alone usually cannot pay for. So the rest
+ * shrink proportionally and keep their relative sizes -- which is what makes
+ * the number that was typed the number that appears.
+ */
+export function setTrackShare(weights: number[], index: number, share: number): number[] {
+  if (index < 0 || index >= weights.length || weights.length < 2) return weights
+  const total = weights.reduce((sum, w) => sum + (w > 0 ? w : 0), 0) || weights.length
+  // Every other track still needs its floor, so one track cannot have all of
+  // it however large a number is typed.
+  const ceiling = 1 - MIN_TRACK * (weights.length - 1)
+  const wanted = Math.max(MIN_TRACK, Math.min(ceiling, share))
+  const others = total - weights[index]
+  const remaining = total * (1 - wanted)
+  return weights.map((w, i) => {
+    if (i === index) return total * wanted
+    // If the others were all zero there is nothing to scale, so they split
+    // what is left evenly rather than staying at zero forever.
+    return others > 0 ? (w / others) * remaining : remaining / (weights.length - 1)
+  })
+}
+
+/** The share of the table each track occupies, 0 to 1. */
+export function trackShares(weights: number[]): number[] {
+  const total = weights.reduce((sum, w) => sum + (w > 0 ? w : 0), 0)
+  if (!total) return weights.map(() => 1 / (weights.length || 1))
+  return weights.map(w => (w > 0 ? w : 0) / total)
+}
+
 const cellColWidths = (el: CanvasElement, cols: number): number[] =>
   el.colWidths?.length === cols ? el.colWidths : Array.from({ length: cols }, () => 1)
+
+const cellRowHeights = (el: CanvasElement, rows: number): number[] =>
+  el.rowHeights?.length === rows ? el.rowHeights : Array.from({ length: rows }, () => 1)
 
 // ─────────────────────────────────────────────
 // Builder component
@@ -565,6 +643,18 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
         ))
       }
 
+      if (op.kind === 'track') {
+        // A fraction of the table, not pixels: the weights are relative
+        // and the element can be any width.
+        const moved = (op.axis === 'col' ? e.clientX - op.start : e.clientY - op.start)
+        const delta = op.total > 0 ? moved / op.total : 0
+        const sized = resizeTrack(op.weights, op.index, delta)
+        setElements(prev => prev.map(el => el.id !== op.id ? el : (
+          op.axis === 'col' ? { ...el, colWidths: sized } : { ...el, rowHeights: sized }
+        )))
+        return
+      }
+
       if (op.kind === 'resize') {
         const dx = e.clientX - op.startX
         const dy = e.clientY - op.startY
@@ -641,6 +731,29 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
     if (!el) return
     activeOpRef.current = { kind: 'resize', id, handle, startX: e.clientX, startY: e.clientY, origX: el.x, origY: el.y, origW: el.width, origH: el.height }
     document.body.style.cursor     = HANDLE_CURSORS[handle]
+    document.body.style.userSelect = 'none'
+  }
+
+  const startTrackDrag = (
+    e: React.MouseEvent,
+    el: CanvasElement,
+    axis: 'col' | 'row',
+    index: number,
+  ) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const cols = tableColCount(el) || 1
+    const rows = el.cells?.length ?? 1
+    activeOpRef.current = {
+      kind: 'track',
+      id: el.id,
+      axis,
+      index,
+      start: axis === 'col' ? e.clientX : e.clientY,
+      total: axis === 'col' ? (el.width || 1) : (el.height || 1),
+      weights: axis === 'col' ? cellColWidths(el, cols) : cellRowHeights(el, rows),
+    }
+    document.body.style.cursor = axis === 'col' ? 'col-resize' : 'row-resize'
     document.body.style.userSelect = 'none'
   }
 
@@ -743,7 +856,8 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
     const cells = normaliseTableCells(
       [...selected.cells.map(r => [...r]), Array.from({ length: cols }, () => makeTableCell())],
     )
-    updateEl({ cells, rows: cells.length, height: (selected.height ?? 0) + TABLE_ROW_H })
+    const rowHeights = [...cellRowHeights(selected, selected.cells.length), 1]
+    updateEl({ cells, rows: cells.length, rowHeights, height: (selected.height ?? 0) + TABLE_ROW_H })
   }
 
   const removeTableRow = () => {
@@ -751,7 +865,8 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
     // Normalised, because a merge that reached into the row just removed
     // would otherwise keep claiming it and every row below would shift.
     const cells = normaliseTableCells(selected.cells.slice(0, -1).map(r => [...r]))
-    updateEl({ cells, rows: cells.length, height: Math.max(TABLE_ROW_H, (selected.height ?? 0) - TABLE_ROW_H) })
+    const rowHeights = cellRowHeights(selected, selected.cells.length).slice(0, cells.length)
+    updateEl({ cells, rows: cells.length, rowHeights, height: Math.max(TABLE_ROW_H, (selected.height ?? 0) - TABLE_ROW_H) })
     setSelectedCellId(null)
   }
 
@@ -938,11 +1053,17 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
         const cells = el.cells ?? []
         const cols = tableColCount(el) || 1
         const widths = cellColWidths(el, cols)
+        const heights = cellRowHeights(el, cells.length || 1)
+        const isSelectedTable = el.id === selectedId
         return (
           <Box sx={{
             display: 'grid',
             gridTemplateColumns: widths.map(w => `${w}fr`).join(' '),
-            gridAutoRows: '1fr',
+            // Explicit rows rather than uniform auto rows, so a row can be
+            // taller than its neighbours -- a header strip above tall
+            // signature boxes, say.
+            gridTemplateRows: heights.map(h => `${h}fr`).join(' '),
+            position: 'relative',
             height: '100%',
             width: '100%',
             border: '1px solid #94A3B8',
@@ -1000,6 +1121,45 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                 </Box>
               )
             }))}
+
+            {/* The lines between tracks, draggable. Only on the selected
+                table, so an unselected one is still a plain click target,
+                and stopping propagation so a drag here never becomes a
+                drag of the whole element. */}
+            {isSelectedTable && widths.slice(0, -1).map((_, index) => (
+              <Box
+                key={`colgrip-${index}`}
+                onMouseDown={e => startTrackDrag(e, el, 'col', index)}
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  left: `${trackShares(widths).slice(0, index + 1).reduce((a, b) => a + b, 0) * 100}%`,
+                  width: 9,
+                  ml: '-4.5px',
+                  cursor: 'col-resize',
+                  zIndex: 4,
+                  '&:hover': { bgcolor: '#7C3AED33' },
+                }}
+              />
+            ))}
+            {isSelectedTable && heights.slice(0, -1).map((_, index) => (
+              <Box
+                key={`rowgrip-${index}`}
+                onMouseDown={e => startTrackDrag(e, el, 'row', index)}
+                sx={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: `${trackShares(heights).slice(0, index + 1).reduce((a, b) => a + b, 0) * 100}%`,
+                  height: 9,
+                  mt: '-4.5px',
+                  cursor: 'row-resize',
+                  zIndex: 4,
+                  '&:hover': { bgcolor: '#7C3AED33' },
+                }}
+              />
+            ))}
           </Box>
         )
       }
@@ -1314,6 +1474,66 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   }
 
   // ── table properties (structure + selected-cell editor) ──
+  // Where the selected cell sits, so its column and row can be sized by
+  // number as well as by dragging.
+  const selectedAt = (selected?.type === 'table' && selected.cells && selectedCellId)
+    ? findCell(selected.cells, selectedCellId)
+    : null
+
+  const applyTrackShare = (axis: 'col' | 'row', index: number, percent: number) => {
+    if (!selected?.cells) return
+    const share = percent / 100
+    if (!Number.isFinite(share)) return
+    if (axis === 'col') {
+      const cols = tableColCount(selected) || 1
+      updateEl({ colWidths: setTrackShare(cellColWidths(selected, cols), index, share) })
+    } else {
+      const rows = selected.cells.length || 1
+      updateEl({ rowHeights: setTrackShare(cellRowHeights(selected, rows), index, share) })
+    }
+  }
+
+  const renderTrackControls = () => {
+    if (!selected?.cells || !selectedAt) return null
+    const cols = tableColCount(selected) || 1
+    const rows = selected.cells.length || 1
+    const colPercent = Math.round(trackShares(cellColWidths(selected, cols))[selectedAt.c] * 100)
+    const rowPercent = Math.round(trackShares(cellRowHeights(selected, rows))[selectedAt.r] * 100)
+    return (
+      <Box sx={{ display: 'grid', gap: 0.75 }}>
+        <Box sx={{ display: 'flex', gap: 0.75 }}>
+          <TextField
+            label={`Column ${selectedAt.c + 1} %`}
+            type="number"
+            size="small"
+            fullWidth
+            key={`col-${selectedAt.c}-${colPercent}`}
+            defaultValue={colPercent}
+            onBlur={e => applyTrackShare('col', selectedAt.c, Number(e.target.value))}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            inputProps={{ min: 8, max: 92, step: 1 }}
+            disabled={cols < 2}
+          />
+          <TextField
+            label={`Row ${selectedAt.r + 1} %`}
+            type="number"
+            size="small"
+            fullWidth
+            key={`row-${selectedAt.r}-${rowPercent}`}
+            defaultValue={rowPercent}
+            onBlur={e => applyTrackShare('row', selectedAt.r, Number(e.target.value))}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            inputProps={{ min: 8, max: 92, step: 1 }}
+            disabled={rows < 2}
+          />
+        </Box>
+        <Typography sx={{ fontSize: 10.5, color: '#94A3B8', fontWeight: 600, lineHeight: 1.4 }}>
+          Or drag the lines between columns and rows on the table itself.
+        </Typography>
+      </Box>
+    )
+  }
+
   const renderMergeControls = () => (
     <Box sx={{ display: 'grid', gap: 0.75 }}>
       <Box sx={{ display: 'flex', gap: 0.75 }}>
@@ -1391,6 +1611,8 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             Cells
           </Typography>
           {renderMergeControls()}
+          {selectedAt && <Divider sx={{ my: 1 }} />}
+          {renderTrackControls()}
         </Box>
 
         {!selectedCell ? (
@@ -2132,11 +2354,16 @@ function renderViewerTable(
   const cells = el.cells ?? []
   const cols = el.cols ?? (cells[0]?.length ?? 1)
   const widths = el.colWidths?.length === cols ? el.colWidths : Array.from({ length: cols }, () => 1)
+  const rows = cells.length || 1
+  const heights = el.rowHeights?.length === rows
+    ? el.rowHeights : Array.from({ length: rows }, () => 1)
   return (
     <Box sx={{
       display: 'grid',
       gridTemplateColumns: widths.map(w => `${w}fr`).join(' '),
-      gridAutoRows: 'minmax(40px, auto)',
+      // Proportional, with a floor: the sizes laid out in the builder are
+      // kept, but a row can still grow if what is in it does not fit.
+      gridTemplateRows: heights.map(h => `minmax(40px, ${h}fr)`).join(' '),
       width: '100%',
       height: '100%',
       border: '1px solid #94A3B8',
