@@ -4,14 +4,13 @@ import {
   Box, TextField, Button, Typography, InputAdornment,
   IconButton, Alert, CircularProgress
 } from '@mui/material'
-import { motion } from 'framer-motion'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { useAuthStore } from '@/stores/authStore'
-import { Stagger, StaggerItem } from '@/components/motion'
 import apiClient from '@/api/client'
+import './login.css'
 
 const Login = () => {
   const [username, setUsername] = useState('')
@@ -69,166 +68,145 @@ const Login = () => {
   }
 
   return (
-    <Box
-      sx={{
-        position: 'relative',
-        minHeight: '100dvh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        p: { xs: 2, sm: 4 },
-        overflowX: 'hidden',
-        overflowY: 'auto',
-        background: 'linear-gradient(125deg, #ECEAFF 0%, #F3EEFF 42%, #FDEBF2 100%)',
-      }}
-    >
-      {/* Subtle ambient blobs behind the card */}
-      <Box aria-hidden sx={{ position: 'absolute', top: '-12%', left: '-6%', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,93,216,0.30), transparent 70%)', pointerEvents: 'none' }} />
-      <Box aria-hidden sx={{ position: 'absolute', bottom: '-14%', right: '-8%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(240,93,146,0.28), transparent 70%)', pointerEvents: 'none' }} />
-
-      {/* Centered login — frosted outer panel framing the white form card (double-box) */}
-      <Box
-        component={motion.div}
-        initial={{ opacity: 0, y: 22, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-        sx={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: 480,
-          p: { xs: 2, sm: 3 },
-          borderRadius: { xs: '24px', sm: '34px' },
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.66), rgba(255,255,255,0.38))',
-          border: '1px solid rgba(255,255,255,0.6)',
-          boxShadow: '0 44px 110px rgba(84,69,179,0.22)',
-        }}
-      >
-        {/* Inner white form card */}
-        <Box
-          sx={{
-            p: { xs: 2.75, sm: 4 },
-            borderRadius: { xs: '20px', sm: '26px' },
-            background: 'rgba(255,255,255,0.96)',
-            border: '1px solid rgba(255,255,255,0.9)',
-            boxShadow: '0 22px 55px rgba(84,69,179,0.12)',
-          }}
-        >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 3 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: '13px', background: 'linear-gradient(135deg, #7161D8, #F05D92)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: '#fff', fontSize: '1.1rem', boxShadow: '0 8px 20px rgba(113,97,216,0.35)' }}>M</Box>
-          <Typography sx={{ fontWeight: 800, color: '#7161D8', letterSpacing: '0.14em', fontSize: '0.72rem', textTransform: 'uppercase' }}>MEDRAD</Typography>
+    <Box component="main" className="medrad-auth">
+      <Box component="section" className="auth-card" aria-labelledby="auth-title">
+        <Box className="auth-brand">
+          <Box component="span" className="auth-mark" aria-hidden="true">M</Box>
+          <Box component="span">MEDRAD<small>SMART SYSTEM</small></Box>
         </Box>
 
-        <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B', letterSpacing: '-0.5px', mb: 0.5 }}>
+        <Typography component="h1" id="auth-title" className="auth-title">
           {isSignUp ? 'Create account' : 'Login'}
         </Typography>
-        <Typography variant="body2" sx={{ color: '#94A3B8', mb: 3, fontWeight: 600 }}>
+        <Typography className="auth-description">
           {isSignUp ? 'Fill in your details to get started' : 'Sign in to continue to your workspace'}
         </Typography>
 
-        {error && (
-          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
-            <Alert severity="error" sx={{ mb: 2.5, borderRadius: '14px', fontSize: '0.85rem', fontWeight: 600 }}>{error}</Alert>
-          </motion.div>
-        )}
-        {success && (
-          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
-            <Alert severity="success" sx={{ mb: 2.5, borderRadius: '14px', fontSize: '0.85rem', fontWeight: 600 }}>{success}</Alert>
-          </motion.div>
-        )}
+        {error && <Alert severity="error" className="auth-alert">{error}</Alert>}
+        {success && <Alert severity="success" className="auth-alert">{success}</Alert>}
 
         <form onSubmit={handleSubmit}>
-          <Stagger>
-            <StaggerItem>
-              <Typography sx={{ fontWeight: 700, color: '#475569', fontSize: '0.8rem', mb: 0.5 }}>Username</Typography>
-              <TextField
-                fullWidth size="small"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required autoFocus
-                placeholder="your.username"
-                InputProps={{ startAdornment: (<InputAdornment position="start"><PersonOutlineIcon sx={{ color: '#9CA3AF', fontSize: '1.15rem' }} /></InputAdornment>) }}
-              />
-            </StaggerItem>
+          <Box className="auth-field">
+            <label htmlFor="auth-username">Username</label>
+            <TextField
+              id="auth-username"
+              fullWidth
+              size="small"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              autoFocus
+              autoComplete="username"
+              placeholder="your.username"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonOutlineIcon className="auth-field-icon" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
 
-            {isSignUp && (
-              <>
-                <StaggerItem>
-                  <Typography sx={{ fontWeight: 700, color: '#475569', fontSize: '0.8rem', mt: 2, mb: 0.5 }}>Full Name</Typography>
-                  <TextField fullWidth size="small" value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="Your full name" />
-                </StaggerItem>
-                <StaggerItem>
-                  <Typography sx={{ fontWeight: 700, color: '#475569', fontSize: '0.8rem', mt: 2, mb: 0.5 }}>Email</Typography>
-                  <TextField fullWidth size="small" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="username@gmail.com" />
-                </StaggerItem>
-              </>
-            )}
+          {isSignUp && (
+            <>
+              <Box className="auth-field">
+                <label htmlFor="auth-full-name">Full Name</label>
+                <TextField
+                  id="auth-full-name"
+                  fullWidth
+                  size="small"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  autoComplete="name"
+                  placeholder="Your full name"
+                />
+              </Box>
+              <Box className="auth-field">
+                <label htmlFor="auth-email">Email</label>
+                <TextField
+                  id="auth-email"
+                  fullWidth
+                  size="small"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  placeholder="username@gmail.com"
+                />
+              </Box>
+            </>
+          )}
 
-            <StaggerItem>
-              <Typography sx={{ fontWeight: 700, color: '#475569', fontSize: '0.8rem', mt: 2, mb: 0.5 }}>Password</Typography>
-              <TextField
-                fullWidth size="small"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="Password"
-                InputProps={{
-                  startAdornment: (<InputAdornment position="start"><LockOutlinedIcon sx={{ color: '#9CA3AF', fontSize: '1.15rem' }} /></InputAdornment>),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={() => setShowPassword(!showPassword)} edge="end">
-                        {showPassword
-                          ? <VisibilityOffOutlinedIcon sx={{ fontSize: '1.05rem', color: '#9CA3AF' }} />
-                          : <VisibilityOutlinedIcon sx={{ fontSize: '1.05rem', color: '#9CA3AF' }} />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </StaggerItem>
+          <Box className="auth-field">
+            <label htmlFor="auth-password">Password</label>
+            <TextField
+              id="auth-password"
+              fullWidth
+              size="small"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete={isSignUp ? 'new-password' : 'current-password'}
+              placeholder="Password"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockOutlinedIcon className="auth-field-icon" />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      type="button"
+                      className="auth-password-toggle"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}
+                      onClick={() => setShowPassword(!showPassword)}
+                      edge="end"
+                    >
+                      {showPassword
+                        ? <VisibilityOffOutlinedIcon className="auth-field-icon" />
+                        : <VisibilityOutlinedIcon className="auth-field-icon" />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
 
-            <StaggerItem>
-              <Button
-                fullWidth type="submit" variant="contained" disabled={loading}
-                component={motion.button}
-                whileHover={{ y: -2, scale: 1.01 }}
-                whileTap={{ scale: 0.985 }}
-                sx={{
-                  mt: 3, py: 1.5, fontSize: '0.95rem', fontWeight: 800,
-                  position: 'relative', overflow: 'hidden',
-                  background: 'linear-gradient(135deg, #7161D8 0%, #F05D92 100%)',
-                  boxShadow: '0 14px 30px rgba(113,97,216,0.32)',
-                  borderRadius: '13px', textTransform: 'none',
-                  '&:hover': { background: 'linear-gradient(135deg, #6151C7 0%, #E14A83 100%)' },
-                  '&:disabled': { background: 'linear-gradient(135deg, #C4B5FD 0%, #FBCFE8 100%)', color: 'rgba(255,255,255,0.85)' },
-                }}
-              >
-                <Box component="span" sx={{ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center' }}>
-                  {loading ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : isSignUp ? 'Create Account' : 'Sign In'}
-                </Box>
-              </Button>
-            </StaggerItem>
-          </Stagger>
+          <Button
+            fullWidth
+            type="submit"
+            variant="contained"
+            disabled={loading}
+            className="auth-submit"
+            aria-busy={loading}
+          >
+            {loading
+              ? <CircularProgress size={22} color="inherit" aria-label={isSignUp ? 'Creating account' : 'Signing in'} />
+              : isSignUp ? 'Create Account' : 'Sign In'}
+          </Button>
         </form>
 
-        <Box sx={{ mt: 2.5, textAlign: 'center' }}>
-          <Typography variant="body2" sx={{ color: '#6B7280', fontWeight: 600, fontSize: '0.85rem' }}>
+        <Box className="auth-switch">
+          <Typography component="span">
             {isSignUp ? 'Already have an account? ' : "Don't have an account yet? "}
-            <Button
-              variant="text"
-              onClick={() => { setIsSignUp(!isSignUp); setError(''); setSuccess('') }}
-              sx={{ color: '#F05D92', fontWeight: 800, textTransform: 'none', p: 0, minWidth: 'auto', fontSize: '0.85rem', '&:hover': { background: 'transparent', textDecoration: 'underline' } }}
-            >
-              {isSignUp ? 'Sign in' : 'Register for free'}
-            </Button>
           </Typography>
-        </Box>
+          <Button
+            variant="text"
+            onClick={() => { setIsSignUp(!isSignUp); setError(''); setSuccess('') }}
+          >
+            {isSignUp ? 'Sign in' : 'Register for free'}
+          </Button>
         </Box>
       </Box>
 
-      <Typography variant="caption" sx={{ position: { xs: 'relative', sm: 'absolute' }, mt: { xs: 2, sm: 0 }, bottom: { sm: 16 }, left: { sm: 0 }, right: { sm: 0 }, textAlign: 'center', color: '#A79FC9', fontWeight: 600 }}>
-        © 2026 Medrad Systems · All rights reserved
+      <Typography component="footer" className="auth-footer">
+        © {new Date().getFullYear()} MedRad Systems · All rights reserved
       </Typography>
     </Box>
   )
