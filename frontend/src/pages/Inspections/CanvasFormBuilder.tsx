@@ -130,6 +130,7 @@ const CANVAS_W = 1080
 const PAGE_W = 736
 
 const GRID = 10
+// The old floor, kept as the fallback for anything not listed below.
 const MIN_W = 80
 const MIN_H = 28
 // Floors for the section itself, and the breathing room kept below the
@@ -187,6 +188,47 @@ const DEFAULT_SIZES: Record<CanvasElementType, { width: number; height: number }
   signature: { width: 280, height: 110 },
   table:     { width: TABLE_COL_W * 3, height: TABLE_ROW_H * 3 },
 }
+
+/**
+ * How small each kind of element may be dragged.
+ *
+ * This was a flat 80 x 28 for everything, which is roughly four times
+ * wider than a radio button needs. A bare tick box could not be shrunk to
+ * anything like its own size, so it never sat neatly in a narrow column --
+ * the right edge simply stopped moving and there was nothing on screen to
+ * say why.
+ *
+ * A field somebody has to type into still needs room to be typed into, so
+ * the floor is per type rather than removed. Multiples of the grid, so a
+ * snapped drag can actually reach them.
+ */
+const MIN_SIZE: Record<CanvasElementType, { w: number; h: number }> = {
+  heading:   { w: 40, h: 20 },
+  label:     { w: 30, h: 20 },
+  input:     { w: 60, h: 30 },
+  textarea:  { w: 60, h: 40 },
+  number:    { w: 50, h: 30 },
+  date:      { w: 60, h: 30 },
+  // A control is about twenty pixels across. Let it be that.
+  radio:     { w: 20, h: 20 },
+  checkbox:  { w: 20, h: 20 },
+  signature: { w: 60, h: 30 },
+  table:     { w: 60, h: 40 },
+}
+
+const minWidthOf = (type?: CanvasElementType) =>
+  (type && MIN_SIZE[type]?.w) ?? MIN_W
+const minHeightOf = (type?: CanvasElementType) =>
+  (type && MIN_SIZE[type]?.h) ?? MIN_H
+
+/**
+ * Snap to the grid, then hold the floor.
+ *
+ * In that order. Snapping afterwards rounds to the nearest ten, which for
+ * a floor of 24 lands on 20 -- under the limit it was meant to enforce.
+ */
+export const snapAtLeast = (value: number, floor: number) =>
+  Math.max(floor, snap(value))
 
 const DEFAULT_LABEL: Record<CanvasElementType, string> = {
   heading: 'Section Heading',
@@ -685,15 +727,17 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
           if (el.id !== op.id) return el
           let { x, y, width, height } = { x: op.origX, y: op.origY, width: op.origW, height: op.origH }
           const h = op.handle
-          if (h.includes('e')) width  = snap(Math.max(MIN_W, op.origW + dx))
-          if (h.includes('s')) height = snap(Math.max(MIN_H, op.origH + dy))
+          const floorW = minWidthOf(el.type)
+          const floorH = minHeightOf(el.type)
+          if (h.includes('e')) width  = snapAtLeast(op.origW + dx, floorW)
+          if (h.includes('s')) height = snapAtLeast(op.origH + dy, floorH)
           if (h.includes('w')) {
-            const nw = snap(Math.max(MIN_W, op.origW - dx))
+            const nw = snapAtLeast(op.origW - dx, floorW)
             x     = snap(op.origX + op.origW - nw)
             width = nw
           }
           if (h.includes('n')) {
-            const nh = snap(Math.max(MIN_H, op.origH - dy))
+            const nh = snapAtLeast(op.origH - dy, floorH)
             y      = snap(op.origY + op.origH - nh)
             height = nh
           }
@@ -1467,8 +1511,12 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
               size="small"
               type="number"
               value={selected[prop]}
-              inputProps={{ min: prop === 'width' ? MIN_W : prop === 'height' ? MIN_H : 0 }}
-              onChange={e => updateEl({ [prop]: snap(Math.max(prop === 'width' ? MIN_W : prop === 'height' ? MIN_H : 0, Number(e.target.value))) })}
+              inputProps={{ min: prop === 'width' ? minWidthOf(selected.type) : prop === 'height' ? minHeightOf(selected.type) : 0 }}
+              onChange={e => updateEl({
+                [prop]: prop === 'width' ? snapAtLeast(Number(e.target.value), minWidthOf(selected.type))
+          : prop === 'height' ? snapAtLeast(Number(e.target.value), minHeightOf(selected.type))
+                  : snap(Math.max(0, Number(e.target.value))),
+              })}
             />
           ))}
         </Box>
