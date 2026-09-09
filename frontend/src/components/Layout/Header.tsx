@@ -249,14 +249,17 @@ const Header = ({ title }: HeaderProps) => {
           sx={{
             width: { xs: 38, sm: 44 },
             height: { xs: 38, sm: 44 },
-            background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
+            // The purple the landing page and dashboard settled on, in place
+            // of the violet-to-pink gradient. Solid, so it reads as one
+            // colour beside the rest of the header.
+            background: '#6550bd',
             fontSize: '1rem',
             fontWeight: 800,
             cursor: 'pointer',
-            boxShadow: '0 8px 16px rgba(124,58,237,0.25)',
+            boxShadow: '0 8px 16px rgba(101,80,189,0.25)',
             border: '2px solid #fff',
             transition: 'all 0.2s ease',
-            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 10px 20px rgba(124,58,237,0.35)' }
+            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 10px 20px rgba(101,80,189,0.35)' }
           }}
         >
           {initials}

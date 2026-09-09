@@ -108,6 +108,13 @@ type AnalyticsKey =
   | 'overview'
   | 'module-health'
   | 'focus-queue'
+  // Four cards carried figures with no way to hide them, which made the
+  // eye on the cards beside them look like it meant something narrower
+  // than it does. Every card showing data can be hidden now.
+  | 'trajectory'
+  | 'alerts'
+  | 'ai-analysis'
+  | 'activity'
   | `stat-${string}`
   | `compact-${string}`
 
@@ -251,6 +258,10 @@ const Dashboard = () => {
     event.stopPropagation()
     setHiddenAnalytics((prev) => ({ ...prev, [key]: !prev[key] }))
   }
+  const trajectoryHidden = isAnalyticsHidden('trajectory')
+  const alertsHidden = isAnalyticsHidden('alerts')
+  const aiAnalysisHidden = isAnalyticsHidden('ai-analysis')
+  const activityHidden = isAnalyticsHidden('activity')
   const renderAnalyticsToggle = (key: AnalyticsKey, label = 'analytics') => {
     const hidden = isAnalyticsHidden(key)
     return (
@@ -722,14 +733,19 @@ const Dashboard = () => {
                 ) : (
                   <>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                      <Avatar sx={{ bgcolor: '#fff', color: trajectoryPresentation.color, borderRadius: '7px' }}>{trajectoryPresentation.icon}</Avatar>
-                      <Box>
-                        <Typography sx={{ color: trajectoryPresentation.color, fontWeight: 650, fontSize: 17 }}>{trajectoryPresentation.label}</Typography>
+                      <Avatar sx={{ bgcolor: '#fff', color: trajectoryHidden ? '#656578' : trajectoryPresentation.color, borderRadius: '7px' }}>{trajectoryPresentation.icon}</Avatar>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography sx={{ color: trajectoryHidden ? '#656578' : trajectoryPresentation.color, fontWeight: 650, fontSize: 17 }}>
+                          {trajectoryHidden ? hiddenNumber : trajectoryPresentation.label}
+                        </Typography>
                         <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>versus {comparisonLabel}</Typography>
                       </Box>
+                      {renderAnalyticsToggle('trajectory', 'trajectory analytics')}
                     </Box>
                     <Typography sx={{ color: '#25233e', fontSize: 12, fontWeight: 500, mt: 2, lineHeight: 1.5 }}>
-                      Based only on the permission-scoped metrics available to your account for the selected dates.
+                      {trajectoryHidden
+                        ? 'Analytics hidden'
+                        : 'Based only on the permission-scoped metrics available to your account for the selected dates.'}
                     </Typography>
                   </>
                 )}
@@ -1186,8 +1202,14 @@ const Dashboard = () => {
                   <Typography sx={{ color: '#25233e', fontWeight: 650, fontSize: 18 }}>Operational Alerts</Typography>
                   <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>Refreshes automatically</Typography>
                 </Box>
-                <Chip label={`${intelligence?.alerts.length || 0} active`} size="small" sx={{ bgcolor: '#FFF7ED', color: '#C2410C', fontWeight: 650 }} />
+                <Chip label={`${alertsHidden ? hiddenNumber : (intelligence?.alerts.length || 0)} active`} size="small" sx={{ bgcolor: '#FFF7ED', color: '#C2410C', fontWeight: 650 }} />
+                {renderAnalyticsToggle('alerts', 'operational alerts')}
               </Box>
+              {alertsHidden ? (
+                <Box sx={{ minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography sx={{ color: '#656578', fontWeight: 650 }}>Analytics hidden</Typography>
+                </Box>
+              ) : (
               <Stack spacing={1.1} sx={{ mt: 2 }}>
                 {intelligenceLoading && Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} variant="rounded" height={76} sx={{ borderRadius: '7px' }} />)}
                 {!intelligenceLoading && (intelligence?.alerts.length || 0) === 0 && (
@@ -1208,6 +1230,7 @@ const Dashboard = () => {
                   )
                 })}
               </Stack>
+              )}
             </Card>
 
             <Card sx={{ p: 2.5, borderRadius: '12px', border: '1px solid #EDE9FE', background: '#f5f2f9', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
@@ -1219,7 +1242,14 @@ const Dashboard = () => {
                     {activeLens === 'all' ? 'Aggregated metrics, all modules' : `Focused on ${activeLensLabel}`}
                   </Typography>
                 </Box>
+                {renderAnalyticsToggle('ai-analysis', 'AI business analysis')}
               </Box>
+              {aiAnalysisHidden ? (
+                <Box sx={{ minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography sx={{ color: '#656578', fontWeight: 650 }}>Analytics hidden</Typography>
+                </Box>
+              ) : (
+              <>
               <TextField
                 SelectProps={{ MenuProps: { PaperProps: { className: 'db-select-menu' } } }}
                 select
@@ -1297,6 +1327,8 @@ const Dashboard = () => {
               >
                 {aiAnalysisLoading ? 'Analyzing...' : aiAnalysis ? 'Refresh analysis' : 'Generate analysis'}
               </Button>
+              </>
+              )}
             </Card>
 
             <Card sx={{ p: 2.5, borderRadius: '12px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
@@ -1387,11 +1419,18 @@ const Dashboard = () => {
                   </Typography>
                 </Box>
                 <Chip
-                  label={`${activityTotal.toLocaleString()} ${logData?.scope === 'global' ? 'global' : 'personal'} events`}
+                  label={`${activityHidden ? hiddenNumber : activityTotal.toLocaleString()} ${logData?.scope === 'global' ? 'global' : 'personal'} events`}
                   sx={{ bgcolor: '#f1edf8', color: '#6550bd', fontWeight: 650 }}
                 />
+                {renderAnalyticsToggle('activity', 'activity log')}
               </Box>
 
+              {activityHidden ? (
+                <Box sx={{ minHeight: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography sx={{ color: '#656578', fontWeight: 650 }}>Analytics hidden</Typography>
+                </Box>
+              ) : (
+              <>
               <Grid container spacing={1.4} sx={{ mb: 2 }}>
                 <Grid item xs={12} md={4}>
                   <TextField
@@ -1570,6 +1609,8 @@ const Dashboard = () => {
                     size="small"
                   />
                 </Box>
+              )}
+              </>
               )}
             </Card>
         </Grid>
