@@ -55,15 +55,8 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { enabledPermissionCount, hasPermission, type Module } from '@/config/permissions'
 import { AnimatedNumber } from '@/components/motion'
-import AuroraBackground from '@/components/AuroraBackground'
-import { keyframes } from '@emotion/react'
 import { format, isValid, subDays } from 'date-fns'
-
-// A calm, minimal "live" pulse for the status dot.
-const livePulse = keyframes`
-  0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.7); opacity: 1; }
-  50%      { box-shadow: 0 0 0 6px rgba(74,222,128,0); opacity: 0.7; }
-`
+import './dashboard.css'
 
 const safeFormatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return 'Recently'
@@ -146,7 +139,7 @@ const DashboardChartTooltip = ({ active, label, payload, valueLabel = 'Items' }:
   const datum = entry.payload || {}
   const resolvedLabel = String(label || datum.name || datum.label || entry.name || 'Current value')
   const resolvedValue = entry.value ?? datum.value ?? 0
-  const accent = datum.color || entry.color || '#6757D8'
+  const accent = datum.color || entry.color || '#6550bd'
 
   return (
     <Box
@@ -155,21 +148,21 @@ const DashboardChartTooltip = ({ active, label, payload, valueLabel = 'Items' }:
         px: 1.5,
         py: 1.15,
         bgcolor: '#FFFFFF',
-        border: '1px solid #E8ECF4',
-        borderRadius: '14px',
-        boxShadow: '0 14px 34px rgba(15,23,42,0.16)',
+        border: '1px solid #e4e1eb',
+        borderRadius: '7px',
+        boxShadow: '0 3px 14px rgba(37,35,62,0.04)',
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
         <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: accent, flexShrink: 0 }} />
-        <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 850, lineHeight: 1.2 }}>
+        <Typography sx={{ color: '#25233e', fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>
           {resolvedLabel}
         </Typography>
       </Box>
-      <Typography sx={{ color: '#1E1B4B', fontSize: 22, fontWeight: 950, lineHeight: 1.15, mt: 0.7 }}>
+      <Typography sx={{ color: '#25233e', fontSize: 22, fontWeight: 650, lineHeight: 1.15, mt: 0.7 }}>
         {resolvedValue}
       </Typography>
-      <Typography sx={{ color: '#94A3B8', fontSize: 10.5, fontWeight: 750 }}>{valueLabel}</Typography>
+      <Typography sx={{ color: '#777084', fontSize: 12, fontWeight: 500 }}>{valueLabel}</Typography>
     </Box>
   )
 }
@@ -226,9 +219,9 @@ const summarizeChanges = (log: AuditLogItem) => {
 }
 
 const AI_SECTION_LABEL = {
-  color: '#94A3B8',
-  fontSize: 10.5,
-  fontWeight: 900,
+  color: '#777084',
+  fontSize: 12,
+  fontWeight: 650,
   letterSpacing: '0.06em',
   textTransform: 'uppercase' as const,
   mt: 1.7,
@@ -261,17 +254,17 @@ const Dashboard = () => {
   const renderAnalyticsToggle = (key: AnalyticsKey, label = 'analytics') => {
     const hidden = isAnalyticsHidden(key)
     return (
-      <Tooltip title={hidden ? `Show ${label}` : `Hide ${label}`}>
+      <Tooltip slotProps={{ tooltip: { className: 'db-tooltip' } }} title={hidden ? `Show ${label}` : `Hide ${label}`}>
         <IconButton
           size="small"
           onClick={toggleAnalytics(key)}
           sx={{
             width: 34,
             height: 34,
-            bgcolor: hidden ? '#F8FAFC' : 'rgba(255,255,255,0.78)',
-            color: hidden ? '#64748B' : '#6757D8',
+            bgcolor: hidden ? '#f8f7fa' : 'rgba(255,255,255,0.78)',
+            color: hidden ? '#656578' : '#6550bd',
             border: '1px solid rgba(226,232,240,0.86)',
-            '&:hover': { bgcolor: hidden ? '#EEF2F7' : '#fff' },
+            '&:hover': { bgcolor: hidden ? '#e4e1eb' : '#fff' },
           }}
         >
           {hidden ? <VisibilityOffOutlinedIcon fontSize="small" /> : <VisibilityOutlinedIcon fontSize="small" />}
@@ -355,8 +348,8 @@ const Dashboard = () => {
       detail: `${summary?.facilities.active ?? 0} active`,
       progress: summary?.facilities.total ? Math.round((summary.facilities.active / summary.facilities.total) * 100) : 0,
       icon: <BusinessIcon />,
-      color: '#6757D8',
-      soft: '#F0EDFF',
+      color: '#6550bd',
+      soft: '#f1edf8',
       path: '/facilities',
     },
     {
@@ -367,7 +360,7 @@ const Dashboard = () => {
       detail: `${summary?.service_requests.open ?? 0} open · ${summary?.service_requests.critical ?? 0} critical`,
       progress: summary?.service_requests.total ? Math.round((summary.service_requests.open / summary.service_requests.total) * 100) : 0,
       icon: <BuildIcon />,
-      color: '#F0528A',
+      color: '#b96f8a',
       soft: '#FFF0F6',
       path: '/service-requests',
     },
@@ -405,7 +398,7 @@ const Dashboard = () => {
       value: enabledPermissionCount(currentUser),
       detail: 'enabled actions',
       icon: <PeopleAltIcon />,
-      color: '#7C3AED',
+      color: '#6550bd',
       path: '/dashboard',
     },
     {
@@ -415,7 +408,7 @@ const Dashboard = () => {
       value: summary?.inspections.total ?? 0,
       detail: `${summary?.inspections.upcoming ?? 0} upcoming`,
       icon: <AssignmentIcon />,
-      color: '#3B82F6',
+      color: '#557bac',
       path: '/inspections',
     },
     {
@@ -425,7 +418,7 @@ const Dashboard = () => {
       value: summary?.rentals.active ?? 0,
       detail: 'active agreements',
       icon: <LocalShippingIcon />,
-      color: '#7C3AED',
+      color: '#6550bd',
       path: '/rentals',
     },
     {
@@ -473,7 +466,7 @@ const Dashboard = () => {
       label: 'Low stock parts',
       value: summary?.inventory.low_stock_parts ?? 0,
       icon: <Inventory2Icon />,
-      color: '#7C3AED',
+      color: '#6550bd',
       path: '/inventory',
     },
     {
@@ -488,16 +481,16 @@ const Dashboard = () => {
   ]
 
   const pipelineItems = [
-    { label: 'Service Open', value: summary?.service_requests.open ?? 0, color: '#F05D92', path: '/service-requests', module: 'service-requests' as Module },
+    { label: 'Service Open', value: summary?.service_requests.open ?? 0, color: '#b96f8a', path: '/service-requests', module: 'service-requests' as Module },
     { label: 'Service Critical', value: summary?.service_requests.critical ?? 0, color: '#E11D48', path: '/service-requests', module: 'service-requests' as Module },
-    { label: 'Inspection Upcoming', value: summary?.inspections.upcoming ?? 0, color: '#3B82F6', path: '/inspections', module: 'inspections' as Module },
+    { label: 'Inspection Upcoming', value: summary?.inspections.upcoming ?? 0, color: '#557bac', path: '/inspections', module: 'inspections' as Module },
     { label: 'Inspection Overdue', value: summary?.inspections.overdue ?? 0, color: '#F59E0B', path: '/inspections', module: 'inspections' as Module },
   ]
 
   const riskMix = [
     { name: 'Service Critical', value: summary?.service_requests.critical ?? 0, color: '#E11D48', module: 'service-requests' as Module },
     { name: 'Inspection Overdue', value: summary?.inspections.overdue ?? 0, color: '#F59E0B', module: 'inspections' as Module },
-    { name: 'Inventory Low Stock', value: summary?.inventory.low_stock_parts ?? 0, color: '#7C3AED', module: 'inventory' as Module },
+    { name: 'Inventory Low Stock', value: summary?.inventory.low_stock_parts ?? 0, color: '#6550bd', module: 'inventory' as Module },
     { name: 'Inventory Expiring', value: summary?.inventory.expiring_parts ?? 0, color: '#0891B2', module: 'inventory' as Module },
   ]
 
@@ -534,7 +527,7 @@ const Dashboard = () => {
 
   // ---- Revenue by stream (answers "how much is sales vs rental") ----
   const streamPalette: Record<string, string> = {
-    sales: '#6757D8', rental: '#0EA5E9', service: '#F0528A', inspection: '#13A77B',
+    sales: '#6550bd', rental: '#0EA5E9', service: '#b96f8a', inspection: '#13A77B',
   }
   const revenueStreams = intelligence?.revenue_breakdown ?? []
   const netRevenueMetric = intelligence?.metrics?.net_revenue
@@ -628,12 +621,12 @@ const Dashboard = () => {
     ? { label: 'Upward trajectory', color: '#059669', soft: '#ECFDF5', icon: <TrendingUpIcon /> }
     : trajectoryDirection === 'downward'
       ? { label: 'Downward trajectory', color: '#DC2626', soft: '#FEF2F2', icon: <TrendingDownIcon /> }
-      : { label: 'Stable trajectory', color: '#6757D8', soft: '#F0EDFF', icon: <TrendingFlatIcon /> }
+      : { label: 'Stable trajectory', color: '#6550bd', soft: '#f1edf8', icon: <TrendingFlatIcon /> }
   const comparisonMetrics = [
     { key: 'net_revenue', label: 'Net revenue collected', module: 'billing' as Module, currency: true, color: '#059669' },
-    { key: 'completed_service_requests', label: 'Services completed', module: 'service-requests' as Module, currency: false, color: '#F0528A' },
-    { key: 'completed_inspections', label: 'Inspections completed', module: 'inspections' as Module, currency: false, color: '#3B82F6' },
-    { key: 'new_facilities', label: 'New facilities', module: 'facilities' as Module, currency: false, color: '#6757D8' },
+    { key: 'completed_service_requests', label: 'Services completed', module: 'service-requests' as Module, currency: false, color: '#b96f8a' },
+    { key: 'completed_inspections', label: 'Inspections completed', module: 'inspections' as Module, currency: false, color: '#557bac' },
+    { key: 'new_facilities', label: 'New facilities', module: 'facilities' as Module, currency: false, color: '#6550bd' },
   ].filter((item) => canAccess(item.module) && intelligence?.metrics[item.key])
 
   const setDashboardPreset = (days: number) => {
@@ -643,16 +636,16 @@ const Dashboard = () => {
   }
 
   return (
-    <Box sx={{ maxWidth: 1440, mx: 'auto' }}>
-      <Card sx={{ p: { xs: 1.7, md: 2 }, mb: 3, borderRadius: '22px', border: '1px solid #EEF0F6', boxShadow: '0 12px 30px rgba(49,46,129,0.06)' }}>
-        <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', lg: 'center' }, flexDirection: { xs: 'column', lg: 'row' }, gap: 1.4 }}>
-          <Box sx={{ flex: 1, minWidth: 210 }}>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 950 }}>Dashboard period</Typography>
-            <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>Compare operational performance without changing any source records.</Typography>
+    <Box className="medrad-dashboard" sx={{ maxWidth: 1440, mx: 'auto' }}>
+      <Card className="db-period" sx={{ p: { xs: 1.7, md: 2 }, mb: 3, borderRadius: '10px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
+        <Box className="db-period-controls" sx={{ display: 'flex', alignItems: { xs: 'stretch', lg: 'center' }, flexDirection: { xs: 'column', lg: 'row' }, gap: 1.4 }}>
+          <Box className="db-period-intro" sx={{ flex: 1, minWidth: 210 }}>
+            <Typography sx={{ color: '#25233e', fontWeight: 650 }}>Dashboard period</Typography>
+            <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>Compare operational performance without changing any source records.</Typography>
           </Box>
           <Stack direction="row" spacing={0.7} sx={{ flexWrap: 'wrap', rowGap: 0.7 }}>
             {[7, 30, 90].map((days) => (
-              <Button key={days} size="small" variant="outlined" onClick={() => setDashboardPreset(days)} sx={{ borderRadius: '11px', fontWeight: 850 }}>
+              <Button key={days} size="small" variant="outlined" onClick={() => setDashboardPreset(days)} sx={{ borderRadius: '7px', fontWeight: 600 }}>
                 {days} days
               </Button>
             ))}
@@ -678,6 +671,7 @@ const Dashboard = () => {
             sx={{ minWidth: 155 }}
           />
           <TextField
+            SelectProps={{ MenuProps: { PaperProps: { className: 'db-select-menu' } } }}
             select
             size="small"
             label="Compare with"
@@ -715,26 +709,26 @@ const Dashboard = () => {
           )}
         </Box>
         {!dashboardDatesValid && (
-          <Typography sx={{ color: '#C2410C', fontSize: 12, fontWeight: 850, mt: 1 }}>Choose a valid From and To date.</Typography>
+          <Typography sx={{ color: '#C2410C', fontSize: 12, fontWeight: 600, mt: 1 }}>Choose a valid From and To date.</Typography>
         )}
       </Card>
       <Grid container spacing={3}>
         <Grid item xs={12}>
           <Grid container spacing={2.2}>
             <Grid item xs={12} lg={3.2}>
-              <Card sx={{ p: 2.3, height: '100%', minHeight: 164, borderRadius: '24px', border: `1px solid ${trajectoryPresentation.color}22`, bgcolor: trajectoryPresentation.soft, boxShadow: 'none' }}>
+              <Card sx={{ p: 2.3, height: '100%', minHeight: 164, borderRadius: '12px', border: `1px solid ${trajectoryPresentation.color}22`, bgcolor: trajectoryPresentation.soft, boxShadow: 'none' }}>
                 {intelligenceLoading ? (
                   <Stack spacing={1.3}><Skeleton variant="rounded" height={48} /><Skeleton variant="rounded" height={55} /></Stack>
                 ) : (
                   <>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                      <Avatar sx={{ bgcolor: '#fff', color: trajectoryPresentation.color, borderRadius: '14px' }}>{trajectoryPresentation.icon}</Avatar>
+                      <Avatar sx={{ bgcolor: '#fff', color: trajectoryPresentation.color, borderRadius: '7px' }}>{trajectoryPresentation.icon}</Avatar>
                       <Box>
-                        <Typography sx={{ color: trajectoryPresentation.color, fontWeight: 950, fontSize: 17 }}>{trajectoryPresentation.label}</Typography>
-                        <Typography sx={{ color: '#64748B', fontSize: 11.5, fontWeight: 750 }}>versus {comparisonLabel}</Typography>
+                        <Typography sx={{ color: trajectoryPresentation.color, fontWeight: 650, fontSize: 17 }}>{trajectoryPresentation.label}</Typography>
+                        <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>versus {comparisonLabel}</Typography>
                       </Box>
                     </Box>
-                    <Typography sx={{ color: '#475569', fontSize: 12.5, fontWeight: 700, mt: 2, lineHeight: 1.5 }}>
+                    <Typography sx={{ color: '#25233e', fontSize: 12, fontWeight: 500, mt: 2, lineHeight: 1.5 }}>
                       Based only on the permission-scoped metrics available to your account for the selected dates.
                     </Typography>
                   </>
@@ -744,29 +738,29 @@ const Dashboard = () => {
             <Grid item xs={12} lg={8.8}>
               <Grid container spacing={1.5} sx={{ height: '100%' }}>
                 {intelligenceLoading && Array.from({ length: 4 }).map((_, index) => (
-                  <Grid item xs={12} sm={6} md={3} key={index}><Skeleton variant="rounded" height={164} sx={{ borderRadius: '20px' }} /></Grid>
+                  <Grid item xs={12} sm={6} md={3} key={index}><Skeleton variant="rounded" height={164} sx={{ borderRadius: '10px' }} /></Grid>
                 ))}
                 {!intelligenceLoading && comparisonMetrics.map((item) => {
                   const value = intelligence!.metrics[item.key]
                   const favorable = value.direction === 'up'
-                  const directionColor = value.direction === 'flat' ? '#64748B' : favorable ? '#059669' : '#DC2626'
+                  const directionColor = value.direction === 'flat' ? '#656578' : favorable ? '#059669' : '#DC2626'
                   const formattedCurrent = item.currency ? `$${value.current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : value.current.toLocaleString()
                   const changeLabel = value.change_percent === null ? 'New in this period' : `${value.change_percent > 0 ? '+' : ''}${value.change_percent}%`
                   return (
                     <Grid item xs={12} sm={6} md={3} key={item.key}>
-                      <Card sx={{ p: 2, height: '100%', minHeight: 164, borderRadius: '20px', border: '1px solid #EEF2F7', boxShadow: '0 10px 24px rgba(49,46,129,0.05)' }}>
+                      <Card sx={{ p: 2, height: '100%', minHeight: 164, borderRadius: '10px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
                         <Box sx={{ width: 9, height: 9, bgcolor: item.color, borderRadius: '50%', mb: 1.3 }} />
-                        <Typography sx={{ color: '#64748B', fontSize: 11.5, fontWeight: 850, minHeight: 34 }}>{item.label}</Typography>
-                        <Typography sx={{ color: '#1E1B4B', fontSize: 24, fontWeight: 950, mt: 0.5 }}>{formattedCurrent}</Typography>
-                        <Chip label={changeLabel} size="small" sx={{ mt: 1, bgcolor: `${directionColor}12`, color: directionColor, fontWeight: 900, height: 25 }} />
+                        <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600, minHeight: 34 }}>{item.label}</Typography>
+                        <Typography sx={{ color: '#25233e', fontSize: 24, fontWeight: 650, mt: 0.5 }}>{formattedCurrent}</Typography>
+                        <Chip label={changeLabel} size="small" sx={{ mt: 1, bgcolor: `${directionColor}12`, color: directionColor, fontWeight: 650, height: 25 }} />
                       </Card>
                     </Grid>
                   )
                 })}
                 {!intelligenceLoading && comparisonMetrics.length === 0 && (
                   <Grid item xs={12}>
-                    <Box sx={{ height: 164, borderRadius: '20px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7', display: 'flex', alignItems: 'center', justifyContent: 'center', px: 2 }}>
-                      <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 800, textAlign: 'center' }}>No comparison metrics are available for this account's module permissions.</Typography>
+                    <Box sx={{ height: 164, borderRadius: '10px', bgcolor: '#f8f7fa', border: '1px solid #e4e1eb', display: 'flex', alignItems: 'center', justifyContent: 'center', px: 2 }}>
+                      <Typography sx={{ color: '#656578', fontSize: 13, fontWeight: 600, textAlign: 'center' }}>No comparison metrics are available for this account's module permissions.</Typography>
                     </Box>
                   </Grid>
                 )}
@@ -776,38 +770,38 @@ const Dashboard = () => {
         </Grid>
         <Grid item xs={12} lg={8.4}>
           <Card
+            className="db-overview"
             sx={{
               p: 3,
               minHeight: 304,
-              borderRadius: '28px',
-              border: '1px solid rgba(255,255,255,0.72)',
-              color: '#fff',
+              borderRadius: '12px',
+              border: '1px solid #ddd5e9',
+              color: '#25233e',
               overflow: 'hidden',
               position: 'relative',
-              background: 'linear-gradient(135deg, #5D4FCF 0%, #7C5DD8 54%, #F15F96 135%)',
-              boxShadow: '0 24px 60px rgba(89,76,190,0.28)',
+              background: '#f5f2f9',
+              boxShadow: '0 3px 14px rgba(37,35,62,0.04)',
             }}
           >
-            <AuroraBackground colors={['rgba(255,255,255,0.24)', 'rgba(255,255,255,0.10)', 'rgba(240,95,150,0.26)']} blur={60} opacity={0.65} />
             <Box sx={{ position: 'relative', zIndex: 1 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 1 }}>
+            <Box className="db-overview-heading" sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 1 }}>
               <Box>
-                <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontWeight: 800, fontSize: 12, textTransform: 'uppercase' }}>
+                <Typography sx={{ color: '#656578', fontWeight: 600, fontSize: 12, textTransform: 'uppercase' }}>
                   {hasRevenueView ? 'Cash collected this period' : 'Primary Dashboard'}
                 </Typography>
-                <Typography variant="h4" sx={{ color: '#fff', fontWeight: 900, mt: 0.5 }}>
+                <Typography variant="h4" sx={{ color: '#25233e', fontWeight: 650, mt: 0.5 }}>
                   {hasRevenueView ? 'Revenue & Collections' : 'Operational Overview'}
                 </Typography>
               </Box>
-              <Stack direction="row" spacing={1} alignItems="center">
+              <Stack className="db-overview-controls" direction="row" spacing={1} alignItems="center">
                 <Chip
                   label={(
                     <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.9 }}>
-                      <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4ADE80', animation: `${livePulse} 1.8s ease-in-out infinite` }} />
+                      <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#059669' }} />
                       Live system data
                     </Box>
                   )}
-                  sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: '#fff', fontWeight: 800, backdropFilter: 'blur(10px)' }}
+                  sx={{ bgcolor: '#fff', color: '#25233e', fontWeight: 600, backdropFilter: 'none' }}
                 />
                 {renderAnalyticsToggle('overview', 'overview analytics')}
               </Stack>
@@ -815,27 +809,27 @@ const Dashboard = () => {
 
             {hasRevenueView ? (
               overviewHidden ? (
-                <Box sx={{ height: 156, mt: 1.5, borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontWeight: 900 }}>Analytics hidden</Typography>
+                <Box sx={{ height: 156, mt: 1.5, borderRadius: '9px', bgcolor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography sx={{ color: '#656578', fontWeight: 650 }}>Analytics hidden</Typography>
                 </Box>
               ) : (
               <Box sx={{ mt: 1.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, flexWrap: 'wrap' }}>
-                  <Typography sx={{ color: '#fff', fontSize: 40, fontWeight: 950, lineHeight: 1 }}>
+                  <Typography sx={{ color: '#25233e', fontSize: 40, fontWeight: 650, lineHeight: 1 }}>
                     {intelligenceLoading ? '—' : formatMoney(netRevenueMetric?.current ?? revenueTotalCurrent)}
                   </Typography>
                   {netRevenueMetric && (
                     <Chip
                       size="small"
                       label={`${netRevenueMetric.change_percent === null ? 'New' : `${netRevenueMetric.change_percent > 0 ? '+' : ''}${netRevenueMetric.change_percent}%`} vs ${comparisonLabel}`}
-                      sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: '#fff', fontWeight: 900 }}
+                      sx={{ bgcolor: '#fff', color: '#25233e', fontWeight: 650 }}
                     />
                   )}
                 </Box>
-                <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: 12.5, fontWeight: 700, mt: 0.6 }}>
+                <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mt: 0.6 }}>
                   Payments received minus refunds across all invoice streams
                 </Typography>
-                <Box sx={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', mt: 1.6, bgcolor: 'rgba(255,255,255,0.16)' }}>
+                <Box sx={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', mt: 1.6, bgcolor: '#fff' }}>
                   {revenueStreams.filter((stream) => stream.current > 0).map((stream) => (
                     <Box
                       key={stream.stream}
@@ -849,13 +843,13 @@ const Dashboard = () => {
                 <Grid container spacing={1.2} sx={{ mt: 1.4 }}>
                   {revenueStreams.map((stream) => (
                     <Grid item xs={6} sm={3} key={stream.stream}>
-                      <Box sx={{ p: 1.3, borderRadius: '16px', bgcolor: 'rgba(255,255,255,0.13)', backdropFilter: 'blur(12px)' }}>
+                      <Box sx={{ p: 1.3, borderRadius: '7px', bgcolor: '#fff', backdropFilter: 'none' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
                           <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: streamPalette[stream.stream] ?? '#fff', flexShrink: 0 }} />
-                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: 11.5, fontWeight: 800 }}>{stream.label}</Typography>
+                          <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600 }}>{stream.label}</Typography>
                         </Box>
-                        <Typography sx={{ color: '#fff', fontSize: 18, fontWeight: 900, mt: 0.4 }}>{formatMoney(stream.current)}</Typography>
-                        <Typography sx={{ color: stream.delta >= 0 ? '#BBF7D0' : '#FECACA', fontSize: 11, fontWeight: 800 }}>
+                        <Typography sx={{ color: '#25233e', fontSize: 18, fontWeight: 650, mt: 0.4 }}>{formatMoney(stream.current)}</Typography>
+                        <Typography sx={{ color: stream.delta >= 0 ? '#059669' : '#DC2626', fontSize: 12, fontWeight: 600 }}>
                           {stream.delta === 0 ? 'No change' : `${stream.delta > 0 ? '+' : '−'}${formatMoney(Math.abs(stream.delta))}`}
                         </Typography>
                       </Box>
@@ -868,24 +862,24 @@ const Dashboard = () => {
               <>
                 <Box sx={{ height: 156, mt: 1 }}>
                   {summaryLoading ? (
-                    <Skeleton variant="rounded" height={156} sx={{ bgcolor: 'rgba(255,255,255,0.18)', borderRadius: '18px' }} />
+                    <Skeleton variant="rounded" height={156} sx={{ bgcolor: '#fff', borderRadius: '9px' }} />
                   ) : overviewHidden ? (
-                    <Box sx={{ height: '100%', borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontWeight: 900 }}>Analytics hidden</Typography>
+                    <Box sx={{ height: '100%', borderRadius: '9px', bgcolor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Typography sx={{ color: '#656578', fontWeight: 650 }}>Analytics hidden</Typography>
                     </Box>
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={visibleChartData} margin={{ top: 16, right: 12, left: 4, bottom: 0 }}>
                         <defs>
                           <linearGradient id="dashboardArea" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#fff" stopOpacity={0.42} />
-                            <stop offset="95%" stopColor="#fff" stopOpacity={0.04} />
+                            <stop offset="5%" stopColor="#6550bd" stopOpacity={0.42} />
+                            <stop offset="95%" stopColor="#6550bd" stopOpacity={0.04} />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid stroke="rgba(255,255,255,0.16)" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.72)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                        <CartesianGrid stroke="#ddd5e9" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fill: '#656578', fontSize: 12 }} tickLine={false} axisLine={false} />
                         <RechartsTooltip content={<DashboardChartTooltip valueLabel="Records" />} />
-                        <Area type="monotone" dataKey="value" stroke="#FFFFFF" strokeWidth={3} fill="url(#dashboardArea)" />
+                        <Area type="monotone" dataKey="value" stroke="#6550bd" strokeWidth={3} fill="url(#dashboardArea)" />
                       </AreaChart>
                     </ResponsiveContainer>
                   )}
@@ -894,9 +888,9 @@ const Dashboard = () => {
                 <Grid container spacing={1.5} sx={{ mt: 1 }}>
                   {visibleOverviewMetrics.map(({ label, value }) => (
                     <Grid item xs={12} sm={visibleOverviewMetrics.length === 1 ? 12 : 4} key={label}>
-                      <Box sx={{ p: 1.5, borderRadius: '18px', bgcolor: 'rgba(255,255,255,0.13)', backdropFilter: 'blur(12px)' }}>
-                        <Typography sx={{ color: 'rgba(255,255,255,0.68)', fontSize: 12, fontWeight: 700 }}>{label}</Typography>
-                        <Typography sx={{ color: '#fff', fontSize: 28, lineHeight: 1.1, fontWeight: 900 }}>{summaryLoading ? '-' : overviewHidden ? hiddenNumber : <AnimatedNumber value={value} />}</Typography>
+                      <Box sx={{ p: 1.5, borderRadius: '9px', bgcolor: '#fff', backdropFilter: 'none' }}>
+                        <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>{label}</Typography>
+                        <Typography sx={{ color: '#25233e', fontSize: 28, lineHeight: 1.1, fontWeight: 650 }}>{summaryLoading ? '-' : overviewHidden ? hiddenNumber : <AnimatedNumber value={value} />}</Typography>
                       </Box>
                     </Grid>
                   ))}
@@ -912,37 +906,38 @@ const Dashboard = () => {
               return (
               <Grid item xs={12} sm={6} md={3} key={stat.label}>
                 <Card
+                  className="db-stat-card"
                   onClick={() => navigate(stat.path)}
                   sx={{
                     p: 2.2,
                     height: '100%',
                     minHeight: 172,
-                    borderRadius: '22px',
-                    border: '1px solid #EEF0F6',
-                    boxShadow: '0 18px 40px rgba(49,46,129,0.08)',
+                    borderRadius: '10px',
+                    border: '1px solid #e4e1eb',
+                    boxShadow: '0 3px 14px rgba(37,35,62,0.04)',
                     cursor: 'pointer',
                     transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                    '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 24px 50px rgba(49,46,129,0.13)' },
+                    '&:hover': { transform: 'none', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' },
                   }}
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                    <Avatar sx={{ width: 44, height: 44, bgcolor: stat.soft, color: stat.color, borderRadius: '16px' }}>{stat.icon}</Avatar>
+                    <Avatar sx={{ width: 44, height: 44, bgcolor: stat.soft, color: stat.color, borderRadius: '7px' }}>{stat.icon}</Avatar>
                     <Stack direction="row" spacing={0.8} alignItems="center">
                       {renderAnalyticsToggle(`stat-${stat.key}`, `${stat.label} analytics`)}
                       <ArrowForwardIcon sx={{ color: '#CBD5E1', fontSize: 18 }} />
                     </Stack>
                   </Box>
-                  <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 800 }}>{stat.label}</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 13, fontWeight: 600 }}>{stat.label}</Typography>
                   {summaryLoading ? (
                     <Skeleton variant="text" width={72} height={42} />
                   ) : (
-                    <Typography sx={{ color: '#1E1B4B', fontSize: 34, lineHeight: 1, fontWeight: 900, mt: 0.5 }}>{cardHidden ? hiddenNumber : <AnimatedNumber value={stat.value} />}</Typography>
+                    <Typography className="db-stat-value" sx={{ color: '#25233e', fontSize: 34, lineHeight: 1, fontWeight: 650, mt: 0.5 }}>{cardHidden ? hiddenNumber : <AnimatedNumber value={stat.value} />}</Typography>
                   )}
-                  <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700, mt: 0.8 }}>{cardHidden ? 'Analytics hidden' : stat.detail}</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mt: 0.8 }}>{cardHidden ? 'Analytics hidden' : stat.detail}</Typography>
                   <LinearProgress
                     variant="determinate"
                     value={cardHidden ? 0 : Math.min(stat.progress, 100)}
-                    sx={{ mt: 1.6, height: 6, borderRadius: 999, bgcolor: '#EEF2F7', '& .MuiLinearProgress-bar': { bgcolor: stat.color, borderRadius: 999 } }}
+                    sx={{ mt: 1.6, height: 6, borderRadius: 999, bgcolor: '#e4e1eb', '& .MuiLinearProgress-bar': { bgcolor: stat.color, borderRadius: 999 } }}
                   />
                 </Card>
               </Grid>
@@ -956,33 +951,34 @@ const Dashboard = () => {
               return (
               <Grid item xs={12} sm={6} md={3} key={stat.label}>
                 <Card
+                  className="db-stat-card"
                   onClick={() => navigate(stat.path)}
                   sx={{
                     p: 2.2,
                     height: '100%',
                     minHeight: 172,
-                    borderRadius: '22px',
-                    border: '1px solid #EEF0F6',
-                    boxShadow: '0 18px 40px rgba(49,46,129,0.08)',
+                    borderRadius: '10px',
+                    border: '1px solid #e4e1eb',
+                    boxShadow: '0 3px 14px rgba(37,35,62,0.04)',
                     cursor: 'pointer',
                     transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                    '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 24px 50px rgba(49,46,129,0.13)' },
+                    '&:hover': { transform: 'none', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' },
                   }}
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                    <Avatar sx={{ width: 44, height: 44, bgcolor: `${stat.color}18`, color: stat.color, borderRadius: '16px' }}>{stat.icon}</Avatar>
+                    <Avatar sx={{ width: 44, height: 44, bgcolor: `${stat.color}18`, color: stat.color, borderRadius: '7px' }}>{stat.icon}</Avatar>
                     <Stack direction="row" spacing={0.8} alignItems="center">
                       {renderAnalyticsToggle(`compact-${stat.key}`, `${stat.label} analytics`)}
                       <ArrowForwardIcon sx={{ color: '#CBD5E1', fontSize: 18 }} />
                     </Stack>
                   </Box>
-                  <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 800 }}>{stat.label}</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 13, fontWeight: 600 }}>{stat.label}</Typography>
                   {summaryLoading ? (
                     <Skeleton variant="text" width={72} height={42} />
                   ) : (
-                    <Typography sx={{ color: '#1E1B4B', fontSize: 34, lineHeight: 1, fontWeight: 900, mt: 0.5 }}>{cardHidden ? hiddenNumber : <AnimatedNumber value={stat.value} />}</Typography>
+                    <Typography className="db-stat-value" sx={{ color: '#25233e', fontSize: 34, lineHeight: 1, fontWeight: 650, mt: 0.5 }}>{cardHidden ? hiddenNumber : <AnimatedNumber value={stat.value} />}</Typography>
                   )}
-                  <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700, mt: 0.8 }}>{cardHidden ? 'Analytics hidden' : stat.detail}</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mt: 0.8 }}>{cardHidden ? 'Analytics hidden' : stat.detail}</Typography>
                 </Card>
               </Grid>
               )
@@ -991,16 +987,16 @@ const Dashboard = () => {
 
           <Grid container spacing={2.5} sx={{ mt: 0 }}>
             <Grid item xs={12}>
-              <Card sx={{ p: 2.5, minHeight: 300, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+              <Card sx={{ p: 2.5, minHeight: 300, borderRadius: '12px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
                 <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.4, mb: 2 }}>
                   <Box>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 18 }}>Module performance</Typography>
-                    <Typography sx={{ color: '#8B95A7', fontSize: 13, fontWeight: 700, mt: 0.4 }}>
+                    <Typography sx={{ color: '#25233e', fontWeight: 650, fontSize: 18 }}>Module performance</Typography>
+                    <Typography sx={{ color: '#656578', fontSize: 13, fontWeight: 500, mt: 0.4 }}>
                       {activeLens === 'all' ? 'Live operational pipeline and risk across modules' : `${activeLensLabel} performance for the selected period`}
                     </Typography>
                   </Box>
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <TextField select size="small" value={activeLens} onChange={(event) => setFocusModule(event.target.value)} sx={{ minWidth: 190 }}>
+                    <TextField className="db-module-select" SelectProps={{ MenuProps: { PaperProps: { className: 'db-select-menu' } } }} select size="small" value={activeLens} onChange={(event) => setFocusModule(event.target.value)} sx={{ minWidth: 190 }}>
                       {moduleLensOptions.map((option) => (
                         <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                       ))}
@@ -1011,27 +1007,27 @@ const Dashboard = () => {
 
                 {moduleHealthHidden ? (
                   <Box sx={{ minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Typography sx={{ color: '#8B95A7', fontWeight: 900 }}>Analytics hidden</Typography>
+                    <Typography sx={{ color: '#656578', fontWeight: 650 }}>Analytics hidden</Typography>
                   </Box>
                 ) : activeLens === 'all' ? (
                 <>
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={7}>
-                    <Box sx={{ height: 214, borderRadius: '22px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7', p: 1.5 }}>
+                    <Box sx={{ height: 214, borderRadius: '10px', bgcolor: '#f8f7fa', border: '1px solid #e4e1eb', p: 1.5 }}>
                       {summaryLoading ? (
-                        <Skeleton variant="rounded" height="100%" sx={{ borderRadius: '18px' }} />
+                        <Skeleton variant="rounded" height="100%" sx={{ borderRadius: '9px' }} />
                       ) : moduleHealthHidden || visiblePipelineItems.length === 0 ? (
                         <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', px: 2 }}>
-                          <Typography sx={{ color: '#8B95A7', fontWeight: 900 }}>
+                          <Typography sx={{ color: '#656578', fontWeight: 650 }}>
                             {moduleHealthHidden ? 'Analytics hidden' : 'No module chart data for this role'}
                           </Typography>
                         </Box>
                       ) : (
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={visiblePipelineItems} margin={{ top: 12, right: 8, left: -22, bottom: 8 }}>
-                            <CartesianGrid stroke="#E8ECF4" vertical={false} />
+                            <CartesianGrid stroke="#e4e1eb" vertical={false} />
                             <XAxis dataKey="label" hide />
-                            <YAxis allowDecimals={false} tick={{ fill: '#A3ADBD', fontSize: 10 }} tickLine={false} axisLine={false} />
+                            <YAxis allowDecimals={false} tick={{ fill: '#777084', fontSize: 12 }} tickLine={false} axisLine={false} />
                             <RechartsTooltip cursor={{ fill: 'rgba(113,97,216,0.06)' }} content={<DashboardChartTooltip />} />
                             <Bar dataKey="value" radius={[10, 10, 4, 4]}>
                               {visiblePipelineItems.map((entry) => (
@@ -1047,7 +1043,7 @@ const Dashboard = () => {
                         <Grid item xs={6} key={item.label}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
                             <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: item.color, flexShrink: 0 }} />
-                            <Typography sx={{ color: '#6B7280', fontSize: 11, fontWeight: 800, lineHeight: 1.2 }}>
+                            <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>
                               {item.label}: {summaryLoading ? '-' : moduleHealthHidden ? hiddenNumber : item.value}
                             </Typography>
                           </Box>
@@ -1057,19 +1053,19 @@ const Dashboard = () => {
                   </Grid>
 
                   <Grid item xs={12} md={5}>
-                    <Box sx={{ height: 214, borderRadius: '22px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7', p: 1.5, position: 'relative' }}>
+                    <Box sx={{ height: 214, borderRadius: '10px', bgcolor: '#f8f7fa', border: '1px solid #e4e1eb', p: 1.5, position: 'relative' }}>
                       {summaryLoading ? (
-                        <Skeleton variant="rounded" height="100%" sx={{ borderRadius: '18px' }} />
+                        <Skeleton variant="rounded" height="100%" sx={{ borderRadius: '9px' }} />
                       ) : moduleHealthHidden ? (
                         <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Typography sx={{ color: '#8B95A7', fontWeight: 900 }}>Analytics hidden</Typography>
+                          <Typography sx={{ color: '#656578', fontWeight: 650 }}>Analytics hidden</Typography>
                         </Box>
                       ) : (
                         <>
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
-                                data={riskTotal > 0 ? visibleRiskMix : [{ name: 'Clear', value: 1, color: '#E8ECF4' }]}
+                                data={riskTotal > 0 ? visibleRiskMix : [{ name: 'Clear', value: 1, color: '#e4e1eb' }]}
                                 dataKey="value"
                                 nameKey="name"
                                 innerRadius="58%"
@@ -1077,7 +1073,7 @@ const Dashboard = () => {
                                 paddingAngle={4}
                                 stroke="none"
                               >
-                                {(riskTotal > 0 ? visibleRiskMix : [{ name: 'Clear', value: 1, color: '#E8ECF4' }]).map((entry) => (
+                                {(riskTotal > 0 ? visibleRiskMix : [{ name: 'Clear', value: 1, color: '#e4e1eb' }]).map((entry) => (
                                   <Cell key={entry.name} fill={entry.color} />
                                 ))}
                               </Pie>
@@ -1086,8 +1082,8 @@ const Dashboard = () => {
                           </ResponsiveContainer>
                           <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                             <Box sx={{ textAlign: 'center' }}>
-                              <Typography sx={{ color: '#1E1B4B', fontSize: 30, lineHeight: 1, fontWeight: 900 }}><AnimatedNumber value={riskTotal} /></Typography>
-                              <Typography sx={{ color: '#8B95A7', fontSize: 11, fontWeight: 800 }}>risk items</Typography>
+                              <Typography sx={{ color: '#25233e', fontSize: 30, lineHeight: 1, fontWeight: 650 }}><AnimatedNumber value={riskTotal} /></Typography>
+                              <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600 }}>risk items</Typography>
                             </Box>
                           </Box>
                         </>
@@ -1102,7 +1098,7 @@ const Dashboard = () => {
                       key={item.name}
                       label={`${item.name}: ${summaryLoading ? '-' : moduleHealthHidden ? hiddenNumber : item.value}`}
                       size="small"
-                      sx={{ bgcolor: `${item.color}14`, color: item.color, fontWeight: 900 }}
+                      sx={{ bgcolor: `${item.color}14`, color: item.color, fontWeight: 650 }}
                     />
                   ))}
                 </Stack>
@@ -1111,14 +1107,14 @@ const Dashboard = () => {
                 <Box>
                   {focusMetric && focusMetricKey && (
                     <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.4, flexWrap: 'wrap', mb: 1.8 }}>
-                      <Typography sx={{ color: '#8B95A7', fontSize: 12.5, fontWeight: 800 }}>{focusMetricLabels[focusMetricKey]}</Typography>
-                      <Typography sx={{ color: '#1E1B4B', fontSize: 30, fontWeight: 950, lineHeight: 1 }}>
+                      <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600 }}>{focusMetricLabels[focusMetricKey]}</Typography>
+                      <Typography sx={{ color: '#25233e', fontSize: 30, fontWeight: 650, lineHeight: 1 }}>
                         {focusMetricKey === 'net_revenue' ? formatMoney(focusMetric.current) : focusMetric.current.toLocaleString()}
                       </Typography>
                       <Chip
                         size="small"
                         label={`${focusMetric.change_percent === null ? 'New' : `${focusMetric.change_percent > 0 ? '+' : ''}${focusMetric.change_percent}%`} vs ${comparisonLabel}`}
-                        sx={{ bgcolor: focusMetric.direction === 'down' ? '#FEF2F2' : '#ECFDF5', color: focusMetric.direction === 'down' ? '#DC2626' : '#059669', fontWeight: 900 }}
+                        sx={{ bgcolor: focusMetric.direction === 'down' ? '#FEF2F2' : '#ECFDF5', color: focusMetric.direction === 'down' ? '#DC2626' : '#059669', fontWeight: 650 }}
                       />
                     </Box>
                   )}
@@ -1126,9 +1122,9 @@ const Dashboard = () => {
                   <Grid container spacing={1.5}>
                     {focusStats.map((item) => (
                       <Grid item xs={6} sm={4} key={item.label}>
-                        <Box sx={{ p: 1.6, borderRadius: '18px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
-                          <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 800 }}>{item.label}</Typography>
-                          <Typography sx={{ color: '#1E1B4B', fontSize: 24, fontWeight: 950, mt: 0.3 }}>{summaryLoading ? '-' : <AnimatedNumber value={item.value} />}</Typography>
+                        <Box sx={{ p: 1.6, borderRadius: '9px', bgcolor: '#f8f7fa', border: '1px solid #e4e1eb' }}>
+                          <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600 }}>{item.label}</Typography>
+                          <Typography sx={{ color: '#25233e', fontSize: 24, fontWeight: 650, mt: 0.3 }}>{summaryLoading ? '-' : <AnimatedNumber value={item.value} />}</Typography>
                         </Box>
                       </Grid>
                     ))}
@@ -1136,17 +1132,17 @@ const Dashboard = () => {
 
                   {focusRevenueStreams.length > 0 && (
                     <Box sx={{ mt: focusStats.length > 0 ? 2 : 0 }}>
-                      <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 800, mb: 0.8 }}>Collected this period</Typography>
+                      <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600, mb: 0.8 }}>Collected this period</Typography>
                       <Grid container spacing={1.2}>
                         {focusRevenueStreams.map((stream) => (
                           <Grid item xs={6} sm={focusRevenueStreams.length === 1 ? 6 : 3} key={stream.stream}>
-                            <Box sx={{ p: 1.4, borderRadius: '16px', border: `1px solid ${streamPalette[stream.stream] ?? '#E2E8F0'}22`, bgcolor: `${streamPalette[stream.stream] ?? '#64748B'}0D` }}>
+                            <Box sx={{ p: 1.4, borderRadius: '7px', border: `1px solid ${streamPalette[stream.stream] ?? '#e4e1eb'}22`, bgcolor: `${streamPalette[stream.stream] ?? '#656578'}0D` }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
-                                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: streamPalette[stream.stream] ?? '#64748B', flexShrink: 0 }} />
-                                <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 800 }}>{stream.label}</Typography>
+                                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: streamPalette[stream.stream] ?? '#656578', flexShrink: 0 }} />
+                                <Typography sx={{ color: '#25233e', fontSize: 12, fontWeight: 600 }}>{stream.label}</Typography>
                               </Box>
-                              <Typography sx={{ color: '#1E1B4B', fontSize: 18, fontWeight: 900, mt: 0.3 }}>{formatMoney(stream.current)}</Typography>
-                              <Typography sx={{ color: stream.delta >= 0 ? '#059669' : '#DC2626', fontSize: 11, fontWeight: 800 }}>
+                              <Typography sx={{ color: '#25233e', fontSize: 18, fontWeight: 650, mt: 0.3 }}>{formatMoney(stream.current)}</Typography>
+                              <Typography sx={{ color: stream.delta >= 0 ? '#059669' : '#DC2626', fontSize: 12, fontWeight: 600 }}>
                                 {stream.delta === 0 ? 'No change' : `${stream.delta > 0 ? '+' : '−'}${formatMoney(Math.abs(stream.delta))} vs ${comparisonLabel}`}
                               </Typography>
                             </Box>
@@ -1158,18 +1154,18 @@ const Dashboard = () => {
 
                   <Stack spacing={1} sx={{ mt: 2 }}>
                     {focusAlerts.length === 0 ? (
-                      <Box sx={{ p: 1.6, borderRadius: '16px', bgcolor: '#ECFDF5', border: '1px solid #D1FAE5' }}>
-                        <Typography sx={{ color: '#047857', fontSize: 12.5, fontWeight: 900 }}>No open risks for {activeLensLabel.toLowerCase()}.</Typography>
+                      <Box sx={{ p: 1.6, borderRadius: '7px', bgcolor: '#ECFDF5', border: '1px solid #D1FAE5' }}>
+                        <Typography sx={{ color: '#047857', fontSize: 12, fontWeight: 650 }}>No open risks for {activeLensLabel.toLowerCase()}.</Typography>
                       </Box>
                     ) : focusAlerts.map((alert) => {
                       const color = alert.severity === 'critical' ? '#DC2626' : alert.severity === 'warning' ? '#D97706' : '#2563EB'
                       return (
-                        <Box key={alert.key} onClick={() => navigate(alert.route)} sx={{ p: 1.5, borderRadius: '16px', bgcolor: `${color}08`, border: `1px solid ${color}20`, cursor: 'pointer', '&:hover': { bgcolor: `${color}10` } }}>
+                        <Box key={alert.key} onClick={() => navigate(alert.route)} sx={{ p: 1.5, borderRadius: '7px', bgcolor: `${color}08`, border: `1px solid ${color}20`, cursor: 'pointer', '&:hover': { bgcolor: `${color}10` } }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography sx={{ flex: 1, color: '#1E1B4B', fontSize: 12.5, fontWeight: 900 }}>{alert.title}</Typography>
-                            <Chip label={alert.count} size="small" sx={{ bgcolor: `${color}14`, color, fontWeight: 950, height: 24 }} />
+                            <Typography sx={{ flex: 1, color: '#25233e', fontSize: 12, fontWeight: 650 }}>{alert.title}</Typography>
+                            <Chip label={alert.count} size="small" sx={{ bgcolor: `${color}14`, color, fontWeight: 650, height: 24 }} />
                           </Box>
-                          <Typography sx={{ color: '#7C8799', fontSize: 11, fontWeight: 700, mt: 0.5 }}>{alert.detail}</Typography>
+                          <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mt: 0.5 }}>{alert.detail}</Typography>
                         </Box>
                       )
                     })}
@@ -1181,50 +1177,51 @@ const Dashboard = () => {
           </Grid>
         </Grid>
 
-        <Grid item xs={12} lg={3.6}>
+        <Grid className="db-side-column" item xs={12} lg={3.6}>
           <Stack spacing={2.5}>
-            <Card sx={{ p: 2.5, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+            <Card sx={{ p: 2.5, borderRadius: '12px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                <Avatar sx={{ bgcolor: '#FFF7ED', color: '#EA580C', borderRadius: '14px' }}><NotificationsActiveIcon /></Avatar>
+                <Avatar sx={{ bgcolor: '#FFF7ED', color: '#EA580C', borderRadius: '7px' }}><NotificationsActiveIcon /></Avatar>
                 <Box sx={{ flex: 1 }}>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 18 }}>Operational Alerts</Typography>
-                  <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>Refreshes automatically</Typography>
+                  <Typography sx={{ color: '#25233e', fontWeight: 650, fontSize: 18 }}>Operational Alerts</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>Refreshes automatically</Typography>
                 </Box>
-                <Chip label={`${intelligence?.alerts.length || 0} active`} size="small" sx={{ bgcolor: '#FFF7ED', color: '#C2410C', fontWeight: 900 }} />
+                <Chip label={`${intelligence?.alerts.length || 0} active`} size="small" sx={{ bgcolor: '#FFF7ED', color: '#C2410C', fontWeight: 650 }} />
               </Box>
               <Stack spacing={1.1} sx={{ mt: 2 }}>
-                {intelligenceLoading && Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} variant="rounded" height={76} sx={{ borderRadius: '16px' }} />)}
+                {intelligenceLoading && Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} variant="rounded" height={76} sx={{ borderRadius: '7px' }} />)}
                 {!intelligenceLoading && (intelligence?.alerts.length || 0) === 0 && (
-                  <Box sx={{ p: 1.8, borderRadius: '17px', bgcolor: '#ECFDF5', border: '1px solid #D1FAE5' }}>
-                    <Typography sx={{ color: '#047857', fontSize: 13, fontWeight: 900 }}>No active operational alerts.</Typography>
+                  <Box sx={{ p: 1.8, borderRadius: '9px', bgcolor: '#ECFDF5', border: '1px solid #D1FAE5' }}>
+                    <Typography sx={{ color: '#047857', fontSize: 13, fontWeight: 650 }}>No active operational alerts.</Typography>
                   </Box>
                 )}
                 {!intelligenceLoading && intelligence?.alerts.slice(0, 5).map((alert) => {
                   const color = alert.severity === 'critical' ? '#DC2626' : alert.severity === 'warning' ? '#D97706' : '#2563EB'
                   return (
-                    <Box key={alert.key} onClick={() => navigate(alert.route)} sx={{ p: 1.5, borderRadius: '17px', bgcolor: `${color}08`, border: `1px solid ${color}20`, cursor: 'pointer', '&:hover': { bgcolor: `${color}10` } }}>
+                    <Box key={alert.key} onClick={() => navigate(alert.route)} sx={{ p: 1.5, borderRadius: '9px', bgcolor: `${color}08`, border: `1px solid ${color}20`, cursor: 'pointer', '&:hover': { bgcolor: `${color}10` } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ flex: 1, color: '#1E1B4B', fontSize: 12.5, fontWeight: 900 }}>{alert.title}</Typography>
-                        <Chip label={alert.count} size="small" sx={{ bgcolor: `${color}14`, color, fontWeight: 950, height: 24 }} />
+                        <Typography sx={{ flex: 1, color: '#25233e', fontSize: 12, fontWeight: 650 }}>{alert.title}</Typography>
+                        <Chip label={alert.count} size="small" sx={{ bgcolor: `${color}14`, color, fontWeight: 650, height: 24 }} />
                       </Box>
-                      <Typography sx={{ color: '#7C8799', fontSize: 11, fontWeight: 700, mt: 0.6, lineHeight: 1.4 }}>{alert.detail}</Typography>
+                      <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mt: 0.6, lineHeight: 1.4 }}>{alert.detail}</Typography>
                     </Box>
                   )
                 })}
               </Stack>
             </Card>
 
-            <Card sx={{ p: 2.5, borderRadius: '28px', border: '1px solid #EDE9FE', background: 'linear-gradient(145deg, #FFFFFF 0%, #F8F5FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+            <Card sx={{ p: 2.5, borderRadius: '12px', border: '1px solid #EDE9FE', background: '#f5f2f9', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                <Avatar sx={{ bgcolor: '#EEEAFE', color: '#7C3AED', borderRadius: '14px' }}><AutoAwesomeIcon /></Avatar>
+                <Avatar sx={{ bgcolor: '#f1edf8', color: '#6550bd', borderRadius: '7px' }}><AutoAwesomeIcon /></Avatar>
                 <Box sx={{ flex: 1 }}>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 18 }}>AI Business Analysis</Typography>
-                  <Typography sx={{ color: '#8B95A7', fontSize: 11.5, fontWeight: 700 }}>
+                  <Typography sx={{ color: '#25233e', fontWeight: 650, fontSize: 18 }}>AI Business Analysis</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>
                     {activeLens === 'all' ? 'Aggregated metrics, all modules' : `Focused on ${activeLensLabel}`}
                   </Typography>
                 </Box>
               </Box>
               <TextField
+                SelectProps={{ MenuProps: { PaperProps: { className: 'db-select-menu' } } }}
                 select
                 size="small"
                 fullWidth
@@ -1239,17 +1236,17 @@ const Dashboard = () => {
               </TextField>
               {aiAnalysis ? (
                 <Box sx={{ mt: 1.8 }}>
-                  <Typography sx={{ color: '#5B42C5', fontSize: 14, fontWeight: 950, lineHeight: 1.4 }}>{aiAnalysis.headline}</Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, mt: 0.7, lineHeight: 1.55 }}>{aiAnalysis.summary}</Typography>
+                  <Typography sx={{ color: '#6550bd', fontSize: 14, fontWeight: 650, lineHeight: 1.4 }}>{aiAnalysis.headline}</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mt: 0.7, lineHeight: 1.55 }}>{aiAnalysis.summary}</Typography>
 
                   {aiAnalysis.positives.length > 0 && (
                     <>
                       <Typography sx={AI_SECTION_LABEL}>Strengths</Typography>
                       <Stack spacing={0.7}>
                         {aiAnalysis.positives.map((item, index) => (
-                          <Box key={`pos-${index}`} sx={{ display: 'flex', gap: 0.9, alignItems: 'flex-start', p: 1.1, borderRadius: '14px', bgcolor: '#F0FDF4', border: '1px solid #DCFCE7' }}>
+                          <Box key={`pos-${index}`} sx={{ display: 'flex', gap: 0.9, alignItems: 'flex-start', p: 1.1, borderRadius: '7px', bgcolor: '#F0FDF4', border: '1px solid #DCFCE7' }}>
                             <TrendingUpIcon sx={{ fontSize: 16, color: '#059669', mt: '1px', flexShrink: 0 }} />
-                            <Typography sx={{ color: '#065F46', fontSize: 11.5, fontWeight: 800, lineHeight: 1.4 }}>{item}</Typography>
+                            <Typography sx={{ color: '#065F46', fontSize: 12, fontWeight: 600, lineHeight: 1.4 }}>{item}</Typography>
                           </Box>
                         ))}
                       </Stack>
@@ -1261,9 +1258,9 @@ const Dashboard = () => {
                       <Typography sx={AI_SECTION_LABEL}>Risks</Typography>
                       <Stack spacing={0.7}>
                         {aiAnalysis.risks.map((item, index) => (
-                          <Box key={`risk-${index}`} sx={{ display: 'flex', gap: 0.9, alignItems: 'flex-start', p: 1.1, borderRadius: '14px', bgcolor: '#FEF2F2', border: '1px solid #FEE2E2' }}>
+                          <Box key={`risk-${index}`} sx={{ display: 'flex', gap: 0.9, alignItems: 'flex-start', p: 1.1, borderRadius: '7px', bgcolor: '#FEF2F2', border: '1px solid #FEE2E2' }}>
                             <WarningAmberIcon sx={{ fontSize: 16, color: '#DC2626', mt: '1px', flexShrink: 0 }} />
-                            <Typography sx={{ color: '#991B1B', fontSize: 11.5, fontWeight: 800, lineHeight: 1.4 }}>{item}</Typography>
+                            <Typography sx={{ color: '#991B1B', fontSize: 12, fontWeight: 600, lineHeight: 1.4 }}>{item}</Typography>
                           </Box>
                         ))}
                       </Stack>
@@ -1276,17 +1273,17 @@ const Dashboard = () => {
                       <Stack spacing={0.9}>
                         {aiAnalysis.actions.map((action, index) => (
                           <Box key={`${action}-${index}`} sx={{ display: 'flex', gap: 0.9, alignItems: 'flex-start' }}>
-                            <Box sx={{ width: 19, height: 19, borderRadius: '7px', bgcolor: '#EEEAFE', color: '#7C3AED', fontSize: 11, fontWeight: 950, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, mt: '1px' }}>{index + 1}</Box>
-                            <Typography sx={{ color: '#475569', fontSize: 11.5, fontWeight: 750, lineHeight: 1.45 }}>{action}</Typography>
+                            <Box sx={{ width: 19, height: 19, borderRadius: '7px', bgcolor: '#f1edf8', color: '#6550bd', fontSize: 12, fontWeight: 650, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, mt: '1px' }}>{index + 1}</Box>
+                            <Typography sx={{ color: '#25233e', fontSize: 12, fontWeight: 500, lineHeight: 1.45 }}>{action}</Typography>
                           </Box>
                         ))}
                       </Stack>
                     </>
                   )}
-                  {!aiAnalysis.available && <Chip label="Calculated fallback" size="small" sx={{ mt: 1.5, bgcolor: '#F1F5F9', color: '#64748B', fontWeight: 850 }} />}
+                  {!aiAnalysis.available && <Chip label="Calculated fallback" size="small" sx={{ mt: 1.5, bgcolor: '#f3f1f7', color: '#656578', fontWeight: 600 }} />}
                 </Box>
               ) : (
-                <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, mt: 1.8, lineHeight: 1.55 }}>
+                <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mt: 1.8, lineHeight: 1.55 }}>
                   Generate a concise explanation of trajectory, risks, and recommended next actions for the selected period.
                 </Typography>
               )}
@@ -1296,24 +1293,24 @@ const Dashboard = () => {
                 startIcon={<AutoAwesomeIcon />}
                 disabled={!dashboardDatesValid || aiAnalysisLoading}
                 onClick={() => generateAiAnalysis()}
-                sx={{ mt: 1.8, borderRadius: '13px', fontWeight: 900, boxShadow: 'none', background: 'linear-gradient(135deg, #7257D8, #E44F92)' }}
+                sx={{ mt: 1.8, borderRadius: '7px', fontWeight: 650, boxShadow: 'none', background: '#6550bd' }}
               >
                 {aiAnalysisLoading ? 'Analyzing...' : aiAnalysis ? 'Refresh analysis' : 'Generate analysis'}
               </Button>
             </Card>
 
-            <Card sx={{ p: 2.5, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+            <Card sx={{ p: 2.5, borderRadius: '12px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}>
                 <Box>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 18 }}>Focus Queue</Typography>
-                  <Typography sx={{ color: '#8B95A7', fontSize: 13, fontWeight: 700, mt: 0.5 }}>Items needing attention today</Typography>
+                  <Typography sx={{ color: '#25233e', fontWeight: 650, fontSize: 18 }}>Focus Queue</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 13, fontWeight: 500, mt: 0.5 }}>Items needing attention today</Typography>
                 </Box>
                 {renderAnalyticsToggle('focus-queue', 'focus queue analytics')}
               </Box>
               <Stack spacing={1.3} sx={{ mt: 2.2 }}>
                 {visibleFocusItems.length === 0 && (
-                  <Box sx={{ p: 1.8, borderRadius: '18px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
-                    <Typography sx={{ color: '#8B95A7', fontSize: 13, fontWeight: 800 }}>No focus items for this role.</Typography>
+                  <Box sx={{ p: 1.8, borderRadius: '9px', bgcolor: '#f8f7fa', border: '1px solid #e4e1eb' }}>
+                    <Typography sx={{ color: '#656578', fontSize: 13, fontWeight: 600 }}>No focus items for this role.</Typography>
                   </Box>
                 )}
                 {visibleFocusItems.map((item) => (
@@ -1322,19 +1319,19 @@ const Dashboard = () => {
                     onClick={() => navigate(item.path)}
                     sx={{
                       p: 1.6,
-                      borderRadius: '18px',
-                      bgcolor: '#F8FAFC',
-                      border: '1px solid #EEF2F7',
+                      borderRadius: '9px',
+                      bgcolor: '#f8f7fa',
+                      border: '1px solid #e4e1eb',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 1.4,
                       cursor: 'pointer',
-                      '&:hover': { bgcolor: '#F3F4F8' },
+                      '&:hover': { bgcolor: '#f1edf8' },
                     }}
                     >
-                      <Avatar sx={{ width: 38, height: 38, bgcolor: `${item.color}14`, color: item.color, borderRadius: '14px' }}>{item.icon}</Avatar>
-                      <Typography sx={{ flex: 1, color: '#374151', fontSize: 13, fontWeight: 800 }}>{item.label}</Typography>
-                    <Typography sx={{ color: item.color, fontSize: 22, fontWeight: 900 }}>{summaryLoading ? '-' : focusHidden ? hiddenNumber : <AnimatedNumber value={item.value} />}</Typography>
+                      <Avatar sx={{ width: 38, height: 38, bgcolor: `${item.color}14`, color: item.color, borderRadius: '7px' }}>{item.icon}</Avatar>
+                      <Typography sx={{ flex: 1, color: '#25233e', fontSize: 13, fontWeight: 600 }}>{item.label}</Typography>
+                    <Typography sx={{ color: item.color, fontSize: 22, fontWeight: 650 }}>{summaryLoading ? '-' : focusHidden ? hiddenNumber : <AnimatedNumber value={item.value} />}</Typography>
                   </Box>
                 ))}
               </Stack>
@@ -1344,9 +1341,9 @@ const Dashboard = () => {
         </Grid>
 
         <Grid item xs={12}>
-          <Card sx={{ p: { xs: 2, md: 2.7 }, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 19 }}>Quick Actions</Typography>
-            <Typography sx={{ color: '#8B95A7', fontSize: 12.5, fontWeight: 700, mb: 2.2 }}>Jump into common daily workflows</Typography>
+          <Card className="db-quick-actions" sx={{ p: { xs: 2, md: 2.7 }, borderRadius: '12px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
+            <Typography sx={{ color: '#25233e', fontWeight: 650, fontSize: 19 }}>Quick Actions</Typography>
+            <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mb: 2.2 }}>Jump into common daily workflows</Typography>
             <Grid container spacing={1.6}>
               {visibleQuickActions.map((action) => (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={action.label}>
@@ -1355,21 +1352,21 @@ const Dashboard = () => {
                     sx={{
                       p: 1.6,
                       height: '100%',
-                      borderRadius: '18px',
+                      borderRadius: '9px',
                       bgcolor: '#fff',
-                      border: '1px solid #EEF2F7',
+                      border: '1px solid #e4e1eb',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 1.4,
                       cursor: 'pointer',
                       transition: 'background 0.2s ease, box-shadow 0.2s ease',
-                      '&:hover': { bgcolor: '#F8FAFC', boxShadow: '0 10px 24px rgba(49,46,129,0.06)' },
+                      '&:hover': { bgcolor: '#f8f7fa', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' },
                     }}
                   >
-                    <Avatar sx={{ width: 40, height: 40, bgcolor: '#F0EDFF', color: '#6757D8', borderRadius: '14px' }}>{action.icon}</Avatar>
+                    <Avatar sx={{ width: 40, height: 40, bgcolor: '#f1edf8', color: '#6550bd', borderRadius: '7px' }}>{action.icon}</Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{action.label}</Typography>
-                      <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 700 }}>{action.detail}</Typography>
+                      <Typography sx={{ color: '#25233e', fontWeight: 650 }}>{action.label}</Typography>
+                      <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>{action.detail}</Typography>
                     </Box>
                     <ArrowForwardIcon sx={{ color: '#CBD5E1', fontSize: 18 }} />
                   </Box>
@@ -1380,18 +1377,18 @@ const Dashboard = () => {
         </Grid>
 
         <Grid item xs={12}>
-            <Card sx={{ p: { xs: 2, md: 2.7 }, borderRadius: '28px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+            <Card className="db-activity" sx={{ p: { xs: 2, md: 2.7 }, borderRadius: '12px', border: '1px solid #e4e1eb', boxShadow: '0 3px 14px rgba(37,35,62,0.04)' }}>
               <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.4, mb: 2.2 }}>
-                <Avatar sx={{ bgcolor: '#F0EDFF', color: '#6757D8', borderRadius: '14px' }}><HistoryIcon /></Avatar>
+                <Avatar sx={{ bgcolor: '#f1edf8', color: '#6550bd', borderRadius: '7px' }}><HistoryIcon /></Avatar>
                 <Box sx={{ flex: 1 }}>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 19 }}>{isSuperAdmin ? 'System Activity' : 'Recent Activity'}</Typography>
-                  <Typography sx={{ color: '#8B95A7', fontSize: 12.5, fontWeight: 700 }}>
+                  <Typography sx={{ color: '#25233e', fontWeight: 650, fontSize: 19 }}>{isSuperAdmin ? 'System Activity' : 'Recent Activity'}</Typography>
+                  <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>
                     {isSuperAdmin ? 'Read-only audit trail across all users and system events' : 'Read-only history of activity performed by your account'}
                   </Typography>
                 </Box>
                 <Chip
                   label={`${activityTotal.toLocaleString()} ${logData?.scope === 'global' ? 'global' : 'personal'} events`}
-                  sx={{ bgcolor: '#F0EDFF', color: '#6757D8', fontWeight: 900 }}
+                  sx={{ bgcolor: '#f1edf8', color: '#6550bd', fontWeight: 650 }}
                 />
               </Box>
 
@@ -1403,11 +1400,12 @@ const Dashboard = () => {
                     value={activitySearchInput}
                     onChange={(event) => setActivitySearchInput(event.target.value)}
                     placeholder="Search user, module, action, or record"
-                    InputProps={{ startAdornment: <SearchIcon sx={{ color: '#94A3B8', fontSize: 20, mr: 1 }} /> }}
+                    InputProps={{ startAdornment: <SearchIcon sx={{ color: '#777084', fontSize: 20, mr: 1 }} /> }}
                   />
                 </Grid>
                 <Grid item xs={12} sm={4} md={2}>
                   <TextField
+                    SelectProps={{ MenuProps: { PaperProps: { className: 'db-select-menu' } } }}
                     select
                     fullWidth
                     size="small"
@@ -1470,7 +1468,7 @@ const Dashboard = () => {
                       setActivityTo('')
                       setActivityPage(1)
                     }}
-                    sx={{ minHeight: 40, borderRadius: '12px', fontWeight: 850 }}
+                    sx={{ minHeight: 40, borderRadius: '12px', fontWeight: 600 }}
                   >
                     Clear filters
                   </Button>
@@ -1478,19 +1476,19 @@ const Dashboard = () => {
               </Grid>
 
               {!activityDatesValid ? (
-                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
-                  <Typography sx={{ color: '#C2410C', fontSize: 13, fontWeight: 850 }}>The From date must be before or equal to the To date.</Typography>
+                <Box sx={{ p: 2, borderRadius: '7px', bgcolor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+                  <Typography sx={{ color: '#C2410C', fontSize: 13, fontWeight: 600 }}>The From date must be before or equal to the To date.</Typography>
                 </Box>
               ) : logsLoading ? (
-                <Stack spacing={1}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} variant="rounded" height={76} sx={{ borderRadius: '16px' }} />)}</Stack>
+                <Stack spacing={1}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} variant="rounded" height={76} sx={{ borderRadius: '7px' }} />)}</Stack>
               ) : logsError ? (
-                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
-                  <Typography sx={{ color: '#B91C1C', fontSize: 13, fontWeight: 850 }}>System activity could not be loaded. Please refresh and try again.</Typography>
+                <Box sx={{ p: 2, borderRadius: '7px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <Typography sx={{ color: '#B91C1C', fontSize: 13, fontWeight: 600 }}>System activity could not be loaded. Please refresh and try again.</Typography>
                 </Box>
               ) : logs.length === 0 ? (
-                <Box sx={{ py: 4, textAlign: 'center', borderRadius: '18px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                <Box sx={{ py: 4, textAlign: 'center', borderRadius: '9px', bgcolor: '#f8f7fa', border: '1px solid #e4e1eb' }}>
                   <HistoryIcon sx={{ color: '#CBD5E1', fontSize: 34 }} />
-                  <Typography sx={{ color: '#64748B', fontWeight: 850, mt: 0.8 }}>No activity matches these filters.</Typography>
+                  <Typography sx={{ color: '#656578', fontWeight: 600, mt: 0.8 }}>No activity matches these filters.</Typography>
                 </Box>
               ) : (
                 <Stack spacing={1}>
@@ -1507,18 +1505,18 @@ const Dashboard = () => {
                           flexDirection: { xs: 'column', md: 'row' },
                           gap: { xs: 1.2, md: 1.6 },
                           p: 1.5,
-                          borderRadius: '18px',
-                          bgcolor: '#F8FAFC',
-                          border: '1px solid #EEF2F7',
+                          borderRadius: '9px',
+                          bgcolor: '#f8f7fa',
+                          border: '1px solid #e4e1eb',
                         }}
                       >
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, width: { xs: '100%', md: 190 }, flexShrink: 0 }}>
-                          <Avatar sx={{ width: 38, height: 38, bgcolor: '#EEEAFE', color: '#6757D8', fontSize: 14, fontWeight: 950 }}>
+                          <Avatar sx={{ width: 38, height: 38, bgcolor: '#f1edf8', color: '#6550bd', fontSize: 14, fontWeight: 650 }}>
                             {actor.charAt(0).toUpperCase()}
                           </Avatar>
                           <Box sx={{ minWidth: 0 }}>
-                            <Typography noWrap sx={{ color: '#1E1B4B', fontSize: 13, fontWeight: 900 }}>{actor}</Typography>
-                            <Typography sx={{ color: '#94A3B8', fontSize: 10.5, fontWeight: 750 }}>User activity</Typography>
+                            <Typography noWrap sx={{ color: '#25233e', fontSize: 13, fontWeight: 650 }}>{actor}</Typography>
+                            <Typography sx={{ color: '#777084', fontSize: 12, fontWeight: 500 }}>User activity</Typography>
                           </Box>
                         </Box>
 
@@ -1527,29 +1525,29 @@ const Dashboard = () => {
                             <Chip
                               label={log.action.replace(/_/g, ' ')}
                               size="small"
-                              sx={{ height: 23, bgcolor: colors.bg, color: colors.color, fontSize: 10, fontWeight: 900 }}
+                              sx={{ height: 23, bgcolor: colors.bg, color: colors.color, fontSize: 12, fontWeight: 650 }}
                             />
                             <Chip
                               label={entityLabel(log.table_name)}
                               size="small"
                               variant="outlined"
-                              sx={{ height: 23, borderColor: '#E2E8F0', color: '#64748B', fontSize: 10, fontWeight: 850 }}
+                              sx={{ height: 23, borderColor: '#e4e1eb', color: '#656578', fontSize: 12, fontWeight: 600 }}
                             />
                             {log.record_id > 0 && (
-                              <Typography sx={{ color: '#94A3B8', fontSize: 10.5, fontWeight: 750 }}>Record #{log.record_id}</Typography>
+                              <Typography sx={{ color: '#777084', fontSize: 12, fontWeight: 500 }}>Record #{log.record_id}</Typography>
                             )}
                           </Box>
-                          <Typography sx={{ color: '#1E1B4B', fontSize: 13, fontWeight: 900 }}>{activityTitle(log)}</Typography>
+                          <Typography sx={{ color: '#25233e', fontSize: 13, fontWeight: 650 }}>{activityTitle(log)}</Typography>
                           {details.length > 0 && (
-                            <Tooltip title={details.join(' · ')} placement="top-start">
-                              <Typography noWrap sx={{ color: '#7C8799', fontSize: 11.5, fontWeight: 700, mt: 0.35 }}>
+                            <Tooltip slotProps={{ tooltip: { className: 'db-tooltip' } }} title={details.join(' · ')} placement="top-start">
+                              <Typography noWrap sx={{ color: '#656578', fontSize: 12, fontWeight: 500, mt: 0.35 }}>
                                 {details.slice(0, 2).join(' · ')}
                               </Typography>
                             </Tooltip>
                           )}
                         </Box>
 
-                        <Typography sx={{ color: '#64748B', fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
                           {safeFormatDate(log.timestamp)}
                         </Typography>
                       </Box>
@@ -1560,7 +1558,7 @@ const Dashboard = () => {
 
               {activityDatesValid && !logsLoading && !logsError && activityTotal > 0 && (
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.2, mt: 2 }}>
-                  <Typography sx={{ color: '#8B95A7', fontSize: 12, fontWeight: 750 }}>
+                  <Typography sx={{ color: '#656578', fontSize: 12, fontWeight: 500 }}>
                     Showing {((activityPage - 1) * ACTIVITY_PAGE_SIZE) + 1}–{Math.min(activityPage * ACTIVITY_PAGE_SIZE, activityTotal)} of {activityTotal.toLocaleString()}
                   </Typography>
                   <Pagination

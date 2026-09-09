@@ -1,0 +1,90 @@
+/* Dashboard-only presentation. Do not apply these tokens to the application shell. */
+.medrad-dashboard {
+  --db-ink: #25233e;
+  --db-muted: #656578;
+  --db-purple: #6550bd;
+  --db-line: #e4e1eb;
+  padding: 24px;
+  border-radius: 12px;
+  background: #fcfbf9;
+  color: var(--db-ink);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.medrad-dashboard :is(.MuiTypography-root, .MuiButtonBase-root, .MuiInputBase-root, .MuiInputLabel-root, .MuiChip-root) {
+  font-family: inherit;
+}
+.medrad-dashboard :is(.MuiGrid-item, .MuiStack-root) { min-width: 0; }
+.medrad-dashboard .MuiTypography-root { overflow-wrap: anywhere; }
+.medrad-dashboard .MuiCard-root { padding: 24px; border-radius: 12px; }
+.medrad-dashboard .db-stat-card { padding: 20px; }
+.medrad-dashboard .db-stat-value { font-variant-numeric: tabular-nums; letter-spacing: -.045em; }
+.medrad-dashboard .MuiChip-root { max-width: 100%; border-radius: 6px; font-size: 12px; font-weight: 500; }
+.medrad-dashboard .MuiChip-label { padding-inline: 9px; }
+.medrad-dashboard .MuiAvatar-root { flex-shrink: 0; }
+
+.medrad-dashboard .MuiButton-root {
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: none;
+  box-shadow: none;
+  transition: background-color .15s, border-color .15s;
+}
+.medrad-dashboard .MuiButton-root:hover { transform: none; box-shadow: none; }
+.medrad-dashboard .MuiButton-contained { background: var(--db-purple); color: #fff; }
+.medrad-dashboard .MuiButton-contained:hover { background: #503c9b; }
+.medrad-dashboard .MuiButton-contained.Mui-disabled { background: #e4deef; color: #74658e; }
+.medrad-dashboard .MuiButton-outlined { color: var(--db-purple); border: 1px solid #d6d0e4; background: #fff; }
+.medrad-dashboard .MuiButton-outlined:hover { border-color: #baaed8; background: #f1edf8; }
+.medrad-dashboard .MuiButton-outlined.Mui-disabled { color: #96909f; border-color: var(--db-line); background: #f8f7fa; }
+.medrad-dashboard .MuiIconButton-root { border-radius: 7px; }
+.medrad-dashboard .MuiIconButton-root:hover { transform: none; }
+.medrad-dashboard .MuiButtonBase-root:focus-visible { outline: 3px solid #8869de; outline-offset: 3px; }
+
+.medrad-dashboard .MuiOutlinedInput-root { min-height: 44px; border-radius: 7px; color: var(--db-ink); font-size: 13px; box-shadow: none; }
+.medrad-dashboard .MuiOutlinedInput-notchedOutline { border-color: #d6d0e4; }
+.medrad-dashboard .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: #baaed8; }
+.medrad-dashboard .MuiOutlinedInput-root.Mui-focused { box-shadow: 0 0 0 3px #6550bd12; }
+.medrad-dashboard .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: var(--db-purple); }
+.medrad-dashboard .MuiInputLabel-root { color: var(--db-muted); font-weight: 500; }
+.medrad-dashboard .MuiInputLabel-root.Mui-focused { color: var(--db-purple); }
+.medrad-dashboard .MuiPaginationItem-root { border-radius: 6px; }
+.medrad-dashboard .MuiPaginationItem-root.Mui-selected { color: var(--db-purple); background: #eee9f7; }
+.medrad-dashboard .recharts-wrapper { font-family: inherit; }
+
+.medrad-dashboard .db-period-controls { flex-wrap: wrap; }
+.medrad-dashboard .db-period-intro { flex-basis: 100%; }
+.medrad-dashboard .db-overview-heading { flex-wrap: wrap; align-items: flex-start; }
+.medrad-dashboard .db-overview-controls { flex-shrink: 0; }
+.medrad-dashboard .db-overview .MuiTypography-h4 { font-size: clamp(22px, 2.3vw, 30px); letter-spacing: -.045em; }
+.medrad-dashboard .db-activity .MuiGrid-item > .MuiBox-root { max-width: 100%; }
+
+/* Selects/tooltips render through portals, so tag only this page's popup surfaces. */
+.db-select-menu.MuiPaper-root { border: 1px solid #e4e1eb; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px #25233e14; }
+.db-select-menu .MuiMenuItem-root { font-family: Inter, system-ui, sans-serif; font-size: 13px; color: #25233e; }
+.db-select-menu .MuiMenuItem-root.Mui-selected { background: #f1edf8; color: #6550bd; }
+.db-select-menu .MuiMenuItem-root:hover { background: #f8f7fa; }
+.db-tooltip.MuiTooltip-tooltip { border-radius: 6px; padding: 8px 12px; background: #29233c; color: #fff; font: 12px/1.6 Inter, system-ui, sans-serif; }
+
+@media (max-width: 1199px) {
+  .medrad-dashboard { padding: 20px; }
+  .medrad-dashboard .db-period-controls { flex-direction: row; align-items: center; }
+  .medrad-dashboard .db-period-controls > .MuiStack-root { flex-basis: 100%; }
+  .medrad-dashboard .db-period-controls > .MuiFormControl-root { flex: 1 1 155px; min-width: 0; }
+}
+@media (max-width: 899px) {
+  .medrad-dashboard { padding: 16px; }
+  .medrad-dashboard .MuiCard-root { padding: 20px; }
+}
+@media (max-width: 599px) {
+  .medrad-dashboard { padding: 10px; border-radius: 10px; }
+  .medrad-dashboard .MuiCard-root { padding: 16px; }
+  .medrad-dashboard .db-period-controls > .MuiFormControl-root { flex-basis: 100%; width: 100%; }
+  .medrad-dashboard .db-module-select { min-width: 0; max-width: 100%; }
+  .medrad-dashboard .MuiOutlinedInput-root { font-size: 16px; }
+  .medrad-dashboard .db-activity .MuiPagination-ul { flex-wrap: wrap; justify-content: center; row-gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .medrad-dashboard :is(.MuiButtonBase-root, .MuiCard-root, .MuiOutlinedInput-root) { transition: none; }
+}
