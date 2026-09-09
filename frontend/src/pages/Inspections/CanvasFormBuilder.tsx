@@ -10,6 +10,7 @@ import {
   MenuItem,
   Radio,
   RadioGroup,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -222,6 +223,28 @@ function makeTableCell(type: CanvasElementType = 'label'): TableCell {
 function makeTableCells(rows: number, cols: number): TableCell[][] {
   return Array.from({ length: rows }, () => Array.from({ length: cols }, () => makeTableCell()))
 }
+
+/**
+ * Where a cell's controls sit across it.
+ *
+ * Alignment used to reach only the label text, so a tick box stayed hard
+ * left however the alignment was set -- which made a Pass column with a
+ * box in the middle of it impossible to build. Table cells only: the
+ * standalone canvas elements are laid out by hand and are not affected.
+ */
+const cellJustify = (cell: TableCell) =>
+  cell.align === 'center' ? 'center' : cell.align === 'right' ? 'flex-end' : 'flex-start'
+
+/**
+ * A checkbox or radio cell with no options is a bare control.
+ *
+ * The columns on an inspection sheet are Test / Pass / Fail / N/A, and
+ * the cells under them hold a box and nothing else -- the heading above
+ * already says what ticking it means. Printing "Option 1" beside every
+ * one of them is noise on a form somebody has to read at arm's length.
+ */
+const isBareControl = (cell: TableCell) =>
+  (cell.type === 'radio' || cell.type === 'checkbox') && !cell.options?.length
 
 const spanOf = (cell: TableCell) => ({
   rows: Math.max(1, cell.rowSpan ?? 1),
@@ -892,12 +915,11 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   }
 
   const changeCellType = (cellId: string, type: CanvasElementType) => {
-    const patch: Partial<TableCell> = { type }
-    if ((type === 'radio' || type === 'checkbox') && !selectedCell?.options?.length) {
-      patch.options = type === 'radio' ? ['Yes', 'No'] : ['Option 1']
-      patch.optionLayout = 'horizontal'
-    }
-    updateTableCell(cellId, patch)
+    // No options are seeded any more. Inside a table the overwhelmingly
+    // common case is a bare tick box under a Pass or Fail heading, and a
+    // cell that arrived carrying "Option 1" had to be emptied by hand
+    // every single time. Adding labels is one click in the panel.
+    updateTableCell(cellId, { type })
   }
 
   // ── element rendering ──────────────────────
@@ -1114,6 +1136,11 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
+                    // Stretched, so the row of controls inside fills the
+                    // cell and can centre itself within it. Without this it
+                    // shrinks to its content and sits against the left edge
+                    // whatever alignment was chosen.
+                    alignItems: 'stretch',
                     minWidth: 0,
                   }}
                 >
@@ -1659,6 +1686,26 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
 
             {(selectedCell.type === 'radio' || selectedCell.type === 'checkbox') && (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                {/* A cell under a Pass or Fail heading wants the box and
+                    nothing else; the heading already says what ticking it
+                    means. Turning this off restores a labelled list. */}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={!(selectedCell.options?.length)}
+                      onChange={e => updateTableCell(selectedCell.id, {
+                        options: e.target.checked
+                          ? []
+                          : (selectedCell.type === 'radio' ? ['Yes', 'No'] : ['Option 1']),
+                        optionLayout: selectedCell.optionLayout ?? 'horizontal',
+                      })}
+                    />
+                  }
+                  label={<Typography sx={{ fontSize: 12, fontWeight: 700 }}>Just the box</Typography>}
+                  sx={{ m: 0 }}
+                />
+                {Boolean(selectedCell.options?.length) && (
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography sx={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>Options</Typography>
                   <ToggleButtonGroup
@@ -1671,6 +1718,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                     <ToggleButton value="vertical"   sx={{ px: 1.5, fontSize: 10 }}>V</ToggleButton>
                   </ToggleButtonGroup>
                 </Box>
+                )}
                 {(selectedCell.options ?? []).map((opt, i) => (
                   <Box key={i} sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
                     <TextField
@@ -1687,7 +1735,9 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                     <IconButton
                       size="small"
                       onClick={() => updateTableCell(selectedCell.id, { options: (selectedCell.options ?? []).filter((_, idx) => idx !== i) })}
-                      disabled={selectedCell.type === 'radio' && (selectedCell.options?.length ?? 0) <= 1}
+                      // Removable down to none: emptying the list is how a
+                      // cell becomes the single unlabelled box the column
+                      // heading already explains.
                       sx={{ color: '#DC2626', p: 0.5 }}
                     >
                       <DeleteIcon sx={{ fontSize: 16 }} />
@@ -1700,7 +1750,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                   onClick={() => updateTableCell(selectedCell.id, { options: [...(selectedCell.options ?? []), `Option ${(selectedCell.options?.length ?? 0) + 1}`] })}
                   sx={{ alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700, fontSize: 12 }}
                 >
-                  Add option
+                  {selectedCell.options?.length ? 'Add option' : 'Add a labelled option'}
                 </Button>
               </Box>
             )}
@@ -2201,14 +2251,32 @@ function renderTableCellPreview(cell: TableCell, isHeader: boolean) {
       )
     case 'radio':
     case 'checkbox': {
-      const opts = cell.options?.length ? cell.options : ['Option']
+      const bare = isBareControl(cell)
+      const opts = cell.options ?? []
+      const mark = (
+        <Box sx={{
+          width: bare ? 13 : 10, height: bare ? 13 : 10,
+          border: '1.5px solid #6B7280',
+          borderRadius: cell.type === 'radio' ? '50%' : '2px',
+          flexShrink: 0,
+        }} />
+      )
       return (
-        <Box>
+        <Box sx={{ width: '100%' }}>
           {cell.label && <Typography sx={{ ...textSx, mb: 0.25 }}>{cell.label}</Typography>}
-          <Box sx={{ display: 'flex', flexDirection: cell.optionLayout === 'vertical' ? 'column' : 'row', flexWrap: 'wrap', gap: 0.5 }}>
-            {opts.map((o, i) => (
+          <Box sx={{
+            display: 'flex',
+            flexDirection: cell.optionLayout === 'vertical' && !bare ? 'column' : 'row',
+            flexWrap: 'wrap',
+            gap: 0.5,
+            // The alignment the cell was given, finally applied to the
+            // controls and not just to the words above them.
+            justifyContent: cellJustify(cell),
+            alignItems: 'center',
+          }}>
+            {bare ? mark : opts.map((o, i) => (
               <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                <Box sx={{ width: 10, height: 10, border: '1.5px solid #6B7280', borderRadius: cell.type === 'radio' ? '50%' : '2px', flexShrink: 0 }} />
+                {mark}
                 <Typography sx={{ fontSize: 10, color: '#374151', userSelect: 'none' }}>{o}</Typography>
               </Box>
             ))}
@@ -2281,7 +2349,21 @@ function renderTableCellField(
         </Box>
       )
     case 'radio': {
-      const opts = cell.options?.length ? cell.options : ['Yes', 'No']
+      // No options means the cell is one bare control, ticked or not,
+      // the way a Pass column on a paper sheet works.
+      if (isBareControl(cell)) {
+        return (
+          <Box sx={{ display: 'flex', justifyContent: cellJustify(cell), alignItems: 'center', width: '100%' }}>
+            <Radio
+              size="small"
+              disabled={readOnly}
+              checked={val === true || val === 'true'}
+              onClick={() => !readOnly && set(!(val === true || val === 'true'))}
+            />
+          </Box>
+        )
+      }
+      const opts = cell.options ?? []
       return (
         <Box>
           {cell.label && <Typography sx={{ ...textSx, mb: 0.25 }}>{cell.label}</Typography>}
@@ -2289,7 +2371,7 @@ function renderTableCellField(
             row={cell.optionLayout !== 'vertical'}
             value={typeof val === 'string' ? val : ''}
             onChange={e => !readOnly && set(e.target.value)}
-            sx={{ flexWrap: 'wrap', gap: 0.25 }}
+            sx={{ flexWrap: 'wrap', gap: 0.25, justifyContent: cellJustify(cell) }}
           >
             {opts.map(opt => (
               <FormControlLabel
@@ -2305,12 +2387,24 @@ function renderTableCellField(
       )
     }
     case 'checkbox': {
-      const opts = cell.options?.length ? cell.options : ['Option']
+      if (isBareControl(cell)) {
+        return (
+          <Box sx={{ display: 'flex', justifyContent: cellJustify(cell), alignItems: 'center', width: '100%' }}>
+            <Checkbox
+              size="small"
+              disabled={readOnly}
+              checked={val === true}
+              onChange={e => !readOnly && set(e.target.checked)}
+            />
+          </Box>
+        )
+      }
+      const opts = cell.options ?? []
       const checked: string[] = Array.isArray(val) ? val : []
       return (
         <Box>
           {cell.label && <Typography sx={{ ...textSx, mb: 0.25 }}>{cell.label}</Typography>}
-          <Box sx={{ display: 'flex', flexDirection: cell.optionLayout === 'vertical' ? 'column' : 'row', flexWrap: 'wrap', gap: 0.25 }}>
+          <Box sx={{ display: 'flex', flexDirection: cell.optionLayout === 'vertical' ? 'column' : 'row', flexWrap: 'wrap', gap: 0.25, justifyContent: cellJustify(cell) }}>
             {opts.map(opt => (
               <FormControlLabel
                 key={opt}
@@ -2387,6 +2481,7 @@ function renderViewerTable(
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'center',
+              alignItems: 'stretch',
               minWidth: 0,
             }}
           >

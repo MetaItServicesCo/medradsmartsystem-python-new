@@ -652,14 +652,15 @@ const optionMark = (shape: string) =>
     shape === 'checkbox' ? '2px' : '50%'
   };vertical-align:middle;flex:none"></span>`
 
-const optionsHtml = (options: string[], shape: string, vertical = false) => {
+const optionsHtml = (options: string[], shape: string, vertical = false, align = 'left') => {
   const items = (options.length ? options : ['Option'])
     .map(option =>
       `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#334155">${optionMark(shape)}${esc(option)}</span>`)
     .join('')
+  const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'
   return `<div style="display:flex;flex-wrap:wrap;gap:${vertical ? '3px' : '4px 10px'};flex-direction:${
     vertical ? 'column' : 'row'
-  }">${items}</div>`
+  };justify-content:${justify}">${items}</div>`
 }
 
 const fieldLabel = (label: unknown, align = 'left') => {
@@ -797,7 +798,15 @@ const blankCanvasTableHtml = (element: any): string => {
           if (!cell) inner = ''
           else if (cell.type === 'label' || cell.type === 'heading') inner = esc(cell.label || '')
           else if (cell.type === 'radio' || cell.type === 'checkbox') {
-            inner = fieldLabel(cell.label, cell.align) + optionsHtml(cell.options || [], cell.type, cell.optionLayout === 'vertical')
+            // No options means one bare control, centred the way the cell was
+            // aligned -- a Pass column on a printed sheet is a box to tick and
+            // nothing else, because the heading above says what it means.
+            inner = (cell.options || []).length
+              ? fieldLabel(cell.label, cell.align)
+                + optionsHtml(cell.options, cell.type, cell.optionLayout === 'vertical', cell.align)
+              : `<div style="display:flex;justify-content:${
+                  cell.align === 'center' ? 'center' : cell.align === 'right' ? 'flex-end' : 'flex-start'
+                }">${optionMark(cell.type)}</div>`
           } else if (cell.type === 'signature') {
             inner = `<div style="border:1px dashed #9CA3AF;border-radius:4px;height:26px"></div>`
           } else {
