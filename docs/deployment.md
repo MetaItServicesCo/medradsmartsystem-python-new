@@ -134,41 +134,72 @@ later change `POSTGRES_DB`, an existing volume will not be renamed.
 
 ---
 
-## 5. Run the migrations
+## 5. Build the schema
 
-**Nothing runs Alembic for you.** No container, no entrypoint. This is a
-deliberate manual step, and on a fresh database it is also the only correct
-one.
+**Nothing runs Alembic for you.** No container, no entrypoint. And on a fresh
+database you should not run the migration chain at all.
 
-```bash
-docker compose run --rm backend alembic upgrade head
+### Why not `alembic upgrade head`
+
+The chain is 56 migrations accumulated by a predecessor system, and it does not
+survive a clean run. `c1d2e3f4a5b6` calls `sa.inspect(bind).get_columns(
+"quotation_payments")` on a table that **no migration ever creates** — it only
+ever existed because `create_all()` made it on machines where that had run. The
+chain has been relied on to top up databases that `create_all` had already
+built, so gaps like this were never exposed. A genuinely empty database finds
+them immediately:
+
+```
+sqlalchemy.exc.NoSuchTableError: quotation_payments
 ```
 
-Expect a long run — the chain is 56 migrations from empty to head, finishing at
-`q2b3c4d5e6f7`. Confirm:
+That history also describes a different product. For a new deployment it is
+archaeology, not an asset.
+
+### Build from the models instead
 
 ```bash
-docker compose run --rm backend alembic current
+docker compose run --rm backend python -c "
+import app.models
+from app.db.base import Base, engine
+Base.metadata.create_all(bind=engine)
+print('tables created:', len(Base.metadata.tables))
+"
 ```
 
-### Why `RUN_STARTUP_MIGRATIONS` must stay false
+Importing `app.models` matters: it is the package `__init__` that registers all
+106 tables. Do **not** use `RUN_STARTUP_MIGRATIONS` to do this — `auto_migrate.
+py` imports only a subset of models and would silently skip all 21 facilities
+tables.
 
-The application also carries `app/auto_migrate.py`, a `Base.metadata.
-create_all()` followed by a long list of best-effort `ALTER TABLE ADD COLUMN`
-statements wrapped in `try/except: pass`. It runs at startup when
-`RUN_STARTUP_MIGRATIONS=true`.
+Then set the Alembic baseline:
 
-If it runs, it builds tables behind Alembic's back. `alembic_version` then
-records a revision that does not describe the schema, and the next
-`alembic upgrade head` dies on the first table `create_all` already made. The
-development database this feature was built against had drifted exactly that
-way — 79 tables against a version marker 46 revisions old, unrecoverable
-without stamping past migrations that had never actually been verified.
+```bash
+docker compose run --rm backend alembic stamp head
+```
 
-On a new server you get to avoid that entirely. Leave the flag false and let
-Alembic own the schema.
+Not to pretend the migrations ran, but so migrations you write *from here on*
+have a starting point. Without it, the next `upgrade` tries all 56 from scratch.
 
----
+### Seed the demonstration data
+
+`create_all` gives you tables, not rows — including the nine disciplines that
+the facilities migration would have inserted. The seed script puts those back
+along with a worked hospital:
+
+```bash
+docker compose run --rm backend python scripts/seed_demo.py
+```
+
+It is idempotent, keyed on the facility name, so running it twice is safe.
+
+### Keep `RUN_STARTUP_MIGRATIONS` false
+
+`app/auto_migrate.py` is a `create_all()` followed by best-effort `ALTER TABLE
+ADD COLUMN` statements wrapped in `try/except: pass`, and it runs at startup
+when that flag is true. Letting it run turns schema management into a race
+between two mechanisms. Build the schema deliberately, once, with the command
+above.
 
 ## 6. Build and start the application
 
