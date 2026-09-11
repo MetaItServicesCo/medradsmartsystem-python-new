@@ -24,7 +24,9 @@ from app.models.facility_document import FacilityDocument
 from app.models.equipment import Equipment
 from app.models.audit_log import AuditLog
 from app.utils.logging import log_activity
-from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
+from app.utils.facility_access import (
+    is_facility_scoped_user, require_facility_access, scope_query_to_user_facilities,
+)
 from app.utils.permissions import require_module_permission
 from app.utils.list_search import contains_ci, normalize_list_search, predicates_for_field, value_contains_ci
 from app.utils.upload_security import protected_upload_path
@@ -803,6 +805,18 @@ def create_facility(
     except IntegrityError as error:
         _raise_facility_name_conflict(db, error)
     _sync_facility_tiers(db, facility, tier_ids)
+    # Assign the creator to the site they just made. Without this a facility
+    # admin registers a hospital and then cannot open it — the scoping added
+    # for technicians and facility roles filters it straight back out, and the
+    # symptom is a site that exists but is invisible to the person who made it.
+    if is_facility_scoped_user(current_user):
+        already = db.query(UserFacility).filter(
+            UserFacility.user_id == current_user.id,
+            UserFacility.facility_id == facility.id,
+        ).first()
+        if not already:
+            db.add(UserFacility(user_id=current_user.id, facility_id=facility.id))
+
     db.commit()
     db.refresh(facility)
     audit_data = facility_in.model_dump()

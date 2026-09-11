@@ -182,6 +182,61 @@ def test_hr_is_deliberately_not_scoped():
     print(f"ok  HR is organisation-wide by decision ({len(hr_tables)} tables)")
 
 
+def test_registering_a_site_assigns_its_creator():
+    """A facility admin who registers a hospital must be able to open it.
+
+    Without the assignment the site exists and is invisible to the person who
+    just made it — the scoping filters it straight back out, and the symptom
+    reads as "creation failed" rather than "you have no access".
+    """
+    db, a, b, people = build()
+    admin = User(username="fac_admin", email="fa@x.c", full_name="Facility Admin",
+                 hashed_password="x", user_type=UserType.EMPLOYEE,
+                 role=UserRole.FACILITY_ADMIN, facility_id=a.id)
+    db.add(admin)
+    db.flush()
+    db.add(UserFacility(user_id=admin.id, facility_id=a.id))
+    db.flush()
+
+    fresh = Facility(name="Hospital C", phone="1", email="c@x.c", address="1",
+                     city="X", state="GA", zip_code="1", country="USA")
+    db.add(fresh)
+    db.flush()
+    assert fresh.id not in get_user_facility_ids(db, admin), "precondition"
+
+    # What the endpoint now does on create.
+    db.add(UserFacility(user_id=admin.id, facility_id=fresh.id))
+    db.flush()
+
+    assert fresh.id in get_user_facility_ids(db, admin)
+    visible = scope_query_to_user_facilities(
+        db.query(Facility), Facility.id, db, admin,
+    ).all()
+    assert fresh.id in {f.id for f in visible}, "created a site it cannot open"
+    db.close()
+    print("ok  registering a site assigns its creator")
+
+
+def test_a_user_created_in_a_site_belongs_to_it():
+    """Creating somebody from inside a hospital scopes them to it."""
+    db, a, b, people = build()
+    starter = User(username="newstarter", email="ns@x.c", full_name="New Starter",
+                   hashed_password="x", user_type=UserType.EMPLOYEE,
+                   role=UserRole.TECHNICIAN, facility_id=a.id)
+    db.add(starter)
+    db.flush()
+    db.add(UserFacility(user_id=starter.id, facility_id=a.id))
+    db.flush()
+
+    assert get_user_facility_ids(db, starter) == {a.id}
+    seen = scope_query_to_user_facilities(
+        db.query(Fixture), Fixture.facility_id, db, starter,
+    ).all()
+    assert {f.facility_id for f in seen} == {a.id}, "sees a hospital they are not in"
+    db.close()
+    print("ok  a person created inside a site belongs to that site")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

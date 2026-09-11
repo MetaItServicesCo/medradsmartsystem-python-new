@@ -28,6 +28,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import PeopleIcon from '@mui/icons-material/People'
 import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1'
 import { toast } from 'react-toastify'
+import CreateUserModal from '@/pages/Users/CreateUserModal'
 import { assignFacilityManagerRole, fetchFacilityManagerCandidates, fetchFacilityUsers, type FacilityUser } from '@/api/facilityUsers'
 import { type Facility } from '@/api/facilities'
 import { useAuthStore } from '@/stores/authStore'
@@ -55,6 +56,11 @@ const getAvatarColor = (name: string) =>
   avatarColors[name.charCodeAt(0) % avatarColors.length]
 
 const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
+  // This panel could only ever attach somebody who already existed. A new
+  // starter at this hospital had to be created from the organisation-wide
+  // Users screen and then assigned back here, which is two screens and a
+  // facility dropdown to answer a question the context already knows.
+  const [addOpen, setAddOpen] = useState(false)
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.user)
   const isSuperAdmin = currentUser?.role === 'superadmin'
@@ -98,6 +104,7 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
   const candidateUsers = candidateUsersData?.items ?? []
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden' } }}>
       <Box sx={{
         background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.ink} 100%)`,
@@ -112,12 +119,22 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
         </Box>
         <Box sx={{ flex: 1 }}>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-            Facility Managers
+            People here
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)' }}>
-            {facility ? `Facility admins and managers attached to ${facility.name}` : 'Select a facility to view its managers'}
+            {facility ? `Assigned to ${facility.name}` : 'Select a site to see who works in it'}
           </Typography>
         </Box>
+        {facility && (
+          <Button
+            size="small" variant="contained" startIcon={<PersonAddAlt1Icon />}
+            onClick={() => setAddOpen(true)}
+            sx={{ fontWeight: 900, borderRadius: '10px', bgcolor: '#fff', color: palette.brand,
+                  '&:hover': { bgcolor: palette.brandTint } }}
+          >
+            Add a person
+          </Button>
+        )}
         <IconButton onClick={onClose} sx={{ color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.12)' } }}>
           <CloseIcon />
         </IconButton>
@@ -261,6 +278,17 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
         </TableContainer>
       </DialogContent>
     </Dialog>
+
+    {addOpen && facility && (
+      <CreateUserModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        // The hospital is already known, so the form does not ask. It shows
+        // the site read-only and assigns on save.
+        facilityContext={{ id: facility.id, name: facility.name }}
+      />
+    )}
+    </>
   )
 }
 
