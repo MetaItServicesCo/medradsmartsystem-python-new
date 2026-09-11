@@ -30,9 +30,11 @@ from app.core.security import get_password_hash  # noqa: E402
 from app.models.user import User, UserType, UserRole  # noqa: E402
 from app.models.facility import Facility  # noqa: E402
 from app.models.department import Department  # noqa: E402
-from app.models.modality import Modality  # noqa: E402
-from app.models.equipment import Equipment  # noqa: E402
-from app.models.service_request import ServiceRequest  # noqa: E402
+from app.models.modality import Modality, ModalityCategory  # noqa: E402
+from app.models.equipment import Equipment, EquipmentStatus  # noqa: E402
+from app.models.service_request import (  # noqa: E402
+    ServiceRequest, Priority, ServiceRequestStatus,
+)
 from app.models.discipline import Discipline, UserDiscipline  # noqa: E402
 from app.models.location import Location  # noqa: E402
 from app.models.space_status import SpaceStatus  # noqa: E402
@@ -397,13 +399,15 @@ def main() -> None:
 
         # ── Assets ──────────────────────────────────────────────────────────
         modalities = {}
+        PLANT = ModalityCategory.TREATMENT
         for mod_name, category in (
-            ("Chiller", "Mechanical"), ("Air Handling Unit", "Mechanical"),
-            ("Boiler", "Mechanical"), ("Generator", "Electrical"),
-            ("Switchgear", "Electrical"), ("Elevator", "Vertical Transport"),
-            ("Fire Pump", "Fire & Life Safety"),
-            ("Medical Gas Manifold", "Medical Gas"),
-            ("CT Scanner", "Imaging"), ("Ventilator", "Respiratory"),
+            ("Chiller", PLANT), ("Air Handling Unit", PLANT),
+            ("Boiler", PLANT), ("Generator", PLANT),
+            ("Switchgear", PLANT), ("Elevator", PLANT),
+            ("Fire Pump", PLANT),
+            ("Medical Gas Manifold", ModalityCategory.TREATMENT),
+            ("CT Scanner", ModalityCategory.IMAGING),
+            ("Ventilator", ModalityCategory.PATIENT_MONITORING),
         ):
             mod = Modality(name=mod_name, category=category,
                            inspection_frequency_days=365)
@@ -426,7 +430,7 @@ def main() -> None:
                 salvage_value=Decimal(cost) * Decimal("0.05"),
                 cost=Decimal(cost), acquisition_date=installed,
                 installation_date=installed, purchase_date=installed,
-                status="active", capital_equipment="yes",
+                status=EquipmentStatus.ACTIVE, capital_equipment="yes",
                 warranty_expiration=installed + timedelta(days=365 * 2),
             )
             db.add(asset)
@@ -752,41 +756,41 @@ def main() -> None:
             "WO-2026-1001",
             "Socket at head of bed on the anaesthesia side is dead in OR-2. "
             "Confirmed with a second device.",
-            "high", "assigned", location=rooms["OR-2"], discipline="electrical",
+            Priority.HIGH, ServiceRequestStatus.ASSIGNED, location=rooms["OR-2"], discipline="electrical",
             tech=tech_elec,
         )
         add_request(
             "WO-2026-1002",
             "AHU-2 supply fan bearing noise, rising over the last week.",
-            "critical", "in_progress", location=rooms["MECH-B1"], asset=ahu2,
+            Priority.CRITICAL, ServiceRequestStatus.IN_PROGRESS, location=rooms["MECH-B1"], asset=ahu2,
             discipline="mechanical", tech=tech_mech,
         )
         add_request(
             "WO-2026-1003",
             "OR-4 differential pressure reading negative to corridor.",
-            "critical", "in_progress", location=rooms["OR-4"],
+            Priority.CRITICAL, ServiceRequestStatus.IN_PROGRESS, location=rooms["OR-4"],
             discipline="mechanical", tech=tech_mech,
         )
         add_request(
             "WO-2026-1004",
             "Room 308 bathroom tap will not shut off fully.",
-            "medium", "new", location=rooms["308"], discipline="plumbing",
+            Priority.MEDIUM, ServiceRequestStatus.NEW, location=rooms["308"], discipline="plumbing",
         )
         add_request(
             "WO-2026-1005",
             "Nurse call station in ICU-5 intermittently unresponsive.",
-            "high", "new", location=rooms["ICU-5"], discipline="it_low_voltage",
+            Priority.HIGH, ServiceRequestStatus.NEW, location=rooms["ICU-5"], discipline="it_low_voltage",
         )
         add_request(
             "WO-2026-1006",
             "Quarterly ventilator preventive maintenance.",
-            "medium", "completed", location=rooms["ICU-3"],
+            Priority.MEDIUM, ServiceRequestStatus.COMPLETED, location=rooms["ICU-3"],
             discipline="biomedical", tech=tech_bio, wo_type="preventive",
         )
         add_request(
             "WO-2026-1007",
             "ELEV-2 door reopens twice before closing on the third floor.",
-            "medium", "waiting_for_vendor_repair", location=main_bldg,
+            Priority.MEDIUM, ServiceRequestStatus.WAITING_FOR_VENDOR_REPAIR, location=main_bldg,
             discipline="vertical_transport",
         )
 
