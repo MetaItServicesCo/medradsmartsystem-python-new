@@ -1,7 +1,7 @@
 from typing import Optional, List
 from datetime import date, datetime
 from decimal import Decimal
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class EquipmentBase(BaseModel):
@@ -9,7 +9,7 @@ class EquipmentBase(BaseModel):
     make: str
     model: str
     serial_number: str
-    modality_id: int
+    modality_id: Optional[int] = None
     facility_id: int
     tier_id: Optional[int] = None
     inspection_form_id: Optional[int] = None
@@ -76,7 +76,21 @@ class EquipmentBase(BaseModel):
 
 
 class EquipmentCreate(EquipmentBase):
-    pass
+    @model_validator(mode="after")
+    def needs_a_classification(self):
+        """One of modality or discipline, not both and not neither.
+
+        A ventilator is classified clinically; a lift is classified by trade.
+        Leaving both empty produces an asset that no maintenance programme,
+        dispatch rule or depreciation default can reason about, which is worse
+        than refusing it.
+        """
+        if self.modality_id is None and self.discipline_id is None:
+            raise ValueError(
+                "Give the asset either a modality (clinical equipment) or a "
+                "discipline (plant and MEP)."
+            )
+        return self
 
 
 class EquipmentUpdate(BaseModel):

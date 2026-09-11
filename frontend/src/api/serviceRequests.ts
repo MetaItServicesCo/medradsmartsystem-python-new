@@ -352,7 +352,15 @@ export interface ServiceRequest {
 
 export interface ServiceRequestCreate {
   facility_id: number
-  equipment_id: number
+  // Optional since the MEP work: a fault can be raised against a room with no
+  // asset behind it. The backend has accepted that since the facilities
+  // migration; this interface had not caught up.
+  equipment_id?: number | null
+  location_id?: number | null
+  discipline_id?: number | null
+  work_order_type?: string
+  assigned_vendor_id?: number | null
+  takes_space_out_of_service?: boolean
   problem_description: string
   service_required?: string
   preferred_datetime?: string | null
@@ -405,6 +413,8 @@ export interface ServiceRequestListParams {
   status?: string
   priority?: string
   facility_id?: number
+  equipment_id?: number
+  location_id?: number
   search?: string
   search_field?: string
   status_group?: 'new_open' | 'active' | 'completed'

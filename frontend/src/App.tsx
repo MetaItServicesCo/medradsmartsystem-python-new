@@ -36,6 +36,7 @@ const Vendors = lazyWithReload(() => import('./pages/Vendors'))
 const Permits = lazyWithReload(() => import('./pages/Permits'))
 const Compliance = lazyWithReload(() => import('./pages/Compliance'))
 const Maintenance = lazyWithReload(() => import('./pages/Maintenance'))
+const Assets = lazyWithReload(() => import('./pages/Assets'))
 const AssetLedger = lazyWithReload(() => import('./pages/AssetLedger'))
 
 const RouteFallback = () => (
@@ -152,6 +153,7 @@ function App() {
           <Route path="permits/*" element={<ProtectedPage module="permits"><Permits /></ProtectedPage>} />
           <Route path="compliance/*" element={<ProtectedPage module="compliance"><Compliance /></ProtectedPage>} />
           <Route path="maintenance/*" element={<ProtectedPage module="maintenance"><Maintenance /></ProtectedPage>} />
+          <Route path="assets/*" element={<ProtectedPage module="facility-inventory"><Assets /></ProtectedPage>} />
           <Route path="asset-ledger/*" element={<ProtectedPage module="facility-inventory"><AssetLedger /></ProtectedPage>} />
         </Route>
       </Routes>

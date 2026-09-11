@@ -11,6 +11,7 @@ import HandshakeIcon from '@mui/icons-material/Handshake'
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
+import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
@@ -67,6 +68,7 @@ const allMenuItems: SidebarItem[] = [
   { text: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />, path: '/permits', module: 'permits', group: 'Maintenance' },
   { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
   { text: 'Maintenance Plans', description: 'Recurring calendar and runtime work', icon: <EventRepeatIcon />, path: '/maintenance', module: 'maintenance', group: 'Maintenance' },
+  { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Assets' },
   { text: 'Assets & Value', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Assets' },
   {
     text: 'Sales', description: 'Quotations, invoices, and sales', icon: <ShoppingCartIcon />, path: '/sales/quotations', module: 'sales', group: 'Commerce',

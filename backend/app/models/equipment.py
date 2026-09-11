@@ -23,7 +23,7 @@ class Equipment(Base):
     make = Column(String, nullable=False)
     model = Column(String, nullable=False)
     serial_number = Column(String, nullable=False, index=True)
-    modality_id = Column(Integer, ForeignKey("modalities.id"), nullable=False)
+    modality_id = Column(Integer, ForeignKey("modalities.id"), nullable=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False, index=True)
     tier_id = Column(Integer, ForeignKey("tiers.id"), nullable=True)
     inspection_form_id = Column(Integer, ForeignKey("inspection_forms.id"), nullable=True)
@@ -34,9 +34,12 @@ class Equipment(Base):
     # which repeats the acquisition, warranty and PM blocks column for column);
     # a third would make every report choose which two of three to union.
     #
-    # `modality_id` stays NOT NULL and keeps classifying the biomedical side.
-    # `discipline_id` answers the different question MEP work asks — which
-    # trade owns this, and who gets dispatched.
+    # `modality_id` classifies the biomedical side — imaging, monitoring,
+    # laboratory, treatment — and is nullable because a lift has no clinical
+    # modality and asking for one is how a maintenance product starts feeling
+    # like it was built for something else. `discipline_id` answers the
+    # question MEP work actually asks: which trade owns this, and who gets
+    # dispatched. One or the other is required; both never made sense.
     discipline_id = Column(Integer, ForeignKey("disciplines.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Structured placement. `location` above is the legacy free-text string and

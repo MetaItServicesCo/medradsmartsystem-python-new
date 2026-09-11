@@ -831,6 +831,10 @@ def list_service_requests(
     status: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
     facility_id: Optional[int] = Query(None),
+    # An asset's service history and a room's open jobs are the two questions
+    # the facilities screens ask constantly, and neither could be asked here.
+    equipment_id: Optional[int] = Query(None),
+    location_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     search_field: Optional[str] = Query(None),
     status_group: Optional[str] = Query(None),
@@ -851,6 +855,10 @@ def list_service_requests(
         base_query = base_query.filter(ServiceRequest.priority == priority)
     if facility_id:
         base_query = base_query.filter(ServiceRequest.facility_id == facility_id)
+    if equipment_id:
+        base_query = base_query.filter(ServiceRequest.equipment_id == equipment_id)
+    if location_id:
+        base_query = base_query.filter(ServiceRequest.location_id == location_id)
     search_term = normalize_list_search(search)
     if search_term:
         requester = aliased(User)
