@@ -22,6 +22,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import { toast } from 'react-toastify'
 
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import {
   fetchServiceRequests,
   deleteServiceRequest,
@@ -162,12 +163,18 @@ const ServiceRequestList = () => {
     return () => clearTimeout(handler)
   }, [searchInput])
 
+  // Work orders are the one facilities list that never filtered by site.
+  // For a scoped user the API narrowed it anyway, so the gap was invisible
+  // until an administrator opened Hospital A and saw Hospital B's jobs.
+  const { facilityId } = useActiveFacility()
+
   const skip = (page - 1) * limit
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['service-requests', querySearch, querySearchField, queryStatus, queryStatusGroup, queryPriority, queryDateFrom, queryDateTo, skip, limit],
+    queryKey: ['service-requests', facilityId, querySearch, querySearchField, queryStatus, queryStatusGroup, queryPriority, queryDateFrom, queryDateTo, skip, limit],
     queryFn: () =>
       fetchServiceRequests({
+        facility_id: facilityId,
         search: querySearch || undefined,
         search_field: querySearchField === 'all' ? undefined : querySearchField,
         status: queryStatus || undefined,
@@ -178,7 +185,7 @@ const ServiceRequestList = () => {
         skip,
         limit,
       }),
-    enabled: !invalidDateRange,
+    enabled: !invalidDateRange && !!facilityId,
     placeholderData: previousData => previousData,
   })
 

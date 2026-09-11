@@ -36,6 +36,7 @@ import ContextTableRow from '@/components/ContextTableRow'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import { useListContext } from '@/contexts/ListContext'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { palette } from '@/theme/palette'
 
 const PAGE_SIZE = 25
@@ -197,12 +198,17 @@ const Inventory = () => {
     queryKey: ['facilities', 'inventory-filter'],
     queryFn: () => fetchFacilities({ limit: 500 }),
   })
+  // Parts belong to a store at a hospital, and inventory_parts carries the
+  // facility. Showing another site's stock is worse than showing none: it is
+  // an order somebody places against shelves they cannot reach.
+  const { facilityId } = useActiveFacility()
   const inventoryFilters = {
+    facility_id: facilityId,
     search: debouncedSearch || undefined,
     search_field: searchField === 'all' ? undefined : searchField,
   }
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['inventory-parts', debouncedSearch, searchField, stockView, page],
+    queryKey: ['inventory-parts', facilityId, debouncedSearch, searchField, stockView, page],
     queryFn: () => fetchInventoryParts({
       ...inventoryFilters,
       stock_view: stockView === 'all' ? undefined : stockView,
@@ -212,7 +218,7 @@ const Inventory = () => {
     placeholderData: previousData => previousData,
   })
   const { data: summaryData } = useQuery({
-    queryKey: ['inventory-summary', debouncedSearch, searchField],
+    queryKey: ['inventory-summary', facilityId, debouncedSearch, searchField],
     queryFn: () => fetchInventorySummary(inventoryFilters),
     placeholderData: previousData => previousData,
   })

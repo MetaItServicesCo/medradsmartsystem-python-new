@@ -96,6 +96,7 @@ import DebouncedSearchField from '@/components/DebouncedSearchField'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
 import { formatUSPhone } from '@/utils/formatters'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { palette } from '@/theme/palette'
 
 const CHECK_FIELDS = [
@@ -1015,6 +1016,10 @@ const Inspections = () => {
   const dateTo = searchParams.get('date_to') || ''
   const invalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo)
   const [tab, setTab] = useState(queryTab)
+  // Inspections kept its own facility state and asked on three screens.
+  // Inside a site there is nothing to ask: it opens on the hospital you
+  // are in, and the picker has only that one to offer.
+  const { facilityId: activeFacilityId } = useActiveFacility()
   const [facilityId, setFacilityId] = useState<number | ''>('')
   const [selectedInstantEquipmentIds, setSelectedInstantEquipmentIds] = useState<number[]>([])
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([])
@@ -1308,6 +1313,10 @@ const Inspections = () => {
     enabled: !invalidDateRange,
     staleTime: 30_000,
   })
+  useEffect(() => {
+    if (activeFacilityId && facilityId !== activeFacilityId) setFacilityId(activeFacilityId)
+  }, [activeFacilityId])
+
   const facilitiesQ = useQuery({
     queryKey: ['inspection-facilities'],
     queryFn: fetchInspectionFacilities,
@@ -1441,7 +1450,12 @@ const Inspections = () => {
     placeholderData: previousData => previousData,
   })
 
-  const selectedFacility = facilitiesQ.data?.find(f => f.id === facilityId)
+  // Narrowed rather than hidden: the three pickers stay where they are, with
+  // nothing but the current site in them.
+  const facilityOptions = (facilitiesQ.data || []).filter(
+    f => !activeFacilityId || f.id === activeFacilityId,
+  )
+  const selectedFacility = facilityOptions.find(f => f.id === facilityId)
   const equipment = equipmentQ.data || []
   const inspectionForms = formsQ.data?.items || []
   const defaultReportForm = useMemo(
@@ -4041,7 +4055,7 @@ const Inspections = () => {
                   setDebouncedScheduleAssetSearch('')
                 }}
                 loading={facilitiesQ.isLoading}
-                options={(facilitiesQ.data || []).map(facility => ({
+                options={facilityOptions.map(facility => ({
                   value: facility.id,
                   label: facility.name,
                   secondary: `#${facility.id} · ${facility.tier_name || 'No tier'} · ${facility.inventory_count} asset(s)`,
@@ -4188,7 +4202,7 @@ const Inspections = () => {
                   setDebouncedInstantAssetSearch('')
                 }}
                 loading={facilitiesQ.isLoading}
-                options={(facilitiesQ.data || []).map(facility => ({
+                options={facilityOptions.map(facility => ({
                   value: facility.id,
                   label: facility.name,
                   secondary: `#${facility.id} · ${facility.tier_name || 'No tier'} · ${facility.inventory_count} asset(s)`,
@@ -4377,7 +4391,7 @@ const Inspections = () => {
                   value={closedFacilityId}
                   onChange={setClosedFacilityId}
                   loading={facilitiesQ.isLoading}
-                  options={(facilitiesQ.data || []).map(facility => ({
+                  options={facilityOptions.map(facility => ({
                     value: facility.id,
                     label: facility.name,
                     secondary: `#${facility.id} · ${facility.inventory_count} asset(s)`,
