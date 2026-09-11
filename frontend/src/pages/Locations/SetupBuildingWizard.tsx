@@ -15,14 +15,16 @@
  * tree already permits: a wing may sit under a floor, a room under a wing.
  */
 import { useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControlLabel, Stack, Step, StepLabel, Stepper,
+  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent,
+  DialogTitle, Divider, Stack, Step, StepLabel, Stepper,
   TextField, Typography,
 } from '@mui/material'
 import { toast } from 'react-toastify'
-import { bulkImportLocations, type BulkLocationRow } from '@/api/locations'
+import {
+  bulkImportLocations, fetchLocationMeta, type BulkLocationRow,
+} from '@/api/locations'
 import { palette } from '@/theme/palette'
 
 /** A kind of room, with the clinical use and default size the tree needs. */
@@ -175,6 +177,16 @@ function defaultFloors(buildingCode: string, above: number, below: number): Floo
 
 const STEPS = ['Floors', 'What is on each floor', 'Rooms', 'Review']
 
+/** A code prefix from a name: first word, letters only, at most four. */
+function prefixFrom(name: string, taken: Set<string>): string {
+  const base = (name.replace(/[^A-Za-z ]/g, '').trim().split(/\s+/)[0] || 'DEP')
+    .slice(0, 4).toUpperCase() || 'DEP'
+  let candidate = base
+  let n = 2
+  while (taken.has(candidate)) { candidate = `${base}${n}`; n += 1 }
+  return candidate
+}
+
 export default function SetupBuildingWizard({
   open, onClose, facilityId, building, onCreated,
 }: {
@@ -190,6 +202,41 @@ export default function SetupBuildingWizard({
   const [below, setBelow] = useState('1')
   const [floors, setFloors] = useState<FloorSpec[]>([])
   const [errors, setErrors] = useState<string[]>([])
+  // Departments and room kinds the preset list does not cover. Oncology,
+  // maternity, endoscopy, a mortuary — a fixed vocabulary would push those
+  // into "Administration" or leave them out of the register entirely.
+  const [customDepts, setCustomDepts] = useState<DeptKind[]>([])
+  const [customRooms, setCustomRooms] = useState<Record<string, RoomKind[]>>({})
+  const [asking, setAsking] = useState<null | { kind: 'dept' } | { kind: 'room'; deptKey: string }>(null)
+
+  const { data: meta } = useQuery({
+    queryKey: ['location-meta'],
+    queryFn: fetchLocationMeta,
+    staleTime: 10 * 60_000,
+  })
+
+  const allDepartments = useMemo(
+    () => [...DEPARTMENTS, ...customDepts], [customDepts])
+
+  /** A department's room kinds, including any added by hand. */
+  const roomsOf = (dept: DeptKind) => [...dept.rooms, ...(customRooms[dept.key] ?? [])]
+
+  const addDept = (label: string) => {
+    const taken = new Set(allDepartments.map((d) => d.prefix))
+    const key = `custom-${Date.now()}`
+    setCustomDepts((rows) => [...rows, {
+      key, label, prefix: prefixFrom(label, taken),
+      // Nothing preset: a department nobody anticipated has no typical rooms,
+      // so the next step asks rather than guessing.
+      rooms: [],
+    }])
+    setAsking(null)
+  }
+
+  const addRoom = (deptKey: string, room: RoomKind) => {
+    setCustomRooms((rows) => ({ ...rows, [deptKey]: [...(rows[deptKey] ?? []), room] }))
+    setAsking(null)
+  }
 
   const buildFloors = () => {
     setFloors(defaultFloors(building.code, Math.max(0, Number(above) || 0),
@@ -227,7 +274,7 @@ export default function SetupBuildingWizard({
       } as BulkLocationRow)
 
       for (const deptKey of floor.depts) {
-        const dept = DEPARTMENTS.find((d) => d.key === deptKey)
+        const dept = allDepartments.find((d) => d.key === deptKey)
         if (!dept) continue
         // The department is a wing so it is a node you can open, not a label.
         const deptCode = `${floor.code}-${dept.prefix}`
@@ -236,7 +283,7 @@ export default function SetupBuildingWizard({
           code: deptCode, name: dept.label,
         } as BulkLocationRow)
 
-        for (const room of dept.rooms) {
+        for (const room of roomsOf(dept)) {
           const count = floor.counts[`${deptKey}:${room.key}`] ?? 0
           for (let i = 1; i <= count; i += 1) {
             const code = `${room.prefix}-${floor.code.split('-').pop()}${pad(i)}`
@@ -261,7 +308,7 @@ export default function SetupBuildingWizard({
       }
     }
     return out
-  }, [floors, building.code])
+  }, [floors, building.code, allDepartments, customRooms])
 
   const create = useMutation({
     mutationFn: async () => {
@@ -353,7 +400,7 @@ export default function SetupBuildingWizard({
                     />
                   </Stack>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {DEPARTMENTS.map((dept) => {
+                    {allDepartments.map((dept) => {
                       const on = floor.depts.includes(dept.key)
                       return (
                         <Chip
@@ -368,6 +415,13 @@ export default function SetupBuildingWizard({
                         />
                       )
                     })}
+                    <Chip
+                      size="small" label="+ Add your own" clickable variant="outlined"
+                      onClick={() => setAsking({ kind: 'dept' })}
+                      sx={{ height: 26, fontWeight: 800, fontSize: 11.5,
+                            color: palette.brand, borderColor: palette.brandBorder,
+                            borderStyle: 'dashed' }}
+                    />
                   </Box>
                 </Box>
               ))}
@@ -395,7 +449,7 @@ export default function SetupBuildingWizard({
                   </Typography>
                   <Stack spacing={1.5}>
                     {floor.depts.map((deptKey) => {
-                      const dept = DEPARTMENTS.find((d) => d.key === deptKey)!
+                      const dept = allDepartments.find((d) => d.key === deptKey)!
                       return (
                         <Box key={deptKey} sx={{ p: 1.5, borderRadius: '12px',
                                                  border: `1px solid ${palette.borderSoft}` }}>
@@ -405,7 +459,7 @@ export default function SetupBuildingWizard({
                           </Typography>
                           <Box sx={{ display: 'grid', gap: 1,
                                      gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' } }}>
-                            {dept.rooms.map((room) => (
+                            {roomsOf(dept).map((room) => (
                               <TextField
                                 key={room.key} size="small" type="number"
                                 label={room.label}
@@ -418,6 +472,19 @@ export default function SetupBuildingWizard({
                               />
                             ))}
                           </Box>
+                          {!roomsOf(dept).length && (
+                            <Typography sx={{ fontSize: 12.5, color: palette.textFaint }}>
+                              No room types yet — add the kinds of room this
+                              department contains.
+                            </Typography>
+                          )}
+                          <Button
+                            size="small"
+                            onClick={() => setAsking({ kind: 'room', deptKey })}
+                            sx={{ mt: 0.75, fontWeight: 800, fontSize: 12, color: palette.brand }}
+                          >
+                            + Add a room type
+                          </Button>
                         </Box>
                       )
                     })}
@@ -460,8 +527,8 @@ export default function SetupBuildingWizard({
                     {floor.code} · {floor.name}
                   </Typography>
                   {floor.depts.map((deptKey) => {
-                    const dept = DEPARTMENTS.find((d) => d.key === deptKey)!
-                    const total = dept.rooms.reduce(
+                    const dept = allDepartments.find((d) => d.key === deptKey)!
+                    const total = roomsOf(dept).reduce(
                       (n, r) => n + (floor.counts[`${deptKey}:${r.key}`] ?? 0), 0)
                     return (
                       <Typography key={deptKey}
@@ -488,6 +555,20 @@ export default function SetupBuildingWizard({
           </Box>
         )}
       </DialogContent>
+
+      {asking && (
+        <AskForCustom
+          what={asking}
+          spaceUses={meta?.space_uses ?? []}
+          existingPrefixes={new Set([
+            ...allDepartments.map((d) => d.prefix),
+            ...allDepartments.flatMap((d) => roomsOf(d).map((r) => r.prefix)),
+          ])}
+          onCancel={() => setAsking(null)}
+          onAddDept={addDept}
+          onAddRoom={addRoom}
+        />
+      )}
 
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose} sx={{ fontWeight: 800, color: palette.textMuted }}>
@@ -524,6 +605,96 @@ export default function SetupBuildingWizard({
             {create.isPending ? 'Creating…' : `Create ${rows.length} spaces`}
           </Button>
         )}
+      </DialogActions>
+    </Dialog>
+  )
+}
+
+/**
+ * Name a department or a kind of room the presets do not cover.
+ *
+ * One dialog for both because they ask nearly the same thing: what it is
+ * called, and — for a room — what it is used for and whether it holds beds.
+ * The space use matters more than the name: it is what decides the air,
+ * pressure and power rules that apply to the room afterwards.
+ */
+function AskForCustom({
+  what, spaceUses, existingPrefixes, onCancel, onAddDept, onAddRoom,
+}: {
+  what: { kind: 'dept' } | { kind: 'room'; deptKey: string }
+  spaceUses: Array<{ value: string; label: string }>
+  existingPrefixes: Set<string>
+  onCancel: () => void
+  onAddDept: (label: string) => void
+  onAddRoom: (deptKey: string, room: RoomKind) => void
+}) {
+  const [label, setLabel] = useState('')
+  const [spaceUse, setSpaceUse] = useState('other')
+  const [beds, setBeds] = useState('0')
+
+  const isDept = what.kind === 'dept'
+  const prefix = label.trim() ? prefixFrom(label, existingPrefixes) : ''
+
+  const submit = () => {
+    const name = label.trim()
+    if (!name) return
+    if (isDept) return onAddDept(name)
+    onAddRoom(what.deptKey, {
+      key: `custom-${Date.now()}`,
+      label: name,
+      prefix,
+      spaceUse,
+      beds: Number(beds) || 0,
+    })
+  }
+
+  return (
+    <Dialog open onClose={onCancel} maxWidth="xs" fullWidth
+            PaperProps={{ sx: { borderRadius: '16px' } }}>
+      <DialogTitle sx={{ fontWeight: 900, color: palette.ink, pb: 0.5 }}>
+        {isDept ? 'Add a department' : 'Add a room type'}
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 0.5 }}>
+          <TextField
+            autoFocus size="small" label={isDept ? 'Department name' : 'What are these rooms called'}
+            value={label} onChange={(e) => setLabel(e.target.value)}
+            placeholder={isDept ? 'Oncology' : 'Chemotherapy suites'}
+            helperText={prefix ? `Codes will start ${prefix}-` : ' '}
+          />
+
+          {!isDept && (
+            <>
+              <TextField
+                select size="small" label="What is it used for" value={spaceUse}
+                onChange={(e) => setSpaceUse(e.target.value)}
+                SelectProps={{ native: true }}
+                helperText="Decides the air, pressure and power rules that apply"
+              >
+                {spaceUses.map((use) => (
+                  <option key={use.value} value={use.value}>{use.label}</option>
+                ))}
+              </TextField>
+              <TextField
+                size="small" type="number" label="Beds in each" value={beds}
+                onChange={(e) => setBeds(e.target.value)}
+                helperText="Leave at zero if it is not a bed space"
+              />
+            </>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onCancel} sx={{ fontWeight: 800, color: palette.textMuted }}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained" disabled={!label.trim()} onClick={submit}
+          sx={{ fontWeight: 900, borderRadius: '10px', bgcolor: palette.brand,
+                '&:hover': { bgcolor: palette.brandDeep } }}
+        >
+          Add
+        </Button>
       </DialogActions>
     </Dialog>
   )
