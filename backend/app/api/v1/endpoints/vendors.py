@@ -28,6 +28,9 @@ from app.schemas.vendor import (
     VendorCredentialUpdate, VendorDetail, VendorListResponse, VendorUpdate,
 )
 from app.utils.clock import utc_today
+from app.utils.facility_access import (
+    get_user_facility_ids, is_facility_scoped_user, require_facility_access,
+)
 
 router = APIRouter()
 
@@ -472,11 +475,20 @@ def list_contracts(
     if vendor_id is not None:
         query = query.filter(VendorContract.vendor_id == vendor_id)
     if facility_id is not None:
+        require_facility_access(db, current_user, facility_id)
         # A NULL facility means the contract covers every facility, so it has
         # to come back when filtering for any one of them.
         query = query.filter(
             or_(VendorContract.facility_id == facility_id, VendorContract.facility_id.is_(None))
         )
+    if is_facility_scoped_user(current_user):
+        # The same rule without an explicit filter. A vendor is global — one
+        # contractor can serve every hospital — but a contract names the site
+        # it covers, and its commercial terms are that site's business.
+        query = query.filter(or_(
+            VendorContract.facility_id.in_(get_user_facility_ids(db, current_user)),
+            VendorContract.facility_id.is_(None),
+        ))
     if status:
         query = query.filter(VendorContract.status == status)
     if expiring_within_days is not None:
@@ -500,6 +512,8 @@ def create_contract(
     current_user: User = Depends(get_admin_user),
 ) -> Any:
     _vendor_or_404(db, payload.vendor_id)
+    if payload.facility_id is not None:
+        require_facility_access(db, current_user, payload.facility_id)
     if db.query(VendorContract.id).filter(
         VendorContract.contract_number == payload.contract_number
     ).first():

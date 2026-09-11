@@ -30,6 +30,10 @@ export default function SitesPage() {
   const setFacilityId = useFacilityStore((s) => s.setFacilityId)
   const canAdd = hasPermission(user, 'facilities', 'add')
   const [search, setSearch] = useState('')
+  // These roles see only the hospitals they are assigned to, so an empty
+  // list means something different for them than for an administrator.
+  const scopedToOwnSites = ['facility_admin', 'facility_manager', 'technician', 'client']
+    .includes(String(user?.role ?? ''))
 
   const { data, isLoading } = useQuery({
     queryKey: ['facilities', 'sites'],
@@ -93,11 +97,21 @@ export default function SitesPage() {
         <Box sx={{ p: 6, textAlign: 'center', borderRadius: '18px',
                    border: `1px solid ${palette.borderSoft}`, bgcolor: palette.white }}>
           <Typography sx={{ fontWeight: 800, color: palette.textMuted }}>
-            {data?.items?.length ? 'Nothing matches' : 'No sites registered yet'}
+            {data?.items?.length
+              ? 'Nothing matches'
+              : scopedToOwnSites
+                ? 'You have not been assigned to a site'
+                : 'No sites registered yet'}
           </Typography>
           <Typography sx={{ mt: 0.5, fontSize: 13, color: palette.textFaint, maxWidth: 440, mx: 'auto' }}>
-            Register your first hospital. Everything else — buildings, rooms,
-            fixtures, assets and work orders — hangs off a site.
+            {data?.items?.length
+              ? 'Try a different search.'
+              : scopedToOwnSites
+                // Without this, an unassigned technician sees an empty list and
+                // reads it as "this hospital has no data" rather than "nobody
+                // has given me access yet" — and reports the wrong problem.
+                ? 'Your account only sees hospitals it is assigned to, and it has none yet. Ask an administrator to add you to a site.'
+                : 'Register your first hospital. Everything else — buildings, rooms, fixtures, assets and work orders — hangs off a site.'}
           </Typography>
         </Box>
       )}

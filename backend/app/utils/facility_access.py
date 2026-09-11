@@ -8,7 +8,23 @@ from app.models.user_facility import UserFacility
 from app.models.facility import Facility
 
 
-FACILITY_SCOPED_ROLES = {UserRole.FACILITY_ADMIN, UserRole.FACILITY_MANAGER, UserRole.CLIENT}
+# Roles that see only the hospitals they are assigned to.
+#
+# Technicians were left out originally, back when the product served one
+# company maintaining client sites and the engineers covered all of them. In a
+# hospital group a technician belongs to a hospital, and one at Hospital A has
+# no business reading Hospital B's work orders.
+#
+# The consequence is worth stating plainly: a technician with no row in
+# user_facilities and no users.facility_id now sees nothing at all, including
+# an empty site list. Existing accounts must be assigned before this takes
+# effect for them.
+FACILITY_SCOPED_ROLES = {
+    UserRole.FACILITY_ADMIN,
+    UserRole.FACILITY_MANAGER,
+    UserRole.TECHNICIAN,
+    UserRole.CLIENT,
+}
 
 
 def is_facility_scoped_user(user: User) -> bool:

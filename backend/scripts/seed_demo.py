@@ -28,6 +28,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from app.db.base import SessionLocal  # noqa: E402
 from app.core.security import get_password_hash  # noqa: E402
 from app.models.user import User, UserType, UserRole  # noqa: E402
+from app.models.user_facility import UserFacility  # noqa: E402
 from app.models.facility import Facility  # noqa: E402
 from app.models.department import Department  # noqa: E402
 from app.models.modality import Modality, ModalityCategory  # noqa: E402
@@ -115,9 +116,14 @@ def main() -> None:
                 username=username, email=email, full_name=full_name,
                 hashed_password=get_password_hash("Demo!2026"),
                 user_type=UserType.EMPLOYEE, role=role, is_active=True,
+                # Technicians and facility managers see only the sites they are
+                # assigned to, so an unassigned one is locked out of everything
+                # including the site list.
+                facility_id=facility.id,
             )
             db.add(user)
             db.flush()
+            db.add(UserFacility(user_id=user.id, facility_id=facility.id))
             for index, code in enumerate(discipline_codes):
                 db.add(UserDiscipline(
                     user_id=user.id, discipline_id=disciplines[code].id,

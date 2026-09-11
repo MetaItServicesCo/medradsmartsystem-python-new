@@ -16,6 +16,9 @@ from app.schemas.fixture import (
 from app.services import fixture as fixture_service
 from app.services import fixture_catalog
 from app.core.deps import get_current_user
+from app.utils.facility_access import (
+    require_facility_access, scope_query_to_user_facilities,
+)
 from app.utils.permissions import require_module_permission
 
 router = APIRouter()
@@ -32,11 +35,18 @@ def _decorate(db: Session, row: Fixture) -> FixtureResponse:
     return payload
 
 
-def _location_or_404(db: Session, location_id: int) -> Location:
+def _location_or_404(db: Session, location_id: int, user: User) -> Location:
     location = db.get(Location, location_id)
     if location is None:
         raise HTTPException(status_code=404, detail="Location not found")
+    require_facility_access(db, user, location.facility_id)
     return location
+
+
+def _fixture_or_404(db: Session, fixture_id: int, user: User) -> Fixture:
+    row = _fixture_or_404(db, fixture_id, current_user)
+    require_facility_access(db, user, row.facility_id)
+    return row
 
 
 @router.get("/catalog")
@@ -73,7 +83,9 @@ def list_fixtures(
     if location_id is not None:
         query = query.filter(Fixture.location_id == location_id)
     if facility_id is not None:
+        require_facility_access(db, current_user, facility_id)
         query = query.filter(Fixture.facility_id == facility_id)
+    query = scope_query_to_user_facilities(query, Fixture.facility_id, db, current_user)
     if fixture_type:
         query = query.filter(Fixture.fixture_type == fixture_type)
     if discipline_id is not None:
@@ -96,7 +108,7 @@ def summarise(
 ):
     """What is in this room, one line per type — the room panel's headline."""
     require_module_permission(current_user, MODULE, "index")
-    _location_or_404(db, location_id)
+    _location_or_404(db, location_id, current_user)
     return fixture_service.summarise_location(db, location_id)
 
 
@@ -111,7 +123,7 @@ def bulk_create(
     A room is inventoried by counting, not by filling in a form per socket.
     """
     require_module_permission(current_user, MODULE, "add")
-    location = _location_or_404(db, payload.location_id)
+    location = _location_or_404(db, payload.location_id, current_user)
 
     try:
         created = fixture_service.bulk_create(
@@ -144,7 +156,7 @@ def create_fixture(
     current_user: User = Depends(get_current_user),
 ):
     require_module_permission(current_user, MODULE, "add")
-    location = _location_or_404(db, payload.location_id)
+    location = _location_or_404(db, payload.location_id, current_user)
 
     try:
         created = fixture_service.bulk_create(
@@ -180,9 +192,7 @@ def update_fixture(
     current_user: User = Depends(get_current_user),
 ):
     require_module_permission(current_user, MODULE, "edit")
-    row = db.get(Fixture, fixture_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Fixture not found")
+    row = _fixture_or_404(db, fixture_id, current_user)
 
     data = payload.model_dump(exclude_unset=True)
     if "status" in data and data["status"] not in FIXTURE_STATUSES:
@@ -207,9 +217,7 @@ def deactivate_fixture(
 ):
     """Soft delete. The work-order history against it has to stay readable."""
     require_module_permission(current_user, MODULE, "delete")
-    row = db.get(Fixture, fixture_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Fixture not found")
+    row = _fixture_or_404(db, fixture_id, current_user)
     row.is_active = False
     row.status = FixtureStatus.REMOVED.value
     db.commit()
