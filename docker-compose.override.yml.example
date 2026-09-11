@@ -1,0 +1,27 @@
+# Host-specific overrides. Copy to docker-compose.override.yml, which Compose
+# reads automatically and which .gitignore keeps untracked.
+#
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# Editing docker-compose.yml directly works until the first `git pull`, which
+# then refuses to merge over the local changes. Overrides live outside the
+# tracked file, so upstream changes and host configuration stop colliding.
+#
+# Needed when another stack already holds the default ports or container names.
+services:
+  postgres:
+    container_name: phealth_postgres
+    ports: ["127.0.0.1:5434:5432"]
+  redis:
+    container_name: phealth_redis
+    ports: ["127.0.0.1:6380:6379"]
+  backend:
+    container_name: phealth_backend
+    ports: ["127.0.0.1:8010:8000"]
+  frontend:
+    container_name: phealth_frontend
+    ports: ["127.0.0.1:3010:3000"]
+  facilities_scheduler:
+    container_name: phealth_facilities_scheduler
+  rental_scheduler:
+    container_name: phealth_rental_scheduler
