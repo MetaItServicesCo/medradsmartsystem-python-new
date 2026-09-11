@@ -32,7 +32,8 @@ import {
   type LocationNode, type LocationTypeMeta,
 } from '@/api/locations'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
-import RoomContents from './RoomContents'
+import SpaceContents from './SpaceContents'
+import SpaceDetail from './SpaceDetail'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import FloorPlanEditor from './FloorPlanEditor'
@@ -171,6 +172,15 @@ export default function LocationsPage() {
   const queryClient = useQueryClient()
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  // The tree is already in memory; a container's contents are its children.
+  const findNode = (nodes: any[], id: number): any => {
+    for (const node of nodes) {
+      if (node.id === id) return node
+      const hit = findNode(node.children ?? [], id)
+      if (hit) return hit
+    }
+    return null
+  }
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState('')
   const [tab, setTab] = useState(0)
@@ -358,54 +368,23 @@ export default function LocationsPage() {
               </Tabs>
 
               {tab === 0 && (
-                <RoomContents
+                <SpaceContents
                   locationId={detail.id}
                   locationName={detail.name || detail.code}
+                  locationType={detail.location_type}
+                  children={findNode(tree?.items ?? [], detail.id)?.children ?? []}
                   canEdit={canEdit}
+                  onSelectChild={setSelectedId}
                 />
               )}
 
               {tab === 1 && (
-                <Box sx={{ p: 2.25 }}>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
-                    {[
-                      { label: 'Space use', value: humanise(detail.space_use) || '—' },
-                      { label: 'Direct children', value: String(detail.child_count) },
-                      { label: 'Everything beneath', value: String(detail.descendant_count) },
-                      { label: 'Beds', value: String(detail.bed_count) },
-                      { label: 'Area', value: detail.area_sqft ? `${Number(detail.area_sqft).toLocaleString()} sq ft` : '—' },
-                      { label: 'Ceiling', value: detail.ceiling_height_ft ? `${detail.ceiling_height_ft} ft` : '—' },
-                      // Volume is what an air-changes-per-hour check needs, so it
-                      // is shown even though nobody enters it directly.
-                      { label: 'Volume', value: detail.volume_cuft ? `${Number(detail.volume_cuft).toLocaleString()} cu ft` : '—' },
-                      { label: 'Electrical branch', value: humanise(detail.electrical_branch) || '—' },
-                    ].map((stat) => (
-                      <Box key={stat.label} sx={{ p: 1.4, borderRadius: '14px', backgroundColor: '#FAFAFB', border: `1px solid ${palette.surfaceMuted}` }}>
-                        <Typography sx={{ fontSize: 11, fontWeight: 800, color: palette.textFaint, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                          {stat.label}
-                        </Typography>
-                        <Typography sx={{ fontWeight: 900, color: INK, fontSize: 15 }}>{stat.value}</Typography>
-                      </Box>
-                    ))}
-                  </Box>
-
-                  <Divider sx={{ my: 2 }} />
-                  <Stack direction="row" spacing={1}>
-                    {canEdit && (
-                      <Button
-                        variant="outlined" color="error" size="small"
-                        onClick={() => removeMutation.mutate(detail.id)}
-                        sx={{ fontWeight: 800, borderRadius: '10px' }}
-                      >
-                        Deactivate
-                      </Button>
-                    )}
-                  </Stack>
-                  <Typography sx={{ mt: 1.25, fontSize: 12, color: palette.textFaint }}>
-                    Deactivating takes this space and everything beneath it out of every picker
-                    and leaves its work-order history readable.
-                  </Typography>
-                </Box>
+                <SpaceDetail
+                  detail={detail}
+                  meta={meta}
+                  canEdit={canEdit}
+                  onDeactivate={() => removeMutation.mutate(detail.id)}
+                />
               )}
 
               {tab === 2 && selectedTypeMeta?.can_hold_plan && (
