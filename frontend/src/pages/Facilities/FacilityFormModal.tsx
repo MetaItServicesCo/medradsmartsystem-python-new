@@ -74,6 +74,12 @@ interface Props {
   open: boolean
   onClose: () => void
   facility?: Facility | null
+  /**
+   * Offer to jump to the facilities list after saving. False when the form is
+   * opened from a site's own dashboard, where a link away to a list of every
+   * hospital is the opposite of useful.
+   */
+  locateOnSave?: boolean
 }
 
 interface TabPanelProps {
@@ -102,7 +108,7 @@ function CustomTabPanel(props: TabPanelProps) {
   );
 }
 
-const FacilityFormModal = ({ open, onClose, facility }: Props) => {
+const FacilityFormModal = ({ open, onClose, facility, locateOnSave = true }: Props) => {
   const queryClient = useQueryClient()
   const { focusRecord } = useListContext()
   const isEdit = !!facility && facility.id !== 0
@@ -162,11 +168,13 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
       isEdit ? updateFacility(facility!.id, data) : createFacility(data, isDuplicate),
     onSuccess: (savedFacility) => {
       toast.success(isEdit ? 'Facility updated successfully!' : 'Facility created successfully!')
-      focusRecord(`facility-${savedFacility.id}`, savedFacility.name, {
-        message: isEdit ? 'Facility updated' : 'Facility created',
-        pathname: '/facilities',
-        query: { search: savedFacility.name },
-      })
+      if (locateOnSave) {
+        focusRecord(`facility-${savedFacility.id}`, savedFacility.name, {
+          message: isEdit ? 'Facility updated' : 'Facility created',
+          pathname: '/facilities',
+          query: { search: savedFacility.name },
+        })
+      }
       queryClient.invalidateQueries({ queryKey: ['facilities'] })
       onClose()
     },

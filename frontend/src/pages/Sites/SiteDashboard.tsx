@@ -6,7 +6,7 @@
  * things that are wrong come first, totals that only go up come last. A count
  * of rooms is context; three overdue compliance tasks is news.
  */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -16,12 +16,19 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { fetchFacility, fetchSiteOverview } from '@/api/facilities'
 import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { palette } from '@/theme/palette'
+// The per-site administration that used to live in the facilities module.
+// Same forms, reached from the hospital they belong to instead of from a
+// list of every hospital.
+import FacilityFormModal from '@/pages/Facilities/FacilityFormModal'
+import FacilityUsersModal from '@/pages/Facilities/FacilityUsersModal'
+import DepartmentsModal from '@/pages/Facilities/DepartmentsModal'
 
 export default function SiteDashboard() {
   const { id } = useParams()
   const siteId = Number(id)
   const navigate = useNavigate()
   const setFacilityId = useFacilityStore((s) => s.setFacilityId)
+  const [panel, setPanel] = useState<'details' | 'people' | 'departments' | null>(null)
 
   // Arriving here by link or refresh has to set the context too, not only
   // arriving by clicking a card.
@@ -109,9 +116,22 @@ export default function SiteDashboard() {
             {[site?.address, site?.city, site?.state].filter(Boolean).join(', ')}
           </Typography>
         </Box>
-        <Typography sx={{ fontSize: 12.5, color: palette.textFaint, fontWeight: 700 }}>
-          Everything else is now scoped to this site
-        </Typography>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+          {([
+            ['details', 'Site details'],
+            ['people', 'People here'],
+            ['departments', 'Departments'],
+          ] as const).map(([key, label]) => (
+            <Button
+              key={key} size="small" variant="outlined"
+              onClick={() => setPanel(key)}
+              sx={{ fontWeight: 800, borderRadius: '10px', color: palette.brand,
+                    borderColor: palette.brandBorder }}
+            >
+              {label}
+            </Button>
+          ))}
+        </Stack>
       </Stack>
 
       <Section title="Needs attention">
@@ -158,6 +178,16 @@ export default function SiteDashboard() {
           </Button>
         ))}
       </Stack>
+
+      {panel === 'details' && site && (
+        <FacilityFormModal open onClose={() => setPanel(null)} facility={site} locateOnSave={false} />
+      )}
+      {panel === 'people' && site && (
+        <FacilityUsersModal open onClose={() => setPanel(null)} facility={site} />
+      )}
+      {panel === 'departments' && (
+        <DepartmentsModal open onClose={() => setPanel(null)} />
+      )}
     </Box>
   )
 }

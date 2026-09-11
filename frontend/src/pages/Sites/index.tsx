@@ -23,6 +23,7 @@ import { hasPermission } from '@/config/permissions'
 import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
+import RegisterSiteDialog from './RegisterSiteDialog'
 
 export default function SitesPage() {
   const user = useAuthStore((s) => s.user)
@@ -30,6 +31,7 @@ export default function SitesPage() {
   const setFacilityId = useFacilityStore((s) => s.setFacilityId)
   const canAdd = hasPermission(user, 'facilities', 'add')
   const [search, setSearch] = useState('')
+  const [registerOpen, setRegisterOpen] = useState(false)
   // These roles see only the hospitals they are assigned to, so an empty
   // list means something different for them than for an administrator.
   const scopedToOwnSites = ['facility_admin', 'facility_manager', 'technician', 'client']
@@ -69,7 +71,7 @@ export default function SitesPage() {
         {canAdd && (
           <Button
             variant="contained" startIcon={<AddIcon />}
-            onClick={() => navigate('/facilities')}
+            onClick={() => setRegisterOpen(true)}
             sx={{ fontWeight: 900, borderRadius: '12px', px: 2.5,
                   bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep } }}
           >
@@ -122,6 +124,16 @@ export default function SitesPage() {
           <SiteCard key={site.id} site={site} onOpen={() => open(site.id)} />
         ))}
       </Box>
+
+      {registerOpen && (
+        <RegisterSiteDialog
+          open={registerOpen}
+          onClose={() => setRegisterOpen(false)}
+          // Straight into the hospital just created: it is what you were
+          // going to do next, and it is empty until you do.
+          onCreated={(id) => { setRegisterOpen(false); open(id) }}
+        />
+      )}
     </Box>
   )
 }

@@ -363,7 +363,7 @@ const Dashboard = () => {
       icon: <BusinessIcon />,
       color: palette.brandLight,
       soft: '#edf8f7',
-      path: '/facilities',
+      path: '/sites',
     },
     {
       key: 'service-requests',
@@ -387,7 +387,7 @@ const Dashboard = () => {
       icon: <PrecisionManufacturingIcon />,
       color: '#13A77B',
       soft: '#EAFBF5',
-      path: '/facilities',
+      path: '/sites',
     },
     {
       key: 'invoices',
@@ -509,7 +509,7 @@ const Dashboard = () => {
 
   const quickActions = [
     { label: 'New Request', detail: 'Create service work', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests' as Module },
-    { label: 'Facility Inventory', detail: 'Track facility assets', icon: <PrecisionManufacturingIcon />, path: '/facilities', module: 'facility-inventory' as Module },
+    { label: 'Asset Register', detail: 'Every machine, its plan and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory' as Module },
     { label: 'Parts Inventory', detail: 'Review parts stock health', icon: <Inventory2Icon />, path: '/inventory', module: 'inventory' as Module },
     { label: 'Sales Invoices', detail: 'Check invoices', icon: <ReceiptIcon />, path: '/sales/invoices', module: 'sales' as Module },
     { label: 'Reports', detail: 'Open analytics', icon: <AssessmentIcon />, path: '/reports', module: 'reports' as Module },

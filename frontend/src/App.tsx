@@ -69,13 +69,13 @@ const RouteFallback = () => (
 
 const modulePath: Record<Module, string> = {
   dashboard: '/dashboard',
-  facilities: '/facilities',
+  facilities: '/sites',
   users: '/users',
   'service-requests': '/service-requests',
   inspections: '/inspections',
   sales: '/sales',
   rentals: '/rentals',
-  'facility-inventory': '/facilities',
+  'facility-inventory': '/assets',
   inventory: '/inventory',
   'test-equipment': '/test-equipment',
   reports: '/reports',
