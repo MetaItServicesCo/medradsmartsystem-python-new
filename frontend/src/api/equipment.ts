@@ -45,6 +45,13 @@ export interface EquipmentItem {
   labor_warranty_end_date: string | null
   pm_scheduling: string | null
   installation_date: string | null
+
+  // Depreciation. The backend has accepted these since the asset ledger
+  // landed; they were missing here, which is why no form could offer them.
+  depreciation_method: string | null
+  salvage_value: string | number | null
+  useful_life_years: string | number | null
+  total_expected_units: string | number | null
   last_pm_date: string | null
   next_generated_pm_date: string | null
   purchase_date: string | null
@@ -98,6 +105,13 @@ export interface EquipmentCreate {
   labor_warranty_end_date?: string | null
   pm_scheduling?: string
   installation_date?: string | null
+
+  // Depreciation. The backend has accepted these since the asset ledger
+  // landed; they were missing here, which is why no form could offer them.
+  depreciation_method?: string | null
+  salvage_value?: string | number | null
+  useful_life_years?: string | number | null
+  total_expected_units?: string | number | null
   last_pm_date?: string | null
   next_generated_pm_date?: string | null
   purchase_date?: string

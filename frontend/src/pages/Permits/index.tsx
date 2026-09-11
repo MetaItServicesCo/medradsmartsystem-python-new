@@ -20,7 +20,7 @@ import GppMaybeIcon from '@mui/icons-material/GppMaybe'
 import LockIcon from '@mui/icons-material/Lock'
 import { toast } from 'react-toastify'
 
-import { fetchFacilities } from '@/api/facilities'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { fetchLocations } from '@/api/locations'
 import {
   cancelPermit, closePermit, createPermit, decidePermit, fetchIcraPreview,
@@ -58,18 +58,14 @@ export default function PermitsPage() {
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
 
-  const [facilityId, setFacilityId] = useState<number | ''>('')
   const [statusFilter, setStatusFilter] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [selected, setSelected] = useState<WorkPermitDetail | null>(null)
 
   const canEdit = hasPermission(user, 'permits', 'add')
 
-  const { data: facilities } = useQuery({
-    queryKey: ['facilities', 'for-permits'],
-    queryFn: () => fetchFacilities({ limit: 200 }),
-  })
-  const effectiveFacilityId = facilityId || facilities?.items?.[0]?.id || undefined
+  // The hospital is context, not a question asked on every screen.
+  const { facilityId: effectiveFacilityId } = useActiveFacility()
 
   const { data: meta } = useQuery({ queryKey: ['permit-meta'], queryFn: fetchPermitMeta })
 
@@ -101,14 +97,6 @@ export default function PermitsPage() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
-          <TextField
-            size="small" select label="Facility" value={effectiveFacilityId || ''}
-            onChange={(e) => setFacilityId(Number(e.target.value))} sx={{ minWidth: 190 }}
-          >
-            {(facilities?.items || []).map((f: any) => (
-              <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>
-            ))}
-          </TextField>
           <TextField
             size="small" select label="Status" value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)} sx={{ minWidth: 160 }}

@@ -22,7 +22,7 @@ import {
   completeTask, fetchComplianceMeta, fetchComplianceSummary, fetchExpiringCertificates,
   fetchPrograms, fetchTasks, generateTasks, seedPrograms, type ComplianceTask,
 } from '@/api/compliance'
-import { fetchFacilities } from '@/api/facilities'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
@@ -37,18 +37,14 @@ export default function CompliancePage() {
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
 
-  const [facilityId, setFacilityId] = useState<number | ''>('')
   const [tab, setTab] = useState(0)
   const [completing, setCompleting] = useState<ComplianceTask | null>(null)
 
   const canEdit = hasPermission(user, 'compliance', 'edit')
   const canAdmin = hasPermission(user, 'compliance', 'add')
 
-  const { data: facilities } = useQuery({
-    queryKey: ['facilities', 'for-compliance'],
-    queryFn: () => fetchFacilities({ limit: 200 }),
-  })
-  const effectiveFacilityId = facilityId || facilities?.items?.[0]?.id || undefined
+  // The hospital is context, not a question asked on every screen.
+  const { facilityId: effectiveFacilityId } = useActiveFacility()
 
   const { data: meta } = useQuery({ queryKey: ['compliance-meta'], queryFn: fetchComplianceMeta })
 
@@ -129,14 +125,6 @@ export default function CompliancePage() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
-          <TextField
-            size="small" select label="Facility" value={effectiveFacilityId || ''}
-            onChange={(e) => setFacilityId(Number(e.target.value))} sx={{ minWidth: 190 }}
-          >
-            {(facilities?.items || []).map((f: any) => (
-              <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>
-            ))}
-          </TextField>
           {canEdit && (
             <Button
               variant="contained" startIcon={<AutorenewIcon />}

@@ -36,7 +36,8 @@ import {
   reverseLedgerEntry, type LedgerEntry, type TimelineEvent,
 } from '@/api/assetLedger'
 import { fetchEquipment } from '@/api/equipment'
-import { fetchFacilities } from '@/api/facilities'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
+import DepreciationSettings from './DepreciationSettings'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
@@ -77,18 +78,14 @@ export default function AssetLedgerPage() {
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
 
-  const [facilityId, setFacilityId] = useState<number | ''>('')
   const [assetId, setAssetId] = useState<number | null>(null)
   const [tab, setTab] = useState(0)
   const [addOpen, setAddOpen] = useState(false)
 
   const canEdit = hasPermission(user, 'facility-inventory', 'edit')
 
-  const { data: facilities } = useQuery({
-    queryKey: ['facilities', 'for-ledger'],
-    queryFn: () => fetchFacilities({ limit: 200 }),
-  })
-  const effectiveFacilityId = facilityId || facilities?.items?.[0]?.id || undefined
+  // The hospital is context, not a question asked on every screen.
+  const { facilityId: effectiveFacilityId } = useActiveFacility()
 
   const { data: meta } = useQuery({ queryKey: ['ledger-meta'], queryFn: fetchLedgerMeta })
 
@@ -111,6 +108,7 @@ export default function AssetLedgerPage() {
   })
 
   const assetOptions = ((assets as any)?.items || []) as any[]
+  const selectedAsset = assetOptions.find((a) => a.id === assetId)
 
   const reverseMutation = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) => reverseLedgerEntry(id, reason),
@@ -133,15 +131,6 @@ export default function AssetLedgerPage() {
             What it cost, what it is worth, and everything done to it
           </Typography>
         </Box>
-        <TextField
-          size="small" select label="Facility" value={effectiveFacilityId || ''}
-          onChange={(e) => { setFacilityId(Number(e.target.value)); setAssetId(null) }}
-          sx={{ minWidth: 200 }}
-        >
-          {(facilities?.items || []).map((f: any) => (
-            <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>
-          ))}
-        </TextField>
       </Box>
 
       {/* ── Fleet valuation ──────────────────────────────────────────────── */}
@@ -315,6 +304,22 @@ export default function AssetLedgerPage() {
             {tab === 0 && <Timeline events={ledger.timeline} />}
 
             {tab === 1 && (
+              <>
+              {selectedAsset && (
+                <DepreciationSettings
+                  equipmentId={selectedAsset.id}
+                  canEdit={canEdit}
+                  current={{
+                    cost: selectedAsset.cost ?? dep?.cost ?? null,
+                    salvage_value: selectedAsset.salvage_value ?? dep?.salvage_value ?? null,
+                    useful_life_years: selectedAsset.useful_life_years ?? dep?.useful_life_years ?? null,
+                    depreciation_method: selectedAsset.depreciation_method ?? dep?.method ?? null,
+                    total_expected_units: selectedAsset.total_expected_units ?? null,
+                    installation_date: selectedAsset.installation_date ?? null,
+                    acquisition_date: selectedAsset.acquisition_date ?? null,
+                  }}
+                />
+              )}
               <TableContainer sx={{ maxHeight: 460 }}>
                 <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 1.1 } }}>
                   <TableHead>
@@ -349,6 +354,7 @@ export default function AssetLedgerPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </>
             )}
 
             {tab === 2 && (

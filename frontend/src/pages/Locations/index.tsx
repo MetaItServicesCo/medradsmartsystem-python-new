@@ -31,7 +31,7 @@ import {
   createLocation, deleteLocation, fetchLocation, fetchLocationMeta, fetchLocationTree,
   type LocationNode, type LocationTypeMeta,
 } from '@/api/locations'
-import { fetchFacilities } from '@/api/facilities'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import FloorPlanEditor from './FloorPlanEditor'
@@ -169,7 +169,6 @@ export default function LocationsPage() {
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
 
-  const [facilityId, setFacilityId] = useState<number | ''>('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState('')
@@ -178,18 +177,14 @@ export default function LocationsPage() {
 
   const canEdit = hasPermission(user, 'locations', 'add')
 
-  const { data: facilities } = useQuery({
-    queryKey: ['facilities', 'for-locations'],
-    queryFn: () => fetchFacilities({ limit: 200 }),
-  })
-
   const { data: meta } = useQuery({
     queryKey: ['location-meta'],
     queryFn: fetchLocationMeta,
     staleTime: 10 * 60 * 1000,
   })
 
-  const effectiveFacilityId = facilityId || facilities?.items?.[0]?.id || null
+  // The hospital is context, not a question asked on every screen.
+  const { facilityId: effectiveFacilityId } = useActiveFacility()
 
   const { data: tree, isLoading } = useQuery({
     queryKey: ['location-tree', effectiveFacilityId],
@@ -244,16 +239,6 @@ export default function LocationsPage() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }}>
-          <TextField
-            size="small" select label="Facility"
-            value={effectiveFacilityId || ''}
-            onChange={(e) => { setFacilityId(Number(e.target.value)); setSelectedId(null) }}
-            sx={{ minWidth: 200 }}
-          >
-            {(facilities?.items || []).map((f: any) => (
-              <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>
-            ))}
-          </TextField>
           {canEdit && (
             <Button
               variant="contained" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}
@@ -428,7 +413,7 @@ export default function LocationsPage() {
       <AddLocationDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        facilityId={effectiveFacilityId}
+        facilityId={effectiveFacilityId ?? null}
         parent={detail || null}
         meta={meta}
         onCreated={() => {

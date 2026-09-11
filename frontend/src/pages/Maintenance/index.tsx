@@ -21,7 +21,7 @@ import { toast } from 'react-toastify'
 
 import { fetchDisciplines } from '@/api/disciplines'
 import { fetchEquipment } from '@/api/equipment'
-import { fetchFacilities } from '@/api/facilities'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import {
   createSchedule, fetchForecast, fetchMaintenanceMeta, fetchSchedules,
   generateWorkOrders, retireSchedule,
@@ -40,17 +40,13 @@ export default function MaintenancePage() {
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
 
-  const [facilityId, setFacilityId] = useState<number | ''>('')
   const [dueOnly, setDueOnly] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
 
   const canEdit = hasPermission(user, 'maintenance', 'edit')
 
-  const { data: facilities } = useQuery({
-    queryKey: ['facilities', 'for-maintenance'],
-    queryFn: () => fetchFacilities({ limit: 200 }),
-  })
-  const effectiveFacilityId = facilityId || facilities?.items?.[0]?.id || undefined
+  // The hospital is context, not a question asked on every screen.
+  const { facilityId: effectiveFacilityId } = useActiveFacility()
 
   const { data: meta } = useQuery({ queryKey: ['maintenance-meta'], queryFn: fetchMaintenanceMeta })
 
@@ -103,14 +99,6 @@ export default function MaintenancePage() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
-          <TextField
-            size="small" select label="Facility" value={effectiveFacilityId || ''}
-            onChange={(e) => setFacilityId(Number(e.target.value))} sx={{ minWidth: 190 }}
-          >
-            {(facilities?.items || []).map((f: any) => (
-              <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>
-            ))}
-          </TextField>
           {canEdit && (
             <>
               <Button

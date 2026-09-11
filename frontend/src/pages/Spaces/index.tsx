@@ -17,7 +17,7 @@ import EventBusyIcon from '@mui/icons-material/EventBusy'
 import HistoryToggleOffIcon from '@mui/icons-material/HistoryToggleOff'
 import { toast } from 'react-toastify'
 
-import { fetchFacilities } from '@/api/facilities'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import {
   fetchBoardSummary, fetchDowntimeReport, fetchSpaceMeta, fetchSpaceStatuses,
   fetchStaleSpaces, setSpaceStatus, type SpaceStatus,
@@ -53,18 +53,14 @@ export default function SpacesPage() {
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
 
-  const [facilityId, setFacilityId] = useState<number | ''>('')
   const [windowDays, setWindowDays] = useState(30)
   const [unavailableOnly, setUnavailableOnly] = useState(true)
   const [editing, setEditing] = useState<SpaceStatus | null>(null)
 
   const canEdit = hasPermission(user, 'spaces', 'edit')
 
-  const { data: facilities } = useQuery({
-    queryKey: ['facilities', 'for-spaces'],
-    queryFn: () => fetchFacilities({ limit: 200 }),
-  })
-  const effectiveFacilityId = facilityId || facilities?.items?.[0]?.id || undefined
+  // The hospital is context, not a question asked on every screen.
+  const { facilityId: effectiveFacilityId } = useActiveFacility()
 
   const { data: summary } = useQuery({
     queryKey: ['space-board', effectiveFacilityId],
@@ -113,15 +109,6 @@ export default function SpacesPage() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
-          <TextField
-            size="small" select label="Facility" value={effectiveFacilityId || ''}
-            onChange={(e) => setFacilityId(Number(e.target.value))}
-            sx={{ minWidth: 200 }}
-          >
-            {(facilities?.items || []).map((f: any) => (
-              <MenuItem key={f.id} value={f.id}>{f.name}</MenuItem>
-            ))}
-          </TextField>
           <TextField
             size="small" select label="Window" value={windowDays}
             onChange={(e) => setWindowDays(Number(e.target.value))}

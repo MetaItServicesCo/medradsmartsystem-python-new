@@ -34,7 +34,12 @@ import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
 import { palette } from '@/theme/palette'
 
-type ModuleGroup = 'Overview' | 'Operations' | 'Commerce' | 'People' | 'Workspace'
+// Grouped the way somebody running a hospital thinks about it — the
+// building, the work done to it, the things in it — rather than the way a
+// contractor managing many client sites did.
+type ModuleGroup =
+  | 'Overview' | 'The Building' | 'Maintenance' | 'Assets'
+  | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
 
 interface SidebarItem {
   text: string
@@ -46,20 +51,23 @@ interface SidebarItem {
   subItems?: { text: string; path: string }[]
 }
 
-const groupOrder: ModuleGroup[] = ['Overview', 'Operations', 'Commerce', 'People', 'Workspace']
+const groupOrder: ModuleGroup[] = [
+  'Overview', 'The Building', 'Maintenance', 'Assets', 'Compliance',
+  'People', 'Commerce', 'Workspace',
+]
 
 const allMenuItems: SidebarItem[] = [
   { text: 'Dashboard', description: 'Your operational overview', icon: <DashboardIcon />, path: '/dashboard', module: 'dashboard', group: 'Overview' },
-  { text: 'Facilities', description: 'Facilities and asset records', icon: <BusinessIcon />, path: '/facilities', module: 'facilities', group: 'Operations' },
-  { text: 'Services', description: 'Service requests and work orders', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests', group: 'Operations' },
-  { text: 'Inspections', description: 'Schedules, batches, and reports', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections', group: 'Operations' },
-  { text: 'Locations', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'Operations' },
-  { text: 'Space Status', description: 'Availability and capacity lost', icon: <MeetingRoomIcon />, path: '/spaces', module: 'spaces', group: 'Operations' },
-  { text: 'Vendors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Operations' },
-  { text: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />, path: '/permits', module: 'permits', group: 'Operations' },
-  { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Operations' },
-  { text: 'Maintenance Plans', description: 'Recurring calendar and runtime work', icon: <EventRepeatIcon />, path: '/maintenance', module: 'maintenance', group: 'Operations' },
-  { text: 'Asset Ledger', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Operations' },
+  { text: 'Sites', description: 'Facilities and asset records', icon: <BusinessIcon />, path: '/facilities', module: 'facilities', group: 'The Building' },
+  { text: 'Work Orders', description: 'Service requests and work orders', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests', group: 'Maintenance' },
+  { text: 'Inspections', description: 'Schedules, batches, and reports', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections', group: 'Maintenance' },
+  { text: 'Buildings & Rooms', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'The Building' },
+  { text: 'Beds & Theatres', description: 'Availability and capacity lost', icon: <MeetingRoomIcon />, path: '/spaces', module: 'spaces', group: 'The Building' },
+  { text: 'Contractors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Compliance' },
+  { text: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />, path: '/permits', module: 'permits', group: 'Maintenance' },
+  { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
+  { text: 'Maintenance Plans', description: 'Recurring calendar and runtime work', icon: <EventRepeatIcon />, path: '/maintenance', module: 'maintenance', group: 'Maintenance' },
+  { text: 'Assets & Value', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Assets' },
   {
     text: 'Sales', description: 'Quotations, invoices, and sales', icon: <ShoppingCartIcon />, path: '/sales/quotations', module: 'sales', group: 'Commerce',
     subItems: [
@@ -78,8 +86,8 @@ const allMenuItems: SidebarItem[] = [
       { text: 'History', path: '/rentals/history' },
     ],
   },
-  { text: 'Parts Inventory', description: 'Sales and rental parts', icon: <InventoryIcon />, path: '/inventory', module: 'inventory', group: 'Commerce' },
-  { text: 'Test Equipment', description: 'Global test equipment library', icon: <ScienceIcon />, path: '/test-equipment', module: 'test-equipment', group: 'Commerce' },
+  { text: 'Parts & Spares', description: 'Sales and rental parts', icon: <InventoryIcon />, path: '/inventory', module: 'inventory', group: 'Assets' },
+  { text: 'Test Equipment', description: 'Global test equipment library', icon: <ScienceIcon />, path: '/test-equipment', module: 'test-equipment', group: 'Assets' },
   { text: 'Billing', description: 'Invoices, payments, and ledgers', icon: <PaymentIcon />, path: '/billing', module: 'billing', group: 'Commerce' },
   { text: 'Users', description: 'Users, roles, and permissions', icon: <PeopleIcon />, path: '/users', module: 'users', group: 'People' },
   { text: 'HR', description: 'Human resources management', icon: <GroupsIcon />, path: '/hr', module: 'hr', group: 'People' },
