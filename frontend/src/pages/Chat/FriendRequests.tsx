@@ -16,6 +16,7 @@ import {
   sendFriendRequest, type FriendRequestData,
 } from '@/api/chat'
 import { searchUsers, type UserSearchResult } from '@/api/users'
+import { palette } from '@/theme/palette'
 
 interface Props {
   open: boolean
@@ -93,7 +94,7 @@ const FriendRequests = ({ open, onClose }: Props) => {
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 3, py: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: palette.ink }}>
             Friend Requests
           </Typography>
           <IconButton onClick={onClose} size="small">
@@ -107,7 +108,7 @@ const FriendRequests = ({ open, onClose }: Props) => {
           sx={{
             px: 2, minHeight: 40,
             '& .MuiTab-root': { minHeight: 40, fontSize: '0.8rem', fontWeight: 600, textTransform: 'none' },
-            '& .MuiTabs-indicator': { backgroundColor: '#7C3AED' },
+            '& .MuiTabs-indicator': { backgroundColor: palette.brand },
           }}
         >
           <Tab label={`Received (${receivedItems.length})`} />
@@ -120,18 +121,18 @@ const FriendRequests = ({ open, onClose }: Props) => {
           {tab === 0 && (
             loadingReceived ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress size={28} sx={{ color: '#7C3AED' }} />
+                <CircularProgress size={28} sx={{ color: palette.brand }} />
               </Box>
             ) : receivedItems.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="body2" sx={{ color: '#9CA3AF' }}>No pending requests</Typography>
+                <Typography variant="body2" sx={{ color: palette.textDisabled }}>No pending requests</Typography>
               </Box>
             ) : (
               <List disablePadding>
                 {receivedItems.map((req: FriendRequestData) => (
-                  <ListItemButton key={req.id} sx={{ borderRadius: '12px', mb: 1, backgroundColor: '#F5F3FF' }}>
+                  <ListItemButton key={req.id} sx={{ borderRadius: '12px', mb: 1, backgroundColor: palette.brandTint }}>
                     <ListItemAvatar>
-                      <Avatar sx={{ backgroundColor: '#7C3AED', fontWeight: 700, fontSize: '0.85rem' }}>
+                      <Avatar sx={{ backgroundColor: palette.brand, fontWeight: 700, fontSize: '0.85rem' }}>
                         {req.sender_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                       </Avatar>
                     </ListItemAvatar>
@@ -139,7 +140,7 @@ const FriendRequests = ({ open, onClose }: Props) => {
                       primary={req.sender_name}
                       secondary={
                         <Box component="span">
-                          <Typography component="span" variant="caption" sx={{ display: 'block', color: '#6B7280', mb: 0.5 }}>
+                          <Typography component="span" variant="caption" sx={{ display: 'block', color: palette.textMuted, mb: 0.5 }}>
                             @{req.sender_username}
                           </Typography>
                           {req.message && (
@@ -149,7 +150,7 @@ const FriendRequests = ({ open, onClose }: Props) => {
                               p: 1, 
                               borderRadius: '8px', 
                               fontSize: '0.75rem',
-                              border: '1px solid #E5E7EB',
+                              border: `1px solid ${palette.border}`,
                               color: '#4B5563',
                               fontStyle: 'italic'
                             }}>
@@ -162,11 +163,11 @@ const FriendRequests = ({ open, onClose }: Props) => {
                     />
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
                       <IconButton size="small" onClick={() => acceptMutation.mutate(req.id)}
-                        sx={{ color: '#10B981', backgroundColor: '#ECFDF5' }}>
+                        sx={{ color: palette.brandMid, backgroundColor: palette.brandTint }}>
                         <CheckIcon fontSize="small" />
                       </IconButton>
                       <IconButton size="small" onClick={() => rejectMutation.mutate(req.id)}
-                        sx={{ color: '#EF4444', backgroundColor: '#FEF2F2' }}>
+                        sx={{ color: palette.dangerBright, backgroundColor: palette.dangerWash }}>
                         <CloseIcon fontSize="small" />
                       </IconButton>
                     </Box>
@@ -180,18 +181,18 @@ const FriendRequests = ({ open, onClose }: Props) => {
           {tab === 1 && (
             loadingSent ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress size={28} sx={{ color: '#7C3AED' }} />
+                <CircularProgress size={28} sx={{ color: palette.brand }} />
               </Box>
             ) : sentItems.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="body2" sx={{ color: '#9CA3AF' }}>No sent requests</Typography>
+                <Typography variant="body2" sx={{ color: palette.textDisabled }}>No sent requests</Typography>
               </Box>
             ) : (
               <List disablePadding>
                 {sentItems.map((req: FriendRequestData) => (
                   <ListItemButton key={req.id} sx={{ borderRadius: '12px', mb: 1 }}>
                     <ListItemAvatar>
-                      <Avatar sx={{ backgroundColor: '#6D28D9', fontWeight: 700, fontSize: '0.85rem' }}>
+                      <Avatar sx={{ backgroundColor: palette.brandDeep, fontWeight: 700, fontSize: '0.85rem' }}>
                         {req.receiver_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                       </Avatar>
                     </ListItemAvatar>
@@ -204,8 +205,8 @@ const FriendRequests = ({ open, onClose }: Props) => {
                       label={req.status}
                       size="small"
                       sx={{
-                        backgroundColor: req.status === 'pending' ? '#FEF3C7' : req.status === 'accepted' ? '#ECFDF5' : '#FEF2F2',
-                        color: req.status === 'pending' ? '#D97706' : req.status === 'accepted' ? '#059669' : '#DC2626',
+                        backgroundColor: req.status === 'pending' ? palette.warningTint : req.status === 'accepted' ? palette.brandTint : palette.dangerWash,
+                        color: req.status === 'pending' ? palette.warningStrong : req.status === 'accepted' ? palette.brandStrong : palette.dangerStrong,
                         fontWeight: 600, fontSize: '0.7rem',
                       }}
                     />
@@ -224,7 +225,7 @@ const FriendRequests = ({ open, onClose }: Props) => {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
+                      <SearchIcon sx={{ color: palette.textDisabled, fontSize: '1.1rem' }} />
                     </InputAdornment>
                   ),
                 }}
@@ -232,15 +233,15 @@ const FriendRequests = ({ open, onClose }: Props) => {
               />
               {searching ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress size={24} sx={{ color: '#7C3AED' }} />
+                  <CircularProgress size={24} sx={{ color: palette.brand }} />
                 </Box>
               ) : (
                 <List disablePadding>
                   {searchResults.map((u) => (
-                    <Box key={u.id} sx={{ mb: 1.5, p: 1, borderRadius: '12px', border: expandedUserId === u.id ? '1px solid #7C3AED' : '1px solid transparent', transition: 'all 0.2s' }}>
+                    <Box key={u.id} sx={{ mb: 1.5, p: 1, borderRadius: '12px', border: expandedUserId === u.id ? `1px solid ${palette.brand}` : '1px solid transparent', transition: 'all 0.2s' }}>
                       <ListItemButton sx={{ borderRadius: '12px', p: 0.5, '&:hover': { backgroundColor: 'transparent' } }}>
                         <ListItemAvatar>
-                          <Avatar sx={{ backgroundColor: '#7C3AED', fontWeight: 700, fontSize: '0.85rem' }}>
+                          <Avatar sx={{ backgroundColor: palette.brand, fontWeight: 700, fontSize: '0.85rem' }}>
                             {u.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                           </Avatar>
                         </ListItemAvatar>
@@ -288,8 +289,8 @@ const FriendRequests = ({ open, onClose }: Props) => {
                               textTransform: 'none', 
                               fontSize: '0.75rem', 
                               borderRadius: '8px',
-                              backgroundColor: '#7C3AED',
-                              '&:hover': { backgroundColor: '#6D28D9' }
+                              backgroundColor: palette.brand,
+                              '&:hover': { backgroundColor: palette.brandDeep }
                             }}
                           >
                             {sendRequestMutation.isPending ? 'Sending...' : 'Send Request'}
@@ -299,7 +300,7 @@ const FriendRequests = ({ open, onClose }: Props) => {
                     </Box>
                   ))}
                   {search.length >= 2 && searchResults.length === 0 && !searching && (
-                    <Typography variant="body2" sx={{ color: '#9CA3AF', textAlign: 'center', py: 3 }}>
+                    <Typography variant="body2" sx={{ color: palette.textDisabled, textAlign: 'center', py: 3 }}>
                       No users found
                     </Typography>
                   )}

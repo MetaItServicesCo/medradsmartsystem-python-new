@@ -31,14 +31,15 @@ import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
+import { palette } from '@/theme/palette'
 
 const PAGE_SIZE = 25
 const ACTION_MENU_PAPER = {
   sx: {
     borderRadius: '16px',
     minWidth: 170,
-    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
-    border: '1px solid #EEF0F6',
+    boxShadow: palette.shadowMenu,
+    border: `1px solid ${palette.borderSoft}`,
   },
 }
 const ACTION_MENU_ITEM = {
@@ -64,19 +65,19 @@ const TEST_EQUIPMENT_TABLE_SX = {
 }
 
 const TEST_EQUIPMENT_PAGINATION_SX = {
-  borderTop: '1px solid #EEF0F6',
+  borderTop: `1px solid ${palette.borderSoft}`,
   '& .MuiTablePagination-toolbar': { minHeight: 48, px: { xs: 0.5, sm: 1 } },
   '& .MuiTablePagination-selectLabel': { display: { xs: 'none', sm: 'block' } },
-  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: '#64748B' },
+  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: palette.textSubtle },
 }
 
 const TEST_EQUIPMENT_ACTION_BUTTON_SX = {
   width: 34,
   height: 34,
   borderRadius: '10px',
-  bgcolor: '#F1F5F9',
-  color: '#7C3AED',
-  '&:hover': { bgcolor: '#EDE9FE' },
+  bgcolor: palette.surfaceMuted,
+  color: palette.brand,
+  '&:hover': { bgcolor: palette.brandSoft },
 }
 
 const emptyForm: TestEquipmentPayload = {
@@ -92,9 +93,9 @@ const emptyForm: TestEquipmentPayload = {
 }
 
 const statusColor = (status: string) => {
-  if (status === 'active') return { bg: '#ECFDF5', color: '#047857' }
-  if (status === 'maintenance') return { bg: '#FEF3C7', color: '#B45309' }
-  return { bg: '#F3F4F6', color: '#4B5563' }
+  if (status === 'active') return { bg: palette.brandTint, color: palette.brand }
+  if (status === 'maintenance') return { bg: palette.warningTint, color: palette.warning }
+  return { bg: palette.surfaceGray, color: '#4B5563' }
 }
 
 const TestEquipmentPage = () => {
@@ -283,28 +284,28 @@ const TestEquipmentPage = () => {
     <Box className="page-enter" sx={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
       <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 1.5, mb: 2.5, flexDirection: { xs: 'column', sm: 'row' } }}>
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Test Equipment</Typography>
-          <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>
+          <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink }}>Test Equipment</Typography>
+          <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>
             Global catalog of test equipment used during service and inspection work.
           </Typography>
         </Box>
         {canAdd && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}
-            sx={{ minHeight: 40, alignSelf: { xs: 'flex-start', sm: 'center' }, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)', borderRadius: '10px', px: 2.25, fontWeight: 900, whiteSpace: 'nowrap' }}>
+            sx={{ minHeight: 40, alignSelf: { xs: 'flex-start', sm: 'center' }, background: palette.gradientBrand, borderRadius: '10px', px: 2.25, fontWeight: 900, whiteSpace: 'nowrap' }}>
             Add Test Equipment
           </Button>
         )}
       </Box>
 
-      <Card sx={{ overflow: 'hidden', borderRadius: '22px', border: '1px solid #E9D5FF', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
-        <Box sx={{ p: { xs: 1.5, md: 2 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(240px, 1fr) 170px auto auto' }, gap: 1, alignItems: 'center', borderBottom: '1px solid #E5E7EB' }}>
+      <Card sx={{ overflow: 'hidden', borderRadius: '22px', border: `1px solid ${palette.brandBorder}`, boxShadow: palette.shadowCard }}>
+        <Box sx={{ p: { xs: 1.5, md: 2 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(240px, 1fr) 170px auto auto' }, gap: 1, alignItems: 'center', borderBottom: `1px solid ${palette.border}` }}>
           <TextField
             size="small"
             placeholder="Search TEM, serial, asset, model..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             fullWidth sx={{ minWidth: 0 }}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#9CA3AF' }} /></InputAdornment> }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: palette.textDisabled }} /></InputAdornment> }}
           />
           <TextField size="small" select label="Status" value={status} onChange={(e) => { setPage(0); setStatus(e.target.value) }} fullWidth sx={{ minWidth: 0 }}>
             <MenuItem value="">All Statuses</MenuItem>
@@ -312,8 +313,8 @@ const TestEquipmentPage = () => {
             <MenuItem value="maintenance">Maintenance</MenuItem>
             <MenuItem value="inactive">Inactive</MenuItem>
           </TextField>
-          {isFetching && !isLoading ? <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED', justifySelf: 'center' }} /> : <Box />}
-          <Chip label={`${total} records`} title={`${total} records`} sx={{ height: 30, maxWidth: 130, justifySelf: { xs: 'start', sm: 'end' }, borderRadius: '9px', fontSize: 12, fontWeight: 900, backgroundColor: '#F5F3FF', color: '#6D28D9', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }} />
+          {isFetching && !isLoading ? <CircularProgress size={18} thickness={5} sx={{ color: palette.brand, justifySelf: 'center' }} /> : <Box />}
+          <Chip label={`${total} records`} title={`${total} records`} sx={{ height: 30, maxWidth: 130, justifySelf: { xs: 'start', sm: 'end' }, borderRadius: '9px', fontSize: 12, fontWeight: 900, backgroundColor: palette.brandTint, color: palette.brandDeep, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }} />
         </Box>
 
         <TableContainer className="list-scroll-panel">
@@ -337,7 +338,7 @@ const TestEquipmentPage = () => {
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 7 }}>
                     <ScienceIcon sx={{ fontSize: 52, color: '#D1D5DB', mb: 1 }} />
-                    <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No test equipment found</Typography>
+                    <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>No test equipment found</Typography>
                   </TableCell>
                 </TableRow>
               ) : items.map((item) => {
@@ -354,23 +355,23 @@ const TestEquipmentPage = () => {
                         <Avatar
                           variant="rounded"
                           src={resolveUploadUrl(item.image_url)}
-                          sx={{ width: 42, height: 42, flexShrink: 0, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '11px' }}
+                          sx={{ width: 42, height: 42, flexShrink: 0, bgcolor: palette.brandTint, color: palette.brand, borderRadius: '11px' }}
                         >
                           <ScienceIcon fontSize="small" />
                         </Avatar>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                           <ClippedTooltipText value={item.tem} fontWeight={900} />
-                          <ClippedTooltipText value={item.description || 'No description'} variant="caption" color="#6B7280" fontWeight={550} />
+                          <ClippedTooltipText value={item.description || 'No description'} variant="caption" color={palette.textMuted} fontWeight={550} />
                         </Box>
                       </Box>
                     </TableCell>
                     <TableCell>
                       <ClippedTooltipText value={item.mrf || '-'} fontWeight={800} />
-                      <ClippedTooltipText value={item.model || 'No model'} variant="caption" color="#6B7280" fontWeight={500} />
+                      <ClippedTooltipText value={item.model || 'No model'} variant="caption" color={palette.textMuted} fontWeight={500} />
                     </TableCell>
                     <TableCell>
                       <ClippedTooltipText value={item.serial_number || '-'} />
-                      <ClippedTooltipText value={item.asset || 'No asset'} variant="caption" color="#6B7280" fontWeight={500} />
+                      <ClippedTooltipText value={item.asset || 'No asset'} variant="caption" color={palette.textMuted} fontWeight={500} />
                     </TableCell>
                     <TableCell><ClippedTooltipText value={item.technician_name || '-'} /></TableCell>
                     <TableCell>
@@ -410,7 +411,7 @@ const TestEquipmentPage = () => {
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
         {canEdit && actionItem && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openEdit(actionItem); closeActions() }}>
-            <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#F59E0B' }} /></ListItemIcon>
+            <ListItemIcon><EditIcon fontSize="small" sx={{ color: palette.warningBright }} /></ListItemIcon>
             Edit
           </MenuItem>
         )}
@@ -419,14 +420,14 @@ const TestEquipmentPage = () => {
             if (window.confirm(`Delete ${actionItem.tem}?`)) deleteMut.mutate(actionItem.id)
             closeActions()
           }}>
-            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: palette.dangerBright }} /></ListItemIcon>
             Delete
           </MenuItem>
         )}
       </Menu>
 
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xl" fullWidth PaperProps={{ sx: { borderRadius: '18px', overflow: 'hidden' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', borderBottom: '1px solid #E5E7EB' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink, borderBottom: `1px solid ${palette.border}` }}>
           {editing ? 'Edit Test Equipment' : 'Add New Test Equipment'}
         </DialogTitle>
         <DialogContent sx={{ p: { xs: 2, md: 2.5 } }}>
@@ -484,7 +485,7 @@ const TestEquipmentPage = () => {
               </Box>
             </Box>
 
-            <Box sx={{ height: 240, borderRadius: '14px', border: '1px solid #E2E8F0', backgroundColor: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <Box sx={{ height: 240, borderRadius: '14px', border: `1px solid ${palette.borderSlate}`, backgroundColor: palette.surfaceGray, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               {imageSrc ? (
                 <Box component="img" src={imageSrc} alt="Test equipment preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
@@ -499,7 +500,7 @@ const TestEquipmentPage = () => {
             variant="contained"
             onClick={handleSave}
             disabled={pending}
-            sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)', borderRadius: '10px', px: 3, fontWeight: 900 }}
+            sx={{ background: palette.gradientBrand, borderRadius: '10px', px: 3, fontWeight: 900 }}
           >
             {pending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : (editing ? 'Update Test Equipment' : 'Add Test Equipment')}
           </Button>

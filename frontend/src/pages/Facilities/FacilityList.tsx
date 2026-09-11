@@ -58,34 +58,35 @@ import ClippedTooltipText from '@/components/ClippedTooltipText'
 import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
 import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 const STAT_CARDS = [
   {
     label: 'Total Facilities',
     key: 'total',
     icon: <BusinessIcon />,
-    color: '#7C3AED',
+    color: palette.brand,
     caption: 'All records in scope',
   },
   {
     label: 'Active',
     key: 'active',
     icon: <CheckCircleOutlineIcon />,
-    color: '#2563EB',
+    color: palette.infoStrong,
     caption: 'Available facilities',
   },
   {
     label: 'Countries',
     key: 'countries',
     icon: <PublicOutlinedIcon />,
-    color: '#059669',
+    color: palette.brandStrong,
     caption: 'Visible on this page',
   },
   {
     label: 'With Tiers',
     key: 'tiered',
     icon: <LayersOutlinedIcon />,
-    color: '#8B5CF6',
+    color: palette.brandStrong,
     caption: 'Visible tiered records',
   },
 ]
@@ -305,13 +306,13 @@ const FacilityList = () => {
   const getInitials = (name: string) =>
     name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
 
-  const avatarColors = ['#7C3AED', '#EC4899', '#3B82F6', '#10B981', '#F59E0B', '#EF4444']
+  const avatarColors = [palette.brand, palette.accent, palette.infoBright, palette.brandMid, palette.warningBright, palette.dangerBright]
   const getAvatarColor = (name: string) => avatarColors[name.charCodeAt(0) % avatarColors.length]
   const getVisibleChildCount = (facilityId: number) => facilities.filter((f) => f.parent_facility_id === facilityId).length
 
   const softCellSx = {
     border: '1px solid rgba(148,163,184,0.18)',
-    background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+    background: `linear-gradient(180deg, ${palette.white} 0%, ${palette.surface} 100%)`,
     borderRadius: '14px',
     px: 1.5,
     py: 1,
@@ -550,9 +551,9 @@ const FacilityList = () => {
               p: { xs: 1.35, sm: 1.6, lg: 1.8 },
               minWidth: 0,
               borderRadius: '16px',
-              border: isStatCardSelected(card.key) ? `2px solid ${card.color}` : '1px solid #EEF0F6',
-              boxShadow: isStatCardSelected(card.key) ? `0 18px 40px ${card.color}24` : '0 14px 34px rgba(59,130,246,0.07)',
-              background: '#FFFFFF',
+              border: isStatCardSelected(card.key) ? `2px solid ${card.color}` : `1px solid ${palette.borderSoft}`,
+              boxShadow: isStatCardSelected(card.key) ? `0 18px 40px ${card.color}24` : '0 14px 34px rgba(4,120,87,0.07)',
+              background: palette.white,
               cursor: 'pointer',
               transform: isStatCardSelected(card.key) ? 'translateY(-2px)' : 'none',
               transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
@@ -578,17 +579,17 @@ const FacilityList = () => {
                 {card.icon}
               </Avatar>
               <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography noWrap title={card.label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+                <Typography noWrap title={card.label} sx={{ color: palette.textMuted, fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
                   {card.label}
                 </Typography>
                 {isSummaryLoading ? (
                   <Skeleton width={54} height={27} />
                 ) : (
-                  <Typography noWrap title={String(statsValues[card.key])} sx={{ color: '#1E1B4B', fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>
+                  <Typography noWrap title={String(statsValues[card.key])} sx={{ color: palette.ink, fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>
                     {statsValues[card.key]}
                   </Typography>
                 )}
-                <Typography noWrap title={card.caption} sx={{ color: '#94A3B8', fontSize: 10, fontWeight: 700, lineHeight: 1.25 }}>
+                <Typography noWrap title={card.caption} sx={{ color: palette.textFaint, fontSize: 10, fontWeight: 700, lineHeight: 1.25 }}>
                   {card.caption}
                 </Typography>
               </Box>
@@ -603,7 +604,7 @@ const FacilityList = () => {
         onClose={() => setCountryCardAnchor(null)}
         PaperProps={{ sx: { mt: 1, minWidth: 250, maxHeight: 360, borderRadius: '14px' } }}
       >
-        <MenuItem disabled sx={{ opacity: '1 !important', color: '#64748B', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+        <MenuItem disabled sx={{ opacity: '1 !important', color: palette.textSubtle, fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
           Facilities by country
         </MenuItem>
         <MenuItem selected={!countryFilter} onClick={() => handleCountryFilter()}>
@@ -619,7 +620,7 @@ const FacilityList = () => {
       {/* Main table card */}
       <Card ref={facilityListRef} sx={{ overflow: 'hidden', scrollMarginTop: 16 }}>
         {/* Toolbar */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2.5, borderBottom: '1px solid rgba(124,58,237,0.08)', flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2.5, borderBottom: '1px solid rgba(4,120,87,0.08)', flexWrap: 'wrap' }}>
           <SearchFieldSelect
             value={querySearchField}
             options={FACILITY_SEARCH_FIELDS}
@@ -628,20 +629,20 @@ const FacilityList = () => {
           />
           <Box component="form" onSubmit={handleSearch} sx={{
             display: 'flex', alignItems: 'center', gap: 1,
-            backgroundColor: '#F5F3FF', borderRadius: '12px', px: 2, py: 1,
-            flex: 1, maxWidth: 340, border: '1px solid rgba(124,58,237,0.12)',
-            '&:focus-within': { border: '1px solid #8B5CF6', backgroundColor: '#fff' },
+            backgroundColor: palette.brandTint, borderRadius: '12px', px: 2, py: 1,
+            flex: 1, maxWidth: 340, border: '1px solid rgba(4,120,87,0.12)',
+            '&:focus-within': { border: `1px solid ${palette.brandStrong}`, backgroundColor: '#fff' },
             transition: 'all 0.2s',
           }}>
             <IconButton type="submit" size="small" sx={{ p: '2px' }}>
-              <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
+              <SearchIcon sx={{ color: palette.textDisabled, fontSize: '1.2rem' }} />
             </IconButton>
             <InputBase
               inputRef={searchInputRef}
               placeholder={`Search ${FACILITY_SEARCH_FIELDS.find((field) => field.value === querySearchField)?.label.toLowerCase() || 'facilities'}...`}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}
+              sx={{ fontSize: '0.875rem', color: palette.textStrong, flex: 1 }}
             />
             {searchInput && (
               <IconButton size="small" onClick={() => {
@@ -650,7 +651,7 @@ const FacilityList = () => {
                 next.delete('search')
                 setSearchParams(next, { replace: true })
               }} sx={{ p: '2px' }}>
-                <ClearIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
+                <ClearIcon sx={{ color: palette.textDisabled, fontSize: '1.1rem' }} />
               </IconButton>
             )}
           </Box>
@@ -662,15 +663,15 @@ const FacilityList = () => {
             sx={{
               height: 38,
               borderRadius: '12px',
-              backgroundColor: '#F8FAFC',
+              backgroundColor: palette.surface,
               border: '1px solid rgba(148,163,184,0.22)',
-              color: '#475569',
+              color: palette.slate600,
               fontWeight: 800,
-              '& .MuiChip-icon': { color: '#7C3AED' },
+              '& .MuiChip-icon': { color: palette.brand },
             }}
           />
           {isFetching && !isLoading && (
-            <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+            <CircularProgress size={18} thickness={5} sx={{ color: palette.brand }} />
           )}
 
           <Box sx={{ flex: 1 }} />
@@ -680,11 +681,11 @@ const FacilityList = () => {
             endIcon={<ArrowDropDownIcon />}
             onClick={(e) => setMainMenuAnchor(e.currentTarget)}
             sx={{
-              background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
-              boxShadow: '0 8px 24px rgba(124,58,237,0.25)',
+              background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)`,
+              boxShadow: '0 8px 24px rgba(4,120,87,0.25)',
               '&:hover': { 
-                background: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)', 
-                boxShadow: '0 12px 32px rgba(124,58,237,0.35)',
+                background: `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.accent} 100%)`, 
+                boxShadow: '0 12px 32px rgba(4,120,87,0.35)',
                 transform: 'translateY(-1px)'
               },
               px: 4,
@@ -703,33 +704,33 @@ const FacilityList = () => {
             PaperProps={{
               sx: {
                 mt: 1, minWidth: 220, borderRadius: '14px',
-                boxShadow: '0 8px 32px rgba(124,58,237,0.15)',
-                border: '1px solid rgba(124,58,237,0.08)'
+                boxShadow: '0 8px 32px rgba(4,120,87,0.15)',
+                border: '1px solid rgba(4,120,87,0.08)'
               }
             }}
           >
             <MenuItem onClick={() => { setMainMenuAnchor(null); setEditFacility(null); setModalOpen(true) }} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
-              <ListItemIcon><AddIcon sx={{ color: '#7C3AED' }} /></ListItemIcon>
+              <ListItemIcon><AddIcon sx={{ color: palette.brand }} /></ListItemIcon>
               <ListItemText primary="Add Facility" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
             </MenuItem>
             <Divider sx={{ mx: 2, my: 0.5 }} />
             <MenuItem onClick={() => { setMainMenuAnchor(null); setModalitiesModalOpen(true) }} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
-              <ListItemIcon><CategoryOutlinedIcon sx={{ color: '#10B981' }} /></ListItemIcon>
+              <ListItemIcon><CategoryOutlinedIcon sx={{ color: palette.brandMid }} /></ListItemIcon>
               <ListItemText primary="Modalities" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
             </MenuItem>
             <MenuItem onClick={() => { setMainMenuAnchor(null); setDeptsModalOpen(true) }} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
-              <ListItemIcon><DomainOutlinedIcon sx={{ color: '#F59E0B' }} /></ListItemIcon>
+              <ListItemIcon><DomainOutlinedIcon sx={{ color: palette.warningBright }} /></ListItemIcon>
               <ListItemText primary="Departments" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
             </MenuItem>
             {isSuperAdmin && (
               <>
                 <Divider sx={{ mx: 2, my: 0.5 }} />
                 <MenuItem onClick={handleDownloadFacilities} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
-                  <ListItemIcon><DownloadOutlinedIcon sx={{ color: '#2563EB' }} /></ListItemIcon>
+                  <ListItemIcon><DownloadOutlinedIcon sx={{ color: palette.infoStrong }} /></ListItemIcon>
                   <ListItemText primary="Download Facilities" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
                 </MenuItem>
                 <MenuItem onClick={handleDownloadInventory} sx={{ py: 1.5, mx: 1, borderRadius: '8px' }}>
-                  <ListItemIcon><DownloadOutlinedIcon sx={{ color: '#059669' }} /></ListItemIcon>
+                  <ListItemIcon><DownloadOutlinedIcon sx={{ color: palette.brandStrong }} /></ListItemIcon>
                   <ListItemText primary="Download Inventory" primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }} />
                 </MenuItem>
               </>
@@ -738,15 +739,15 @@ const FacilityList = () => {
         </Box>
 
         {/* Table */}
-        <TableContainer className="list-scroll-panel" sx={{ background: 'linear-gradient(180deg, #FFFFFF 0%, #FBFAFF 100%)' }}>
+        <TableContainer className="list-scroll-panel" sx={{ background: 'linear-gradient(180deg, #FFFFFF 0%, #fafffe 100%)' }}>
           <Table stickyHeader sx={{
             minWidth: 1180,
             borderCollapse: 'separate',
             borderSpacing: '0 10px',
             px: 2,
             '& .MuiTableHead-root .MuiTableCell-root': {
-              backgroundColor: '#F8FAFC',
-              color: '#64748B',
+              backgroundColor: palette.surface,
+              color: palette.textSubtle,
               fontWeight: 900,
               fontSize: '0.74rem',
               letterSpacing: '0.04em',
@@ -784,11 +785,11 @@ const FacilityList = () => {
                     <TableRow>
                       <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                         <Box sx={{ textAlign: 'center', opacity: 0.8 }}>
-                          <BusinessIcon sx={{ fontSize: '3.5rem', color: '#DDD6FE', mb: 2 }} />
-                          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B', mb: 0.5 }}>
+                          <BusinessIcon sx={{ fontSize: '3.5rem', color: palette.brandBorder, mb: 2 }} />
+                          <Typography variant="h6" sx={{ fontWeight: 700, color: palette.ink, mb: 0.5 }}>
                             {search ? 'No matches found' : 'No facilities yet'}
                           </Typography>
-                          <Typography variant="body2" sx={{ color: '#6B7280', mb: 3, maxWidth: 300, mx: 'auto' }}>
+                          <Typography variant="body2" sx={{ color: palette.textMuted, mb: 3, maxWidth: 300, mx: 'auto' }}>
                             {search 
                               ? `We couldn't find any results for "${search}". Try checking your spelling or use different keywords.` 
                               : "It looks like you haven't added any facilities yet. Get started by creating your first one."
@@ -798,7 +799,7 @@ const FacilityList = () => {
                             <Button
                               variant="outlined"
                               onClick={() => { setSearchInput(''); setSearchParams({}, { replace: true }) }}
-                              sx={{ px: 4, borderRadius: '10px', borderColor: '#7C3AED', color: '#7C3AED' }}
+                              sx={{ px: 4, borderRadius: '10px', borderColor: palette.brand, color: palette.brand }}
                             >
                               Clear Search
                             </Button>
@@ -806,7 +807,7 @@ const FacilityList = () => {
                             <Button
                               variant="contained"
                               onClick={() => { setEditFacility(null); setModalOpen(true) }}
-                              sx={{ px: 4, borderRadius: '10px', backgroundColor: '#7C3AED' }}
+                              sx={{ px: 4, borderRadius: '10px', backgroundColor: palette.brand }}
                             >
                               Add Your First Facility
                             </Button>
@@ -828,11 +829,11 @@ const FacilityList = () => {
                           backgroundColor: '#FAFAFF',
                           '& .facility-row-avatar': {
                             transform: 'scale(1.04)',
-                            boxShadow: '0 10px 24px rgba(124,58,237,0.22)',
+                            boxShadow: '0 10px 24px rgba(4,120,87,0.22)',
                           },
                           '& .facility-soft-cell': {
-                            borderColor: 'rgba(124,58,237,0.24)',
-                            boxShadow: '0 10px 28px rgba(124,58,237,0.08)',
+                            borderColor: 'rgba(4,120,87,0.24)',
+                            boxShadow: '0 10px 28px rgba(4,120,87,0.08)',
                           },
                         },
                       }}
@@ -843,7 +844,7 @@ const FacilityList = () => {
                             className="facility-row-avatar"
                             sx={{
                               width: 46, height: 46, borderRadius: '16px',
-                              background: `linear-gradient(135deg, ${getAvatarColor(facility.name)} 0%, #4C1D95 100%)`,
+                              background: `linear-gradient(135deg, ${getAvatarColor(facility.name)} 0%, #022C22 100%)`,
                               fontSize: '0.86rem', fontWeight: 900,
                               border: '3px solid #fff',
                               transition: 'all 0.2s ease',
@@ -858,14 +859,14 @@ const FacilityList = () => {
                                 label={`#${facility.id}`}
                                 size="small"
                                 onClick={() => openFacilityView(facility)}
-                                sx={{ ...hierarchyChipSx, backgroundColor: '#F1F5F9', color: '#64748B' }}
+                                sx={{ ...hierarchyChipSx, backgroundColor: palette.surfaceMuted, color: palette.textSubtle }}
                               />
                               {isChild && (
                                 <Chip
                                   icon={<AccountTreeOutlinedIcon />}
                                   label="Child"
                                   size="small"
-                                  sx={{ ...hierarchyChipSx, backgroundColor: '#EFF6FF', color: '#2563EB' }}
+                                  sx={{ ...hierarchyChipSx, backgroundColor: palette.infoTint, color: palette.infoStrong }}
                                 />
                               )}
                               {!isChild && visibleChildCount > 0 && (
@@ -873,7 +874,7 @@ const FacilityList = () => {
                                   icon={<AccountTreeOutlinedIcon />}
                                   label={`${visibleChildCount} child${visibleChildCount > 1 ? 'ren' : ''}`}
                                   size="small"
-                                  sx={{ ...hierarchyChipSx, backgroundColor: '#ECFDF5', color: '#059669' }}
+                                  sx={{ ...hierarchyChipSx, backgroundColor: palette.brandTint, color: palette.brandStrong }}
                                 />
                               )}
                             </Box>
@@ -883,10 +884,10 @@ const FacilityList = () => {
                       <TableCell>
                         <Box className="facility-soft-cell" sx={softCellSx}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-                            <LocationOnOutlinedIcon sx={{ color: '#7C3AED', fontSize: '1rem', flexShrink: 0 }} />
+                            <LocationOnOutlinedIcon sx={{ color: palette.brand, fontSize: '1rem', flexShrink: 0 }} />
                             <ClippedTooltipText value={`${facility.city}, ${facility.state}`} fontWeight={700} />
                           </Box>
-                        <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <Typography variant="caption" sx={{ color: palette.textSubtle, fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {facility.country} · {facility.zip_code}
                         </Typography>
                         </Box>
@@ -894,12 +895,12 @@ const FacilityList = () => {
                       <TableCell>
                         <Box className="facility-soft-cell" sx={softCellSx}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-                            <PhoneOutlinedIcon sx={{ color: '#10B981', fontSize: '1rem', flexShrink: 0 }} />
+                            <PhoneOutlinedIcon sx={{ color: palette.brandMid, fontSize: '1rem', flexShrink: 0 }} />
                             <ClippedTooltipText value={formatUSPhone(facility.phone)} fontWeight={700} />
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, mt: 0.35 }}>
-                            <EmailOutlinedIcon sx={{ color: '#94A3B8', fontSize: '0.95rem', flexShrink: 0 }} />
-                            <ClippedTooltipText value={facility.email} variant="caption" color="#64748B" fontWeight={600} />
+                            <EmailOutlinedIcon sx={{ color: palette.textFaint, fontSize: '0.95rem', flexShrink: 0 }} />
+                            <ClippedTooltipText value={facility.email} variant="caption" color={palette.textSubtle} fontWeight={600} />
                           </Box>
                         </Box>
                       </TableCell>
@@ -910,11 +911,11 @@ const FacilityList = () => {
                           sx={{
                             height: 34,
                             borderRadius: '12px',
-                            backgroundColor: '#F5F3FF',
-                            color: '#7C3AED',
+                            backgroundColor: palette.brandTint,
+                            color: palette.brand,
                             fontWeight: 900,
                             fontSize: '0.75rem',
-                            border: '1px solid rgba(124,58,237,0.14)',
+                            border: '1px solid rgba(4,120,87,0.14)',
                           }}
                         />
                       </TableCell>
@@ -942,8 +943,8 @@ const FacilityList = () => {
                                   width: 24, height: 24, fontSize: '0.65rem',
                                   border: '2px solid #fff',
                                   ml: -1,
-                                  backgroundColor: '#F3F4F6',
-                                  color: '#6B7280',
+                                  backgroundColor: palette.surfaceGray,
+                                  color: palette.textMuted,
                                   fontWeight: 600,
                                 }}
                               >
@@ -954,7 +955,7 @@ const FacilityList = () => {
                               <Chip
                                 label="No users"
                                 size="small"
-                                sx={{ height: 26, borderRadius: '9px', backgroundColor: '#F8FAFC', color: '#94A3B8', fontWeight: 800 }}
+                                sx={{ height: 26, borderRadius: '9px', backgroundColor: palette.surface, color: palette.textFaint, fontWeight: 800 }}
                               />
                             )}
                           </Box>
@@ -962,7 +963,7 @@ const FacilityList = () => {
                       </TableCell>
                       <TableCell>
                         <Box className="facility-soft-cell" sx={{ ...softCellSx, maxWidth: 180 }}>
-                        <Typography variant="body2" sx={{ color: '#475569', fontSize: '0.8rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <Typography variant="body2" sx={{ color: palette.slate600, fontSize: '0.8rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {facility.operating_hours || '—'}
                         </Typography>
                         </Box>
@@ -973,14 +974,14 @@ const FacilityList = () => {
                             size="small"
                             onClick={(e) => handleActionsOpen(e, facility)}
                             sx={{
-                              color: '#7C3AED',
-                              backgroundColor: '#F5F3FF',
+                              color: palette.brand,
+                              backgroundColor: palette.brandTint,
                               borderRadius: '10px',
                               width: 36,
                               height: 36,
                               transition: 'all 0.2s ease',
                               '&:hover': {
-                                backgroundColor: '#EDE9FE',
+                                backgroundColor: palette.brandSoft,
                                 transform: 'scale(1.05)',
                               },
                             }}
@@ -997,7 +998,7 @@ const FacilityList = () => {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5, borderTop: '1px solid rgba(124,58,237,0.08)' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 2.5, borderTop: '1px solid rgba(4,120,87,0.08)' }}>
             <Pagination
               count={totalPages}
               page={page}
@@ -1006,7 +1007,7 @@ const FacilityList = () => {
               shape="rounded"
               sx={{
                 '& .MuiPaginationItem-root': { borderRadius: '8px', fontWeight: 600 },
-                '& .Mui-selected': { background: 'linear-gradient(135deg, #7C3AED, #EC4899) !important', color: '#fff' },
+                '& .Mui-selected': { background: `linear-gradient(135deg, ${palette.brand}, ${palette.accent}) !important`, color: '#fff' },
               }}
             />
           </Box>
@@ -1025,8 +1026,8 @@ const FacilityList = () => {
           sx: {
             borderRadius: '14px',
             overflow: 'visible',
-            filter: 'drop-shadow(0 4px 24px rgba(124,58,237,0.15))',
-            border: '1px solid rgba(124,58,237,0.08)',
+            filter: 'drop-shadow(0 4px 24px rgba(4,120,87,0.15))',
+            border: '1px solid rgba(4,120,87,0.08)',
             mt: 1,
             minWidth: 200,
             '&::before': {
@@ -1040,70 +1041,70 @@ const FacilityList = () => {
               bgcolor: 'background.paper',
               transform: 'translateY(-50%) rotate(45deg)',
               zIndex: 0,
-              borderLeft: '1px solid rgba(124,58,237,0.08)',
-              borderTop: '1px solid rgba(124,58,237,0.08)',
+              borderLeft: '1px solid rgba(4,120,87,0.08)',
+              borderTop: '1px solid rgba(4,120,87,0.08)',
             },
           },
         }}
       >
-        <MenuItem onClick={handleActionView} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
-          <ListItemIcon><VisibilityOutlinedIcon sx={{ color: '#7C3AED', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="View Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+        <MenuItem onClick={handleActionView} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.brandTint } }}>
+          <ListItemIcon><VisibilityOutlinedIcon sx={{ color: palette.brand, fontSize: '1.2rem' }} /></ListItemIcon>
+          <ListItemText primary="View Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
         </MenuItem>
 
-        <MenuItem onClick={handleActionExport} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
-          <ListItemIcon><DownloadOutlinedIcon sx={{ color: '#059669', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="Export Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+        <MenuItem onClick={handleActionExport} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.brandTint } }}>
+          <ListItemIcon><DownloadOutlinedIcon sx={{ color: palette.brandStrong, fontSize: '1.2rem' }} /></ListItemIcon>
+          <ListItemText primary="Export Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
         </MenuItem>
 
         {canEditFacilities && (
-          <MenuItem onClick={handleActionEdit} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
-            <ListItemIcon><EditOutlinedIcon sx={{ color: '#6D28D9', fontSize: '1.2rem' }} /></ListItemIcon>
-            <ListItemText primary="Edit Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          <MenuItem onClick={handleActionEdit} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.brandTint } }}>
+            <ListItemIcon><EditOutlinedIcon sx={{ color: palette.brandDeep, fontSize: '1.2rem' }} /></ListItemIcon>
+            <ListItemText primary="Edit Facility" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
           </MenuItem>
         )}
         
-        <MenuItem onClick={handleActionDuplicate} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
-          <ListItemIcon><ContentCopyOutlinedIcon sx={{ color: '#3B82F6', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="Duplicate" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+        <MenuItem onClick={handleActionDuplicate} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.brandTint } }}>
+          <ListItemIcon><ContentCopyOutlinedIcon sx={{ color: palette.infoBright, fontSize: '1.2rem' }} /></ListItemIcon>
+          <ListItemText primary="Duplicate" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
         </MenuItem>
 
-        <MenuItem onClick={handleActionFacilityTier} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
-          <ListItemIcon><WorkspacePremiumIcon sx={{ color: '#F59E0B', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="Facility Tier" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+        <MenuItem onClick={handleActionFacilityTier} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.brandTint } }}>
+          <ListItemIcon><WorkspacePremiumIcon sx={{ color: palette.warningBright, fontSize: '1.2rem' }} /></ListItemIcon>
+          <ListItemText primary="Facility Tier" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
         </MenuItem>
 
         {canManageUsers && (
-          <MenuItem onClick={() => menuFacility && openFacilityUsers(menuFacility)} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}>
-            <ListItemIcon><PeopleOutlinedIcon sx={{ color: '#3B82F6', fontSize: '1.2rem' }} /></ListItemIcon>
-            <ListItemText primary="Manage Users" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          <MenuItem onClick={() => menuFacility && openFacilityUsers(menuFacility)} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.brandTint } }}>
+            <ListItemIcon><PeopleOutlinedIcon sx={{ color: palette.infoBright, fontSize: '1.2rem' }} /></ListItemIcon>
+            <ListItemText primary="Manage Users" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
           </MenuItem>
         )}
 
         {(canAddFacilityInventory || canViewFacilityInventory) && (
           <Box sx={{ mx: 2, my: 0.5 }}>
-            <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
+            <Box sx={{ borderTop: '1px solid rgba(4,120,87,0.08)' }} />
           </Box>
         )}
 
         {canAddFacilityInventory && (
-          <MenuItem onClick={() => handleActionInventory('add')} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F0FDF4' } }}>
-            <ListItemIcon><AddBoxOutlinedIcon sx={{ color: '#10B981', fontSize: '1.2rem' }} /></ListItemIcon>
-            <ListItemText primary="Add Facility Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          <MenuItem onClick={() => handleActionInventory('add')} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.successTint } }}>
+            <ListItemIcon><AddBoxOutlinedIcon sx={{ color: palette.brandMid, fontSize: '1.2rem' }} /></ListItemIcon>
+            <ListItemText primary="Add Facility Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
           </MenuItem>
         )}
 
         {canViewFacilityInventory && (
-          <MenuItem onClick={() => handleActionInventory('view')} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F0FDF4' } }}>
-            <ListItemIcon><InventoryIcon sx={{ color: '#10B981', fontSize: '1.2rem' }} /></ListItemIcon>
-            <ListItemText primary="View Facility Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          <MenuItem onClick={() => handleActionInventory('view')} sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.successTint } }}>
+            <ListItemIcon><InventoryIcon sx={{ color: palette.brandMid, fontSize: '1.2rem' }} /></ListItemIcon>
+            <ListItemText primary="View Facility Inventory" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
           </MenuItem>
         )}
 
         {canDeleteFacilities && (
           <>
             <Box sx={{ mx: 2, my: 0.5 }}>
-              <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
+              <Box sx={{ borderTop: '1px solid rgba(4,120,87,0.08)' }} />
             </Box>
 
             <MenuItem
@@ -1115,19 +1116,19 @@ const FacilityList = () => {
                 borderRadius: '10px',
                 transition: 'all 0.15s ease',
                 '&:hover': {
-                  backgroundColor: '#FEF2F2',
+                  backgroundColor: palette.dangerWash,
                 },
               }}
             >
               <ListItemIcon>
-                <DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.2rem' }} />
+                <DeleteOutlineIcon sx={{ color: palette.dangerBright, fontSize: '1.2rem' }} />
               </ListItemIcon>
               <ListItemText
                 primary="Delete Facility"
                 primaryTypographyProps={{
                   fontSize: '0.875rem',
                   fontWeight: 600,
-                  color: '#EF4444',
+                  color: palette.dangerBright,
                 }}
               />
             </MenuItem>
@@ -1172,7 +1173,7 @@ const FacilityList = () => {
         <DialogTitle sx={{
           fontWeight: 900,
           color: '#fff',
-          background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
+          background: palette.gradientBrand,
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
@@ -1181,14 +1182,14 @@ const FacilityList = () => {
           Export Facility Data
         </DialogTitle>
         <DialogContent dividers sx={{ p: 3 }}>
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.5 }}>
+          <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 0.5 }}>
             {exportFacility?.name || 'Facility'}
           </Typography>
-          <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13, mb: 2.5 }}>
+          <Typography sx={{ color: palette.textSubtle, fontWeight: 700, fontSize: 13, mb: 2.5 }}>
             Choose exactly what you want to download. Parent/child exports still respect facility access permissions.
           </Typography>
 
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Export scope</Typography>
+          <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>Export scope</Typography>
           <RadioGroup value={exportScope} onChange={event => setExportScope(event.target.value as FacilityScopedExportScope)}>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 1.25 }}>
               {availableExportOptions(exportFacility).map(option => (
@@ -1198,20 +1199,20 @@ const FacilityList = () => {
                   sx={{
                     p: 1.5,
                     borderRadius: '14px',
-                    border: exportScope === option.scope ? '1px solid #7C3AED' : '1px solid #E5E7EB',
-                    bgcolor: exportScope === option.scope ? '#F5F3FF' : '#fff',
+                    border: exportScope === option.scope ? `1px solid ${palette.brand}` : `1px solid ${palette.border}`,
+                    bgcolor: exportScope === option.scope ? palette.brandTint : '#fff',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
-                    '&:hover': { borderColor: '#A78BFA', bgcolor: '#FAF5FF' },
+                    '&:hover': { borderColor: palette.brandLight, bgcolor: '#f5ffff' },
                   }}
                 >
                   <FormControlLabel
                     value={option.scope}
                     control={<Radio size="small" />}
-                    label={<Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{option.label}</Typography>}
+                    label={<Typography sx={{ fontWeight: 900, color: palette.ink }}>{option.label}</Typography>}
                     sx={{ m: 0, alignItems: 'flex-start' }}
                   />
-                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, pl: 3.75 }}>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 700, pl: 3.75 }}>
                     {option.description}
                   </Typography>
                 </Box>
@@ -1221,7 +1222,7 @@ const FacilityList = () => {
 
           <Divider sx={{ my: 2.5 }} />
 
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>File format</Typography>
+          <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>File format</Typography>
           <RadioGroup row value={exportFormat} onChange={event => setExportFormat(event.target.value as FacilityScopedExportFormat)}>
             <FormControlLabel value="pdf" control={<Radio />} label="PDF" />
             <FormControlLabel value="csv" control={<Radio />} label="CSV" />
@@ -1249,7 +1250,7 @@ const FacilityList = () => {
         onClose={() => setDeleteTarget(null)}
         PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
       >
-        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>Delete Facility?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: palette.ink }}>Delete Facility?</DialogTitle>
         <DialogContent>
           <DialogContentText>
             Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
@@ -1260,7 +1261,7 @@ const FacilityList = () => {
           <Button
             onClick={() => setDeleteTarget(null)}
             variant="outlined"
-            sx={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+            sx={{ borderColor: palette.border, color: palette.textMuted }}
           >
             Cancel
           </Button>

@@ -14,6 +14,7 @@ import HistoryIcon from '@mui/icons-material/History'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import CloseIcon from '@mui/icons-material/Close'
 import { useListContext } from '@/contexts/ListContext'
+import { palette } from '@/theme/palette'
 
 const timeLabel = (timestamp: number) => {
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
@@ -48,7 +49,7 @@ const RecentActivityMenu = () => {
             borderRadius: '16px',
             border: '1px solid #E8ECF4',
             boxShadow: '0 12px 30px rgba(71,85,105,0.06)',
-            '&:hover': { backgroundColor: '#F3F0FF' },
+            '&:hover': { backgroundColor: '#f0fffb' },
           }}
         >
           <Badge
@@ -57,7 +58,7 @@ const RecentActivityMenu = () => {
             invisible={recentActivities.length === 0}
             sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', fontWeight: 800 } }}
           >
-            <HistoryIcon sx={{ fontSize: '1.35rem', color: '#7C3AED' }} />
+            <HistoryIcon sx={{ fontSize: '1.35rem', color: palette.brand }} />
           </Badge>
         </IconButton>
       </Tooltip>
@@ -74,7 +75,7 @@ const RecentActivityMenu = () => {
             width: 420,
             maxWidth: 'calc(100vw - 24px)',
             borderRadius: '16px',
-            border: '1px solid #E5E7EB',
+            border: `1px solid ${palette.border}`,
             boxShadow: '0 20px 50px rgba(15,23,42,0.16)',
             overflow: 'hidden',
           },
@@ -84,8 +85,8 @@ const RecentActivityMenu = () => {
       >
         <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Recent activity</Typography>
-            <Typography variant="caption" sx={{ color: '#6B7280' }}>
+            <Typography sx={{ fontWeight: 900, color: palette.ink }}>Recent activity</Typography>
+            <Typography variant="caption" sx={{ color: palette.textMuted }}>
               Successful updates from this session
             </Typography>
           </Box>
@@ -96,7 +97,7 @@ const RecentActivityMenu = () => {
               clearRecentActivities()
               closeMenu()
             }}
-            sx={{ color: '#7C3AED', fontWeight: 800, textTransform: 'none' }}
+            sx={{ color: palette.brand, fontWeight: 800, textTransform: 'none' }}
           >
             Clear all
           </Button>
@@ -106,8 +107,8 @@ const RecentActivityMenu = () => {
         {recentActivities.length === 0 ? (
           <Box sx={{ px: 2.5, py: 4, textAlign: 'center' }}>
             <HistoryIcon sx={{ color: '#CBD5E1', fontSize: 32, mb: 0.5 }} />
-            <Typography sx={{ fontWeight: 800, color: '#374151' }}>No recent updates</Typography>
-            <Typography variant="body2" sx={{ color: '#9CA3AF' }}>
+            <Typography sx={{ fontWeight: 800, color: palette.textStrong }}>No recent updates</Typography>
+            <Typography variant="body2" sx={{ color: palette.textDisabled }}>
               Completed actions will appear here.
             </Typography>
           </Box>
@@ -130,21 +131,21 @@ const RecentActivityMenu = () => {
                     borderRadius: '11px',
                     display: 'grid',
                     placeItems: 'center',
-                    bgcolor: '#F3F0FF',
-                    color: '#7C3AED',
+                    bgcolor: '#f0fffb',
+                    color: palette.brand,
                     flexShrink: 0,
                   }}
                 >
                   <MyLocationIcon sx={{ fontSize: 18 }} />
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography noWrap sx={{ color: '#1E1B4B', fontSize: 13.5, fontWeight: 900 }}>
+                  <Typography noWrap sx={{ color: palette.ink, fontSize: 13.5, fontWeight: 900 }}>
                     {activity.label}
                   </Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 12, lineHeight: 1.35 }}>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 12, lineHeight: 1.35 }}>
                     {activity.message || 'Update completed successfully.'}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: '#94A3B8', textTransform: 'capitalize' }}>
+                  <Typography variant="caption" sx={{ color: palette.textFaint, textTransform: 'capitalize' }}>
                     {activity.scope.replace(/-/g, ' ')} · {timeLabel(activity.updatedAt)}
                   </Typography>
                 </Box>

@@ -16,6 +16,7 @@ import { fetchEquipment, type EquipmentItem } from '@/api/equipment'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
+import { palette } from '@/theme/palette'
 
 interface Props {
   open: boolean
@@ -158,22 +159,22 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
       fullWidth
       PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}
     >
-      <Box sx={{ px: 3, py: 2.25, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid #E5E7EB', backgroundColor: '#fff' }}>
-        <Box sx={{ width: 42, height: 42, borderRadius: '12px', backgroundColor: '#EDE9FE', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Box sx={{ px: 3, py: 2.25, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: `1px solid ${palette.border}`, backgroundColor: '#fff' }}>
+        <Box sx={{ width: 42, height: 42, borderRadius: '12px', backgroundColor: palette.brandSoft, color: palette.brand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <BuildIcon />
         </Box>
         <Box sx={{ flex: 1 }}>
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: '1.05rem' }}>
+          <Typography sx={{ fontWeight: 900, color: palette.ink, fontSize: '1.05rem' }}>
             Create Service Request
           </Typography>
-          <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>
+          <Typography sx={{ color: palette.textSubtle, fontSize: '0.82rem' }}>
             Capture facility, equipment, preferred visit time, image, and requested service.
           </Typography>
         </Box>
         <IconButton onClick={onClose}><CloseIcon /></IconButton>
       </Box>
 
-      <DialogContent sx={{ p: 3, backgroundColor: '#F8FAFC' }}>
+      <DialogContent sx={{ p: 3, backgroundColor: palette.surface }}>
         <Box sx={{ display: 'grid', gap: 2.25 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
             <FacilitySearchAutocomplete
@@ -231,7 +232,7 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
             <TextField label="Request By" placeholder="Person name" value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} />
-            <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} sx={{ justifyContent: 'flex-start', borderRadius: '12px', minHeight: 56, color: '#475569', borderColor: '#CBD5E1' }}>
+            <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} sx={{ justifyContent: 'flex-start', borderRadius: '12px', minHeight: 56, color: palette.slate600, borderColor: '#CBD5E1' }}>
               {imageName || 'Choose Image'}
               <input hidden type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} />
             </Button>
@@ -246,7 +247,7 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
                 setReferences((prev) => [...prev, referenceNumber.trim()])
                 setReferenceNumber('')
               }}
-              sx={{ minWidth: 54, borderRadius: '12px', backgroundColor: '#10B981' }}
+              sx={{ minWidth: 54, borderRadius: '12px', backgroundColor: palette.brand }}
             >
               <AddIcon />
             </Button>
@@ -258,7 +259,7 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
                   key={`${reference}-${index}`}
                   label={reference}
                   onDelete={() => setReferences((prev) => prev.filter((_, i) => i !== index))}
-                  sx={{ backgroundColor: '#ECFDF5', color: '#047857', fontWeight: 700 }}
+                  sx={{ backgroundColor: palette.brandTint, color: palette.brand, fontWeight: 700 }}
                 />
               ))}
             </Box>
@@ -289,15 +290,15 @@ const CreateServiceRequestModal = ({ open, onClose, initialFacilityId, initialEq
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2.5, gap: 1.5, borderTop: '1px solid #E5E7EB' }}>
-        <Button onClick={onClose} variant="outlined" sx={{ borderColor: '#E5E7EB', color: '#6B7280', borderRadius: '12px', px: 3, fontWeight: 700 }}>
+      <DialogActions sx={{ px: 3, py: 2.5, gap: 1.5, borderTop: `1px solid ${palette.border}` }}>
+        <Button onClick={onClose} variant="outlined" sx={{ borderColor: palette.border, color: palette.textMuted, borderRadius: '12px', px: 3, fontWeight: 700 }}>
           Cancel
         </Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
           disabled={!isValid || uploadingImage || createMutation.isPending}
-          sx={{ background: 'linear-gradient(135deg, #4F46E5 0%, #EC4899 100%)', borderRadius: '12px', px: 4, fontWeight: 900 }}
+          sx={{ background: `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.accent} 100%)`, borderRadius: '12px', px: 4, fontWeight: 900 }}
         >
           {uploadingImage || createMutation.isPending ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : 'Create Service Request'}
         </Button>

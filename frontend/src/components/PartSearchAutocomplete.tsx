@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Autocomplete, Avatar, Box, Chip, CircularProgress, TextField, Typography } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import { resolveUploadUrl } from '@/api/users'
+import { palette } from '@/theme/palette'
 
 // Minimal shape the picker needs. Both SalesPart and RentalPart satisfy this.
 export interface PickerPart {
@@ -47,8 +48,8 @@ export default function PartSearchAutocomplete<T extends PickerPart>({
   fetchParts,
   queryKey,
   icon,
-  avatarBg = '#F5F3FF',
-  avatarColor = '#7C3AED',
+  avatarBg = palette.brandTint,
+  avatarColor = palette.brand,
   getOptionDisabled,
   getOptionAvailability,
   required,
@@ -120,7 +121,7 @@ export default function PartSearchAutocomplete<T extends PickerPart>({
                   color={available > 0 ? 'success' : 'error'}
                   sx={{ height: 22, fontWeight: 800 }}
                 />
-                <Typography component="span" sx={{ fontSize: 12, color: '#64748B' }}>
+                <Typography component="span" sx={{ fontSize: 12, color: palette.textSubtle }}>
                   {option.quantity_on_hand} on hand · {fmtMoney(option.unit_price)}
                 </Typography>
                 {reserved > 0 && (

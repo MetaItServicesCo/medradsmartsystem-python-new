@@ -35,24 +35,25 @@ import ContextTableRow from '@/components/ContextTableRow'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
+import { palette } from '@/theme/palette'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
-  medium:   { bg: '#FEF3C7', color: '#B45309' },
+  medium:   { bg: palette.warningTint, color: palette.warning },
   high:     { bg: '#FFE4E6', color: '#BE123C' },
-  critical: { bg: '#FEE2E2', color: '#DC2626' },
+  critical: { bg: palette.dangerTint, color: palette.dangerStrong },
 }
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  new:         { bg: '#E0E7FF', color: '#4338CA' },
-  assigned:    { bg: '#DBEAFE', color: '#1D4ED8' },
-  in_progress: { bg: '#FEF3C7', color: '#B45309' },
+  new:         { bg: '#E0E7FF', color: palette.brand },
+  assigned:    { bg: palette.infoSoft, color: palette.info },
+  in_progress: { bg: palette.warningTint, color: palette.warning },
   waiting_on_parts: { bg: '#FFE4E6', color: '#BE123C' },
   waiting_for_approval: { bg: '#E0F2FE', color: '#0369A1' },
-  waiting_for_depot_repair: { bg: '#F3E8FF', color: '#7E22CE' },
-  waiting_for_vendor_repair: { bg: '#FFEDD5', color: '#C2410C' },
-  completed:   { bg: '#D1FAE5', color: '#047857' },
-  cancelled:   { bg: '#F3F4F6', color: '#6B7280' },
+  waiting_for_depot_repair: { bg: palette.violetTint, color: palette.violet },
+  waiting_for_vendor_repair: { bg: palette.warningPeach, color: '#C2410C' },
+  completed:   { bg: palette.brandSoft, color: palette.brand },
+  cancelled:   { bg: palette.surfaceGray, color: palette.textMuted },
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -91,15 +92,15 @@ const STAT_CARDS = [
     label: 'Total Requests',
     key: 'total',
     icon: <BuildIcon />,
-    color: '#6757D8',
-    soft: '#F0EDFF',
+    color: palette.brandPale,
+    soft: '#edfffa',
   },
   {
     label: 'New / Open',
     key: 'new',
     icon: <AssignmentIcon />,
-    color: '#3B82F6',
-    soft: '#EFF6FF',
+    color: palette.infoBright,
+    soft: palette.infoTint,
   },
   {
     label: 'Active Workflow',
@@ -296,8 +297,8 @@ const ServiceRequestList = () => {
               p: 2.3,
               minHeight: 150,
               borderRadius: '22px',
-              border: activeCardKey === card.key ? `2px solid ${card.color}` : '1px solid #EEF0F6',
-              boxShadow: activeCardKey === card.key ? `0 18px 42px ${card.color}24` : '0 18px 40px rgba(49,46,129,0.08)',
+              border: activeCardKey === card.key ? `2px solid ${card.color}` : `1px solid ${palette.borderSoft}`,
+              boxShadow: activeCardKey === card.key ? `0 18px 42px ${card.color}24` : '0 18px 40px rgba(6,78,59,0.08)',
               cursor: 'pointer',
               transform: activeCardKey === card.key ? 'translateY(-2px)' : 'none',
               transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
@@ -313,13 +314,13 @@ const ServiceRequestList = () => {
             </Box>
             <Typography
               sx={{
-                fontSize: '0.78rem', fontWeight: 900, color: '#6B7280',
+                fontSize: '0.78rem', fontWeight: 900, color: palette.textMuted,
                 textTransform: 'uppercase', mb: 1,
               }}
             >
               {card.label}
             </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+            <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink }}>
               {isLoading ? '—' : statsValues[card.key]}
             </Typography>
           </Card>
@@ -327,7 +328,7 @@ const ServiceRequestList = () => {
       </Box>
 
       {/* Main Card */}
-      <Card sx={{ overflow: 'hidden', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+      <Card sx={{ overflow: 'hidden', borderRadius: '24px', border: `1px solid ${palette.borderSoft}`, boxShadow: '0 18px 45px rgba(6,78,59,0.08)' }}>
         {/* Toolbar */}
         <Box
           sx={{
@@ -349,23 +350,23 @@ const ServiceRequestList = () => {
             onSubmit={(e: React.FormEvent) => e.preventDefault()}
             sx={{
               display: 'flex', alignItems: 'center', gap: 1,
-              backgroundColor: '#F8FAFC', borderRadius: '16px', px: 2, py: 1,
+              backgroundColor: palette.surface, borderRadius: '16px', px: 2, py: 1,
               flex: 1, minWidth: 220, maxWidth: 340,
               border: '1px solid #E8ECF4',
-              '&:focus-within': { border: '1px solid #7161D8', backgroundColor: '#fff', boxShadow: '0 10px 24px rgba(113,97,216,0.1)' },
+              '&:focus-within': { border: `1px solid ${palette.brand}`, backgroundColor: '#fff', boxShadow: '0 10px 24px rgba(4,120,87,0.1)' },
               transition: 'all 0.2s',
             }}
           >
-            <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
+            <SearchIcon sx={{ color: palette.textDisabled, fontSize: '1.2rem' }} />
             <InputBase
               placeholder={`Search ${SERVICE_SEARCH_FIELDS.find((field) => field.value === querySearchField)?.label.toLowerCase() || 'service requests'}...`}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              sx={{ fontSize: '0.875rem', color: '#374151', flex: 1 }}
+              sx={{ fontSize: '0.875rem', color: palette.textStrong, flex: 1 }}
             />
             {searchInput && (
               <IconButton size="small" onClick={handleClearSearch} sx={{ p: '2px' }}>
-                <ClearIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
+                <ClearIcon sx={{ color: palette.textDisabled, fontSize: '1.1rem' }} />
               </IconButton>
             )}
           </Box>
@@ -441,7 +442,7 @@ const ServiceRequestList = () => {
 
           <Box sx={{ flex: 1 }} />
           {isFetching && !isLoading && (
-            <CircularProgress size={18} thickness={5} sx={{ color: '#7161D8' }} />
+            <CircularProgress size={18} thickness={5} sx={{ color: palette.brand }} />
           )}
 
           {canCreateServiceRequests && (
@@ -450,8 +451,8 @@ const ServiceRequestList = () => {
               startIcon={<AddIcon />}
               onClick={() => setCreateOpen(true)}
               sx={{
-                background: 'linear-gradient(135deg, #7161D8 0%, #F05D92 100%)',
-                boxShadow: '0 12px 28px rgba(113,97,216,0.22)',
+                background: palette.gradientBrand,
+                boxShadow: '0 12px 28px rgba(4,120,87,0.22)',
                 px: 3,
                 borderRadius: '16px',
                 fontWeight: 800,
@@ -492,11 +493,11 @@ const ServiceRequestList = () => {
                     <TableRow>
                       <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
                         <Box sx={{ textAlign: 'center', opacity: 0.8 }}>
-                          <BuildIcon sx={{ fontSize: '3.5rem', color: '#DDD6FE', mb: 2 }} />
-                          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B', mb: 0.5 }}>
+                          <BuildIcon sx={{ fontSize: '3.5rem', color: palette.brandBorder, mb: 2 }} />
+                          <Typography variant="h6" sx={{ fontWeight: 700, color: palette.ink, mb: 0.5 }}>
                             {querySearch ? 'No matches found' : 'No service requests yet'}
                           </Typography>
-                          <Typography variant="body2" sx={{ color: '#6B7280', mb: 3, maxWidth: 300, mx: 'auto' }}>
+                          <Typography variant="body2" sx={{ color: palette.textMuted, mb: 3, maxWidth: 300, mx: 'auto' }}>
                             {querySearch
                               ? `No results for "${querySearch}". Try different keywords.`
                               : 'Get started by creating your first service request.'}
@@ -505,7 +506,7 @@ const ServiceRequestList = () => {
                             <Button
                               variant="contained"
                               onClick={() => setCreateOpen(true)}
-                              sx={{ px: 4, borderRadius: '14px', backgroundColor: '#7161D8' }}
+                              sx={{ px: 4, borderRadius: '14px', backgroundColor: palette.brand }}
                             >
                               Create First Request
                             </Button>
@@ -523,13 +524,13 @@ const ServiceRequestList = () => {
                           recordKey={`service-request-${sr.id}`}
                           recordLabel={sr.request_number}
                           sx={{
-                            '&:hover': { backgroundColor: '#F8FAFC' },
+                            '&:hover': { backgroundColor: palette.surface },
                             cursor: 'pointer',
                           }}
                           onClick={() => navigate(`/service-requests/${sr.id}`)}
                         >
                           <TableCell>
-                            <ClippedTooltipText value={sr.request_number} monospace color="#6757D8" fontWeight={800} />
+                            <ClippedTooltipText value={sr.request_number} monospace color={palette.brandPale} fontWeight={800} />
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>
@@ -572,7 +573,7 @@ const ServiceRequestList = () => {
                               <Avatar
                                 sx={{
                                   width: 26, height: 26, fontSize: '0.7rem', fontWeight: 700,
-                                  background: 'linear-gradient(135deg, #7161D8, #F05D92)',
+                                  background: `linear-gradient(135deg, ${palette.brand}, ${palette.accent})`,
                                 }}
                               >
                                 {sr.requester_name?.[0] || '?'}
@@ -583,7 +584,7 @@ const ServiceRequestList = () => {
                             </Box>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" sx={{ color: '#6B7280', fontSize: '0.8rem' }}>
+                            <Typography variant="body2" sx={{ color: palette.textMuted, fontSize: '0.8rem' }}>
                               {formatDate(sr.created_at)}
                             </Typography>
                           </TableCell>
@@ -596,13 +597,13 @@ const ServiceRequestList = () => {
                                   handleActionsOpen(e, sr)
                                 }}
                                 sx={{
-                                  color: '#7161D8',
-                                  backgroundColor: '#F0EDFF',
+                                  color: palette.brand,
+                                  backgroundColor: '#edfffa',
                                   borderRadius: '14px',
                                   width: 36, height: 36,
                                   transition: 'all 0.2s ease',
                                   '&:hover': {
-                                    backgroundColor: '#E8E2FF',
+                                    backgroundColor: palette.brandTint,
                                     transform: 'scale(1.05)',
                                   },
                                 }}
@@ -623,7 +624,7 @@ const ServiceRequestList = () => {
           <Box
             sx={{
               display: 'flex', justifyContent: 'center', p: 2.5,
-              borderTop: '1px solid rgba(124,58,237,0.08)',
+              borderTop: '1px solid rgba(4,120,87,0.08)',
             }}
           >
             <Pagination
@@ -635,7 +636,7 @@ const ServiceRequestList = () => {
               sx={{
                 '& .MuiPaginationItem-root': { borderRadius: '8px', fontWeight: 600 },
                 '& .Mui-selected': {
-                  background: 'linear-gradient(135deg, #7C3AED, #EC4899) !important',
+                  background: `linear-gradient(135deg, ${palette.brand}, ${palette.accent}) !important`,
                   color: '#fff',
                 },
               }}
@@ -656,16 +657,16 @@ const ServiceRequestList = () => {
           sx: {
             borderRadius: '14px',
             overflow: 'visible',
-            filter: 'drop-shadow(0 4px 24px rgba(124,58,237,0.15))',
-            border: '1px solid rgba(124,58,237,0.08)',
+            filter: 'drop-shadow(0 4px 24px rgba(4,120,87,0.15))',
+            border: '1px solid rgba(4,120,87,0.08)',
             mt: 1, minWidth: 180,
             '&::before': {
               content: '""', display: 'block', position: 'absolute',
               top: 0, right: 14, width: 12, height: 12,
               bgcolor: 'background.paper',
               transform: 'translateY(-50%) rotate(45deg)', zIndex: 0,
-              borderLeft: '1px solid rgba(124,58,237,0.08)',
-              borderTop: '1px solid rgba(124,58,237,0.08)',
+              borderLeft: '1px solid rgba(4,120,87,0.08)',
+              borderTop: '1px solid rgba(4,120,87,0.08)',
             },
           },
         }}
@@ -675,16 +676,16 @@ const ServiceRequestList = () => {
             if (menuItem) navigate(`/service-requests/${menuItem.id}`)
             handleActionsClose()
           }}
-          sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: '#F5F3FF' } }}
+          sx={{ py: 1.2, px: 2, mx: 0.75, borderRadius: '10px', '&:hover': { backgroundColor: palette.brandTint } }}
         >
-          <ListItemIcon><VisibilityOutlinedIcon sx={{ color: '#7C3AED', fontSize: '1.2rem' }} /></ListItemIcon>
-          <ListItemText primary="View Details" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#1E1B4B' }} />
+          <ListItemIcon><VisibilityOutlinedIcon sx={{ color: palette.brand, fontSize: '1.2rem' }} /></ListItemIcon>
+          <ListItemText primary="View Details" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.ink }} />
         </MenuItem>
 
         {canDeleteServiceRequests && (
           <>
             <Box sx={{ mx: 2, my: 0.5 }}>
-              <Box sx={{ borderTop: '1px solid rgba(124,58,237,0.08)' }} />
+              <Box sx={{ borderTop: '1px solid rgba(4,120,87,0.08)' }} />
             </Box>
 
             <MenuItem
@@ -694,11 +695,11 @@ const ServiceRequestList = () => {
               }}
               sx={{
                 py: 1.2, px: 2, mx: 0.75, borderRadius: '10px',
-                '&:hover': { backgroundColor: '#FEF2F2' },
+                '&:hover': { backgroundColor: palette.dangerWash },
               }}
             >
-              <ListItemIcon><DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.2rem' }} /></ListItemIcon>
-              <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: '#EF4444' }} />
+              <ListItemIcon><DeleteOutlineIcon sx={{ color: palette.dangerBright, fontSize: '1.2rem' }} /></ListItemIcon>
+              <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, color: palette.dangerBright }} />
             </MenuItem>
           </>
         )}
@@ -716,7 +717,7 @@ const ServiceRequestList = () => {
         onClose={() => setDeleteTarget(null)}
         PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
       >
-        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>Delete Service Request?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: palette.ink }}>Delete Service Request?</DialogTitle>
         <DialogContent>
           <DialogContentText>
             Are you sure you want to delete <strong>{deleteTarget?.request_number}</strong>? This action cannot be undone.
@@ -726,7 +727,7 @@ const ServiceRequestList = () => {
           <Button
             onClick={() => setDeleteTarget(null)}
             variant="outlined"
-            sx={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+            sx={{ borderColor: palette.border, color: palette.textMuted }}
           >
             Cancel
           </Button>

@@ -23,6 +23,7 @@ import {
   deleteMyTimesheet, submitMyTimesheet,
 } from '@/api/hr'
 import ContextTableRow from '@/components/ContextTableRow'
+import { palette } from '@/theme/palette'
 
 const STATUS_META: Record<string, { label: string; color: 'default' | 'warning' | 'info' | 'success' | 'error'; icon: React.ReactNode }> = {
   draft:     { label: 'Draft',     color: 'default', icon: <EditIcon fontSize="small" /> },
@@ -39,8 +40,8 @@ const ACTION_MENU_PAPER = {
   sx: {
     minWidth: 210,
     borderRadius: '18px',
-    border: '1px solid rgba(124,58,237,0.14)',
-    boxShadow: '0 24px 60px rgba(30,27,75,0.18)',
+    border: '1px solid rgba(4,120,87,0.14)',
+    boxShadow: '0 24px 60px rgba(6,78,59,0.18)',
     overflow: 'hidden',
   },
 }
@@ -50,7 +51,7 @@ const ACTION_MENU_ITEM = {
   px: 2,
   py: 1.2,
   fontWeight: 800,
-  color: '#1E1B4B',
+  color: palette.ink,
   '& .MuiListItemIcon-root': { minWidth: 30, color: 'inherit' },
 }
 
@@ -165,7 +166,7 @@ export default function MyTimesheets() {
     <Box sx={{ p: { xs: 1.5, sm: 3 }, maxWidth: 1100, mx: 'auto', minWidth: 0 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <Box sx={{ width: 48, height: 48, borderRadius: 2, background: 'linear-gradient(135deg,#7161D8,#F05D92)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box sx={{ width: 48, height: 48, borderRadius: 2, background: `linear-gradient(135deg,${palette.brand},${palette.accent})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <TimerIcon sx={{ color: '#fff', fontSize: 28 }} />
         </Box>
         <Box>
@@ -180,10 +181,10 @@ export default function MyTimesheets() {
       {/* KPI cards — always from full dataset */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
         {[
-          { label: 'Total Hours',    value: `${totalHours.toFixed(1)}h`, color: '#7161D8' },
-          { label: 'Drafts',         value: draftCnt,    color: '#6b7280' },
-          { label: 'Pending Review', value: pendingCnt,  color: '#f59e0b' },
-          { label: 'Approved',       value: approvedCnt, color: '#22c55e' },
+          { label: 'Total Hours',    value: `${totalHours.toFixed(1)}h`, color: palette.brand },
+          { label: 'Drafts',         value: draftCnt,    color: palette.textMuted },
+          { label: 'Pending Review', value: pendingCnt,  color: palette.warningBright },
+          { label: 'Approved',       value: approvedCnt, color: palette.successBright },
         ].map(k => (
           <Card key={k.label} sx={{ flex: 1, minWidth: 130 }}>
             <CardContent sx={{ py: '12px !important' }}>
@@ -273,7 +274,7 @@ export default function MyTimesheets() {
                     <TableCell>
                       {isDraft || isRejected ? (
                         <Tooltip title="Actions">
-                          <IconButton size="small" onClick={(event) => openActions(event, item)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                          <IconButton size="small" onClick={(event) => openActions(event, item)} sx={{ bgcolor: '#f1fffb', color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}>
                             <MoreVertIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
@@ -319,7 +320,7 @@ export default function MyTimesheets() {
         )}
         {(actionItem?.status === 'draft' || actionItem?.status === 'rejected') && (
           <MenuItem
-            sx={{ ...ACTION_MENU_ITEM, color: '#DC2626' }}
+            sx={{ ...ACTION_MENU_ITEM, color: palette.dangerStrong }}
             onClick={() => {
               const item = actionItem
               closeActions()

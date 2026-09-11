@@ -1,27 +1,28 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --primary: #7161D8;
-  --primary-light: #9B8EF0;
-  --primary-dark: #5445B3;
-  --rose: #F05D92;
-  --rose-light: #F9A8C7;
-  --indigo: #7161D8;
-  --indigo-dark: #5445B3;
-  --accent: #F05D92;
-  --bg-base: #E9EEFA;
+  --primary: #047857;
+  --primary-light: #34D399;
+  --primary-dark: #065F46;
+  /* --rose / --rose-light / --indigo / --indigo-dark used to live here. They
+     were unused aliases of --accent and --primary, and after the palette moved
+     to green their names described the opposite of their values. A token
+     called --indigo holding emerald is worse than no token. */
+  --accent: #0D9488;
+  --accent-light: #5EEAD4;
+  --bg-base: #E8F5F0;
   --bg-card: #ffffff;
-  --bg-sidebar: linear-gradient(180deg, #7161D8 0%, #5445B3 100%);
-  --text-primary: #1E1B4B;
+  --bg-sidebar: linear-gradient(180deg, #047857 0%, #065F46 100%);
+  --text-primary: #064E3B;
   --text-secondary: #6B7280;
   --border: #EEF0F6;
   --glass: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.4);
-  --shadow-premium: 0 18px 45px rgba(49, 46, 129, 0.08);
+  --shadow-premium: 0 18px 45px rgba(6,78,59, 0.08);
   --radius-xl: 24px;
   --surface-soft: #F8FAFC;
   --surface-muted: #F1F5F9;
-  --focus-ring: rgba(113, 97, 216, 0.32);
+  --focus-ring: rgba(4,120,87, 0.32);
 }
 
 *,
@@ -74,11 +75,11 @@ canvas {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(124, 58, 237, 0.25);
+  background: rgba(4,120,87, 0.25);
   border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 58, 237, 0.45);
+  background: rgba(4,120,87, 0.45);
 }
 
 /* Animate page content appearance */
@@ -114,13 +115,13 @@ canvas {
 }
 .hover-lift:hover {
   transform: translateY(-4px);
-  box-shadow: 0 22px 48px rgba(49, 46, 129, 0.14);
+  box-shadow: 0 22px 48px rgba(6,78,59, 0.14);
 }
 .hover-glow {
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 .hover-glow:hover {
-  box-shadow: 0 0 0 1px rgba(113, 97, 216, 0.25), 0 18px 40px rgba(113, 97, 216, 0.18);
+  box-shadow: 0 0 0 1px rgba(4,120,87, 0.25), 0 18px 40px rgba(4,120,87, 0.18);
 }
 
 /* Login heartbeat / ECG trace — continuously redraws */
@@ -137,7 +138,7 @@ canvas {
 
 /* Brand gradient text accent */
 .gradient-text {
-  background: linear-gradient(120deg, #7161D8 0%, #F05D92 100%);
+  background: linear-gradient(120deg, #047857 0%, #0D9488 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -159,7 +160,7 @@ canvas {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(113, 97, 216, 0.4), rgba(240, 93, 146, 0.28));
+  background: linear-gradient(135deg, rgba(4,120,87, 0.4), rgba(240, 93, 146, 0.28));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -195,7 +196,7 @@ canvas {
 
 /* Premium Gradients */
 .gradient-premium {
-  background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%);
+  background: linear-gradient(135deg, #2563EB 0%, #047857 100%);
   color: white;
 }
 
@@ -254,12 +255,12 @@ canvas {
 /* Softer, premium modal backdrop — scoped to dialogs so menus/selects/drawers
    are unaffected. Presentation only. */
 .MuiDialog-root > .MuiBackdrop-root {
-  background-color: rgba(30, 27, 75, 0.46);
+  background-color: rgba(6,78,59, 0.46);
 }
 
 /* Brand-tinted required-field asterisk across every form. */
 .MuiFormLabel-asterisk {
-  color: #F05D92;
+  color: #0D9488;
   font-weight: 700;
 }
 
@@ -320,7 +321,7 @@ input[type='number'] {
 }
 
 .MuiTableRow-root[data-list-row-focused='true'] > .MuiTableCell-root {
-  background-color: #F5F3FF;
+  background-color: #ECFDF5;
 }
 
 .MuiTableRow-root[data-list-row-selected='true'] > .MuiTableCell-root {
@@ -332,28 +333,28 @@ input[type='number'] {
 }
 
 .MuiTableRow-root[data-list-row-focused='true'] > .MuiTableCell-root:first-of-type {
-  box-shadow: inset 4px 0 0 #7C3AED;
+  box-shadow: inset 4px 0 0 #047857;
 }
 
 .MuiTableRow-root[data-list-row-focused='true'] {
-  outline: 2px solid rgba(124, 58, 237, 0.2);
+  outline: 2px solid rgba(4,120,87, 0.2);
   outline-offset: -2px;
   animation: listContextPulse 1.2s ease-out;
 }
 
 .MuiTableRow-root[data-list-row-focused='true'] .MuiTableCell-root {
-  color: #1E1B4B;
+  color: #064E3B;
 }
 
 @keyframes listContextPulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.38);
+    box-shadow: 0 0 0 0 rgba(4,120,87, 0.38);
   }
   55% {
-    box-shadow: 0 0 0 8px rgba(124, 58, 237, 0);
+    box-shadow: 0 0 0 8px rgba(4,120,87, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+    box-shadow: 0 0 0 0 rgba(4,120,87, 0);
   }
 }
 

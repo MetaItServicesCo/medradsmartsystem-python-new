@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
+import { palette } from '@/theme/palette'
 
 interface SquareTokenResult {
   status: string
@@ -174,10 +175,10 @@ const SquareCardCheckout = ({
 
   return (
     <Box>
-      <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 0.5 }}>
+      <Typography sx={{ color: palette.ink, fontWeight: 900, mb: 0.5 }}>
         Card payment
       </Typography>
-      <Typography sx={{ color: '#64748B', fontSize: 13, mb: 2 }}>
+      <Typography sx={{ color: palette.textSubtle, fontSize: 13, mb: 2 }}>
         Card details are securely collected and tokenized by Square. MedRad does not receive or store the card number.
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -186,7 +187,7 @@ const SquareCardCheckout = ({
         sx={{
           minHeight: 90,
           p: 1.5,
-          border: '1px solid #D8D5E8',
+          border: '1px solid #d5e8e2',
           borderRadius: '14px',
           bgcolor: '#FFF',
         }}
@@ -194,7 +195,7 @@ const SquareCardCheckout = ({
       {loading && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.5 }}>
           <CircularProgress size={18} />
-          <Typography sx={{ color: '#64748B', fontSize: 13 }}>Loading secure card form…</Typography>
+          <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>Loading secure card form…</Typography>
         </Box>
       )}
       <Button

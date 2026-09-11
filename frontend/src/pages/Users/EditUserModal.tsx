@@ -10,6 +10,7 @@ import { toast } from 'react-toastify'
 import { updateUser, type UserData, type UpdateUserPayload } from '@/api/users'
 import { fetchFacilities, type Facility } from '@/api/facilities'
 import { formatUSPhoneInput } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 const ROLE_OPTIONS = [
   { value: 'superadmin', label: 'Super Admin' },
@@ -130,7 +131,7 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
       <form onSubmit={handleSubmit}>
         <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
           Edit User
-          <Typography variant="body2" sx={{ color: '#9CA3AF', fontWeight: 400 }}>
+          <Typography variant="body2" sx={{ color: palette.textDisabled, fontWeight: 400 }}>
             Update details for {user.full_name}
           </Typography>
         </DialogTitle>
@@ -227,7 +228,7 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
                     <Box sx={{ minWidth: 0 }}>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>{option.name}</Typography>
                       {(option.city || option.state || option.country) && (
-                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                        <Typography variant="caption" sx={{ color: palette.textMuted }}>
                           {[option.city, option.state, option.country].filter(Boolean).join(', ')}
                         </Typography>
                       )}

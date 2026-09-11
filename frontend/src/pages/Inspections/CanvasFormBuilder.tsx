@@ -37,6 +37,7 @@ import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked'
 import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined'
 import TextFieldsIcon from '@mui/icons-material/TextFields'
 import TitleIcon from '@mui/icons-material/Title'
+import { palette } from '@/theme/palette'
 
 // ─────────────────────────────────────────────
 // Types
@@ -973,7 +974,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
       display: 'block',
       fontSize: el.fontSize ?? (el.type === 'heading' ? 18 : 13),
       fontWeight: el.fontWeight ?? (el.type === 'heading' ? 'bold' : 'normal'),
-      color: el.type === 'heading' ? '#1E1B4B' : '#374151',
+      color: el.type === 'heading' ? palette.ink : palette.textStrong,
       textAlign: (el.align ?? 'left') as 'left' | 'center' | 'right',
       lineHeight: 1.4,
       whiteSpace: 'nowrap',
@@ -986,7 +987,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
       flex: 1,
       border: '1px solid #D1D5DB',
       borderRadius: '6px',
-      bgcolor: '#F9FAFB',
+      bgcolor: palette.surfaceFaint,
       display: 'flex',
       alignItems: 'center',
       px: 1,
@@ -1001,7 +1002,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
     }
 
     const descLine = el.description ? (
-      <Typography sx={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic', userSelect: 'none' as const, mt: -0.25, lineHeight: 1.3 }}>
+      <Typography sx={{ fontSize: 11, color: palette.textMuted, fontStyle: 'italic', userSelect: 'none' as const, mt: -0.25, lineHeight: 1.3 }}>
         {el.description}
       </Typography>
     ) : null
@@ -1022,7 +1023,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
             {descLine}
             <Box sx={fieldBoxSx}>
-              <Typography sx={{ fontSize: 12, color: '#9CA3AF', userSelect: 'none' }}>{el.placeholder || ''}</Typography>
+              <Typography sx={{ fontSize: 12, color: palette.textDisabled, userSelect: 'none' }}>{el.placeholder || ''}</Typography>
             </Box>
           </Box>
         )
@@ -1033,7 +1034,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
             {descLine}
             <Box sx={{ ...fieldBoxSx, alignItems: 'flex-start', pt: 0.75, pb: 0.5 }}>
-              <Typography sx={{ fontSize: 12, color: '#9CA3AF', userSelect: 'none' }}>{el.placeholder || ''}</Typography>
+              <Typography sx={{ fontSize: 12, color: palette.textDisabled, userSelect: 'none' }}>{el.placeholder || ''}</Typography>
             </Box>
           </Box>
         )
@@ -1044,7 +1045,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
             {descLine}
             <Box sx={fieldBoxSx}>
-              <Typography sx={{ fontSize: 12, color: '#9CA3AF', userSelect: 'none' }}>0</Typography>
+              <Typography sx={{ fontSize: 12, color: palette.textDisabled, userSelect: 'none' }}>0</Typography>
             </Box>
           </Box>
         )
@@ -1055,7 +1056,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             {el.label && <Typography sx={labelSx}>{el.label}</Typography>}
             {descLine}
             <Box sx={fieldBoxSx}>
-              <Typography sx={{ fontSize: 12, color: '#9CA3AF', userSelect: 'none' }}>MM / DD / YYYY</Typography>
+              <Typography sx={{ fontSize: 12, color: palette.textDisabled, userSelect: 'none' }}>MM / DD / YYYY</Typography>
             </Box>
           </Box>
         )
@@ -1069,8 +1070,8 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             <Box sx={{ display: 'flex', flexDirection: el.optionLayout === 'vertical' ? 'column' : 'row', flexWrap: 'wrap', gap: 1, mt: 0.25 }}>
               {opts.map(opt => (
                 <Box key={opt} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Box sx={{ width: 13, height: 13, borderRadius: '50%', border: '1.5px solid #6B7280', flexShrink: 0 }} />
-                  <Typography sx={{ fontSize: 12, color: '#374151', userSelect: 'none' }}>{opt}</Typography>
+                  <Box sx={{ width: 13, height: 13, borderRadius: '50%', border: `1.5px solid ${palette.textMuted}`, flexShrink: 0 }} />
+                  <Typography sx={{ fontSize: 12, color: palette.textStrong, userSelect: 'none' }}>{opt}</Typography>
                 </Box>
               ))}
             </Box>
@@ -1087,8 +1088,8 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             <Box sx={{ display: 'flex', flexDirection: el.optionLayout === 'vertical' ? 'column' : 'row', flexWrap: 'wrap', gap: 1, mt: 0.25 }}>
               {opts.map(opt => (
                 <Box key={opt} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Box sx={{ width: 13, height: 13, borderRadius: '3px', border: '1.5px solid #6B7280', flexShrink: 0 }} />
-                  <Typography sx={{ fontSize: 12, color: '#374151', userSelect: 'none' }}>{opt}</Typography>
+                  <Box sx={{ width: 13, height: 13, borderRadius: '3px', border: `1.5px solid ${palette.textMuted}`, flexShrink: 0 }} />
+                  <Typography sx={{ fontSize: 12, color: palette.textStrong, userSelect: 'none' }}>{opt}</Typography>
                 </Box>
               ))}
             </Box>
@@ -1103,14 +1104,14 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             {descLine}
             <Box sx={{
               flex: 1,
-              border: '1px dashed #9CA3AF',
+              border: `1px dashed ${palette.textDisabled}`,
               borderRadius: '6px',
               bgcolor: '#FAFAFA',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              <Typography sx={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic', userSelect: 'none' }}>Sign here</Typography>
+              <Typography sx={{ fontSize: 11, color: palette.textDisabled, fontStyle: 'italic', userSelect: 'none' }}>Sign here</Typography>
             </Box>
           </Box>
         )
@@ -1132,7 +1133,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             position: 'relative',
             height: '100%',
             width: '100%',
-            border: '1px solid #94A3B8',
+            border: `1px solid ${palette.textFaint}`,
             borderRadius: '4px',
             overflow: 'hidden',
           }}>
@@ -1171,9 +1172,9 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                     gridRow: `${r + 1} / span ${span.rows}`,
                     borderRight: c + span.cols < cols ? '1px solid #CBD5E1' : 'none',
                     borderBottom: r + span.rows < cells.length ? '1px solid #CBD5E1' : 'none',
-                    bgcolor: (isCellSel || inRange) ? '#EDE9FE' : (cell.bgColor === 'grey' || isHeader) ? '#E5E7EB' : '#ffffff',
-                    boxShadow: isCellSel ? 'inset 0 0 0 2px #7C3AED'
-                      : inRange ? 'inset 0 0 0 1px #A78BFA' : 'none',
+                    bgcolor: (isCellSel || inRange) ? palette.brandSoft : (cell.bgColor === 'grey' || isHeader) ? palette.border : palette.white,
+                    boxShadow: isCellSel ? 'inset 0 0 0 2px #047857'
+                      : inRange ? 'inset 0 0 0 1px #34D399' : 'none',
                     p: 0.5,
                     overflow: 'hidden',
                     cursor: 'pointer',
@@ -1210,7 +1211,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                   ml: '-4.5px',
                   cursor: 'col-resize',
                   zIndex: 4,
-                  '&:hover': { bgcolor: '#7C3AED33' },
+                  '&:hover': { bgcolor: '#04785733' },
                 }}
               />
             ))}
@@ -1227,7 +1228,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                   mt: '-4.5px',
                   cursor: 'row-resize',
                   zIndex: 4,
-                  '&:hover': { bgcolor: '#7C3AED33' },
+                  '&:hover': { bgcolor: '#04785733' },
                 }}
               />
             ))}
@@ -1257,14 +1258,14 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
           cursor: 'move',
           boxSizing: 'border-box',
           p: 1,
-          bgcolor: el.bgColor === 'grey' ? '#E5E7EB' : '#ffffff',
-          border: isSelected ? '2px solid #7C3AED' : '1px solid transparent',
+          bgcolor: el.bgColor === 'grey' ? palette.border : palette.white,
+          border: isSelected ? `2px solid ${palette.brand}` : '1px solid transparent',
           borderRadius: '8px',
-          outline: isSelected ? '3px solid rgba(124,58,237,0.12)' : 'none',
+          outline: isSelected ? '3px solid rgba(4,120,87,0.12)' : 'none',
           outlineOffset: 1,
           transition: 'border-color 0.1s',
           '&:hover': {
-            border: isSelected ? '2px solid #7C3AED' : '1px solid #C4B5FD',
+            border: isSelected ? `2px solid ${palette.brand}` : `1px solid ${palette.brandPale}`,
           },
           overflow: 'hidden',
         }}
@@ -1277,7 +1278,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                 position: 'absolute',
                 width: 10,
                 height: 10,
-                bgcolor: '#7C3AED',
+                bgcolor: palette.brand,
                 border: '2px solid #fff',
                 borderRadius: '2px',
                 cursor: HANDLE_CURSORS[h],
@@ -1308,9 +1309,9 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   const renderProperties = () => {
     if (!selected) {
       return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 1, color: '#94A3B8', p: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 1, color: palette.textFaint, p: 2 }}>
           <TextFieldsIcon sx={{ fontSize: 32, opacity: 0.4 }} />
-          <Typography sx={{ fontSize: 12, fontWeight: 700, textAlign: 'center', color: '#94A3B8' }}>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, textAlign: 'center', color: palette.textFaint }}>
             Click an element to edit its properties
           </Typography>
         </Box>
@@ -1323,7 +1324,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
           <Chip
             size="small"
             label={selected.type}
-            sx={{ textTransform: 'capitalize', bgcolor: '#EDE9FE', color: '#5B21B6', fontWeight: 800 }}
+            sx={{ textTransform: 'capitalize', bgcolor: palette.brandSoft, color: palette.ink, fontWeight: 800 }}
           />
           <Tooltip title="Delete element (Del)">
             <IconButton size="small" color="error" onClick={deleteSelected}>
@@ -1363,11 +1364,11 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
 
         {/* Cell color */}
         <Box>
-          <Typography sx={{ fontSize: 11, color: '#64748B', mb: 0.5, fontWeight: 700 }}>Cell color</Typography>
+          <Typography sx={{ fontSize: 11, color: palette.textSubtle, mb: 0.5, fontWeight: 700 }}>Cell color</Typography>
           <Box sx={{ display: 'flex', gap: 0.75 }}>
             {([
-              { value: 'white' as const, color: '#ffffff', label: 'White' },
-              { value: 'grey'  as const, color: '#E5E7EB', label: 'Grey' },
+              { value: 'white' as const, color: palette.white, label: 'White' },
+              { value: 'grey'  as const, color: palette.border, label: 'Grey' },
             ]).map(sw => {
               const isActive = (selected.bgColor ?? 'white') === sw.value
               return (
@@ -1380,8 +1381,8 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                       borderRadius: '6px',
                       bgcolor: sw.color,
                       cursor: 'pointer',
-                      border: isActive ? '2px solid #7C3AED' : '1px solid #CBD5E1',
-                      outline: isActive ? '2px solid rgba(124,58,237,0.15)' : 'none',
+                      border: isActive ? `2px solid ${palette.brand}` : '1px solid #CBD5E1',
+                      outline: isActive ? '2px solid rgba(4,120,87,0.15)' : 'none',
                       outlineOffset: 1,
                     }}
                   />
@@ -1418,7 +1419,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
         {/* Bold */}
         {(['heading', 'label'] as CanvasElementType[]).includes(selected.type) && (
           <Box>
-            <Typography sx={{ fontSize: 11, color: '#64748B', mb: 0.5, fontWeight: 700 }}>Weight</Typography>
+            <Typography sx={{ fontSize: 11, color: palette.textSubtle, mb: 0.5, fontWeight: 700 }}>Weight</Typography>
             <ToggleButtonGroup
               size="small"
               value={selected.fontWeight ?? 'normal'}
@@ -1433,7 +1434,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
 
         {/* Align */}
         <Box>
-          <Typography sx={{ fontSize: 11, color: '#64748B', mb: 0.5, fontWeight: 700 }}>Alignment</Typography>
+          <Typography sx={{ fontSize: 11, color: palette.textSubtle, mb: 0.5, fontWeight: 700 }}>Alignment</Typography>
           <ToggleButtonGroup
             size="small"
             value={selected.align ?? 'left'}
@@ -1450,7 +1451,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
         {(['radio', 'checkbox'] as CanvasElementType[]).includes(selected.type) && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography sx={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>Options</Typography>
+              <Typography sx={{ fontSize: 11, color: palette.textSubtle, fontWeight: 700 }}>Options</Typography>
               <ToggleButtonGroup
                 size="small"
                 value={selected.optionLayout ?? 'horizontal'}
@@ -1478,7 +1479,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                   size="small"
                   onClick={() => updateEl({ options: (selected.options ?? []).filter((_, idx) => idx !== i) })}
                   disabled={selected.type === 'radio' && (selected.options?.length ?? 0) <= 1}
-                  sx={{ color: '#DC2626', p: 0.5 }}
+                  sx={{ color: palette.dangerStrong, p: 0.5 }}
                 >
                   <DeleteIcon sx={{ fontSize: 16 }} />
                 </IconButton>
@@ -1500,7 +1501,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
         <Divider />
 
         {/* Position & size */}
-        <Typography sx={{ fontSize: 11, fontWeight: 900, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <Typography sx={{ fontSize: 11, fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Position & Size
         </Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
@@ -1602,7 +1603,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             disabled={rows < 2}
           />
         </Box>
-        <Typography sx={{ fontSize: 10.5, color: '#94A3B8', fontWeight: 600, lineHeight: 1.4 }}>
+        <Typography sx={{ fontSize: 10.5, color: palette.textFaint, fontWeight: 600, lineHeight: 1.4 }}>
           Or drag the lines between columns and rows on the table itself.
         </Typography>
       </Box>
@@ -1635,7 +1636,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
           Unmerge
         </Button>
       </Box>
-      <Typography sx={{ fontSize: 10.5, color: '#94A3B8', fontWeight: 600, lineHeight: 1.4 }}>
+      <Typography sx={{ fontSize: 10.5, color: palette.textFaint, fontWeight: 600, lineHeight: 1.4 }}>
         {canMerge
           ? `Merging ${selectionRect!.r2 - selectionRect!.r1 + 1} × ${selectionRect!.c2 - selectionRect!.c1 + 1} cells into one.`
           : canUnmerge
@@ -1651,28 +1652,28 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
     const cols = tableColCount(selected)
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, p: 1, bgcolor: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-          <Typography sx={{ fontSize: 11, fontWeight: 900, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, p: 1, bgcolor: palette.surface, borderRadius: '8px', border: `1px solid ${palette.borderSlate}` }}>
+          <Typography sx={{ fontSize: 11, fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Table
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography sx={{ fontSize: 12, color: '#374151', fontWeight: 700 }}>Rows: {rows}</Typography>
+            <Typography sx={{ fontSize: 12, color: palette.textStrong, fontWeight: 700 }}>Rows: {rows}</Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <IconButton size="small" onClick={removeTableRow} disabled={rows <= 1} sx={{ border: '1px solid #E2E8F0', borderRadius: '6px' }}>
+              <IconButton size="small" onClick={removeTableRow} disabled={rows <= 1} sx={{ border: `1px solid ${palette.borderSlate}`, borderRadius: '6px' }}>
                 <Typography sx={{ fontSize: 16, fontWeight: 900, lineHeight: 1 }}>−</Typography>
               </IconButton>
-              <IconButton size="small" onClick={addTableRow} sx={{ border: '1px solid #E2E8F0', borderRadius: '6px' }}>
+              <IconButton size="small" onClick={addTableRow} sx={{ border: `1px solid ${palette.borderSlate}`, borderRadius: '6px' }}>
                 <AddIcon sx={{ fontSize: 16 }} />
               </IconButton>
             </Box>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography sx={{ fontSize: 12, color: '#374151', fontWeight: 700 }}>Columns: {cols}</Typography>
+            <Typography sx={{ fontSize: 12, color: palette.textStrong, fontWeight: 700 }}>Columns: {cols}</Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <IconButton size="small" onClick={removeTableCol} disabled={cols <= 1} sx={{ border: '1px solid #E2E8F0', borderRadius: '6px' }}>
+              <IconButton size="small" onClick={removeTableCol} disabled={cols <= 1} sx={{ border: `1px solid ${palette.borderSlate}`, borderRadius: '6px' }}>
                 <Typography sx={{ fontSize: 16, fontWeight: 900, lineHeight: 1 }}>−</Typography>
               </IconButton>
-              <IconButton size="small" onClick={addTableCol} sx={{ border: '1px solid #E2E8F0', borderRadius: '6px' }}>
+              <IconButton size="small" onClick={addTableCol} sx={{ border: `1px solid ${palette.borderSlate}`, borderRadius: '6px' }}>
                 <AddIcon sx={{ fontSize: 16 }} />
               </IconButton>
             </Box>
@@ -1682,7 +1683,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             label={<Typography sx={{ fontSize: 12, fontWeight: 700 }}>Shaded header row</Typography>}
           />
           <Divider sx={{ my: 1 }} />
-          <Typography sx={{ fontSize: 10, fontWeight: 900, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.6px', mb: 0.75 }}>
+          <Typography sx={{ fontSize: 10, fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.6px', mb: 0.75 }}>
             Cells
           </Typography>
           {renderMergeControls()}
@@ -1691,12 +1692,12 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
         </Box>
 
         {!selectedCell ? (
-          <Typography sx={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, textAlign: 'center', py: 1 }}>
+          <Typography sx={{ fontSize: 11, color: palette.textFaint, fontWeight: 600, textAlign: 'center', py: 1 }}>
             Click a cell in the table to edit its content
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Typography sx={{ fontSize: 11, fontWeight: 900, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Selected cell
             </Typography>
             <TextField
@@ -1755,7 +1756,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                 />
                 {Boolean(selectedCell.options?.length) && (
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography sx={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>Options</Typography>
+                  <Typography sx={{ fontSize: 11, color: palette.textSubtle, fontWeight: 700 }}>Options</Typography>
                   <ToggleButtonGroup
                     size="small"
                     value={selectedCell.optionLayout ?? 'horizontal'}
@@ -1786,7 +1787,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                       // Removable down to none: emptying the list is how a
                       // cell becomes the single unlabelled box the column
                       // heading already explains.
-                      sx={{ color: '#DC2626', p: 0.5 }}
+                      sx={{ color: palette.dangerStrong, p: 0.5 }}
                     >
                       <DeleteIcon sx={{ fontSize: 16 }} />
                     </IconButton>
@@ -1804,7 +1805,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             )}
 
             <Box>
-              <Typography sx={{ fontSize: 11, color: '#64748B', mb: 0.5, fontWeight: 700 }}>Alignment</Typography>
+              <Typography sx={{ fontSize: 11, color: palette.textSubtle, mb: 0.5, fontWeight: 700 }}>Alignment</Typography>
               <ToggleButtonGroup
                 size="small"
                 value={selectedCell.align ?? 'left'}
@@ -1818,11 +1819,11 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             </Box>
 
             <Box>
-              <Typography sx={{ fontSize: 11, color: '#64748B', mb: 0.5, fontWeight: 700 }}>Cell color</Typography>
+              <Typography sx={{ fontSize: 11, color: palette.textSubtle, mb: 0.5, fontWeight: 700 }}>Cell color</Typography>
               <Box sx={{ display: 'flex', gap: 0.75 }}>
                 {([
-                  { value: 'white' as const, color: '#ffffff', label: 'White' },
-                  { value: 'grey'  as const, color: '#E5E7EB', label: 'Grey' },
+                  { value: 'white' as const, color: palette.white, label: 'White' },
+                  { value: 'grey'  as const, color: palette.border, label: 'Grey' },
                 ]).map(sw => {
                   const isActive = (selectedCell.bgColor ?? 'white') === sw.value
                   return (
@@ -1835,8 +1836,8 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
                           borderRadius: '6px',
                           bgcolor: sw.color,
                           cursor: 'pointer',
-                          border: isActive ? '2px solid #7C3AED' : '1px solid #CBD5E1',
-                          outline: isActive ? '2px solid rgba(124,58,237,0.15)' : 'none',
+                          border: isActive ? `2px solid ${palette.brand}` : '1px solid #CBD5E1',
+                          outline: isActive ? '2px solid rgba(4,120,87,0.15)' : 'none',
                           outlineOffset: 1,
                         }}
                       />
@@ -1852,19 +1853,19 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
   }
 
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '148px minmax(760px, 1fr) 230px', md: '168px 1fr 260px' }, minWidth: { xs: 1138, md: 0 }, height: '100%', bgcolor: '#F1F5F9' }}>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '148px minmax(760px, 1fr) 230px', md: '168px 1fr 260px' }, minWidth: { xs: 1138, md: 0 }, height: '100%', bgcolor: palette.surfaceMuted }}>
 
       {/* ── Left palette ── */}
       <Box sx={{
-        bgcolor: '#ffffff',
-        borderRight: '1px solid #E2E8F0',
+        bgcolor: palette.white,
+        borderRight: `1px solid ${palette.borderSlate}`,
         p: 1.5,
         display: 'flex',
         flexDirection: 'column',
         gap: 0.25,
         overflowY: 'auto',
       }}>
-        <Typography sx={{ fontSize: 10, fontWeight: 900, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.6px', mb: 0.75 }}>
+        <Typography sx={{ fontSize: 10, fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.6px', mb: 0.75 }}>
           Elements
         </Typography>
         {PALETTE.map(item => (
@@ -1884,11 +1885,11 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
               py: 0.75,
               borderRadius: '8px',
               cursor: 'grab',
-              color: '#374151',
+              color: palette.textStrong,
               fontSize: 13,
               fontWeight: 700,
               '&:active': { cursor: 'grabbing' },
-              '&:hover': { bgcolor: '#F5F3FF', color: '#7C3AED' },
+              '&:hover': { bgcolor: palette.brandTint, color: palette.brand },
               '& .MuiSvgIcon-root': { fontSize: 17 },
             }}
           >
@@ -1897,7 +1898,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
           </Box>
         ))}
         <Divider sx={{ my: 1 }} />
-        <Typography sx={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, textAlign: 'center' }}>
+        <Typography sx={{ fontSize: 10, color: palette.textFaint, fontWeight: 600, textAlign: 'center' }}>
           Click or drag to canvas
         </Typography>
       </Box>
@@ -1910,11 +1911,11 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             field still took most of a printed page. */}
         <Box sx={{
           display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap',
-          px: 2.5, py: 1.25, bgcolor: '#ffffff', borderBottom: '1px solid #E2E8F0',
+          px: 2.5, py: 1.25, bgcolor: palette.white, borderBottom: `1px solid ${palette.borderSlate}`,
           flex: 'none',
         }}>
           <Typography sx={{
-            fontSize: 10, fontWeight: 900, color: '#64748B',
+            fontSize: 10, fontWeight: 900, color: palette.textSubtle,
             textTransform: 'uppercase', letterSpacing: '0.6px', mr: 0.5,
           }}>
             Section size
@@ -1963,7 +1964,7 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
               Fit page width
             </Button>
           </Tooltip>
-          <Typography sx={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>
+          <Typography sx={{ fontSize: 11, color: palette.textFaint, fontWeight: 600 }}>
             {canvasWidth === PAGE_W
               ? 'Prints at full size'
               : `Prints at ${Math.round((PAGE_W / canvasWidth) * 100)}% of this size`}
@@ -1998,10 +1999,10 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
             position: 'relative',
             width: canvasWidth,
             minHeight: canvasHeight,
-            bgcolor: '#ffffff',
+            bgcolor: palette.white,
             borderRadius: '12px',
             boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-            border: '1px solid #E2E8F0',
+            border: `1px solid ${palette.borderSlate}`,
             backgroundImage: [
               'radial-gradient(circle, #CBD5E1 1px, transparent 1px)',
             ].join(','),
@@ -2016,15 +2017,15 @@ export function CanvasFormBuilder({ schema, onChange, onRemoveForm }: BuilderPro
 
       {/* ── Right properties panel ── */}
       <Box sx={{
-        bgcolor: '#ffffff',
-        borderLeft: '1px solid #E2E8F0',
+        bgcolor: palette.white,
+        borderLeft: `1px solid ${palette.borderSlate}`,
         p: 1.5,
         overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
         gap: 1.5,
       }}>
-        <Typography sx={{ fontSize: 10, fontWeight: 900, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+        <Typography sx={{ fontSize: 10, fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
           Properties
         </Typography>
         {renderProperties()}
@@ -2057,8 +2058,8 @@ export function CanvasFormViewer({ schema, values = {}, onChange, readOnly = fal
       position: 'relative',
       width: schema.canvas_width ?? CANVAS_W,
       minHeight: schema.canvas_height ?? 600,
-      bgcolor: '#ffffff',
-      border: '1px solid #E2E8F0',
+      bgcolor: palette.white,
+      border: `1px solid ${palette.borderSlate}`,
       borderRadius: '12px',
       overflow: 'visible',
     }}>
@@ -2097,7 +2098,7 @@ export function CanvasFormViewer({ schema, values = {}, onChange, readOnly = fal
               display: 'flex',
               flexDirection: 'column',
               gap: 0.4,
-              bgcolor: el.bgColor === 'grey' ? '#E5E7EB' : 'transparent',
+              bgcolor: el.bgColor === 'grey' ? palette.border : 'transparent',
               borderRadius: el.bgColor === 'grey' ? '8px' : 0,
             }}
           >
@@ -2118,14 +2119,14 @@ function renderViewerContent(
   const labelSx = {
     fontSize: el.fontSize ?? (el.type === 'heading' ? 17 : 12),
     fontWeight: el.fontWeight ?? (el.type === 'heading' ? 'bold' : 600),
-    color: el.type === 'heading' ? '#1E1B4B' : '#374151',
+    color: el.type === 'heading' ? palette.ink : palette.textStrong,
     textAlign: (el.align ?? 'left') as 'left' | 'center' | 'right',
     lineHeight: 1.4,
     mb: 0.25,
   } as const
 
   const descLine = el.description ? (
-    <Typography sx={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic', lineHeight: 1.3, mb: 0.25 }}>
+    <Typography sx={{ fontSize: 11, color: palette.textMuted, fontStyle: 'italic', lineHeight: 1.3, mb: 0.25 }}>
       {el.description}
     </Typography>
   ) : null
@@ -2243,14 +2244,14 @@ function renderViewerContent(
           {descLine}
           <Box sx={{
             flex: 1,
-            border: '1px dashed #9CA3AF',
+            border: `1px dashed ${palette.textDisabled}`,
             borderRadius: '6px',
             bgcolor: '#FAFAFA',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-            <Typography sx={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>Sign here</Typography>
+            <Typography sx={{ fontSize: 11, color: palette.textDisabled, fontStyle: 'italic' }}>Sign here</Typography>
           </Box>
         </Box>
       )
@@ -2268,7 +2269,7 @@ function renderTableCellPreview(cell: TableCell, isHeader: boolean) {
   const textSx = {
     fontSize: 12,
     fontWeight: (isHeader || cell.fontWeight === 'bold') ? 800 : 500,
-    color: '#374151',
+    color: palette.textStrong,
     textAlign: (cell.align ?? 'left') as 'left' | 'center' | 'right',
     whiteSpace: 'nowrap' as const,
     overflow: 'hidden',
@@ -2276,8 +2277,8 @@ function renderTableCellPreview(cell: TableCell, isHeader: boolean) {
     userSelect: 'none' as const,
   }
   const fauxField = (text: string) => (
-    <Box sx={{ border: '1px solid #D1D5DB', borderRadius: '4px', bgcolor: '#F9FAFB', px: 0.5, py: 0.25 }}>
-      <Typography sx={{ fontSize: 10, color: '#9CA3AF', userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Typography>
+    <Box sx={{ border: '1px solid #D1D5DB', borderRadius: '4px', bgcolor: palette.surfaceFaint, px: 0.5, py: 0.25 }}>
+      <Typography sx={{ fontSize: 10, color: palette.textDisabled, userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Typography>
     </Box>
   )
   switch (cell.type) {
@@ -2294,7 +2295,7 @@ function renderTableCellPreview(cell: TableCell, isHeader: boolean) {
       return (
         <Box>
           {cell.label && <Typography sx={{ ...textSx, mb: 0.25 }}>{cell.label}</Typography>}
-          <Box sx={{ border: '1px solid #D1D5DB', borderRadius: '4px', bgcolor: '#F9FAFB', height: 26 }} />
+          <Box sx={{ border: '1px solid #D1D5DB', borderRadius: '4px', bgcolor: palette.surfaceFaint, height: 26 }} />
         </Box>
       )
     case 'radio':
@@ -2304,7 +2305,7 @@ function renderTableCellPreview(cell: TableCell, isHeader: boolean) {
       const mark = (
         <Box sx={{
           width: bare ? 13 : 10, height: bare ? 13 : 10,
-          border: '1.5px solid #6B7280',
+          border: `1.5px solid ${palette.textMuted}`,
           borderRadius: cell.type === 'radio' ? '50%' : '2px',
           flexShrink: 0,
         }} />
@@ -2325,7 +2326,7 @@ function renderTableCellPreview(cell: TableCell, isHeader: boolean) {
             {bare ? mark : opts.map((o, i) => (
               <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                 {mark}
-                <Typography sx={{ fontSize: 10, color: '#374151', userSelect: 'none' }}>{o}</Typography>
+                <Typography sx={{ fontSize: 10, color: palette.textStrong, userSelect: 'none' }}>{o}</Typography>
               </Box>
             ))}
           </Box>
@@ -2334,8 +2335,8 @@ function renderTableCellPreview(cell: TableCell, isHeader: boolean) {
     }
     case 'signature':
       return (
-        <Box sx={{ border: '1px dashed #9CA3AF', borderRadius: '4px', bgcolor: '#FAFAFA', height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography sx={{ fontSize: 9, color: '#9CA3AF', fontStyle: 'italic' }}>Sign</Typography>
+        <Box sx={{ border: `1px dashed ${palette.textDisabled}`, borderRadius: '4px', bgcolor: '#FAFAFA', height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Typography sx={{ fontSize: 9, color: palette.textDisabled, fontStyle: 'italic' }}>Sign</Typography>
         </Box>
       )
     default:
@@ -2353,7 +2354,7 @@ function renderTableCellField(
   const textSx = {
     fontSize: 12,
     fontWeight: (isHeader || cell.fontWeight === 'bold') ? 800 : 600,
-    color: '#374151',
+    color: palette.textStrong,
     textAlign: (cell.align ?? 'left') as 'left' | 'center' | 'right',
     lineHeight: 1.35,
   }
@@ -2478,8 +2479,8 @@ function renderTableCellField(
     }
     case 'signature':
       return (
-        <Box sx={{ border: '1px dashed #9CA3AF', borderRadius: '4px', bgcolor: '#FAFAFA', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography sx={{ fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' }}>Sign here</Typography>
+        <Box sx={{ border: `1px dashed ${palette.textDisabled}`, borderRadius: '4px', bgcolor: '#FAFAFA', minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Typography sx={{ fontSize: 10, color: palette.textDisabled, fontStyle: 'italic' }}>Sign here</Typography>
         </Box>
       )
     default:
@@ -2508,7 +2509,7 @@ function renderViewerTable(
       gridTemplateRows: heights.map(h => `minmax(40px, ${h}fr)`).join(' '),
       width: '100%',
       height: '100%',
-      border: '1px solid #94A3B8',
+      border: `1px solid ${palette.textFaint}`,
       borderRadius: '6px',
       overflow: 'hidden',
     }}>
@@ -2524,7 +2525,7 @@ function renderViewerTable(
               gridRow: `${r + 1} / span ${span.rows}`,
               borderRight: c + span.cols < cols ? '1px solid #CBD5E1' : 'none',
               borderBottom: r + span.rows < cells.length ? '1px solid #CBD5E1' : 'none',
-              bgcolor: (cell.bgColor === 'grey' || isHeader) ? '#E5E7EB' : '#ffffff',
+              bgcolor: (cell.bgColor === 'grey' || isHeader) ? palette.border : palette.white,
               p: 0.75,
               display: 'flex',
               flexDirection: 'column',

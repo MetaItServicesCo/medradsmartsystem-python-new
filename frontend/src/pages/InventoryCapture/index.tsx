@@ -19,6 +19,7 @@ import {
   type PartDefinition,
 } from '@/api/inventoryCapture'
 import PartDetailsDialog from './PartDetailsDialog'
+import { palette } from '@/theme/palette'
 
 /**
  * Capture parts by photographing them.
@@ -152,7 +153,7 @@ const CaptureScreen = () => {
   return (
     <Box sx={{ p: { xs: 1.5, md: 3 }, maxWidth: 780, mx: 'auto' }}>
       <Typography sx={{ fontWeight: 900, fontSize: 22, mb: 0.5 }}>Capture parts</Typography>
-      <Typography sx={{ color: '#64748B', fontSize: 13.5, mb: 2 }}>
+      <Typography sx={{ color: palette.textSubtle, fontSize: 13.5, mb: 2 }}>
         Photograph a part, set how many there are, and describe it later. Each item
         gets its own code; the description is shared by all of them.
       </Typography>
@@ -218,7 +219,7 @@ const CaptureScreen = () => {
             <Stack spacing={2}>
               {match && match.candidates.length > 0 ? (
                 <>
-                  <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#475569' }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 800, color: palette.slate600 }}>
                     {match.confident ? 'This looks like:' : 'Might be one of these:'}
                   </Typography>
                   <Stack spacing={1}>
@@ -231,15 +232,15 @@ const CaptureScreen = () => {
                           sx={{
                             p: 1.5, cursor: 'pointer', display: 'flex', alignItems: 'center',
                             gap: 1.5, borderRadius: 2,
-                            border: selected ? '2px solid #7C3AED' : '1px solid #E2E8F0',
-                            bgcolor: selected ? '#F5F3FF' : '#fff',
+                            border: selected ? `2px solid ${palette.brand}` : `1px solid ${palette.borderSlate}`,
+                            bgcolor: selected ? palette.brandTint : '#fff',
                           }}
                         >
                           <Box sx={{ flex: 1, minWidth: 0 }}>
                             <Typography sx={{ fontWeight: 800, fontSize: 15 }} noWrap>
                               {candidate.name}
                             </Typography>
-                            <Typography sx={{ fontSize: 12.5, color: '#64748B' }}>
+                            <Typography sx={{ fontSize: 12.5, color: palette.textSubtle }}>
                               {candidate.unit_count} item{candidate.unit_count === 1 ? '' : 's'} stored
                               {candidate.part_number ? ` · ${candidate.part_number}` : ''}
                             </Typography>
@@ -249,7 +250,7 @@ const CaptureScreen = () => {
                             label={`${Math.round(candidate.score * 100)}%`}
                             sx={{ fontWeight: 800 }}
                           />
-                          {selected && <CheckCircleIcon sx={{ color: '#7C3AED' }} />}
+                          {selected && <CheckCircleIcon sx={{ color: palette.brand }} />}
                         </Card>
                       )
                     })}
@@ -274,13 +275,13 @@ const CaptureScreen = () => {
               />
 
               <Box>
-                <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#475569', mb: 0.75 }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 800, color: palette.slate600, mb: 0.75 }}>
                   How many of these?
                 </Typography>
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <IconButton
                     onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    sx={{ border: '1px solid #E2E8F0' }}
+                    sx={{ border: `1px solid ${palette.borderSlate}` }}
                   >
                     <RemoveIcon />
                   </IconButton>
@@ -296,7 +297,7 @@ const CaptureScreen = () => {
                   />
                   <IconButton
                     onClick={() => setQuantity((q) => Math.min(500, q + 1))}
-                    sx={{ border: '1px solid #E2E8F0' }}
+                    sx={{ border: `1px solid ${palette.borderSlate}` }}
                   >
                     <AddIcon />
                   </IconButton>
@@ -327,7 +328,7 @@ const CaptureScreen = () => {
                 <strong>{lastSaved.name}</strong> — {lastSaved.codes.length} recorded,
                 {' '}{lastSaved.total} stored in total.
               </Alert>
-              <Typography sx={{ fontSize: 12, color: '#64748B', wordBreak: 'break-all' }}>
+              <Typography sx={{ fontSize: 12, color: palette.textSubtle, wordBreak: 'break-all' }}>
                 {lastSaved.codes.slice(0, 6).join('  ')}
                 {lastSaved.codes.length > 6 ? `  +${lastSaved.codes.length - 6} more` : ''}
               </Typography>
@@ -347,7 +348,7 @@ const CaptureScreen = () => {
       </Typography>
       <Stack spacing={1}>
         {definitions.length === 0 && (
-          <Typography sx={{ color: '#94A3B8', fontSize: 13.5 }}>
+          <Typography sx={{ color: palette.textFaint, fontSize: 13.5 }}>
             Nothing captured yet.
           </Typography>
         )}
@@ -355,7 +356,7 @@ const CaptureScreen = () => {
           <Card key={definition.id} sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2 }}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ fontWeight: 800, fontSize: 15 }} noWrap>{definition.name}</Typography>
-              <Typography sx={{ fontSize: 12.5, color: '#64748B' }} noWrap>
+              <Typography sx={{ fontSize: 12.5, color: palette.textSubtle }} noWrap>
                 {definition.unit_count} item{definition.unit_count === 1 ? '' : 's'}
                 {definition.description ? ` · ${definition.description}` : ' · not described yet'}
               </Typography>
@@ -367,8 +368,8 @@ const CaptureScreen = () => {
               label={definition.part_id ? 'In inventory' : 'Draft'}
               sx={{
                 fontWeight: 800,
-                bgcolor: definition.part_id ? '#DCFCE7' : '#F1F5F9',
-                color: definition.part_id ? '#15803D' : '#64748B',
+                bgcolor: definition.part_id ? '#DCFCE7' : palette.surfaceMuted,
+                color: definition.part_id ? palette.success : palette.textSubtle,
               }}
             />
             <IconButton onClick={() => setEditing(definition)} aria-label="Edit details">

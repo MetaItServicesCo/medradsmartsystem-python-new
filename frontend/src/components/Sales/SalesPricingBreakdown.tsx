@@ -15,6 +15,7 @@ import {
   SALES_TAX_FACTOR,
   SALES_TAX_RATE,
 } from '@/utils/salesPricing'
+import { palette } from '@/theme/palette'
 
 type SalesPricing = ReturnType<typeof calculateSalesPricing>
 
@@ -59,12 +60,12 @@ const SalesPricingBreakdown = ({ pricing }: SalesPricingBreakdownProps) => {
         border: '1px solid #CBD5E1',
         borderRadius: '10px',
         overflow: 'hidden',
-        bgcolor: '#FFFFFF',
+        bgcolor: palette.white,
       }}
     >
       <Table size="small" aria-label="Quotation price calculation">
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+          <TableRow sx={{ bgcolor: palette.surface }}>
             <TableCell sx={{ ...cellSx, fontWeight: 950 }}>Description</TableCell>
             <TableCell align="right" sx={{ ...cellSx, fontWeight: 950 }}>Cost</TableCell>
             <TableCell align="right" sx={{ ...cellSx, fontWeight: 950 }}>Tax {SALES_TAX_RATE}%</TableCell>
@@ -82,7 +83,7 @@ const SalesPricingBreakdown = ({ pricing }: SalesPricingBreakdownProps) => {
           )}
           {pricing.merchandise > 0 && (
             <TableRow>
-              <TableCell sx={{ ...cellSx, color: '#DC2626', fontWeight: 900 }}>Parts</TableCell>
+              <TableCell sx={{ ...cellSx, color: palette.dangerStrong, fontWeight: 900 }}>Parts</TableCell>
               <TableCell align="right" sx={cellSx}>{money(pricing.merchandise)}</TableCell>
               <TableCell align="right" sx={cellSx}>{hasTradeIn ? '—' : money(partsTax)}</TableCell>
               <TableCell sx={{ ...cellSx, borderRight: 0 }} />
@@ -91,8 +92,8 @@ const SalesPricingBreakdown = ({ pricing }: SalesPricingBreakdownProps) => {
           {hasTradeIn && (
             <>
               <TableRow>
-                <TableCell sx={{ ...cellSx, color: '#059669', fontWeight: 900 }}>Trade-In Credit</TableCell>
-                <TableCell align="right" sx={{ ...cellSx, color: '#059669', fontWeight: 850 }}>
+                <TableCell sx={{ ...cellSx, color: palette.brandStrong, fontWeight: 900 }}>Trade-In Credit</TableCell>
+                <TableCell align="right" sx={{ ...cellSx, color: palette.brandStrong, fontWeight: 850 }}>
                   −{money(pricing.tradeInCredit)}
                 </TableCell>
                 <TableCell sx={cellSx} />
@@ -124,15 +125,15 @@ const SalesPricingBreakdown = ({ pricing }: SalesPricingBreakdownProps) => {
           )}
           {pricing.refundCredit > 0 && (
             <TableRow>
-              <TableCell sx={{ ...cellSx, color: '#DC2626', fontWeight: 900 }}>Refund Payment</TableCell>
-              <TableCell align="right" sx={{ ...cellSx, color: '#DC2626', fontWeight: 850 }}>
+              <TableCell sx={{ ...cellSx, color: palette.dangerStrong, fontWeight: 900 }}>Refund Payment</TableCell>
+              <TableCell align="right" sx={{ ...cellSx, color: palette.dangerStrong, fontWeight: 850 }}>
                 −{money(pricing.refundCredit)}
               </TableCell>
               <TableCell align="right" sx={cellSx}>{money(0)}</TableCell>
               <TableCell sx={{ ...cellSx, borderRight: 0 }} />
             </TableRow>
           )}
-          <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+          <TableRow sx={{ bgcolor: palette.surface }}>
             <TableCell sx={{ ...cellSx, fontWeight: 950 }}>Total Tax</TableCell>
             <TableCell sx={cellSx} />
             <TableCell align="right" sx={{ ...cellSx, fontWeight: 950 }}>{money(pricing.taxAmount)}</TableCell>
@@ -141,7 +142,7 @@ const SalesPricingBreakdown = ({ pricing }: SalesPricingBreakdownProps) => {
           {pricing.discountAmount > 0 ? (
             <TableRow>
               <TableCell sx={{ ...cellSx, fontWeight: 900 }}>Discount</TableCell>
-              <TableCell align="right" sx={{ ...cellSx, color: '#DC2626', fontWeight: 850 }}>
+              <TableCell align="right" sx={{ ...cellSx, color: palette.dangerStrong, fontWeight: 850 }}>
                 −{money(pricing.discountAmount)}
               </TableCell>
               <TableCell sx={cellSx} />
@@ -155,14 +156,14 @@ const SalesPricingBreakdown = ({ pricing }: SalesPricingBreakdownProps) => {
               <TableCell align="right" sx={{ ...cellSx, borderRight: 0, fontWeight: 950 }}>{signedMoney(preTaxAfterDiscount)}</TableCell>
             </TableRow>
           )}
-          <TableRow sx={{ bgcolor: '#EEF2FF' }}>
+          <TableRow sx={{ bgcolor: palette.indigoTint }}>
             <TableCell sx={{ ...cellSx, borderBottom: 0 }}>
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 17 }}>Grand Total</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 950, fontSize: 17 }}>Grand Total</Typography>
             </TableCell>
             <TableCell sx={{ ...cellSx, borderBottom: 0 }} />
             <TableCell sx={{ ...cellSx, borderBottom: 0 }} />
             <TableCell align="right" sx={{ ...cellSx, borderRight: 0, borderBottom: 0 }}>
-              <Typography sx={{ color: pricing.total < 0 ? '#DC2626' : '#059669', fontWeight: 950, fontSize: 17 }}>{signedMoney(pricing.total)}</Typography>
+              <Typography sx={{ color: pricing.total < 0 ? palette.dangerStrong : palette.brandStrong, fontWeight: 950, fontSize: 17 }}>{signedMoney(pricing.total)}</Typography>
             </TableCell>
           </TableRow>
         </TableBody>

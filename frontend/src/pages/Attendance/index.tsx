@@ -60,6 +60,7 @@ import {
 } from '@/api/attendance'
 import { resolveUploadUrl } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
+import { palette } from '@/theme/palette'
 
 const EVENT_LABELS: Record<string, string> = {
   check_in: 'Check In',
@@ -69,10 +70,10 @@ const EVENT_LABELS: Record<string, string> = {
 }
 
 const EVENT_COLORS: Record<string, { bg: string; color: string }> = {
-  check_in: { bg: '#D1FAE5', color: '#047857' },
-  check_out: { bg: '#E0E7FF', color: '#4338CA' },
-  break_start: { bg: '#FEF3C7', color: '#B45309' },
-  break_end: { bg: '#ECFDF5', color: '#059669' },
+  check_in: { bg: palette.brandSoft, color: palette.brand },
+  check_out: { bg: '#E0E7FF', color: palette.brand },
+  break_start: { bg: palette.warningTint, color: palette.warning },
+  break_end: { bg: palette.brandTint, color: palette.brandStrong },
 }
 
 const ACTION_MENU_PAPER = {
@@ -80,8 +81,8 @@ const ACTION_MENU_PAPER = {
   sx: {
     minWidth: 210,
     borderRadius: '18px',
-    border: '1px solid rgba(124,58,237,0.14)',
-    boxShadow: '0 24px 60px rgba(30,27,75,0.18)',
+    border: '1px solid rgba(4,120,87,0.14)',
+    boxShadow: '0 24px 60px rgba(6,78,59,0.18)',
     overflow: 'hidden',
   },
 }
@@ -91,14 +92,14 @@ const ACTION_MENU_ITEM = {
   px: 2,
   py: 1.2,
   fontWeight: 800,
-  color: '#1E1B4B',
+  color: palette.ink,
   '& .MuiListItemIcon-root': { minWidth: 30, color: 'inherit' },
 }
 
 const FACE_STATUS: Record<string, { label: string; bg: string; color: string }> = {
-  enrolled: { label: 'Enrolled', bg: '#D1FAE5', color: '#047857' },
-  needs_retrain: { label: 'Needs Retrain', bg: '#FEF3C7', color: '#B45309' },
-  not_enrolled: { label: 'Not Enrolled', bg: '#FEE2E2', color: '#DC2626' },
+  enrolled: { label: 'Enrolled', bg: palette.brandSoft, color: palette.brand },
+  needs_retrain: { label: 'Needs Retrain', bg: palette.warningTint, color: palette.warning },
+  not_enrolled: { label: 'Not Enrolled', bg: palette.dangerTint, color: palette.dangerStrong },
 }
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
@@ -433,14 +434,14 @@ const Attendance = () => {
   const profileOptions = useMemo(() => profiles.filter(item => item.id > 0), [profiles])
 
   const renderKpi = (label: string, value: number | undefined, icon: JSX.Element, color: string) => (
-    <Card sx={{ p: 2.4, borderRadius: '20px', border: '1px solid #E9E5FF', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+    <Card sx={{ p: 2.4, borderRadius: '20px', border: `1px solid ${palette.brandTint}`, boxShadow: '0 18px 45px rgba(6,78,59,0.08)' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Box sx={{ width: 48, height: 48, borderRadius: '16px', display: 'grid', placeItems: 'center', background: `${color}16`, color }}>
           {icon}
         </Box>
         <Box>
           <Typography sx={{ color: '#8B95A7', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 28 }}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : (value ?? 0)}</Typography>
+          <Typography sx={{ color: palette.ink, fontWeight: 900, fontSize: 28 }}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : (value ?? 0)}</Typography>
         </Box>
       </Box>
     </Card>
@@ -577,11 +578,11 @@ const Attendance = () => {
 
   const recognitionColor = recognitionResult?.matched
     ? recognitionResult.verification_status === 'verified'
-      ? '#10B981'
+      ? palette.brandMid
       : '#F59E0B'
     : recognitionResult
-    ? '#EF4444'
-    : '#8B5CF6'
+    ? palette.dangerBright
+    : palette.brandStrong
 
   const captureLiveSample = () => {
     if (!activeEnrollProfile || !videoRef.current || !canvasRef.current) return
@@ -594,8 +595,8 @@ const Attendance = () => {
     <Box sx={{ p: { xs: 0, sm: 2, md: 4 }, minHeight: '100%', background: '#F8FAFF' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', mb: 3, flexWrap: 'wrap' }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Smart Attendance</Typography>
-          <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Face enrollment, shift attendance, breaks, and HR review.</Typography>
+          <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink }}>Smart Attendance</Typography>
+          <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>Face enrollment, shift attendance, breaks, and HR review.</Typography>
         </Box>
         <TextField
           type="date"
@@ -607,14 +608,14 @@ const Attendance = () => {
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 2, mb: 3 }}>
-        {renderKpi('Employees', stats?.total_employees, <BadgeIcon />, '#7C3AED')}
-        {renderKpi('Face Enrolled', stats?.enrolled_faces, <CameraAltIcon />, '#EC4899')}
-        {renderKpi('Checked In', stats?.checked_in, <LoginIcon />, '#059669')}
-        {renderKpi('On Break', stats?.on_break, <CoffeeIcon />, '#D97706')}
-        {renderKpi('Needs Review', stats?.needs_review, <WarningAmberIcon />, '#DC2626')}
+        {renderKpi('Employees', stats?.total_employees, <BadgeIcon />, palette.brand)}
+        {renderKpi('Face Enrolled', stats?.enrolled_faces, <CameraAltIcon />, palette.accent)}
+        {renderKpi('Checked In', stats?.checked_in, <LoginIcon />, palette.brandStrong)}
+        {renderKpi('On Break', stats?.on_break, <CoffeeIcon />, palette.warningStrong)}
+        {renderKpi('Needs Review', stats?.needs_review, <WarningAmberIcon />, palette.dangerStrong)}
       </Box>
 
-      <Card sx={{ mb: 3, p: 2, borderRadius: '22px', border: '1px solid #E9E5FF', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)', color: '#fff' }}>
+      <Card sx={{ mb: 3, p: 2, borderRadius: '22px', border: `1px solid ${palette.brandTint}`, background: palette.gradientBrand, color: '#fff' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
           <Box>
             <Typography sx={{ fontWeight: 900, fontSize: 20 }}>Quick Attendance</Typography>
@@ -623,14 +624,14 @@ const Attendance = () => {
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button onClick={() => openFaceAttendance('check_in')} startIcon={<VideocamIcon />} variant="contained" sx={{ bgcolor: '#111827', color: '#fff', fontWeight: 900, '&:hover': { bgcolor: '#1F2937' } }}>Face Check In</Button>
             <Button onClick={() => openFaceAttendance('check_out')} startIcon={<VideocamIcon />} variant="contained" sx={{ bgcolor: '#111827', color: '#fff', fontWeight: 900, '&:hover': { bgcolor: '#1F2937' } }}>Face Check Out</Button>
-            <Button onClick={() => openFaceAttendance('break_start')} startIcon={<CoffeeIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Face Break Start</Button>
-            <Button onClick={() => openFaceAttendance('break_end')} startIcon={<DoneAllIcon />} variant="contained" sx={{ bgcolor: '#fff', color: '#5B21B6', fontWeight: 900, '&:hover': { bgcolor: '#F5F3FF' } }}>Face Break End</Button>
+            <Button onClick={() => openFaceAttendance('break_start')} startIcon={<CoffeeIcon />} variant="contained" sx={{ bgcolor: '#fff', color: palette.ink, fontWeight: 900, '&:hover': { bgcolor: palette.brandTint } }}>Face Break Start</Button>
+            <Button onClick={() => openFaceAttendance('break_end')} startIcon={<DoneAllIcon />} variant="contained" sx={{ bgcolor: '#fff', color: palette.ink, fontWeight: 900, '&:hover': { bgcolor: palette.brandTint } }}>Face Break End</Button>
           </Box>
         </Box>
       </Card>
 
-      <Card sx={{ borderRadius: '24px', border: '1px solid #E9E5FF', overflow: 'hidden', boxShadow: '0 20px 55px rgba(49,46,129,0.08)' }}>
-        <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: 2, borderBottom: '1px solid #EEF0F6', '& .Mui-selected': { color: '#7C3AED !important', fontWeight: 900 } }}>
+      <Card sx={{ borderRadius: '24px', border: `1px solid ${palette.brandTint}`, overflow: 'hidden', boxShadow: '0 20px 55px rgba(6,78,59,0.08)' }}>
+        <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: 2, borderBottom: `1px solid ${palette.borderSoft}`, '& .Mui-selected': { color: '#047857 !important', fontWeight: 900 } }}>
           <Tab label="Today" />
           <Tab label="Employees" />
           <Tab label="History" />
@@ -638,7 +639,7 @@ const Attendance = () => {
 
         {tab === 0 && (
           <Box sx={{ p: 3 }}>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Recent Activity</Typography>
+            <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 2 }}>Recent Activity</Typography>
             <EventTable rows={latestEvents} />
           </Box>
         )}
@@ -677,7 +678,7 @@ const Attendance = () => {
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                             <Avatar src={resolveUploadUrl(profile.user.avatar_url)}>{profile.user.full_name.charAt(0)}</Avatar>
                             <Box>
-                              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{profile.user.full_name}</Typography>
+                              <Typography sx={{ fontWeight: 900, color: palette.ink }}>{profile.user.full_name}</Typography>
                               <Typography sx={{ color: '#8B95A7', fontSize: 13 }}>{profile.user.email}</Typography>
                             </Box>
                           </Box>
@@ -696,7 +697,7 @@ const Attendance = () => {
                         </TableCell>
                         <TableCell>{profile.face_samples_count}</TableCell>
                         <TableCell align="right">
-                          <IconButton size="small" onClick={(event) => openActions(event, profile)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                          <IconButton size="small" onClick={(event) => openActions(event, profile)} sx={{ bgcolor: '#f1fffb', color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}>
                             <MoreVertIcon fontSize="small" />
                           </IconButton>
                         </TableCell>
@@ -787,7 +788,7 @@ const Attendance = () => {
       </Card>
 
       <Dialog open={Boolean(activeEventProfile)} onClose={() => setEventDialog(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Mark Attendance Event</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Mark Attendance Event</DialogTitle>
         <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
           <Typography sx={{ fontWeight: 800 }}>{activeEventProfile?.user.full_name}</Typography>
           <TextField select label="Event" value={eventType} onChange={(e) => setEventType(e.target.value as AttendanceEventPayload['event_type'])}>
@@ -807,7 +808,7 @@ const Attendance = () => {
               source: 'admin',
               remark,
             })}
-            sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+            sx={{ fontWeight: 900, background: palette.gradientBrand }}
           >
             Save Event
           </Button>
@@ -815,7 +816,7 @@ const Attendance = () => {
       </Dialog>
 
       <Dialog open={attendanceCameraOpen} onClose={closeFaceAttendance} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           Face Recognition Attendance
           <Typography sx={{ color: '#8B95A7', fontWeight: 700, fontSize: 13 }}>
             {EVENT_LABELS[attendanceEventType]} with live face detection
@@ -860,16 +861,16 @@ const Attendance = () => {
                 }}
               >
                 <Box>
-                  <CircularProgress size={28} sx={{ color: '#A78BFA', mb: 1.5 }} />
+                  <CircularProgress size={28} sx={{ color: palette.brandLight, mb: 1.5 }} />
                   <Typography sx={{ fontWeight: 900 }}>{attendanceCameraStatus}</Typography>
-                  <Typography sx={{ fontSize: 12, color: '#94A3B8', mt: 0.5 }}>
+                  <Typography sx={{ fontSize: 12, color: palette.textFaint, mt: 0.5 }}>
                     Allow camera access and wait for the preview to appear.
                   </Typography>
                   <Button
                     size="small"
                     variant="contained"
                     onClick={retryFaceAttendanceCamera}
-                    sx={{ mt: 1.5, borderRadius: '10px', fontWeight: 900, bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+                    sx={{ mt: 1.5, borderRadius: '10px', fontWeight: 900, bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep } }}
                   >
                     Retry Camera
                   </Button>
@@ -902,12 +903,12 @@ const Attendance = () => {
             })}
           </Box>
 
-          <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E9E5FF', bgcolor: '#F8FAFF' }}>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+          <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.brandTint}`, bgcolor: '#F8FAFF' }}>
+            <Typography sx={{ fontWeight: 900, color: palette.ink }}>
               {recognitionResult?.message || (detectedFaces.length ? 'Face detected. Scan to mark attendance.' : 'Waiting for a face...')}
             </Typography>
             {recognitionResult && (
-              <Typography sx={{ color: '#6B7280', fontWeight: 800, mt: 0.5 }}>
+              <Typography sx={{ color: palette.textMuted, fontWeight: 800, mt: 0.5 }}>
                 {recognitionResult.profile?.full_name || recognitionResult.candidate?.full_name || 'Unknown'} · Confidence {Math.round(Number(recognitionResult.confidence || 0) * 100)}% · {recognitionResult.verification_status.replace('_', ' ')}
               </Typography>
             )}
@@ -920,7 +921,7 @@ const Attendance = () => {
             startIcon={recognitionBusy ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <VideocamIcon />}
             disabled={recognitionBusy || !attendanceStream || !attendanceCameraReady}
             onClick={scanAndMarkAttendance}
-            sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+            sx={{ fontWeight: 900, background: palette.gradientBrand }}
           >
             Scan & Mark
           </Button>
@@ -928,10 +929,10 @@ const Attendance = () => {
       </Dialog>
 
       <Dialog open={Boolean(activeEnrollProfile)} onClose={closeLiveEnroll} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Live Face Enrollment</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Live Face Enrollment</DialogTitle>
         <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
           <Box>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{activeEnrollProfile?.user.full_name}</Typography>
+            <Typography sx={{ fontWeight: 900, color: palette.ink }}>{activeEnrollProfile?.user.full_name}</Typography>
             <Typography sx={{ color: '#8B95A7', fontWeight: 700, fontSize: 13 }}>
               Center the face in the frame, use clear light, then capture one or more samples.
             </Typography>
@@ -941,7 +942,7 @@ const Attendance = () => {
               position: 'relative',
               borderRadius: '18px',
               overflow: 'hidden',
-              border: '1px solid #E9E5FF',
+              border: `1px solid ${palette.brandTint}`,
               background: '#111827',
               aspectRatio: '4 / 3',
             }}
@@ -980,16 +981,16 @@ const Attendance = () => {
                 }}
               >
                 <Box>
-                  <CircularProgress size={28} sx={{ color: '#A78BFA', mb: 1.5 }} />
+                  <CircularProgress size={28} sx={{ color: palette.brandLight, mb: 1.5 }} />
                   <Typography sx={{ fontWeight: 900 }}>{cameraStatus}</Typography>
-                  <Typography sx={{ fontSize: 12, color: '#94A3B8', mt: 0.5 }}>
+                  <Typography sx={{ fontSize: 12, color: palette.textFaint, mt: 0.5 }}>
                     If the preview stays dark, check browser camera permissions or choose another camera in Chrome.
                   </Typography>
                   <Button
                     size="small"
                     variant="contained"
                     onClick={retryLiveEnrollCamera}
-                    sx={{ mt: 1.5, borderRadius: '10px', fontWeight: 900, bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+                    sx={{ mt: 1.5, borderRadius: '10px', fontWeight: 900, bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep } }}
                   >
                     Retry Camera
                   </Button>
@@ -1005,7 +1006,7 @@ const Attendance = () => {
             startIcon={<CameraAltIcon />}
             disabled={faceSampleMut.isPending || !cameraStream || !cameraReady}
             onClick={captureLiveSample}
-            sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+            sx={{ fontWeight: 900, background: palette.gradientBrand }}
           >
             Capture Sample
           </Button>
@@ -1030,14 +1031,14 @@ const EventTable = ({ rows }: { rows: AttendanceEvent[] }) => (
       </TableHead>
       <TableBody>
         {rows.map((event) => {
-          const colors = EVENT_COLORS[event.event_type] || { bg: '#F3F4F6', color: '#374151' }
+          const colors = EVENT_COLORS[event.event_type] || { bg: palette.surfaceGray, color: palette.textStrong }
           return (
             <ContextTableRow
               key={event.id}
               recordKey={`attendance-event-${event.id}`}
               recordLabel={`${event.user.full_name} · ${EVENT_LABELS[event.event_type] || event.event_type}`}
             >
-              <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>{event.user.full_name}</TableCell>
+              <TableCell sx={{ fontWeight: 900, color: palette.ink }}>{event.user.full_name}</TableCell>
               <TableCell><Chip label={EVENT_LABELS[event.event_type] || event.event_type} sx={{ bgcolor: colors.bg, color: colors.color, fontWeight: 900 }} /></TableCell>
               <TableCell>{formatDateTime(event.event_time)}</TableCell>
               <TableCell>{event.facility?.name || '-'}</TableCell>

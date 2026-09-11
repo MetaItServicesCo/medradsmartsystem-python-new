@@ -24,6 +24,7 @@ import {
   CustomerRecipientCard,
 } from '@/components/Documents/CustomerDocumentUI'
 import { calculateSalesPricing, SALES_TAX_RATE } from '@/utils/salesPricing'
+import { palette } from '@/theme/palette'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 const dateLabel = (value?: string | null) => value
@@ -110,7 +111,7 @@ const SalesQuotationDocument = ({
     fontSize: 11,
     textTransform: 'uppercase' as const,
     letterSpacing: '0.5px',
-    color: '#64748B',
+    color: palette.textSubtle,
     py: 1.4,
     whiteSpace: 'nowrap' as const,
   }
@@ -129,7 +130,7 @@ const SalesQuotationDocument = ({
           {showRevision && Number(quotation.revision || 1) > 1 && (
             <Chip
               label={`Rev ${quotation.revision}`}
-              sx={{ fontWeight: 900, bgcolor: '#EDE9FE', color: '#6D28D9' }}
+              sx={{ fontWeight: 900, bgcolor: palette.brandSoft, color: palette.brandDeep }}
             />
           )}
           {onSignAndApprove && (
@@ -176,10 +177,10 @@ const SalesQuotationDocument = ({
         </Alert>
       )}
 
-      <TableContainer sx={{ mb: 3, overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: '14px', '@media print': { overflow: 'visible' } }}>
-        <Table sx={{ minWidth: 1050, '& td, & th': { borderColor: '#EEF0F6' } }}>
+      <TableContainer sx={{ mb: 3, overflowX: 'auto', border: `1px solid ${palette.border}`, borderRadius: '14px', '@media print': { overflow: 'visible' } }}>
+        <Table sx={{ minWidth: 1050, '& td, & th': { borderColor: palette.borderSoft } }}>
           <TableHead>
-            <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+            <TableRow sx={{ bgcolor: palette.surface }}>
               {hasSelection && <TableCell sx={{ ...headCellSx, width: 60 }}>Select</TableCell>}
               <TableCell sx={headCellSx}>Item</TableCell>
               <TableCell sx={headCellSx}>Description</TableCell>
@@ -213,7 +214,7 @@ const SalesQuotationDocument = ({
                   sx={{
                     cursor: !isCredit && canSelect && hasSelection ? 'pointer' : 'default',
                     opacity: selected ? 1 : 0.45,
-                    bgcolor: selected ? (rowIndex % 2 ? '#FCFCFF' : '#FFFFFF') : '#F8FAFC',
+                    bgcolor: selected ? (rowIndex % 2 ? '#FCFCFF' : palette.white) : palette.surface,
                     '& td': { py: 1.35 },
                   }}
                 >
@@ -226,11 +227,11 @@ const SalesQuotationDocument = ({
                   )}
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
-                      <Typography component="span" sx={{ fontWeight: 900, color: '#1E1B4B' }}>{itemName}</Typography>
+                      <Typography component="span" sx={{ fontWeight: 900, color: palette.ink }}>{itemName}</Typography>
                       {typeChip && <Chip size="small" label={typeChip.label} color={typeChip.color} sx={{ height: 20, fontWeight: 800 }} />}
                     </Box>
                   </TableCell>
-                  <TableCell sx={{ color: '#475569' }}>{line.description}</TableCell>
+                  <TableCell sx={{ color: palette.slate600 }}>{line.description}</TableCell>
                   <TableCell align="right" sx={numSx}>{line.quantity}</TableCell>
                   <TableCell align="right" sx={numSx}>{money(Number(line.quantity || 0) * Number(line.unit_price || 0))}</TableCell>
                   <TableCell align="right" sx={numSx}>{money(line.shipping_fee)}</TableCell>
@@ -238,10 +239,10 @@ const SalesQuotationDocument = ({
                   <TableCell align="right" sx={numSx}>
                     <Box>
                       <Typography component="span" sx={{ fontWeight: 800 }}>{money(line.labor_fee)}</Typography>
-                      {Number(line.labor_fee || 0) > 0 && <Typography sx={{ fontSize: 10, color: '#94A3B8' }}>Non-taxable</Typography>}
+                      {Number(line.labor_fee || 0) > 0 && <Typography sx={{ fontSize: 10, color: palette.textFaint }}>Non-taxable</Typography>}
                     </Box>
                   </TableCell>
-                  <TableCell align="right" sx={{ ...numSx, fontWeight: 900, color: isCredit ? '#DC2626' : '#1E1B4B' }}>{money(line.total)}</TableCell>
+                  <TableCell align="right" sx={{ ...numSx, fontWeight: 900, color: isCredit ? palette.dangerStrong : palette.ink }}>{money(line.total)}</TableCell>
                 </TableRow>
               )
             })}
@@ -250,7 +251,7 @@ const SalesQuotationDocument = ({
       </TableContainer>
 
       <Box sx={{ mb: 4 }}>
-        <Typography sx={{ mb: 1, color: '#1E1B4B', fontWeight: 900 }}>
+        <Typography sx={{ mb: 1, color: palette.ink, fontWeight: 900 }}>
           {isInvoice ? 'Invoice Summary' : 'Quotation Summary'}
         </Typography>
         <TableContainer
@@ -258,10 +259,10 @@ const SalesQuotationDocument = ({
             width: '100%',
             maxWidth: 620,
             ml: 'auto',
-            border: '1px solid #E5E7EB',
+            border: `1px solid ${palette.border}`,
             borderRadius: '12px',
             overflow: 'hidden',
-            bgcolor: '#FFFFFF',
+            bgcolor: palette.white,
           }}
         >
           <Table size="small" aria-label={`${documentLabel} summary`}>
@@ -272,26 +273,26 @@ const SalesQuotationDocument = ({
               </TableRow>
               {pricing.discountAmount > 0 && (
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 800, color: '#DC2626' }}>Discount</TableCell>
-                  <TableCell align="right" sx={{ ...numSx, color: '#DC2626' }}>-{money(pricing.discountAmount)}</TableCell>
+                  <TableCell sx={{ fontWeight: 800, color: palette.dangerStrong }}>Discount</TableCell>
+                  <TableCell align="right" sx={{ ...numSx, color: palette.dangerStrong }}>-{money(pricing.discountAmount)}</TableCell>
                 </TableRow>
               )}
               <TableRow>
                 <TableCell sx={{ fontWeight: 800 }}>Tax ({SALES_TAX_RATE}%)</TableCell>
                 <TableCell align="right" sx={numSx}>{money(pricing.taxAmount)}</TableCell>
               </TableRow>
-              <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+              <TableRow sx={{ bgcolor: palette.surface }}>
                 <TableCell sx={{ fontWeight: 950 }}>{documentLabel} Total</TableCell>
-                <TableCell align="right" sx={{ ...numSx, fontWeight: 950, color: '#1E1B4B' }}>{money(pricing.total)}</TableCell>
+                <TableCell align="right" sx={{ ...numSx, fontWeight: 950, color: palette.ink }}>{money(pricing.total)}</TableCell>
               </TableRow>
               {isInvoice && invoiceAmountPaid !== undefined && invoiceAmountPaid !== null && Number(invoiceAmountPaid) > 0 && (
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 800, color: '#059669' }}>Paid</TableCell>
-                  <TableCell align="right" sx={{ ...numSx, color: '#059669', fontWeight: 800 }}>{money(invoiceAmountPaid)}</TableCell>
+                  <TableCell sx={{ fontWeight: 800, color: palette.brandStrong }}>Paid</TableCell>
+                  <TableCell align="right" sx={{ ...numSx, color: palette.brandStrong, fontWeight: 800 }}>{money(invoiceAmountPaid)}</TableCell>
                 </TableRow>
               )}
               {isInvoice && invoiceBalanceDue !== undefined && invoiceBalanceDue !== null && (
-                <TableRow sx={{ bgcolor: '#EEF2FF' }}>
+                <TableRow sx={{ bgcolor: palette.indigoTint }}>
                   <TableCell sx={{ fontWeight: 950 }}>Balance Due</TableCell>
                   <TableCell align="right" sx={{ ...numSx, fontWeight: 950 }}>{money(invoiceBalanceDue)}</TableCell>
                 </TableRow>
@@ -302,21 +303,21 @@ const SalesQuotationDocument = ({
       </Box>
 
       {quotation.notes && (
-        <Box sx={{ mb: 3, p: 2.2, borderRadius: '14px', bgcolor: '#FAF9FF', border: '1px solid #EDE9FE' }}>
-          <Typography sx={{ color: '#8B5CF6', fontWeight: 900, fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px', mb: 0.6 }}>
+        <Box sx={{ mb: 3, p: 2.2, borderRadius: '14px', bgcolor: '#f9fffd', border: `1px solid ${palette.brandSoft}` }}>
+          <Typography sx={{ color: palette.brandStrong, fontWeight: 900, fontSize: 11, textTransform: 'uppercase', letterSpacing: '1px', mb: 0.6 }}>
             Notes
           </Typography>
-          <Typography sx={{ color: '#475569', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{quotation.notes}</Typography>
+          <Typography sx={{ color: palette.slate600, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{quotation.notes}</Typography>
         </Box>
       )}
 
-      <Box sx={{ height: 3, borderRadius: 999, mt: 4, mb: 2.5, background: 'linear-gradient(90deg, #7C3AED 0%, #EC4899 58%, #F59E0B 100%)' }} />
+      <Box sx={{ height: 3, borderRadius: 999, mt: 4, mb: 2.5, background: `linear-gradient(90deg, ${palette.brand} 0%, ${palette.accent} 58%, ${palette.warningBright} 100%)` }} />
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
         <Box>
-          <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 15 }}>Thank you for your business.</Typography>
-          <Typography sx={{ color: '#6B7280', fontSize: 13, mt: 0.3 }}>{companyName}</Typography>
+          <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: 15 }}>Thank you for your business.</Typography>
+          <Typography sx={{ color: palette.textMuted, fontSize: 13, mt: 0.3 }}>{companyName}</Typography>
         </Box>
-        <Typography sx={{ color: '#94A3B8', fontSize: 12, maxWidth: 380, textAlign: { xs: 'left', sm: 'right' }, lineHeight: 1.55 }}>
+        <Typography sx={{ color: palette.textFaint, fontSize: 12, maxWidth: 380, textAlign: { xs: 'left', sm: 'right' }, lineHeight: 1.55 }}>
           {isInvoice
             ? `Payment is due by the date shown above. Please reference ${invoiceNumber} on all correspondence.`
             : 'This quotation is valid until the date shown above. Pricing and availability are subject to change thereafter.'}

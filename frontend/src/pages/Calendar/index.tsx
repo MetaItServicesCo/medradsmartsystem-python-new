@@ -18,6 +18,7 @@ import { fetchEvents, createEvent, updateEvent, deleteEvent, type CalendarEvent 
 import { parseISO, format } from 'date-fns'
 import { toast } from 'react-toastify'
 import { useAuthStore } from '@/stores/authStore'
+import { palette } from '@/theme/palette'
 
 const CalendarPage = () => {
   const theme = useTheme()
@@ -32,7 +33,7 @@ const CalendarPage = () => {
     start: '',
     end: '',
     is_meeting: false,
-    color: '#7C3AED'
+    color: palette.brand as string
   })
 
   const { data: events = [], isLoading } = useQuery({
@@ -75,7 +76,7 @@ const CalendarPage = () => {
       start: format(arg.date, "yyyy-MM-dd'T'HH:mm"),
       end: format(new Date(arg.date.getTime() + 3600000), "yyyy-MM-dd'T'HH:mm"),
       is_meeting: false,
-      color: '#7C3AED'
+      color: palette.brand
     })
     setIsModalOpen(true)
   }
@@ -90,7 +91,7 @@ const CalendarPage = () => {
       start: format(parseISO(event.start_time), "yyyy-MM-dd'T'HH:mm"),
       end: format(parseISO(event.end_time), "yyyy-MM-dd'T'HH:mm"),
       is_meeting: event.is_meeting,
-      color: event.color || '#7C3AED'
+      color: event.color || palette.brand
     })
     setIsModalOpen(true)
   }
@@ -130,7 +131,7 @@ const CalendarPage = () => {
     title: e.title,
     start: e.start_time,
     end: e.end_time,
-    backgroundColor: e.is_meeting ? 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)' : (e.color || '#7C3AED'),
+    backgroundColor: e.is_meeting ? `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)` : (e.color || palette.brand),
     borderColor: 'transparent',
     extendedProps: { ...e }
   }))
@@ -139,8 +140,8 @@ const CalendarPage = () => {
     <Box className="page-enter" sx={{ height: { xs: 'calc(100dvh - 156px)', sm: 'calc(100dvh - 120px)' }, minHeight: 480, display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ mb: { xs: 2, sm: 4 }, display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 900, color: '#1E1B4B', letterSpacing: '-0.5px' }}>Calendar</Typography>
-          <Typography variant="body2" sx={{ color: '#6B7280', fontWeight: 500 }}>Your beautifully merged personal & group schedules</Typography>
+          <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink, letterSpacing: '-0.5px' }}>Calendar</Typography>
+          <Typography variant="body2" sx={{ color: palette.textMuted, fontWeight: 500 }}>Your beautifully merged personal & group schedules</Typography>
         </Box>
         <Button
           variant="contained"
@@ -151,7 +152,7 @@ const CalendarPage = () => {
               title: '', description: '', 
               start: format(new Date(), "yyyy-MM-dd'T'HH:mm"), 
               end: format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"),
-              is_meeting: false, color: '#7C3AED'
+              is_meeting: false, color: palette.brand
             })
             setIsModalOpen(true)
           }}
@@ -160,9 +161,9 @@ const CalendarPage = () => {
             textTransform: 'none', 
             px: { xs: 2, sm: 4 }, py: 1.2,
             fontWeight: 800,
-            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-            boxShadow: '0 8px 20px rgba(79,70,229,0.25)',
-            '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 12px 28px rgba(79,70,229,0.35)' }
+            background: `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.brand} 100%)`,
+            boxShadow: '0 8px 20px rgba(4,120,87,0.25)',
+            '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 12px 28px rgba(4,120,87,0.35)' }
           }}
         >
           New Event
@@ -174,8 +175,8 @@ const CalendarPage = () => {
         borderRadius: '32px', 
         flex: 1, 
         overflow: 'hidden', 
-        boxShadow: '0 20px 60px -15px rgba(124,58,237,0.1)',
-        border: '1px solid rgba(124,58,237,0.05)',
+        boxShadow: '0 20px 60px -15px rgba(4,120,87,0.1)',
+        border: '1px solid rgba(4,120,87,0.05)',
         backgroundColor: 'rgba(255, 255, 255, 0.9)',
         backdropFilter: 'blur(20px)',
       }}>
@@ -239,16 +240,16 @@ const CalendarPage = () => {
             select label="Color" fullWidth size="small"
             value={formData.color} onChange={(e) => setFormData({ ...formData, color: e.target.value })}
           >
-            <MenuItem value="#7C3AED">Purple (Meeting)</MenuItem>
-            <MenuItem value="#10B981">Green (Task)</MenuItem>
-            <MenuItem value="#F59E0B">Orange (Personal)</MenuItem>
-            <MenuItem value="#EF4444">Red (Urgent)</MenuItem>
-            <MenuItem value="#3B82F6">Blue (Other)</MenuItem>
+            <MenuItem value={palette.brand}>Purple (Meeting)</MenuItem>
+            <MenuItem value={palette.brandMid}>Green (Task)</MenuItem>
+            <MenuItem value={palette.warningBright}>Orange (Personal)</MenuItem>
+            <MenuItem value={palette.dangerBright}>Red (Urgent)</MenuItem>
+            <MenuItem value={palette.infoBright}>Blue (Other)</MenuItem>
           </TextField>
           
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, backgroundColor: '#F9FAFB', borderRadius: '12px' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, backgroundColor: palette.surfaceFaint, borderRadius: '12px' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <VideocamIcon sx={{ color: '#7C3AED' }} />
+              <VideocamIcon sx={{ color: palette.brand }} />
               <Typography variant="body2" sx={{ fontWeight: 600 }}>Workspace Meeting</Typography>
             </Box>
             <TextField
@@ -272,12 +273,12 @@ const CalendarPage = () => {
             <Button 
               startIcon={<VideocamIcon />} 
               onClick={handleJoinMeeting}
-              sx={{ color: '#7C3AED', fontWeight: 700 }}
+              sx={{ color: palette.brand, fontWeight: 700 }}
             >
               Join Meeting
             </Button>
           )}
-          <Button onClick={() => setIsModalOpen(false)} sx={{ color: '#9CA3AF' }}>Cancel</Button>
+          <Button onClick={() => setIsModalOpen(false)} sx={{ color: palette.textDisabled }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleSubmit}
@@ -291,8 +292,8 @@ const CalendarPage = () => {
       
       {/* Add global styles for FullCalendar */}
       <style>{`
-        .fc { --fc-border-color: #F3F4F6; --fc-button-bg-color: #7C3AED; --fc-button-border-color: #7C3AED; --fc-button-hover-bg-color: #6D28D9; --fc-button-active-bg-color: #5B21B6; font-family: inherit; }
-        .fc .fc-toolbar-title { font-size: 1.25rem; font-weight: 800; color: #1E1B4B; }
+        .fc { --fc-border-color: #F3F4F6; --fc-button-bg-color: #047857; --fc-button-border-color: #047857; --fc-button-hover-bg-color: #065F46; --fc-button-active-bg-color: #064E3B; font-family: inherit; }
+        .fc .fc-toolbar-title { font-size: 1.25rem; font-weight: 800; color: #064E3B; }
         .fc .fc-button { text-transform: capitalize; font-weight: 600; border-radius: 8px; font-size: 0.875rem; }
         .fc .fc-daygrid-day-number { color: #4B5563; font-weight: 600; font-size: 0.875rem; padding: 4px 8px; }
         .fc .fc-col-header-cell-cushion { color: #9CA3AF; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; padding: 12px 0; }

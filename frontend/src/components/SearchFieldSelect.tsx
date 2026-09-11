@@ -1,4 +1,5 @@
 import { FormControl, MenuItem, Select, type SelectChangeEvent } from '@mui/material'
+import { palette } from '@/theme/palette'
 
 export interface SearchFieldOption {
   value: string
@@ -30,7 +31,7 @@ const SearchFieldSelect = ({
         bgcolor: '#fff',
         fontSize: '0.84rem',
         fontWeight: 700,
-        color: '#374151',
+        color: palette.textStrong,
         '& .MuiSelect-select': { py: 1.15 },
       }}
     >

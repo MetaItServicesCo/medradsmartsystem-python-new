@@ -1,4 +1,5 @@
 import { Autocomplete, Box, CircularProgress, TextField, Typography, type SxProps, type Theme } from '@mui/material'
+import { palette } from '@/theme/palette'
 
 export type SearchableSelectValue = string | number
 
@@ -74,11 +75,11 @@ const SearchableSelect = <T extends SearchableSelectValue = SearchableSelectValu
       ListboxProps={{ style: { maxHeight: 320, overflow: 'auto' } }}
       renderOption={(props, option) => (
         <Box component="li" {...props} key={String(option.value)} sx={{ display: 'grid', gap: 0.15 }}>
-          <Typography noWrap variant="body2" sx={{ fontWeight: 750, color: '#1E1B4B' }}>
+          <Typography noWrap variant="body2" sx={{ fontWeight: 750, color: palette.ink }}>
             {option.label}
           </Typography>
           {option.secondary && (
-            <Typography noWrap variant="caption" sx={{ color: '#64748B' }}>
+            <Typography noWrap variant="caption" sx={{ color: palette.textSubtle }}>
               {option.secondary}
             </Typography>
           )}

@@ -76,6 +76,7 @@ import {
   SALES_TAX_RATE,
   salesLineTotal,
 } from '@/utils/salesPricing'
+import { palette } from '@/theme/palette'
 
 const ROUTE_TABS = ['/sales/quotations', '/sales/invoices', '/sales/in-progress', '/sales/completed']
 const COMPLETED_PAYMENT_METHODS = ['credit_card', 'cheque', 'bank_transfer'] as const
@@ -107,15 +108,15 @@ const SALES_COMPLETED_HISTORY_SEARCH_FIELDS = [
   ...SALES_ORDER_SEARCH_FIELDS,
   { value: 'activity', label: 'Activity / user' },
 ]
-const SYSTEM_GRADIENT = 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)'
-const SYSTEM_PANEL_BORDER = '#E9D5FF'
+const SYSTEM_GRADIENT = palette.gradientBrand
+const SYSTEM_PANEL_BORDER = palette.brandBorder
 const SYSTEM_PANEL_BG = '#F8FAFF'
 const ACTION_MENU_PAPER = {
   mt: 1,
   minWidth: 260,
   borderRadius: '18px',
-  border: '1px solid #E9D5FF',
-  boxShadow: '0 22px 55px rgba(49,46,129,0.18)',
+  border: `1px solid ${palette.brandBorder}`,
+  boxShadow: '0 22px 55px rgba(6,78,59,0.18)',
   overflow: 'hidden',
   '& .MuiList-root': { p: 0.8 },
 }
@@ -125,14 +126,14 @@ const ACTION_MENU_ITEM = {
   gap: 1,
   borderRadius: '12px',
   fontWeight: 900,
-  color: '#312E81',
-  '&:hover': { bgcolor: '#F5F3FF', color: '#6D28D9' },
+  color: palette.brandDeep,
+  '&:hover': { bgcolor: palette.brandTint, color: palette.brandDeep },
   '&.Mui-disabled': { opacity: 0.45 },
 }
 const ACTION_MENU_DANGER = {
   ...ACTION_MENU_ITEM,
-  color: '#DC2626',
-  '&:hover': { bgcolor: '#FEF2F2', color: '#B91C1C' },
+  color: palette.dangerStrong,
+  '&:hover': { bgcolor: palette.dangerWash, color: palette.danger },
 }
 
 const SALES_LIST_TABLE_SX = {
@@ -148,7 +149,7 @@ const SALES_LIST_TABLE_SX = {
   },
   '& .MuiTableCell-head': {
     py: 1.05,
-    color: '#64748B',
+    color: palette.textSubtle,
     fontSize: 11.5,
     fontWeight: 900,
     textTransform: 'uppercase',
@@ -156,46 +157,46 @@ const SALES_LIST_TABLE_SX = {
 }
 
 const SALES_PAGINATION_SX = {
-  borderTop: '1px solid #EEF0F6',
+  borderTop: `1px solid ${palette.borderSoft}`,
   '& .MuiTablePagination-toolbar': {
     minHeight: 48,
     px: { xs: 0.5, sm: 1 },
   },
   '& .MuiTablePagination-selectLabel': { display: { xs: 'none', sm: 'block' } },
-  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: '#64748B' },
+  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: palette.textSubtle },
 }
 
 const SALES_ACTION_BUTTON_SX = {
   width: 34,
   height: 34,
   borderRadius: '10px',
-  bgcolor: '#F3F4F6',
-  color: '#4F46E5',
-  '&:hover': { bgcolor: '#EDE9FE' },
+  bgcolor: palette.surfaceGray,
+  color: palette.indigo,
+  '&:hover': { bgcolor: palette.brandSoft },
 }
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
-    draft: { bg: '#F3F4F6', color: '#4B5563' },
-    sent: { bg: '#DBEAFE', color: '#1D4ED8' },
-    viewed: { bg: '#EDE9FE', color: '#6D28D9' },
-    changes_requested: { bg: '#FFEDD5', color: '#C2410C' },
-    declined: { bg: '#FEE2E2', color: '#DC2626' },
-    accepted: { bg: '#D1FAE5', color: '#047857' },
-    pending: { bg: '#EEF2FF', color: '#4338CA' },
-    approved: { bg: '#D1FAE5', color: '#047857' },
-    rejected: { bg: '#FEE2E2', color: '#DC2626' },
-    in_progress: { bg: '#FEF3C7', color: '#B45309' },
-    completed: { bg: '#D1FAE5', color: '#047857' },
-    paid: { bg: '#D1FAE5', color: '#047857' },
-    unpaid: { bg: '#FEE2E2', color: '#DC2626' },
-    partially_paid: { bg: '#FEF3C7', color: '#B45309' },
-    overdue: { bg: '#FEE2E2', color: '#DC2626' },
-    partially_refunded: { bg: '#FFEDD5', color: '#C2410C' },
+    draft: { bg: palette.surfaceGray, color: '#4B5563' },
+    sent: { bg: palette.infoSoft, color: palette.info },
+    viewed: { bg: palette.brandSoft, color: palette.brandDeep },
+    changes_requested: { bg: palette.warningPeach, color: '#C2410C' },
+    declined: { bg: palette.dangerTint, color: palette.dangerStrong },
+    accepted: { bg: palette.brandSoft, color: palette.brand },
+    pending: { bg: palette.indigoTint, color: palette.brand },
+    approved: { bg: palette.brandSoft, color: palette.brand },
+    rejected: { bg: palette.dangerTint, color: palette.dangerStrong },
+    in_progress: { bg: palette.warningTint, color: palette.warning },
+    completed: { bg: palette.brandSoft, color: palette.brand },
+    paid: { bg: palette.brandSoft, color: palette.brand },
+    unpaid: { bg: palette.dangerTint, color: palette.dangerStrong },
+    partially_paid: { bg: palette.warningTint, color: palette.warning },
+    overdue: { bg: palette.dangerTint, color: palette.dangerStrong },
+    partially_refunded: { bg: palette.warningPeach, color: '#C2410C' },
     refunded: { bg: '#FCE7F3', color: '#BE185D' },
-    cancelled: { bg: '#F3F4F6', color: '#6B7280' },
+    cancelled: { bg: palette.surfaceGray, color: palette.textMuted },
   }
-  return map[value] || { bg: '#F3F4F6', color: '#374151' }
+  return map[value] || { bg: palette.surfaceGray, color: palette.textStrong }
 }
 
 const SalesStatusChip = ({ value, label }: { value: string; label?: string }) => {
@@ -1358,8 +1359,8 @@ const Sales = () => {
         p: { xs: 1.35, sm: 1.6, lg: 1.8 },
         minWidth: 0,
         borderRadius: '16px',
-        border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
-        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(49,46,129,0.07)',
+        border: tab === targetTab ? `2px solid ${color}` : `1px solid ${palette.borderSoft}`,
+        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(6,78,59,0.07)',
         cursor: 'pointer',
         transform: tab === targetTab ? 'translateY(-2px)' : 'none',
         transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
@@ -1370,8 +1371,8 @@ const Sales = () => {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, minWidth: 0 }}>
         <Avatar sx={{ width: 40, height: 40, bgcolor: `${color}18`, color, borderRadius: '12px', flexShrink: 0 }}>{icon}</Avatar>
         <Box sx={{ minWidth: 0 }}>
-          <Typography noWrap title={label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography noWrap title={String(value)} sx={{ color: '#1E1B4B', fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>{value}</Typography>
+          <Typography noWrap title={label} sx={{ color: palette.textMuted, fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+          <Typography noWrap title={String(value)} sx={{ color: palette.ink, fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>{value}</Typography>
         </Box>
       </Box>
     </Card>
@@ -1563,7 +1564,7 @@ const Sales = () => {
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader sx={{ ...SALES_LIST_TABLE_SX, minWidth: { xs: 920, lg: 1060 } }}>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ width: 58 }}>#</TableCell>
             <TableCell sx={{ width: 138 }}>Work Order</TableCell>
             <TableCell sx={{ width: 185 }}>Facility Name</TableCell>
@@ -1579,7 +1580,7 @@ const Sales = () => {
           {quotationsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
             <TableRow key={index}><TableCell colSpan={9}><Skeleton /></TableCell></TableRow>
           )) : items.length === 0 ? (
-            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
+            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
           ) : items.map(item => {
             const highlighted = highlightQuotationId === item.id
             return (
@@ -1590,10 +1591,10 @@ const Sales = () => {
                 id={`sales-quotation-${item.id}`}
                 hover
                 sx={highlighted ? {
-                  bgcolor: '#F5F3FF',
-                  outline: '2px solid #7C3AED',
+                  bgcolor: palette.brandTint,
+                  outline: `2px solid ${palette.brand}`,
                   outlineOffset: '-2px',
-                  '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
+                  '& td': { borderTop: `1px solid ${palette.brandBorder}`, borderBottom: `1px solid ${palette.brandBorder}` },
                 } : undefined}
               >
                 <TableCell><ClippedTooltipText value={item.id} monospace fontWeight={800} /></TableCell>
@@ -1610,17 +1611,17 @@ const Sales = () => {
                   {item.status === 'in_progress' && (
                     <Box sx={{ mt: 0.75, maxWidth: 128 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.35 }}>
-                        <Typography sx={{ color: '#64748B', fontSize: 10, fontWeight: 800 }}>Payment</Typography>
-                        <Typography sx={{ color: '#1E1B4B', fontSize: 10, fontWeight: 900 }}>{quotationPaymentPercent(item)}%</Typography>
+                        <Typography sx={{ color: palette.textSubtle, fontSize: 10, fontWeight: 800 }}>Payment</Typography>
+                        <Typography sx={{ color: palette.ink, fontSize: 10, fontWeight: 900 }}>{quotationPaymentPercent(item)}%</Typography>
                       </Box>
-                      <LinearProgress variant="determinate" value={quotationPaymentPercent(item)} sx={{ height: 6, borderRadius: 6, bgcolor: '#EEF2FF', '& .MuiLinearProgress-bar': { borderRadius: 6, bgcolor: '#7C3AED' } }} />
+                      <LinearProgress variant="determinate" value={quotationPaymentPercent(item)} sx={{ height: 6, borderRadius: 6, bgcolor: palette.indigoTint, '& .MuiLinearProgress-bar': { borderRadius: 6, bgcolor: palette.brand } }} />
                     </Box>
                   )}
                 </TableCell>
                 <TableCell>
                   <SalesStatusChip value={item.paid_status} label={item.paid_status === 'unpaid' ? 'Unpaid' : undefined} />
                   {item.status === 'completed' && (
-                    <ClippedTooltipText value={paymentMethodLabel(item.converted_invoice_payment_method || item.payment_method)} variant="caption" color="#64748B" fontWeight={700} />
+                    <ClippedTooltipText value={paymentMethodLabel(item.converted_invoice_payment_method || item.payment_method)} variant="caption" color={palette.textSubtle} fontWeight={700} />
                   )}
                 </TableCell>
                 <TableCell align="right">
@@ -1648,7 +1649,7 @@ const Sales = () => {
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader sx={{ ...SALES_LIST_TABLE_SX, minWidth: { xs: 960, lg: 1100 } }}>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ width: 150 }}>Invoice #</TableCell>
             <TableCell sx={{ width: 140 }}>Work Order</TableCell>
             <TableCell sx={{ width: 160 }}>Customer</TableCell>
@@ -1664,7 +1665,7 @@ const Sales = () => {
           {invoicesQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
             <TableRow key={index}><TableCell colSpan={9}><Skeleton /></TableCell></TableRow>
           )) : invoices.length === 0 ? (
-            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No sales invoices yet.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No sales invoices yet.</TableCell></TableRow>
           ) : invoices.map(invoice => {
             const highlighted = highlightInvoiceId === invoice.id
             return (
@@ -1675,17 +1676,17 @@ const Sales = () => {
                 id={`sales-invoice-${invoice.id}`}
                 hover
                 sx={highlighted ? {
-                  bgcolor: '#F5F3FF',
-                  outline: '2px solid #7C3AED',
+                  bgcolor: palette.brandTint,
+                  outline: `2px solid ${palette.brand}`,
                   outlineOffset: '-2px',
-                  '& td': { borderTop: '1px solid #DDD6FE', borderBottom: '1px solid #DDD6FE' },
+                  '& td': { borderTop: `1px solid ${palette.brandBorder}`, borderBottom: `1px solid ${palette.brandBorder}` },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInvoiceDocument(invoice)} /></TableCell>
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color={palette.brand} fontWeight={900} onClick={() => openInvoiceDocument(invoice)} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.work_order || '-'} monospace fontWeight={800} onClick={() => openLinkedQuotation(invoice.sales_quotation_id)} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.customer_name} fontWeight={800} /></TableCell>
                 <TableCell><ClippedTooltipText value={invoice.facility_name || '-'} onClick={invoice.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(invoice.facility_name!)}`) : undefined} /></TableCell>
-                <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
+                <TableCell sx={{ color: palette.brandStrong, fontWeight: 900 }}>{money(invoice.total_amount)}</TableCell>
                 <TableCell>{money(invoice.net_paid ?? invoice.amount_paid)}</TableCell>
                 <TableCell>
                   <SalesStatusChip value={invoice.refund_status !== 'none' ? invoice.refund_status : invoice.status} />
@@ -1770,28 +1771,28 @@ const Sales = () => {
 
   return (
     <Box className="page-enter" sx={{ width: '100%', maxWidth: 'none', mx: 'auto' }}>
-      <Card sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, borderRadius: '22px', border: '1px solid #E9D5FF', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+      <Card sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, borderRadius: '22px', border: `1px solid ${palette.brandBorder}`, background: 'linear-gradient(135deg, #F8FAFF 0%, #ECFDF5 100%)', boxShadow: '0 18px 45px rgba(6,78,59,0.08)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4" sx={{ color: '#1E1B4B', fontWeight: 900 }}>Sales Module</Typography>
-            <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Create quotations from inventory parts marked for Sales, convert them to invoices, and track progress through completion.</Typography>
+            <Typography variant="h4" sx={{ color: palette.ink, fontWeight: 900 }}>Sales Module</Typography>
+            <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>Create quotations from inventory parts marked for Sales, convert them to invoices, and track progress through completion.</Typography>
           </Box>
-          <Button startIcon={<AddIcon />} variant="contained" onClick={() => openCreate(tab === 1 ? 'invoice' : 'quotation')} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
+          <Button startIcon={<AddIcon />} variant="contained" onClick={() => openCreate(tab === 1 ? 'invoice' : 'quotation')} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: palette.gradientBrand }}>
             {tab === 1 ? 'New Invoice' : 'New Quotation'}
           </Button>
         </Box>
       </Card>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(5, minmax(0, 1fr))' }, gap: { xs: 1.25, md: 1.75 }, mb: 2.5 }}>
-        {renderKpi('Quotations', stats.quotations, <AssignmentIcon />, '#4F46E5', 0)}
-        {renderKpi('Invoices', stats.invoices, <ReceiptLongIcon />, '#2563EB', 1)}
-        {renderKpi('In Progress', stats.inProgress, <ShoppingCartIcon />, '#F59E0B', 2)}
-        {renderKpi('Completed', stats.completed, <CheckCircleIcon />, '#059669', 3)}
-        {renderKpi('History', stats.history, <HistoryIcon />, '#7C3AED', 3)}
+        {renderKpi('Quotations', stats.quotations, <AssignmentIcon />, palette.indigo, 0)}
+        {renderKpi('Invoices', stats.invoices, <ReceiptLongIcon />, palette.infoStrong, 1)}
+        {renderKpi('In Progress', stats.inProgress, <ShoppingCartIcon />, palette.warningBright, 2)}
+        {renderKpi('Completed', stats.completed, <CheckCircleIcon />, palette.brandStrong, 3)}
+        {renderKpi('History', stats.history, <HistoryIcon />, palette.brand, 3)}
       </Box>
 
-      <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
+      <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: `1px solid ${palette.borderSoft}`, boxShadow: '0 18px 45px rgba(6,78,59,0.08)' }}>
+        <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: `1px solid ${palette.borderSoft}` }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Quotations" />
           <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Invoice" />
           <Tab icon={<ShoppingCartIcon />} iconPosition="start" label="In Progress" />
@@ -1800,10 +1801,10 @@ const Sales = () => {
 
         {tab === 0 && (
           <Box>
-            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: `1px solid ${palette.borderSoft}` }}>
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Quotation Parts List</Typography>
-                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>{summary?.parts ?? 0} sales part{(summary?.parts ?? 0) === 1 ? '' : 's'} available from inventory.</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.ink }}>Quotation Parts List</Typography>
+                <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>{summary?.parts ?? 0} sales part{(summary?.parts ?? 0) === 1 ? '' : 's'} available from inventory.</Typography>
               </Box>
               {renderSearchControl('Search quotations')}
             </Box>
@@ -1818,10 +1819,10 @@ const Sales = () => {
         )}
         {tab === 1 && (
           <Box>
-            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: `1px solid ${palette.borderSoft}` }}>
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Invoices</Typography>
-                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by invoice, customer, facility, quotation, status, amount, or date.</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.ink }}>Sales Invoices</Typography>
+                <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>Search by invoice, customer, facility, quotation, status, amount, or date.</Typography>
               </Box>
               {renderSearchControl('Search invoices')}
             </Box>
@@ -1831,20 +1832,20 @@ const Sales = () => {
         )}
         {tab === 2 && (
           <Box sx={{ p: { xs: 1.25, md: 2 } }}>
-            <Card sx={{ p: 2.5, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', bgcolor: '#F8FAFF' }}>
+            <Card sx={{ p: 2.5, mb: 2, borderRadius: '18px', border: `1px solid ${palette.borderSoft}`, bgcolor: '#F8FAFF' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 1 }}>
                 <Box>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Total Sale In Progress</Typography>
-                  <Typography sx={{ color: '#1E1B4B', fontSize: 30, fontWeight: 900 }}>{money(inProgressTotal)}</Typography>
+                  <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Total Sale In Progress</Typography>
+                  <Typography sx={{ color: palette.ink, fontSize: 30, fontWeight: 900 }}>{money(inProgressTotal)}</Typography>
                 </Box>
                 <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Payment Collected</Typography>
-                  <Typography sx={{ color: '#059669', fontSize: 24, fontWeight: 900 }}>{money(inProgressPaid)}</Typography>
+                  <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Payment Collected</Typography>
+                  <Typography sx={{ color: palette.brandStrong, fontSize: 24, fontWeight: 900 }}>{money(inProgressPaid)}</Typography>
                 </Box>
                 {renderSearchControl('Search in-progress sales')}
               </Box>
-              <LinearProgress variant="determinate" value={inProgressPaymentPercent} sx={{ height: 10, borderRadius: 10, bgcolor: '#E0E7FF', '& .MuiLinearProgress-bar': { borderRadius: 10, bgcolor: '#7C3AED' } }} />
-              <Typography sx={{ mt: 1, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>{inProgressPaymentPercent}% collected across active sales.</Typography>
+              <LinearProgress variant="determinate" value={inProgressPaymentPercent} sx={{ height: 10, borderRadius: 10, bgcolor: '#E0E7FF', '& .MuiLinearProgress-bar': { borderRadius: 10, bgcolor: palette.brand } }} />
+              <Typography sx={{ mt: 1, color: palette.textMuted, fontWeight: 800, fontSize: 12 }}>{inProgressPaymentPercent}% collected across active sales.</Typography>
             </Card>
               {renderQuotationTable(inProgressQuotations, 'No sales orders in progress.')}
               {renderPagination(inProgressQ.data?.total || 0, inProgressPage, setInProgressPage)}
@@ -1852,11 +1853,11 @@ const Sales = () => {
         )}
         {tab === 3 && (
           <Box sx={{ p: { xs: 1.25, md: 2 } }}>
-            <Card sx={{ p: 2.5, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', bgcolor: '#F7FEF9' }}>
+            <Card sx={{ p: 2.5, mb: 2, borderRadius: '18px', border: `1px solid ${palette.borderSoft}`, bgcolor: '#F7FEF9' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                 <Box>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Total Completed Sales</Typography>
-                  <Typography sx={{ color: '#059669', fontSize: 30, fontWeight: 900 }}>{money(completedTotal)}</Typography>
+                  <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Total Completed Sales</Typography>
+                  <Typography sx={{ color: palette.brandStrong, fontSize: 30, fontWeight: 900 }}>{money(completedTotal)}</Typography>
                 </Box>
                 {renderSearchControl('Search completed sales')}
               </Box>
@@ -1865,7 +1866,7 @@ const Sales = () => {
                   <Chip
                     key={method}
                     label={`${paymentMethodLabel(method)}: ${summary?.completed_payment_methods?.[method] || 0}`}
-                    sx={{ fontWeight: 900, bgcolor: '#ECFDF5', color: '#047857' }}
+                    sx={{ fontWeight: 900, bgcolor: palette.brandTint, color: palette.brand }}
                   />
                 ))}
               </Box>
@@ -1876,19 +1877,19 @@ const Sales = () => {
         )}
         {tab === 3 && (
           <Box>
-          <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
+          <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: `1px solid ${palette.borderSoft}` }}>
             <Box>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales History</Typography>
-              <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by work order, quotation, customer, facility, activity, user, or date.</Typography>
+              <Typography sx={{ fontWeight: 900, color: palette.ink }}>Sales History</Typography>
+              <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>Search by work order, quotation, customer, facility, activity, user, or date.</Typography>
             </Box>
-            <Typography sx={{ color: '#7C3AED', fontWeight: 800, fontSize: 13 }}>
+            <Typography sx={{ color: palette.brand, fontWeight: 800, fontSize: 13 }}>
               Uses the Completed &amp; History filters above
             </Typography>
           </Box>
           <TableContainer className="list-scroll-panel">
             <Table stickyHeader sx={{ ...SALES_LIST_TABLE_SX, minWidth: { xs: 820, lg: 1040 } }}>
               <TableHead>
-                <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                   <TableCell sx={{ width: 116 }}>Date</TableCell>
                   <TableCell sx={{ width: 142 }}>Work Order</TableCell>
                   <TableCell sx={{ width: 142 }}>Quotation</TableCell>
@@ -1902,7 +1903,7 @@ const Sales = () => {
                 {historyQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
                 )) : (historyQ.data?.items || []).length === 0 ? (
-                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No sales history yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No sales history yet.</TableCell></TableRow>
                 ) : historyQ.data!.items.map((item, index) => (
                   <ContextTableRow
                     key={`${item.quotation_id}-${item.action}-${index}`}
@@ -1912,7 +1913,7 @@ const Sales = () => {
                   >
                     <TableCell>{formatDate(item.at)}</TableCell>
                     <TableCell><ClippedTooltipText value={item.work_order} monospace fontWeight={900} onClick={() => openLinkedQuotation(item.quotation_id)} /></TableCell>
-                    <TableCell><ClippedTooltipText value={item.quotation_number} monospace color="#7161D8" fontWeight={900} onClick={() => openLinkedQuotation(item.quotation_id)} /></TableCell>
+                    <TableCell><ClippedTooltipText value={item.quotation_number} monospace color={palette.brand} fontWeight={900} onClick={() => openLinkedQuotation(item.quotation_id)} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.customer_name} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.facility_name || '-'} onClick={item.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(item.facility_name!)}`) : undefined} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.action.replace(/_/g, ' ')} fontWeight={800} /></TableCell>
@@ -2111,7 +2112,7 @@ const Sales = () => {
         ledgerTransactions={quotationLedgerTransactions(printQuotation)}
         moduleLabel="Sales"
         primaryDocumentLabel={printQuotation?.converted_invoice_id ? 'Invoice' : 'Quotation'}
-        accent="#7C3AED"
+        accent={palette.brand}
         acceptance={printQuotation?.acceptance || null}
       />
 
@@ -2158,17 +2159,17 @@ const Sales = () => {
         lineItems={invoiceLineItems(printInvoice)}
         ledgerTransactions={invoiceLedgerTransactions(printInvoice)}
         moduleLabel="Sales"
-        accent="#7C3AED"
+        accent={palette.brand}
       />
 
       <Dialog open={quotationDialog} onClose={() => setQuotationDialog(false)} maxWidth="xl" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           {editingQuotation
             ? `Edit Sales ${salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'}`
             : salesDocumentMode === 'invoice' ? 'Create Sales Invoice' : 'Create Sales Quotation'}
         </DialogTitle>
         <DialogContent dividers>
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>
+          <Typography sx={{ color: palette.ink, fontWeight: 900, mb: 1.5 }}>
             Customer &amp; {salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} Details
           </Typography>
           <Box sx={{
@@ -2216,12 +2217,12 @@ const Sales = () => {
                   }))}
                   renderOption={(props, option) => (
                     <li {...props}>
-                      <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: '#EDE9FE', color: '#6D28D9', fontSize: 13, fontWeight: 800 }}>
+                      <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: palette.brandSoft, color: palette.brandDeep, fontSize: 13, fontWeight: 800 }}>
                         {(option.full_name || option.email).slice(0, 1).toUpperCase()}
                       </Avatar>
                       <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ color: '#1E1B4B', fontWeight: 750, lineHeight: 1.2 }}>{option.full_name}</Typography>
-                        <Typography sx={{ color: '#64748B', fontSize: 12 }}>{option.email}</Typography>
+                        <Typography sx={{ color: palette.ink, fontWeight: 750, lineHeight: 1.2 }}>{option.full_name}</Typography>
+                        <Typography sx={{ color: palette.textSubtle, fontSize: 12 }}>{option.email}</Typography>
                       </Box>
                     </li>
                   )}
@@ -2260,12 +2261,12 @@ const Sales = () => {
                   })}
                   renderOption={(props, option) => (
                     <li {...props}>
-                      <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: '#EDE9FE', color: '#6D28D9', fontSize: 13, fontWeight: 800 }}>
+                      <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: palette.brandSoft, color: palette.brandDeep, fontSize: 13, fontWeight: 800 }}>
                         {(option.name || option.email).slice(0, 1).toUpperCase()}
                       </Avatar>
                       <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ color: '#1E1B4B', fontWeight: 750, lineHeight: 1.2 }}>{option.name}</Typography>
-                        <Typography sx={{ color: '#64748B', fontSize: 12 }}>{option.email}</Typography>
+                        <Typography sx={{ color: palette.ink, fontWeight: 750, lineHeight: 1.2 }}>{option.name}</Typography>
+                        <Typography sx={{ color: palette.textSubtle, fontSize: 12 }}>{option.email}</Typography>
                       </Box>
                     </li>
                   )}
@@ -2279,7 +2280,7 @@ const Sales = () => {
                         {...tagProps}
                         avatar={<Avatar>{(recipient.name || recipient.email).slice(0, 1).toUpperCase()}</Avatar>}
                         label={`${recipient.name} · ${recipient.email}`}
-                        sx={{ maxWidth: 320, bgcolor: '#F3E8FF', color: '#5B21B6', fontWeight: 700 }}
+                        sx={{ maxWidth: 320, bgcolor: palette.brandTint, color: palette.ink, fontWeight: 700 }}
                       />
                     )
                   })}
@@ -2324,7 +2325,7 @@ const Sales = () => {
                         {...tagProps}
                         avatar={<Avatar>{recipient.email.slice(0, 1).toUpperCase()}</Avatar>}
                         label={recipient.email}
-                        sx={{ maxWidth: 320, bgcolor: '#EDE9FE', color: '#5B21B6', fontWeight: 700 }}
+                        sx={{ maxWidth: 320, bgcolor: palette.brandSoft, color: palette.ink, fontWeight: 700 }}
                       />
                     )
                   })}
@@ -2374,8 +2375,8 @@ const Sales = () => {
           <Divider sx={{ my: 3 }} />
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 1.25, mb: 1.5 }}>
             <Box>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Parts</Typography>
-              <Typography sx={{ color: '#64748B', fontSize: 13 }}>Select a part, complete its pricing and fees, then add it to the document.</Typography>
+              <Typography sx={{ fontWeight: 900, color: palette.ink }}>Sales Parts</Typography>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>Select a part, complete its pricing and fees, then add it to the document.</Typography>
             </Box>
             <Button
               startIcon={<AddIcon />}
@@ -2404,8 +2405,8 @@ const Sales = () => {
                 fetchParts={fetchSalesParts}
                 queryKey="sales-parts-picker"
                 icon={<Inventory2Icon fontSize="small" />}
-                avatarBg="#F5F3FF"
-                avatarColor="#7C3AED"
+                avatarBg={palette.brandTint}
+                avatarColor={palette.brand}
                 getOptionDisabled={part => {
                   const alreadyAdded = quotationForm.items.reduce(
                     (total, item) => total + (
@@ -2449,11 +2450,11 @@ const Sales = () => {
                 p: 1.5,
                 mb: 2,
                 borderRadius: '14px',
-                borderColor: selectedPart.quantity_reserved > 0 ? '#FCA5A5' : '#DDD6FE',
-                bgcolor: selectedPart.quantity_reserved > 0 ? '#FFF7F7' : '#FAF8FF',
+                borderColor: selectedPart.quantity_reserved > 0 ? '#FCA5A5' : palette.brandBorder,
+                bgcolor: selectedPart.quantity_reserved > 0 ? '#FFF7F7' : '#f8fffe',
               }}
             >
-              <Typography sx={{ color: '#312E81', fontWeight: 900, mb: 1 }}>
+              <Typography sx={{ color: palette.brandDeep, fontWeight: 900, mb: 1 }}>
                 Stock position for {selectedPart.part_number}
               </Typography>
               <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
@@ -2478,7 +2479,7 @@ const Sales = () => {
               </Box>
               {selectedPart.stock_commitments.length > 0 && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap', mt: 1 }}>
-                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 800 }}>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 800 }}>
                     Related:
                   </Typography>
                   {selectedPart.stock_commitments.map(commitment => (
@@ -2508,10 +2509,10 @@ const Sales = () => {
             </Alert>
           )}
 
-          <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px', overflowX: 'auto' }}>
+          <TableContainer className="list-scroll-panel" sx={{ border: `1px solid ${palette.borderSoft}`, borderRadius: '16px', overflowX: 'auto' }}>
             <Table size="small" stickyHeader sx={{ minWidth: 920 }}>
               <TableHead>
-                <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                   <TableCell sx={{ fontWeight: 900 }}>Image</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Type</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Item Number</TableCell>
@@ -2529,7 +2530,7 @@ const Sales = () => {
               </TableHead>
               <TableBody>
                 {quotationForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={quotationForm.quotation_type !== 'standard' ? 13 : 12} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No sales parts or credits selected.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={quotationForm.quotation_type !== 'standard' ? 13 : 12} align="center" sx={{ py: 3, color: palette.textMuted, fontWeight: 700 }}>No sales parts or credits selected.</TableCell></TableRow>
                 ) : quotationForm.items.map((item, index) => {
                   const part = item.part_id ? quotationPartCatalog.get(item.part_id) : undefined
                   const stockIssue = quotationStockIssues.find(issue => issue.index === index)
@@ -2557,7 +2558,7 @@ const Sales = () => {
                   return (
                     <TableRow key={`${item.part_id}-${index}`}>
                       <TableCell>
-                        <Avatar src={resolveUploadUrl(itemImage)} variant="rounded" sx={{ width: 42, height: 42, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '10px' }}>
+                        <Avatar src={resolveUploadUrl(itemImage)} variant="rounded" sx={{ width: 42, height: 42, bgcolor: palette.brandTint, color: palette.brand, borderRadius: '10px' }}>
                           <Inventory2Icon fontSize="small" />
                         </Avatar>
                       </TableCell>
@@ -2603,7 +2604,7 @@ const Sales = () => {
                       <TableCell><TextField size="small" type="number" value={item.setup_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, setup_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell><TextField size="small" type="number" value={item.labor_fee || 0} onChange={e => setQuotationForm(prev => ({ ...prev, items: prev.items.map((line, lineIndex) => lineIndex === index ? { ...line, labor_fee: Number(e.target.value) } : line) }))} sx={{ width: 110 }} /></TableCell>
                       <TableCell>{item.condition || 'New'}</TableCell>
-                      <TableCell sx={{ color: '#059669', fontWeight: 900 }}>{money(lineTotal(item))}</TableCell>
+                      <TableCell sx={{ color: palette.brandStrong, fontWeight: 900 }}>{money(lineTotal(item))}</TableCell>
                       {quotationForm.quotation_type !== 'standard' && (
                         <TableCell>
                           {item.item_kind !== 'product' ? (
@@ -2628,7 +2629,7 @@ const Sales = () => {
                           )}
                         </TableCell>
                       )}
-                      <TableCell align="right"><IconButton size="small" onClick={() => removeLineItem(index)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton></TableCell>
+                      <TableCell align="right"><IconButton size="small" onClick={() => removeLineItem(index)} sx={{ color: palette.dangerStrong }}><DeleteIcon fontSize="small" /></IconButton></TableCell>
                     </TableRow>
                   )
                 })}
@@ -2702,10 +2703,10 @@ const Sales = () => {
             )}
           </Card>
 
-          <Card sx={{ p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: '#FEF2F2', border: '1px solid #FECACA' }}>
+          <Card sx={{ p: 2, mt: 2, mb: 0, borderRadius: '16px', bgcolor: palette.dangerWash, border: '1px solid #FECACA' }}>
             <FormControlLabel
               control={<Checkbox checked={refundAdjustmentEnabled} onChange={event => setRefundAdjustmentEnabled(event.target.checked)} />}
-              label={<Typography sx={{ fontWeight: 900, color: '#B91C1C' }}>Refund Payment</Typography>}
+              label={<Typography sx={{ fontWeight: 900, color: palette.danger }}>Refund Payment</Typography>}
             />
             {refundAdjustmentEnabled && (
               <>
@@ -2737,7 +2738,7 @@ const Sales = () => {
                     Add Refund
                   </Button>
                 </Box>
-                <Typography sx={{ mt: 1, color: '#B91C1C', fontSize: 12, fontWeight: 700 }}>
+                <Typography sx={{ mt: 1, color: palette.danger, fontSize: 12, fontWeight: 700 }}>
                   Adds a clearly identified negative line to this quotation. It does not alter inventory stock.
                 </Typography>
               </>
@@ -2757,7 +2758,7 @@ const Sales = () => {
             </Box>
             <Box sx={{ display: 'grid', gap: 1 }}>
               {quotationForm.quotation_type !== 'standard' && (
-                <Typography sx={{ fontSize: 12, color: hasDefaultProduct ? '#94A3B8' : '#B45309', fontWeight: 800, textAlign: { xs: 'left', lg: 'right' }, lineHeight: 1.4 }}>
+                <Typography sx={{ fontSize: 12, color: hasDefaultProduct ? palette.textFaint : palette.warning, fontWeight: 800, textAlign: { xs: 'left', lg: 'right' }, lineHeight: 1.4 }}>
                   {hasDefaultProduct
                     ? 'Preview reflects the default option customers see pre-selected.'
                     : 'No default option marked — previewing the first option. Tick “Default” to set which option customers see first.'}
@@ -2792,7 +2793,7 @@ const Sales = () => {
       </Dialog>
 
       <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} Sent</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>{salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} Sent</DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ color: '#4B5563', mb: 2 }}>
             Recipients were notified. You can also copy this secure {salesDocumentMode === 'invoice' ? 'invoice' : 'quotation'} link.
@@ -2816,9 +2817,9 @@ const Sales = () => {
       </Dialog>
 
       <Dialog open={Boolean(convertQuotation)} onClose={() => setConvertQuotation(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: 'center' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink, textAlign: 'center' }}>
           Sale Quotation
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
             Acknowledgement Form
           </Typography>
         </DialogTitle>
@@ -2826,7 +2827,7 @@ const Sales = () => {
           {convertQuotation && (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 340px' }, gap: 2 }}>
               <Box sx={{ display: 'grid', gap: 2 }}>
-                <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
+                <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(6,78,59,0.08)' }}>
                   <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>About Facility and Inventory</Box>
                   <Table size="small">
                     <TableHead>
@@ -2849,11 +2850,11 @@ const Sales = () => {
                 </Card>
 
                 {convertQuotation.quotation_type !== 'standard' && (
-                  <Card sx={{ p: 2, borderRadius: '14px', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
-                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                  <Card sx={{ p: 2, borderRadius: '14px', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(6,78,59,0.08)' }}>
+                    <Typography sx={{ fontWeight: 900, color: palette.ink }}>
                       {convertQuotation.quotation_type === 'choice_single' ? 'Choose one option' : 'Choose one or more options'}
                     </Typography>
-                    <Typography sx={{ color: '#6B7280', fontSize: 13, mb: 1.5 }}>
+                    <Typography sx={{ color: palette.textMuted, fontSize: 13, mb: 1.5 }}>
                       Defaults were selected by the quotation creator. This accepted selection becomes the immutable invoice snapshot.
                     </Typography>
                     <Box sx={{ display: 'grid', gap: 1 }}>
@@ -2866,8 +2867,8 @@ const Sales = () => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: 1,
-                            borderColor: selectedQuoteOptions.includes(line.id) ? '#8B5CF6' : '#E5E7EB',
-                            bgcolor: selectedQuoteOptions.includes(line.id) ? '#F5F3FF' : '#fff',
+                            borderColor: selectedQuoteOptions.includes(line.id) ? palette.brandStrong : palette.border,
+                            bgcolor: selectedQuoteOptions.includes(line.id) ? palette.brandTint : '#fff',
                           }}
                         >
                           <Checkbox
@@ -2883,9 +2884,9 @@ const Sales = () => {
                           />
                           <Box sx={{ minWidth: 0, flex: 1 }}>
                             <ClippedTooltipText value={`${line.part_number || 'Part'} · ${line.description}`} fontWeight={850} />
-                            <Typography sx={{ color: '#059669', fontWeight: 900 }}>{money(line.total)}</Typography>
+                            <Typography sx={{ color: palette.brandStrong, fontWeight: 900 }}>{money(line.total)}</Typography>
                           </Box>
-                          {line.is_default && <Chip size="small" label="Default" sx={{ bgcolor: '#EDE9FE', color: '#6D28D9', fontWeight: 900 }} />}
+                          {line.is_default && <Chip size="small" label="Default" sx={{ bgcolor: palette.brandSoft, color: palette.brandDeep, fontWeight: 900 }} />}
                         </Card>
                       ))}
                     </Box>
@@ -2907,10 +2908,10 @@ const Sales = () => {
                       bgcolor: conversionStockBlocked ? '#FFF7F7' : '#F7FFF9',
                     }}
                   >
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>
+                    <Typography sx={{ color: palette.ink, fontWeight: 900 }}>
                       Live inventory commitment check
                     </Typography>
-                    <Typography sx={{ color: '#64748B', fontSize: 12.5, mb: 1 }}>
+                    <Typography sx={{ color: palette.textSubtle, fontSize: 12.5, mb: 1 }}>
                       Accepted options are reserved when this invoice is created. Sent quotations remain visible but do not reserve stock.
                     </Typography>
                     <Box sx={{ display: 'grid', gap: 0.8 }}>
@@ -2922,12 +2923,12 @@ const Sales = () => {
                             sx={{
                               p: 1,
                               borderRadius: '10px',
-                              border: `1px solid ${blocked ? '#FECACA' : '#D1FAE5'}`,
+                              border: `1px solid ${blocked ? '#FECACA' : palette.brandSoft}`,
                               bgcolor: '#fff',
                             }}
                           >
                             <Box sx={{ display: 'flex', gap: 0.7, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <Typography sx={{ fontWeight: 850, color: '#312E81', mr: 'auto' }}>
+                              <Typography sx={{ fontWeight: 850, color: palette.brandDeep, mr: 'auto' }}>
                                 {line.part_number || line.description}
                               </Typography>
                               <Chip size="small" label={`Required: ${required}`} />
@@ -2984,7 +2985,7 @@ const Sales = () => {
                   </Card>
                 )}
 
-                <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
+                <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, boxShadow: '0 14px 35px rgba(6,78,59,0.08)' }}>
                   <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900 }}>Parts Used</Box>
                   <Table>
                     <TableHead>
@@ -3043,7 +3044,7 @@ const Sales = () => {
                 </Card>
               </Box>
 
-              <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, alignSelf: 'start', boxShadow: '0 14px 35px rgba(49,46,129,0.08)' }}>
+              <Card sx={{ borderRadius: '14px', overflow: 'hidden', border: `1px solid ${SYSTEM_PANEL_BORDER}`, alignSelf: 'start', boxShadow: '0 14px 35px rgba(6,78,59,0.08)' }}>
                 <Box sx={{ background: SYSTEM_GRADIENT, color: '#fff', px: 2, py: 1.3, fontWeight: 900, textAlign: 'center' }}>Invoice Details</Box>
                 <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
                   <TextField size="small" select label="Select Action" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(prev => ({ ...prev, action: e.target.value }))} sx={{ gridColumn: '1 / -1' }}>
@@ -3122,17 +3123,17 @@ const Sales = () => {
                 }}
               />
               {(viewQuotation.acceptance || Boolean(viewQuotation.payment_authorizations?.length)) && (
-                <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid #E2E8F0' }}>
-                <Typography sx={{ mb: 2, color: '#64748B', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+                <Box sx={{ mt: 4, pt: 3, borderTop: `1px solid ${palette.borderSlate}` }}>
+                <Typography sx={{ mb: 2, color: palette.textSubtle, fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.7 }}>
                   Internal acceptance and payment record
                 </Typography>
                 {viewQuotation.acceptance && (
-                  <Card sx={{ p: 2.2, mb: 2, borderRadius: '16px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
-                    <Typography sx={{ fontWeight: 950, color: '#312E81' }}>Signed Acceptance Record</Typography>
-                    <Typography sx={{ color: '#64748B', fontSize: 13 }}>
+                  <Card sx={{ p: 2.2, mb: 2, borderRadius: '16px', border: `1px solid ${palette.brandBorder}`, bgcolor: '#f8fffe' }}>
+                    <Typography sx={{ fontWeight: 950, color: palette.brandDeep }}>Signed Acceptance Record</Typography>
+                    <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>
                       {viewQuotation.acceptance.accepted_by_name} · {formatDate(viewQuotation.acceptance.accepted_at)}
                     </Typography>
-                    <Typography sx={{ mt: 1.5, pb: 0.8, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 32, fontStyle: 'italic' }}>
+                    <Typography sx={{ mt: 1.5, pb: 0.8, borderBottom: `1px solid ${palette.textFaint}`, color: palette.ink, fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 32, fontStyle: 'italic' }}>
                       {viewQuotation.acceptance.signature_name}
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
@@ -3143,11 +3144,11 @@ const Sales = () => {
                   </Card>
                 )}
                 {Boolean(viewQuotation.payment_authorizations?.length) && (
-                  <Card sx={{ p: 2.2, borderRadius: '16px', border: '1px solid #E2E8F0' }}>
-                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Payment Authorization Audit</Typography>
+                  <Card sx={{ p: 2.2, borderRadius: '16px', border: `1px solid ${palette.borderSlate}` }}>
+                    <Typography sx={{ fontWeight: 950, color: palette.ink, mb: 1 }}>Payment Authorization Audit</Typography>
                     <Box sx={{ display: 'grid', gap: 1 }}>
                       {viewQuotation.payment_authorizations!.map(authorization => (
-                        <Box key={authorization.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto auto' }, gap: 1, p: 1.2, borderRadius: '10px', bgcolor: '#F8FAFC' }}>
+                        <Box key={authorization.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr auto auto' }, gap: 1, p: 1.2, borderRadius: '10px', bgcolor: palette.surface }}>
                           <Typography sx={{ fontWeight: 800 }}>
                             {authorization.authorization_reference || `Authorization #${authorization.id}`}
                             {authorization.card_last_four ? ` · ${authorization.card_brand || 'Card'} ending ${authorization.card_last_four}` : ''}
@@ -3162,8 +3163,8 @@ const Sales = () => {
                 </Box>
               )}
               {viewQuotation.history && viewQuotation.history.length > 0 && (
-                <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid #E2E8F0' }}>
-                  <Typography sx={{ mb: 2, color: '#64748B', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.7 }}>
+                <Box sx={{ mt: 4, pt: 3, borderTop: `1px solid ${palette.borderSlate}` }}>
+                  <Typography sx={{ mb: 2, color: palette.textSubtle, fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.7 }}>
                     Revision &amp; activity history
                   </Typography>
                   <QuotationHistoryTimeline history={viewQuotation.history} />
@@ -3178,7 +3179,7 @@ const Sales = () => {
       </Dialog>
 
       <Dialog open={Boolean(viewInvoice)} onClose={() => setViewInvoice(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Sales Invoice Details</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Sales Invoice Details</DialogTitle>
         <DialogContent dividers>
           {viewInvoice && (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
@@ -3202,9 +3203,9 @@ const Sales = () => {
       </Dialog>
 
       <Dialog open={Boolean(partInfo)} onClose={() => setPartInfo(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           Sales Part Details
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
             View-only inventory information
           </Typography>
         </DialogTitle>
@@ -3212,11 +3213,11 @@ const Sales = () => {
           {partInfo && (
             <Box sx={{ display: 'grid', gap: 2 }}>
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <Avatar src={resolveUploadUrl(partInfo.imageUrl)} variant="rounded" sx={{ width: 76, height: 76, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '18px' }}>
+                <Avatar src={resolveUploadUrl(partInfo.imageUrl)} variant="rounded" sx={{ width: 76, height: 76, bgcolor: palette.brandTint, color: palette.brand, borderRadius: '18px' }}>
                   <Inventory2Icon />
                 </Avatar>
                 <Box sx={{ minWidth: 0 }}>
-                  <ClippedTooltipText value={partInfo.partNumber} monospace color="#7C3AED" fontWeight={900} />
+                  <ClippedTooltipText value={partInfo.partNumber} monospace color={palette.brand} fontWeight={900} />
                   <ClippedTooltipText value={partInfo.description} field fontWeight={800} />
                 </Box>
               </Box>
@@ -3230,9 +3231,9 @@ const Sales = () => {
                   ['Facility', partInfo.facilityName || 'Global / Independent'],
                   ['Status', partInfo.status || '-'],
                 ].map(([label, value]) => (
-                  <Card key={label} sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #EEF0F6', bgcolor: '#F8FAFC' }}>
-                    <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 850 }}>{value}</Typography>
+                  <Card key={label} sx={{ p: 1.5, borderRadius: '14px', border: `1px solid ${palette.borderSoft}`, bgcolor: palette.surface }}>
+                    <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+                    <Typography sx={{ color: palette.ink, fontWeight: 850 }}>{value}</Typography>
                   </Card>
                 ))}
               </Box>
@@ -3245,7 +3246,7 @@ const Sales = () => {
       </Dialog>
 
       <Dialog open={Boolean(invoiceEdit)} onClose={() => setInvoiceEdit(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Update Sales Invoice</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Update Sales Invoice</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gap: 2, pt: 1 }}>
             <TextField label="Amount Paid" type="number" value={invoiceForm.amount_paid} onChange={e => setInvoiceForm(prev => ({ ...prev, amount_paid: Number(e.target.value) }))} />
@@ -3275,7 +3276,7 @@ const Sales = () => {
       </Dialog>
 
       <Dialog open={Boolean(refundInvoice)} onClose={() => setRefundInvoice(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Refund Sales Payment</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Refund Sales Payment</DialogTitle>
         <DialogContent dividers>
           {refundInvoice && (
             <Box sx={{ display: 'grid', gap: 2, pt: 1 }}>
@@ -3284,15 +3285,15 @@ const Sales = () => {
                 <Typography sx={{ color: '#9A3412', fontWeight: 800 }}>
                   Refundable: {money(Math.max(0, Number(refundInvoice.amount_paid || 0) - Number(refundInvoice.refunded_amount || 0)))}
                 </Typography>
-                <Typography sx={{ color: '#6B7280', fontSize: 12 }}>
+                <Typography sx={{ color: palette.textMuted, fontSize: 12 }}>
                   Refunds do not automatically restock a sold part.
                 </Typography>
                 {(refundInvoice.transactions || []).some(t => t.transaction_type === 'payment' && Boolean(t.reference_number)) ? (
-                  <Typography sx={{ color: '#047857', fontSize: 12, fontWeight: 800, mt: 0.5 }}>
+                  <Typography sx={{ color: palette.brand, fontSize: 12, fontWeight: 800, mt: 0.5 }}>
                     This will refund the amount to the customer's card through Square.
                   </Typography>
                 ) : (
-                  <Typography sx={{ color: '#92400E', fontSize: 12, fontWeight: 800, mt: 0.5 }}>
+                  <Typography sx={{ color: palette.warningDeep, fontSize: 12, fontWeight: 800, mt: 0.5 }}>
                     Paid offline — recorded as a manual refund (return the money via the original method).
                   </Typography>
                 )}
@@ -3328,16 +3329,16 @@ const Sales = () => {
         fullWidth
         PaperProps={{ sx: { borderRadius: '22px' } }}
       >
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Create Quotation Revision?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Create Quotation Revision?</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gap: 1.5 }}>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 800 }}>
+            <Typography sx={{ color: palette.ink, fontWeight: 800 }}>
               {revisionQuotation?.quotation_number} will become Revision {(revisionQuotation?.revision || 1) + 1}.
             </Typography>
-            <Typography sx={{ color: '#64748B' }}>
+            <Typography sx={{ color: palette.textSubtle }}>
               The current revision will remain in the audit history. Existing customer links will stop working, and the new revision will open as a draft for editing and resending.
             </Typography>
-            <Typography sx={{ color: '#B45309', fontWeight: 800 }}>
+            <Typography sx={{ color: palette.warning, fontWeight: 800 }}>
               Signed, accepted, invoiced, or paid quotations cannot be revised.
             </Typography>
           </Box>

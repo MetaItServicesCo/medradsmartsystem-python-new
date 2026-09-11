@@ -20,6 +20,7 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 export type PrintDocumentType = 'invoice' | 'packing_slip' | 'ledger'
 
@@ -341,14 +342,14 @@ const paymentMethodLabel = (method?: string | null) => {
 const softAccentFor = (accent: string) => {
   const normalized = accent.toLowerCase()
   const accents: Record<string, string> = {
-    '#7c3aed': '#F5F3FF',
-    '#2563eb': '#EFF6FF',
-    '#059669': '#ECFDF5',
+    '#047857': palette.brandTint,
+    '#2563eb': palette.infoTint,
+    '#059669': palette.brandTint,
     '#d97706': '#FFF7ED',
-    '#dc2626': '#FEF2F2',
-    '#0891b2': '#ECFEFF',
+    '#dc2626': palette.dangerWash,
+    '#0891b2': palette.cyanTint,
   }
-  return accents[normalized] || '#F8FAFC'
+  return accents[normalized] || palette.surface
 }
 
 const escapeHtml = (value: unknown) => String(value ?? '')
@@ -385,8 +386,8 @@ const printStyles = `
   * { box-sizing: border-box; }
   body { margin: 0; background: #eef2f7; color: #111827; font-family: Arial, sans-serif; }
   .sheet {
-    --accent: #7C3AED;
-    --accent-soft: #F5F3FF;
+    --accent: #047857;
+    --accent-soft: #ECFDF5;
     width: 8.5in;
     min-height: 11in;
     margin: 24px auto;
@@ -433,7 +434,7 @@ const printStyles = `
   .meta strong { color: #475569; }
   .meta span { text-align: right; font-weight: 700; color: #111827; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 24px; font-size: 13px; border: 1px solid #E5E7EB; border-radius: 14px; overflow: hidden; }
-  th { text-align: left; background: var(--accent-soft); color: #334155; padding: 12px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #DDD6FE; }
+  th { text-align: left; background: var(--accent-soft); color: #334155; padding: 12px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #A7F3D0; }
   td { border-bottom: 1px solid #EEF2F7; padding: 12px 11px; vertical-align: top; word-break: break-word; }
   tr:nth-child(even) td { background: #FAFBFF; }
   tr:last-child td { border-bottom: 0; }
@@ -450,22 +451,22 @@ const printStyles = `
   .totals .grand { font-size: 18px; font-weight: 900; color: #fff; background: linear-gradient(135deg, var(--accent) 0%, #0EA5E9 100%); }
   .balance { color: #B91C1C; font-weight: 900; }
   .paid-separate { margin-top: 24px; border: 1px solid #C7D2FE; border-radius: 14px; overflow: hidden; background: #F8FAFC; page-break-inside: avoid; }
-  .paid-separate h2 { margin: 0; padding: 14px 16px; background: #EEF2FF; color: #312E81; font-size: 15px; }
+  .paid-separate h2 { margin: 0; padding: 14px 16px; background: #EEF2FF; color: #065F46; font-size: 15px; }
   .paid-separate-note { margin: 0; padding: 12px 16px; color: #475569; font-size: 12px; border-top: 1px solid #E0E7FF; }
   .paid-separate table { margin-top: 0; border: 0; border-radius: 0; }
   .note { margin-top: 24px; padding: 16px; border: 1px solid #E5E7EB; border-left: 5px solid var(--accent); border-radius: 12px; color: #4b5563; font-size: 13px; background: #F8FAFC; }
   .signature { display: grid; grid-template-columns: 1fr 1fr; gap: 42px; margin-top: 54px; }
   .line { border-top: 1px solid #334155; padding-top: 8px; font-size: 12px; color: #4b5563; }
   .footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; gap: 14px; }
-  .report-hero { background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%) !important; }
+  .report-hero { background: linear-gradient(135deg, #065F46 0%, #047857 58%, #0D9488 100%) !important; }
   .report-section { border: 1px solid #E5E7EB; border-radius: 16px; padding: 18px; margin-top: 16px; }
-  .report-session { border: 1px solid #E5E7EB; border-left: 5px solid #7C3AED; border-radius: 14px; padding: 16px; margin-top: 12px; page-break-inside: avoid; }
-  .report-session-head { display: flex; justify-content: space-between; color: #1E1B4B; font-size: 16px; }
+  .report-session { border: 1px solid #E5E7EB; border-left: 5px solid #047857; border-radius: 14px; padding: 16px; margin-top: 12px; page-break-inside: avoid; }
+  .report-session-head { display: flex; justify-content: space-between; color: #064E3B; font-size: 16px; }
   .report-session-head span { color: #047857; font-weight: 900; }
   .report-times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; color: #475569; }
   .report-h4 { margin: 12px 0 5px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
   .report-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
-  .report-pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
+  .report-pill { padding: 8px 12px; border-radius: 999px; background: #ECFDF5; color: #047857; font-weight: 900; }
 
   /* Unified document skin — mirrors the client-facing quotation (Layout A):
      a white header with a thin brand gradient rule instead of a colour hero.
@@ -474,42 +475,42 @@ const printStyles = `
   .doc-a .head .brand { display: flex; gap: 16px; align-items: center; font-weight: 400; }
   .doc-a .head .brand img { width: 96px; height: 62px; object-fit: contain; background: none; box-shadow: none; border-radius: 0; padding: 0; }
   .doc-a .eyebrow { color: var(--accent); font-weight: 800; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
-  .doc-a .doc-title { margin: 2px 0; font-size: 34px; font-weight: 900; letter-spacing: -0.5px; color: #1E1B4B; line-height: 1.02; }
+  .doc-a .doc-title { margin: 2px 0; font-size: 34px; font-weight: 900; letter-spacing: -0.5px; color: #064E3B; line-height: 1.02; }
   .doc-a .doc-company { color: #6B7280; font-weight: 700; font-size: 13px; }
   .doc-a .doc-address { color: #6B7280; font-size: 12px; line-height: 1.45; margin-top: 4px; }
   .doc-a .head-right { text-align: right; }
   .doc-a .status-pill { display: inline-block; padding: 7px 14px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }
-  .doc-a .accent-bar { height: 4px; margin: 4px 40px 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent) 0%, #EC4899 58%, #F59E0B 100%); }
+  .doc-a .accent-bar { height: 4px; margin: 4px 40px 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent) 0%, #0D9488 58%, #F59E0B 100%); }
   .doc-a .content { padding: 28px 40px 40px; }
   .doc-a .grid { grid-template-columns: 1fr 1fr; gap: 20px; }
   .doc-a .box { border: 1px solid #E2E8F0; border-radius: 16px; padding: 18px; background: #F8FAFC; }
-  .doc-a .box.prepared { background: var(--accent-soft); border-color: #EDE9FE; }
+  .doc-a .box.prepared { background: var(--accent-soft); border-color: #D1FAE5; }
   .doc-a .box h3 { color: var(--accent); font-weight: 900; }
-  .doc-a .box strong.customer { color: #1E1B4B; font-size: 19px; }
+  .doc-a .box strong.customer { color: #064E3B; font-size: 19px; }
   .doc-a .muted { color: #4B5563; }
   .doc-a .meta { grid-template-columns: auto 1fr; column-gap: 16px; row-gap: 8px; }
   .doc-a .meta strong { color: #64748B; font-weight: 900; }
-  .doc-a .meta span { color: #1E1B4B; font-weight: 800; }
+  .doc-a .meta span { color: #064E3B; font-weight: 800; }
   .doc-a table { font-size: 12.5px; }
   .doc-a th { background: #F8FAFC; color: #64748B; font-weight: 800; border-bottom: 1px solid #E5E7EB; font-size: 10.5px; }
   .doc-a td { border-bottom: 1px solid #EEF0F6; color: #334155; }
   .doc-a tr:nth-child(even) td { background: #FCFCFF; }
-  .doc-a .item-number { color: #1E1B4B; }
+  .doc-a .item-number { color: #064E3B; }
   .doc-a .item-condition { color: #94A3B8; }
   .doc-a .right { font-variant-numeric: tabular-nums; }
-  .doc-a .amount { color: #1E1B4B; }
+  .doc-a .amount { color: #064E3B; }
   .doc-a .totals { width: 330px; }
   .doc-a .totals div { border-bottom: 1px solid #EEF0F6; padding: 10px 16px; font-size: 13px; }
   .doc-a .totals span { color: #64748B; }
-  .doc-a .totals strong { color: #1E1B4B; }
-  .doc-a .totals .grand { background: var(--accent-soft); color: #1E1B4B; }
-  .doc-a .totals .grand span { color: #1E1B4B; font-weight: 900; font-size: 15px; }
+  .doc-a .totals strong { color: #064E3B; }
+  .doc-a .totals .grand { background: var(--accent-soft); color: #064E3B; }
+  .doc-a .totals .grand span { color: #064E3B; font-weight: 900; font-size: 15px; }
   .doc-a .totals .grand span:last-child { color: var(--accent); }
-  .doc-a .note { border: 1px solid #EDE9FE; background: #FAF9FF; border-radius: 14px; }
+  .doc-a .note { border: 1px solid #D1FAE5; background: #f9fffd; border-radius: 14px; }
   .doc-a .note strong { color: var(--accent); }
-  .doc-a .foot-divider { height: 3px; margin: 32px 0 14px; border-radius: 999px; background: linear-gradient(90deg, var(--accent) 0%, #EC4899 58%, #F59E0B 100%); }
+  .doc-a .foot-divider { height: 3px; margin: 32px 0 14px; border-radius: 999px; background: linear-gradient(90deg, var(--accent) 0%, #0D9488 58%, #F59E0B 100%); }
   .doc-a .footer { border-top: 0; margin-top: 0; color: #94A3B8; }
-  .doc-a .footer strong { color: #1E1B4B; }
+  .doc-a .footer strong { color: #064E3B; }
 
   @media print {
     @page { margin: 0.4in; }
@@ -711,7 +712,7 @@ const buildPrintableHtml = (
           <strong>Signed acceptance</strong><br>
           Accepted by ${escapeHtml(acceptance.accepted_by_name)} on ${escapeHtml(formatDate(acceptance.accepted_at))}
           · Revision ${escapeHtml(acceptance.quotation_revision)}
-          <div style="margin-top:18px;font-family:'Segoe Script','Brush Script MT',cursive;font-size:30px;font-style:italic;color:#1e1b4b;border-bottom:1px solid #94a3b8;padding-bottom:6px;">
+          <div style="margin-top:18px;font-family:'Segoe Script','Brush Script MT',cursive;font-size:30px;font-style:italic;color:#064E3B;border-bottom:1px solid #94a3b8;padding-bottom:6px;">
             ${escapeHtml(acceptance.signature_name)}
           </div>
           <small>Electronic signature audit record</small>
@@ -736,7 +737,7 @@ const InvoicePrintDialog = ({
   ledgerTransactions,
   moduleLabel,
   primaryDocumentLabel = 'Invoice',
-  accent = '#7C3AED',
+  accent = palette.brand,
   quantityLabel = 'Qty',
   appendHtml,
   paidQuotations = [],
@@ -942,9 +943,9 @@ const InvoicePrintDialog = ({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth={isEditMode ? 'lg' : 'md'} fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
-      <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+      <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
         {isEditMode ? 'Edit' : isViewMode ? 'View' : 'Print'} {displayInvoice?.invoice_number || primaryDocumentLabel}
-        <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
+        <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>
           {isEditMode
             ? 'Edit the invoice in the same layout that will be printed.'
             : isViewMode
@@ -952,7 +953,7 @@ const InvoicePrintDialog = ({
               : 'Print one clean document at a time.'}
         </Typography>
       </DialogTitle>
-      <DialogContent dividers sx={{ bgcolor: '#F8FAFC' }}>
+      <DialogContent dividers sx={{ bgcolor: palette.surface }}>
         {displayInvoice && (
           <Box sx={{ display: 'grid', gap: 2 }}>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -985,29 +986,29 @@ const InvoicePrintDialog = ({
               </Box>
             </Box>
 
-            <Card sx={{ borderRadius: '18px', border: '1px solid #E5E7EB', bgcolor: '#fff', overflow: 'hidden', boxShadow: '0 18px 45px rgba(15,23,42,0.08)' }}>
+            <Card sx={{ borderRadius: '18px', border: `1px solid ${palette.border}`, bgcolor: '#fff', overflow: 'hidden', boxShadow: '0 18px 45px rgba(15,23,42,0.08)' }}>
               <Box sx={{ p: 3, pb: 1.5 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 92, height: 60, objectFit: 'contain', display: 'block' }} />
                     <Box>
                       <Typography sx={{ color: accent, fontWeight: 900, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' }}>{moduleLabel} {displayInvoice.invoice_type || ''}</Typography>
-                      <Typography sx={{ fontWeight: 950, fontSize: 26, color: '#1E1B4B', lineHeight: 1.05, letterSpacing: '-0.5px' }}>{documentLabel(activeDocumentType, primaryDocumentLabel)}</Typography>
-                      <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Mr. BioMed Tech Services</Typography>
+                      <Typography sx={{ fontWeight: 950, fontSize: 26, color: palette.ink, lineHeight: 1.05, letterSpacing: '-0.5px' }}>{documentLabel(activeDocumentType, primaryDocumentLabel)}</Typography>
+                      <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>Mr. BioMed Tech Services</Typography>
                     </Box>
                   </Box>
                   <Box sx={{ textAlign: 'right' }}>
                     <Chip label={displayInvoice.status.replace(/_/g, ' ')} sx={{ bgcolor: `${accent}18`, color: accent, fontWeight: 900, textTransform: 'uppercase' }} />
-                    <Typography sx={{ color: '#64748B', fontWeight: 800, fontSize: 13, mt: 0.6 }}>{displayInvoice.invoice_number}</Typography>
+                    <Typography sx={{ color: palette.textSubtle, fontWeight: 800, fontSize: 13, mt: 0.6 }}>{displayInvoice.invoice_number}</Typography>
                   </Box>
                 </Box>
-                <Box sx={{ height: 4, borderRadius: 999, mt: 2, background: `linear-gradient(90deg, ${accent} 0%, #EC4899 58%, #F59E0B 100%)` }} />
+                <Box sx={{ height: 4, borderRadius: 999, mt: 2, background: `linear-gradient(90deg, ${accent} 0%, #0D9488 58%, #F59E0B 100%)` }} />
               </Box>
 
               <Box sx={{ p: 3 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, pb: 2 }}>
-                <Box sx={{ p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{displayLabels.billTo}</Typography>
+                <Box sx={{ p: 2, borderRadius: '14px', border: `1px solid ${palette.border}`, bgcolor: palette.surface }}>
+                  <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{displayLabels.billTo}</Typography>
                   {isEditMode ? (
                     <Box sx={{ display: 'grid', gap: 1, mt: 1 }}>
                       <TextField size="small" label={displayLabels.customerName} value={editForm.customer_name} onChange={event => setEditForm(prev => ({ ...prev, customer_name: event.target.value }))} sx={{ bgcolor: '#fff' }} />
@@ -1018,12 +1019,12 @@ const InvoicePrintDialog = ({
                   ) : (
                     <>
                       <Typography sx={{ fontWeight: 900 }}>{displayInvoice.customer_name}</Typography>
-                      <Typography sx={{ color: '#6B7280' }}>{displayInvoice.customer_email || '-'}</Typography>
-                      <Typography sx={{ color: '#6B7280' }}>{displayInvoice.facility_name || '-'}</Typography>
+                      <Typography sx={{ color: palette.textMuted }}>{displayInvoice.customer_email || '-'}</Typography>
+                      <Typography sx={{ color: palette.textMuted }}>{displayInvoice.facility_name || '-'}</Typography>
                     </>
                   )}
                 </Box>
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: previewAccentSoft }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, p: 2, borderRadius: '14px', border: `1px solid ${palette.border}`, bgcolor: previewAccentSoft }}>
                   <Typography sx={{ fontWeight: 900 }}>{displayLabels.reference}</Typography><Typography>{displayInvoice.reference_number || '-'}</Typography>
                   <Typography sx={{ fontWeight: 900 }}>{displayLabels.issued}</Typography>
                   {isEditMode ? (
@@ -1062,7 +1063,7 @@ const InvoicePrintDialog = ({
                 {isEditMode ? (
                   <Box sx={{ display: 'grid', gap: 1.2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Invoice Items</Typography>
+                      <Typography sx={{ fontWeight: 950, color: palette.ink }}>Invoice Items</Typography>
                       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                         <Button
                           size="small"
@@ -1081,7 +1082,7 @@ const InvoicePrintDialog = ({
                         </Button>
                       </Box>
                     </Box>
-                    <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: '1fr 2fr 0.8fr 1fr 1fr 1fr 1fr 76px', gap: 1, px: 1.8, color: '#64748B', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+                    <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: '1fr 2fr 0.8fr 1fr 1fr 1fr 1fr 76px', gap: 1, px: 1.8, color: palette.textSubtle, fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
                       <span>{displayLabels.itemNumber}</span>
                       <span>{displayLabels.description}</span>
                       <span>{displayLabels.quantity}</span>
@@ -1092,12 +1093,12 @@ const InvoicePrintDialog = ({
                       <span>Actions</span>
                     </Box>
                     {editRows.map((row, index) => (
-                      <Box key={`${row.item_number}-${index}`} sx={{ p: 1.4, borderRadius: '14px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
+                      <Box key={`${row.item_number}-${index}`} sx={{ p: 1.4, borderRadius: '14px', bgcolor: palette.surfaceFaint, border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 0.8fr 1fr 1fr 1fr 1fr auto' }, gap: 1, alignItems: 'center' }}>
                           <Typography sx={{ fontWeight: 900, color: accent }}>{row.item_number || '-'}</Typography>
                           <Box sx={{ minWidth: 0 }}>
                             <Typography sx={{ fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.description || '-'}</Typography>
-                            {row.condition && <Typography sx={{ color: '#64748B', fontSize: 12 }}>{row.condition}</Typography>}
+                            {row.condition && <Typography sx={{ color: palette.textSubtle, fontSize: 12 }}>{row.condition}</Typography>}
                           </Box>
                           <Typography>{row.quantity} {row.unitLabel || ''}</Typography>
                           <Typography>{money(row.unit_price)}</Typography>
@@ -1124,7 +1125,7 @@ const InvoicePrintDialog = ({
                                     synchronizeInvoiceTotals(nextRows, editSummaryRows)
                                     return nextRows
                                   })}
-                                  sx={{ color: '#DC2626', bgcolor: '#FEF2F2', '&:hover': { bgcolor: '#FEE2E2' } }}
+                                  sx={{ color: palette.dangerStrong, bgcolor: palette.dangerWash, '&:hover': { bgcolor: palette.dangerTint } }}
                                 >
                                   <DeleteOutlineIcon fontSize="small" />
                                 </IconButton>
@@ -1133,9 +1134,9 @@ const InvoicePrintDialog = ({
                           </Box>
                         </Box>
                         {(row.custom_cells || []).length > 0 && (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1.2, pt: 1.2, borderTop: '1px solid #E5E7EB' }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1.2, pt: 1.2, borderTop: `1px solid ${palette.border}` }}>
                             {(row.custom_cells || []).map(cell => (
-                              <Chip key={cell.id} size="small" label={`${cell.label || 'Additional'}: ${cell.value || '-'}`} sx={{ bgcolor: '#fff', border: '1px solid #E2E8F0', fontWeight: 750 }} />
+                              <Chip key={cell.id} size="small" label={`${cell.label || 'Additional'}: ${cell.value || '-'}`} sx={{ bgcolor: '#fff', border: `1px solid ${palette.borderSlate}`, fontWeight: 750 }} />
                             ))}
                           </Box>
                         )}
@@ -1143,13 +1144,13 @@ const InvoicePrintDialog = ({
                     ))}
                   </Box>
                 ) : previewRows.length === 0 ? (
-                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No rows available for this document.</Typography>
+                  <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>No rows available for this document.</Typography>
                 ) : previewRows.map((row, index) => (
-                  <Box key={`${row.first}-${index}`} sx={{ p: 1.4, borderRadius: '12px', bgcolor: '#F9FAFB', border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
+                  <Box key={`${row.first}-${index}`} sx={{ p: 1.4, borderRadius: '12px', bgcolor: palette.surfaceFaint, border: '1px solid #EEF2F7', borderLeft: `4px solid ${accent}` }}>
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 1fr 1fr' }, gap: 1 }}>
                       <Typography sx={{ fontWeight: 900 }}>{row.first}</Typography>
                       <Typography>{row.second}</Typography>
-                      <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>{row.third}</Typography>
+                      <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>{row.third}</Typography>
                       <Typography sx={{ textAlign: { md: 'right' }, fontWeight: 950, color: accent }}>{row.amount}</Typography>
                     </Box>
                     {row.customCells.length > 0 && (
@@ -1162,9 +1163,9 @@ const InvoicePrintDialog = ({
               </Box>
 
               {activeDocumentType === 'invoice' && paidQuotations.length > 0 && (
-                <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #C7D2FE', bgcolor: '#EEF2FF' }}>
-                  <Typography sx={{ fontWeight: 950, color: '#312E81', mb: 1 }}>Paid Service Quotations</Typography>
-                  <Typography sx={{ color: '#475569', fontWeight: 700, fontSize: 13, mb: 1.5 }}>
+                <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #C7D2FE', bgcolor: palette.indigoTint }}>
+                  <Typography sx={{ fontWeight: 950, color: palette.brandDeep, mb: 1 }}>Paid Service Quotations</Typography>
+                  <Typography sx={{ color: palette.slate600, fontWeight: 700, fontSize: 13, mb: 1.5 }}>
                     Shown for service history only. These paid quotations are not included in this invoice total.
                   </Typography>
                   <Box sx={{ display: 'grid', gap: 1 }}>
@@ -1172,7 +1173,7 @@ const InvoicePrintDialog = ({
                       <Box key={quotation.id || quotation.quotation_number} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr 1fr' }, gap: 1, p: 1.2, borderRadius: '12px', bgcolor: '#fff', border: '1px solid #E0E7FF' }}>
                         <Typography sx={{ fontWeight: 900, color: accent }}>{quotation.quotation_number}</Typography>
                         <Typography sx={{ color: '#334155' }}>{quotation.line_items?.map(item => item.description).filter(Boolean).join('; ') || quotation.description || 'Service quotation'}</Typography>
-                        <Typography sx={{ fontWeight: 950, color: '#059669', textAlign: { md: 'right' } }}>{money(quotation.paid_amount)}</Typography>
+                        <Typography sx={{ fontWeight: 950, color: palette.brandStrong, textAlign: { md: 'right' } }}>{money(quotation.paid_amount)}</Typography>
                       </Box>
                     ))}
                   </Box>
@@ -1210,7 +1211,7 @@ const InvoicePrintDialog = ({
                     )
                   })}
                   {editSummaryRows.map((row, index) => (
-                    <Box key={row.id} sx={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 1, minHeight: 38, px: 1.2, borderRadius: '10px', bgcolor: '#F8FAFC', fontWeight: 800 }}>
+                    <Box key={row.id} sx={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 1, minHeight: 38, px: 1.2, borderRadius: '10px', bgcolor: palette.surface, fontWeight: 800 }}>
                       <span>{row.label || 'Additional charge'}</span>
                       <span>{money(row.value)}</span>
                       {isEditMode && (
@@ -1236,13 +1237,13 @@ const InvoicePrintDialog = ({
               )}
 
               {!isEditMode && activeDocumentType !== 'packing_slip' && (paymentEvidenceLoading || paymentEvidence.length > 0) && (
-                <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #DDE5F2', bgcolor: '#F8FAFC' }}>
-                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Payment Evidence</Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 12.5, fontWeight: 700, mb: 1.5 }}>
+                <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #DDE5F2', bgcolor: palette.surface }}>
+                  <Typography sx={{ fontWeight: 950, color: palette.ink }}>Payment Evidence</Typography>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 12.5, fontWeight: 700, mb: 1.5 }}>
                     Confirmed card metadata and securely attached non-card payment proofs for this invoice.
                   </Typography>
                   {paymentEvidenceLoading ? (
-                    <Typography sx={{ color: '#64748B', fontWeight: 800 }}>Loading payment evidence…</Typography>
+                    <Typography sx={{ color: palette.textSubtle, fontWeight: 800 }}>Loading payment evidence…</Typography>
                   ) : (
                     <Box sx={{ display: 'grid', gap: 1 }}>
                       {paymentEvidence.map(evidence => {
@@ -1258,17 +1259,17 @@ const InvoicePrintDialog = ({
                               gap: 1,
                               p: 1.25,
                               borderRadius: '12px',
-                              border: '1px solid #E2E8F0',
+                              border: `1px solid ${palette.borderSlate}`,
                               bgcolor: '#fff',
                             }}
                           >
                             <Box sx={{ minWidth: 0 }}>
-                              <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>{evidenceMethodLabel(evidence)}</Typography>
-                              <Typography sx={{ color: '#64748B', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <Typography sx={{ fontWeight: 950, color: palette.ink }}>{evidenceMethodLabel(evidence)}</Typography>
+                              <Typography sx={{ color: palette.textSubtle, fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {evidence.reference_number || evidence.proof_filename || 'Reference unavailable'}
                               </Typography>
                               {evidenceAuditLabel(evidence) && (
-                                <Typography sx={{ color: '#94A3B8', fontSize: 11, mt: 0.25 }}>
+                                <Typography sx={{ color: palette.textFaint, fontSize: 11, mt: 0.25 }}>
                                   {evidenceAuditLabel(evidence)}
                                 </Typography>
                               )}
@@ -1278,15 +1279,15 @@ const InvoicePrintDialog = ({
                               label={evidenceStatusLabel(evidence.status)}
                               sx={{
                                 justifySelf: { md: 'start' },
-                                bgcolor: rejected ? '#FEE2E2' : pending ? '#FEF3C7' : '#D1FAE5',
-                                color: rejected ? '#B91C1C' : pending ? '#B45309' : '#047857',
+                                bgcolor: rejected ? palette.dangerTint : pending ? palette.warningTint : palette.brandSoft,
+                                color: rejected ? palette.danger : pending ? palette.warning : palette.brand,
                                 fontWeight: 900,
                                 textTransform: 'capitalize',
                               }}
                             />
                             <Box>
                               <Typography sx={{ fontWeight: 950, color: '#111827' }}>{money(evidence.amount)}</Typography>
-                              <Typography sx={{ color: '#94A3B8', fontSize: 11 }}>{formatDate(evidence.occurred_at)}</Typography>
+                              <Typography sx={{ color: palette.textFaint, fontSize: 11 }}>{formatDate(evidence.occurred_at)}</Typography>
                             </Box>
                             {evidence.proof_id && onOpenPaymentProof ? (
                               <Button
@@ -1298,7 +1299,7 @@ const InvoicePrintDialog = ({
                                 View proof
                               </Button>
                             ) : (
-                              <Typography sx={{ color: '#64748B', fontSize: 11.5, fontWeight: 800, textAlign: { md: 'right' } }}>
+                              <Typography sx={{ color: palette.textSubtle, fontSize: 11.5, fontWeight: 800, textAlign: { md: 'right' } }}>
                                 {evidence.card_last4 ? 'PCI-safe masked card' : 'Ledger record'}
                               </Typography>
                             )}
@@ -1323,15 +1324,15 @@ const InvoicePrintDialog = ({
                 />
               )}
               {!isEditMode && acceptance && (
-                <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
-                  <Typography sx={{ fontWeight: 950, color: '#312E81' }}>Signed acceptance</Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 13 }}>
+                <Box sx={{ mt: 2, p: 2, borderRadius: '14px', border: `1px solid ${palette.brandBorder}`, bgcolor: '#f8fffe' }}>
+                  <Typography sx={{ fontWeight: 950, color: palette.brandDeep }}>Signed acceptance</Typography>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>
                     Accepted by {acceptance.accepted_by_name} on {formatDate(acceptance.accepted_at)} · Revision {acceptance.quotation_revision}
                   </Typography>
-                  <Typography sx={{ mt: 1.5, pb: 0.8, borderBottom: '1px solid #94A3B8', color: '#1E1B4B', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 30, fontStyle: 'italic' }}>
+                  <Typography sx={{ mt: 1.5, pb: 0.8, borderBottom: `1px solid ${palette.textFaint}`, color: palette.ink, fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 30, fontStyle: 'italic' }}>
                     {acceptance.signature_name}
                   </Typography>
-                  <Typography sx={{ mt: 0.5, color: '#94A3B8', fontSize: 11, fontWeight: 800 }}>
+                  <Typography sx={{ mt: 0.5, color: palette.textFaint, fontSize: 11, fontWeight: 800 }}>
                     Electronic signature audit record
                   </Typography>
                 </Box>
@@ -1355,17 +1356,17 @@ const InvoicePrintDialog = ({
       </DialogActions>
 
       <Dialog open={Boolean(rowEditor)} onClose={() => setRowEditor(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
-        <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 950, color: palette.ink }}>
           Edit invoice row
-          <Typography sx={{ mt: 0.4, color: '#64748B', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ mt: 0.4, color: palette.textSubtle, fontSize: 13, fontWeight: 700 }}>
             Edit a cell's name and value, or add an optional cell to this row.
           </Typography>
         </DialogTitle>
-        <DialogContent dividers sx={{ bgcolor: '#F8FAFC' }}>
+        <DialogContent dividers sx={{ bgcolor: palette.surface }}>
           {rowEditor && (
             <Box sx={{ display: 'grid', gap: 1.2 }}>
               {LINE_ITEM_CELLS.map(config => (
-                <Box key={config.valueKey} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '0.9fr 1.4fr' }, gap: 1, p: 1.2, borderRadius: '12px', border: '1px solid #E2E8F0', bgcolor: '#fff' }}>
+                <Box key={config.valueKey} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '0.9fr 1.4fr' }, gap: 1, p: 1.2, borderRadius: '12px', border: `1px solid ${palette.borderSlate}`, bgcolor: '#fff' }}>
                   <TextField
                     size="small"
                     label="Cell label"
@@ -1397,8 +1398,8 @@ const InvoicePrintDialog = ({
               <Divider sx={{ my: 0.5 }} />
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
                 <Box>
-                  <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Optional cells</Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>These appear only on this invoice row and on the printed invoice.</Typography>
+                  <Typography sx={{ fontWeight: 950, color: palette.ink }}>Optional cells</Typography>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 700 }}>These appear only on this invoice row and on the printed invoice.</Typography>
                 </Box>
                 <Button
                   size="small"
@@ -1416,7 +1417,7 @@ const InvoicePrintDialog = ({
                 </Button>
               </Box>
               {(rowEditor.row.custom_cells || []).map((cell, cellIndex) => (
-                <Box key={cell.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '0.9fr 1.4fr auto' }, gap: 1, p: 1.2, borderRadius: '12px', border: '1px solid #DDD6FE', bgcolor: '#fff' }}>
+                <Box key={cell.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '0.9fr 1.4fr auto' }, gap: 1, p: 1.2, borderRadius: '12px', border: `1px solid ${palette.brandBorder}`, bgcolor: '#fff' }}>
                   <TextField
                     size="small"
                     label="Cell label"
@@ -1439,7 +1440,7 @@ const InvoicePrintDialog = ({
                     <IconButton
                       size="small"
                       onClick={() => setRowEditor(current => current ? { ...current, row: { ...current.row, custom_cells: (current.row.custom_cells || []).filter((_, index) => index !== cellIndex) } } : null)}
-                      sx={{ color: '#DC2626', bgcolor: '#FEF2F2' }}
+                      sx={{ color: palette.dangerStrong, bgcolor: palette.dangerWash }}
                     >
                       <DeleteOutlineIcon fontSize="small" />
                     </IconButton>
@@ -1474,13 +1475,13 @@ const InvoicePrintDialog = ({
       </Dialog>
 
       <Dialog open={Boolean(summaryEditor)} onClose={() => setSummaryEditor(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
-        <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>Edit summary row</DialogTitle>
-        <DialogContent dividers sx={{ display: 'grid', gap: 1.5, bgcolor: '#F8FAFC' }}>
+        <DialogTitle sx={{ fontWeight: 950, color: palette.ink }}>Edit summary row</DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 1.5, bgcolor: palette.surface }}>
           {summaryEditor && (
             <>
               <TextField label="Row label" value={summaryEditor.label} onChange={event => setSummaryEditor(current => current ? { ...current, label: event.target.value } : null)} sx={{ bgcolor: '#fff' }} />
               <TextField label="Amount" type="number" value={summaryEditor.value} disabled={summaryEditor.readOnly} onChange={event => setSummaryEditor(current => current ? { ...current, value: event.target.value } : null)} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-              {summaryEditor.readOnly && <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>Balance is calculated from total minus paid. Its label remains editable.</Typography>}
+              {summaryEditor.readOnly && <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 700 }}>Balance is calculated from total minus paid. Its label remains editable.</Typography>}
             </>
           )}
         </DialogContent>
@@ -1516,13 +1517,13 @@ const InvoicePrintDialog = ({
       </Dialog>
 
       <Dialog open={Boolean(customSummaryEditor)} onClose={() => setCustomSummaryEditor(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
-        <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>{customSummaryEditor?.index === -1 ? 'Add summary row' : 'Edit summary row'}</DialogTitle>
-        <DialogContent dividers sx={{ display: 'grid', gap: 1.5, bgcolor: '#F8FAFC' }}>
+        <DialogTitle sx={{ fontWeight: 950, color: palette.ink }}>{customSummaryEditor?.index === -1 ? 'Add summary row' : 'Edit summary row'}</DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 1.5, bgcolor: palette.surface }}>
           {customSummaryEditor && (
             <>
               <TextField label="Row label" value={customSummaryEditor.row.label} onChange={event => setCustomSummaryEditor(current => current ? { ...current, row: { ...current.row, label: event.target.value } } : null)} sx={{ bgcolor: '#fff' }} />
               <TextField label="Amount" type="number" value={customSummaryEditor.row.value} onChange={event => setCustomSummaryEditor(current => current ? { ...current, row: { ...current.row, value: Number(event.target.value || 0) } } : null)} inputProps={{ min: 0, step: 0.01 }} sx={{ bgcolor: '#fff' }} />
-              <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>This row is printed as entered. Edit the Total row separately when this amount should change the invoice total.</Typography>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 700 }}>This row is printed as entered. Edit the Total row separately when this amount should change the invoice total.</Typography>
             </>
           )}
         </DialogContent>

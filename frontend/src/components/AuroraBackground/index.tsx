@@ -33,7 +33,7 @@ type AuroraBackgroundProps = {
 }
 
 const AuroraBackground = ({
-  colors = ['rgba(124,93,216,0.55)', 'rgba(240,82,138,0.5)', 'rgba(59,130,246,0.45)'],
+  colors = ['rgba(13,148,136,0.55)', 'rgba(94,234,212,0.5)', 'rgba(4,120,87,0.45)'],
   blur = 60,
   opacity = 1,
 }: AuroraBackgroundProps) => {

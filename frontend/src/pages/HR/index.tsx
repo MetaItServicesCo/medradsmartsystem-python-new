@@ -73,6 +73,7 @@ import {
 import { fetchAttendanceEvents } from '@/api/attendance'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import SearchableSelect from '@/components/SearchableSelect'
+import { palette } from '@/theme/palette'
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
@@ -183,10 +184,10 @@ function DashboardSection() {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Typography variant="h6" fontWeight={700}>HR Dashboard</Typography>
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <KpiCard label="Total Employees" value={d.total_employees} icon={<PeopleIcon />} gradient="linear-gradient(135deg,#7161D8,#9B8EF0)" />
-        <KpiCard label="Pending Leaves" value={d.pending_leave_requests} icon={<BeachAccessIcon />} gradient="linear-gradient(135deg,#F05D92,#F9A8C7)" />
-        <KpiCard label="Open Positions" value={d.open_job_openings} icon={<WorkIcon />} gradient="linear-gradient(135deg,#7161D8,#F05D92)" />
-        <KpiCard label="Upcoming Meetings" value={d.upcoming_meetings} icon={<VideoCallIcon />} gradient="linear-gradient(135deg,#5445B3,#7161D8)" />
+        <KpiCard label="Total Employees" value={d.total_employees} icon={<PeopleIcon />} gradient="linear-gradient(135deg,#047857,#34D399)" />
+        <KpiCard label="Pending Leaves" value={d.pending_leave_requests} icon={<BeachAccessIcon />} gradient="linear-gradient(135deg,#0D9488,#5EEAD4)" />
+        <KpiCard label="Open Positions" value={d.open_job_openings} icon={<WorkIcon />} gradient="linear-gradient(135deg,#047857,#0D9488)" />
+        <KpiCard label="Upcoming Meetings" value={d.upcoming_meetings} icon={<VideoCallIcon />} gradient="linear-gradient(135deg,#065F46,#047857)" />
       </Box>
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
@@ -529,7 +530,7 @@ function EmployeesSection() {
                       <TableCell>{e.facility?.name ?? '—'}</TableCell>
                       <TableCell>
                         {wage
-                          ? <Chip size="small" icon={<AttachMoneyIcon />} label={wage} sx={{ bgcolor: 'rgba(113,97,216,0.1)', color: 'primary.main', fontWeight: 700 }} />
+                          ? <Chip size="small" icon={<AttachMoneyIcon />} label={wage} sx={{ bgcolor: 'rgba(4,120,87,0.1)', color: 'primary.main', fontWeight: 700 }} />
                           : <Typography variant="caption" color="error.main">Not set</Typography>}
                       </TableCell>
                       <TableCell>
@@ -637,7 +638,7 @@ function EmployeesSection() {
 
 const HOLIDAY_TYPE_META: Record<string, { color: string; label: string }> = {
   public:   { color: '#2e7d32', label: 'Public' },
-  company:  { color: '#7161D8', label: 'Company' },
+  company:  { color: palette.brand, label: 'Company' },
   optional: { color: '#f57c00', label: 'Optional' },
 }
 
@@ -706,7 +707,7 @@ function HolidaysTab() {
 const PRIORITY_META: Record<string, { color: string; label: string; chipColor: 'error' | 'warning' | 'primary' | 'default' }> = {
   urgent: { color: '#c62828', label: 'Urgent',  chipColor: 'error'   },
   high:   { color: '#f57c00', label: 'High',    chipColor: 'warning' },
-  normal: { color: '#7161D8', label: 'Normal',  chipColor: 'primary' },
+  normal: { color: palette.brand, label: 'Normal',  chipColor: 'primary' },
   low:    { color: '#9e9e9e', label: 'Low',     chipColor: 'default' },
 }
 
@@ -1018,12 +1019,12 @@ function AttendancePoliciesTab() {
       {/* Policy Cards Grid */}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 2 }}>
         {list.map((p: any) => (
-          <Card key={p.id} sx={{ position: 'relative', borderLeft: `4px solid ${p.is_default ? '#F05D92' : p.is_active ? '#7161D8' : '#e0e0e0'}` }}>
+          <Card key={p.id} sx={{ position: 'relative', borderLeft: `4px solid ${p.is_default ? palette.accent : p.is_active ? palette.brand : '#e0e0e0'}` }}>
             <CardContent>
               {/* Header row */}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-                  <Avatar sx={{ bgcolor: 'rgba(113,97,216,0.12)', width: 44, height: 44 }}>
+                  <Avatar sx={{ bgcolor: 'rgba(4,120,87,0.12)', width: 44, height: 44 }}>
                     <Typography fontSize={20}>🛡️</Typography>
                   </Avatar>
                   <Typography variant="subtitle1" fontWeight={800} sx={{ lineHeight: 1.3 }}>{p.name}</Typography>
@@ -1186,7 +1187,7 @@ function PolicyAssignmentsTab() {
   return (
     <Box>
       {globalPolicy && (
-        <Box sx={{ mb: 2, p: 1.5, borderRadius: 1, bgcolor: 'rgba(113,97,216,0.07)', border: '1px solid', borderColor: 'primary.light', display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ mb: 2, p: 1.5, borderRadius: 1, bgcolor: 'rgba(4,120,87,0.07)', border: '1px solid', borderColor: 'primary.light', display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography fontSize={18}>🌐</Typography>
           <Typography variant="body2">
             Global default: <strong>{globalPolicy.name}</strong> — applies to all employees without a specific assignment.
@@ -1210,7 +1211,7 @@ function PolicyAssignmentsTab() {
                 <TableRow key={emp.id} hover>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar src={emp.avatar_url} sx={{ width: 28, height: 28, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                      <Avatar src={emp.avatar_url} sx={{ width: 28, height: 28, fontSize: 11, background: `linear-gradient(135deg,${palette.brand},${palette.accent})` }}>
                         {(emp.full_name ?? emp.email)?.[0]?.toUpperCase()}
                       </Avatar>
                       <Typography variant="body2">{emp.full_name ?? emp.email}</Typography>
@@ -1379,7 +1380,7 @@ function LeaveRequestsTab() {
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? '#6b7280', flexShrink: 0 }} />
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? palette.textMuted, flexShrink: 0 }} />
                       <Typography variant="body2" sx={{ fontStyle: r.leave_type ? 'normal' : 'italic', color: r.leave_type ? 'text.primary' : 'text.secondary' }}>
                         {r.leave_type?.name ?? (r.reason ? r.reason.split(':')[0] : 'Custom')}
                       </Typography>
@@ -1480,13 +1481,13 @@ function LeaveTypesTab() {
   const qc = useQueryClient()
   const { data: types = [] } = useQuery({ queryKey: ['hr-leave-types'], queryFn: fetchLeaveTypes })
   const [dlg, setDlg] = useState<{ open: boolean; item?: any }>({ open: false })
-  const [form, setForm] = useState<any>({ name: '', max_days_per_year: 0, is_paid: true, color: '#7161D8', description: '', carry_forward_days: 0, is_active: true })
+  const [form, setForm] = useState<any>({ name: '', max_days_per_year: 0, is_paid: true, color: palette.brand, description: '', carry_forward_days: 0, is_active: true })
 
   const list: any[] = Array.isArray(types) ? types : (types as any).items ?? []
   const activeCount = list.filter((t: any) => t.is_active !== false).length
   const paidCount   = list.filter((t: any) => t.is_paid).length
 
-  const openAdd  = () => { setForm({ name: '', max_days_per_year: 0, is_paid: true, color: '#7161D8', description: '', carry_forward_days: 0, is_active: true }); setDlg({ open: true }) }
+  const openAdd  = () => { setForm({ name: '', max_days_per_year: 0, is_paid: true, color: palette.brand, description: '', carry_forward_days: 0, is_active: true }); setDlg({ open: true }) }
   const openEdit = (t: any) => { setForm({ ...t }); setDlg({ open: true, item: t }) }
   const set = (k: string, v: any) => setForm((p: any) => ({ ...p, [k]: v }))
 
@@ -1529,12 +1530,12 @@ function LeaveTypesTab() {
             No leave types yet. Add one to let employees apply for leave.
           </Typography>
         ) : list.map((t: any) => (
-          <Card key={t.id} sx={{ position: 'relative', borderLeft: `4px solid ${t.color ?? '#7161D8'}`, opacity: t.is_active === false ? 0.6 : 1 }}>
+          <Card key={t.id} sx={{ position: 'relative', borderLeft: `4px solid ${t.color ?? palette.brand}`, opacity: t.is_active === false ? 0.6 : 1 }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-                  <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: `${t.color ?? '#7161D8'}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Box sx={{ width: 18, height: 18, borderRadius: '50%', bgcolor: t.color ?? '#7161D8' }} />
+                  <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: `${t.color ?? palette.brand}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Box sx={{ width: 18, height: 18, borderRadius: '50%', bgcolor: t.color ?? palette.brand }} />
                   </Box>
                   <Typography variant="subtitle1" fontWeight={800}>{t.name}</Typography>
                 </Box>
@@ -1585,8 +1586,8 @@ function LeaveTypesTab() {
             </Select>
           </FormControl>
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <TextField label="Color" size="small" type="color" value={form.color ?? '#7161D8'} onChange={e => set('color', e.target.value)} sx={{ width: 90 }} inputProps={{ style: { padding: 4, height: 32 } }} />
-            <Box sx={{ width: 32, height: 32, borderRadius: 1, bgcolor: form.color ?? '#7161D8' }} />
+            <TextField label="Color" size="small" type="color" value={form.color ?? palette.brand} onChange={e => set('color', e.target.value)} sx={{ width: 90 }} inputProps={{ style: { padding: 4, height: 32 } }} />
+            <Box sx={{ width: 32, height: 32, borderRadius: 1, bgcolor: form.color ?? palette.brand }} />
             <Typography variant="caption" color="text.secondary">Colour shown on leave requests</Typography>
           </Box>
           <FormControl size="small" fullWidth>
@@ -1732,10 +1733,10 @@ function EmployeeSubmissionsTab() {
       {/* KPIs */}
       <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         {[
-          { label: 'Pending Review',       value: pendingCnt,               color: '#f59e0b' },
-          { label: 'Approved',             value: approvedCnt,              color: '#22c55e' },
-          { label: 'Total Approved Hours', value: `${totalHours.toFixed(1)}h`, color: '#7161D8' },
-          { label: 'Total Entries',        value: allList.length,           color: '#6b7280' },
+          { label: 'Pending Review',       value: pendingCnt,               color: palette.warningBright },
+          { label: 'Approved',             value: approvedCnt,              color: palette.successBright },
+          { label: 'Total Approved Hours', value: `${totalHours.toFixed(1)}h`, color: palette.brand },
+          { label: 'Total Entries',        value: allList.length,           color: palette.textMuted },
         ].map(k => (
           <Card key={k.label} sx={{ flex: 1, minWidth: 140 }}>
             <CardContent sx={{ py: '12px !important' }}>
@@ -1783,7 +1784,7 @@ function EmployeeSubmissionsTab() {
                   <TableRow key={ts.id} hover sx={ts.status === 'submitted' ? { bgcolor: 'rgba(245,158,11,0.04)' } : undefined}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                        <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: `linear-gradient(135deg,${palette.brand},${palette.accent})` }}>
                           {(ts.user?.full_name ?? ts.user?.email ?? '?')[0]?.toUpperCase()}
                         </Avatar>
                         <Typography variant="body2">{ts.user?.full_name ?? ts.user?.email ?? ts.user_id}</Typography>
@@ -2006,7 +2007,7 @@ function AttendanceTimesheetsTab() {
                       <TableCell>{i + 1}</TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                          <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: `linear-gradient(135deg,${palette.brand},${palette.accent})` }}>
                             {(ts.user?.full_name ?? ts.user?.email ?? '?')[0]?.toUpperCase()}
                           </Avatar>
                           <Typography variant="body2">{ts.user?.full_name ?? ts.user?.email ?? ts.user_id}</Typography>
@@ -2406,7 +2407,7 @@ function PayrollSection() {
                   <TableRow key={p.id} hover>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: 'linear-gradient(135deg,#7161D8,#F05D92)' }}>
+                        <Avatar sx={{ width: 26, height: 26, fontSize: 11, background: `linear-gradient(135deg,${palette.brand},${palette.accent})` }}>
                           {(p.user?.full_name ?? p.user?.email ?? '?')[0]?.toUpperCase()}
                         </Avatar>
                         <Typography variant="body2">{p.user?.full_name ?? p.user?.email}</Typography>
@@ -2436,7 +2437,7 @@ function PayrollSection() {
                   const totalDed = (slipRun.payslips ?? []).reduce((s: number, p: any) => s + Number(p.deductions ?? 0), 0)
                   const totalHrs = (slipRun.payslips ?? []).reduce((s: number, p: any) => s + Number(p.work_hours ?? 0), 0)
                   return (
-                    <TableRow sx={{ bgcolor: 'rgba(113,97,216,0.07)' }}>
+                    <TableRow sx={{ bgcolor: 'rgba(4,120,87,0.07)' }}>
                       <TableCell><Typography fontWeight={800}>Total</Typography></TableCell>
                       <TableCell><Typography fontWeight={700}>{totalHrs.toFixed(1)}h</Typography></TableCell>
                       <TableCell><Typography fontWeight={700}>{Number(slipRun.total_gross ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Typography></TableCell>
@@ -2590,7 +2591,7 @@ function DocumentsSection() {
   const sColor = (s: string) => s === 'active' ? 'success' : s === 'expired' || s === 'terminated' ? 'error' : 'default'
 
   const KPI_CARDS = [
-    { label: 'Total Documents', value: kpi.total, color: '#7161D8', icon: <ArticleIcon sx={{ fontSize: 28, color: '#7161D8' }} /> },
+    { label: 'Total Documents', value: kpi.total, color: palette.brand, icon: <ArticleIcon sx={{ fontSize: 28, color: palette.brand }} /> },
     { label: 'Published', value: kpi.published, color: '#2e7d32', icon: <CheckIcon sx={{ fontSize: 28, color: '#2e7d32' }} /> },
     { label: 'Expiring Soon', value: kpi.expiring_soon, color: '#f57c00', icon: <TimerIcon sx={{ fontSize: 28, color: '#f57c00' }} /> },
     { label: 'Needs Acknowledgment', value: kpi.needs_acknowledgment, color: '#0288d1', icon: <AssignmentIcon sx={{ fontSize: 28, color: '#0288d1' }} /> },
@@ -2656,7 +2657,7 @@ function DocumentsSection() {
           ) : (
             <Grid container spacing={2}>
               {docs.map((d: any) => {
-                const catColor = d.category?.color ?? '#7161D8'
+                const catColor = d.category?.color ?? palette.brand
                 const statusMeta = DOC_STATUS_META[d.status] ?? DOC_STATUS_META.draft
                 const isExpired = d.expires_at && new Date(d.expires_at) < new Date()
                 return (
@@ -2911,7 +2912,7 @@ function DocumentsSection() {
               {cats.map((c: any) => (
                 <Box key={c.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c.color ?? '#7161D8' }} />
+                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c.color ?? palette.brand }} />
                     <Typography variant="body2">{c.name}</Typography>
                   </Box>
                   <CrudDeleteBtn onDelete={() => catDel.mutate(c.id)} />

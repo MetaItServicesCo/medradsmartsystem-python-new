@@ -40,6 +40,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
 import { isFacilityServiceBillingUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 import SearchableSelect from '@/components/SearchableSelect'
+import { palette } from '@/theme/palette'
 
 interface Props {
   serviceRequestId: number
@@ -60,8 +61,8 @@ const ACTION_MENU_PAPER = {
   sx: {
     borderRadius: '16px',
     minWidth: 170,
-    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
-    border: '1px solid #EEF0F6',
+    boxShadow: palette.shadowMenu,
+    border: `1px solid ${palette.borderSoft}`,
   },
 }
 const ACTION_MENU_ITEM = {
@@ -73,14 +74,14 @@ const ACTION_MENU_ITEM = {
 }
 
 const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
-  draft: { bg: '#FEF3C7', color: '#B45309' },
-  sent: { bg: '#DBEAFE', color: '#1D4ED8' },
-  authorization_requested: { bg: '#FEF3C7', color: '#B45309' },
-  authorized: { bg: '#D1FAE5', color: '#047857' },
-  approved: { bg: '#D1FAE5', color: '#047857' },
-  rejected: { bg: '#FEE2E2', color: '#DC2626' },
-  paid: { bg: '#E0E7FF', color: '#4338CA' },
-  partially_paid: { bg: '#FFEDD5', color: '#C2410C' },
+  draft: { bg: palette.warningTint, color: palette.warning },
+  sent: { bg: palette.infoSoft, color: palette.info },
+  authorization_requested: { bg: palette.warningTint, color: palette.warning },
+  authorized: { bg: palette.brandSoft, color: palette.brand },
+  approved: { bg: palette.brandSoft, color: palette.brand },
+  rejected: { bg: palette.dangerTint, color: palette.dangerStrong },
+  paid: { bg: '#E0E7FF', color: palette.brand },
+  partially_paid: { bg: palette.warningPeach, color: '#C2410C' },
 }
 
 const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled, canEdit, queryKey }: Props) => {
@@ -463,22 +464,22 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
     canModify && !['paid', 'partially_paid', 'included_in_invoice'].includes(quotation.status)
   )
 
-  const cardSx = { p: 3, border: '1px solid rgba(124,58,237,0.15)' }
+  const cardSx = { p: 3, border: '1px solid rgba(4,120,87,0.15)' }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <RequestQuoteIcon sx={{ color: '#7C3AED' }} />
-          <Typography sx={{ fontWeight: 700, color: '#1E1B4B', fontSize: '1.1rem' }}>
+          <RequestQuoteIcon sx={{ color: palette.brand }} />
+          <Typography sx={{ fontWeight: 700, color: palette.ink, fontSize: '1.1rem' }}>
             Quotations ({quotations.length})
           </Typography>
         </Box>
         {canCreate && (
           <Button size="small" variant="contained" startIcon={<AddIcon />}
             onClick={() => { resetForm(); setCreateOpen(true) }}
-            sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)', borderRadius: '10px', fontWeight: 700, textTransform: 'none' }}>
+            sx={{ background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)`, borderRadius: '10px', fontWeight: 700, textTransform: 'none' }}>
             New Quotation
           </Button>
         )}
@@ -487,7 +488,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       {/* Quotation Cards */}
       {quotations.length === 0 ? (
         <Card sx={{ ...cardSx, textAlign: 'center', py: 4 }}>
-          <Typography sx={{ color: '#9CA3AF', fontWeight: 500 }}>No quotations yet</Typography>
+          <Typography sx={{ color: palette.textDisabled, fontWeight: 500 }}>No quotations yet</Typography>
         </Card>
       ) : quotations.map(q => {
         const sc = STATUS_CHIP[q.status] || STATUS_CHIP.draft
@@ -498,20 +499,20 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             {/* Quotation header row */}
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Typography sx={{ fontWeight: 700, fontFamily: 'monospace', color: '#4F46E5', fontSize: '0.85rem' }}>
+                <Typography sx={{ fontWeight: 700, fontFamily: 'monospace', color: palette.indigo, fontSize: '0.85rem' }}>
                   {q.quotation_number || `Q-${q.id}`}
                 </Typography>
                 <Chip label={q.status} size="small" sx={{ bgcolor: sc.bg, color: sc.color, fontWeight: 700, fontSize: '0.7rem' }} />
               </Box>
               <Box sx={{ display: 'flex', gap: 0.5 }}>
-                <IconButton size="small" onClick={(event) => openActions(event, q)} sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                <IconButton size="small" onClick={(event) => openActions(event, q)} sx={{ borderRadius: '12px', bgcolor: palette.surfaceGray, color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}>
                   <MoreVertIcon fontSize="small" />
                 </IconButton>
               </Box>
             </Box>
 
-            <Typography sx={{ color: '#374151', fontSize: '0.85rem', mb: 1 }}>{q.description}</Typography>
-            <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '1.15rem' }}>
+            <Typography sx={{ color: palette.textStrong, fontSize: '0.85rem', mb: 1 }}>{q.description}</Typography>
+            <Typography sx={{ fontWeight: 800, color: palette.ink, fontSize: '1.15rem' }}>
               ${Number(q.amount).toFixed(2)}
             </Typography>
 
@@ -521,13 +522,13 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                 {q.payments.map(p => (
                   <Chip key={p.id} size="small" icon={<CheckCircleIcon sx={{ fontSize: '0.85rem' }} />}
                     label={`${p.payment_method.replace('_', ' ').toUpperCase()} - $${Number(p.amount).toFixed(2)}`}
-                    sx={{ bgcolor: '#D1FAE5', color: '#047857', fontWeight: 600, fontSize: '0.7rem' }} />
+                    sx={{ bgcolor: palette.brandSoft, color: palette.brand, fontWeight: 600, fontSize: '0.7rem' }} />
                 ))}
               </Box>
             )}
             {latestAuthorization && (
-              <Box sx={{ mt: 1, p: 1.25, borderRadius: '12px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+              <Box sx={{ mt: 1, p: 1.25, borderRadius: '12px', bgcolor: palette.surface, border: `1px solid ${palette.borderSlate}` }}>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase' }}>
                   Authorization: {latestAuthorization.status.replace(/_/g, ' ')}
                 </Typography>
                 <Typography sx={{ fontSize: '0.8rem', color: '#334155', fontWeight: 700 }}>
@@ -536,7 +537,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                     : `Requested by ${latestAuthorization.requested_by_name || 'administrator'}`}
                 </Typography>
                 {latestAuthorization.confirmation_reference && (
-                  <Typography sx={{ fontSize: '0.72rem', color: '#64748B' }}>Reference: {latestAuthorization.confirmation_reference}</Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: palette.textSubtle }}>Reference: {latestAuthorization.confirmation_reference}</Typography>
                 )}
               </Box>
             )}
@@ -546,7 +547,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
               {q.line_items?.length > 0 && (
                 <Box sx={{ mt: 2 }}>
                   <Divider sx={{ mb: 1.5 }} />
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#6B7280', mb: 1 }}>Line Items</Typography>
+                  <Typography sx={{ fontWeight: 600, fontSize: '0.8rem', color: palette.textMuted, mb: 1 }}>Line Items</Typography>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -573,18 +574,18 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
               )}
               
               {q.revision_history && q.revision_history.length > 0 && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: '#F9FAFB', borderRadius: '8px' }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#6B7280', mb: 1 }}>Revision History</Typography>
+                <Box sx={{ mt: 2, p: 2, bgcolor: palette.surfaceFaint, borderRadius: '8px' }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: '0.8rem', color: palette.textMuted, mb: 1 }}>Revision History</Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {q.revision_history.map((rev, i) => (
-                      <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', pb: 1, borderBottom: i < q.revision_history!.length - 1 ? '1px solid #E5E7EB' : 'none' }}>
+                      <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', pb: 1, borderBottom: i < q.revision_history!.length - 1 ? `1px solid ${palette.border}` : 'none' }}>
                         <Box>
-                          <Typography sx={{ fontWeight: 600, color: '#374151', fontSize: '0.75rem' }}>{new Date(rev.timestamp).toLocaleString()}</Typography>
-                          <Typography sx={{ color: '#6B7280', fontSize: '0.75rem' }}>by {rev.user}</Typography>
+                          <Typography sx={{ fontWeight: 600, color: palette.textStrong, fontSize: '0.75rem' }}>{new Date(rev.timestamp).toLocaleString()}</Typography>
+                          <Typography sx={{ color: palette.textMuted, fontSize: '0.75rem' }}>by {rev.user}</Typography>
                         </Box>
                         <Box sx={{ textAlign: 'right' }}>
-                          <Typography sx={{ color: '#9CA3AF', textDecoration: 'line-through', fontSize: '0.75rem' }}>${Number(rev.old_amount).toFixed(2)}</Typography>
-                          <Typography sx={{ fontWeight: 700, color: rev.difference > 0 ? '#10B981' : '#EF4444' }}>
+                          <Typography sx={{ color: palette.textDisabled, textDecoration: 'line-through', fontSize: '0.75rem' }}>${Number(rev.old_amount).toFixed(2)}</Typography>
+                          <Typography sx={{ fontWeight: 700, color: rev.difference > 0 ? palette.brandMid : palette.dangerBright }}>
                             ${Number(rev.new_amount).toFixed(2)} ({rev.difference > 0 ? '+' : ''}${Number(rev.difference).toFixed(2)})
                           </Typography>
                         </Box>
@@ -594,19 +595,19 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                 </Box>
               )}
               {q.ledger_entries && q.ledger_entries.length > 0 && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                  <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#475569', mb: 1 }}>Authorization & Payment Ledger</Typography>
+                <Box sx={{ mt: 2, p: 2, bgcolor: palette.surface, borderRadius: '12px', border: `1px solid ${palette.borderSlate}` }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: palette.slate600, mb: 1 }}>Authorization & Payment Ledger</Typography>
                   <Box sx={{ display: 'grid', gap: 1 }}>
                     {q.ledger_entries.slice(0, 12).map(entry => (
-                      <Box key={entry.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px 1fr auto' }, gap: 1, alignItems: 'center', py: 0.8, borderBottom: '1px solid #E2E8F0' }}>
-                        <Typography sx={{ fontSize: '0.72rem', color: '#64748B' }}>{new Date(entry.created_at).toLocaleString()}</Typography>
+                      <Box key={entry.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px 1fr auto' }, gap: 1, alignItems: 'center', py: 0.8, borderBottom: `1px solid ${palette.borderSlate}` }}>
+                        <Typography sx={{ fontSize: '0.72rem', color: palette.textSubtle }}>{new Date(entry.created_at).toLocaleString()}</Typography>
                         <Box>
-                          <Typography sx={{ fontSize: '0.78rem', color: '#1E1B4B', fontWeight: 900 }}>{entry.event_type.replace(/_/g, ' ')}</Typography>
-                          <Typography sx={{ fontSize: '0.72rem', color: '#64748B' }}>
+                          <Typography sx={{ fontSize: '0.78rem', color: palette.ink, fontWeight: 900 }}>{entry.event_type.replace(/_/g, ' ')}</Typography>
+                          <Typography sx={{ fontSize: '0.72rem', color: palette.textSubtle }}>
                             {entry.actor_name} ({entry.actor_role.replace(/_/g, ' ')}){entry.channel ? ` · ${entry.channel.replace(/_/g, ' ')}` : ''}
                           </Typography>
                         </Box>
-                        <Typography sx={{ fontSize: '0.78rem', color: '#047857', fontWeight: 900 }}>
+                        <Typography sx={{ fontSize: '0.78rem', color: palette.brand, fontWeight: 900 }}>
                           {entry.amount != null ? `$${Number(entry.amount).toFixed(2)}` : ''}
                         </Typography>
                       </Box>
@@ -636,19 +637,19 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             requestAuthorizationMut.mutate({ id: actionQuotation.id })
             closeActions()
           }}>
-            <ListItemIcon sx={{ minWidth: 34 }}><PaymentIcon fontSize="small" sx={{ color: '#B45309' }} /></ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 34 }}><PaymentIcon fontSize="small" sx={{ color: palette.warning }} /></ListItemIcon>
             Request Authorization
           </MenuItem>
         )}
         {actionQuotation?.status === 'authorization_requested' && canManageAuthorization && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openAuthorizationDialog(actionQuotation, 'phone'); closeActions() }}>
-            <ListItemIcon sx={{ minWidth: 34 }}><CheckCircleIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 34 }}><CheckCircleIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Record Phone Decision
           </MenuItem>
         )}
         {actionQuotation?.status === 'authorization_requested' && canSelfAuthorize && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openAuthorizationDialog(actionQuotation, 'self_service'); closeActions() }}>
-            <ListItemIcon sx={{ minWidth: 34 }}><CheckCircleIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 34 }}><CheckCircleIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Review Authorization
           </MenuItem>
         )}
@@ -657,13 +658,13 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             openQuotationPayment(actionQuotation)
             closeActions()
           }}>
-            <ListItemIcon sx={{ minWidth: 34 }}><PaymentIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 34 }}><PaymentIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Pay ${getQuotationRemainingBalance(actionQuotation).toFixed(2)}
           </MenuItem>
         )}
         {actionQuotation && canModifyQuotation(actionQuotation) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openEdit(actionQuotation); closeActions() }}>
-            <ListItemIcon sx={{ minWidth: 34 }}><EditIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 34 }}><EditIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Edit
           </MenuItem>
         )}
@@ -672,14 +673,14 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             if (window.confirm('Delete this quotation?')) deleteMut.mutate(actionQuotation.id)
             closeActions()
           }}>
-            <ListItemIcon sx={{ minWidth: 34 }}><DeleteOutlineIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            <ListItemIcon sx={{ minWidth: 34 }}><DeleteOutlineIcon fontSize="small" sx={{ color: palette.dangerBright }} /></ListItemIcon>
             Delete
           </MenuItem>
         )}
       </Menu>
 
       <Dialog open={createOpen} onClose={resetForm} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 700, color: palette.ink }}>
           {editQuotationId ? 'Edit Quotation' : 'Create Quotation'}
         </DialogTitle>
         <DialogContent>
@@ -723,10 +724,10 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                     <Box component="li" {...props}>
                       <Box sx={{ minWidth: 0 }}>
                         <Typography variant="body2" sx={{ fontWeight: 800 }}>{option.part_number}</Typography>
-                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                        <Typography variant="caption" sx={{ color: palette.textMuted }}>
                           {[option.description, option.make, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
                         </Typography>
-                        <Typography variant="caption" sx={{ display: 'block', color: '#7C3AED', fontWeight: 700 }}>
+                        <Typography variant="caption" sx={{ display: 'block', color: palette.brand, fontWeight: 700 }}>
                           ${Number(option.unit_price || 0).toFixed(2)}
                           {option.facility_name ? ` · ${option.facility_name}` : ''}
                         </Typography>
@@ -748,7 +749,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
               </IconButton>
             </Box>
           ))}
-          <Button size="small" startIcon={<AddIcon />} onClick={() => setLineItems([...lineItems, { ...EMPTY_LINE_ITEM }])} sx={{ mt: 0.5, textTransform: 'none', color: '#7C3AED' }}>
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setLineItems([...lineItems, { ...EMPTY_LINE_ITEM }])} sx={{ mt: 0.5, textTransform: 'none', color: palette.brand }}>
             Add Line Item
           </Button>
           <Divider sx={{ my: 2 }} />
@@ -759,7 +760,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={resetForm} variant="outlined" sx={{ borderRadius: '10px' }}>Cancel</Button>
           <Button onClick={handleSubmit} variant="contained" disabled={createMut.isPending || updateMut.isPending}
-            sx={{ borderRadius: '10px', background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)', fontWeight: 700 }}>
+            sx={{ borderRadius: '10px', background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)`, fontWeight: 700 }}>
             {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : editQuotationId ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
@@ -767,14 +768,14 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
       {/* ── Payment Dialog ───────────────────────────────────────────── */}
       <Dialog open={Boolean(authorizationQuotation)} onClose={closeAuthorizationDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 800, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 800, color: palette.ink }}>
           {authorizationChannel === 'phone' ? 'Record Phone Authorization' : 'Review Quotation Authorization'}
         </DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, pt: '12px !important' }}>
-          <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{authorizationQuotation?.quotation_number}</Typography>
-            <Typography sx={{ color: '#64748B', fontSize: 13 }}>{authorizationQuotation?.description}</Typography>
-            <Typography sx={{ color: '#047857', fontWeight: 950, mt: 0.5 }}>${Number(authorizationQuotation?.amount || 0).toFixed(2)}</Typography>
+          <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: palette.brandTint, border: `1px solid ${palette.brandBorder}` }}>
+            <Typography sx={{ fontWeight: 900, color: palette.ink }}>{authorizationQuotation?.quotation_number}</Typography>
+            <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>{authorizationQuotation?.description}</Typography>
+            <Typography sx={{ color: palette.brand, fontWeight: 950, mt: 0.5 }}>${Number(authorizationQuotation?.amount || 0).toFixed(2)}</Typography>
           </Box>
           <FormControl fullWidth>
             <InputLabel>Decision</InputLabel>
@@ -807,7 +808,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             minRows={2}
             fullWidth
           />
-          <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 700 }}>
             The decision, authorizer, channel, administrator and timestamp will be permanently recorded in the quotation ledger.
           </Typography>
         </DialogContent>
@@ -817,7 +818,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             variant="contained"
             onClick={() => authorizationQuotation && decideAuthorizationMut.mutate({ id: authorizationQuotation.id })}
             disabled={decideAuthorizationMut.isPending || (authorizationChannel === 'phone' && !phoneAuthorizerId)}
-            sx={{ borderRadius: '10px', fontWeight: 800, background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)' }}
+            sx={{ borderRadius: '10px', fontWeight: 800, background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)` }}
           >
             {decideAuthorizationMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Save Decision'}
           </Button>
@@ -825,7 +826,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
       </Dialog>
 
       <Dialog open={payOpen !== null} onClose={() => { setPayOpen(null); resetPayForm() }} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>Pay Authorized Quotation</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: palette.ink }}>Pay Authorized Quotation</DialogTitle>
         <DialogContent>
           {payOpen !== null && (() => {
             const quotation = activePayQuotation
@@ -833,21 +834,21 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
             const paid = getQuotationPaidTotal(quotation)
             const remaining = getQuotationRemainingBalance(quotation)
             return (
-              <Box sx={{ mt: 0.5, mb: 2, p: 2, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>
+              <Box sx={{ mt: 0.5, mb: 2, p: 2, borderRadius: '14px', bgcolor: palette.surface, border: `1px solid ${palette.borderSlate}` }}>
+                <Typography sx={{ color: palette.ink, fontWeight: 900 }}>
                   {quotation.quotation_number || `Q-${quotation.id}`}
                 </Typography>
-                <Typography sx={{ color: '#64748B', fontSize: 13, mb: 1 }}>
+                <Typography sx={{ color: palette.textSubtle, fontSize: 13, mb: 1 }}>
                   {quotation.description}
                 </Typography>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
-                  <Typography sx={{ color: '#475569', fontSize: 13, fontWeight: 700 }}>
+                  <Typography sx={{ color: palette.slate600, fontSize: 13, fontWeight: 700 }}>
                     Quotation: ${Number(quotation.amount || 0).toFixed(2)}
                   </Typography>
-                  <Typography sx={{ color: '#047857', fontSize: 13, fontWeight: 800 }}>
+                  <Typography sx={{ color: palette.brand, fontSize: 13, fontWeight: 800 }}>
                     Paid: ${paid.toFixed(2)}
                   </Typography>
-                  <Typography sx={{ color: '#B45309', fontSize: 13, fontWeight: 900 }}>
+                  <Typography sx={{ color: palette.warning, fontSize: 13, fontWeight: 900 }}>
                     Balance: ${remaining.toFixed(2)}
                   </Typography>
                 </Box>
@@ -865,7 +866,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
           {/* ACH sub-options */}
           {payMethod === 'ach' && (
-            <Box sx={{ mb: 2, p: 2, bgcolor: '#F5F3FF', borderRadius: '12px' }}>
+            <Box sx={{ mb: 2, p: 2, bgcolor: palette.brandTint, borderRadius: '12px' }}>
               <FormLabel sx={{ fontWeight: 600, fontSize: '0.85rem' }}>ACH Option</FormLabel>
               <RadioGroup value={achChoice} onChange={e => setAchChoice(e.target.value as any)}>
                 <FormControlLabel value="ach" control={<Radio size="small" />} label="Pay through ACH" />
@@ -892,8 +893,8 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
           {/* Credit Card fields */}
           {payMethod === 'credit_card' && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, p: 2, bgcolor: '#EFF6FF', borderRadius: '12px', border: '1px solid rgba(29,78,216,0.12)' }}>
-              <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: '#1D4ED8' }}>Credit Card Details</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, p: 2, bgcolor: palette.infoTint, borderRadius: '12px', border: '1px solid rgba(29,78,216,0.12)' }}>
+              <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: palette.info }}>Credit Card Details</Typography>
               <TextField size="small" label="Cardholder Name" value={ccName} onChange={e => setCcName(e.target.value)} fullWidth />
               <TextField size="small" label="Card Number" value={ccNumber} onChange={e => {
                 const v = e.target.value.replace(/\D/g, '').slice(0, 16)
@@ -912,8 +913,8 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
 
           {/* ACH fields */}
           {payMethod === 'ach' && achChoice === 'ach' && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, p: 2, bgcolor: '#F0FDF4', borderRadius: '12px' }}>
-              <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: '#047857' }}>ACH Details</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, p: 2, bgcolor: palette.successTint, borderRadius: '12px' }}>
+              <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', color: palette.brand }}>ACH Details</Typography>
               <TextField size="small" label="Bank Name" value={payBankName} onChange={e => setPayBankName(e.target.value)} />
               <Box sx={{ display: 'flex', gap: 1.5 }}>
                 <TextField size="small" label="Account Last 4" value={payAcctLast4} onChange={e => setPayAcctLast4(e.target.value)} inputProps={{ maxLength: 4 }} sx={{ flex: 1 }} />
@@ -925,13 +926,13 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
           {/* MBMTS ACH — Read-only company banking details */}
           {payMethod === 'ach' && achChoice === 'mbmts_ach' && (
             <Box sx={{
-              p: 2.5, bgcolor: '#FDF4FF', borderRadius: '12px',
-              border: '1px solid rgba(162,28,175,0.15)',
+              p: 2.5, bgcolor: palette.violetTint, borderRadius: '12px',
+              border: '1px solid rgba(109,40,217,0.15)',
             }}>
-              <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#A21CAF', mb: 0.5, textAlign: 'center' }}>
+              <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: palette.violet, mb: 0.5, textAlign: 'center' }}>
                 ACH Authorization Form
               </Typography>
-              <Typography sx={{ fontSize: '0.75rem', color: '#9CA3AF', mb: 2, textAlign: 'center' }}>
+              <Typography sx={{ fontSize: '0.75rem', color: palette.textDisabled, mb: 2, textAlign: 'center' }}>
                 Please use the listed below information for ACH payment.
               </Typography>
               <Divider sx={{ mb: 2 }} />
@@ -945,13 +946,13 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
                 { label: '9-Digit Routing #', value: '111000614' },
                 { label: 'Type of Account', value: 'Checking' },
               ].map((row) => (
-                <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.8, borderBottom: '1px solid #F3E8FF' }}>
-                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: '#6B7280' }}>{row.label}</Typography>
-                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E1B4B' }}>{row.value}</Typography>
+                <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.8, borderBottom: `1px solid ${palette.brandTint}` }}>
+                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: palette.textMuted }}>{row.label}</Typography>
+                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: palette.ink }}>{row.value}</Typography>
                 </Box>
               ))}
               <Divider sx={{ mt: 2, mb: 1.5 }} />
-              <Typography sx={{ fontSize: '0.7rem', color: '#9CA3AF', textAlign: 'center', fontStyle: 'italic' }}>
+              <Typography sx={{ fontSize: '0.7rem', color: palette.textDisabled, textAlign: 'center', fontStyle: 'italic' }}>
                 Only authorized authority can use the listed above information.
               </Typography>
             </Box>
@@ -979,7 +980,7 @@ const QuotationPanel = ({ serviceRequestId, quotations, isCompleted, isCancelled
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => { setPayOpen(null); resetPayForm() }} variant="outlined" sx={{ borderRadius: '10px' }}>Cancel</Button>
           <Button onClick={() => payOpen && handlePay(payOpen)} variant="contained" disabled={payMut.isPending || paymentProofMut.isPending || !payAmount}
-            sx={{ borderRadius: '10px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', fontWeight: 700 }}>
+            sx={{ borderRadius: '10px', background: `linear-gradient(135deg, ${palette.brandMid} 0%, ${palette.brandStrong} 100%)`, fontWeight: 700 }}>
             {(payMut.isPending || paymentProofMut.isPending)
               ? <CircularProgress size={20} sx={{ color: '#fff' }} />
               : payMethod === 'credit_card' ? 'Confirm Payment' : 'Submit Proof for Review'}

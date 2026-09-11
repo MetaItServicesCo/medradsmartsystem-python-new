@@ -24,6 +24,7 @@ import {
 } from '@/api/facilities'
 import { FACILITY_TIMEZONE_OPTIONS, formatUSPhoneInput, normalizeFacilityTimezone } from '@/utils/formatters'
 import { useListContext } from '@/contexts/ListContext'
+import { palette } from '@/theme/palette'
 
 const schema = z.object({
   // General Info
@@ -237,7 +238,7 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
     >
       {/* Header */}
       <Box sx={{
-        backgroundColor: '#7C3AED', px: 3.5, py: 2.5,
+        backgroundColor: palette.brand, px: 3.5, py: 2.5,
         display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0
       }}>
         <Box sx={{
@@ -263,8 +264,8 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
       {/* Tabs Menu */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3.5, flexShrink: 0 }}>
         <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)} 
-           TabIndicatorProps={{ sx: { backgroundColor: '#7C3AED', height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3 } }}
-           sx={{ '& .MuiTab-root': { fontWeight: 600, textTransform: 'none', color: '#6B7280' }, '& .Mui-selected': { color: '#7C3AED !important' } }}>
+           TabIndicatorProps={{ sx: { backgroundColor: palette.brand, height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3 } }}
+           sx={{ '& .MuiTab-root': { fontWeight: 600, textTransform: 'none', color: palette.textMuted }, '& .Mui-selected': { color: '#047857 !important' } }}>
           <Tab label="General Info" />
           <Tab label="Facility Details" />
           <Tab label="Billing" />
@@ -475,32 +476,32 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
           {/* TAB 4 - Documents (Not in form) */}
           <CustomTabPanel value={activeTab} index={4}>
             {!isEdit ? (
-              <Box sx={{ p: 4, textAlign: 'center', backgroundColor: '#F9FAFB', borderRadius: '16px', border: '1px dashed #D1D5DB' }}>
-                <CloudUploadIcon sx={{ fontSize: 48, color: '#9CA3AF', mb: 2 }} />
-                <Typography variant="h6" sx={{ color: '#374151', mb: 1 }}>Save Facility First</Typography>
-                <Typography variant="body2" sx={{ color: '#6B7280' }}>
+              <Box sx={{ p: 4, textAlign: 'center', backgroundColor: palette.surfaceFaint, borderRadius: '16px', border: '1px dashed #D1D5DB' }}>
+                <CloudUploadIcon sx={{ fontSize: 48, color: palette.textDisabled, mb: 2 }} />
+                <Typography variant="h6" sx={{ color: palette.textStrong, mb: 1 }}>Save Facility First</Typography>
+                <Typography variant="body2" sx={{ color: palette.textMuted }}>
                   You must save this facility before you can upload or manage documents.
                 </Typography>
               </Box>
             ) : (
               <Box>
                 {/* Upload Area */}
-                <Box sx={{ mb: 3, p: 3, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Button variant="contained" component="label" startIcon={<CloudUploadIcon />} sx={{ backgroundColor: '#7C3AED', whiteSpace: 'nowrap' }}>
+                <Box sx={{ mb: 3, p: 3, borderRadius: '16px', backgroundColor: palette.brandTint, border: `1px solid ${palette.brandBorder}`, display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Button variant="contained" component="label" startIcon={<CloudUploadIcon />} sx={{ backgroundColor: palette.brand, whiteSpace: 'nowrap' }}>
                     Select File
                     <input type="file" hidden onChange={(e) => setUploadFile(e.target.files?.[0] || null)} />
                   </Button>
-                  <Typography variant="body2" sx={{ flex: 1, color: uploadFile ? '#1E1B4B' : '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <Typography variant="body2" sx={{ flex: 1, color: uploadFile ? palette.ink : palette.textDisabled, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {uploadFile ? uploadFile.name : 'No file selected'}
                   </Typography>
-                  <Button variant="contained" disabled={!uploadFile || uploadMut.isPending} onClick={() => uploadMut.mutate()} sx={{ backgroundColor: '#10B981', '&:hover': { backgroundColor: '#059669' } }}>
+                  <Button variant="contained" disabled={!uploadFile || uploadMut.isPending} onClick={() => uploadMut.mutate()} sx={{ backgroundColor: palette.brandMid, '&:hover': { backgroundColor: palette.brandStrong } }}>
                     {uploadMut.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Upload'}
                   </Button>
                 </Box>
 
                 {/* PDF Export */}
                 <Box sx={{ mb: 3 }}>
-                  <Button variant="outlined" onClick={handleDocumentExport} sx={{ borderColor: '#7C3AED', color: '#7C3AED' }}>
+                  <Button variant="outlined" onClick={handleDocumentExport} sx={{ borderColor: palette.brand, color: palette.brand }}>
                     Export Facility as PDF
                   </Button>
                 </Box>
@@ -510,11 +511,11 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                   {docsData?.items?.length === 0 && <Typography variant="body2" color="text.secondary">No documents uploaded yet.</Typography>}
                   {docsData?.items?.map((doc) => (
-                    <Box key={doc.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', border: '1px solid #E5E7EB', backgroundColor: '#fff' }}>
-                      <InsertDriveFileIcon sx={{ color: '#7C3AED' }} />
+                    <Box key={doc.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', border: `1px solid ${palette.border}`, backgroundColor: '#fff' }}>
+                      <InsertDriveFileIcon sx={{ color: palette.brand }} />
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E1B4B' }}>{doc.filename}</Typography>
-                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: palette.ink }}>{doc.filename}</Typography>
+                        <Typography variant="caption" sx={{ color: palette.textMuted }}>
                           Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
                         </Typography>
                       </Box>
@@ -538,13 +539,13 @@ const FacilityFormModal = ({ open, onClose, facility }: Props) => {
       </DialogContent>
 
       {/* Footer */}
-      <DialogActions sx={{ px: 3.5, pb: 2.5, pt: 2, gap: 1, backgroundColor: '#FAFAFA', borderTop: '1px solid #F3F4F6', flexShrink: 0 }}>
-        <Button onClick={onClose} variant="outlined" sx={{ borderColor: '#E5E7EB', color: '#6B7280', flex: 1, py: 1.2 }}>
+      <DialogActions sx={{ px: 3.5, pb: 2.5, pt: 2, gap: 1, backgroundColor: '#FAFAFA', borderTop: `1px solid ${palette.surfaceGray}`, flexShrink: 0 }}>
+        <Button onClick={onClose} variant="outlined" sx={{ borderColor: palette.border, color: palette.textMuted, flex: 1, py: 1.2 }}>
           Cancel
         </Button>
         <Button
           type="submit" form="facility-form" variant="contained" disabled={mutation.isPending}
-          sx={{ flex: 2, backgroundColor: '#7C3AED', py: 1.2, boxShadow: '0 4px 16px rgba(124,58,237,0.3)', '&:hover': { backgroundColor: '#6D28D9' } }}
+          sx={{ flex: 2, backgroundColor: palette.brand, py: 1.2, boxShadow: '0 4px 16px rgba(4,120,87,0.3)', '&:hover': { backgroundColor: palette.brandDeep } }}
         >
           {mutation.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : isEdit ? 'Save Changes' : 'Create Facility'}
         </Button>

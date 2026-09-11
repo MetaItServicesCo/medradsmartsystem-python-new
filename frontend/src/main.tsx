@@ -7,6 +7,7 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import App from './App'
 import theme from './theme'
+import { applyPaletteToDocument } from './theme/palette'
 import './theme/global.css'
 import ErrorBoundary from './components/ErrorBoundary'
 import { isChunkLoadError, reloadOnceForChunkError } from './utils/lazyWithReload'
@@ -34,6 +35,11 @@ document.addEventListener('focusin', (e) => {
     el.select()
   }
 })
+
+// global.css declares the custom properties so the stylesheet stays valid on
+// its own; this restates them from palette.ts, which is the single place a
+// colour is defined. Without it the two drift and the CSS silently wins.
+applyPaletteToDocument()
 
 const queryClient = new QueryClient({
   defaultOptions: {

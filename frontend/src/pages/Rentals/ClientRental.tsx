@@ -48,6 +48,7 @@ import {
   savePublicRentalCard,
   type RentalPortalInvoice,
 } from '@/api/rentals'
+import { palette } from '@/theme/palette'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 const dateLabel = (value?: string | null) => (value
@@ -56,16 +57,16 @@ const dateLabel = (value?: string | null) => (value
 const frequencyLabel = (value: string) => value === 'biweekly' ? 'Bi-weekly' : `${value.charAt(0).toUpperCase()}${value.slice(1)}`
 
 const Centered = ({ children }: { children: React.ReactNode }) => (
-  <Box sx={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#F5F3FF', p: 3 }}>
+  <Box sx={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: palette.brandTint, p: 3 }}>
     {children}
   </Box>
 )
 
 const InvoiceBreakdown = ({ invoice }: { invoice: RentalPortalInvoice }) => (
-  <Box sx={{ mt: 1.5, border: '1px solid #E5E7EB', borderRadius: '12px', overflowX: 'auto' }}>
+  <Box sx={{ mt: 1.5, border: `1px solid ${palette.border}`, borderRadius: '12px', overflowX: 'auto' }}>
     <Table size="small" sx={{ minWidth: 560 }}>
       <TableHead>
-        <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+        <TableRow sx={{ bgcolor: palette.surface }}>
           <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
           <TableCell align="right" sx={{ fontWeight: 900 }}>Qty</TableCell>
           <TableCell align="right" sx={{ fontWeight: 900 }}>Rate</TableCell>
@@ -83,14 +84,14 @@ const InvoiceBreakdown = ({ invoice }: { invoice: RentalPortalInvoice }) => (
         ))}
         <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800 }}>Subtotal</TableCell><TableCell align="right">{money(invoice.subtotal)}</TableCell></TableRow>
         {Number(invoice.discount_amount || 0) > 0 && (
-          <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800, color: '#DC2626' }}>Discount</TableCell><TableCell align="right" sx={{ color: '#DC2626' }}>-{money(invoice.discount_amount)}</TableCell></TableRow>
+          <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800, color: palette.dangerStrong }}>Discount</TableCell><TableCell align="right" sx={{ color: palette.dangerStrong }}>-{money(invoice.discount_amount)}</TableCell></TableRow>
         )}
         <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800 }}>Tax (8.25%)</TableCell><TableCell align="right">{money(invoice.tax_amount)}</TableCell></TableRow>
-        <TableRow sx={{ bgcolor: '#F8FAFC' }}><TableCell colSpan={3} sx={{ fontWeight: 950 }}>Invoice Total</TableCell><TableCell align="right" sx={{ fontWeight: 950 }}>{money(invoice.total_amount)}</TableCell></TableRow>
+        <TableRow sx={{ bgcolor: palette.surface }}><TableCell colSpan={3} sx={{ fontWeight: 950 }}>Invoice Total</TableCell><TableCell align="right" sx={{ fontWeight: 950 }}>{money(invoice.total_amount)}</TableCell></TableRow>
         {Number(invoice.amount_paid || 0) > 0 && (
-          <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800, color: '#059669' }}>Paid</TableCell><TableCell align="right" sx={{ color: '#059669' }}>{money(invoice.amount_paid)}</TableCell></TableRow>
+          <TableRow><TableCell colSpan={3} sx={{ fontWeight: 800, color: palette.brandStrong }}>Paid</TableCell><TableCell align="right" sx={{ color: palette.brandStrong }}>{money(invoice.amount_paid)}</TableCell></TableRow>
         )}
-        <TableRow sx={{ bgcolor: '#EEF2FF' }}><TableCell colSpan={3} sx={{ fontWeight: 950 }}>Balance Due</TableCell><TableCell align="right" sx={{ fontWeight: 950 }}>{money(invoice.balance_due)}</TableCell></TableRow>
+        <TableRow sx={{ bgcolor: palette.indigoTint }}><TableCell colSpan={3} sx={{ fontWeight: 950 }}>Balance Due</TableCell><TableCell align="right" sx={{ fontWeight: 950 }}>{money(invoice.balance_due)}</TableCell></TableRow>
       </TableBody>
     </Table>
   </Box>
@@ -323,7 +324,7 @@ const ClientRental = () => {
         '@media print': {
           height: 'auto',
           overflow: 'visible',
-          bgcolor: '#FFFFFF',
+          bgcolor: palette.white,
           p: 0,
           '& .rental-screen-only': { display: 'none !important' },
           '& .rental-invoice-card': {
@@ -390,17 +391,17 @@ const ClientRental = () => {
           ]} />
         </Box>
 
-        <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Rented Products</Typography>
-        <Box sx={{ overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: '14px', mb: 3 }}>
+        <Typography sx={{ fontWeight: 900, color: palette.infoDeep, mb: 1 }}>Rented Products</Typography>
+        <Box sx={{ overflowX: 'auto', border: `1px solid ${palette.border}`, borderRadius: '14px', mb: 3 }}>
           <Table size="small" sx={{ minWidth: 700 }}>
-            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+            <TableHead><TableRow sx={{ bgcolor: palette.surface }}>
               <TableCell sx={{ fontWeight: 900 }}>Product</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Qty</TableCell>
               <TableCell align="right" sx={{ fontWeight: 900 }}>Rental Rate</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Ship &amp; Pack</TableCell>
               <TableCell align="right" sx={{ fontWeight: 900 }}>Delivery &amp; Setup</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Removal</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Labor</TableCell><TableCell align="right" sx={{ fontWeight: 900 }}>Deposit / unit</TableCell>
             </TableRow></TableHead>
             <TableBody>{agreement.items.map(item => (
               <TableRow key={item.id}>
-                <TableCell><Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.part_number}</Typography><Typography sx={{ fontSize: 12, color: '#6B7280' }}>{item.part_description}</Typography></TableCell>
+                <TableCell><Typography sx={{ fontWeight: 800, color: palette.ink }}>{item.part_number}</Typography><Typography sx={{ fontSize: 12, color: palette.textMuted }}>{item.part_description}</Typography></TableCell>
                 <TableCell align="right">{item.quantity}</TableCell><TableCell align="right">{money(item.rental_rate)}</TableCell>
                 <TableCell align="right">{money(item.shipping_fee)}</TableCell><TableCell align="right">{money(item.setup_fee)}</TableCell><TableCell align="right">{money(item.removal_fee)}</TableCell><TableCell align="right">{money(item.labor_fee)}</TableCell><TableCell align="right">{money(item.security_deposit)}</TableCell>
               </TableRow>
@@ -408,10 +409,10 @@ const ClientRental = () => {
           </Table>
         </Box>
 
-        <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Billing Schedule</Typography>
-        <Box sx={{ overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: '14px', mb: 3 }}>
+        <Typography sx={{ fontWeight: 900, color: palette.infoDeep, mb: 1 }}>Billing Schedule</Typography>
+        <Box sx={{ overflowX: 'auto', border: `1px solid ${palette.border}`, borderRadius: '14px', mb: 3 }}>
           <Table size="small" sx={{ minWidth: 720 }}>
-            <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+            <TableHead><TableRow sx={{ bgcolor: palette.surface }}>
               <TableCell sx={{ fontWeight: 900 }}>Period</TableCell>
               <TableCell sx={{ fontWeight: 900 }}>Billing Period</TableCell>
               <TableCell align="right" sx={{ fontWeight: 900 }}>Rent</TableCell>
@@ -423,13 +424,13 @@ const ClientRental = () => {
             <TableBody>{billing_schedule.map(period => {
               const style = customerDocumentStatusStyle(period.status)
               return (
-                <TableRow key={period.period} sx={{ bgcolor: next_payment?.period === period.period ? '#FAF9FF' : undefined }}>
+                <TableRow key={period.period} sx={{ bgcolor: next_payment?.period === period.period ? '#f9fffd' : undefined }}>
                   <TableCell sx={{ fontWeight: 850 }}>{period.period} of {agreement.effective_periods}</TableCell>
                   <TableCell>{dateLabel(period.billing_date)} – {dateLabel(period.period_end)}</TableCell>
                   <TableCell align="right">{money(period.rental_amount)}</TableCell>
                   <TableCell align="right">
                     {Number(period.discount || 0) > 0 ? `-${money(period.discount)}` : '—'}
-                    {period.discount_conditional ? <Typography component="span" sx={{ display: 'block', fontSize: 10, color: '#B45309', fontWeight: 800 }}>with saved-card authorization</Typography> : null}
+                    {period.discount_conditional ? <Typography component="span" sx={{ display: 'block', fontSize: 10, color: palette.warning, fontWeight: 800 }}>with saved-card authorization</Typography> : null}
                   </TableCell>
                   <TableCell align="right">{money(period.tax)}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 900 }}>{money(period.total)}</TableCell>
@@ -441,15 +442,15 @@ const ClientRental = () => {
         </Box>
 
         {agreement.terms_and_conditions && (
-          <Box sx={{ mb: 3, p: 2, borderRadius: '14px', bgcolor: '#FAF9FF', border: '1px solid #EDE9FE' }}>
-            <Typography sx={{ color: '#7C3AED', fontWeight: 900, fontSize: 11, textTransform: 'uppercase', mb: 0.5 }}>Terms &amp; Conditions</Typography>
-            <Typography sx={{ color: '#475569', whiteSpace: 'pre-wrap', fontSize: 13 }}>{agreement.terms_and_conditions}</Typography>
+          <Box sx={{ mb: 3, p: 2, borderRadius: '14px', bgcolor: '#f9fffd', border: `1px solid ${palette.brandSoft}` }}>
+            <Typography sx={{ color: palette.brand, fontWeight: 900, fontSize: 11, textTransform: 'uppercase', mb: 0.5 }}>Terms &amp; Conditions</Typography>
+            <Typography sx={{ color: palette.slate600, whiteSpace: 'pre-wrap', fontSize: 13 }}>{agreement.terms_and_conditions}</Typography>
           </Box>
         )}
 
         {acceptance && (
-          <Card className="rental-screen-only" variant="outlined" sx={{ mb: 3, p: { xs: 2, md: 2.5 }, borderRadius: '16px', borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
-            <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 19 }}>Agreement Extension</Typography>
+          <Card className="rental-screen-only" variant="outlined" sx={{ mb: 3, p: { xs: 2, md: 2.5 }, borderRadius: '16px', borderColor: palette.brandPale, bgcolor: '#f9fffd' }}>
+            <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: 19 }}>Agreement Extension</Typography>
             {extension?.status === 'requested' && (
               <Box sx={{ mt: 1.5 }}>
                 <Alert severity="info" sx={{ borderRadius: '12px' }}>
@@ -485,7 +486,7 @@ const ClientRental = () => {
                   { label: 'Total billing periods', value: String(extension.offered_total_periods || '—') },
                   { label: 'Future billing', value: 'Rental charges only; upfront fees are not repeated' },
                 ]} />
-                {extension.offered_terms && <Typography sx={{ mt: 1.5, color: '#475569', whiteSpace: 'pre-wrap' }}>{extension.offered_terms}</Typography>}
+                {extension.offered_terms && <Typography sx={{ mt: 1.5, color: palette.slate600, whiteSpace: 'pre-wrap' }}>{extension.offered_terms}</Typography>}
                 <TextField fullWidth label="Type your full legal name" value={extensionSignature} onChange={event => setExtensionSignature(event.target.value)} sx={{ mt: 2, mb: 1.5 }} />
                 <CustomerSignaturePreview name={extensionSignature} />
                 <FormControlLabel
@@ -515,7 +516,7 @@ const ClientRental = () => {
             )}
             {portal.can_request_extension && !isExtensionView && showExtensionRequest && (
               <Box sx={{ mt: 2, display: 'grid', gap: 1.5 }}>
-                <Typography sx={{ color: '#64748B' }}>Enter a desired end date, additional periods, or both. Staff will review and send a signable amendment.</Typography>
+                <Typography sx={{ color: palette.textSubtle }}>Enter a desired end date, additional periods, or both. Staff will review and send a signable amendment.</Typography>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
                   <TextField type="date" label="Requested end date" InputLabelProps={{ shrink: true }} value={extensionEndDate} onChange={event => setExtensionEndDate(event.target.value)} inputProps={{ min: agreement.end_date }} />
                   <TextField type="number" label="Additional billing periods" value={extensionPeriods} onChange={event => setExtensionPeriods(event.target.value)} inputProps={{ min: 1, max: 1200 }} />
@@ -532,9 +533,9 @@ const ClientRental = () => {
         </Box>
 
         {!acceptance && canTransact ? (
-          <Card id="rental-acceptance" className="rental-agreement-content" variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', mb: 3, borderColor: '#C4B5FD', bgcolor: '#FAF9FF', scrollMarginTop: 24 }}>
-            <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 20 }}>Sign and approve this rental agreement</Typography>
-            <Typography sx={{ color: '#64748B', mt: 0.5, mb: 2 }}>Review the agreement, type your full legal name, and accept the terms before paying.</Typography>
+          <Card id="rental-acceptance" className="rental-agreement-content" variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', mb: 3, borderColor: palette.brandPale, bgcolor: '#f9fffd', scrollMarginTop: 24 }}>
+            <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: 20 }}>Sign and approve this rental agreement</Typography>
+            <Typography sx={{ color: palette.textSubtle, mt: 0.5, mb: 2 }}>Review the agreement, type your full legal name, and accept the terms before paying.</Typography>
             <TextField fullWidth label="Type your full legal name" value={signatureName} onChange={event => setSignatureName(event.target.value)} helperText="Your typed name will be rendered as your electronic signature." sx={{ mb: 2 }} />
             <CustomerSignaturePreview name={signatureName} />
             <FormControlLabel
@@ -549,24 +550,24 @@ const ClientRental = () => {
         ) : acceptance ? <CustomerSignatureRecord context="Agreement" acceptedBy={acceptance.accepted_by_name} acceptedAt={dateLabel(acceptance.accepted_at)} signature={acceptance.signature_name} detail={`Revision ${acceptance.agreement_revision}`} /> : null}
 
         {acceptance && canTransact && !isExtensionView && (
-          <Card className="rental-screen-only" variant="outlined" sx={{ mt: 2.5, p: { xs: 2, md: 2.5 }, borderRadius: '16px', borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
+          <Card className="rental-screen-only" variant="outlined" sx={{ mt: 2.5, p: { xs: 2, md: 2.5 }, borderRadius: '16px', borderColor: palette.brandPale, bgcolor: '#f9fffd' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1.5, flexWrap: 'wrap' }}>
               <Box>
-                <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 19 }}>Secure payment method</Typography>
+                <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: 19 }}>Secure payment method</Typography>
                 {agreement.saved_card ? (
-                  <Typography sx={{ color: '#475569', mt: 0.5 }}>
+                  <Typography sx={{ color: palette.slate600, mt: 0.5 }}>
                     {agreement.saved_card.brand || 'Card'} ending in {agreement.saved_card.last4 || '••••'}
                     {agreement.saved_card.exp_month && agreement.saved_card.exp_year
                       ? ` · expires ${String(agreement.saved_card.exp_month).padStart(2, '0')}/${String(agreement.saved_card.exp_year).slice(-2)}`
                       : ''}
                   </Typography>
                 ) : (
-                  <Typography sx={{ color: '#64748B', mt: 0.5 }}>No reusable payment method is stored by MedRad. Card details are vaulted by Square.</Typography>
+                  <Typography sx={{ color: palette.textSubtle, mt: 0.5 }}>No reusable payment method is stored by MedRad. Card details are vaulted by Square.</Typography>
                 )}
               </Box>
               <Chip
                 label={agreement.auto_charge_authorized ? 'Auto-pay authorized' : agreement.saved_card ? 'Stored only' : 'No card on file'}
-                sx={{ fontWeight: 900, bgcolor: agreement.auto_charge_authorized ? '#D1FAE5' : '#EEF2FF', color: agreement.auto_charge_authorized ? '#047857' : '#4338CA' }}
+                sx={{ fontWeight: 900, bgcolor: agreement.auto_charge_authorized ? palette.brandSoft : palette.indigoTint, color: agreement.auto_charge_authorized ? palette.brand : palette.brand }}
               />
             </Box>
             {agreement.card_removal_pending && (
@@ -608,7 +609,7 @@ const ClientRental = () => {
                   control={<Checkbox checked={authorizeReplacement} onChange={event => setAuthorizeReplacement(event.target.checked)} />}
                   label={agreement.auto_charge_consent_text}
                 />
-                <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1.5 }}>
+                <Typography sx={{ color: palette.textSubtle, fontSize: 12, mb: 1.5 }}>
                   Leave unchecked to store the card without automatic-charge authorization. MedRad never stores the full card number or security code.
                 </Typography>
                 <SquareCardCheckout
@@ -634,9 +635,9 @@ const ClientRental = () => {
         {acceptance && (
           <>
             <Divider sx={{ my: 3 }} />
-            <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Rental Invoices</Typography>
+            <Typography sx={{ fontWeight: 900, color: palette.infoDeep, mb: 1 }}>Rental Invoices</Typography>
             {thankYouInvoice && <Alert severity="success" sx={{ mb: 2, borderRadius: '14px' }}><strong>Thank you.</strong> Payment for {thankYouInvoice} was received successfully.</Alert>}
-            {invoices.length === 0 ? <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>No invoices yet.</Typography> : (
+            {invoices.length === 0 ? <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>No invoices yet.</Typography> : (
           <Box sx={{ display: 'grid', gap: 1.5 }}>
             {invoices.map(invoice => {
               const style = customerDocumentStatusStyle(invoice.status)
@@ -653,9 +654,9 @@ const ClientRental = () => {
                   }}
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                    <Box><Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>{invoice.invoice_number}</Typography><Typography sx={{ color: '#6B7280', fontSize: 13 }}>{invoice.id === initialInvoiceId ? 'Initial rental invoice' : invoice.notes || 'Recurring rental invoice'} · due {dateLabel(invoice.due_date)}</Typography></Box>
+                    <Box><Typography sx={{ fontWeight: 900, color: palette.infoDeep }}>{invoice.invoice_number}</Typography><Typography sx={{ color: palette.textMuted, fontSize: 13 }}>{invoice.id === initialInvoiceId ? 'Initial rental invoice' : invoice.notes || 'Recurring rental invoice'} · due {dateLabel(invoice.due_date)}</Typography></Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                      <Box sx={{ textAlign: 'right' }}><Typography sx={{ fontWeight: 950, color: '#1E3A8A', fontSize: 18 }}>{money(invoice.total_amount)}</Typography><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: style.bg, color: style.color }} /></Box>
+                      <Box sx={{ textAlign: 'right' }}><Typography sx={{ fontWeight: 950, color: palette.infoDeep, fontSize: 18 }}>{money(invoice.total_amount)}</Typography><Chip size="small" label={invoice.status.replace('_', ' ')} sx={{ fontWeight: 900, textTransform: 'uppercase', bgcolor: style.bg, color: style.color }} /></Box>
                       <Button
                         className="rental-screen-only"
                         variant="outlined"
@@ -690,7 +691,7 @@ const ClientRental = () => {
                             label={agreement.auto_charge_consent_text}
                           />
                         )}
-                        <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1 }}>
+                        <Typography sx={{ color: palette.textSubtle, fontSize: 12, mb: 1 }}>
                           Leave the option unchecked for a one-time payment. MedRad never stores the full card number or security code.
                         </Typography>
                         <SquareCardCheckout applicationId={square.application_id!} locationId={square.location_id!} sdkUrl={square.sdk_url} amount={Number(invoice.balance_due || 0)} currency={square.currency} payerName={agreement.customer_name} payerEmail={agreement.customer_email} processing={payMut.isPending} idempotencyScope={`rental-invoice-${invoice.id}-${Number(invoice.balance_due || 0).toFixed(2)}`} onPaymentToken={(sourceId, idempotencyKey) => payMut.mutate({ invoiceId: invoice.id, sourceId, idempotencyKey })} />
@@ -711,9 +712,9 @@ const ClientRental = () => {
         )}
       </Card>
       <Dialog open={confirmCardRemoval} onClose={() => !removeCardMut.isPending && setConfirmCardRemoval(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>Remove saved card?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 950, color: palette.ink }}>Remove saved card?</DialogTitle>
         <DialogContent>
-          <Typography sx={{ color: '#475569' }}>
+          <Typography sx={{ color: palette.slate600 }}>
             The card will be disabled in Square and removed from this agreement. Automatic payments stop immediately. Future invoices must be paid manually until another card is authorized.
           </Typography>
         </DialogContent>

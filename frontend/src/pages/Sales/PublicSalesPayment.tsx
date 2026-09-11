@@ -20,6 +20,7 @@ import {
   submitPublicSalesPaymentAuthorization,
 } from '@/api/sales'
 import { formatUSPhone } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 const money = (value: unknown) => `$${Number(value || 0).toFixed(2)}`
 const dateLabel = (value?: string | null) => value
@@ -65,11 +66,11 @@ const PublicSalesPayment = () => {
   })
 
   if (paymentQ.isLoading) {
-    return <Box sx={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}><CircularProgress /></Box>
+    return <Box sx={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', bgcolor: palette.brandTint }}><CircularProgress /></Box>
   }
   if (paymentQ.isError || !data) {
     return (
-      <Box sx={{ minHeight: '100dvh', p: { xs: 2, sm: 3 }, display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}>
+      <Box sx={{ minHeight: '100dvh', p: { xs: 2, sm: 3 }, display: 'grid', placeItems: 'center', bgcolor: palette.brandTint }}>
         <Alert severity="error">{(paymentQ.error as any)?.response?.data?.detail || 'This payment authorization link is unavailable.'}</Alert>
       </Box>
     )
@@ -79,9 +80,9 @@ const PublicSalesPayment = () => {
   const submitted = authorization.status !== 'requested'
 
   return (
-    <Box sx={{ minHeight: '100dvh', height: '100dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', bgcolor: '#F5F3FF', py: { xs: 2, md: 5 }, px: { xs: 1.5, md: 3 } }}>
-      <Card sx={{ maxWidth: 1080, mx: 'auto', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 28px 80px rgba(76,29,149,0.14)' }}>
-        <Box sx={{ p: { xs: 2.5, md: 4 }, color: '#fff', background: 'linear-gradient(135deg, #7C3AED 0%, #0EA5E9 70%, #EC4899 130%)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+    <Box sx={{ minHeight: '100dvh', height: '100dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', bgcolor: palette.brandTint, py: { xs: 2, md: 5 }, px: { xs: 1.5, md: 3 } }}>
+      <Card sx={{ maxWidth: 1080, mx: 'auto', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 28px 80px rgba(6,78,59,0.14)' }}>
+        <Box sx={{ p: { xs: 2.5, md: 4 }, color: '#fff', background: 'linear-gradient(135deg, #047857 0%, #0EA5E9 70%, #0D9488 130%)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Box sx={{ bgcolor: '#fff', borderRadius: '14px', p: 1 }}>
               <Box component="img" src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" sx={{ width: 112, height: 72, display: 'block', objectFit: 'contain' }} />
@@ -107,29 +108,29 @@ const PublicSalesPayment = () => {
           {submitMut.isError && <Alert severity="error">{(submitMut.error as any)?.response?.data?.detail || 'Could not submit authorization.'}</Alert>}
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-            <Box sx={{ p: 2, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC' }}>
-              <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Bill To</Typography>
-              <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 19 }}>{invoice.customer_name}</Typography>
-              <Typography sx={{ color: '#64748B' }}>{invoice.customer_email || '-'}</Typography>
-              <Typography sx={{ color: '#64748B' }}>{formatUSPhone(invoice.customer_phone) || '-'}</Typography>
-              <Typography sx={{ color: '#64748B' }}>{invoice.customer_address || '-'}</Typography>
-              <Typography sx={{ color: '#64748B' }}>{invoice.facility_name || ''}</Typography>
+            <Box sx={{ p: 2, borderRadius: '14px', border: `1px solid ${palette.border}`, bgcolor: palette.surface }}>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Bill To</Typography>
+              <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: 19 }}>{invoice.customer_name}</Typography>
+              <Typography sx={{ color: palette.textSubtle }}>{invoice.customer_email || '-'}</Typography>
+              <Typography sx={{ color: palette.textSubtle }}>{formatUSPhone(invoice.customer_phone) || '-'}</Typography>
+              <Typography sx={{ color: palette.textSubtle }}>{invoice.customer_address || '-'}</Typography>
+              <Typography sx={{ color: palette.textSubtle }}>{invoice.facility_name || ''}</Typography>
             </Box>
-            <Box sx={{ p: 2, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF', display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.8 }}>
+            <Box sx={{ p: 2, borderRadius: '14px', border: `1px solid ${palette.brandBorder}`, bgcolor: '#f8fffe', display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.8 }}>
               <Typography sx={{ fontWeight: 800 }}>Issued</Typography><Typography>{dateLabel(invoice.issue_date)}</Typography>
               <Typography sx={{ fontWeight: 800 }}>Due</Typography><Typography>{dateLabel(invoice.due_date)}</Typography>
               <Typography sx={{ fontWeight: 800 }}>Invoice total</Typography><Typography>{money(invoice.total_amount)}</Typography>
-              <Typography sx={{ fontWeight: 900, color: '#DC2626' }}>Outstanding balance</Typography><Typography sx={{ fontWeight: 950, color: '#DC2626' }}>{money(invoice.balance_due)}</Typography>
+              <Typography sx={{ fontWeight: 900, color: palette.dangerStrong }}>Outstanding balance</Typography><Typography sx={{ fontWeight: 950, color: palette.dangerStrong }}>{money(invoice.balance_due)}</Typography>
             </Box>
           </Box>
 
-          <Box sx={{ overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: '14px' }}>
+          <Box sx={{ overflowX: 'auto', border: `1px solid ${palette.border}`, borderRadius: '14px' }}>
             <Box sx={{ minWidth: 720 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '130px 1fr 80px 110px 110px', gap: 1, p: 1.5, bgcolor: '#F8FAFC', color: '#64748B', fontSize: 12, fontWeight: 900 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '130px 1fr 80px 110px 110px', gap: 1, p: 1.5, bgcolor: palette.surface, color: palette.textSubtle, fontSize: 12, fontWeight: 900 }}>
                 <span>ITEM</span><span>DESCRIPTION</span><span>QTY</span><span>PRICE</span><span>TOTAL</span>
               </Box>
               {invoice.line_items.map((item, index) => (
-                <Box key={String(item.id || index)} sx={{ display: 'grid', gridTemplateColumns: '130px 1fr 80px 110px 110px', gap: 1, p: 1.5, borderTop: '1px solid #E5E7EB', alignItems: 'center' }}>
+                <Box key={String(item.id || index)} sx={{ display: 'grid', gridTemplateColumns: '130px 1fr 80px 110px 110px', gap: 1, p: 1.5, borderTop: `1px solid ${palette.border}`, alignItems: 'center' }}>
                   <Typography sx={{ fontWeight: 900 }}>{String(item.item_number || '-')}</Typography>
                   <Typography>{String(item.description || '-')}</Typography>
                   <Typography>{Number(item.quantity || 0)}</Typography>
@@ -141,22 +142,22 @@ const PublicSalesPayment = () => {
           </Box>
 
           {acceptance && (
-            <Box sx={{ p: 2, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FAF8FF' }}>
-              <Typography sx={{ fontWeight: 950, color: '#312E81' }}>Quotation acceptance</Typography>
-              <Typography sx={{ color: '#64748B', fontSize: 13 }}>
+            <Box sx={{ p: 2, borderRadius: '14px', border: `1px solid ${palette.brandBorder}`, bgcolor: '#f8fffe' }}>
+              <Typography sx={{ fontWeight: 950, color: palette.brandDeep }}>Quotation acceptance</Typography>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>
                 Signed by {acceptance.accepted_by_name} on {dateLabel(acceptance.accepted_at)} · Revision {acceptance.quotation_revision}
               </Typography>
-              <Typography sx={{ mt: 1, pb: 0.5, borderBottom: '1px solid #94A3B8', fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 30, fontStyle: 'italic', color: '#1E1B4B' }}>
+              <Typography sx={{ mt: 1, pb: 0.5, borderBottom: `1px solid ${palette.textFaint}`, fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 30, fontStyle: 'italic', color: palette.ink }}>
                 {acceptance.signature_name}
               </Typography>
             </Box>
           )}
 
           {!submitted && (
-            <Box sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', border: '1px solid #C7D2FE', bgcolor: '#EEF2FF' }}>
+            <Box sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', border: '1px solid #C7D2FE', bgcolor: palette.indigoTint }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <LockOutlinedIcon sx={{ color: '#7C3AED' }} />
-                <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 19 }}>Authorize the approved invoice balance</Typography>
+                <LockOutlinedIcon sx={{ color: palette.brand }} />
+                <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: 19 }}>Authorize the approved invoice balance</Typography>
               </Box>
               <Alert severity="info" sx={{ mb: 2 }}>
                 For PCI safety, enter only the card brand, expiration and last four digits. Never enter a full card number or security code here.
@@ -193,14 +194,14 @@ const PublicSalesPayment = () => {
                   || !form.card_expiration.trim()
                 }
                 onClick={() => submitMut.mutate()}
-                sx={{ mt: 2, px: 3, fontWeight: 950, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+                sx={{ mt: 2, px: 3, fontWeight: 950, background: palette.gradientBrand }}
               >
                 Authorize {money(invoice.balance_due)}
               </Button>
             </Box>
           )}
 
-          <Typography sx={{ color: '#64748B', fontSize: 12, textAlign: 'center' }}>
+          <Typography sx={{ color: palette.textSubtle, fontSize: 12, textAlign: 'center' }}>
             {data.payment_note}<br />Mr. BioMed Tech Services · 555 N. 5th Street Suite 109, Garland, TX 75040
           </Typography>
         </Box>

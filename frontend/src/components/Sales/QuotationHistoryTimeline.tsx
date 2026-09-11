@@ -18,6 +18,7 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
 import type { SalesHistoryItem } from '@/api/sales'
+import { palette } from '@/theme/palette'
 
 interface QuotationHistoryTimelineProps {
   history: SalesHistoryItem[]
@@ -30,10 +31,10 @@ const fmtDateTime = (iso?: string | null) => (iso
   : '—')
 
 const ACTION_META: Record<string, { label: string; icon: JSX.Element; color: string; bg: string }> = {
-  created: { label: 'Created', icon: <AddCircleOutlineIcon fontSize="small" />, color: '#15803D', bg: '#DCFCE7' },
-  updated: { label: 'Updated', icon: <EditNoteIcon fontSize="small" />, color: '#1D4ED8', bg: '#DBEAFE' },
-  sent: { label: 'Sent', icon: <SendIcon fontSize="small" />, color: '#6D28D9', bg: '#EDE9FE' },
-  revision_created: { label: 'Revision created', icon: <AutorenewIcon fontSize="small" />, color: '#B45309', bg: '#FEF3C7' },
+  created: { label: 'Created', icon: <AddCircleOutlineIcon fontSize="small" />, color: palette.success, bg: '#DCFCE7' },
+  updated: { label: 'Updated', icon: <EditNoteIcon fontSize="small" />, color: palette.info, bg: palette.infoSoft },
+  sent: { label: 'Sent', icon: <SendIcon fontSize="small" />, color: palette.brandDeep, bg: palette.brandSoft },
+  revision_created: { label: 'Revision created', icon: <AutorenewIcon fontSize="small" />, color: palette.warning, bg: palette.warningTint },
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -61,7 +62,7 @@ const PreviousVersionSnapshot = ({ snapshot }: { snapshot: any }) => {
   const pricing = snapshot?.pricing || {}
   return (
     <Box sx={{ mt: 1.2, p: 1.6, borderRadius: '12px', bgcolor: '#FFFDF7', border: '1px solid #FDE68A' }}>
-      <Typography sx={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.5, color: '#B45309', mb: 1 }}>
+      <Typography sx={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.5, color: palette.warning, mb: 1 }}>
         Revision {snapshot?.revision ?? '—'} snapshot
       </Typography>
       {lines.length > 0 && (
@@ -69,11 +70,11 @@ const PreviousVersionSnapshot = ({ snapshot }: { snapshot: any }) => {
           <Table size="small" sx={{ minWidth: 520, '& td, & th': { borderColor: '#FDE68A', py: 0.7 } }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 800, fontSize: 11, color: '#92400E' }}>Item</TableCell>
-                <TableCell sx={{ fontWeight: 800, fontSize: 11, color: '#92400E' }}>Description</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 800, fontSize: 11, color: '#92400E' }}>Qty</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 800, fontSize: 11, color: '#92400E' }}>Unit</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 800, fontSize: 11, color: '#92400E' }}>Total</TableCell>
+                <TableCell sx={{ fontWeight: 800, fontSize: 11, color: palette.warningDeep }}>Item</TableCell>
+                <TableCell sx={{ fontWeight: 800, fontSize: 11, color: palette.warningDeep }}>Description</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 800, fontSize: 11, color: palette.warningDeep }}>Qty</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 800, fontSize: 11, color: palette.warningDeep }}>Unit</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 800, fontSize: 11, color: palette.warningDeep }}>Total</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -82,7 +83,7 @@ const PreviousVersionSnapshot = ({ snapshot }: { snapshot: any }) => {
                   <TableCell sx={{ fontSize: 12.5, fontWeight: 700 }}>
                     {line.part_number || kindLabel(line.item_kind)}
                   </TableCell>
-                  <TableCell sx={{ fontSize: 12.5, color: '#475569' }}>{line.description || '—'}</TableCell>
+                  <TableCell sx={{ fontSize: 12.5, color: palette.slate600 }}>{line.description || '—'}</TableCell>
                   <TableCell align="right" sx={{ fontSize: 12.5 }}>{line.quantity}</TableCell>
                   <TableCell align="right" sx={{ fontSize: 12.5 }}>{money(line.unit_price)}</TableCell>
                   <TableCell align="right" sx={{ fontSize: 12.5, fontWeight: 800 }}>{money(line.total)}</TableCell>
@@ -98,7 +99,7 @@ const PreviousVersionSnapshot = ({ snapshot }: { snapshot: any }) => {
         {Number(pricing.discount_amount || 0) > 0 && (
           <Chip size="small" variant="outlined" label={`Discount ${money(pricing.discount_amount)}`} sx={{ fontWeight: 700 }} />
         )}
-        <Chip size="small" label={`Total ${money(pricing.total_amount)}`} sx={{ fontWeight: 900, bgcolor: '#FEF3C7', color: '#92400E' }} />
+        <Chip size="small" label={`Total ${money(pricing.total_amount)}`} sx={{ fontWeight: 900, bgcolor: palette.warningTint, color: palette.warningDeep }} />
       </Box>
     </Box>
   )
@@ -138,8 +139,8 @@ const QuotationHistoryTimeline = ({ history }: QuotationHistoryTimelineProps) =>
         const meta = ACTION_META[entry.action] ?? {
           label: entry.action.replace(/_/g, ' '),
           icon: <FiberManualRecordIcon fontSize="small" />,
-          color: '#475569',
-          bg: '#F1F5F9',
+          color: palette.slate600,
+          bg: palette.surfaceMuted,
         }
         const revision = entry.details?.revision
         const isLast = index === entries.length - 1
@@ -148,7 +149,7 @@ const QuotationHistoryTimeline = ({ history }: QuotationHistoryTimelineProps) =>
         return (
           <Box key={index} sx={{ display: 'flex', gap: 1.5, pb: isLast ? 0 : 2.4, position: 'relative' }}>
             {!isLast && (
-              <Box sx={{ position: 'absolute', left: 15, top: 34, bottom: 0, width: 2, bgcolor: '#EEF0F6' }} />
+              <Box sx={{ position: 'absolute', left: 15, top: 34, bottom: 0, width: 2, bgcolor: palette.borderSoft }} />
             )}
             <Box
               sx={{
@@ -168,16 +169,16 @@ const QuotationHistoryTimeline = ({ history }: QuotationHistoryTimelineProps) =>
             </Box>
             <Box sx={{ flex: 1, minWidth: 0, pt: 0.2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: 14 }}>{meta.label}</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.ink, fontSize: 14 }}>{meta.label}</Typography>
                 {revision != null && (
-                  <Chip size="small" label={`Rev ${revision}`} sx={{ height: 20, fontWeight: 800, bgcolor: '#EDE9FE', color: '#6D28D9' }} />
+                  <Chip size="small" label={`Rev ${revision}`} sx={{ height: 20, fontWeight: 800, bgcolor: palette.brandSoft, color: palette.brandDeep }} />
                 )}
                 {entry.action === 'revision_created' && entry.details?.previous_links_invalidated && (
                   <Chip size="small" variant="outlined" color="warning" label="Old link invalidated" sx={{ height: 20, fontWeight: 800 }} />
                 )}
               </Box>
-              <Typography sx={{ color: '#475569', fontSize: 13, mt: 0.2 }}>{entrySummary(entry)}</Typography>
-              <Typography sx={{ color: '#94A3B8', fontSize: 12, fontWeight: 700, mt: 0.2 }}>
+              <Typography sx={{ color: palette.slate600, fontSize: 13, mt: 0.2 }}>{entrySummary(entry)}</Typography>
+              <Typography sx={{ color: palette.textFaint, fontSize: 12, fontWeight: 700, mt: 0.2 }}>
                 {entry.by || 'System'} · {fmtDateTime(entry.at)}
               </Typography>
               {snapshot && (
@@ -187,7 +188,7 @@ const QuotationHistoryTimeline = ({ history }: QuotationHistoryTimelineProps) =>
                     tabIndex={0}
                     onClick={() => setExpanded(isOpen ? null : index)}
                     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setExpanded(isOpen ? null : index) }}
-                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, mt: 0.6, cursor: 'pointer', color: '#7C3AED', fontWeight: 800, fontSize: 12.5, userSelect: 'none' }}
+                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, mt: 0.6, cursor: 'pointer', color: palette.brand, fontWeight: 800, fontSize: 12.5, userSelect: 'none' }}
                   >
                     {isOpen ? 'Hide previous version' : 'View previous version'}
                     <ExpandMoreIcon fontSize="small" sx={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />

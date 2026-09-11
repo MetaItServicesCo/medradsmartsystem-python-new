@@ -16,6 +16,7 @@ import {
   Typography,
 } from '@mui/material'
 import { formatUSPhoneInput } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 export interface AuthorizationLineItem {
   item_number: string
@@ -154,7 +155,7 @@ const CreditCardAuthorizationDialog = ({
         <TableContainer sx={{ border: '1px solid #CBD5E1', borderRadius: '4px', mb: 2 }}>
           <Table size="small">
             <TableHead>
-              <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+              <TableRow sx={{ bgcolor: palette.surface }}>
                 <TableCell sx={{ fontWeight: 900 }}>Part Number</TableCell>
                 <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
                 <TableCell sx={{ fontWeight: 900 }}>Amount</TableCell>
@@ -223,7 +224,7 @@ const CreditCardAuthorizationDialog = ({
             </FormCell>
             <FormCell label={secureRequestMode ? 'Security' : 'Security Code'}>
               {secureRequestMode ? (
-                <Typography sx={{ color: '#64748B', fontSize: 12 }}>
+                <Typography sx={{ color: palette.textSubtle, fontSize: 12 }}>
                   Never collect or store CVV
                 </Typography>
               ) : (
@@ -239,8 +240,8 @@ const CreditCardAuthorizationDialog = ({
           </Box>
         </Box>
 
-        <Box sx={{ mt: 2, p: 1.5, border: '1px solid #E2E8F0', borderRadius: '4px', bgcolor: '#F8FAFC' }}>
-          <Typography sx={{ fontStyle: 'italic', color: '#475569', fontSize: 12 }}>
+        <Box sx={{ mt: 2, p: 1.5, border: `1px solid ${palette.borderSlate}`, borderRadius: '4px', bgcolor: palette.surface }}>
+          <Typography sx={{ fontStyle: 'italic', color: palette.slate600, fontSize: 12 }}>
             {secureRequestMode
               ? 'Send the secure link for customer authorization. If authorization is received by phone, record only the card brand and last four digits. Never enter a full card number or security code.'
               : 'Note: 3.5% CC processing fee will be added to the charged amount. Full card number and security code are not stored in this system.'}
@@ -254,7 +255,7 @@ const CreditCardAuthorizationDialog = ({
             Send Secure Link
           </Button>
         )}
-        <Button onClick={submit} disabled={submitting} variant="contained" sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
+        <Button onClick={submit} disabled={submitting} variant="contained" sx={{ fontWeight: 900, background: palette.gradientBrand }}>
           {secureRequestMode ? 'Record Phone Authorization' : 'Submit Authorization'}
         </Button>
       </DialogActions>

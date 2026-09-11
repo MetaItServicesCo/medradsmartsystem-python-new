@@ -12,6 +12,7 @@ import { toast } from 'react-toastify'
 import { createUser } from '@/api/users'
 import { fetchFacilities, type Facility } from '@/api/facilities'
 import { formatUSPhoneInput } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 const ROLE_OPTIONS = [
   { value: 'superadmin', label: 'Super Admin' },
@@ -139,7 +140,7 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
   }
 
   const strength = passwordStrength(form.password)
-  const strengthColor = ['#EF4444', '#F59E0B', '#3B82F6', '#10B981'][strength - 1] || '#E5E7EB'
+  const strengthColor = [palette.dangerBright, palette.warningBright, palette.infoBright, palette.brandMid][strength - 1] || palette.border
   const strengthLabel = ['Weak', 'Fair', 'Good', 'Strong'][strength - 1] || ''
 
   return (
@@ -147,7 +148,7 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
       <form onSubmit={handleSubmit}>
         <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
           Create New User
-          <Typography variant="body2" sx={{ color: '#9CA3AF', fontWeight: 400 }}>
+          <Typography variant="body2" sx={{ color: palette.textDisabled, fontWeight: 400 }}>
             Set up credentials and assign role
           </Typography>
         </DialogTitle>
@@ -202,7 +203,7 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
               />
               {form.password && (
                 <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Box sx={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', overflow: 'hidden' }}>
+                  <Box sx={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: palette.border, overflow: 'hidden' }}>
                     <Box sx={{
                       width: `${(strength / 4) * 100}%`,
                       height: '100%',
@@ -278,7 +279,7 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
                       <Box sx={{ minWidth: 0 }}>
                         <Typography variant="body2" sx={{ fontWeight: 700 }}>{option.name}</Typography>
                         {(option.city || option.state || option.country) && (
-                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                          <Typography variant="caption" sx={{ color: palette.textMuted }}>
                             {[option.city, option.state, option.country].filter(Boolean).join(', ')}
                           </Typography>
                         )}

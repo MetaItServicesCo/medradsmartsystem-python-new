@@ -21,6 +21,7 @@ import {
   fetchFacilityAssignmentCandidates,
   type FacilityUser,
 } from '@/api/facilityUsers'
+import { palette } from '@/theme/palette'
 
 interface Props {
   open: boolean
@@ -92,17 +93,17 @@ const AddExistingUserModal = ({ open, onClose, facility }: Props) => {
     >
       <DialogTitle sx={{ px: 3, pt: 3, pb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-          <Box sx={{ width: 42, height: 42, borderRadius: '12px', display: 'grid', placeItems: 'center', color: '#7C3AED', bgcolor: '#F5F3FF' }}>
+          <Box sx={{ width: 42, height: 42, borderRadius: '12px', display: 'grid', placeItems: 'center', color: palette.brand, bgcolor: palette.brandTint }}>
             <GroupAddOutlinedIcon />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{ color: '#1E1B4B', fontWeight: 900 }}>Add Existing Users</Typography>
-            <Typography variant="body2" sx={{ color: '#64748B' }}>{facility.name}</Typography>
+            <Typography variant="h6" sx={{ color: palette.ink, fontWeight: 900 }}>Add Existing Users</Typography>
+            <Typography variant="body2" sx={{ color: palette.textSubtle }}>{facility.name}</Typography>
           </Box>
         </Box>
       </DialogTitle>
       <DialogContent sx={{ px: 3, py: 2.5 }}>
-        <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
+        <Typography variant="body2" sx={{ color: palette.textSubtle, mb: 2 }}>
           Search for existing active users and attach them to this facility. Their roles, permissions, and other facility assignments will remain unchanged.
         </Typography>
         <Autocomplete
@@ -125,12 +126,12 @@ const AddExistingUserModal = ({ open, onClose, facility }: Props) => {
           ))}
           renderOption={(props, user) => (
             <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-              <Avatar sx={{ width: 34, height: 34, bgcolor: '#7C3AED', fontSize: 12, fontWeight: 900 }}>
+              <Avatar sx={{ width: 34, height: 34, bgcolor: palette.brand, fontSize: 12, fontWeight: 900 }}>
                 {initials(user.full_name)}
               </Avatar>
               <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography noWrap sx={{ color: '#1E1B4B', fontWeight: 800 }}>{user.full_name}</Typography>
-                <Typography noWrap variant="caption" sx={{ color: '#64748B' }}>
+                <Typography noWrap sx={{ color: palette.ink, fontWeight: 800 }}>{user.full_name}</Typography>
+                <Typography noWrap variant="caption" sx={{ color: palette.textSubtle }}>
                   {user.email} · {user.role.replace(/_/g, ' ')}
                 </Typography>
               </Box>

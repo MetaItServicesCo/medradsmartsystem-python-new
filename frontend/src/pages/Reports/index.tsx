@@ -33,12 +33,13 @@ import {
   type ServiceHistoryReport,
   type ServiceReport,
 } from '@/api/reports'
+import { palette } from '@/theme/palette'
 
 const TABS = ['service', 'inspection', 'history'] as const
 type ReportTab = typeof TABS[number]
 
 const LIMIT = 25
-const GRADIENT = 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 52%, #EC4899 100%)'
+const GRADIENT = `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.brand} 52%, ${palette.accent} 100%)`
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
@@ -59,15 +60,15 @@ const formatDateTime = (value: string | null | undefined) => {
 const statusChip = (value?: string | null) => {
   const key = String(value || '').toLowerCase()
   const map: Record<string, { bg: string; color: string }> = {
-    completed: { bg: '#D1FAE5', color: '#047857' },
-    pass: { bg: '#D1FAE5', color: '#047857' },
-    fail: { bg: '#FEE2E2', color: '#DC2626' },
-    pending: { bg: '#EEF2FF', color: '#4338CA' },
-    paid: { bg: '#D1FAE5', color: '#047857' },
-    partially_paid: { bg: '#FEF3C7', color: '#B45309' },
-    overdue: { bg: '#FEE2E2', color: '#DC2626' },
+    completed: { bg: palette.brandSoft, color: palette.brand },
+    pass: { bg: palette.brandSoft, color: palette.brand },
+    fail: { bg: palette.dangerTint, color: palette.dangerStrong },
+    pending: { bg: palette.indigoTint, color: palette.brand },
+    paid: { bg: palette.brandSoft, color: palette.brand },
+    partially_paid: { bg: palette.warningTint, color: palette.warning },
+    overdue: { bg: palette.dangerTint, color: palette.dangerStrong },
   }
-  return map[key] || { bg: '#F3F4F6', color: '#374151' }
+  return map[key] || { bg: palette.surfaceGray, color: palette.textStrong }
 }
 
 const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`
@@ -184,9 +185,9 @@ const Reports = () => {
   const isLoading = tab === 'service' ? serviceQ.isLoading : tab === 'inspection' ? inspectionQ.isLoading : historyQ.isLoading
   const totalPages = Math.max(1, Math.ceil((activeData?.total || 0) / LIMIT))
   const kpis = [
-    { label: 'Service Reports', value: summaryQ.data?.service_reports ?? '-', icon: <BuildIcon />, color: '#7C3AED', tab: 'service' as ReportTab },
-    { label: 'Inspection Reports', value: summaryQ.data?.inspection_reports ?? '-', icon: <ChecklistIcon />, color: '#3B82F6', tab: 'inspection' as ReportTab },
-    { label: 'Service History', value: summaryQ.data?.service_history ?? '-', icon: <HistoryIcon />, color: '#10B981', tab: 'history' as ReportTab },
+    { label: 'Service Reports', value: summaryQ.data?.service_reports ?? '-', icon: <BuildIcon />, color: palette.brand, tab: 'service' as ReportTab },
+    { label: 'Inspection Reports', value: summaryQ.data?.inspection_reports ?? '-', icon: <ChecklistIcon />, color: palette.infoBright, tab: 'inspection' as ReportTab },
+    { label: 'Service History', value: summaryQ.data?.service_history ?? '-', icon: <HistoryIcon />, color: palette.brandMid, tab: 'history' as ReportTab },
   ]
 
   useEffect(() => {
@@ -273,13 +274,13 @@ const Reports = () => {
             }}
           >
             <Avatar sx={{ bgcolor: `${item.color}18`, color: item.color, borderRadius: '16px', mb: 1.5 }}>{item.icon}</Avatar>
-            <Typography sx={{ color: '#64748B', fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>{item.label}</Typography>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 950, fontSize: 30 }}>{typeof item.value === 'number' ? <AnimatedNumber value={item.value} /> : item.value}</Typography>
+            <Typography sx={{ color: palette.textSubtle, fontWeight: 900, fontSize: 12, textTransform: 'uppercase' }}>{item.label}</Typography>
+            <Typography sx={{ color: palette.ink, fontWeight: 950, fontSize: 30 }}>{typeof item.value === 'number' ? <AnimatedNumber value={item.value} /> : item.value}</Typography>
           </Card>
         ))}
       </Box>
 
-      <Card sx={{ borderRadius: '24px', border: '1px solid #EEF2F7', boxShadow: '0 18px 45px rgba(49,46,129,0.08)', overflow: 'hidden' }}>
+      <Card sx={{ borderRadius: '24px', border: '1px solid #EEF2F7', boxShadow: '0 18px 45px rgba(6,78,59,0.08)', overflow: 'hidden' }}>
         <Tabs value={TABS.indexOf(tab)} onChange={(_, value) => selectTab(TABS[value] || 'service')} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF2F7' }}>
           <Tab icon={<BuildIcon />} iconPosition="start" label="Service Reports" />
           <Tab icon={<ChecklistIcon />} iconPosition="start" label="Inspection Reports" />
@@ -302,7 +303,7 @@ const Reports = () => {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search reports by number, facility, asset, technician..."
-            InputProps={{ startAdornment: <SearchIcon sx={{ color: '#94A3B8', mr: 1 }} /> }}
+            InputProps={{ startAdornment: <SearchIcon sx={{ color: palette.textFaint, mr: 1 }} /> }}
           />
           <TextField
             label="From"
@@ -359,14 +360,14 @@ const Reports = () => {
                 recordLabel={item.request_number}
                 hover
               >
-                <TableCell><ClippedTooltipText value={item.request_number} monospace color="#6757D8" fontWeight={950} onClick={() => setSelectedService(item)} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.request_number} monospace color={palette.brandPale} fontWeight={950} onClick={() => setSelectedService(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={800} field /></TableCell>
                 <TableCell><ClippedTooltipText value={item.equipment_name || '-'} field /></TableCell>
                 <TableCell><ClippedTooltipText value={item.technician_name || 'Unassigned'} /></TableCell>
-                <TableCell><Chip label={`${item.time_spent_hours.toFixed(2)} hrs`} sx={{ bgcolor: '#ECFDF5', color: '#047857', fontWeight: 900 }} /></TableCell>
+                <TableCell><Chip label={`${item.time_spent_hours.toFixed(2)} hrs`} sx={{ bgcolor: palette.brandTint, color: palette.brand, fontWeight: 900 }} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.diagnosis || item.work_done || '-'} field /></TableCell>
                 <TableCell>{formatDate(item.completed_at)}</TableCell>
-                <TableCell>{item.invoice ? <Chip label={item.invoice.invoice_number} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 900 }} /> : '-'}</TableCell>
+                <TableCell>{item.invoice ? <Chip label={item.invoice.invoice_number} sx={{ bgcolor: palette.brandTint, color: palette.brand, fontWeight: 900 }} /> : '-'}</TableCell>
                 <TableCell align="right"><ActionButton item={item} onOpen={openActions} /></TableCell>
               </ContextTableRow>
             ))}
@@ -384,14 +385,14 @@ const Reports = () => {
                   recordLabel={item.report_number}
                   hover
                 >
-                  <TableCell><ClippedTooltipText value={item.report_number} monospace color="#6757D8" fontWeight={950} onClick={() => setSelectedInspection(item)} /></TableCell>
+                  <TableCell><ClippedTooltipText value={item.report_number} monospace color={palette.brandPale} fontWeight={950} onClick={() => setSelectedInspection(item)} /></TableCell>
                   <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={800} field /></TableCell>
                   <TableCell><ClippedTooltipText value={item.asset_name || '-'} field /></TableCell>
                   <TableCell><ClippedTooltipText value={item.technician_name || 'Unassigned'} /></TableCell>
                   <TableCell><Chip label={item.result} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 900, textTransform: 'uppercase' }} /></TableCell>
                   <TableCell><ClippedTooltipText value={item.form_template_name || '-'} field /></TableCell>
                   <TableCell>{formatDate(item.completed_at)}</TableCell>
-                  <TableCell>{item.invoice ? <Chip label={item.invoice.invoice_number} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 900 }} /> : '-'}</TableCell>
+                  <TableCell>{item.invoice ? <Chip label={item.invoice.invoice_number} sx={{ bgcolor: palette.brandTint, color: palette.brand, fontWeight: 900 }} /> : '-'}</TableCell>
                   <TableCell align="right"><ActionButton item={item} onOpen={openActions} /></TableCell>
                 </ContextTableRow>
               )
@@ -409,11 +410,11 @@ const Reports = () => {
                 hover
               >
                 <TableCell>{formatDateTime(item.timestamp)}</TableCell>
-                <TableCell><ClippedTooltipText value={item.request_number} monospace color="#6757D8" fontWeight={950} onClick={() => setSelectedHistory(item)} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.request_number} monospace color={palette.brandPale} fontWeight={950} onClick={() => setSelectedHistory(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={800} field /></TableCell>
                 <TableCell><ClippedTooltipText value={item.equipment_name || '-'} field /></TableCell>
                 <TableCell>{item.user || '-'}</TableCell>
-                <TableCell><Chip label={historyActionLabel(item.action)} sx={{ bgcolor: '#EEF2FF', color: '#4338CA', fontWeight: 900 }} /></TableCell>
+                <TableCell><Chip label={historyActionLabel(item.action)} sx={{ bgcolor: palette.indigoTint, color: palette.brand, fontWeight: 900 }} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.summary || formatChangeValue(item.changes)} field /></TableCell>
                 <TableCell align="right"><ActionButton item={item} onOpen={openActions} /></TableCell>
               </ContextTableRow>
@@ -422,17 +423,17 @@ const Reports = () => {
         )}
 
         <Box sx={{ px: 2.5, py: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #EEF2F7' }}>
-          <Typography sx={{ color: '#64748B', fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textSubtle, fontWeight: 700 }}>
             {activeData?.total ? `${(page - 1) * LIMIT + 1}-${Math.min(page * LIMIT, activeData.total)} of ${activeData.total}` : '0 of 0'}
           </Typography>
           <Pagination count={totalPages} page={page} onChange={(_, value) => setPage(value)} color="primary" shape="rounded" />
         </Box>
       </Card>
 
-      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: { borderRadius: '16px', minWidth: 180, border: '1px solid #EEF2F7', boxShadow: '0 18px 45px rgba(30,27,75,0.16)' } }}>
-        <MenuItem onClick={viewActionItem} sx={{ fontWeight: 900 }}><VisibilityIcon fontSize="small" sx={{ mr: 1, color: '#7C3AED' }} />View</MenuItem>
+      <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: { borderRadius: '16px', minWidth: 180, border: '1px solid #EEF2F7', boxShadow: palette.shadowMenu } }}>
+        <MenuItem onClick={viewActionItem} sx={{ fontWeight: 900 }}><VisibilityIcon fontSize="small" sx={{ mr: 1, color: palette.brand }} />View</MenuItem>
         {actionItem && !('changes' in actionItem) && (
-          <MenuItem onClick={printActionItem} sx={{ fontWeight: 900 }}><PrintIcon fontSize="small" sx={{ mr: 1, color: '#059669' }} />Print</MenuItem>
+          <MenuItem onClick={printActionItem} sx={{ fontWeight: 900 }}><PrintIcon fontSize="small" sx={{ mr: 1, color: palette.brandStrong }} />Print</MenuItem>
         )}
       </Menu>
 
@@ -478,7 +479,7 @@ const ReportTable = ({ children, loading, emptyText, colSpan }: { children: Reac
         {loading ? Array.from({ length: 5 }).map((_, index) => (
           <TableRow key={index}>{Array.from({ length: colSpan }).map((__, cell) => <TableCell key={cell}><Skeleton /></TableCell>)}</TableRow>
         )) : children && Array.isArray(children) && children.length === 0 ? (
-          <TableRow><TableCell colSpan={colSpan} align="center" sx={{ py: 7, color: '#64748B', fontWeight: 800 }}>{emptyText}</TableCell></TableRow>
+          <TableRow><TableCell colSpan={colSpan} align="center" sx={{ py: 7, color: palette.textSubtle, fontWeight: 800 }}>{emptyText}</TableCell></TableRow>
         ) : children}
       </TableBody>
     </Table>
@@ -489,7 +490,7 @@ const ActionButton = ({ item, onOpen }: { item: ServiceReport | InspectionReport
   <IconButton
     size="small"
     onClick={(event) => onOpen(event, item)}
-    sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+    sx={{ borderRadius: '12px', bgcolor: palette.surfaceGray, color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}
   >
     <MoreVertIcon fontSize="small" />
   </IconButton>
@@ -513,13 +514,13 @@ const ServiceReportDialog = ({ report, onClose }: { report: ServiceReport | null
           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{report?.request_number} - {report?.facility_name || 'Facility'}</Typography>
         </Box>
       </DialogTitle>
-      <DialogContent sx={{ bgcolor: '#E5E7EB', p: 0 }}>
+      <DialogContent sx={{ bgcolor: palette.border, p: 0 }}>
         {report && (
           <Box
             component="iframe"
             title={`${report.request_number} service report preview`}
             srcDoc={reportHtml}
-            sx={{ display: 'block', width: '100%', height: { xs: '70vh', md: '76vh' }, border: 0, bgcolor: '#E5E7EB' }}
+            sx={{ display: 'block', width: '100%', height: { xs: '70vh', md: '76vh' }, border: 0, bgcolor: palette.border }}
           />
         )}
       </DialogContent>
@@ -570,7 +571,7 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
           <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontWeight: 800 }}>{report?.report_number} - {report?.facility_name || 'Facility'}</Typography>
         </Box>
       </DialogTitle>
-      <DialogContent sx={{ bgcolor: '#E5E7EB', p: 0 }}>
+      <DialogContent sx={{ bgcolor: palette.border, p: 0 }}>
         {report && (
           <Box
             component="iframe"
@@ -581,7 +582,7 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
               width: '100%',
               height: { xs: '70vh', md: '76vh' },
               border: 0,
-              bgcolor: '#E5E7EB',
+              bgcolor: palette.border,
             }}
           />
         )}
@@ -596,7 +597,7 @@ const InspectionReportDialog = ({ report, onClose }: { report: InspectionReport 
 
 const HistoryDialog = ({ item, onClose }: { item: ServiceHistoryReport | null; onClose: () => void }) => (
   <Dialog open={Boolean(item)} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-    <DialogTitle sx={{ fontWeight: 950, color: '#1E1B4B' }}>Service Request History</DialogTitle>
+    <DialogTitle sx={{ fontWeight: 950, color: palette.ink }}>Service Request History</DialogTitle>
     <DialogContent dividers>
       {item && (
         <Box sx={{ display: 'grid', gap: 2 }}>
@@ -617,8 +618,8 @@ const HistoryDialog = ({ item, onClose }: { item: ServiceHistoryReport | null; o
 const DetailGrid = ({ items }: { items: [string, string][] }) => (
   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 1.5 }}>
     {items.map(([label, value]) => (
-      <Card key={label} sx={{ p: 2, borderRadius: '16px', border: '1px solid #E5E7EB' }}>
-        <Typography sx={{ color: '#64748B', fontSize: 11, fontWeight: 950, textTransform: 'uppercase' }}>{label}</Typography>
+      <Card key={label} sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.border}` }}>
+        <Typography sx={{ color: palette.textSubtle, fontSize: 11, fontWeight: 950, textTransform: 'uppercase' }}>{label}</Typography>
         <ClippedTooltipText value={value} fontWeight={900} />
       </Card>
     ))}
@@ -626,12 +627,12 @@ const DetailGrid = ({ items }: { items: [string, string][] }) => (
 )
 
 const DetailCard = ({ title, value, footer }: { title: string; value: string; footer?: string[] }) => (
-  <Card sx={{ p: 2.5, borderRadius: '18px', border: '1px solid #E5E7EB' }}>
-    <Typography sx={{ color: '#1E1B4B', fontWeight: 950, mb: 1 }}>{title}</Typography>
-    <Typography sx={{ color: '#475569', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{value}</Typography>
+  <Card sx={{ p: 2.5, borderRadius: '18px', border: `1px solid ${palette.border}` }}>
+    <Typography sx={{ color: palette.ink, fontWeight: 950, mb: 1 }}>{title}</Typography>
+    <Typography sx={{ color: palette.slate600, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{value}</Typography>
     {footer && (
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
-        {footer.map(item => <Chip key={item} label={item} sx={{ bgcolor: '#F5F3FF', color: '#7C3AED', fontWeight: 950 }} />)}
+        {footer.map(item => <Chip key={item} label={item} sx={{ bgcolor: palette.brandTint, color: palette.brand, fontWeight: 950 }} />)}
       </Box>
     )}
   </Card>

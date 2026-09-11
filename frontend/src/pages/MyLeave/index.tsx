@@ -20,6 +20,7 @@ import { toast } from 'react-toastify'
 import { fetchLeaveRequests, createLeaveRequest, deleteLeaveRequest, fetchLeaveTypes } from '@/api/hr'
 import ContextTableRow from '@/components/ContextTableRow'
 import SearchableSelect from '@/components/SearchableSelect'
+import { palette } from '@/theme/palette'
 
 const STATUS_META: Record<string, { label: string; color: 'default' | 'warning' | 'success' | 'error' | 'info'; icon: React.ReactNode }> = {
   pending:   { label: 'Pending',   color: 'warning', icon: <HourglassEmptyIcon fontSize="small" /> },
@@ -37,8 +38,8 @@ const ACTION_MENU_PAPER = {
   sx: {
     minWidth: 190,
     borderRadius: '18px',
-    border: '1px solid rgba(124,58,237,0.14)',
-    boxShadow: '0 24px 60px rgba(30,27,75,0.18)',
+    border: '1px solid rgba(4,120,87,0.14)',
+    boxShadow: '0 24px 60px rgba(6,78,59,0.18)',
     overflow: 'hidden',
   },
 }
@@ -48,7 +49,7 @@ const ACTION_MENU_ITEM = {
   px: 2,
   py: 1.2,
   fontWeight: 800,
-  color: '#1E1B4B',
+  color: palette.ink,
   '& .MuiListItemIcon-root': { minWidth: 30, color: 'inherit' },
 }
 
@@ -256,7 +257,7 @@ export default function MyLeave() {
 
       {/* KPI Cards — always from unfiltered dataset */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <KpiCard label="Total Requests" value={counts.total}    icon={<BeachAccessIcon />}      gradient="linear-gradient(135deg,#7161D8,#9B8EE8)" />
+        <KpiCard label="Total Requests" value={counts.total}    icon={<BeachAccessIcon />}      gradient="linear-gradient(135deg,#047857,#6EE7B7)" />
         <KpiCard label="Pending"        value={counts.pending}  icon={<HourglassEmptyIcon />}   gradient="linear-gradient(135deg,#f57c00,#ffa726)" />
         <KpiCard label="Approved"       value={counts.approved} icon={<CheckCircleIcon />}       gradient="linear-gradient(135deg,#2e7d32,#43a047)" />
         <KpiCard label="Rejected"       value={counts.rejected} icon={<CancelIcon />}            gradient="linear-gradient(135deg,#c62828,#e53935)" />
@@ -274,7 +275,7 @@ export default function MyLeave() {
                 key={t.id}
                 size="small"
                 label={`${t.name}${t.max_days_per_year > 0 ? ` · ${t.max_days_per_year}d/yr` : ''}${t.is_paid ? ' · Paid' : ' · Unpaid'}`}
-                sx={{ bgcolor: t.color ? `${t.color}22` : 'primary.50', color: t.color ?? 'primary.main', border: `1px solid ${t.color ?? '#7161D8'}44`, fontWeight: 600 }}
+                sx={{ bgcolor: t.color ? `${t.color}22` : 'primary.50', color: t.color ?? 'primary.main', border: `1px solid ${t.color ?? palette.brand}44`, fontWeight: 600 }}
               />
             ))}
           </Box>
@@ -322,7 +323,7 @@ export default function MyLeave() {
                     >
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? (isCustomLeave ? '#6b7280' : '#7161D8'), flexShrink: 0 }} />
+                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.leave_type?.color ?? (isCustomLeave ? palette.textMuted : palette.brand), flexShrink: 0 }} />
                           <Typography variant="body2" fontWeight={500} sx={{ color: isCustomLeave ? 'text.secondary' : 'text.primary', fontStyle: isCustomLeave ? 'italic' : 'normal' }}>
                             {displayName}
                           </Typography>
@@ -343,7 +344,7 @@ export default function MyLeave() {
                       <TableCell>
                         {r.status === 'pending' && (
                           <Tooltip title="Actions">
-                            <IconButton size="small" onClick={(event) => openActions(event, r)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                            <IconButton size="small" onClick={(event) => openActions(event, r)} sx={{ bgcolor: '#f1fffb', color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}>
                               <MoreVertIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -367,7 +368,7 @@ export default function MyLeave() {
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
         {actionItem?.status === 'pending' && (
           <MenuItem
-            sx={{ ...ACTION_MENU_ITEM, color: '#DC2626' }}
+            sx={{ ...ACTION_MENU_ITEM, color: palette.dangerStrong }}
             onClick={() => {
               const item = actionItem
               closeActions()

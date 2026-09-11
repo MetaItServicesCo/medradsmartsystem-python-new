@@ -10,6 +10,7 @@ import VideocamOffIcon from '@mui/icons-material/VideocamOff'
 import ScreenShareIcon from '@mui/icons-material/ScreenShare'
 import StopScreenShareIcon from '@mui/icons-material/StopScreenShare'
 import useWebRTC from '@/hooks/useWebRTC'
+import { palette } from '@/theme/palette'
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace('/api/v1', '')
 
@@ -150,8 +151,8 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
       fullScreen
       PaperProps={{
         sx: {
-          backgroundColor: '#0F0A1F',
-          backgroundImage: 'radial-gradient(circle at top, rgba(124,58,237,0.28), transparent 36%)',
+          backgroundColor: palette.brandDeepest,
+          backgroundImage: 'radial-gradient(circle at top, rgba(4,120,87,0.28), transparent 36%)',
         },
       }}
       sx={{ zIndex: (theme) => theme.zIndex.modal + 20 }}
@@ -216,14 +217,14 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
           <Box sx={{ textAlign: 'center', zIndex: 5 }}>
             <Avatar src={avatarSrc} sx={{
               width: 100, height: 100, mx: 'auto', mb: 3,
-              backgroundColor: '#7C3AED',
+              backgroundColor: palette.brand,
               fontSize: '2.5rem', fontWeight: 700,
-              boxShadow: '0 0 0 8px rgba(124,58,237,0.2), 0 0 0 16px rgba(124,58,237,0.1)',
+              boxShadow: '0 0 0 8px rgba(4,120,87,0.2), 0 0 0 16px rgba(4,120,87,0.1)',
               animation: callState === 'ringing' ? 'pulse 2s infinite' : 'none',
               '@keyframes pulse': {
-                '0%': { boxShadow: '0 0 0 8px rgba(124,58,237,0.2), 0 0 0 16px rgba(124,58,237,0.1)' },
-                '50%': { boxShadow: '0 0 0 12px rgba(124,58,237,0.3), 0 0 0 24px rgba(124,58,237,0.15)' },
-                '100%': { boxShadow: '0 0 0 8px rgba(124,58,237,0.2), 0 0 0 16px rgba(124,58,237,0.1)' },
+                '0%': { boxShadow: '0 0 0 8px rgba(4,120,87,0.2), 0 0 0 16px rgba(4,120,87,0.1)' },
+                '50%': { boxShadow: '0 0 0 12px rgba(4,120,87,0.3), 0 0 0 24px rgba(4,120,87,0.15)' },
+                '100%': { boxShadow: '0 0 0 8px rgba(4,120,87,0.2), 0 0 0 16px rgba(4,120,87,0.1)' },
               },
             }}>
               {initials}
@@ -258,9 +259,9 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
             <IconButton onClick={toggleMute}
               sx={{
                 width: 56, height: 56, borderRadius: '50%',
-                backgroundColor: muted ? '#EF4444' : 'rgba(255,255,255,0.15)',
+                backgroundColor: muted ? palette.dangerBright : 'rgba(255,255,255,0.15)',
                 color: '#fff',
-                '&:hover': { backgroundColor: muted ? '#DC2626' : 'rgba(255,255,255,0.25)' },
+                '&:hover': { backgroundColor: muted ? palette.dangerStrong : 'rgba(255,255,255,0.25)' },
               }}>
               {muted ? <MicOffIcon /> : <MicIcon />}
             </IconButton>
@@ -271,9 +272,9 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
               <IconButton onClick={toggleVideo}
                 sx={{
                   width: 56, height: 56, borderRadius: '50%',
-                  backgroundColor: videoOff ? '#EF4444' : 'rgba(255,255,255,0.15)',
+                  backgroundColor: videoOff ? palette.dangerBright : 'rgba(255,255,255,0.15)',
                   color: '#fff',
-                  '&:hover': { backgroundColor: videoOff ? '#DC2626' : 'rgba(255,255,255,0.25)' },
+                  '&:hover': { backgroundColor: videoOff ? palette.dangerStrong : 'rgba(255,255,255,0.25)' },
                 }}>
                 {videoOff ? <VideocamOffIcon /> : <VideocamIcon />}
               </IconButton>
@@ -284,9 +285,9 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
             <IconButton onClick={toggleScreenShare}
               sx={{
                 width: 56, height: 56, borderRadius: '50%',
-                backgroundColor: isScreenSharing ? '#7C3AED' : 'rgba(255,255,255,0.15)',
+                backgroundColor: isScreenSharing ? palette.brand : 'rgba(255,255,255,0.15)',
                 color: '#fff',
-                '&:hover': { backgroundColor: isScreenSharing ? '#6D28D9' : 'rgba(255,255,255,0.25)' },
+                '&:hover': { backgroundColor: isScreenSharing ? palette.brandDeep : 'rgba(255,255,255,0.25)' },
               }}>
               {isScreenSharing ? <StopScreenShareIcon /> : <ScreenShareIcon />}
             </IconButton>
@@ -296,8 +297,8 @@ const CallPanel = ({ targetUser, callType, isHost, incomingOffer, incomingFromUs
             <IconButton onClick={handleEnd}
               sx={{
                 width: 56, height: 56, borderRadius: '50%',
-                backgroundColor: '#EF4444', color: '#fff',
-                '&:hover': { backgroundColor: '#DC2626' },
+                backgroundColor: palette.dangerBright, color: '#fff',
+                '&:hover': { backgroundColor: palette.dangerStrong },
                 boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
               }}>
               <CallEndIcon />

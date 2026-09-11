@@ -18,6 +18,7 @@ import WorkspacePanel from './WorkspacePanel'
 import FriendRequests from './FriendRequests'
 import CreateWorkspaceModal from './CreateWorkspaceModal'
 import CallPanel from './CallPanel'
+import { palette } from '@/theme/palette'
 
 const safeText = (value: unknown, fallback = '') => {
   if (typeof value === 'string') return value
@@ -135,20 +136,20 @@ const Chat = () => {
       <Box sx={{
         width: { xs: '100%', md: 320 }, height: { xs: 220, md: 'auto' }, flexShrink: 0, backgroundColor: '#fff',
         borderRadius: '20px', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 4px 24px rgba(124,58,237,0.08)',
-        border: '1px solid rgba(124,58,237,0.06)',
+        boxShadow: '0 4px 24px rgba(4,120,87,0.08)',
+        border: '1px solid rgba(4,120,87,0.06)',
         overflow: 'hidden',
       }}>
         {/* Header */}
         <Box sx={{ p: 2, pb: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: palette.ink }}>
               Messages
             </Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               <Tooltip title="Friend Requests">
                 <IconButton size="small" onClick={() => setShowRequests(true)}
-                  sx={{ color: '#7C3AED', backgroundColor: '#F5F3FF', '&:hover': { backgroundColor: '#EDE9FE' } }}>
+                  sx={{ color: palette.brand, backgroundColor: palette.brandTint, '&:hover': { backgroundColor: palette.brandSoft } }}>
                   <Badge badgeContent={pendingCount} color="error" overlap="rectangular" 
                     sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', height: 16, minWidth: 16 } }}>
                     <PersonAddIcon fontSize="small" />
@@ -158,7 +159,7 @@ const Chat = () => {
               {tab === 1 && (
                 <Tooltip title="Create Workspace">
                   <IconButton size="small" onClick={() => setShowCreateWs(true)}
-                    sx={{ color: '#7C3AED', backgroundColor: '#F5F3FF', '&:hover': { backgroundColor: '#EDE9FE' } }}>
+                    sx={{ color: palette.brand, backgroundColor: palette.brandTint, '&:hover': { backgroundColor: palette.brandSoft } }}>
                     <GroupAddIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -170,9 +171,9 @@ const Chat = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
             <Box sx={{
               width: 8, height: 8, borderRadius: '50%',
-              backgroundColor: isConnected ? '#10B981' : '#EF4444',
+              backgroundColor: isConnected ? palette.brandMid : palette.dangerBright,
             }} />
-            <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
+            <Typography variant="caption" sx={{ color: palette.textDisabled }}>
               {isConnected ? 'Connected' : 'Reconnecting...'}
             </Typography>
           </Box>
@@ -184,7 +185,7 @@ const Chat = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
+                  <SearchIcon sx={{ color: palette.textDisabled, fontSize: '1.1rem' }} />
                 </InputAdornment>
               ),
             }}
@@ -196,7 +197,7 @@ const Chat = () => {
             sx={{
               minHeight: 36,
               '& .MuiTab-root': { minHeight: 36, py: 0.5, fontSize: '0.8rem', fontWeight: 600, textTransform: 'none' },
-              '& .MuiTabs-indicator': { backgroundColor: '#7C3AED', height: 3, borderRadius: 2 },
+              '& .MuiTabs-indicator': { backgroundColor: palette.brand, height: 3, borderRadius: 2 },
             }}
           >
             <Tab icon={<ChatBubbleOutlineIcon sx={{ fontSize: '1rem' }} />} iconPosition="start" label="Direct" />
@@ -212,12 +213,12 @@ const Chat = () => {
             <List disablePadding>
               {filteredFriends.length === 0 ? (
                 <Box sx={{ p: 3, textAlign: 'center' }}>
-                  <ChatBubbleOutlineIcon sx={{ fontSize: '2.5rem', color: '#E9D5FF', mb: 1 }} />
-                  <Typography variant="body2" sx={{ color: '#9CA3AF' }}>
+                  <ChatBubbleOutlineIcon sx={{ fontSize: '2.5rem', color: palette.brandBorder, mb: 1 }} />
+                  <Typography variant="body2" sx={{ color: palette.textDisabled }}>
                     No conversations yet
                   </Typography>
                   <Button size="small" onClick={() => setShowRequests(true)}
-                    sx={{ mt: 1, color: '#7C3AED', textTransform: 'none' }}>
+                    sx={{ mt: 1, color: palette.brand, textTransform: 'none' }}>
                     Find people to chat with
                   </Button>
                 </Box>
@@ -234,7 +235,7 @@ const Chat = () => {
                       onClick={() => { setSelectedUser(friend); setSelectedWorkspace(null) }}
                       sx={{
                         py: 1.5, px: 2,
-                        '&.Mui-selected': { backgroundColor: '#F5F3FF' },
+                        '&.Mui-selected': { backgroundColor: palette.brandTint },
                         '&:hover': { backgroundColor: '#FAFAFF' },
                       }}
                     >
@@ -245,14 +246,14 @@ const Chat = () => {
                           badgeContent={
                             <Box sx={{
                               width: 10, height: 10, borderRadius: '50%',
-                              backgroundColor: isOnline ? '#10B981' : '#D1D5DB',
+                              backgroundColor: isOnline ? palette.brandMid : '#D1D5DB',
                               border: '2px solid #fff',
                             }} />
                           }
                         >
                           <Avatar sx={{
                             width: 42, height: 42,
-                            backgroundColor: '#7C3AED',
+                            backgroundColor: palette.brand,
                             fontSize: '0.9rem', fontWeight: 700,
                           }}>
                             {initialsFor(friendName)}
@@ -262,12 +263,12 @@ const Chat = () => {
                       <ListItemText
                         primary={friendName}
                         secondary={isOnline ? 'Online' : 'Offline'}
-                        primaryTypographyProps={{ fontWeight: 600, fontSize: '0.875rem', color: '#1E1B4B' }}
-                        secondaryTypographyProps={{ fontSize: '0.75rem', color: isOnline ? '#10B981' : '#9CA3AF' }}
+                        primaryTypographyProps={{ fontWeight: 600, fontSize: '0.875rem', color: palette.ink }}
+                        secondaryTypographyProps={{ fontSize: '0.75rem', color: isOnline ? palette.brandMid : palette.textDisabled }}
                       />
                       {unread > 0 && (
                         <Chip label={unread} size="small" sx={{
-                          height: 22, minWidth: 22, backgroundColor: '#7C3AED',
+                          height: 22, minWidth: 22, backgroundColor: palette.brand,
                           color: '#fff', fontWeight: 700, fontSize: '0.7rem',
                         }} />
                       )}
@@ -280,12 +281,12 @@ const Chat = () => {
             <List disablePadding>
               {filteredWorkspaces.length === 0 ? (
                 <Box sx={{ p: 3, textAlign: 'center' }}>
-                  <PeopleIcon sx={{ fontSize: '2.5rem', color: '#E9D5FF', mb: 1 }} />
-                  <Typography variant="body2" sx={{ color: '#9CA3AF' }}>
+                  <PeopleIcon sx={{ fontSize: '2.5rem', color: palette.brandBorder, mb: 1 }} />
+                  <Typography variant="body2" sx={{ color: palette.textDisabled }}>
                     No workspaces yet
                   </Typography>
                   <Button size="small" onClick={() => setShowCreateWs(true)}
-                    sx={{ mt: 1, color: '#7C3AED', textTransform: 'none' }}>
+                    sx={{ mt: 1, color: palette.brand, textTransform: 'none' }}>
                     Create a workspace
                   </Button>
                 </Box>
@@ -300,14 +301,14 @@ const Chat = () => {
                       onClick={() => { setSelectedWorkspace(ws); setSelectedUser(null) }}
                       sx={{
                         py: 1.5, px: 2,
-                        '&.Mui-selected': { backgroundColor: '#F5F3FF' },
+                        '&.Mui-selected': { backgroundColor: palette.brandTint },
                         '&:hover': { backgroundColor: '#FAFAFF' },
                       }}
                     >
                       <ListItemAvatar>
                         <Avatar sx={{
                           width: 42, height: 42,
-                          background: 'linear-gradient(135deg, #7C3AED, #EC4899)',
+                          background: `linear-gradient(135deg, ${palette.brand}, ${palette.accent})`,
                           fontSize: '1rem', fontWeight: 700,
                         }}>
                           {workspaceName[0]?.toUpperCase() || 'W'}
@@ -316,8 +317,8 @@ const Chat = () => {
                       <ListItemText
                         primary={workspaceName}
                         secondary={`${ws.member_count ?? 0} members`}
-                        primaryTypographyProps={{ fontWeight: 600, fontSize: '0.875rem', color: '#1E1B4B' }}
-                        secondaryTypographyProps={{ fontSize: '0.75rem', color: '#9CA3AF' }}
+                        primaryTypographyProps={{ fontWeight: 600, fontSize: '0.875rem', color: palette.ink }}
+                        secondaryTypographyProps={{ fontSize: '0.75rem', color: palette.textDisabled }}
                       />
                     </ListItemButton>
                   )
@@ -338,22 +339,22 @@ const Chat = () => {
           <Box sx={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
             backgroundColor: '#fff', borderRadius: '20px',
-            boxShadow: '0 4px 24px rgba(124,58,237,0.08)',
-            border: '1px solid rgba(124,58,237,0.06)',
+            boxShadow: '0 4px 24px rgba(4,120,87,0.08)',
+            border: '1px solid rgba(4,120,87,0.06)',
           }}>
             <Box sx={{ textAlign: 'center' }}>
               <Box sx={{
                 width: 80, height: 80, borderRadius: '50%',
-                background: 'linear-gradient(135deg, #F5F3FF, #EDE9FE)',
+                background: `linear-gradient(135deg, ${palette.brandTint}, ${palette.brandSoft})`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 mx: 'auto', mb: 2,
               }}>
-                <ChatBubbleOutlineIcon sx={{ fontSize: '2.5rem', color: '#7C3AED' }} />
+                <ChatBubbleOutlineIcon sx={{ fontSize: '2.5rem', color: palette.brand }} />
               </Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E1B4B', mb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: palette.ink, mb: 0.5 }}>
                 Select a conversation
               </Typography>
-              <Typography variant="body2" sx={{ color: '#9CA3AF', maxWidth: 280 }}>
+              <Typography variant="body2" sx={{ color: palette.textDisabled, maxWidth: 280 }}>
                 Choose a friend or workspace from the sidebar to start chatting
               </Typography>
             </Box>
@@ -379,14 +380,14 @@ const Chat = () => {
         </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
-            <Avatar sx={{ width: 52, height: 52, backgroundColor: '#7C3AED', fontWeight: 800 }}>
+            <Avatar sx={{ width: 52, height: 52, backgroundColor: palette.brand, fontWeight: 800 }}>
               {initialsFor(displayNameFor(incomingCaller))}
             </Avatar>
             <Box>
-              <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+              <Typography sx={{ fontWeight: 700, color: palette.ink }}>
                 {displayNameFor(incomingCaller)}
               </Typography>
-              <Typography variant="body2" sx={{ color: '#6B7280' }}>
+              <Typography variant="body2" sx={{ color: palette.textMuted }}>
                 Wants to start a {incomingCall?.callType || 'voice'} call.
               </Typography>
             </Box>
@@ -394,7 +395,7 @@ const Chat = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={handleRejectCall} color="error" variant="outlined">Decline</Button>
-          <Button onClick={handleAcceptCall} variant="contained" sx={{ backgroundColor: '#7C3AED' }}>Accept</Button>
+          <Button onClick={handleAcceptCall} variant="contained" sx={{ backgroundColor: palette.brand }}>Accept</Button>
         </DialogActions>
       </Dialog>
 

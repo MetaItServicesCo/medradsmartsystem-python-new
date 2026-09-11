@@ -5,6 +5,7 @@ import MyLocationIcon from '@mui/icons-material/MyLocation'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import SearchOffIcon from '@mui/icons-material/SearchOff'
 import { useListContext } from '@/contexts/ListContext'
+import { palette } from '@/theme/palette'
 
 const WorkingContextBar = () => {
   const { noticeActivity, locateFeedback, showActivity, dismissNotice } = useListContext()
@@ -37,19 +38,19 @@ const WorkingContextBar = () => {
         alignItems: 'center',
         gap: { xs: 0.75, sm: 1.25 },
         borderRadius: '16px',
-        bgcolor: missing ? '#FFF7ED' : '#FFFFFF',
-        border: `1px solid ${missing ? '#FED7AA' : '#D1FAE5'}`,
-        boxShadow: '0 20px 55px rgba(30,27,75,0.18)',
+        bgcolor: missing ? '#FFF7ED' : palette.white,
+        border: `1px solid ${missing ? '#FED7AA' : palette.brandSoft}`,
+        boxShadow: '0 20px 55px rgba(6,78,59,0.18)',
       }}
     >
       {missing
         ? <SearchOffIcon sx={{ color: '#EA580C', fontSize: 22 }} />
-        : <CheckCircleOutlineIcon sx={{ color: '#059669', fontSize: 22 }} />}
+        : <CheckCircleOutlineIcon sx={{ color: palette.brandStrong, fontSize: 22 }} />}
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography noWrap sx={{ color: '#1E1B4B', fontSize: { xs: 12, sm: 13 }, fontWeight: 900 }}>
+        <Typography noWrap sx={{ color: palette.ink, fontSize: { xs: 12, sm: 13 }, fontWeight: 900 }}>
           {found ? 'Record located' : missing ? 'Record is not in the loaded list' : noticeActivity.label}
         </Typography>
-        <Typography sx={{ color: '#64748B', fontSize: { xs: 11, sm: 12 }, fontWeight: 650, lineHeight: 1.35 }}>
+        <Typography sx={{ color: palette.textSubtle, fontSize: { xs: 11, sm: 12 }, fontWeight: 650, lineHeight: 1.35 }}>
           {missing
             ? 'It may be filtered, unavailable, or outside your permissions.'
             : opening

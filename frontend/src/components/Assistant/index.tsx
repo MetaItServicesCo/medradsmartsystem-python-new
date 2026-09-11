@@ -36,6 +36,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useVoice } from '@/hooks/useVoice'
 import useVoicePipeline from '@/hooks/useVoicePipeline'
 import { keyframes } from '@emotion/react'
+import { palette } from '@/theme/palette'
 
 interface Turn {
   role: 'user' | 'assistant'
@@ -254,18 +255,18 @@ const AssistantWidget = () => {
             bottom: { xs: 'calc(78px + env(safe-area-inset-bottom))', sm: 26 },
             right: { xs: 14, sm: 26 },
             zIndex: 1250,
-            color: '#fff', boxShadow: '0 16px 36px rgba(109,64,200,0.42)',
-            background: 'linear-gradient(135deg, #7C3AED, #9A55B0)',
+            color: '#fff', boxShadow: '0 16px 36px rgba(4,120,87,0.42)',
+            background: `linear-gradient(135deg, ${palette.brand}, ${palette.brandLight})`,
             transition: 'transform 0.25s ease',
             '&:hover': {
-              background: 'linear-gradient(135deg, #6D28D9, #8A46C2)',
+              background: `linear-gradient(135deg, ${palette.brandDeep}, ${palette.brandLight})`,
               transform: 'scale(1.06) rotate(-6deg)',
             },
             // A ring pulses out of the button while a run is in flight, so the
             // user can tell it is still working with the panel closed.
             '&::after': busy ? {
               content: '""', position: 'absolute', inset: -4, borderRadius: '50%',
-              border: '2px solid rgba(124,58,237,0.55)',
+              border: '2px solid rgba(4,120,87,0.55)',
               animation: `${ripple} 1.6s ease-out infinite`,
             } : {},
           }}
@@ -285,7 +286,7 @@ const AssistantWidget = () => {
       >
         <Box sx={{
           p: 2, color: '#fff', display: 'flex', alignItems: 'center', gap: 1.4,
-          background: 'linear-gradient(135deg, #7C3AED 0%, #8A46C2 54%, #9A55B0 100%)',
+          background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brandLight} 54%, ${palette.brandLight} 100%)`,
         }}>
           <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.18)' }}><AutoAwesomeIcon /></Avatar>
           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -332,13 +333,13 @@ const AssistantWidget = () => {
           </IconButton>
         </Box>
 
-        <Box ref={scrollRef} sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: '#F8FAFC' }}>
+        <Box ref={scrollRef} sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: palette.surface }}>
           {turns.length === 0 && (
             <Box>
-              <Typography sx={{ color: '#1E1B4B', fontSize: 15, fontWeight: 900, mb: 0.4 }}>
+              <Typography sx={{ color: palette.ink, fontSize: 15, fontWeight: 900, mb: 0.4 }}>
                 Hi, I'm {AGENT_NAME}.
               </Typography>
-              <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 700, mb: 1.4 }}>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 13, fontWeight: 700, mb: 1.4 }}>
                 Ask me about facilities, service requests, inspections, rentals, sales, billing or HR — or how to do something in the app.
               </Typography>
               <Stack spacing={1}>
@@ -348,8 +349,8 @@ const AssistantWidget = () => {
                     onClick={() => submit(suggestion)}
                     sx={{
                       p: 1.3, borderRadius: '14px', bgcolor: '#fff', cursor: 'pointer',
-                      border: '1px solid #E9EDF5', color: '#475569', fontSize: 13, fontWeight: 700,
-                      '&:hover': { borderColor: '#C4B5FD', bgcolor: '#FBFAFF' },
+                      border: '1px solid #E9EDF5', color: palette.slate600, fontSize: 13, fontWeight: 700,
+                      '&:hover': { borderColor: palette.brandPale, bgcolor: '#fafffe' },
                     }}
                   >
                     {suggestion}
@@ -368,10 +369,10 @@ const AssistantWidget = () => {
                   maxWidth: '92%',
                   p: 1.5,
                   borderRadius: '16px',
-                  bgcolor: turn.role === 'user' ? '#EEEAFE' : turn.isError ? '#FEF2F2' : '#fff',
+                  bgcolor: turn.role === 'user' ? palette.brandTint : turn.isError ? palette.dangerWash : '#fff',
                   border: `1px solid ${turn.isError ? '#FECACA' : '#E9EDF5'}`,
                   animation: `${fadeUp} 0.28s ease both`,
-                  boxShadow: turn.role === 'user' ? 'none' : '0 2px 10px rgba(30,27,75,0.05)',
+                  boxShadow: turn.role === 'user' ? 'none' : '0 2px 10px rgba(6,78,59,0.05)',
                 }}
               >
                 <Typography sx={{
@@ -394,8 +395,8 @@ const AssistantWidget = () => {
                         onClick={citation.route ? () => { navigate(citation.route!); setOpen(false) } : undefined}
                         sx={{
                           maxWidth: '100%', fontWeight: 800, fontSize: 11,
-                          bgcolor: citation.type === 'knowledge' ? '#F1F5F9' : '#F0EDFF',
-                          color: citation.type === 'knowledge' ? '#475569' : '#5B42C5',
+                          bgcolor: citation.type === 'knowledge' ? palette.surfaceMuted : '#edfffa',
+                          color: citation.type === 'knowledge' ? palette.slate600 : palette.brandLight,
                           cursor: citation.route ? 'pointer' : 'default',
                         }}
                       />
@@ -410,7 +411,7 @@ const AssistantWidget = () => {
           {streaming && (
             <Box sx={{
               mt: 1.6, maxWidth: '92%', p: 1.5, borderRadius: '16px', bgcolor: '#fff',
-              border: '1px solid #E9EDF5', boxShadow: '0 2px 10px rgba(30,27,75,0.05)',
+              border: '1px solid #E9EDF5', boxShadow: '0 2px 10px rgba(6,78,59,0.05)',
               animation: `${fadeUp} 0.28s ease both`,
             }}>
               <Typography component="span" sx={{
@@ -421,7 +422,7 @@ const AssistantWidget = () => {
               </Typography>
               <Box component="span" sx={{
                 display: 'inline-block', width: 7, height: 15, ml: '2px',
-                verticalAlign: 'text-bottom', borderRadius: '2px', bgcolor: '#7C3AED',
+                verticalAlign: 'text-bottom', borderRadius: '2px', bgcolor: palette.brand,
                 animation: `${blink} 1s steps(1) infinite`,
               }} />
             </Box>
@@ -432,7 +433,7 @@ const AssistantWidget = () => {
               <Stack direction="row" spacing={0.5}>
                 {[0, 1, 2].map((dot) => (
                   <Box key={dot} sx={{
-                    width: 7, height: 7, borderRadius: '50%', bgcolor: '#7C3AED',
+                    width: 7, height: 7, borderRadius: '50%', bgcolor: palette.brand,
                     animation: `${bob} 1s ease-in-out ${dot * 0.15}s infinite`,
                   }} />
                 ))}
@@ -440,7 +441,7 @@ const AssistantWidget = () => {
               <Typography sx={{
                 fontSize: 12, fontWeight: 800,
                 // Shimmer sweeps across the label so a slow step still looks alive.
-                background: 'linear-gradient(90deg,#A78BFA 25%,#4C1D95 50%,#A78BFA 75%)',
+                background: `linear-gradient(90deg,${palette.brandLight} 25%,${palette.brandDeepest} 50%,${palette.brandLight} 75%)`,
                 backgroundSize: '200% 100%',
                 WebkitBackgroundClip: 'text', backgroundClip: 'text',
                 color: 'transparent',
@@ -467,7 +468,7 @@ const AssistantWidget = () => {
                     height: voice.listening
                       ? Math.max(5, Math.min(24, 5 + voice.level * 26 * (bar === 2 ? 1.15 : 0.85)))
                       : 22,
-                    bgcolor: voice.listening ? '#DC2626' : '#CBD5E1',
+                    bgcolor: voice.listening ? palette.dangerStrong : '#CBD5E1',
                     transformOrigin: 'bottom',
                     transition: 'height 90ms linear',
                     animation: voice.transcribing
@@ -493,11 +494,11 @@ const AssistantWidget = () => {
                     width: 62, height: 62, color: '#fff',
                     background: (voice.conversing || pipeline.live)
                       ? 'linear-gradient(135deg,#DC2626,#F87171)'
-                      : 'linear-gradient(135deg,#7C3AED,#9A55B0)',
+                      : `linear-gradient(135deg,${palette.brand},${palette.brandLight})`,
                     animation: (voice.listening || pipeline.listening)
                       ? `${listenPulse} 1.4s ease-in-out infinite` : 'none',
                     '&:hover': {
-                      background: (voice.conversing || pipeline.live) ? '#B91C1C' : '#6D28D9',
+                      background: (voice.conversing || pipeline.live) ? palette.danger : palette.brandDeep,
                     },
                   }}
                 >
@@ -514,13 +515,13 @@ const AssistantWidget = () => {
                 size="small"
                 startIcon={<StopCircleIcon />}
                 onClick={stop}
-                sx={{ fontSize: 12, fontWeight: 800, color: '#DC2626', textTransform: 'none' }}
+                sx={{ fontSize: 12, fontWeight: 800, color: palette.dangerStrong, textTransform: 'none' }}
               >
                 {voice.speaking ? 'Stop talking' : 'Stop'}
               </Button>
             )}
 
-            <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: (voice.error || pipeline.error) ? '#DC2626' : '#64748B', textAlign: 'center' }}>
+            <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: (voice.error || pipeline.error) ? palette.dangerStrong : palette.textSubtle, textAlign: 'center' }}>
               {pipeline.error
                 || (pipeline.connecting ? 'Connecting…'
                   : pipeline.live
@@ -548,7 +549,7 @@ const AssistantWidget = () => {
                 design. Saying which one is in use turns "it feels slow" into
                 something checkable. */}
             {voice.conversing && !voice.streaming && !pipeline.live && (
-              <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: '#B45309', textAlign: 'center' }}>
+              <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: palette.warning, textAlign: 'center' }}>
                 Live audio unavailable — sending complete recordings, which is slower
               </Typography>
             )}
@@ -558,7 +559,7 @@ const AssistantWidget = () => {
                 size="small"
                 onClick={() => (voice.listening ? voice.stopListening() : void voice.startListening())}
                 disabled={busy || voice.transcribing}
-                sx={{ fontSize: 11.5, fontWeight: 800, color: '#64748B', textTransform: 'none' }}
+                sx={{ fontSize: 11.5, fontWeight: 800, color: palette.textSubtle, textTransform: 'none' }}
               >
                 {voice.listening ? 'Finish' : 'Or hold one question at a time'}
               </Button>
@@ -583,13 +584,13 @@ const AssistantWidget = () => {
           />
           {busy ? (
             <Tooltip title="Stop">
-              <IconButton onClick={stop} sx={{ color: '#DC2626' }}><StopCircleIcon /></IconButton>
+              <IconButton onClick={stop} sx={{ color: palette.dangerStrong }}><StopCircleIcon /></IconButton>
             </Tooltip>
           ) : (
             <IconButton
               onClick={() => submit(question)}
               disabled={!question.trim()}
-              sx={{ color: '#7C3AED' }}
+              sx={{ color: palette.brand }}
             >
               <SendIcon />
             </IconButton>

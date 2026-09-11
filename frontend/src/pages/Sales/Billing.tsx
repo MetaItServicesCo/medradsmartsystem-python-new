@@ -77,6 +77,7 @@ import {
   type PaymentProof,
   type InvoicePaymentEvidenceItem,
 } from '@/api/billing'
+import { palette } from '@/theme/palette'
 
 type BillingSource = 'service' | 'inspection' | 'sales' | 'rental'
 type BillingStatus = 'draft' | 'sent' | 'authorization_requested' | 'authorized' | 'approved' | 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'rejected' | 'cancelled'
@@ -142,26 +143,26 @@ const SOURCE_LABEL: Record<BillingSource, string> = {
 }
 
 const STATUS_CHIP: Record<string, { bg: string; color: string }> = {
-  draft: { bg: '#FEF3C7', color: '#B45309' },
-  sent: { bg: '#DBEAFE', color: '#1D4ED8' },
-  authorization_requested: { bg: '#FEF3C7', color: '#B45309' },
-  authorized: { bg: '#D1FAE5', color: '#047857' },
-  approved: { bg: '#D1FAE5', color: '#047857' },
-  pending: { bg: '#EEF2FF', color: '#4338CA' },
-  partially_paid: { bg: '#FEF3C7', color: '#B45309' },
-  paid: { bg: '#D1FAE5', color: '#047857' },
-  partially_refunded: { bg: '#FFEDD5', color: '#C2410C' },
+  draft: { bg: palette.warningTint, color: palette.warning },
+  sent: { bg: palette.infoSoft, color: palette.info },
+  authorization_requested: { bg: palette.warningTint, color: palette.warning },
+  authorized: { bg: palette.brandSoft, color: palette.brand },
+  approved: { bg: palette.brandSoft, color: palette.brand },
+  pending: { bg: palette.indigoTint, color: palette.brand },
+  partially_paid: { bg: palette.warningTint, color: palette.warning },
+  paid: { bg: palette.brandSoft, color: palette.brand },
+  partially_refunded: { bg: palette.warningPeach, color: '#C2410C' },
   refunded: { bg: '#FCE7F3', color: '#BE185D' },
-  overdue: { bg: '#FEE2E2', color: '#DC2626' },
-  rejected: { bg: '#FEE2E2', color: '#DC2626' },
-  cancelled: { bg: '#F3F4F6', color: '#6B7280' },
+  overdue: { bg: palette.dangerTint, color: palette.dangerStrong },
+  rejected: { bg: palette.dangerTint, color: palette.dangerStrong },
+  cancelled: { bg: palette.surfaceGray, color: palette.textMuted },
 }
 
 const SOURCE_COLOR: Record<BillingSource, string> = {
-  service: '#7C3AED',
-  inspection: '#2563EB',
-  sales: '#059669',
-  rental: '#D97706',
+  service: palette.brand,
+  inspection: palette.infoStrong,
+  sales: palette.brandStrong,
+  rental: palette.warningStrong,
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
@@ -203,12 +204,12 @@ const requiresBillingApproval = (item: BillingItem) => (
 const ValueBox = ({
   value,
   maxWidth,
-  color = '#1E1B4B',
+  color = palette.ink,
   fontWeight = 800,
   fontSize,
   fontFamily,
-  bgcolor = '#F7F4FF',
-  borderColor = '#E4D7FF',
+  bgcolor = '#f4fffd',
+  borderColor = palette.brandSoft,
   minHeight = 38,
   align = 'left',
   onClick,
@@ -256,8 +257,8 @@ const ValueBox = ({
           cursor: clickable ? 'pointer' : undefined,
           transition: clickable ? 'all 0.15s ease' : undefined,
           '&:hover': clickable ? {
-            borderColor: '#A78BFA',
-            bgcolor: '#F5F3FF',
+            borderColor: palette.brandLight,
+            bgcolor: palette.brandTint,
             transform: 'translateY(-1px)',
           } : undefined,
         }}
@@ -335,14 +336,14 @@ const EntityValueBox = ({
           px: 1.5,
           py: 0.85,
           borderRadius: '14px',
-          border: '1px solid #E5E7EB',
-          bgcolor: '#F8FAFC',
+          border: `1px solid ${palette.border}`,
+          bgcolor: palette.surface,
           boxSizing: 'border-box',
           cursor: clickable ? 'pointer' : undefined,
           transition: clickable ? 'all 0.15s ease' : undefined,
           '&:hover': clickable ? {
-            borderColor: '#A78BFA',
-            bgcolor: '#F5F3FF',
+            borderColor: palette.brandLight,
+            bgcolor: palette.brandTint,
             transform: 'translateY(-1px)',
           } : undefined,
         }}
@@ -356,7 +357,7 @@ const EntityValueBox = ({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            color: '#1E1B4B',
+            color: palette.ink,
             fontWeight: 700,
             lineHeight: 1.35,
             textDecoration: clickable ? 'underline' : undefined,
@@ -437,8 +438,8 @@ const ACTION_MENU_PAPER = {
   sx: {
     borderRadius: '16px',
     minWidth: 190,
-    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
-    border: '1px solid #EEF0F6',
+    boxShadow: palette.shadowMenu,
+    border: `1px solid ${palette.borderSoft}`,
   },
 }
 
@@ -1433,33 +1434,33 @@ const Billing = () => {
 
   return (
     <Box className="page-enter" sx={{ maxWidth: 1500, mx: 'auto' }}>
-      <Card sx={{ mb: 3, p: 3, borderRadius: '28px', border: '1px solid #E9E5FF', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)', position: 'relative', overflow: 'hidden' }}>
-        <Box sx={{ position: 'absolute', right: -18, top: -20, color: '#7C3AED', opacity: 0.08 }}>
+      <Card sx={{ mb: 3, p: 3, borderRadius: '28px', border: `1px solid ${palette.brandTint}`, background: 'linear-gradient(135deg, #F8FAFF 0%, #ECFDF5 100%)', boxShadow: '0 18px 45px rgba(6,78,59,0.08)', position: 'relative', overflow: 'hidden' }}>
+        <Box sx={{ position: 'absolute', right: -18, top: -20, color: palette.brand, opacity: 0.08 }}>
           <ReceiptLongIcon sx={{ fontSize: 160 }} />
         </Box>
         <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-              <Avatar sx={{ width: 52, height: 52, borderRadius: '18px', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
+              <Avatar sx={{ width: 52, height: 52, borderRadius: '18px', background: palette.gradientBrand }}>
                 <PaymentIcon />
               </Avatar>
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Billing & Payments</Typography>
-                <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Unified payment workflow for service, inspection, sales, and rental billing.</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 900, color: palette.ink }}>Billing & Payments</Typography>
+                <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>Unified payment workflow for service, inspection, sales, and rental billing.</Typography>
               </Box>
             </Box>
           </Box>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, 150px)' }, gap: 1.5 }}>
-            <Kpi label="Outstanding" value={money(totals.outstanding)} color="#DC2626" />
-            <Kpi label="Paid" value={money(totals.paid)} color="#059669" />
-            <Kpi label="Total" value={money(totals.total)} color="#7C3AED" />
-            <Kpi label="Records" value={String(totals.count)} color="#2563EB" />
+            <Kpi label="Outstanding" value={money(totals.outstanding)} color={palette.dangerStrong} />
+            <Kpi label="Paid" value={money(totals.paid)} color={palette.brandStrong} />
+            <Kpi label="Total" value={money(totals.total)} color={palette.brand} />
+            <Kpi label="Records" value={String(totals.count)} color={palette.infoStrong} />
           </Box>
         </Box>
       </Card>
 
-      <Card sx={{ mb: 3, p: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', borderRadius: '24px', border: '1px solid #EEF0F6', boxShadow: '0 14px 34px rgba(49,46,129,0.07)' }}>
-        <FilterListIcon sx={{ color: '#6B7280' }} />
+      <Card sx={{ mb: 3, p: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', borderRadius: '24px', border: `1px solid ${palette.borderSoft}`, boxShadow: '0 14px 34px rgba(6,78,59,0.07)' }}>
+        <FilterListIcon sx={{ color: palette.textMuted }} />
         <SearchFieldSelect
           value={searchField}
           options={BILLING_SEARCH_FIELDS}
@@ -1477,19 +1478,19 @@ const Billing = () => {
           sx={{ minWidth: 260 }}
         />
         {anyBillingSourceFetching && !isInitialLoading && (
-          <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+          <CircularProgress size={18} thickness={5} sx={{ color: palette.brand }} />
         )}
-        <Typography sx={{ fontWeight: 700, color: '#374151', fontSize: '0.9rem' }}>Source:</Typography>
+        <Typography sx={{ fontWeight: 700, color: palette.textStrong, fontSize: '0.9rem' }}>Source:</Typography>
         {(['all', 'service', 'inspection', 'sales', 'rental'] as const).map(source => (
           <Chip
             key={source}
             label={source === 'all' ? 'All' : SOURCE_LABEL[source]}
             onClick={() => setSourceFilter(source)}
-            sx={{ fontWeight: 700, cursor: 'pointer', bgcolor: sourceFilter === source ? '#7C3AED' : '#F3F4F6', color: sourceFilter === source ? '#fff' : '#374151' }}
+            sx={{ fontWeight: 700, cursor: 'pointer', bgcolor: sourceFilter === source ? palette.brand : palette.surfaceGray, color: sourceFilter === source ? '#fff' : palette.textStrong }}
           />
         ))}
         <Divider flexItem orientation="vertical" sx={{ mx: 1 }} />
-        <Typography sx={{ fontWeight: 700, color: '#374151', fontSize: '0.9rem' }}>Status:</Typography>
+        <Typography sx={{ fontWeight: 700, color: palette.textStrong, fontSize: '0.9rem' }}>Status:</Typography>
         {[
           'all',
           ...(canApproveBilling ? ['billing_pending'] : []),
@@ -1503,7 +1504,7 @@ const Billing = () => {
             key={status}
             label={status === 'all' ? 'All' : status === 'billing_pending' ? 'Pending Approval' : methodLabel(status)}
             onClick={() => setStatusFilter(status)}
-            sx={{ fontWeight: 700, cursor: 'pointer', bgcolor: statusFilter === status ? '#EC4899' : '#F3F4F6', color: statusFilter === status ? '#fff' : '#374151' }}
+            sx={{ fontWeight: 700, cursor: 'pointer', bgcolor: statusFilter === status ? palette.accent : palette.surfaceGray, color: statusFilter === status ? '#fff' : palette.textStrong }}
           />
         ))}
         {canApproveBilling && (
@@ -1516,8 +1517,8 @@ const Billing = () => {
         )}
       </Card>
 
-      <Card sx={{ borderRadius: '24px', border: '1px solid #EEF0F6', overflow: 'hidden', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: 2, borderBottom: '1px solid #EEF0F6', '& .Mui-selected': { color: '#7C3AED !important', fontWeight: 700 } }}>
+      <Card sx={{ borderRadius: '24px', border: `1px solid ${palette.borderSoft}`, overflow: 'hidden', boxShadow: '0 18px 45px rgba(6,78,59,0.08)' }}>
+        <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ px: 2, borderBottom: `1px solid ${palette.borderSoft}`, '& .Mui-selected': { color: '#047857 !important', fontWeight: 700 } }}>
           <Tab label="All Billing" />
           <Tab label="Outstanding" />
           <Tab label="Paid" />
@@ -1528,7 +1529,7 @@ const Billing = () => {
             <TableContainer className="list-scroll-panel">
               <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: 900 }}>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                  <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                     <TableCell sx={{ fontWeight: 700 }}>Quotation #</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Facility</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
@@ -1542,7 +1543,7 @@ const Billing = () => {
                   {clientQuotationsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
                     <TableRow key={index}>{Array.from({ length: 7 }).map((__, cell) => <TableCell key={cell}><Skeleton /></TableCell>)}</TableRow>
                   )) : (clientQuotationsQ.data?.items || []).length === 0 ? (
-                    <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: '#6B7280', fontWeight: 800 }}>No quotations have been sent to you.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: palette.textMuted, fontWeight: 800 }}>No quotations have been sent to you.</TableCell></TableRow>
                   ) : (clientQuotationsQ.data?.items || []).map(item => {
                     const quote = item.quotation
                     const chip = STATUS_CHIP[quote.status] || STATUS_CHIP.pending
@@ -1610,7 +1611,7 @@ const Billing = () => {
               <col style={{ width: 100 }} />
             </colgroup>
             <TableHead>
-              <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+              <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                 <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Billing #</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>Related #</TableCell>
@@ -1639,7 +1640,7 @@ const Billing = () => {
                   </TableCell>
                 </TableRow>
               ) : filteredItems.length === 0 ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 6, color: '#6B7280', fontWeight: 800 }}>No billing records found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 6, color: palette.textMuted, fontWeight: 800 }}>No billing records found.</TableCell></TableRow>
               ) : pagedItems.map(item => {
                 const expanded = expandedKey === item.key
                 const chip = STATUS_CHIP[item.status] || STATUS_CHIP.pending
@@ -1671,7 +1672,7 @@ const Billing = () => {
                         </Tooltip>
                       </TableCell>
                       <TableCell>
-                        <ValueBox value={item.number} maxWidth={116} color="#5B21B6" fontWeight={700} fontFamily="monospace" bgcolor="#F7F0FF" borderColor="#E9D5FF" onClick={() => viewBillingItem(item)} />
+                        <ValueBox value={item.number} maxWidth={116} color={palette.ink} fontWeight={700} fontFamily="monospace" bgcolor="#f0ffff" borderColor={palette.brandBorder} onClick={() => viewBillingItem(item)} />
                       </TableCell>
                       <TableCell>
                         <ValueBox value={item.relatedNumber} maxWidth={116} fontWeight={700} fontFamily="monospace" bgcolor="#F5F7FF" borderColor="#D8E1FF" onClick={() => viewBillingItem(item)} />
@@ -1679,9 +1680,9 @@ const Billing = () => {
                       <TableCell>
                         <EntityValueBox primary={item.facility} secondary={item.customer} maxWidth={290} onClick={() => viewBillingItem(item)} />
                       </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap', color: '#1E1B4B' }}>{money(item.amount)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>{money(item.paid)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, color: item.balance > 0 ? '#DC2626' : '#059669', whiteSpace: 'nowrap' }}>{money(item.balance)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap', color: palette.ink }}>{money(item.amount)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: palette.brandStrong, whiteSpace: 'nowrap' }}>{money(item.paid)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: item.balance > 0 ? palette.dangerStrong : palette.brandStrong, whiteSpace: 'nowrap' }}>{money(item.balance)}</TableCell>
                       <TableCell>
                         <Tooltip
                           title={
@@ -1713,7 +1714,7 @@ const Billing = () => {
                             <Typography
                               component="span"
                               sx={{
-                                color: item.billingApprovalStatus === 'approved' ? '#047857' : '#B45309',
+                                color: item.billingApprovalStatus === 'approved' ? palette.brand : palette.warning,
                                 fontSize: 10.5,
                                 lineHeight: 1.1,
                                 fontWeight: 800,
@@ -1728,7 +1729,7 @@ const Billing = () => {
                       </TableCell>
                       <TableCell sx={{ pl: 3, pr: 2, overflow: 'hidden' }}>
                         <Tooltip title={formatDate(item.dueDate || item.date)} arrow placement="top">
-                          <Typography sx={{ display: 'block', fontWeight: 600, color: '#1E1B4B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 108 }}>
+                          <Typography sx={{ display: 'block', fontWeight: 600, color: palette.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 108 }}>
                             {formatDate(item.dueDate || item.date)}
                           </Typography>
                         </Tooltip>
@@ -1740,10 +1741,10 @@ const Billing = () => {
                             onClick={(event) => openActions(event, item)}
                             sx={{
                               borderRadius: '12px',
-                              border: '1px solid #E9D5FF',
-                              color: '#7C3AED',
-                              bgcolor: '#F7F0FF',
-                              '&:hover': { bgcolor: '#EDE9FE' },
+                              border: `1px solid ${palette.brandBorder}`,
+                              color: palette.brand,
+                              bgcolor: '#f0ffff',
+                              '&:hover': { bgcolor: palette.brandSoft },
                             }}
                           >
                             <MoreVertIcon fontSize="small" />
@@ -1791,7 +1792,7 @@ const Billing = () => {
               closeActions()
             }}
           >
-            <ListItemIcon><TaskAltIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            <ListItemIcon><TaskAltIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Approve for Billing
           </MenuItem>
         )}
@@ -1799,19 +1800,19 @@ const Billing = () => {
           && !['authorization_requested', 'authorized', 'paid', 'included_in_invoice', 'cancelled'].includes(actionItem.status)
           && !(actionItem.status === 'partially_paid' && (actionItem.raw as ServiceRequestQuotationList).authorizations?.some(item => ['requested', 'authorized'].includes(item.status))) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { requestAuthorizationMut.mutate({ item: actionItem }); closeActions() }}>
-            <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#B45309' }} /></ListItemIcon>
+            <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: palette.warning }} /></ListItemIcon>
             Request Authorization
           </MenuItem>
         )}
         {actionItem && actionItem.source === 'service' && actionItem.billingKind === 'service_quotation' && actionItem.status === 'authorization_requested' && canManageQuotationAuthorization && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openAuthorizationDialog(actionItem, 'phone'); closeActions() }}>
-            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Record Phone Decision
           </MenuItem>
         )}
         {actionItem && actionItem.source === 'service' && actionItem.billingKind === 'service_quotation' && actionItem.status === 'authorization_requested' && canSelfAuthorizeQuotation && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openAuthorizationDialog(actionItem, 'self_service'); closeActions() }}>
-            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: '#047857' }} /></ListItemIcon>
+            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Review Authorization
           </MenuItem>
         )}
@@ -1819,7 +1820,7 @@ const Billing = () => {
           && (!requiresBillingApproval(actionItem) || actionItem.billingApprovalStatus === 'approved')
           && (!(actionItem.source === 'service' && actionItem.billingKind === 'service_quotation') || ['authorized', 'partially_paid'].includes(actionItem.status)) && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { openPayment(actionItem); closeActions() }}>
-            <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            <ListItemIcon><PaymentIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Pay
           </MenuItem>
         )}
@@ -1829,13 +1830,13 @@ const Billing = () => {
             closeActions()
             void hydrateInspectionBillingItem(item).then(setEditItem)
           }}>
-            <ListItemIcon><EditOutlinedIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            <ListItemIcon><EditOutlinedIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Edit Invoice
           </MenuItem>
         )}
         {actionItem && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { viewBillingItem(actionItem); closeActions() }}>
-            <ListItemIcon><VisibilityOutlinedIcon fontSize="small" sx={{ color: '#2563EB' }} /></ListItemIcon>
+            <ListItemIcon><VisibilityOutlinedIcon fontSize="small" sx={{ color: palette.infoStrong }} /></ListItemIcon>
             View
           </MenuItem>
         )}
@@ -1846,7 +1847,7 @@ const Billing = () => {
             setPrintDocumentType('invoice')
             void hydrateInspectionBillingItem(item).then(setPrintItem)
           }}>
-            <ListItemIcon><PrintIcon fontSize="small" sx={{ color: '#059669' }} /></ListItemIcon>
+            <ListItemIcon><PrintIcon fontSize="small" sx={{ color: palette.brandStrong }} /></ListItemIcon>
             Print
           </MenuItem>
         )}
@@ -1854,8 +1855,8 @@ const Billing = () => {
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setExpandedKey(prev => (prev === actionItem.key ? null : actionItem.key)); closeActions() }}>
             <ListItemIcon>
               {expandedKey === actionItem.key
-                ? <ExpandLessIcon fontSize="small" sx={{ color: '#64748B' }} />
-                : <ExpandMoreIcon fontSize="small" sx={{ color: '#64748B' }} />}
+                ? <ExpandLessIcon fontSize="small" sx={{ color: palette.textSubtle }} />
+                : <ExpandMoreIcon fontSize="small" sx={{ color: palette.textSubtle }} />}
             </ListItemIcon>
             {expandedKey === actionItem.key ? 'Hide Details' : 'Show Details'}
           </MenuItem>
@@ -1871,7 +1872,7 @@ const Billing = () => {
         paidQuotations={printablePaidQuotations(viewItem)}
         moduleLabel={viewItem ? SOURCE_LABEL[viewItem.source] : 'Billing'}
         primaryDocumentLabel={viewItem?.source === 'service' && viewItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
-        accent={viewItem ? SOURCE_COLOR[viewItem.source] : '#7C3AED'}
+        accent={viewItem ? SOURCE_COLOR[viewItem.source] : palette.brand}
         quantityLabel={viewItem?.source === 'service' && viewItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
         mode="view"
         paymentEvidence={(viewPaymentEvidenceQ.data?.items || []) as InvoicePaymentEvidenceItem[]}
@@ -1893,7 +1894,7 @@ const Billing = () => {
         paidQuotations={printablePaidQuotations(printItem)}
         moduleLabel={printItem ? SOURCE_LABEL[printItem.source] : 'Billing'}
         primaryDocumentLabel={printItem?.source === 'service' && printItem.billingKind !== 'service_invoice' ? 'Quotation' : 'Invoice'}
-        accent={printItem ? SOURCE_COLOR[printItem.source] : '#7C3AED'}
+        accent={printItem ? SOURCE_COLOR[printItem.source] : palette.brand}
         quantityLabel={printItem?.source === 'service' && printItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
         appendHtml={printDocumentType !== 'ledger' && printSrData ? buildServiceReportSheet(printSrData) : undefined}
         initialDocumentType={printDocumentType}
@@ -1914,7 +1915,7 @@ const Billing = () => {
         paidQuotations={printablePaidQuotations(editItem)}
         moduleLabel={editItem ? SOURCE_LABEL[editItem.source] : 'Billing'}
         primaryDocumentLabel="Invoice"
-        accent={editItem ? SOURCE_COLOR[editItem.source] : '#7C3AED'}
+        accent={editItem ? SOURCE_COLOR[editItem.source] : palette.brand}
         quantityLabel={editItem?.source === 'service' && editItem.billingKind === 'service_invoice' ? 'Hours' : 'Qty'}
         mode="edit"
         onSave={payload => {
@@ -1924,14 +1925,14 @@ const Billing = () => {
       />
 
       <Dialog open={Boolean(authorizationItem)} onClose={closeAuthorizationDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           {authorizationChannel === 'phone' ? 'Record Phone Authorization' : 'Review Quotation Authorization'}
         </DialogTitle>
         <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
-          <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
+          <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: palette.brandTint, border: `1px solid ${palette.brandBorder}` }}>
             <Typography sx={{ fontWeight: 900 }}>{authorizationItem?.number}</Typography>
-            <Typography sx={{ color: '#64748B', fontSize: 13 }}>{authorizationItem?.description}</Typography>
-            <Typography sx={{ color: '#047857', fontWeight: 950 }}>{money(authorizationItem?.amount)}</Typography>
+            <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>{authorizationItem?.description}</Typography>
+            <Typography sx={{ color: palette.brand, fontWeight: 950 }}>{money(authorizationItem?.amount)}</Typography>
           </Box>
           <FormControl fullWidth>
             <InputLabel>Decision</InputLabel>
@@ -1963,7 +1964,7 @@ const Billing = () => {
             multiline
             minRows={2}
           />
-          <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 700 }}>
             The authorizer, administrator, channel, amount and timestamp are saved permanently in the quotation ledger.
           </Typography>
         </DialogContent>
@@ -1973,7 +1974,7 @@ const Billing = () => {
             variant="contained"
             onClick={() => authorizationItem && decideAuthorizationMut.mutate({ item: authorizationItem })}
             disabled={decideAuthorizationMut.isPending || (authorizationChannel === 'phone' && !phoneAuthorizerId)}
-            sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+            sx={{ borderRadius: '12px', fontWeight: 900, background: palette.gradientBrand }}
           >
             {decideAuthorizationMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Save Decision'}
           </Button>
@@ -1981,13 +1982,13 @@ const Billing = () => {
       </Dialog>
 
       <Dialog open={proofQueueOpen} onClose={() => setProofQueueOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           Payment Proof Review
-          <Typography sx={{ mt: 0.5, color: '#64748B', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ mt: 0.5, color: palette.textSubtle, fontSize: 13, fontWeight: 700 }}>
             OCR findings are review aids only. Approving is the only action that updates paid balances and downstream ledgers.
           </Typography>
         </DialogTitle>
-        <DialogContent dividers sx={{ bgcolor: '#F8FAFC' }}>
+        <DialogContent dividers sx={{ bgcolor: palette.surface }}>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
             {([
               ['pending_verification', 'Pending review'],
@@ -2001,8 +2002,8 @@ const Billing = () => {
                 sx={{
                   cursor: 'pointer',
                   fontWeight: 900,
-                  bgcolor: proofQueueStatus === value ? '#7C3AED' : '#EDE9FE',
-                  color: proofQueueStatus === value ? '#fff' : '#5B21B6',
+                  bgcolor: proofQueueStatus === value ? palette.brand : palette.brandSoft,
+                  color: proofQueueStatus === value ? '#fff' : palette.ink,
                 }}
               />
             ))}
@@ -2030,15 +2031,15 @@ const Billing = () => {
                   <Card key={proof.id} variant="outlined" sx={{ p: 2, borderRadius: '16px', borderColor: proof.mismatch_flags.length ? '#F59E0B88' : '#CBD5E1' }}>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
                       <Box>
-                        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{proof.target_number || `Payment proof #${proof.id}`}</Typography>
-                        <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 700 }}>
+                        <Typography sx={{ fontWeight: 900, color: palette.ink }}>{proof.target_number || `Payment proof #${proof.id}`}</Typography>
+                        <Typography sx={{ color: palette.textSubtle, fontSize: 13, fontWeight: 700 }}>
                           {proof.customer_name || 'Customer'} · {methodLabel(proof.payment_method)} · Claimed {money(proof.claimed_amount)}
                         </Typography>
-                        <Typography sx={{ color: '#64748B', fontSize: 12, mt: 0.5 }}>
+                        <Typography sx={{ color: palette.textSubtle, fontSize: 12, mt: 0.5 }}>
                           Submitted by {proof.submitted_by_name || `User #${proof.submitted_by_id}`} on {formatDate(proof.created_at)}
                         </Typography>
                         {proof.reviewed_at && (
-                          <Typography sx={{ color: '#64748B', fontSize: 12, mt: 0.25 }}>
+                          <Typography sx={{ color: palette.textSubtle, fontSize: 12, mt: 0.25 }}>
                             Reviewed by {proof.reviewed_by_name || 'Admin'} on {formatDate(proof.reviewed_at)}
                           </Typography>
                         )}
@@ -2047,22 +2048,22 @@ const Billing = () => {
                         label={methodLabel(proof.status)}
                         sx={{
                           fontWeight: 800,
-                          bgcolor: proof.status === 'approved' ? '#D1FAE5' : proof.status === 'rejected' ? '#FEE2E2' : '#FEF3C7',
-                          color: proof.status === 'approved' ? '#047857' : proof.status === 'rejected' ? '#B91C1C' : '#B45309',
+                          bgcolor: proof.status === 'approved' ? palette.brandSoft : proof.status === 'rejected' ? palette.dangerTint : palette.warningTint,
+                          color: proof.status === 'approved' ? palette.brand : proof.status === 'rejected' ? palette.danger : palette.warning,
                         }}
                       />
                     </Box>
-                    <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '12px', bgcolor: '#F1F5F9', display: 'grid', gap: 0.5 }}>
+                    <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '12px', bgcolor: palette.surfaceMuted, display: 'grid', gap: 0.5 }}>
                       {!extractionReady && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                           <CircularProgress size={16} />
-                          <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#475569' }}>
+                          <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: palette.slate600 }}>
                             OCR processing {proof.extraction_status === 'retry' ? 'will retry automatically' : 'in the background'}
                           </Typography>
                         </Box>
                       )}
                       {proof.extraction_status === 'failed' && (
-                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#B45309', mb: 0.5 }}>
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: palette.warning, mb: 0.5 }}>
                           OCR could not read this document after {proof.extraction_attempt_count} attempts. Review the original proof manually.
                         </Typography>
                       )}
@@ -2083,8 +2084,8 @@ const Billing = () => {
                           }}
                         >
                           {chequeDetails.map(([label, value]) => (
-                            <Box key={`${proof.id}-${label}`} sx={{ minWidth: 0, p: 1, bgcolor: '#fff', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
-                              <Typography sx={{ color: '#64748B', fontSize: 10.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.35 }}>
+                            <Box key={`${proof.id}-${label}`} sx={{ minWidth: 0, p: 1, bgcolor: '#fff', border: `1px solid ${palette.borderSlate}`, borderRadius: '10px' }}>
+                              <Typography sx={{ color: palette.textSubtle, fontSize: 10.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.35 }}>
                                 {label}
                               </Typography>
                               <Typography sx={{ color: '#1E293B', fontSize: 12.5, fontWeight: 750, overflowWrap: 'anywhere' }}>
@@ -2095,7 +2096,7 @@ const Billing = () => {
                         </Box>
                       )}
                       {proof.mismatch_flags.length > 0 && (
-                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: '#B45309' }}>
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: palette.warning }}>
                           Review flags: {proof.mismatch_flags.map(flag => methodLabel(flag)).join(', ')}
                         </Typography>
                       )}
@@ -2121,7 +2122,7 @@ const Billing = () => {
                                 whiteSpace: 'pre-wrap',
                                 overflowWrap: 'anywhere',
                                 bgcolor: '#fff',
-                                border: '1px solid #E2E8F0',
+                                border: `1px solid ${palette.borderSlate}`,
                                 borderRadius: '10px',
                                 color: '#334155',
                                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -2144,7 +2145,7 @@ const Billing = () => {
                         sx={{ mt: 1.5 }}
                       />
                     ) : proof.review_notes ? (
-                      <Typography sx={{ mt: 1.5, color: '#475569', fontSize: 13, fontWeight: 700 }}>
+                      <Typography sx={{ mt: 1.5, color: palette.slate600, fontSize: 13, fontWeight: 700 }}>
                         Review notes: {proof.review_notes}
                       </Typography>
                     ) : null}
@@ -2181,7 +2182,7 @@ const Billing = () => {
                             variant="contained"
                             disabled={reviewProofMut.isPending || !extractionReady}
                             onClick={() => reviewProofMut.mutate({ proof, decision: 'approve', notes: proofReviewNotes[proof.id] })}
-                            sx={{ fontWeight: 900, background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)' }}
+                            sx={{ fontWeight: 900, background: `linear-gradient(135deg, ${palette.brandStrong} 0%, ${palette.brandMid} 100%)` }}
                           >
                             Approve payment
                           </Button>
@@ -2198,13 +2199,13 @@ const Billing = () => {
       </Dialog>
 
       <Dialog open={Boolean(payOpen)} onClose={closePayDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <PaymentIcon sx={{ color: '#7C3AED' }} />
+            <PaymentIcon sx={{ color: palette.brand }} />
             Record Payment
           </Box>
           {payOpen && (
-            <Typography sx={{ fontSize: 13, color: '#6B7280', mt: 0.5 }}>
+            <Typography sx={{ fontSize: 13, color: palette.textMuted, mt: 0.5 }}>
               {SOURCE_LABEL[payOpen.source]}: <strong>{payOpen.number}</strong> · Balance <strong>{money(payOpen.balance)}</strong>
             </Typography>
           )}
@@ -2220,7 +2221,7 @@ const Billing = () => {
           </FormControl>
 
           {payMethod === 'ach' && (
-            <Box sx={{ mb: 2, p: 2, bgcolor: '#F5F3FF', borderRadius: '14px' }}>
+            <Box sx={{ mb: 2, p: 2, bgcolor: palette.brandTint, borderRadius: '14px' }}>
               <FormLabel sx={{ fontWeight: 800, fontSize: 14 }}>ACH Option</FormLabel>
               <RadioGroup value={achChoice} onChange={e => setAchChoice(e.target.value as AchChoice)}>
                 <FormControlLabel value="ach" control={<Radio size="small" />} label="Pay through ACH" />
@@ -2233,7 +2234,7 @@ const Billing = () => {
           <TextField label="Notes" multiline rows={2} fullWidth value={payNotes} onChange={e => setPayNotes(e.target.value)} sx={{ mb: 2 }} />
 
           {payMethod !== 'credit_card' && (
-            <Box sx={{ mb: 2, p: 2, borderRadius: '14px', border: '1px solid #F59E0B55', bgcolor: '#FFFBEB' }}>
+            <Box sx={{ mb: 2, p: 2, borderRadius: '14px', border: '1px solid #F59E0B55', bgcolor: palette.warningWash }}>
               <Alert severity="warning" sx={{ mb: 1.5, bgcolor: 'transparent', p: 0 }}>
                 OCR will extract review details, but this payment remains unpaid until an Admin or Super Admin approves the proof.
               </Alert>
@@ -2246,15 +2247,15 @@ const Billing = () => {
                   onChange={event => setPayProofFile(event.target.files?.[0] || null)}
                 />
               </Button>
-              <Typography sx={{ mt: 1, fontSize: 12.5, fontWeight: 700, color: payProofFile ? '#047857' : '#92400E' }}>
+              <Typography sx={{ mt: 1, fontSize: 12.5, fontWeight: 700, color: payProofFile ? palette.brand : palette.warningDeep }}>
                 {payProofFile ? `${payProofFile.name} · ${(payProofFile.size / 1024).toFixed(0)} KB` : 'PDF, JPEG, PNG, or WebP · maximum 10 MB'}
               </Typography>
             </Box>
           )}
 
           {payMethod === 'credit_card' && (
-            <Box sx={{ display: 'grid', gap: 1.5, p: 2, bgcolor: '#EFF6FF', borderRadius: '14px', border: '1px solid rgba(29,78,216,0.12)' }}>
-              <Typography sx={{ fontWeight: 900, color: '#1D4ED8' }}>Credit Card Details</Typography>
+            <Box sx={{ display: 'grid', gap: 1.5, p: 2, bgcolor: palette.infoTint, borderRadius: '14px', border: '1px solid rgba(29,78,216,0.12)' }}>
+              <Typography sx={{ fontWeight: 900, color: palette.info }}>Credit Card Details</Typography>
               <TextField size="small" label="Cardholder Name" value={ccName} onChange={e => setCcName(e.target.value)} fullWidth />
               <TextField size="small" label="Card Number" value={ccNumber} onChange={e => {
                 const value = e.target.value.replace(/\D/g, '').slice(0, 16)
@@ -2272,8 +2273,8 @@ const Billing = () => {
           )}
 
           {payMethod === 'ach' && achChoice === 'ach' && (
-            <Box sx={{ display: 'grid', gap: 1.5, p: 2, bgcolor: '#F0FDF4', borderRadius: '14px' }}>
-              <Typography sx={{ fontWeight: 900, color: '#047857' }}>ACH Details</Typography>
+            <Box sx={{ display: 'grid', gap: 1.5, p: 2, bgcolor: palette.successTint, borderRadius: '14px' }}>
+              <Typography sx={{ fontWeight: 900, color: palette.brand }}>ACH Details</Typography>
               <TextField size="small" label="Bank Name" value={payBankName} onChange={e => setPayBankName(e.target.value)} />
               <Box sx={{ display: 'flex', gap: 1.5 }}>
                 <TextField size="small" label="Account Last 4" value={payAcctLast4} onChange={e => setPayAcctLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} sx={{ flex: 1 }} />
@@ -2283,9 +2284,9 @@ const Billing = () => {
           )}
 
           {payMethod === 'ach' && achChoice === 'mbmts_ach' && (
-            <Box sx={{ p: 2.5, bgcolor: '#FDF4FF', borderRadius: '14px', border: '1px solid rgba(162,28,175,0.15)' }}>
-              <Typography sx={{ fontWeight: 900, color: '#A21CAF', mb: 0.5, textAlign: 'center' }}>ACH Authorization Form</Typography>
-              <Typography sx={{ fontSize: 12, color: '#9CA3AF', mb: 2, textAlign: 'center' }}>Use the listed information for MBMTS ACH payment.</Typography>
+            <Box sx={{ p: 2.5, bgcolor: palette.violetTint, borderRadius: '14px', border: '1px solid rgba(109,40,217,0.15)' }}>
+              <Typography sx={{ fontWeight: 900, color: palette.violet, mb: 0.5, textAlign: 'center' }}>ACH Authorization Form</Typography>
+              <Typography sx={{ fontSize: 12, color: palette.textDisabled, mb: 2, textAlign: 'center' }}>Use the listed information for MBMTS ACH payment.</Typography>
               <Divider sx={{ mb: 2 }} />
               {[
                 { label: 'Business Name', value: 'Mr. Biomed Tech Services' },
@@ -2297,9 +2298,9 @@ const Billing = () => {
                 { label: '9-Digit Routing #', value: '111000614' },
                 { label: 'Type of Account', value: 'Checking' },
               ].map(row => (
-                <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.8, borderBottom: '1px solid #F3E8FF', gap: 2 }}>
-                  <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#6B7280' }}>{row.label}</Typography>
-                  <Typography sx={{ fontSize: 13, fontWeight: 900, color: '#1E1B4B', textAlign: 'right' }}>{row.value}</Typography>
+                <Box key={row.label} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.8, borderBottom: `1px solid ${palette.brandTint}`, gap: 2 }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 800, color: palette.textMuted }}>{row.label}</Typography>
+                  <Typography sx={{ fontSize: 13, fontWeight: 900, color: palette.ink, textAlign: 'right' }}>{row.value}</Typography>
                 </Box>
               ))}
             </Box>
@@ -2307,7 +2308,7 @@ const Billing = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={closePayDialog} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button onClick={handlePay} variant="contained" disabled={paying || !payAmount} sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
+          <Button onClick={handlePay} variant="contained" disabled={paying || !payAmount} sx={{ borderRadius: '12px', fontWeight: 900, background: palette.gradientBrand }}>
             {paying ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : payMethod === 'credit_card' ? 'Record Payment' : 'Submit Proof for Review'}
           </Button>
         </DialogActions>
@@ -2317,8 +2318,8 @@ const Billing = () => {
 }
 
 const Kpi = ({ label, value, color }: { label: string; value: string; color: string }) => (
-  <Box sx={{ p: 2, bgcolor: '#fff', borderRadius: '18px', border: '1px solid #ECEBFF' }}>
-    <Typography sx={{ fontSize: 11, fontWeight: 900, color: '#6B7280', textTransform: 'uppercase' }}>{label}</Typography>
+  <Box sx={{ p: 2, bgcolor: '#fff', borderRadius: '18px', border: `1px solid ${palette.brandSoft}` }}>
+    <Typography sx={{ fontSize: 11, fontWeight: 900, color: palette.textMuted, textTransform: 'uppercase' }}>{label}</Typography>
     <Typography sx={{ fontWeight: 900, fontSize: 22, color }}>{value}</Typography>
   </Box>
 )
@@ -2409,10 +2410,10 @@ const BillingDetailsV2 = memo(({
   return (
     <Box sx={{ p: 2.5, bgcolor: '#FBFCFF' }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.55fr 0.9fr' }, gap: 2.5 }}>
-        <Card sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', border: '1px solid #E5E7EB', boxShadow: '0 18px 40px rgba(15,23,42,0.08)' }}>
+        <Card sx={{ p: { xs: 2, md: 3 }, borderRadius: '18px', border: `1px solid ${palette.border}`, boxShadow: '0 18px 40px rgba(15,23,42,0.08)' }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 2.5 }}>
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-              <Avatar sx={{ bgcolor: '#047857', width: 56, height: 56, fontWeight: 950 }}>
+              <Avatar sx={{ bgcolor: palette.brand, width: 56, height: 56, fontWeight: 950 }}>
                 {item.customer.slice(0, 2).toUpperCase()}
               </Avatar>
               <Box>
@@ -2424,8 +2425,8 @@ const BillingDetailsV2 = memo(({
                   label={methodLabel(item.status)}
                   sx={{
                     mt: 0.75,
-                    bgcolor: item.balance <= 0 ? '#D1FAE5' : '#FEF3C7',
-                    color: item.balance <= 0 ? '#047857' : '#B45309',
+                    bgcolor: item.balance <= 0 ? palette.brandSoft : palette.warningTint,
+                    color: item.balance <= 0 ? palette.brand : palette.warning,
                     fontWeight: 900,
                   }}
                 />
@@ -2441,16 +2442,16 @@ const BillingDetailsV2 = memo(({
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Typography sx={{ fontWeight: 950, color: '#111827' }}>Balance</Typography>
-              <Typography sx={{ fontWeight: 950, color: item.balance > 0 ? '#DC2626' : '#047857' }}>{money(item.balance)}</Typography>
+              <Typography sx={{ fontWeight: 950, color: item.balance > 0 ? palette.dangerStrong : palette.brand }}>{money(item.balance)}</Typography>
             </Box>
-            <Box sx={{ textAlign: { xs: 'left', md: 'right' }, color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
+            <Box sx={{ textAlign: { xs: 'left', md: 'right' }, color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>
               <div>Created on {formatDate(item.date)}</div>
               <div>Due on {formatDate(item.dueDate || item.date)}</div>
               {item.paid > 0 && <div>Payment received: {money(item.paid)}</div>}
             </Box>
           </Box>
 
-          <Box sx={{ p: 2.5, borderRadius: '16px', border: '1px solid #E5E7EB', bgcolor: '#fff' }}>
+          <Box sx={{ p: 2.5, borderRadius: '16px', border: `1px solid ${palette.border}`, bgcolor: '#fff' }}>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 180px' }, gap: 3, mb: 3 }}>
               <Box>
                 <Typography sx={{ fontWeight: 950, color: '#111827', mb: 0.5 }}>From</Typography>
@@ -2465,9 +2466,9 @@ const BillingDetailsV2 = memo(({
                 <Typography sx={{ color: '#4B5563', fontSize: 13 }}>{item.customerEmail || '-'}</Typography>
               </Box>
               <Box>
-                <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Invoice</strong> {item.number}</Typography>
-                <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Related</strong> {item.relatedNumber}</Typography>
-                <Typography sx={{ color: '#6B7280', fontSize: 13 }}><strong>Type</strong> {billingTypeLabel(item)}</Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: 13 }}><strong>Invoice</strong> {item.number}</Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: 13 }}><strong>Related</strong> {item.relatedNumber}</Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: 13 }}><strong>Type</strong> {billingTypeLabel(item)}</Typography>
               </Box>
             </Box>
 
@@ -2485,7 +2486,7 @@ const BillingDetailsV2 = memo(({
                   <TableRow key={`${line.label}-${index}`}>
                     <TableCell>
                       <Typography sx={{ fontWeight: 900, color: '#111827' }}>{line.label}</Typography>
-                      <Typography sx={{ color: '#6B7280', fontSize: 12 }}>{line.meta}</Typography>
+                      <Typography sx={{ color: palette.textMuted, fontSize: 12 }}>{line.meta}</Typography>
                     </TableCell>
                     <TableCell align="right">{line.quantity}</TableCell>
                     <TableCell align="right">{money(line.price)}</TableCell>
@@ -2510,7 +2511,7 @@ const BillingDetailsV2 = memo(({
                 </TableRow>
                 <TableRow>
                   <TableCell colSpan={3} align="right" sx={{ fontWeight: 950 }}>Balance Due</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 950, color: item.balance > 0 ? '#DC2626' : '#047857' }}>{money(item.balance)}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 950, color: item.balance > 0 ? palette.dangerStrong : palette.brand }}>{money(item.balance)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -2527,29 +2528,29 @@ const BillingDetailsV2 = memo(({
         </Card>
 
         <Box sx={{ display: 'grid', gap: 2 }}>
-          <Card sx={{ p: 2.4, borderRadius: '18px', border: '1px solid #E5E7EB' }}>
-            <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Account Summary</Typography>
+          <Card sx={{ p: 2.4, borderRadius: '18px', border: `1px solid ${palette.border}` }}>
+            <Typography sx={{ fontWeight: 950, color: palette.ink, mb: 1 }}>Account Summary</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
-              <Kpi label="Account Total" value={money(accountTotal)} color="#7C3AED" />
-              <Kpi label="Collected" value={money(accountPaid)} color="#059669" />
-              <Kpi label="Balance" value={money(accountBalance)} color={accountBalance > 0 ? '#DC2626' : '#059669'} />
-              <Kpi label="Records" value={String(accountItems.length)} color="#2563EB" />
+              <Kpi label="Account Total" value={money(accountTotal)} color={palette.brand} />
+              <Kpi label="Collected" value={money(accountPaid)} color={palette.brandStrong} />
+              <Kpi label="Balance" value={money(accountBalance)} color={accountBalance > 0 ? palette.dangerStrong : palette.brandStrong} />
+              <Kpi label="Records" value={String(accountItems.length)} color={palette.infoStrong} />
             </Box>
           </Card>
 
-          <Card sx={{ p: 2.4, borderRadius: '18px', border: '1px solid #E5E7EB' }}>
-            <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1 }}>Account Transaction Ledger</Typography>
+          <Card sx={{ p: 2.4, borderRadius: '18px', border: `1px solid ${palette.border}` }}>
+            <Typography sx={{ fontWeight: 950, color: palette.ink, mb: 1 }}>Account Transaction Ledger</Typography>
             <Box sx={{ maxHeight: 360, overflow: 'auto', display: 'grid', gap: 1 }}>
               {accountTransactions.length === 0 ? (
-                <Typography sx={{ color: '#9CA3AF', fontWeight: 700 }}>No account transactions found.</Typography>
+                <Typography sx={{ color: palette.textDisabled, fontWeight: 700 }}>No account transactions found.</Typography>
               ) : accountTransactions.map((transaction, index) => (
-                <Box key={`${transaction.invoiceNumber}-${transaction.reference_number || index}`} sx={{ p: 1.4, borderRadius: '12px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                <Box key={`${transaction.invoiceNumber}-${transaction.reference_number || index}`} sx={{ p: 1.4, borderRadius: '12px', bgcolor: palette.surface, border: '1px solid #EEF2F7' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
                     <Typography sx={{ fontWeight: 950, color: '#111827', fontSize: 13 }}>{methodLabel(transaction.transaction_type)}</Typography>
-                    <Typography sx={{ fontWeight: 950, color: transaction.transaction_type === 'refund' ? '#DC2626' : '#047857', fontSize: 13 }}>{money(transaction.amount)}</Typography>
+                    <Typography sx={{ fontWeight: 950, color: transaction.transaction_type === 'refund' ? palette.dangerStrong : palette.brand, fontSize: 13 }}>{money(transaction.amount)}</Typography>
                   </Box>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12 }}>{transaction.description || transaction.invoiceNumber}</Typography>
-                  <Typography sx={{ color: '#94A3B8', fontSize: 11 }}>
+                  <Typography sx={{ color: palette.textMuted, fontSize: 12 }}>{transaction.description || transaction.invoiceNumber}</Typography>
+                  <Typography sx={{ color: palette.textFaint, fontSize: 11 }}>
                     {transaction.invoiceNumber} - {formatDate(transaction.created_at)} - {methodLabel(transaction.payment_method)}
                     {transaction.reference_number ? ` - ${transaction.reference_number}` : ''}
                   </Typography>
@@ -2571,23 +2572,23 @@ const BillingDetails = ({ item }: { item: BillingItem }) => {
     <Box sx={{ p: 2.5, bgcolor: '#FBFCFF' }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
         <Box>
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Billing Details</Typography>
-          <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>{item.description}</Typography>
+          <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>Billing Details</Typography>
+          <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>{item.description}</Typography>
           <Typography sx={{ color: '#8B95A7', fontSize: 13 }}>Issued: {formatDate(item.date)} · Due: {formatDate(item.dueDate || item.date)}</Typography>
           <Typography sx={{ color: '#8B95A7', fontSize: 13 }}>Payment method: {methodLabel(item.paymentMethod)}</Typography>
         </Box>
         <Box>
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Payment History</Typography>
+          <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>Payment History</Typography>
           {service?.payments?.length ? service.payments.map(payment => (
-            <Box key={payment.id} sx={{ display: 'flex', gap: 1, alignItems: 'center', p: 1.5, mb: 1, borderRadius: '12px', bgcolor: '#F0FDF4' }}>
-              <CheckCircleIcon sx={{ color: '#10B981', fontSize: 18 }} />
+            <Box key={payment.id} sx={{ display: 'flex', gap: 1, alignItems: 'center', p: 1.5, mb: 1, borderRadius: '12px', bgcolor: palette.successTint }}>
+              <CheckCircleIcon sx={{ color: palette.brandMid, fontSize: 18 }} />
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#047857', fontSize: 13 }}>{money(payment.amount)} · {methodLabel(payment.payment_method)}</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.brand, fontSize: 13 }}>{money(payment.amount)} · {methodLabel(payment.payment_method)}</Typography>
                 <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>Ref: {payment.reference_number || '-'} · {formatDate(payment.paid_at)}</Typography>
               </Box>
             </Box>
           )) : (
-            <Typography sx={{ color: '#9CA3AF', fontWeight: 700 }}>No separate payment history available for this record.</Typography>
+            <Typography sx={{ color: palette.textDisabled, fontWeight: 700 }}>No separate payment history available for this record.</Typography>
           )}
         </Box>
       </Box>

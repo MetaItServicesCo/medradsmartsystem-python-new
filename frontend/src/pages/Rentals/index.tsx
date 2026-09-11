@@ -85,6 +85,7 @@ import {
 import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
 import { digitsOnly, formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import { useAuthStore } from '@/stores/authStore'
+import { palette } from '@/theme/palette'
 
 const ROUTE_TABS = ['/rentals/agreements', '/rentals/invoices', '/rentals/products', '/rentals/history']
 const PAGE_SIZE = 20
@@ -133,7 +134,7 @@ const RENTAL_HISTORY_SEARCH_FIELDS = [
   { value: 'activity', label: 'Activity / user' },
   { value: 'date', label: 'Date' },
 ]
-const SYSTEM_GRADIENT = 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)'
+const SYSTEM_GRADIENT = `linear-gradient(135deg, ${palette.infoBright} 0%, ${palette.info} 100%)`
 const SYSTEM_PANEL_BORDER = '#BFDBFE'
 const SYSTEM_PANEL_BG = '#F0F9FF'
 const ACTION_MENU_PAPER = {
@@ -151,14 +152,14 @@ const ACTION_MENU_ITEM = {
   gap: 1,
   borderRadius: '12px',
   fontWeight: 900,
-  color: '#1E3A8A',
-  '&:hover': { bgcolor: '#EFF6FF', color: '#1D4ED8' },
+  color: palette.infoDeep,
+  '&:hover': { bgcolor: palette.infoTint, color: palette.info },
   '&.Mui-disabled': { opacity: 0.45 },
 }
 const ACTION_MENU_DANGER = {
   ...ACTION_MENU_ITEM,
-  color: '#DC2626',
-  '&:hover': { bgcolor: '#FEF2F2', color: '#B91C1C' },
+  color: palette.dangerStrong,
+  '&:hover': { bgcolor: palette.dangerWash, color: palette.danger },
 }
 
 const RENTAL_LIST_TABLE_SX = {
@@ -178,36 +179,36 @@ const RENTAL_LIST_TABLE_SX = {
 }
 
 const RENTAL_PAGINATION_SX = {
-  borderTop: '1px solid #EEF0F6',
+  borderTop: `1px solid ${palette.borderSoft}`,
   '& .MuiTablePagination-toolbar': {
     minHeight: 48,
     px: { xs: 0.5, sm: 1 },
   },
   '& .MuiTablePagination-selectLabel': { display: { xs: 'none', sm: 'block' } },
-  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: '#64748B' },
+  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: palette.textSubtle },
 }
 
 const RENTAL_ACTION_BUTTON_SX = {
   width: 34,
   height: 34,
   borderRadius: '10px',
-  bgcolor: '#F1F5F9',
-  color: '#2563EB',
-  '&:hover': { bgcolor: '#DBEAFE' },
+  bgcolor: palette.surfaceMuted,
+  color: palette.infoStrong,
+  '&:hover': { bgcolor: palette.infoSoft },
 }
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
     active: { bg: '#E0F2FE', color: '#0369A1' },
-    completed: { bg: '#D1FAE5', color: '#047857' },
-    cancelled: { bg: '#F3F4F6', color: '#6B7280' },
-    pending: { bg: '#EEF2FF', color: '#4338CA' },
-    paid: { bg: '#D1FAE5', color: '#047857' },
-    unpaid: { bg: '#FEE2E2', color: '#DC2626' },
-    partially_paid: { bg: '#FEF3C7', color: '#B45309' },
-    overdue: { bg: '#FEE2E2', color: '#DC2626' },
+    completed: { bg: palette.brandSoft, color: palette.brand },
+    cancelled: { bg: palette.surfaceGray, color: palette.textMuted },
+    pending: { bg: palette.indigoTint, color: palette.brand },
+    paid: { bg: palette.brandSoft, color: palette.brand },
+    unpaid: { bg: palette.dangerTint, color: palette.dangerStrong },
+    partially_paid: { bg: palette.warningTint, color: palette.warning },
+    overdue: { bg: palette.dangerTint, color: palette.dangerStrong },
   }
-  return map[value] || { bg: '#F3F4F6', color: '#374151' }
+  return map[value] || { bg: palette.surfaceGray, color: palette.textStrong }
 }
 
 const RentalStatusChip = ({ value, label }: { value: string; label?: string }) => {
@@ -236,7 +237,7 @@ const RentalStatusChip = ({ value, label }: { value: string; label?: string }) =
 const RentalCellStack = ({
   primary,
   secondary,
-  primaryColor = '#1E1B4B',
+  primaryColor = palette.ink,
   align = 'left',
 }: {
   primary: ReactNode
@@ -249,7 +250,7 @@ const RentalCellStack = ({
       {primary}
     </Typography>
     {secondary !== undefined && secondary !== null && secondary !== '' ? (
-      <Typography component="div" noWrap title={typeof secondary === 'string' ? secondary : undefined} sx={{ mt: 0.25, color: '#64748B', fontWeight: 650, fontSize: 11.5, lineHeight: 1.35 }}>
+      <Typography component="div" noWrap title={typeof secondary === 'string' ? secondary : undefined} sx={{ mt: 0.25, color: palette.textSubtle, fontWeight: 650, fontSize: 11.5, lineHeight: 1.35 }}>
         {secondary}
       </Typography>
     ) : null}
@@ -1761,8 +1762,8 @@ const Rentals = () => {
         p: { xs: 1.35, sm: 1.6, lg: 1.8 },
         minWidth: 0,
         borderRadius: '16px',
-        border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
-        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(59,130,246,0.07)',
+        border: tab === targetTab ? `2px solid ${color}` : `1px solid ${palette.borderSoft}`,
+        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(4,120,87,0.07)',
         cursor: 'pointer',
         transform: tab === targetTab ? 'translateY(-2px)' : 'none',
         transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
@@ -1773,8 +1774,8 @@ const Rentals = () => {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, minWidth: 0 }}>
         <Avatar sx={{ width: 40, height: 40, bgcolor: `${color}18`, color, borderRadius: '12px', flexShrink: 0 }}>{icon}</Avatar>
         <Box sx={{ minWidth: 0 }}>
-          <Typography noWrap title={label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography noWrap title={String(value)} sx={{ color: '#1E1B4B', fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>{value}</Typography>
+          <Typography noWrap title={label} sx={{ color: palette.textMuted, fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+          <Typography noWrap title={String(value)} sx={{ color: palette.ink, fontSize: { xs: 20, lg: 22 }, fontWeight: 900, lineHeight: 1.2 }}>{value}</Typography>
         </Box>
       </Box>
     </Card>
@@ -1962,7 +1963,7 @@ const Rentals = () => {
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: { xs: 760, lg: 1020 } }}>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ width: 142 }}>Agreement #</TableCell>
             <TableCell sx={{ width: 245 }}>Product / Part</TableCell>
             <TableCell sx={{ width: 170, display: { xs: 'none', md: 'table-cell' } }}>Customer</TableCell>
@@ -1976,7 +1977,7 @@ const Rentals = () => {
           {rentalsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
             <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
           )) : items.length === 0 ? (
-            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>{emptyText}</TableCell></TableRow>
           ) : items.map(item => {
             const highlighted = highlightAgreementId === item.id
             const agreementItems = item.items || []
@@ -1999,13 +2000,13 @@ const Rentals = () => {
                 id={`rental-agreement-${item.id}`}
                 hover
                 sx={highlighted ? {
-                  bgcolor: '#EFF6FF',
-                  outline: '2px solid #2563EB',
+                  bgcolor: palette.infoTint,
+                  outline: `2px solid ${palette.infoStrong}`,
                   outlineOffset: '-2px',
                   '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => { void openAgreementDetails(item) }} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.rental_number} monospace color={palette.info} fontWeight={900} onClick={() => { void openAgreementDetails(item) }} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.part_number ? `${item.part_number} - ${item.part_description || ''}` : '-'} fontWeight={800} field maxWidth={225} onClick={() => openRentalPartInfo(parts.find(part => part.id === item.part_id), item)} /></TableCell>
                 <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                   <RentalCellStack primary={item.customer_name} secondary={item.facility_name || 'Independent customer'} />
@@ -2013,7 +2014,7 @@ const Rentals = () => {
                 <TableCell>
                   <RentalCellStack
                     primary={money(item.rental_rate)}
-                    primaryColor="#047857"
+                    primaryColor={palette.brand}
                     secondary={`Qty ${displayedQuantity} · Fees ${money(displayedFees)}`}
                   />
                 </TableCell>
@@ -2080,7 +2081,7 @@ const Rentals = () => {
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: { xs: 700, md: 860 } }}>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ width: 150 }}>Invoice #</TableCell>
             <TableCell sx={{ width: 145, display: { xs: 'none', md: 'table-cell' } }}>Agreement #</TableCell>
             <TableCell sx={{ width: 200 }}>Customer</TableCell>
@@ -2094,7 +2095,7 @@ const Rentals = () => {
           {invoicesQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
             <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
           )) : invoices.length === 0 ? (
-            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental invoices yet.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No rental invoices yet.</TableCell></TableRow>
           ) : invoices.map(invoice => {
             const highlighted = highlightInvoiceId === invoice.id
             return (
@@ -2105,13 +2106,13 @@ const Rentals = () => {
                 id={`rental-invoice-${invoice.id}`}
                 hover
                 sx={highlighted ? {
-                  bgcolor: '#EFF6FF',
-                  outline: '2px solid #2563EB',
+                  bgcolor: palette.infoTint,
+                  outline: `2px solid ${palette.infoStrong}`,
                   outlineOffset: '-2px',
                   '& td': { borderTop: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE' },
                 } : undefined}
               >
-                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => {
+                <TableCell><ClippedTooltipText value={invoice.invoice_number} monospace color={palette.info} fontWeight={900} onClick={() => {
                   if (isRentalCustomer) openCustomerRentalDocument(invoice.rental_id)
                   else setPrintInvoice(invoice)
                 }} /></TableCell>
@@ -2121,7 +2122,7 @@ const Rentals = () => {
                 }} /></TableCell>
                 <TableCell><RentalCellStack primary={invoice.customer_name} secondary={invoice.facility_name || 'Independent customer'} /></TableCell>
                 <TableCell>
-                  <RentalCellStack primary={money(invoice.total_amount)} primaryColor="#059669" secondary={`Paid ${money(invoice.amount_paid)}`} />
+                  <RentalCellStack primary={money(invoice.total_amount)} primaryColor={palette.brandStrong} secondary={`Paid ${money(invoice.amount_paid)}`} />
                 </TableCell>
                 <TableCell><RentalStatusChip value={invoice.status} /></TableCell>
                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
@@ -2162,7 +2163,7 @@ const Rentals = () => {
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: { xs: 720, md: 900 } }}>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ width: 300 }}>Product</TableCell>
             <TableCell sx={{ width: 180, display: { xs: 'none', lg: 'table-cell' } }}>Facility</TableCell>
             <TableCell sx={{ width: 165, display: { xs: 'none', xl: 'table-cell' } }}>Make / Model</TableCell>
@@ -2176,7 +2177,7 @@ const Rentals = () => {
           {partsQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
             <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
           )) : parts.length === 0 ? (
-            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No rental products found.</TableCell></TableRow>
           ) : parts.map(part => (
             <ContextTableRow
               key={part.id}
@@ -2186,19 +2187,19 @@ const Rentals = () => {
             >
               <TableCell>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
-                  <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 40, height: 40, flex: '0 0 auto', bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '10px' }}>
+                  <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" imgProps={{ loading: 'lazy' }} sx={{ width: 40, height: 40, flex: '0 0 auto', bgcolor: palette.infoTint, color: palette.infoStrong, borderRadius: '10px' }}>
                     <LocalShippingIcon fontSize="small" />
                   </Avatar>
                   <Box sx={{ minWidth: 0, flex: 1 }}>
-                    <ClippedTooltipText value={part.part_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => openRentalPartInfo(part)} />
-                    <ClippedTooltipText value={part.description} variant="caption" fontWeight={650} color="#64748B" />
+                    <ClippedTooltipText value={part.part_number} monospace color={palette.info} fontWeight={900} onClick={() => openRentalPartInfo(part)} />
+                    <ClippedTooltipText value={part.description} variant="caption" fontWeight={650} color={palette.textSubtle} />
                   </Box>
                 </Box>
               </TableCell>
               <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}><ClippedTooltipText value={part.facility_name || 'Global / Independent'} onClick={part.facility_name ? () => navigate(`/facilities?search=${encodeURIComponent(part.facility_name!)}`) : undefined} /></TableCell>
               <TableCell sx={{ display: { xs: 'none', xl: 'table-cell' } }}><ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' / ') || '-'} /></TableCell>
               <TableCell>
-                <RentalCellStack primary={money(part.unit_price)} primaryColor="#2563EB" secondary={`${part.quantity_on_hand} available`} />
+                <RentalCellStack primary={money(part.unit_price)} primaryColor={palette.infoStrong} secondary={`${part.quantity_on_hand} available`} />
               </TableCell>
               <TableCell sx={{ textTransform: 'capitalize' }}><ClippedTooltipText value={part.condition || '-'} /></TableCell>
               <TableCell><RentalStatusChip value={part.status} /></TableCell>
@@ -2216,7 +2217,7 @@ const Rentals = () => {
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: { xs: 720, md: 880 } }}>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ width: 120 }}>Date</TableCell>
             <TableCell sx={{ width: 145 }}>Agreement #</TableCell>
             <TableCell sx={{ width: 205 }}>Customer</TableCell>
@@ -2228,7 +2229,7 @@ const Rentals = () => {
           {historyQ.isLoading ? Array.from({ length: 5 }).map((_, index) => (
             <TableRow key={index}><TableCell colSpan={5}><Skeleton /></TableCell></TableRow>
           )) : (historyQ.data?.items || []).length === 0 ? (
-            <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No rental history logs yet.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No rental history logs yet.</TableCell></TableRow>
           ) : historyQ.data!.items.map((item, index) => (
             <ContextTableRow
               key={`${item.rental_id}-${item.action}-${index}`}
@@ -2237,7 +2238,7 @@ const Rentals = () => {
               hover
             >
               <TableCell>{formatDate(item.at)}</TableCell>
-              <TableCell><ClippedTooltipText value={item.rental_number} monospace color="#1D4ED8" fontWeight={900} onClick={() => {
+              <TableCell><ClippedTooltipText value={item.rental_number} monospace color={palette.info} fontWeight={900} onClick={() => {
                 const agreement = rentals.find(rental => rental.id === item.rental_id)
                 if (agreement) void openAgreementDetails(agreement)
               }} /></TableCell>
@@ -2319,10 +2320,10 @@ const Rentals = () => {
 
   return (
     <Box className="page-enter" sx={{ width: '100%', maxWidth: 'none', mx: 'auto' }}>
-      <Card sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, borderRadius: '22px', border: '1px solid #BFDBFE', background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
+      <Card sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, borderRadius: '22px', border: '1px solid #BFDBFE', background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)', boxShadow: palette.shadowCard }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4" sx={{ color: '#1E3A8A', fontWeight: 900 }}>Rental Management</Typography>
+            <Typography variant="h4" sx={{ color: palette.infoDeep, fontWeight: 900 }}>Rental Management</Typography>
             <Typography sx={{ color: '#4B5563', fontWeight: 700 }}>
               {isRentalCustomer
                 ? 'Review and sign your facility rental agreements, view invoices, and complete secure payments.'
@@ -2330,7 +2331,7 @@ const Rentals = () => {
             </Typography>
           </Box>
           {isInternalRentalOperator && (
-            <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ ml: 'auto', borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={openCreate} sx={{ ml: 'auto', borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brandDeep} 100%)` }}>
               New Agreement
             </Button>
           )}
@@ -2338,15 +2339,15 @@ const Rentals = () => {
       </Card>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: `repeat(${isInternalRentalOperator ? 5 : 3}, minmax(0, 1fr))` }, gap: { xs: 1.25, md: 1.75 }, mb: 2.5 }}>
-        {renderKpi('Total Agreements', stats.agreements, <AssignmentIcon />, '#3B82F6', 0)}
-        {renderKpi('Active Rentals', stats.active, <LocalShippingIcon />, '#2563EB', 0)}
-        {renderKpi('Total Invoiced', money(stats.invoiced), <ReceiptLongIcon />, '#059669', 1)}
-        {isInternalRentalOperator && renderKpi('Rental Products', stats.products, <InfoIcon />, '#8B5CF6', 2)}
-        {isInternalRentalOperator && renderKpi('History Entries', stats.history, <HistoryIcon />, '#6B7280', 3)}
+        {renderKpi('Total Agreements', stats.agreements, <AssignmentIcon />, palette.infoBright, 0)}
+        {renderKpi('Active Rentals', stats.active, <LocalShippingIcon />, palette.infoStrong, 0)}
+        {renderKpi('Total Invoiced', money(stats.invoiced), <ReceiptLongIcon />, palette.brandStrong, 1)}
+        {isInternalRentalOperator && renderKpi('Rental Products', stats.products, <InfoIcon />, palette.brandStrong, 2)}
+        {isInternalRentalOperator && renderKpi('History Entries', stats.history, <HistoryIcon />, palette.textMuted, 3)}
       </Box>
 
-      <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
-        <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
+      <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: `1px solid ${palette.borderSoft}`, boxShadow: palette.shadowCard }}>
+        <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: `1px solid ${palette.borderSoft}` }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Agreements" />
           <Tab icon={<ReceiptLongIcon />} iconPosition="start" label="Invoices" />
           {isInternalRentalOperator && <Tab icon={<InfoIcon />} iconPosition="start" label="Rental Products" />}
@@ -2355,10 +2356,10 @@ const Rentals = () => {
 
         {tab === 0 && (
           <Box>
-            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: `1px solid ${palette.borderSoft}` }}>
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Agreements List</Typography>
-                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Track your active agreements and return schedules.</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.ink }}>Agreements List</Typography>
+                <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>Track your active agreements and return schedules.</Typography>
               </Box>
               {renderSearchControl('Search agreements')}
             </Box>
@@ -2383,14 +2384,14 @@ const Rentals = () => {
 
         {tab === 1 && (
           <Box>
-            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.55fr) minmax(720px, 2fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.55fr) minmax(720px, 2fr)' }, gap: 1.5, alignItems: 'start', borderBottom: `1px solid ${palette.borderSoft}` }}>
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental Invoices</Typography>
-                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Periodic invoices generated from rental durations.</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.ink }}>Rental Invoices</Typography>
+                <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>Periodic invoices generated from rental durations.</Typography>
               </Box>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', justifyContent: { xl: 'flex-end' }, flexWrap: 'wrap', minWidth: 0 }}>
                 {renderSearchControl('Search invoices')}
-                <Card sx={{ px: 2, py: 0.8, display: 'flex', alignItems: 'center', gap: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
+                <Card sx={{ px: 2, py: 0.8, display: 'flex', alignItems: 'center', gap: 2, border: `1px solid ${palette.border}`, borderRadius: '12px', bgcolor: palette.surfaceFaint }}>
                   <Typography sx={{ fontWeight: 850, fontSize: 12, color: '#4B5563' }}>Collections Progress: {collectionPercent}%</Typography>
                   <Box sx={{ width: 100 }}>
                     <LinearProgress variant="determinate" value={collectionPercent} sx={{ height: 6, borderRadius: 3 }} />
@@ -2405,10 +2406,10 @@ const Rentals = () => {
 
         {isInternalRentalOperator && tab === 2 && (
           <Box>
-            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: `1px solid ${palette.borderSoft}` }}>
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental Products catalog</Typography>
-                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Inventory parts marked as rental products.</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.ink }}>Rental Products catalog</Typography>
+                <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>Inventory parts marked as rental products.</Typography>
               </Box>
               {renderSearchControl('Search products')}
             </Box>
@@ -2421,10 +2422,10 @@ const Rentals = () => {
 
         {isInternalRentalOperator && tab === 3 && (
           <Box>
-            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, md: 2.5 }, py: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(220px, 0.7fr) minmax(620px, 1.8fr)' }, gap: 1.5, alignItems: 'start', borderBottom: `1px solid ${palette.borderSoft}` }}>
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Rental History</Typography>
-                <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>Search by agreement, customer, facility, product, activity, user, or date.</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.ink }}>Rental History</Typography>
+                <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>Search by agreement, customer, facility, product, activity, user, or date.</Typography>
               </Box>
               {renderSearchControl('Search history')}
             </Box>
@@ -2449,7 +2450,7 @@ const Rentals = () => {
           Edit
         </MenuItem>
         {actionAgreement?.extension && ['requested', 'offered'].includes(actionAgreement.extension.status) && (
-          <MenuItem sx={{ ...ACTION_MENU_ITEM, bgcolor: '#F5F3FF', color: '#7C3AED' }} onClick={() => { if (actionAgreement) void openAgreementDetails(actionAgreement); closeActions() }}>
+          <MenuItem sx={{ ...ACTION_MENU_ITEM, bgcolor: palette.brandTint, color: palette.brand }} onClick={() => { if (actionAgreement) void openAgreementDetails(actionAgreement); closeActions() }}>
             <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CalendarMonthIcon fontSize="small" /></ListItemIcon>
             Review Extension Request
           </MenuItem>
@@ -2478,7 +2479,7 @@ const Rentals = () => {
       </Menu>
 
       <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{deliveryLinkKind === 'extension' ? 'Extension Offer Sent' : 'Rental Link Sent'}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>{deliveryLinkKind === 'extension' ? 'Extension Offer Sent' : 'Rental Link Sent'}</DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ color: '#4B5563', mb: 2 }}>
             The customer was notified. You can also copy this secure {deliveryLinkKind === 'extension' ? 'extension amendment' : 'rental agreement'} link.
@@ -2583,7 +2584,7 @@ const Rentals = () => {
         ledgerTransactions={agreementLedgerTransactions(printAgreement)}
         moduleLabel="Rental"
         primaryDocumentLabel="Rental Agreement"
-        accent="#2563EB"
+        accent={palette.infoStrong}
       />
 
       <InvoicePrintDialog
@@ -2623,16 +2624,16 @@ const Rentals = () => {
         lineItems={invoiceLineItems(printInvoice)}
         ledgerTransactions={invoiceLedgerTransactions(printInvoice)}
         moduleLabel="Rental"
-        accent="#2563EB"
+        accent={palette.infoStrong}
       />
 
       {/* Agreement Modal CREATE / EDIT */}
       <Dialog open={agreementDialog} onClose={() => setAgreementDialog(false)} maxWidth="xl" fullWidth fullScreen={fullScreenDialog} PaperProps={{ sx: { borderRadius: fullScreenDialog ? 0 : '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           {editingAgreement ? 'Edit Rental Agreement' : 'Create Rental Agreement'}
         </DialogTitle>
         <DialogContent dividers>
-          <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mb: 1.5 }}>Customer &amp; Agreement Details</Typography>
+          <Typography sx={{ color: palette.ink, fontWeight: 900, mb: 1.5 }}>Customer &amp; Agreement Details</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5, pt: 1, '& .MuiOutlinedInput-root': { minHeight: 44 }, '& .MuiInputBase-input': { py: 1.25 } }}>
             <FacilitySearchAutocomplete
               label="Facility"
@@ -2707,12 +2708,12 @@ const Rentals = () => {
               }))}
               renderOption={(props, option) => (
                   <li {...props}>
-                    <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: '#EDE9FE', color: '#6D28D9', fontSize: 13, fontWeight: 800 }}>
+                    <Avatar sx={{ width: 30, height: 30, mr: 1.25, bgcolor: palette.brandSoft, color: palette.brandDeep, fontSize: 13, fontWeight: 800 }}>
                       {(option.name || option.email).slice(0, 1).toUpperCase()}
                     </Avatar>
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ color: '#1E1B4B', fontWeight: 750, lineHeight: 1.2 }}>{option.name}</Typography>
-                      <Typography sx={{ color: '#64748B', fontSize: 12 }}>{option.email}</Typography>
+                      <Typography sx={{ color: palette.ink, fontWeight: 750, lineHeight: 1.2 }}>{option.name}</Typography>
+                      <Typography sx={{ color: palette.textSubtle, fontSize: 12 }}>{option.email}</Typography>
                     </Box>
                   </li>
               )}
@@ -2724,7 +2725,7 @@ const Rentals = () => {
                     {...tagProps}
                     avatar={<Avatar>{(recipient.name || recipient.email).slice(0, 1).toUpperCase()}</Avatar>}
                     label={`${recipient.name} · ${recipient.email}`}
-                    sx={{ maxWidth: 320, bgcolor: '#F3E8FF', color: '#5B21B6', fontWeight: 700 }}
+                    sx={{ maxWidth: 320, bgcolor: palette.brandTint, color: palette.ink, fontWeight: 700 }}
                   />
                 )
               })}
@@ -2748,8 +2749,8 @@ const Rentals = () => {
           <Divider sx={{ my: 3 }} />
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 1.25, mb: 1.5 }}>
             <Box>
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Rental Products</Typography>
-              <Typography sx={{ color: '#64748B', fontSize: 13 }}>Select a product, complete its pricing and fees, then add it to the agreement.</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 900 }}>Rental Products</Typography>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>Select a product, complete its pricing and fees, then add it to the agreement.</Typography>
             </Box>
             <Button
               startIcon={<AddIcon />}
@@ -2771,8 +2772,8 @@ const Rentals = () => {
                 fetchParts={fetchRentalParts}
                 queryKey="rental-parts-picker"
                 icon={<LocalShippingIcon fontSize="small" />}
-                avatarBg="#EFF6FF"
-                avatarColor="#2563EB"
+                avatarBg={palette.infoTint}
+                avatarColor={palette.infoStrong}
                 getOptionDisabled={option => partRemaining(option.id, Number(option.quantity_on_hand || 0)) <= 0}
                 getOptionAvailability={option => partRemaining(option.id, Number(option.quantity_on_hand || 0))}
               />
@@ -2794,10 +2795,10 @@ const Rentals = () => {
             </Box>
           </Box>
 
-          <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '16px', overflowX: 'auto' }}>
+          <TableContainer sx={{ border: `1px solid ${palette.borderSoft}`, borderRadius: '16px', overflowX: 'auto' }}>
             <Table size="small" sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: 940 }}>
               <TableHead>
-                <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                   <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Qty</TableCell>
                   <TableCell sx={{ fontWeight: 900 }} align="right">Rate</TableCell>
@@ -2812,12 +2813,12 @@ const Rentals = () => {
               </TableHead>
               <TableBody>
                 {agreementForm.items.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 3, color: '#6B7280', fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 3, color: palette.textMuted, fontWeight: 700 }}>No products added yet. Pick a rental product above and click Add.</TableCell></TableRow>
                 ) : agreementForm.items.map(item => (
                   <TableRow key={item.key}>
                     <TableCell>
-                      <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.part_number}</Typography>
-                      <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{item.part_description}</Typography>
+                      <Typography sx={{ fontWeight: 800, color: palette.ink }}>{item.part_number}</Typography>
+                      <Typography sx={{ fontSize: 12, color: palette.textMuted }}>{item.part_description}</Typography>
                     </TableCell>
                     <TableCell align="right">
                       <TextField
@@ -2861,7 +2862,7 @@ const Rentals = () => {
                         inputProps={{ min: 0, step: '0.01', style: { textAlign: 'right', width: 78 } }} />
                     </TableCell>
                     <TableCell align="right">
-                      <IconButton size="small" onClick={() => removeRentalItem(item.key)} sx={{ color: '#DC2626' }}><DeleteIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" onClick={() => removeRentalItem(item.key)} sx={{ color: palette.dangerStrong }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -2872,8 +2873,8 @@ const Rentals = () => {
           <Divider sx={{ my: 3 }} />
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'stretch', md: 'center' }, gap: 1.5, mb: 1.5, flexDirection: { xs: 'column', md: 'row' } }}>
             <Box>
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Billing &amp; Discount</Typography>
-              <Typography sx={{ color: '#64748B', fontSize: 13 }}>Configure the complete billing term in one row, or reuse a saved discount package.</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 900 }}>Billing &amp; Discount</Typography>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>Configure the complete billing term in one row, or reuse a saved discount package.</Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', minWidth: { md: 560 } }}>
               <Autocomplete<RentalDiscountPackage>
@@ -2910,7 +2911,7 @@ const Rentals = () => {
                         deleteDiscountPackageMut.mutate(selectedDiscountPackage.id)
                       }
                     }}
-                    sx={{ color: '#DC2626' }}
+                    sx={{ color: palette.dangerStrong }}
                   ><DeleteIcon /></IconButton>
                 </>
               ) : null}
@@ -2920,7 +2921,7 @@ const Rentals = () => {
           <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '16px', overflowX: 'auto' }}>
             <Table size="small" sx={{ ...RENTAL_LIST_TABLE_SX, minWidth: 1120 }}>
               <TableHead>
-                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                <TableRow sx={{ bgcolor: palette.surface }}>
                   <TableCell sx={{ width: 145 }}>Billing frequency</TableCell>
                   <TableCell sx={{ width: 120 }}>Rental amount</TableCell>
                   <TableCell sx={{ width: 125 }}>Committed periods</TableCell>
@@ -2949,7 +2950,7 @@ const Rentals = () => {
                     </TextField>
                   </TableCell>
                   <TableCell>
-                    <Box sx={{ minHeight: 40, px: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid #D8DEE9', bgcolor: '#F8FAFC', borderRadius: '8px', color: '#1E1B4B', fontWeight: 900 }}>{money(initialAgreementPricing.rental)}</Box>
+                    <Box sx={{ minHeight: 40, px: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px solid #D8DEE9', bgcolor: palette.surface, borderRadius: '8px', color: palette.ink, fontWeight: 900 }}>{money(initialAgreementPricing.rental)}</Box>
                   </TableCell>
                   <TableCell>
                     <TextField fullWidth size="small" type="number" value={agreementForm.committed_periods} onChange={e => setAgreementForm(prev => ({ ...prev, committed_periods: e.target.value === '' ? '' : Number(e.target.value) }))} inputProps={{ min: 1 }} />
@@ -2990,7 +2991,7 @@ const Rentals = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          <Typography sx={{ mt: 1, color: '#64748B', fontSize: 12.5 }}>
+          <Typography sx={{ mt: 1, color: palette.textSubtle, fontSize: 12.5 }}>
             {agreementForm.billing_frequency === 'custom'
               ? 'Customized billing divides the selected start and end dates into the committed number of periods.'
               : 'The end date is calculated automatically from the billing frequency and committed periods.'}
@@ -3008,10 +3009,10 @@ const Rentals = () => {
           <Divider sx={{ my: 3 }} />
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 1.5, flexWrap: 'wrap' }}>
             <Box>
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Initial Invoice Calculation</Typography>
-              <Typography sx={{ color: '#64748B', fontSize: 13 }}>Internal live preview. This calculation is not shown on the customer agreement.</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 900 }}>Initial Invoice Calculation</Typography>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>Internal live preview. This calculation is not shown on the customer agreement.</Typography>
             </Box>
-            <Chip label="Internal preview" size="small" sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 900 }} />
+            <Chip label="Internal preview" size="small" sx={{ bgcolor: palette.warningTint, color: palette.warningDeep, fontWeight: 900 }} />
           </Box>
           {agreementForm.discount_type && agreementForm.discount_requires_card ? (
             <Box
@@ -3023,14 +3024,14 @@ const Rentals = () => {
                 alignItems: { xs: 'stretch', md: 'center' },
                 justifyContent: 'space-between',
                 gap: 1.5,
-                border: '1px solid #DDD6FE',
-                bgcolor: '#FAF9FF',
+                border: `1px solid ${palette.brandBorder}`,
+                bgcolor: '#f9fffd',
                 borderRadius: '16px',
               }}
             >
               <Box>
-                <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 14 }}>Preview payment scenario</Typography>
-                <Typography sx={{ color: '#64748B', fontSize: 12.5 }}>
+                <Typography sx={{ color: palette.ink, fontWeight: 900, fontSize: 14 }}>Preview payment scenario</Typography>
+                <Typography sx={{ color: palette.textSubtle, fontSize: 12.5 }}>
                   Compare exact invoice totals before and after saved-card authorization. This switch does not save authorization.
                 </Typography>
               </Box>
@@ -3043,8 +3044,8 @@ const Rentals = () => {
                   gap: 0.75,
                   p: 0.5,
                   flexShrink: 0,
-                  bgcolor: '#FFFFFF',
-                  border: '1px solid #E2E8F0',
+                  bgcolor: palette.white,
+                  border: `1px solid ${palette.borderSlate}`,
                   borderRadius: '12px',
                 }}
               >
@@ -3060,7 +3061,7 @@ const Rentals = () => {
                     textTransform: 'none',
                     fontWeight: 900,
                     whiteSpace: 'nowrap',
-                    ...(!previewCardAuthorized ? { bgcolor: '#475569', '&:hover': { bgcolor: '#334155' } } : { color: '#64748B' }),
+                    ...(!previewCardAuthorized ? { bgcolor: palette.slate600, '&:hover': { bgcolor: '#334155' } } : { color: palette.textSubtle }),
                   }}
                 >
                   Without saved card
@@ -3077,7 +3078,7 @@ const Rentals = () => {
                     textTransform: 'none',
                     fontWeight: 900,
                     whiteSpace: 'nowrap',
-                    ...(previewCardAuthorized ? { background: SYSTEM_GRADIENT } : { color: '#6D28D9' }),
+                    ...(previewCardAuthorized ? { background: SYSTEM_GRADIENT } : { color: palette.brandDeep }),
                   }}
                 >
                   Card saved &amp; authorized
@@ -3092,7 +3093,7 @@ const Rentals = () => {
           <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '16px', overflowX: 'auto' }}>
             <Table size="small" sx={{ minWidth: 600 }}>
               <TableHead>
-                <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                <TableRow sx={{ bgcolor: palette.surface }}>
                   <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 900 }}>Cost</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 900 }}>Tax {SALES_TAX_RATE}%</TableCell>
@@ -3101,11 +3102,11 @@ const Rentals = () => {
               </TableHead>
               <TableBody>
                 {[
-                  { label: `First ${agreementForm.billing_frequency === 'biweekly' ? 'bi-weekly' : agreementForm.billing_frequency} rental period`, cost: initialAgreementPricing.rental, tax: initialAgreementPricing.rentalTax, color: '#1D4ED8' },
+                  { label: `First ${agreementForm.billing_frequency === 'biweekly' ? 'bi-weekly' : agreementForm.billing_frequency} rental period`, cost: initialAgreementPricing.rental, tax: initialAgreementPricing.rentalTax, color: palette.info },
                   { label: 'Security Deposit', cost: initialAgreementPricing.deposit, tax: 0, color: '#334155' },
-                  { label: 'Shipping & Packing', cost: initialAgreementPricing.shipping, tax: initialAgreementPricing.shippingTax, color: '#7C3AED' },
-                  { label: 'Delivery & Setup', cost: initialAgreementPricing.setup, tax: initialAgreementPricing.setupTax, color: '#7C3AED' },
-                  { label: 'Removal & Pickup', cost: initialAgreementPricing.removal, tax: initialAgreementPricing.removalTax, color: '#7C3AED' },
+                  { label: 'Shipping & Packing', cost: initialAgreementPricing.shipping, tax: initialAgreementPricing.shippingTax, color: palette.brand },
+                  { label: 'Delivery & Setup', cost: initialAgreementPricing.setup, tax: initialAgreementPricing.setupTax, color: palette.brand },
+                  { label: 'Removal & Pickup', cost: initialAgreementPricing.removal, tax: initialAgreementPricing.removalTax, color: palette.brand },
                   { label: 'Labor', cost: initialAgreementPricing.labor, tax: 0, color: '#334155' },
                 ].map(row => (
                   <TableRow key={row.label}>
@@ -3117,37 +3118,37 @@ const Rentals = () => {
                 ))}
                 {initialAgreementPricing.offeredDiscount > 0 && (
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 850, color: initialAgreementPricing.discountEligible ? '#DC2626' : '#64748B' }}>
+                    <TableCell sx={{ fontWeight: 850, color: initialAgreementPricing.discountEligible ? palette.dangerStrong : palette.textSubtle }}>
                       {initialAgreementPricing.discountEligible ? 'Initial Period Discount' : 'Conditional Discount'}
                       {!initialAgreementPricing.discountEligible ? (
                         <Chip label={`${money(initialAgreementPricing.offeredDiscount)} available with saved card`} size="small" sx={{ ml: 1, fontWeight: 800 }} />
                       ) : null}
                     </TableCell>
-                    <TableCell align="right" sx={{ color: initialAgreementPricing.discountEligible ? '#DC2626' : '#64748B' }}>
+                    <TableCell align="right" sx={{ color: initialAgreementPricing.discountEligible ? palette.dangerStrong : palette.textSubtle }}>
                       {initialAgreementPricing.discount ? `-${money(initialAgreementPricing.discount)}` : money(0)}
                     </TableCell>
                     <TableCell align="right">{money(0)}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 900, color: initialAgreementPricing.discountEligible ? '#DC2626' : '#64748B' }}>
+                    <TableCell align="right" sx={{ fontWeight: 900, color: initialAgreementPricing.discountEligible ? palette.dangerStrong : palette.textSubtle }}>
                       {initialAgreementPricing.discount ? `-${money(initialAgreementPricing.discount)}` : money(0)}
                     </TableCell>
                   </TableRow>
                 )}
-                <TableRow sx={{ bgcolor: '#FAF9FF' }}>
+                <TableRow sx={{ bgcolor: '#f9fffd' }}>
                   <TableCell colSpan={2} sx={{ fontWeight: 950 }}>Total Tax</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 950 }}>{money(initialAgreementPricing.tax)}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 950 }}>{money(initialAgreementPricing.tax)}</TableCell>
                 </TableRow>
-                <TableRow sx={{ bgcolor: '#EEF2FF' }}>
+                <TableRow sx={{ bgcolor: palette.indigoTint }}>
                   <TableCell colSpan={3} sx={{ fontWeight: 950, fontSize: 16 }}>Initial Amount Due</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 950, color: '#059669', fontSize: 18 }}>{money(initialAgreementPricing.total)}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 950, color: palette.brandStrong, fontSize: 18 }}>{money(initialAgreementPricing.total)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
           </TableContainer>
 
           <Box sx={{ mt: 3, mb: 1.5 }}>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Complete Billing Schedule</Typography>
-            <Typography sx={{ color: '#64748B', fontSize: 13 }}>Every billing cycle is calculated by the same engine used to generate invoices.</Typography>
+            <Typography sx={{ color: palette.ink, fontWeight: 900 }}>Complete Billing Schedule</Typography>
+            <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>Every billing cycle is calculated by the same engine used to generate invoices.</Typography>
           </Box>
           {schedulePreviewQ.isFetching ? <LinearProgress sx={{ borderRadius: 999, mb: 1 }} /> : null}
           {schedulePreviewQ.isError ? (
@@ -3155,7 +3156,7 @@ const Rentals = () => {
           ) : (
             <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '16px', overflowX: 'auto' }}>
               <Table size="small" sx={{ minWidth: 760 }}>
-                <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                <TableHead><TableRow sx={{ bgcolor: palette.surface }}>
                   <TableCell sx={{ fontWeight: 900 }}>Invoice</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Period</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Billing date</TableCell>
@@ -3171,16 +3172,16 @@ const Rentals = () => {
                       <TableCell>{formatDate(period.billing_date)} – {formatDate(period.period_end)}</TableCell>
                       <TableCell>{formatDate(period.billing_date)}</TableCell>
                       <TableCell align="right">{money(period.rental_amount)}</TableCell>
-                      <TableCell align="right" sx={{ color: period.discount ? '#DC2626' : '#64748B' }}>
+                      <TableCell align="right" sx={{ color: period.discount ? palette.dangerStrong : palette.textSubtle }}>
                         {period.discount ? `-${money(period.discount)}` : money(0)}
                         {period.discount_conditional ? <Chip label="Available with saved card" size="small" sx={{ ml: 1, fontWeight: 800 }} /> : null}
                       </TableCell>
                       <TableCell align="right">{money(period.tax)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 950, color: '#047857' }}>{money(period.total)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 950, color: palette.brand }}>{money(period.total)}</TableCell>
                     </TableRow>
                   ))}
                   {!schedulePreviewQ.isFetching && !(schedulePreviewQ.data?.billing_schedule || []).length ? (
-                    <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3, color: '#64748B' }}>Add products and complete the term to preview every invoice.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3, color: palette.textSubtle }}>Add products and complete the term to preview every invoice.</TableCell></TableRow>
                   ) : null}
                 </TableBody>
               </Table>
@@ -3196,9 +3197,9 @@ const Rentals = () => {
       </Dialog>
 
       <Dialog open={discountPackageDialog} onClose={() => !createDiscountPackageMut.isPending && setDiscountPackageDialog(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Save Discount Package</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Save Discount Package</DialogTitle>
         <DialogContent dividers>
-          <Typography sx={{ color: '#64748B', fontSize: 13, mb: 2 }}>
+          <Typography sx={{ color: palette.textSubtle, fontSize: 13, mb: 2 }}>
             Save the current discount settings as a reusable template. Agreements always retain their own pricing snapshot.
           </Typography>
           <TextField
@@ -3224,9 +3225,9 @@ const Rentals = () => {
 
       {/* Rate Card Dialog */}
       <Dialog open={Boolean(rateCardPart)} onClose={() => !rateCardMut.isPending && setRateCardPart(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 560, width: '100%' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           Rental Rates — {rateCardPart?.part_number}
-          <Typography sx={{ color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
+          <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13 }}>
             Set the price per billing period. These auto-fill on the agreement when the frequency is chosen.
           </Typography>
         </DialogTitle>
@@ -3250,7 +3251,7 @@ const Rentals = () => {
 
       {/* Return Dialog */}
       <Dialog open={Boolean(returnDialog)} onClose={() => setReturnDialog(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 680, width: '100%' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>Handover / Return Equipment</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.infoDeep }}>Handover / Return Equipment</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gap: 2, pt: 1 }}>
             <TextField label="Actual Return Date" type="date" value={returnForm.actual_return_date} onChange={e => setReturnForm(prev => ({ ...prev, actual_return_date: e.target.value }))} InputLabelProps={{ shrink: true }} />
@@ -3261,8 +3262,8 @@ const Rentals = () => {
               const deposit = Number(item.security_deposit || 0) * Math.max(1, Number(item.quantity || 1))
               return (
                 <Box key={item.id} sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F0F9FF', border: '1px solid #BFDBFE' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>{item.part_number} · {item.part_description}</Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 12, mb: deposit > 0 ? 1.25 : 0 }}>Qty {item.quantity}{deposit > 0 ? ` · Deposit ${money(deposit)}` : ' · No security deposit'}</Typography>
+                  <Typography sx={{ fontWeight: 900, color: palette.infoDeep }}>{item.part_number} · {item.part_description}</Typography>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 12, mb: deposit > 0 ? 1.25 : 0 }}>Qty {item.quantity}{deposit > 0 ? ` · Deposit ${money(deposit)}` : ' · No security deposit'}</Typography>
                   {deposit > 0 ? (
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: itemReturn?.deposit_action === 'deduct' ? '1fr 1fr' : '1fr' }, gap: 1.25 }}>
                       <TextField
@@ -3321,9 +3322,9 @@ const Rentals = () => {
 
       {/* Convert to Invoice Acknowledgement Modal */}
       <Dialog open={Boolean(convertAgreement)} onClose={() => setConvertAgreement(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A', textAlign: 'center' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.infoDeep, textAlign: 'center' }}>
           Rental Agreement Quotation
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
             Acknowledgement and Periodic Billing Form
           </Typography>
         </DialogTitle>
@@ -3384,7 +3385,7 @@ const Rentals = () => {
                           <TableCell>{money(item.labor_fee)}</TableCell>
                           <TableCell>{item.item_condition || '-'}</TableCell>
                           <TableCell>{billingPeriods}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 900, color: '#047857' }}>{money(billingPeriods * Number(item.rental_rate || 0) * Number(item.quantity || 1))}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 900, color: palette.brand }}>{money(billingPeriods * Number(item.rental_rate || 0) * Number(item.quantity || 1))}</TableCell>
                         </TableRow>
                       ))}
                       {[
@@ -3405,9 +3406,9 @@ const Rentals = () => {
                           <TableCell align="right">{money(value as number)}</TableCell>
                         </TableRow>
                       ))}
-                      <TableRow sx={{ bgcolor: '#EFF6FF' }}>
+                      <TableRow sx={{ bgcolor: palette.infoTint }}>
                         <TableCell colSpan={9} align="right" sx={{ fontWeight: 900, fontSize: 15 }}>Grand Total Due</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 900, fontSize: 16, color: '#1E3A8A' }}>{money(convertGrandTotal)}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 900, fontSize: 16, color: palette.infoDeep }}>{money(convertGrandTotal)}</TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -3415,7 +3416,7 @@ const Rentals = () => {
               </Box>
 
               <Card sx={{ borderRadius: '14px', border: `1px solid ${SYSTEM_PANEL_BORDER}`, p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E3A8A' }}>Configure Invoice</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 900, color: palette.infoDeep }}>Configure Invoice</Typography>
                 <TextField select label="Select Action" size="small" value={invoiceDetails.action || ''} onChange={e => setInvoiceDetails(p => ({ ...p, action: e.target.value }))}>
                   <MenuItem value="">Select Action</MenuItem>
                   <MenuItem value="approve">Approve Quotation</MenuItem>
@@ -3455,7 +3456,7 @@ const Rentals = () => {
       </Dialog>
 
       <Dialog open={Boolean(viewInvoice)} onClose={() => setViewInvoice(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 520, width: '100%' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>Rental Invoice Details</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.infoDeep }}>Rental Invoice Details</DialogTitle>
         <DialogContent dividers>
           {viewInvoice && (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
@@ -3478,7 +3479,7 @@ const Rentals = () => {
 
       {/* Record Refund Dialog */}
       <Dialog open={Boolean(refundInvoice)} onClose={() => setRefundInvoice(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 460, width: '100%' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>Record Refund</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.infoDeep }}>Record Refund</DialogTitle>
         <DialogContent dividers>
           {refundInvoice && (() => {
             const refundable = refundableOf(refundInvoice)
@@ -3506,7 +3507,7 @@ const Rentals = () => {
                   value={refundForm.notes}
                   onChange={e => setRefundForm(p => ({ ...p, notes: e.target.value }))}
                 />
-                <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: cardPaid ? '#047857' : '#92400E' }}>
+                <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: cardPaid ? palette.brand : palette.warningDeep }}>
                   {cardPaid
                     ? `${money(refundForm.amount)} will be refunded to the customer's card through Square.`
                     : `This invoice was paid offline — ${money(refundForm.amount)} is recorded as a manual refund (return the money via the original method).`}
@@ -3530,7 +3531,7 @@ const Rentals = () => {
 
       {/* Edit Rental Invoice Dialog */}
       <Dialog open={Boolean(invoiceEdit)} onClose={() => setInvoiceEdit(null)} PaperProps={{ sx: { borderRadius: '22px', maxWidth: 450, width: '100%' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>Update Rental Invoice</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.infoDeep }}>Update Rental Invoice</DialogTitle>
         <DialogContent dividers>
           {invoiceEdit && (
             <Box sx={{ display: 'grid', gap: 2, pt: 1 }}>
@@ -3563,9 +3564,9 @@ const Rentals = () => {
       </Dialog>
 
       <Dialog open={Boolean(partInfo)} onClose={() => setPartInfo(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.infoDeep }}>
           Rental Product Details
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
             View-only inventory information
           </Typography>
         </DialogTitle>
@@ -3573,11 +3574,11 @@ const Rentals = () => {
           {partInfo && (
             <Box sx={{ display: 'grid', gap: 2 }}>
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <Avatar src={resolveUploadUrl(partInfo.imageUrl)} variant="rounded" sx={{ width: 76, height: 76, bgcolor: '#EFF6FF', color: '#2563EB', borderRadius: '18px' }}>
+                <Avatar src={resolveUploadUrl(partInfo.imageUrl)} variant="rounded" sx={{ width: 76, height: 76, bgcolor: palette.infoTint, color: palette.infoStrong, borderRadius: '18px' }}>
                   <LocalShippingIcon />
                 </Avatar>
                 <Box sx={{ minWidth: 0 }}>
-                  <ClippedTooltipText value={partInfo.partNumber} monospace color="#1D4ED8" fontWeight={900} />
+                  <ClippedTooltipText value={partInfo.partNumber} monospace color={palette.info} fontWeight={900} />
                   <ClippedTooltipText value={partInfo.description} field fontWeight={800} />
                 </Box>
               </Box>
@@ -3591,9 +3592,9 @@ const Rentals = () => {
                   ['Facility', partInfo.facilityName || 'Global / Independent'],
                   ['Status', partInfo.status || '-'],
                 ].map(([label, value]) => (
-                  <Card key={label} sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #DBEAFE', bgcolor: '#F8FAFC' }}>
-                    <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-                    <Typography sx={{ color: '#1E3A8A', fontWeight: 850 }}>{value}</Typography>
+                  <Card key={label} sx={{ p: 1.5, borderRadius: '14px', border: `1px solid ${palette.infoSoft}`, bgcolor: palette.surface }}>
+                    <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+                    <Typography sx={{ color: palette.infoDeep, fontWeight: 850 }}>{value}</Typography>
                   </Card>
                 ))}
               </Box>
@@ -3607,7 +3608,7 @@ const Rentals = () => {
 
       {/* Details View Dialog */}
       <Dialog open={Boolean(viewAgreement)} onClose={() => setViewAgreement(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E3A8A', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.infoDeep, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           Rental Agreement Details
           {viewAgreement && (
             <Chip label={viewAgreement.status} sx={{ bgcolor: statusChip(viewAgreement.status).bg, color: statusChip(viewAgreement.status).color, fontWeight: 950, textTransform: 'uppercase' }} />
@@ -3618,51 +3619,51 @@ const Rentals = () => {
             <Box sx={{ display: 'grid', gap: 3 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>AGREEMENT NO.</Typography>
-                  <Typography sx={{ fontWeight: 900, color: '#1E3A8A', fontFamily: 'monospace' }}>{viewAgreement.rental_number}</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>AGREEMENT NO.</Typography>
+                  <Typography sx={{ fontWeight: 900, color: palette.infoDeep, fontFamily: 'monospace' }}>{viewAgreement.rental_number}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>RENTAL PRODUCTS</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>RENTAL PRODUCTS</Typography>
                   <Typography sx={{ fontWeight: 900 }}>{(viewAgreement.items?.length || 0)} item{(viewAgreement.items?.length || 0) === 1 ? '' : 's'}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>CUSTOMER NAME</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>CUSTOMER NAME</Typography>
                   <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_name}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>FACILITY</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>FACILITY</Typography>
                   <Typography sx={{ fontWeight: 800 }}>{viewAgreement.facility_name || 'Independent customer'}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>PRIMARY FACILITY CONTACT</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>PRIMARY FACILITY CONTACT</Typography>
                   <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_user_name || 'External customer'}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>CUSTOMER CONTACT</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>CUSTOMER CONTACT</Typography>
                   <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_email} / {formatUSPhone(viewAgreement.customer_phone) || '-'}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>RENTAL PERIOD</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>RENTAL PERIOD</Typography>
                   <Typography sx={{ fontWeight: 800 }}>{formatDate(viewAgreement.start_date)} to {formatDate(viewAgreement.end_date)}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>ACTUAL RETURN DATE</Typography>
-                  <Typography sx={{ fontWeight: 800, color: '#B45309' }}>{formatDate(viewAgreement.actual_return_date)}</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>ACTUAL RETURN DATE</Typography>
+                  <Typography sx={{ fontWeight: 800, color: palette.warning }}>{formatDate(viewAgreement.actual_return_date)}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>BILLING FREQUENCY</Typography>
-                  <Typography sx={{ fontWeight: 900, color: '#047857', textTransform: 'capitalize' }}>{viewAgreement.billing_frequency}{viewAgreement.auto_charge ? ' · auto-charge' : ''}</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>BILLING FREQUENCY</Typography>
+                  <Typography sx={{ fontWeight: 900, color: palette.brand, textTransform: 'capitalize' }}>{viewAgreement.billing_frequency}{viewAgreement.auto_charge ? ' · auto-charge' : ''}</Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>NEXT PAYMENT</Typography>
-                  <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>NEXT PAYMENT</Typography>
+                  <Typography sx={{ fontWeight: 900, color: palette.infoDeep }}>
                     {viewAgreement.next_payment
                       ? `${money(viewAgreement.next_payment.amount)} · ${formatDate(viewAgreement.next_payment.billing_date)} · Period ${viewAgreement.next_payment.period}`
                       : 'Schedule complete'}
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>DISCOUNT</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>DISCOUNT</Typography>
                   <Typography sx={{ fontWeight: 900 }}>
                     {viewAgreement.discount_type
                       ? `${viewAgreement.discount_type === 'percent' ? `${viewAgreement.discount_value}%` : money(viewAgreement.discount_value)} · ${viewAgreement.discount_application_mode === 'commitment' ? 'catch-up on' : 'only on'} invoice #${viewAgreement.discount_invoice_number || 1}${viewAgreement.discount_continue ? ' · continues afterward' : ''}${viewAgreement.discount_requires_card ? ' · saved card required' : ''}`
@@ -3670,35 +3671,35 @@ const Rentals = () => {
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>SECURITY DEPOSIT</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>SECURITY DEPOSIT</Typography>
                   <Typography sx={{ fontWeight: 900 }}>{money(viewAgreement.security_deposit)}</Typography>
                 </Box>
                 <Box sx={{ gridColumn: '1 / -1' }}>
-                  <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 800 }}>CUSTOMER ADDRESS</Typography>
+                  <Typography variant="subtitle2" sx={{ color: palette.textMuted, fontWeight: 800 }}>CUSTOMER ADDRESS</Typography>
                   <Typography sx={{ fontWeight: 800 }}>{viewAgreement.customer_address}</Typography>
                 </Box>
               </Box>
 
-              <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: viewAgreement.acceptance ? '#86EFAC' : '#FDE68A', bgcolor: viewAgreement.acceptance ? '#F0FDF4' : '#FFFBEB' }}>
+              <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: viewAgreement.acceptance ? '#86EFAC' : '#FDE68A', bgcolor: viewAgreement.acceptance ? palette.successTint : palette.warningWash }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
                   <Box>
-                    <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>Customer Acceptance</Typography>
+                    <Typography sx={{ fontWeight: 900, color: palette.infoDeep }}>Customer Acceptance</Typography>
                     {viewAgreement.acceptance ? (
                       <>
                         <Typography sx={{ fontWeight: 800, color: '#166534' }}>Signed by {viewAgreement.acceptance.accepted_by_name} on {formatDate(viewAgreement.acceptance.accepted_at)}</Typography>
                         <Typography sx={{ fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 24, mt: 0.5 }}>{viewAgreement.acceptance.signature_name}</Typography>
-                        <Typography sx={{ fontSize: 12, color: '#64748B' }}>Agreement revision {viewAgreement.acceptance.agreement_revision}</Typography>
+                        <Typography sx={{ fontSize: 12, color: palette.textSubtle }}>Agreement revision {viewAgreement.acceptance.agreement_revision}</Typography>
                       </>
-                    ) : <Typography sx={{ color: '#92400E', fontWeight: 800 }}>Awaiting customer signature</Typography>}
+                    ) : <Typography sx={{ color: palette.warningDeep, fontWeight: 800 }}>Awaiting customer signature</Typography>}
                   </Box>
                   <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
-                    <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>Saved Payment Method</Typography>
+                    <Typography sx={{ fontWeight: 900, color: palette.infoDeep }}>Saved Payment Method</Typography>
                     <Typography sx={{ fontWeight: 800 }}>
                       {viewAgreement.saved_card
                         ? `${viewAgreement.saved_card.brand || 'Card'} ending in ${viewAgreement.saved_card.last4 || '••••'}`
                         : 'No card saved'}
                     </Typography>
-                    <Typography sx={{ fontSize: 12, color: viewAgreement.auto_charge_authorized_at ? '#047857' : '#64748B', fontWeight: 700 }}>
+                    <Typography sx={{ fontSize: 12, color: viewAgreement.auto_charge_authorized_at ? palette.brand : palette.textSubtle, fontWeight: 700 }}>
                       {viewAgreement.auto_charge_authorized_at
                         ? `Auto-charge authorized by ${viewAgreement.auto_charge_authorized_by || 'customer'}`
                         : 'Recurring auto-charge not authorized'}
@@ -3708,11 +3709,11 @@ const Rentals = () => {
               </Card>
 
               {viewAgreement.extension && (
-                <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
+                <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: palette.brandPale, bgcolor: '#f9fffd' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1.5 }}>
                     <Box>
-                      <Typography sx={{ fontWeight: 950, color: '#1E3A8A' }}>Extension Amendment #{viewAgreement.extension.sequence}</Typography>
-                      <Typography sx={{ color: '#64748B', fontSize: 13 }}>
+                      <Typography sx={{ fontWeight: 950, color: palette.infoDeep }}>Extension Amendment #{viewAgreement.extension.sequence}</Typography>
+                      <Typography sx={{ color: palette.textSubtle, fontSize: 13 }}>
                         Requested by {viewAgreement.extension.requested_by_name} on {formatDate(viewAgreement.extension.requested_at)}
                       </Typography>
                     </Box>
@@ -3747,22 +3748,22 @@ const Rentals = () => {
                       </Box>
                     </>
                   ) : viewAgreement.extension.status === 'accepted' ? (
-                    <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#ECFDF5', border: '1px solid #A7F3D0' }}>
-                      <Typography sx={{ fontWeight: 900, color: '#047857' }}>
+                    <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: palette.brandTint, border: `1px solid ${palette.brandBorder}` }}>
+                      <Typography sx={{ fontWeight: 900, color: palette.brand }}>
                         Signed by {viewAgreement.extension.accepted_by_name} · extended through {formatDate(viewAgreement.extension.offered_end_date)}
                       </Typography>
                       <Typography sx={{ fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 24 }}>{viewAgreement.extension.signature_name}</Typography>
                     </Box>
                   ) : (
-                    <Typography sx={{ color: '#64748B', fontWeight: 700 }}>{viewAgreement.extension.decision_notes || 'This extension request is closed.'}</Typography>
+                    <Typography sx={{ color: palette.textSubtle, fontWeight: 700 }}>{viewAgreement.extension.decision_notes || 'This extension request is closed.'}</Typography>
                   )}
                 </Card>
               )}
 
               {viewAgreement.status === 'active' && !['requested', 'offered'].includes(viewAgreement.extension?.status || '') && (
-                <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: '#C4B5FD', bgcolor: '#FAF9FF' }}>
-                  <Typography sx={{ fontWeight: 950, color: '#1E3A8A', mb: 0.25 }}>Start a new extension</Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 13, mb: 1.5 }}>
+                <Card variant="outlined" sx={{ p: 2, borderRadius: '14px', borderColor: palette.brandPale, bgcolor: '#f9fffd' }}>
+                  <Typography sx={{ fontWeight: 950, color: palette.infoDeep, mb: 0.25 }}>Start a new extension</Typography>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 13, mb: 1.5 }}>
                     Propose new terms and email the customer a signing link. Billing changes only after they sign.
                   </Typography>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 1.5, mb: 1.5 }}>
@@ -3782,11 +3783,11 @@ const Rentals = () => {
               )}
 
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Items</Typography>
-                <TableContainer sx={{ border: '1px solid #EEF0F6', borderRadius: '12px', overflowX: 'auto' }}>
+                <Typography sx={{ fontWeight: 900, color: palette.infoDeep, mb: 1 }}>Items</Typography>
+                <TableContainer sx={{ border: `1px solid ${palette.borderSoft}`, borderRadius: '12px', overflowX: 'auto' }}>
                   <Table size="small" sx={{ minWidth: 920 }}>
                     <TableHead>
-                      <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                      <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                         <TableCell sx={{ fontWeight: 900 }}>Product</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Qty</TableCell>
                         <TableCell sx={{ fontWeight: 900 }} align="right">Rate</TableCell>
@@ -3804,8 +3805,8 @@ const Rentals = () => {
                       {(viewAgreement.items || []).map(item => (
                         <TableRow key={item.id}>
                           <TableCell>
-                            <Typography sx={{ fontWeight: 800, color: '#1E1B4B' }}>{item.part_number || '-'}</Typography>
-                            <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{item.part_description}</Typography>
+                            <Typography sx={{ fontWeight: 800, color: palette.ink }}>{item.part_number || '-'}</Typography>
+                            <Typography sx={{ fontSize: 12, color: palette.textMuted }}>{item.part_description}</Typography>
                           </TableCell>
                           <TableCell align="right">{item.quantity}</TableCell>
                           <TableCell align="right">{money(item.rental_rate)}</TableCell>
@@ -3819,7 +3820,7 @@ const Rentals = () => {
                             {item.deposit_status || (Number(item.security_deposit || 0) > 0 ? 'held' : '-')}
                           </TableCell>
                           <TableCell>
-                            <Chip size="small" label={item.item_status === 'returned' ? 'Returned' : 'Out'} sx={{ fontWeight: 800, bgcolor: item.item_status === 'returned' ? '#DCFCE7' : '#DBEAFE', color: item.item_status === 'returned' ? '#15803D' : '#1D4ED8' }} />
+                            <Chip size="small" label={item.item_status === 'returned' ? 'Returned' : 'Out'} sx={{ fontWeight: 800, bgcolor: item.item_status === 'returned' ? '#DCFCE7' : palette.infoSoft, color: item.item_status === 'returned' ? palette.success : palette.info }} />
                           </TableCell>
                         </TableRow>
                       ))}
@@ -3831,13 +3832,13 @@ const Rentals = () => {
               <Divider />
               
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-                <Card sx={{ p: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 1 }}>Handover Information</Typography>
+                <Card sx={{ p: 2, border: `1px solid ${palette.border}`, borderRadius: '12px', bgcolor: palette.surfaceFaint }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.infoDeep, mb: 1 }}>Handover Information</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 800, color: '#4B5563' }}>Condition: {viewAgreement.initial_condition || 'N/A'}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 800, color: '#4B5563', mt: 0.5 }}>Initial Reading: {viewAgreement.initial_meter_reading || '-'}</Typography>
                 </Card>
-                <Card sx={{ p: 2, border: '1px solid #E5E7EB', borderRadius: '12px', bgcolor: '#F9FAFB' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#047857', mb: 1 }}>Return Information</Typography>
+                <Card sx={{ p: 2, border: `1px solid ${palette.border}`, borderRadius: '12px', bgcolor: palette.surfaceFaint }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.brand, mb: 1 }}>Return Information</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 800, color: '#4B5563' }}>Condition: {viewAgreement.return_condition || 'N/A'}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 800, color: '#4B5563', mt: 0.5 }}>Meter Reading: {viewAgreement.final_meter_reading || 0}</Typography>
                 </Card>
@@ -3846,14 +3847,14 @@ const Rentals = () => {
               {viewAgreement.converted_invoice_id && (
                 <>
                   <Divider />
-                  <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>Billing and Invoices</Typography>
-                  <Card sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #BFDBFE', bgcolor: '#EFF6FF', borderRadius: '12px' }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.infoDeep }}>Billing and Invoices</Typography>
+                  <Card sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #BFDBFE', bgcolor: palette.infoTint, borderRadius: '12px' }}>
                     <Box>
-                      <Typography sx={{ fontWeight: 900, color: '#1D4ED8' }}>Invoice {viewAgreement.converted_invoice_number}</Typography>
+                      <Typography sx={{ fontWeight: 900, color: palette.info }}>Invoice {viewAgreement.converted_invoice_number}</Typography>
                       <Typography variant="body2" sx={{ fontWeight: 800 }}>Payment Method: {paymentMethodLabel(viewAgreement.converted_invoice_payment_method)}</Typography>
                     </Box>
                     <Box sx={{ textAlign: 'right' }}>
-                      <Typography sx={{ fontWeight: 950, color: '#047857' }}>Total: {money(viewAgreement.converted_invoice_balance_due)} due (paid: {money(viewAgreement.converted_invoice_amount_paid)})</Typography>
+                      <Typography sx={{ fontWeight: 950, color: palette.brand }}>Total: {money(viewAgreement.converted_invoice_balance_due)} due (paid: {money(viewAgreement.converted_invoice_amount_paid)})</Typography>
                       <Chip label={viewAgreement.converted_invoice_status} size="small" sx={{ bgcolor: statusChip(viewAgreement.converted_invoice_status || '').bg, color: statusChip(viewAgreement.converted_invoice_status || '').color, fontWeight: 900, textTransform: 'uppercase', mt: 0.5 }} />
                     </Box>
                   </Card>
@@ -3862,13 +3863,13 @@ const Rentals = () => {
 
               <Divider />
               <Box>
-                <Typography sx={{ fontWeight: 900, color: '#1E3A8A', mb: 0.5 }}>Payment Schedule</Typography>
-                <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
+                <Typography sx={{ fontWeight: 900, color: palette.infoDeep, mb: 0.5 }}>Payment Schedule</Typography>
+                <Typography sx={{ color: palette.textSubtle, fontSize: 13, fontWeight: 700, mb: 1.5 }}>
                   First payment includes upfront charges. Future periods contain recurring rent, applicable discount, and tax.
                 </Typography>
-                <TableContainer sx={{ border: '1px solid #DBEAFE', borderRadius: '14px', overflowX: 'auto' }}>
+                <TableContainer sx={{ border: `1px solid ${palette.infoSoft}`, borderRadius: '14px', overflowX: 'auto' }}>
                   <Table size="small" sx={{ minWidth: 700 }}>
-                    <TableHead><TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                    <TableHead><TableRow sx={{ bgcolor: palette.surface }}>
                       <TableCell sx={{ fontWeight: 900 }}>Period</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Billing Period</TableCell>
                       <TableCell sx={{ fontWeight: 900 }} align="right">Rent</TableCell>
@@ -3882,15 +3883,15 @@ const Rentals = () => {
                         const isNext = viewAgreement.next_payment?.period === period.period
                         const style = statusChip(period.status)
                         return (
-                          <TableRow key={period.period} sx={{ bgcolor: isNext ? '#F5F3FF' : undefined }}>
-                            <TableCell sx={{ fontWeight: 900, color: isNext ? '#7C3AED' : '#1E3A8A' }}>
+                          <TableRow key={period.period} sx={{ bgcolor: isNext ? palette.brandTint : undefined }}>
+                            <TableCell sx={{ fontWeight: 900, color: isNext ? palette.brand : palette.infoDeep }}>
                               {period.period}{isNext ? ' · Next' : ''}
                             </TableCell>
                             <TableCell>{formatDate(period.billing_date)} – {formatDate(period.period_end)}</TableCell>
                             <TableCell align="right">{money(period.rental_amount)}</TableCell>
                             <TableCell align="right">
                               {Number(period.discount || 0) ? `-${money(period.discount)}` : '-'}
-                              {period.discount_conditional ? <Typography sx={{ fontSize: 10, color: '#B45309', fontWeight: 800 }}>requires saved-card authorization</Typography> : null}
+                              {period.discount_conditional ? <Typography sx={{ fontSize: 10, color: palette.warning, fontWeight: 800 }}>requires saved-card authorization</Typography> : null}
                             </TableCell>
                             <TableCell align="right">{money(period.tax)}</TableCell>
                             <TableCell align="right" sx={{ fontWeight: 900 }}>{money(period.total)}</TableCell>
@@ -3905,7 +3906,7 @@ const Rentals = () => {
                         )
                       })}
                       {(viewAgreement.billing_schedule || []).length === 0 && (
-                        <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3, color: '#64748B', fontWeight: 700 }}>No future billing periods remain.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3, color: palette.textSubtle, fontWeight: 700 }}>No future billing periods remain.</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -3913,13 +3914,13 @@ const Rentals = () => {
               </Box>
 
               <Divider />
-              <Typography sx={{ fontWeight: 900, color: '#1E3A8A' }}>Agreement Audit History</Typography>
+              <Typography sx={{ fontWeight: 900, color: palette.infoDeep }}>Agreement Audit History</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 {viewAgreement.history?.map((h, i) => (
-                  <Box key={i} sx={{ p: 1.4, border: '1px solid #F3F4F6', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', bgcolor: '#FAF5FF' }}>
+                  <Box key={i} sx={{ p: 1.4, border: `1px solid ${palette.surfaceGray}`, borderRadius: '10px', display: 'flex', justifyContent: 'space-between', bgcolor: '#f5ffff' }}>
                     <Box>
-                      <Typography sx={{ fontWeight: 850, textTransform: 'capitalize', color: '#7C3AED' }}>{h.action.replace(/_/g, ' ')}</Typography>
-                      <Typography sx={{ color: '#6B7280', fontSize: 12 }}>by {h.by} at {formatDate(h.at)}</Typography>
+                      <Typography sx={{ fontWeight: 850, textTransform: 'capitalize', color: palette.brand }}>{h.action.replace(/_/g, ' ')}</Typography>
+                      <Typography sx={{ color: palette.textMuted, fontSize: 12 }}>by {h.by} at {formatDate(h.at)}</Typography>
                     </Box>
                     <Typography variant="body2" title={auditDetailsText(h.details)} sx={{ color: '#4B5563', alignSelf: 'center', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {auditDetailsText(h.details)}

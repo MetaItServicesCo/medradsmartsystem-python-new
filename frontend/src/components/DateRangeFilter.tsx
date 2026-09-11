@@ -1,5 +1,6 @@
 import { Box, Button, TextField, Tooltip } from '@mui/material'
 import ClearIcon from '@mui/icons-material/Clear'
+import { palette } from '@/theme/palette'
 
 interface DateRangeFilterProps {
   dateFrom: string
@@ -55,7 +56,7 @@ const DateRangeFilter = ({
             onDateFromChange('')
             onDateToChange('')
           }}
-          sx={{ minHeight: 40, px: 1.5, color: '#6B7280', fontWeight: 800, textTransform: 'none' }}
+          sx={{ minHeight: 40, px: 1.5, color: palette.textMuted, fontWeight: 800, textTransform: 'none' }}
         >
           Clear
         </Button>

@@ -37,6 +37,7 @@ import { useChatStore } from '@/stores/chatStore'
 import { createEvent } from '@/api/calendar'
 import CallPanel from './CallPanel'
 import ProtectedChatImage from './ProtectedChatImage'
+import { palette } from '@/theme/palette'
 
 // Helper: get icon for file type
 const getFileIcon = (fileType: string | null) => {
@@ -301,20 +302,20 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
           gap: 1.5,
           p: 1.5,
           borderRadius: '12px',
-          backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : 'rgba(124,58,237,0.04)',
-          border: `1px solid ${isMine ? 'rgba(255,255,255,0.2)' : 'rgba(124,58,237,0.1)'}`,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : 'rgba(4,120,87,0.04)',
+          border: `1px solid ${isMine ? 'rgba(255,255,255,0.2)' : 'rgba(4,120,87,0.1)'}`,
           textDecoration: 'none',
           color: 'inherit',
           transition: 'all 0.2s ease',
-          '&:hover': { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : 'rgba(124,58,237,0.08)' },
+          '&:hover': { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : 'rgba(4,120,87,0.08)' },
         }}
       >
         <Box sx={{
           width: 40, height: 40, borderRadius: '10px',
-          backgroundColor: isMine ? 'rgba(255,255,255,0.15)' : '#F5F3FF',
+          backgroundColor: isMine ? 'rgba(255,255,255,0.15)' : palette.brandTint,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
-          color: isMine ? '#fff' : '#7C3AED',
+          color: isMine ? '#fff' : palette.brand,
         }}>
           {getFileIcon(msg.file_type)}
         </Box>
@@ -338,30 +339,30 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
     <Box sx={{
       flex: 1, display: 'flex', flexDirection: 'column',
       backgroundColor: '#fff', borderRadius: '32px',
-      boxShadow: '0 20px 60px -15px rgba(124,58,237,0.12)',
-      border: '1px solid rgba(124,58,237,0.06)',
+      boxShadow: '0 20px 60px -15px rgba(4,120,87,0.12)',
+      border: '1px solid rgba(4,120,87,0.06)',
       overflow: 'hidden',
     }}>
       {/* Header */}
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 2,
-        px: 4, py: 2.5, borderBottom: '1px solid #F3F4F6',
+        px: 4, py: 2.5, borderBottom: `1px solid ${palette.surfaceGray}`,
         backgroundColor: 'rgba(255, 255, 255, 0.8)',
         backdropFilter: 'blur(10px)',
       }}>
         <Avatar sx={{
           width: 48, height: 48,
-          background: 'linear-gradient(135deg, #4F46E5, #7C3AED, #F472B6)',
+          background: `linear-gradient(135deg, ${palette.brandDeep}, ${palette.brand}, ${palette.accentLight})`,
           fontWeight: 800, fontSize: '1.2rem',
-          boxShadow: '0 8px 16px rgba(124,58,237,0.2)',
+          boxShadow: '0 8px 16px rgba(4,120,87,0.2)',
         }}>
           {workspace.name[0].toUpperCase()}
         </Avatar>
         <Box sx={{ flex: 1 }}>
-          <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: '#1E1B4B', letterSpacing: '-0.3px' }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: palette.ink, letterSpacing: '-0.3px' }}>
             {workspace.name}
           </Typography>
-          <Typography variant="caption" sx={{ color: '#9CA3AF', fontWeight: 600 }}>
+          <Typography variant="caption" sx={{ color: palette.textDisabled, fontWeight: 600 }}>
             {workspace.member_count} members • Active Now
           </Typography>
         </Box>
@@ -370,13 +371,13 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
         <Box sx={{ display: 'flex', gap: 0.5, mr: 1 }}>
           {workspace.members.slice(0, 3).map((m) => (
             <Tooltip key={m.user_id} title={m.full_name}>
-              <Avatar sx={{ width: 28, height: 28, fontSize: '0.65rem', fontWeight: 700, backgroundColor: '#7C3AED' }}>
+              <Avatar sx={{ width: 28, height: 28, fontSize: '0.65rem', fontWeight: 700, backgroundColor: palette.brand }}>
                 {m.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
               </Avatar>
             </Tooltip>
           ))}
           {workspace.members.length > 3 && (
-             <Avatar sx={{ width: 28, height: 28, fontSize: '0.6rem', backgroundColor: '#E9D5FF', color: '#7C3AED' }}>
+             <Avatar sx={{ width: 28, height: 28, fontSize: '0.6rem', backgroundColor: palette.brandBorder, color: palette.brand }}>
               +{workspace.members.length - 3}
             </Avatar>
           )}
@@ -384,7 +385,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
 
         <Tooltip title="Meeting Options">
           <IconButton onClick={(e) => setMeetingMenuAnchor(e.currentTarget)}
-            sx={{ color: '#7C3AED', backgroundColor: '#F5F3FF', mr: 1 }}>
+            sx={{ color: palette.brand, backgroundColor: palette.brandTint, mr: 1 }}>
             <VideocamIcon fontSize="small" />
           </IconButton>
         </Tooltip>
@@ -396,18 +397,18 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
           PaperProps={{ sx: { borderRadius: '12px', mt: 1, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } }}
         >
           <MenuItem onClick={handleStartMeeting}>
-            <ListItemIcon><VideocamIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            <ListItemIcon><VideocamIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             <ListItemText primary="Start Now" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
           </MenuItem>
           <MenuItem onClick={() => { setShowScheduleModal(true); setMeetingMenuAnchor(null) }}>
-            <ListItemIcon><CalendarMonthIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            <ListItemIcon><CalendarMonthIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             <ListItemText primary="Schedule for Later" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
           </MenuItem>
         </Menu>
 
         <Tooltip title="Settings">
           <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}
-            sx={{ color: '#7C3AED', backgroundColor: '#F5F3FF' }}>
+            sx={{ color: palette.brand, backgroundColor: palette.brandTint }}>
             <SettingsIcon fontSize="small" />
           </IconButton>
         </Tooltip>
@@ -428,11 +429,11 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
       <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2 }}>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress size={28} sx={{ color: '#7C3AED' }} />
+            <CircularProgress size={28} sx={{ color: palette.brand }} />
           </Box>
         ) : messages.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 6 }}>
-            <Typography variant="body2" sx={{ color: '#9CA3AF' }}>
+            <Typography variant="body2" sx={{ color: palette.textDisabled }}>
               No messages in this workspace yet
             </Typography>
           </Box>
@@ -445,7 +446,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
             return (
               <Box key={msg.id || idx} sx={{ mb: 0.8 }}>
                 {showHeader && !isMine && (
-                  <Typography variant="caption" sx={{ color: '#7C3AED', fontWeight: 600, ml: 5 }}>
+                  <Typography variant="caption" sx={{ color: palette.brand, fontWeight: 600, ml: 5 }}>
                     {msg.sender_name}
                   </Typography>
                 )}
@@ -455,7 +456,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                   alignItems: 'flex-end', gap: 1,
                 }}>
                   {!isMine && showHeader && (
-                    <Avatar sx={{ width: 28, height: 28, backgroundColor: '#7C3AED', fontSize: '0.65rem', fontWeight: 700 }}>
+                    <Avatar sx={{ width: 28, height: 28, backgroundColor: palette.brand, fontSize: '0.65rem', fontWeight: 700 }}>
                       {(msg.sender_name || '').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                     </Avatar>
                   )}
@@ -465,9 +466,9 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                     px: isFile && isImageFile(msg.file_type) ? 0.5 : 2,
                     py: isFile && isImageFile(msg.file_type) ? 0.5 : 1,
                     borderRadius: isMine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                    backgroundColor: isMine ? '#7C3AED' : '#FFFFFF',
-                    color: isMine ? '#FFFFFF' : '#7C3AED',
-                    border: isMine ? 'none' : '1px solid #7C3AED',
+                    backgroundColor: isMine ? palette.brand : palette.white,
+                    color: isMine ? palette.white : palette.brand,
+                    border: isMine ? 'none' : `1px solid ${palette.brand}`,
                     overflow: 'hidden',
                   }}>
                     {isFile ? (
@@ -487,13 +488,13 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                             return (
                               <Box sx={{ 
                                 p: 2.5, borderRadius: '20px', 
-                                backgroundColor: isMine ? 'rgba(255,255,255,0.05)' : '#F9FAFB',
-                                border: `1px solid ${isMine ? 'rgba(255,255,255,0.2)' : 'rgba(124,58,237,0.1)'}`,
+                                backgroundColor: isMine ? 'rgba(255,255,255,0.05)' : palette.surfaceFaint,
+                                border: `1px solid ${isMine ? 'rgba(255,255,255,0.2)' : 'rgba(4,120,87,0.1)'}`,
                                 minWidth: 240,
                                 boxShadow: isMine ? 'none' : '0 4px 12px rgba(0,0,0,0.02)',
                               }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <VideocamIcon sx={{ color: isMine ? '#FBCFE8' : '#7C3AED' }} /> Meeting Link
+                                  <VideocamIcon sx={{ color: isMine ? '#FBCFE8' : palette.brand }} /> Meeting Link
                                 </Typography>
                                 <Typography variant="caption" sx={{ display: 'block', mb: 2, opacity: 0.8, fontWeight: 600 }}>
                                   Started on {startTime}
@@ -507,13 +508,13 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                                     setActiveCall({ active: true, type: 'video', targetUserId: hostId, isHost: currentUser?.id === hostId })
                                   }}
                                   sx={{ 
-                                    background: isMine ? '#fff' : 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)', 
-                                    color: isMine ? '#7C3AED' : '#fff',
+                                    background: isMine ? '#fff' : `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)`, 
+                                    color: isMine ? palette.brand : '#fff',
                                     textTransform: 'none', 
                                     fontWeight: 800,
                                     borderRadius: '12px',
                                     '&:hover': { 
-                                      background: isMine ? '#F3F4F6' : 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)',
+                                      background: isMine ? palette.surfaceGray : `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.accent} 100%)`,
                                       transform: 'translateY(-2px)'
                                     }
                                   }}
@@ -533,8 +534,8 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                             return (
                               <Box sx={{ 
                                 p: 2.5, borderRadius: '20px', 
-                                backgroundColor: isMine ? 'rgba(255,255,255,0.05)' : '#F9FAFB',
-                                border: `1px solid ${isMine ? 'rgba(255,255,255,0.2)' : 'rgba(124,58,237,0.1)'}`,
+                                backgroundColor: isMine ? 'rgba(255,255,255,0.05)' : palette.surfaceFaint,
+                                border: `1px solid ${isMine ? 'rgba(255,255,255,0.2)' : 'rgba(4,120,87,0.1)'}`,
                                 minWidth: 240,
                                 boxShadow: isMine ? 'none' : '0 4px 12px rgba(0,0,0,0.02)',
                               }}>
@@ -550,15 +551,15 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                                   fullWidth
                                   onClick={() => navigate('/calendar')}
                                   sx={{ 
-                                    borderColor: isMine ? '#fff' : '#7C3AED', 
-                                    color: isMine ? '#fff' : '#7C3AED',
+                                    borderColor: isMine ? '#fff' : palette.brand, 
+                                    color: isMine ? '#fff' : palette.brand,
                                     textTransform: 'none', 
                                     fontWeight: 800,
                                     borderRadius: '12px',
                                     borderWeight: '1.5px',
                                     '&:hover': { 
-                                      borderColor: isMine ? '#F3F4F6' : '#6D28D9', 
-                                      backgroundColor: isMine ? 'rgba(255,255,255,0.1)' : 'rgba(124,58,237,0.04)',
+                                      borderColor: isMine ? palette.surfaceGray : palette.brandDeep, 
+                                      backgroundColor: isMine ? 'rgba(255,255,255,0.1)' : 'rgba(4,120,87,0.04)',
                                       transform: 'translateY(-2px)'
                                     }
                                   }}
@@ -581,7 +582,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                                   const hostId = parseInt(msg.content.split(':')[1].replace(']]', ''))
                                   setActiveCall({ active: true, type: 'video', targetUserId: hostId, isHost: currentUser?.id === hostId })
                                 }}
-                                sx={{ backgroundColor: '#7C3AED', textTransform: 'none', borderRadius: '8px' }}
+                                sx={{ backgroundColor: palette.brand, textTransform: 'none', borderRadius: '8px' }}
                               >
                                 Join Meeting
                               </Button>
@@ -592,7 +593,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
 
                     <Typography sx={{
                       fontSize: '0.65rem', mt: 0.3,
-                      color: isMine ? 'rgba(255,255,255,0.6)' : '#9CA3AF',
+                      color: isMine ? 'rgba(255,255,255,0.6)' : palette.textDisabled,
                       textAlign: 'right',
                       px: isFile && isImageFile(msg.file_type) ? 1.5 : 0,
                       pb: isFile && isImageFile(msg.file_type) ? 0.5 : 0,
@@ -623,26 +624,26 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
           display: 'flex', alignItems: 'center', gap: 1.5,
           mx: 2, mb: 0.5, p: 1.5,
           borderRadius: '12px',
-          backgroundColor: '#F5F3FF',
-          border: '1px solid rgba(124,58,237,0.1)',
+          backgroundColor: palette.brandTint,
+          border: '1px solid rgba(4,120,87,0.1)',
         }}>
           <Box sx={{
             width: 36, height: 36, borderRadius: '8px',
-            backgroundColor: '#EDE9FE',
+            backgroundColor: palette.brandSoft,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#7C3AED',
+            color: palette.brand,
           }}>
             {getFileIcon(pendingFile.file_type)}
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: '#1E1B4B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: palette.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {pendingFile.file_name}
             </Typography>
-            <Typography sx={{ fontSize: '0.7rem', color: '#9CA3AF' }}>
+            <Typography sx={{ fontSize: '0.7rem', color: palette.textDisabled }}>
               {formatFileSize(pendingFile.file_size)}
             </Typography>
           </Box>
-          <IconButton size="small" onClick={() => setPendingFile(null)} sx={{ color: '#9CA3AF' }}>
+          <IconButton size="small" onClick={() => setPendingFile(null)} sx={{ color: palette.textDisabled }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -653,8 +654,8 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
         <Box sx={{ px: 2, pb: 0.5 }}>
           <LinearProgress sx={{
             borderRadius: 4,
-            '& .MuiLinearProgress-bar': { backgroundColor: '#7C3AED' },
-            backgroundColor: '#EDE9FE',
+            '& .MuiLinearProgress-bar': { backgroundColor: palette.brand },
+            backgroundColor: palette.brandSoft,
           }} />
         </Box>
       )}
@@ -671,16 +672,16 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
       {/* Input */}
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 1,
-        px: 2, py: 1.5, borderTop: '1px solid #F3F4F6',
+        px: 2, py: 1.5, borderTop: `1px solid ${palette.surfaceGray}`,
       }}>
-        <IconButton onClick={() => setShowEmoji(!showEmoji)} sx={{ color: showEmoji ? '#7C3AED' : '#9CA3AF' }}>
+        <IconButton onClick={() => setShowEmoji(!showEmoji)} sx={{ color: showEmoji ? palette.brand : palette.textDisabled }}>
           <EmojiEmotionsIcon />
         </IconButton>
         <Tooltip title="Attach file">
           <IconButton
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            sx={{ color: pendingFile ? '#7C3AED' : '#9CA3AF', '&:hover': { color: '#7C3AED' } }}
+            sx={{ color: pendingFile ? palette.brand : palette.textDisabled, '&:hover': { color: palette.brand } }}
           >
             <AttachFileIcon sx={{ transform: 'rotate(45deg)' }} />
           </IconButton>
@@ -692,8 +693,8 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
           multiline maxRows={3}
           sx={{
             '& .MuiOutlinedInput-root': {
-              borderRadius: '12px', backgroundColor: '#F9FAFB',
-              '& fieldset': { borderColor: '#E5E7EB' },
+              borderRadius: '12px', backgroundColor: palette.surfaceFaint,
+              '& fieldset': { borderColor: palette.border },
             },
           }}
         />
@@ -701,9 +702,9 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
           onClick={handleSend}
           disabled={!message.trim() && !pendingFile}
           sx={{
-            backgroundColor: '#7C3AED', color: '#fff',
-            '&:hover': { backgroundColor: '#6D28D9' },
-            '&.Mui-disabled': { backgroundColor: '#E9D5FF', color: '#C4B5FD' },
+            backgroundColor: palette.brand, color: '#fff',
+            '&:hover': { backgroundColor: palette.brandDeep },
+            '&.Mui-disabled': { backgroundColor: palette.brandBorder, color: palette.brandPale },
             width: 40, height: 40,
           }}
         >
@@ -719,7 +720,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
             {workspace.members.map((m) => (
               <ListItemButton key={m.user_id} sx={{ borderRadius: '8px' }}>
                 <ListItemAvatar>
-                  <Avatar sx={{ width: 36, height: 36, backgroundColor: '#7C3AED', fontSize: '0.8rem', fontWeight: 700 }}>
+                  <Avatar sx={{ width: 36, height: 36, backgroundColor: palette.brand, fontSize: '0.8rem', fontWeight: 700 }}>
                     {m.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                   </Avatar>
                 </ListItemAvatar>
@@ -731,7 +732,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                 {isAdmin && m.user_id !== currentUser?.id && (
                   <Tooltip title="Remove">
                     <IconButton size="small" onClick={() => removeMemberMutation.mutate(m.user_id)}
-                      sx={{ color: '#EF4444' }}>
+                      sx={{ color: palette.dangerBright }}>
                       <PersonRemoveIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -755,7 +756,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
             {searchResults.map((u: any) => (
               <ListItemButton key={u.id} onClick={() => addMemberMutation.mutate(u.id)} sx={{ borderRadius: '8px' }}>
                 <ListItemAvatar>
-                  <Avatar sx={{ width: 36, height: 36, backgroundColor: '#7C3AED', fontSize: '0.8rem', fontWeight: 700 }}>
+                  <Avatar sx={{ width: 36, height: 36, backgroundColor: palette.brand, fontSize: '0.8rem', fontWeight: 700 }}>
                     {u.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
                   </Avatar>
                 </ListItemAvatar>
@@ -764,11 +765,11 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
                   secondary={u.email}
                   primaryTypographyProps={{ fontWeight: 600, fontSize: '0.875rem' }}
                 />
-                <PersonAddIcon sx={{ color: '#7C3AED' }} />
+                <PersonAddIcon sx={{ color: palette.brand }} />
               </ListItemButton>
             ))}
             {memberSearch.length >= 2 && searchResults.length === 0 && (
-              <Typography variant="body2" sx={{ color: '#9CA3AF', textAlign: 'center', py: 2 }}>
+              <Typography variant="body2" sx={{ color: palette.textDisabled, textAlign: 'center', py: 2 }}>
                 No users found
               </Typography>
             )}
@@ -796,7 +797,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setShowScheduleModal(false)} sx={{ color: '#9CA3AF' }}>Cancel</Button>
+          <Button onClick={() => setShowScheduleModal(false)} sx={{ color: palette.textDisabled }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleScheduleSubmit}

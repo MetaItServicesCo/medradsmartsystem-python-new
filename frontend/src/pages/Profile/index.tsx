@@ -25,6 +25,7 @@ import {
 } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
 import { formatUSPhoneInput } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 const Profile = () => {
   const queryClient = useQueryClient()
@@ -122,7 +123,7 @@ const Profile = () => {
     <Box className="page-enter">
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
-          <Card sx={{ p: { xs: 2, sm: 3 }, borderRadius: '16px', border: '1px solid #E5E7EB' }}>
+          <Card sx={{ p: { xs: 2, sm: 3 }, borderRadius: '16px', border: `1px solid ${palette.border}` }}>
             <Stack alignItems="center" spacing={2.5}>
               <Box sx={{ position: 'relative' }}>
                 <Avatar
@@ -132,8 +133,8 @@ const Profile = () => {
                     height: 132,
                     fontSize: '2.2rem',
                     fontWeight: 900,
-                    background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
-                    boxShadow: '0 16px 32px rgba(124,58,237,0.22)',
+                    background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)`,
+                    boxShadow: '0 16px 32px rgba(4,120,87,0.22)',
                   }}
                 >
                   {initials}
@@ -151,7 +152,7 @@ const Profile = () => {
                     height: 44,
                     borderRadius: '50%',
                     p: 0,
-                    background: 'linear-gradient(135deg, #7C3AED, #EC4899)',
+                    background: `linear-gradient(135deg, ${palette.brand}, ${palette.accent})`,
                   }}
                 >
                   {uploadMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <PhotoCameraIcon />}
@@ -166,10 +167,10 @@ const Profile = () => {
               </Box>
 
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                <Typography variant="h6" sx={{ fontWeight: 900, color: palette.ink }}>
                   {profile?.full_name}
                 </Typography>
-                <Typography variant="body2" sx={{ color: '#6B7280' }}>
+                <Typography variant="body2" sx={{ color: palette.textMuted }}>
                   @{profile?.username}
                 </Typography>
               </Box>
@@ -177,16 +178,16 @@ const Profile = () => {
               <Divider flexItem />
 
               <Stack spacing={1} sx={{ width: '100%' }}>
-                <Typography variant="body2" sx={{ color: '#6B7280' }}>
+                <Typography variant="body2" sx={{ color: palette.textMuted }}>
                   Role
                 </Typography>
-                <Typography sx={{ fontWeight: 800, color: '#374151', textTransform: 'capitalize' }}>
+                <Typography sx={{ fontWeight: 800, color: palette.textStrong, textTransform: 'capitalize' }}>
                   {profile?.role?.replace(/_/g, ' ')}
                 </Typography>
-                <Typography variant="body2" sx={{ color: '#6B7280', pt: 1 }}>
+                <Typography variant="body2" sx={{ color: palette.textMuted, pt: 1 }}>
                   Account type
                 </Typography>
-                <Typography sx={{ fontWeight: 800, color: '#374151', textTransform: 'capitalize' }}>
+                <Typography sx={{ fontWeight: 800, color: palette.textStrong, textTransform: 'capitalize' }}>
                   {profile?.user_type}
                 </Typography>
               </Stack>
@@ -195,16 +196,16 @@ const Profile = () => {
         </Grid>
 
         <Grid item xs={12} md={8}>
-          <Card sx={{ p: { xs: 2, sm: 3 }, borderRadius: '16px', border: '1px solid #E5E7EB' }}>
+          <Card sx={{ p: { xs: 2, sm: 3 }, borderRadius: '16px', border: `1px solid ${palette.border}` }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-              <Box sx={{ width: 42, height: 42, borderRadius: '12px', backgroundColor: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7C3AED' }}>
+              <Box sx={{ width: 42, height: 42, borderRadius: '12px', backgroundColor: palette.brandTint, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.brand }}>
                 <PersonOutlineIcon />
               </Box>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 900, color: '#111827' }}>
                   Profile Settings
                 </Typography>
-                <Typography variant="body2" sx={{ color: '#6B7280' }}>
+                <Typography variant="body2" sx={{ color: palette.textMuted }}>
                   Update your personal details and profile picture.
                 </Typography>
               </Box>
@@ -247,7 +248,7 @@ const Profile = () => {
                   variant="contained"
                   startIcon={updateMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <SaveIcon />}
                   disabled={updateMutation.isPending}
-                  sx={{ px: 3, py: 1.2, borderRadius: '12px', background: 'linear-gradient(135deg, #7C3AED, #EC4899)', fontWeight: 900 }}
+                  sx={{ px: 3, py: 1.2, borderRadius: '12px', background: `linear-gradient(135deg, ${palette.brand}, ${palette.accent})`, fontWeight: 900 }}
                 >
                   Save Profile
                 </Button>

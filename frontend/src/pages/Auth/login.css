@@ -1,9 +1,9 @@
 /* Public authentication only: match the landing page without changing the app theme. */
 .medrad-auth {
-  --auth-ink: #25233e;
-  --auth-muted: #656578;
-  --auth-purple: #6550bd;
-  --auth-line: #e4e1eb;
+  --auth-ink: #182a23;
+  --auth-muted: #5a6a63;
+  --auth-brand: #047857;
+  --auth-line: #e1ebe9;
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
@@ -26,7 +26,7 @@
   background: #fff;
   border: 1px solid var(--auth-line);
   border-radius: 12px;
-  box-shadow: 0 18px 50px -28px #40336435, 0 0 0 8px #f1eef5;
+  box-shadow: 0 18px 50px -28px #064E3B35, 0 0 0 8px #eef5f5;
 }
 
 .medrad-auth .auth-brand {
@@ -56,7 +56,7 @@
   height: 42px;
   padding-right: 3px;
   border-radius: 9px 9px 9px 2px;
-  background: var(--auth-purple);
+  background: var(--auth-brand);
   color: #fff;
   font-size: 25px;
   letter-spacing: -.09em;
@@ -119,26 +119,26 @@
   box-shadow: none;
 }
 
-.medrad-auth .auth-field .MuiOutlinedInput-notchedOutline { border-color: #d6d0e4; }
-.medrad-auth .auth-field .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: #baaed8; }
-.medrad-auth .auth-field .MuiOutlinedInput-root.Mui-focused { box-shadow: 0 0 0 3px #6550bd12; }
-.medrad-auth .auth-field .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: var(--auth-purple); }
+.medrad-auth .auth-field .MuiOutlinedInput-notchedOutline { border-color: #d0e4e1; }
+.medrad-auth .auth-field .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: #aed8d0; }
+.medrad-auth .auth-field .MuiOutlinedInput-root.Mui-focused { box-shadow: 0 0 0 3px #04785712; }
+.medrad-auth .auth-field .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: var(--auth-brand); }
 .medrad-auth .auth-field input::placeholder { color: var(--auth-muted); opacity: .8; }
-.medrad-auth .auth-field-icon { color: #82778f; font-size: 19px; }
+.medrad-auth .auth-field-icon { color: #698080; font-size: 19px; }
 .medrad-auth .auth-password-toggle {
   width: 44px;
   height: 44px;
   border-radius: 6px;
-  color: var(--auth-purple);
+  color: var(--auth-brand);
 }
-.medrad-auth .auth-password-toggle:hover { transform: none; background: #f0ecf8; }
+.medrad-auth .auth-password-toggle:hover { transform: none; background: #ecf8f6; }
 
 .medrad-auth .auth-submit {
   min-height: 48px;
   margin-top: 28px;
   padding: 12px 20px;
   border-radius: 7px;
-  background: var(--auth-purple);
+  background: var(--auth-brand);
   color: #fff;
   font-family: inherit;
   font-size: 14px;
@@ -147,8 +147,8 @@
   box-shadow: none;
   transition: background-color .15s;
 }
-.medrad-auth .auth-submit:hover { background: #503c9b; box-shadow: none; transform: none; }
-.medrad-auth .auth-submit.Mui-disabled { background: #e4deef; color: #74658e; }
+.medrad-auth .auth-submit:hover { background: #065F46; box-shadow: none; transform: none; }
+.medrad-auth .auth-submit.Mui-disabled { background: #deefed; color: #51726f; }
 
 .medrad-auth .auth-switch {
   display: flex;
@@ -166,19 +166,19 @@
   min-width: auto;
   min-height: 44px;
   padding: 8px 0;
-  color: var(--auth-purple);
+  color: var(--auth-brand);
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   text-transform: none;
 }
 .medrad-auth .auth-switch button:hover { background: transparent; box-shadow: none; transform: none; text-decoration: underline; }
-.medrad-auth button:focus-visible { outline: 3px solid #8869de; outline-offset: 3px; }
+.medrad-auth button:focus-visible { outline: 3px solid #059669; outline-offset: 3px; }
 .medrad-auth .auth-footer { flex-shrink: 0; color: var(--auth-muted); font-family: inherit; font-size: 11px; line-height: 1.8; text-align: center; }
 
 @media (max-width: 480px) {
   .medrad-auth { padding: 28px 20px max(24px, env(safe-area-inset-bottom)); gap: 24px; }
-  .medrad-auth .auth-card { padding: 28px 22px; box-shadow: 0 12px 30px -24px #40336435, 0 0 0 5px #f1eef5; }
+  .medrad-auth .auth-card { padding: 28px 22px; box-shadow: 0 12px 30px -24px #064E3B35, 0 0 0 5px #eef5f5; }
   .medrad-auth .auth-title { font-size: 28px; }
   .medrad-auth .auth-brand { margin-bottom: 28px; }
   .medrad-auth .auth-description { font-size: 13px; margin-bottom: 24px; }

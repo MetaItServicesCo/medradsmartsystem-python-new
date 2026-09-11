@@ -31,6 +31,7 @@ import { toast } from 'react-toastify'
 import { assignFacilityManagerRole, fetchFacilityManagerCandidates, fetchFacilityUsers, type FacilityUser } from '@/api/facilityUsers'
 import { type Facility } from '@/api/facilities'
 import { useAuthStore } from '@/stores/authStore'
+import { palette } from '@/theme/palette'
 
 interface Props {
   open: boolean
@@ -41,11 +42,11 @@ interface Props {
 const MANAGER_ROLES = ['facility_manager', 'facility_admin']
 
 const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
-  facility_admin: { bg: '#F5F3FF', color: '#7C3AED' },
-  facility_manager: { bg: '#EFF6FF', color: '#3B82F6' },
+  facility_admin: { bg: palette.brandTint, color: palette.brand },
+  facility_manager: { bg: palette.infoTint, color: palette.infoBright },
 }
 
-const avatarColors = ['#7C3AED', '#EC4899', '#3B82F6', '#10B981', '#F59E0B', '#EF4444']
+const avatarColors = [palette.brand, palette.accent, palette.infoBright, palette.brandMid, palette.warningBright, palette.dangerBright]
 
 const getInitials = (name: string) =>
   name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2)
@@ -99,7 +100,7 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden' } }}>
       <Box sx={{
-        background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)',
+        background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.ink} 100%)`,
         px: 3.5,
         py: 3,
         display: 'flex',
@@ -124,9 +125,9 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
 
       <DialogContent sx={{ p: 3.5, pt: 2.5 }}>
         {isSuperAdmin && (
-          <Box sx={{ mb: 3, p: 2, backgroundColor: '#F8FAFC', borderRadius: '16px', border: '1px solid #E5E7EB' }}>
-            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PersonAddAlt1Icon sx={{ fontSize: '1.2rem', color: '#7C3AED' }} />
+          <Box sx={{ mb: 3, p: 2, backgroundColor: palette.surface, borderRadius: '16px', border: `1px solid ${palette.border}` }}>
+            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700, color: palette.textStrong, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PersonAddAlt1Icon sx={{ fontSize: '1.2rem', color: palette.brand }} />
               Assign Facility Role
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px auto' }, gap: 1.5 }}>
@@ -169,7 +170,7 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
                 {assignMutation.isPending ? <CircularProgress size={20} color="inherit" /> : 'Assign'}
               </Button>
             </Box>
-            <Typography variant="caption" sx={{ display: 'block', mt: 1.25, color: '#64748B' }}>
+            <Typography variant="caption" sx={{ display: 'block', mt: 1.25, color: palette.textSubtle }}>
               Search an active user, then assign them as facility admin or facility manager for this facility.
             </Typography>
           </Box>
@@ -197,7 +198,7 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
               ) : users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} align="center" sx={{ py: 5 }}>
-                    <PeopleIcon sx={{ fontSize: '2.5rem', color: '#E5E7EB', mb: 1, display: 'block', mx: 'auto' }} />
+                    <PeopleIcon sx={{ fontSize: '2.5rem', color: palette.border, mb: 1, display: 'block', mx: 'auto' }} />
                     <Typography variant="body2" color="text.secondary">
                       No facility managers or facility admins attached yet
                     </Typography>
@@ -214,10 +215,10 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
                           {getInitials(user.full_name)}
                         </Avatar>
                         <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E1B4B' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, color: palette.ink }}>
                             {user.full_name}
                           </Typography>
-                          <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
+                          <Typography variant="caption" sx={{ color: palette.textDisabled }}>
                             {user.email}
                           </Typography>
                         </Box>
@@ -236,8 +237,8 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
                         size="small"
                         variant={isPrimary ? 'filled' : 'outlined'}
                         sx={isPrimary
-                          ? { color: '#059669', backgroundColor: '#ECFDF5', fontSize: '0.65rem', fontWeight: 700 }
-                          : { color: '#6B7280', fontSize: '0.65rem' }}
+                          ? { color: palette.brandStrong, backgroundColor: palette.brandTint, fontSize: '0.65rem', fontWeight: 700 }
+                          : { color: palette.textMuted, fontSize: '0.65rem' }}
                       />
                     </TableCell>
                     <TableCell>
@@ -245,8 +246,8 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
                         label={user.is_active ? 'Active' : 'Inactive'}
                         size="small"
                         sx={{
-                          backgroundColor: user.is_active ? '#F0FDF4' : '#FEF2F2',
-                          color: user.is_active ? '#10B981' : '#EF4444',
+                          backgroundColor: user.is_active ? palette.successTint : palette.dangerWash,
+                          color: user.is_active ? palette.brandMid : palette.dangerBright,
                           fontWeight: 600,
                           fontSize: '0.7rem',
                         }}

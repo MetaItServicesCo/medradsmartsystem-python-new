@@ -18,6 +18,7 @@ import {
 } from '@/api/departments'
 import { fetchFacilities } from '@/api/facilities'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
+import { palette } from '@/theme/palette'
 
 interface Props {
   open: boolean
@@ -86,7 +87,7 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden' } }}>
       <Box sx={{
-        background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)',
+        background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.ink} 100%)`,
         px: 3.5, py: 3, display: 'flex', alignItems: 'center', gap: 2,
       }}>
         <Box sx={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -108,8 +109,8 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
       <DialogContent sx={{ p: { xs: 2, sm: 3.5 } }}>
         {/* Form */}
         {showForm && (
-          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid rgba(124,58,237,0.12)' }}>
-            <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, mb: 1.5, display: 'block' }}>
+          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: palette.brandTint, border: '1px solid rgba(4,120,87,0.12)' }}>
+            <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, mb: 1.5, display: 'block' }}>
               {editingId ? 'Edit Department' : 'New Department'}
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2, mb: 2 }}>
@@ -127,10 +128,10 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
                 fullWidth sx={{ gridColumn: 'span 2' }} />
             </Box>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button size="small" onClick={resetForm} sx={{ color: '#6B7280' }}>Cancel</Button>
+              <Button size="small" onClick={resetForm} sx={{ color: palette.textMuted }}>Cancel</Button>
               <Button size="small" variant="contained" onClick={handleSubmit}
                 disabled={createMut.isPending || updateMut.isPending}
-                sx={{ backgroundColor: '#7C3AED', '&:hover': { backgroundColor: '#6D28D9' } }}>
+                sx={{ backgroundColor: palette.brand, '&:hover': { backgroundColor: palette.brandDeep } }}>
                 {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : editingId ? 'Save' : 'Create'}
               </Button>
             </Box>
@@ -139,12 +140,12 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
 
         {/* View detail */}
         {viewDept && (
-          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F0FDF4', border: '1px solid rgba(16,185,129,0.12)' }}>
-            <Typography variant="overline" sx={{ color: '#10B981', fontWeight: 700, mb: 1, display: 'block' }}>Department Details</Typography>
+          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: palette.successTint, border: '1px solid rgba(16,185,129,0.12)' }}>
+            <Typography variant="overline" sx={{ color: palette.brandMid, fontWeight: 700, mb: 1, display: 'block' }}>Department Details</Typography>
             <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{viewDept.name}</Typography>
-            <Typography variant="caption" sx={{ color: '#6B7280' }}>Facility: {getFacilityName(viewDept.facility_id)}</Typography>
-            {viewDept.description && <Typography variant="body2" sx={{ mt: 1, color: '#374151' }}>{viewDept.description}</Typography>}
-            <Button size="small" onClick={() => setViewDept(null)} sx={{ mt: 1, color: '#6B7280' }}>Close</Button>
+            <Typography variant="caption" sx={{ color: palette.textMuted }}>Facility: {getFacilityName(viewDept.facility_id)}</Typography>
+            {viewDept.description && <Typography variant="body2" sx={{ mt: 1, color: palette.textStrong }}>{viewDept.description}</Typography>}
+            <Button size="small" onClick={() => setViewDept(null)} sx={{ mt: 1, color: palette.textMuted }}>Close</Button>
           </Box>
         )}
 
@@ -167,21 +168,21 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
               ) : departments.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} align="center" sx={{ py: 5 }}>
-                    <DomainIcon sx={{ fontSize: '2.5rem', color: '#E5E7EB', mb: 1, display: 'block', mx: 'auto' }} />
+                    <DomainIcon sx={{ fontSize: '2.5rem', color: palette.border, mb: 1, display: 'block', mx: 'auto' }} />
                     <Typography variant="body2" color="text.secondary">No departments found</Typography>
                   </TableCell>
                 </TableRow>
               ) : departments.map((dept) => (
                 <TableRow key={dept.id} sx={{ '&:hover': { backgroundColor: '#FAFAFF' } }}>
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E1B4B' }}>{dept.name}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: palette.ink }}>{dept.name}</Typography>
                   </TableCell>
                   <TableCell>
                     <Chip label={getFacilityName(dept.facility_id)} size="small"
-                      sx={{ backgroundColor: '#F5F3FF', color: '#7C3AED', fontWeight: 600, fontSize: '0.7rem' }} />
+                      sx={{ backgroundColor: palette.brandTint, color: palette.brand, fontWeight: 600, fontSize: '0.7rem' }} />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ color: '#6B7280', fontSize: '0.8rem' }}>
+                    <Typography variant="body2" sx={{ color: palette.textMuted, fontSize: '0.8rem' }}>
                       {dept.description || '—'}
                     </Typography>
                   </TableCell>
@@ -189,19 +190,19 @@ const DepartmentsModal = ({ open, onClose }: Props) => {
                     <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                       <Tooltip title="View">
                         <IconButton size="small" onClick={() => setViewDept(dept)}
-                          sx={{ color: '#3B82F6', backgroundColor: '#EFF6FF', borderRadius: '8px', '&:hover': { backgroundColor: '#DBEAFE' } }}>
+                          sx={{ color: palette.infoBright, backgroundColor: palette.infoTint, borderRadius: '8px', '&:hover': { backgroundColor: palette.infoSoft } }}>
                           <VisibilityOutlinedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Edit">
                         <IconButton size="small" onClick={() => handleEdit(dept)}
-                          sx={{ color: '#7C3AED', backgroundColor: '#F5F3FF', borderRadius: '8px', '&:hover': { backgroundColor: '#EDE9FE' } }}>
+                          sx={{ color: palette.brand, backgroundColor: palette.brandTint, borderRadius: '8px', '&:hover': { backgroundColor: palette.brandSoft } }}>
                           <EditOutlinedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
                         <IconButton size="small" onClick={() => delMut.mutate(dept.id)}
-                          sx={{ color: '#EF4444', backgroundColor: '#FEF2F2', borderRadius: '8px', '&:hover': { backgroundColor: '#FEE2E2' } }}>
+                          sx={{ color: palette.dangerBright, backgroundColor: palette.dangerWash, borderRadius: '8px', '&:hover': { backgroundColor: palette.dangerTint } }}>
                           <DeleteOutlineIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>

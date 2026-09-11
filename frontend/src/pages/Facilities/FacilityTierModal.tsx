@@ -19,6 +19,7 @@ import { toast } from 'react-toastify'
 import { fetchTiers, createTier, updateTier, deleteTier, duplicateTier, type Tier, type TierCreate, type TierUpdate } from '@/api/tiers'
 import { updateFacility, type Facility } from '@/api/facilities'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import { palette } from '@/theme/palette'
 
 interface Props {
   open: boolean
@@ -165,9 +166,9 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth
-      PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden', boxShadow: '0 24px 80px rgba(124,58,237,0.18)', width: { xs: 'calc(100% - 16px)', sm: 'calc(100% - 48px)' } } }}
+      PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden', boxShadow: '0 24px 80px rgba(4,120,87,0.18)', width: { xs: 'calc(100% - 16px)', sm: 'calc(100% - 48px)' } } }}
     >
-      <Box sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 50%, #5B21B6 100%)', px: { xs: 2, sm: 3.5 }, py: { xs: 2, sm: 3 }, display: 'flex', alignItems: 'center', gap: 2, position: 'relative', overflow: 'hidden', flexWrap: 'wrap' }}>
+      <Box sx={{ background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brandDeep} 50%, ${palette.ink} 100%)`, px: { xs: 2, sm: 3.5 }, py: { xs: 2, sm: 3 }, display: 'flex', alignItems: 'center', gap: 2, position: 'relative', overflow: 'hidden', flexWrap: 'wrap' }}>
         <Box sx={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <WorkspacePremiumIcon sx={{ color: '#fff', fontSize: '1.5rem' }} />
         </Box>
@@ -191,13 +192,13 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
 
       <DialogContent sx={{ p: { xs: 2, sm: 3.5 }, pt: { xs: 2, sm: 3 } }}>
         <Collapse in={showForm}>
-          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid rgba(124,58,237,0.12)' }}>
-            <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, mb: 1.5, display: 'block' }}>Create New Tier</Typography>
+          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: palette.brandTint, border: '1px solid rgba(4,120,87,0.12)' }}>
+            <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, mb: 1.5, display: 'block' }}>Create New Tier</Typography>
             <TierFormFields form={form} setForm={setForm} />
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-              <Button size="small" onClick={() => setShowForm(false)} sx={{ color: '#6B7280' }}>Cancel</Button>
+              <Button size="small" onClick={() => setShowForm(false)} sx={{ color: palette.textMuted }}>Cancel</Button>
               <Button size="small" variant="contained" onClick={handleCreateSubmit} disabled={createMut.isPending}
-                 sx={{ backgroundColor: '#7C3AED' }}>
+                 sx={{ backgroundColor: palette.brand }}>
                 {createMut.isPending ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Create Tier'}
               </Button>
             </Box>
@@ -205,7 +206,7 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
         </Collapse>
 
         {facility && facility.id !== 0 && selectedTierIds.length > 0 && (
-          <Alert severity="info" icon={<CheckCircleIcon />} sx={{ mb: 2.5, borderRadius: '12px', backgroundColor: '#F5F3FF', color: '#5B21B6', border: '1px solid rgba(124,58,237,0.12)', '& .MuiAlert-icon': { color: '#7C3AED' } }}>
+          <Alert severity="info" icon={<CheckCircleIcon />} sx={{ mb: 2.5, borderRadius: '12px', backgroundColor: palette.brandTint, color: palette.ink, border: '1px solid rgba(4,120,87,0.12)', '& .MuiAlert-icon': { color: palette.brand } }}>
             <Box sx={{ display: 'flex', gap: 0.5, minWidth: 0 }}>
               <Box component="span" sx={{ flexShrink: 0 }}>Currently assigned:</Box>
               <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -213,7 +214,7 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
                   value={selectedTierIds.map((id) => tiers.find((t) => t.id === id)?.name || `Tier #${id}`).join(', ')}
                   variant="body2"
                   fontWeight={900}
-                  color="#5B21B6"
+                  color={palette.ink}
                 />
               </Box>
             </Box>
@@ -221,7 +222,7 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
         )}
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, mb: 1.5 }}>
-          <Typography variant="overline" sx={{ color: '#1E1B4B', fontWeight: 700, display: 'block' }}>Available Tiers</Typography>
+          <Typography variant="overline" sx={{ color: palette.ink, fontWeight: 700, display: 'block' }}>Available Tiers</Typography>
           <TextField
             size="small"
             placeholder="Search tiers..."
@@ -239,12 +240,12 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
             {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} variant="rounded" height={60} sx={{ borderRadius: '16px' }} />)}
           </Box>
         ) : tiers.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 5, color: '#9CA3AF' }}>
+          <Box sx={{ textAlign: 'center', py: 5, color: palette.textDisabled }}>
             <WorkspacePremiumIcon sx={{ fontSize: '3rem', mb: 1, opacity: 0.4 }} />
             <Typography variant="body2">No tiers configured yet.</Typography>
           </Box>
         ) : (
-          <Box sx={{ overflowX: 'auto', border: '1px solid #EEF0F6', borderRadius: '16px' }}>
+          <Box sx={{ overflowX: 'auto', border: `1px solid ${palette.borderSoft}`, borderRadius: '16px' }}>
             <table style={{ width: '100%', minWidth: 1040, borderCollapse: 'collapse', tableLayout: 'fixed', textAlign: 'left', fontSize: '0.85rem' }}>
               <colgroup>
                 <col style={{ width: 250 }} />
@@ -256,7 +257,7 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
                 <col style={{ width: 320 }} />
               </colgroup>
               <thead>
-                <tr style={{ borderBottom: '2px solid rgba(124,58,237,0.1)', color: '#7C3AED' }}>
+                <tr style={{ borderBottom: '2px solid rgba(4,120,87,0.1)', color: palette.brand }}>
                   <th style={{ padding: '12px 8px' }}>Code / Name</th>
                   <th style={{ padding: '12px 8px' }}>Labor Fee</th>
                   <th style={{ padding: '12px 8px' }}>Service Fee</th>
@@ -276,51 +277,51 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
                       <Box
                         component="tr"
                         sx={{
-                          borderBottom: (isViewing || isEditing) ? 'none' : '1px solid #E5E7EB',
-                          backgroundColor: selected ? '#F5F3FF' : (isViewing || isEditing) ? '#FAFAFA' : 'transparent',
+                          borderBottom: (isViewing || isEditing) ? 'none' : `1px solid ${palette.border}`,
+                          backgroundColor: selected ? palette.brandTint : (isViewing || isEditing) ? '#FAFAFA' : 'transparent',
                           transition: 'background-color 0.18s ease, box-shadow 0.18s ease',
                           '&:hover': {
-                            backgroundColor: selected ? '#EEE7FF' : '#FAF7FF',
-                            boxShadow: 'inset 3px 0 0 #7C3AED',
+                            backgroundColor: selected ? palette.brandTint : '#f7fffe',
+                            boxShadow: 'inset 3px 0 0 #047857',
                           },
                         }}
                       >
                         <td style={{ padding: '12px 8px' }}>
                           <ClippedTooltipText value={tier.name} variant="body2" fontWeight={800} />
-                          <ClippedTooltipText value={`ID: ${tier.tier_code}`} variant="caption" fontWeight={600} color="#6B7280" />
+                          <ClippedTooltipText value={`ID: ${tier.tier_code}`} variant="caption" fontWeight={600} color={palette.textMuted} />
                         </td>
                         <td style={{ padding: '12px 8px' }}><ClippedTooltipText value={`$${tier.labor_rate_per_hour}/hr`} fontWeight={700} /></td>
                         <td style={{ padding: '12px 8px' }}><ClippedTooltipText value={`$${tier.service_call_fee}`} fontWeight={700} /></td>
                         <td style={{ padding: '12px 8px' }}><ClippedTooltipText value={`$${tier.preventive_maintenance_fee}`} fontWeight={700} /></td>
                         <td style={{ padding: '12px 8px' }}><ClippedTooltipText value={`$${tier.mileage_rate}/mi`} fontWeight={700} /></td>
                         <td style={{ padding: '12px 8px' }}>
-                          <Chip label={tier.status} size="small" sx={{ backgroundColor: tier.status === 'active' ? '#D1FAE5' : '#FEE2E2', color: tier.status === 'active' ? '#065F46' : '#991B1B', fontWeight: 600, fontSize: '0.7rem', textTransform: 'capitalize' }} />
+                          <Chip label={tier.status} size="small" sx={{ backgroundColor: tier.status === 'active' ? palette.brandSoft : palette.dangerTint, color: tier.status === 'active' ? palette.brandDeep : '#991B1B', fontWeight: 600, fontSize: '0.7rem', textTransform: 'capitalize' }} />
                         </td>
                         <td style={{ padding: '12px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.75 }}>
                             <Tooltip title="View Details">
-                              <IconButton size="small" onClick={() => { setViewTierId(isViewing ? null : tier.id); setEditTierId(null); }} sx={{ color: '#3B82F6', backgroundColor: '#EFF6FF', borderRadius: '8px', '&:hover': { backgroundColor: '#DBEAFE' } }}>
+                              <IconButton size="small" onClick={() => { setViewTierId(isViewing ? null : tier.id); setEditTierId(null); }} sx={{ color: palette.infoBright, backgroundColor: palette.infoTint, borderRadius: '8px', '&:hover': { backgroundColor: palette.infoSoft } }}>
                                 <VisibilityOutlinedIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Edit Tier">
-                              <IconButton size="small" onClick={() => handleEditClick(tier)} sx={{ color: '#F59E0B', backgroundColor: '#FEF3C7', borderRadius: '8px', '&:hover': { backgroundColor: '#FDE68A' } }}>
+                              <IconButton size="small" onClick={() => handleEditClick(tier)} sx={{ color: palette.warningBright, backgroundColor: palette.warningTint, borderRadius: '8px', '&:hover': { backgroundColor: '#FDE68A' } }}>
                                 <EditOutlinedIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Duplicate Tier">
-                              <IconButton size="small" onClick={() => { if(window.confirm('Duplicate this tier?')) duplicateMut.mutate(tier.id) }} sx={{ color: '#10B981', backgroundColor: '#D1FAE5', borderRadius: '8px', '&:hover': { backgroundColor: '#A7F3D0' } }}>
+                              <IconButton size="small" onClick={() => { if(window.confirm('Duplicate this tier?')) duplicateMut.mutate(tier.id) }} sx={{ color: palette.brandMid, backgroundColor: palette.brandSoft, borderRadius: '8px', '&:hover': { backgroundColor: palette.brandBorder } }}>
                                 <ContentCopyOutlinedIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Delete Tier">
-                              <IconButton size="small" onClick={() => { if(window.confirm('Delete this tier?')) deleteMut.mutate(tier.id) }} sx={{ color: '#EF4444', backgroundColor: '#FEF2F2', borderRadius: '8px', '&:hover': { backgroundColor: '#FEE2E2' } }}>
+                              <IconButton size="small" onClick={() => { if(window.confirm('Delete this tier?')) deleteMut.mutate(tier.id) }} sx={{ color: palette.dangerBright, backgroundColor: palette.dangerWash, borderRadius: '8px', '&:hover': { backgroundColor: palette.dangerTint } }}>
                                 <DeleteOutlineIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             {facility && facility.id !== 0 && (
                               <Button size="small" variant={selected ? 'contained' : 'outlined'} onClick={() => setSelectedTierIds((ids) => selected ? ids.filter((id) => id !== tier.id) : [...ids, tier.id])}
-                                sx={{ minWidth: '90px', borderColor: '#7C3AED', color: selected ? '#fff' : '#7C3AED', backgroundColor: selected ? '#7C3AED' : 'transparent', borderRadius: '10px', textTransform: 'none', fontWeight: 900, '&:hover': { backgroundColor: selected ? '#6D28D9' : 'rgba(124,58,237,0.08)' } }}>
+                                sx={{ minWidth: '90px', borderColor: palette.brand, color: selected ? '#fff' : palette.brand, backgroundColor: selected ? palette.brand : 'transparent', borderRadius: '10px', textTransform: 'none', fontWeight: 900, '&:hover': { backgroundColor: selected ? palette.brandDeep : 'rgba(4,120,87,0.08)' } }}>
                                 {selected ? 'Assigned' : 'Add'}
                               </Button>
                             )}
@@ -328,27 +329,27 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
                         </td>
                       </Box>
                       {isViewing && !isEditing && (
-                        <tr style={{ backgroundColor: '#FAFAFA', borderBottom: '1px solid #E5E7EB' }}>
+                        <tr style={{ backgroundColor: '#FAFAFA', borderBottom: `1px solid ${palette.border}` }}>
                           <td colSpan={7} style={{ padding: '0 8px 16px 8px' }}>
-                            <Box sx={{ p: 2, border: '1px solid rgba(124,58,237,0.1)', borderRadius: '12px', backgroundColor: '#fff' }}>
-                               <Typography variant="subtitle2" sx={{ color: '#7C3AED', mb: 1, fontWeight: 700 }}>Tier Details</Typography>
-                               <Typography variant="body2" sx={{ color: '#374151' }}><strong>Description:</strong> {tier.description || 'No description provided.'}</Typography>
-                               <Typography variant="body2" sx={{ mt: 0.5, color: '#374151' }}><strong>Response SLA:</strong> {tier.response_time_hours} hours</Typography>
-                               <Typography variant="body2" sx={{ mt: 0.5, color: '#374151' }}><strong>Created:</strong> {new Date(tier.created_at).toLocaleDateString()}</Typography>
+                            <Box sx={{ p: 2, border: '1px solid rgba(4,120,87,0.1)', borderRadius: '12px', backgroundColor: '#fff' }}>
+                               <Typography variant="subtitle2" sx={{ color: palette.brand, mb: 1, fontWeight: 700 }}>Tier Details</Typography>
+                               <Typography variant="body2" sx={{ color: palette.textStrong }}><strong>Description:</strong> {tier.description || 'No description provided.'}</Typography>
+                               <Typography variant="body2" sx={{ mt: 0.5, color: palette.textStrong }}><strong>Response SLA:</strong> {tier.response_time_hours} hours</Typography>
+                               <Typography variant="body2" sx={{ mt: 0.5, color: palette.textStrong }}><strong>Created:</strong> {new Date(tier.created_at).toLocaleDateString()}</Typography>
                             </Box>
                           </td>
                         </tr>
                       )}
                       {isEditing && (
-                        <tr style={{ backgroundColor: '#FAFAFA', borderBottom: '1px solid #E5E7EB' }}>
+                        <tr style={{ backgroundColor: '#FAFAFA', borderBottom: `1px solid ${palette.border}` }}>
                           <td colSpan={7} style={{ padding: '0 8px 16px 8px' }}>
-                            <Box sx={{ p: 2.5, borderRadius: '16px', backgroundColor: '#FFFBEB', border: '1px solid rgba(245,158,11,0.2)' }}>
-                              <Typography variant="overline" sx={{ color: '#D97706', fontWeight: 700, mb: 1.5, display: 'block' }}>Edit Tier: {tier.name}</Typography>
+                            <Box sx={{ p: 2.5, borderRadius: '16px', backgroundColor: palette.warningWash, border: '1px solid rgba(245,158,11,0.2)' }}>
+                              <Typography variant="overline" sx={{ color: palette.warningStrong, fontWeight: 700, mb: 1.5, display: 'block' }}>Edit Tier: {tier.name}</Typography>
                               <TierFormFields form={form} setForm={setForm} />
                               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                                <Button size="small" onClick={() => setEditTierId(null)} sx={{ color: '#6B7280' }}>Cancel</Button>
+                                <Button size="small" onClick={() => setEditTierId(null)} sx={{ color: palette.textMuted }}>Cancel</Button>
                                 <Button size="small" variant="contained" onClick={() => handleUpdateSubmit(tier.id, form)} disabled={updateMut.isPending}
-                                  sx={{ backgroundColor: '#F59E0B', '&:hover': { backgroundColor: '#D97706' } }}>
+                                  sx={{ backgroundColor: palette.warningBright, '&:hover': { backgroundColor: palette.warningStrong } }}>
                                   {updateMut.isPending ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : 'Save Changes'}
                                 </Button>
                               </Box>
@@ -378,12 +379,12 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
                 setEditTierId(null)
               }}
               rowsPerPageOptions={[10, 25, 50, 100]}
-              sx={{ borderTop: '1px solid #E5E7EB' }}
+              sx={{ borderTop: `1px solid ${palette.border}` }}
             />
 
             {facility && facility.id !== 0 && (
-              <Box onClick={() => setSelectedTierIds([])} sx={{ mt: 3, p: 2, borderRadius: '12px', border: selectedTierIds.length === 0 ? '1px solid #EF4444' : '1px solid #E5E7EB', backgroundColor: selectedTierIds.length === 0 ? '#FEF2F2' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: selectedTierIds.length === 0 ? '#EF4444' : '#6B7280' }}>
+              <Box onClick={() => setSelectedTierIds([])} sx={{ mt: 3, p: 2, borderRadius: '12px', border: selectedTierIds.length === 0 ? `1px solid ${palette.dangerBright}` : `1px solid ${palette.border}`, backgroundColor: selectedTierIds.length === 0 ? palette.dangerWash : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: selectedTierIds.length === 0 ? palette.dangerBright : palette.textMuted }}>
                   {selectedTierIds.length === 0 ? 'No Tiers Assigned' : 'Remove All Tier Assignments'}
                 </Typography>
               </Box>
@@ -393,10 +394,10 @@ const FacilityTierModal = ({ open, onClose, facility }: Props) => {
       </DialogContent>
 
       <DialogActions sx={{ px: 3.5, pb: 3, gap: 1 }}>
-        <Button onClick={onClose} variant="outlined" sx={{ borderColor: '#E5E7EB', color: '#6B7280', flex: 1, borderRadius: '12px', py: 1.2 }}>Close</Button>
+        <Button onClick={onClose} variant="outlined" sx={{ borderColor: palette.border, color: palette.textMuted, flex: 1, borderRadius: '12px', py: 1.2 }}>Close</Button>
         {facility && facility.id !== 0 && (
           <Button onClick={handleSave} variant="contained" disabled={assignMutation.isPending || tiersLoading}
-            sx={{ flex: 2, backgroundColor: '#7C3AED', borderRadius: '12px', py: 1.2, boxShadow: '0 4px 16px rgba(124,58,237,0.3)', '&:hover': { backgroundColor: '#6D28D9' } }}>
+            sx={{ flex: 2, backgroundColor: palette.brand, borderRadius: '12px', py: 1.2, boxShadow: '0 4px 16px rgba(4,120,87,0.3)', '&:hover': { backgroundColor: palette.brandDeep } }}>
             {assignMutation.isPending ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Save Facility Tiers'}
           </Button>
         )}

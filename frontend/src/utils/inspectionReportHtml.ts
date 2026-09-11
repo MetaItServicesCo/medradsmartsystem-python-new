@@ -1,5 +1,6 @@
 import { fetchFacility, type Facility } from '@/api/facilities'
 import { fetchInspectionBatch } from '@/api/inspections'
+import { palette } from '@/theme/palette'
 
 // Presentation only. The report copies the customer rental-agreement look
 // (CustomerDocumentUI palette + gradient divider + rounded cards + status chips)
@@ -81,20 +82,20 @@ const RIGHT_CHECKS: Array<[string, string]> = [
 
 export const INSPECTION_REPORT_CSS = `
   * { box-sizing: border-box; }
-  body { margin: 0; background: #F5F3FF; color: #1E1B4B; font-family: Arial, Helvetica, sans-serif; font-size: 12px; }
+  body { margin: 0; background: #ECFDF5; color: #064E3B; font-family: Arial, Helvetica, sans-serif; font-size: 12px; }
   .page { position: relative; width: 8.5in; min-height: 11in; margin: 20px auto; background: #fff; box-shadow: 0 20px 60px rgba(30,58,138,0.14); padding: 34px 40px 28px; display: flex; flex-direction: column; }
   .page-break { page-break-after: always; }
   .rhead { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
   .rhead img { width: 116px; height: 62px; object-fit: contain; }
   .rhead .co { text-align: right; font-size: 11px; color: #475569; line-height: 1.55; }
   .rhead .co b { color: #1E3A8A; display: block; }
-  .divider { height: 4px; border-radius: 999px; margin: 12px 0 16px; background: linear-gradient(90deg, #2563EB 0%, #7C3AED 60%, #EC4899 100%); }
+  .divider { height: 4px; border-radius: 999px; margin: 12px 0 16px; background: linear-gradient(90deg, #2563EB 0%, #047857 60%, #0D9488 100%); }
   .rfoot { margin-top: auto; padding-top: 14px; border-top: 1px solid #E2E8F0; display: flex; justify-content: space-between; gap: 16px; font-size: 10px; color: #64748B; line-height: 1.55; }
   .rfoot b { color: #1E3A8A; display: block; }
   .rfoot .r { text-align: right; }
   .title { color: #1E3A8A; font-weight: 900; font-size: 26px; text-align: center; margin: 8px 0 2px; }
   .subtitle { color: #64748B; font-weight: 800; text-align: center; }
-  h2.sec { color: #1E1B4B; font-size: 15px; font-weight: 900; margin: 15px 0 8px; }
+  h2.sec { color: #064E3B; font-size: 15px; font-weight: 900; margin: 15px 0 8px; }
   h3.sub-h { color: #64748B; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 5px; }
   .muted { color: #64748B; }
   .cover-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; }
@@ -102,19 +103,19 @@ export const INSPECTION_REPORT_CSS = `
   .cover-card { margin-top: 18px; padding: 20px 26px; border: 1px solid #E2E8F0; border-radius: 18px; background: #F8FAFC; min-width: 360px; }
   .cover-card .fac { color: #1E3A8A; font-weight: 900; font-size: 18px; text-decoration: underline; margin-bottom: 8px; }
   .cover-card div { color: #475569; line-height: 1.7; }
-  .cover-card b { color: #1E1B4B; }
+  .cover-card b { color: #064E3B; }
   .identity { border: 1px solid #E2E8F0; border-radius: 14px; background: #F8FAFC; padding: 12px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 22px; align-content: start; }
   .idbox { min-width: 0; }
   .idbox small { display: block; color: #64748B; font-weight: 900; text-transform: uppercase; letter-spacing: .05em; font-size: 9px; }
-  .idbox strong { color: #1E1B4B; font-size: 13px; }
-  .card { border: 1px solid #E2E8F0; border-left: 4px solid #7C3AED; border-radius: 12px; padding: 12px 14px; background: #fff; }
+  .idbox strong { color: #064E3B; font-size: 13px; }
+  .card { border: 1px solid #E2E8F0; border-left: 4px solid #047857; border-radius: 12px; padding: 12px 14px; background: #fff; }
   .card p { margin: 0; line-height: 1.5; color: #334155; }
   .facbox { border: 1px solid #BFDBFE; border-radius: 14px; padding: 12px 16px; background: #EFF6FF; }
   .facbox .fac { color: #1E3A8A; font-weight: 900; text-decoration: underline; margin-bottom: 4px; }
   .facbox div { color: #475569; line-height: 1.55; font-size: 11px; }
   table.doc { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; margin-top: 8px; }
   table.doc th { text-align: left; background: #F8FAFC; color: #334155; padding: 9px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; font-weight: 900; }
-  table.doc td { border-top: 1px solid #EEF2F7; padding: 9px 12px; vertical-align: middle; color: #1E1B4B; }
+  table.doc td { border-top: 1px solid #EEF2F7; padding: 9px 12px; vertical-align: middle; color: #064E3B; }
   table.doc td.right, table.doc th.right { text-align: right; }
   table.doc td.center, table.doc th.center { text-align: center; }
   table.doc tr.total td { background: #F8FAFC; font-weight: 900; }
@@ -129,11 +130,11 @@ export const INSPECTION_REPORT_CSS = `
   table.grid td.t { font-weight: 700; color: #334155; }
   table.grid td.c { text-align: center; }
   table.grid td.io { color: #475569; }
-  table.grid td.io b { color: #1E1B4B; }
+  table.grid td.io b { color: #064E3B; }
   .dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid #94A3B8; vertical-align: middle; }
   .dot.on { border-color: #2563EB; background: #2563EB; box-shadow: inset 0 0 0 2px #fff; }
   .notes td.k { width: 190px; font-weight: 900; color: #64748B; background: #F8FAFC; }
-  .pill { display: inline-block; padding: 6px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; font-size: 11px; }
+  .pill { display: inline-block; padding: 6px 12px; border-radius: 999px; background: #ECFDF5; color: #047857; font-weight: 900; font-size: 11px; }
   .rtitle { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 4px 0 8px; }
   .rtitle h2 { margin: 0; }
   @media print {
@@ -792,7 +793,7 @@ const blankCanvasTableHtml = (element: any): string => {
             .slice(colIndex, colIndex + colSpan)
             .reduce((sum, w) => sum + w, 0)
           const width = spanned > 0 ? ` width="${spanned.toFixed(2)}%"` : ''
-          const background = header || cell?.bgColor === 'grey' ? '#F1F5F9' : '#fff'
+          const background = header || cell?.bgColor === 'grey' ? palette.surfaceMuted : '#fff'
           const weight = header || cell?.fontWeight === 'bold' ? 800 : 500
           let inner = ''
           if (!cell) inner = ''
@@ -833,7 +834,7 @@ const blankCanvasElementHtml = (element: any): string => {
     case 'label':
       return `<div style="font-size:${Number(element.fontSize) || (element.type === 'heading' ? 16 : 12)}px;font-weight:${
         element.fontWeight === 'normal' ? 500 : 800};color:${
-        element.type === 'heading' ? '#1E1B4B' : '#374151'};text-align:${align};line-height:1.35">${
+        element.type === 'heading' ? palette.ink : palette.textStrong};text-align:${align};line-height:1.35">${
         esc(element.label || '')}</div>${description}`
     case 'input':
     case 'number':
@@ -878,7 +879,7 @@ const blankCanvasHtml = (canvas: any): string => {
       return `<div style="position:absolute;left:${Number(element.x) || 0}px;top:${
         Number(element.y) || 0}px;width:${Number(element.width) || 100}px;min-height:${
         Number(element.height) || 24}px;box-sizing:border-box;padding:${
-        element.type === 'table' ? '0' : '4px'};background:${grey ? '#E5E7EB' : 'transparent'};border-radius:${
+        element.type === 'table' ? '0' : '4px'};background:${grey ? palette.border : 'transparent'};border-radius:${
         grey ? '6px' : '0'}">${blankCanvasElementHtml(element)}</div>`
     })
     .join('')

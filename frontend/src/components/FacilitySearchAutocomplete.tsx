@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Autocomplete, Box, CircularProgress, TextField, Typography, type SxProps, type Theme } from '@mui/material'
 import { fetchFacilities, fetchFacility, type Facility } from '@/api/facilities'
+import { palette } from '@/theme/palette'
 
 interface FacilitySearchAutocompleteProps {
   label?: string
@@ -124,10 +125,10 @@ const FacilitySearchAutocomplete = ({
       }}
       renderOption={(props, facility) => (
         <Box component="li" {...props} key={facility.id} sx={{ display: 'grid', gap: 0.15 }}>
-          <Typography noWrap variant="body2" sx={{ color: '#1E1B4B', fontWeight: 800 }}>
+          <Typography noWrap variant="body2" sx={{ color: palette.ink, fontWeight: 800 }}>
             {facility.name}
           </Typography>
-          <Typography noWrap variant="caption" sx={{ color: '#64748B' }}>
+          <Typography noWrap variant="caption" sx={{ color: palette.textSubtle }}>
             #{facility.id} · {[facility.city, facility.state, facility.country].filter(Boolean).join(', ') || 'Location unavailable'}
           </Typography>
         </Box>

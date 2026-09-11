@@ -54,24 +54,25 @@ import { hasPermission } from '@/config/permissions'
 import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
+import { palette } from '@/theme/palette'
 
 const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
   low:      { bg: '#E0F2FE', color: '#0369A1' },
-  medium:   { bg: '#FEF3C7', color: '#B45309' },
+  medium:   { bg: palette.warningTint, color: palette.warning },
   high:     { bg: '#FFE4E6', color: '#BE123C' },
-  critical: { bg: '#FEE2E2', color: '#DC2626' },
+  critical: { bg: palette.dangerTint, color: palette.dangerStrong },
 }
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  new:         { bg: '#E0E7FF', color: '#4338CA' },
-  assigned:    { bg: '#DBEAFE', color: '#1D4ED8' },
-  in_progress: { bg: '#FEF3C7', color: '#B45309' },
+  new:         { bg: '#E0E7FF', color: palette.brand },
+  assigned:    { bg: palette.infoSoft, color: palette.info },
+  in_progress: { bg: palette.warningTint, color: palette.warning },
   waiting_on_parts: { bg: '#FFE4E6', color: '#BE123C' },
   waiting_for_approval: { bg: '#E0F2FE', color: '#0369A1' },
-  waiting_for_depot_repair: { bg: '#F3E8FF', color: '#7E22CE' },
-  waiting_for_vendor_repair: { bg: '#FFEDD5', color: '#C2410C' },
-  completed:   { bg: '#D1FAE5', color: '#047857' },
-  cancelled:   { bg: '#F3F4F6', color: '#6B7280' },
+  waiting_for_depot_repair: { bg: palette.violetTint, color: palette.violet },
+  waiting_for_vendor_repair: { bg: palette.warningPeach, color: '#C2410C' },
+  completed:   { bg: palette.brandSoft, color: palette.brand },
+  cancelled:   { bg: palette.surfaceGray, color: palette.textMuted },
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -616,7 +617,7 @@ const ServiceRequestDetail = () => {
     if (!items.length) return null
     return (
       <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-        <Typography sx={{ color: '#475569', fontSize: '0.75rem', fontWeight: 900 }}>
+        <Typography sx={{ color: palette.slate600, fontSize: '0.75rem', fontWeight: 900 }}>
           Test Equipment Used
         </Typography>
         <Box sx={{ display: 'grid', gap: 0.75 }}>
@@ -629,22 +630,22 @@ const ServiceRequestDetail = () => {
                 alignItems: 'center',
                 p: 1,
                 borderRadius: '10px',
-                bgcolor: '#FAF5FF',
-                border: '1px solid #EDE9FE',
+                bgcolor: '#f5ffff',
+                border: `1px solid ${palette.brandSoft}`,
               }}
             >
               <Avatar
                 src={resolveUploadUrl(raw?.image_url)}
                 variant="rounded"
-                sx={{ width: 38, height: 38, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '9px' }}
+                sx={{ width: 38, height: 38, bgcolor: palette.brandTint, color: palette.brand, borderRadius: '9px' }}
               >
                 <AssessmentIcon fontSize="small" />
               </Avatar>
               <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ color: '#1E1B4B', fontSize: '0.78rem', fontWeight: 900 }}>
+                <Typography sx={{ color: palette.ink, fontSize: '0.78rem', fontWeight: 900 }}>
                   {raw?.tem || raw?.description || 'Test Equipment'}
                 </Typography>
-                <Typography sx={{ color: '#64748B', fontSize: '0.72rem' }}>
+                <Typography sx={{ color: palette.textSubtle, fontSize: '0.72rem' }}>
                   {[raw?.mrf, raw?.model, raw?.serial_number].filter(Boolean).join(' / ') || raw?.asset || 'No details'}
                 </Typography>
               </Box>
@@ -660,27 +661,27 @@ const ServiceRequestDetail = () => {
     if (!items.length) return null
     return (
       <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-        <Typography sx={{ color: '#475569', fontSize: '0.75rem', fontWeight: 900 }}>
+        <Typography sx={{ color: palette.slate600, fontSize: '0.75rem', fontWeight: 900 }}>
           Parts Used
         </Typography>
         <Box sx={{ display: 'grid', gap: 0.75 }}>
           {items.map((raw: any, itemIndex: number) => (
             <Box
               key={`${raw?.id || raw?.part_number || 'part'}-${itemIndex}`}
-              sx={{ display: 'flex', gap: 1, alignItems: 'center', p: 1, borderRadius: '10px', bgcolor: '#F0FDF4', border: '1px solid #BBF7D0' }}
+              sx={{ display: 'flex', gap: 1, alignItems: 'center', p: 1, borderRadius: '10px', bgcolor: palette.successTint, border: '1px solid #BBF7D0' }}
             >
               <Avatar
                 src={resolveUploadUrl(raw?.default_picture_url)}
                 variant="rounded"
-                sx={{ width: 38, height: 38, bgcolor: '#DCFCE7', color: '#059669', borderRadius: '9px' }}
+                sx={{ width: 38, height: 38, bgcolor: '#DCFCE7', color: palette.brandStrong, borderRadius: '9px' }}
               >
                 <BuildIcon fontSize="small" />
               </Avatar>
               <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography sx={{ color: '#1E1B4B', fontSize: '0.78rem', fontWeight: 900 }}>
+                <Typography sx={{ color: palette.ink, fontSize: '0.78rem', fontWeight: 900 }}>
                   {raw?.part_number || 'Inventory Part'} - {raw?.description || 'No description'}
                 </Typography>
-                <Typography sx={{ color: '#64748B', fontSize: '0.72rem' }}>
+                <Typography sx={{ color: palette.textSubtle, fontSize: '0.72rem' }}>
                   Quantity used: {Number(raw?.quantity_used || 0)} · Stock remaining: {Number(raw?.balance_after || 0)}
                 </Typography>
               </Box>
@@ -725,7 +726,7 @@ const ServiceRequestDetail = () => {
         <Typography variant="h6">
           {notFound ? 'Service request not found' : 'Unable to load service request'}
         </Typography>
-        <Typography sx={{ mt: 1, color: '#64748B' }}>
+        <Typography sx={{ mt: 1, color: palette.textSubtle }}>
           {notFound
             ? 'This service request no longer exists or is unavailable.'
             : (typeof apiDetail === 'string' ? apiDetail : 'The server could not load this request. Please retry.')}
@@ -801,8 +802,8 @@ const ServiceRequestDetail = () => {
         startIcon={<ArrowBackIcon />}
         onClick={() => navigate('/service-requests')}
         sx={{
-          mb: 2, color: '#7C3AED', fontWeight: 600,
-          '&:hover': { backgroundColor: '#F5F3FF' },
+          mb: 2, color: palette.brand, fontWeight: 600,
+          '&:hover': { backgroundColor: palette.brandTint },
         }}
       >
         Back to Service Requests
@@ -814,8 +815,8 @@ const ServiceRequestDetail = () => {
           mb: 3, overflow: 'hidden', position: 'relative', color: '#fff',
           borderRadius: '24px',
           border: '1px solid rgba(255,255,255,0.14)',
-          background: 'linear-gradient(135deg, #7C3AED 0%, #8A46C2 52%, #9A55B0 100%)',
-          boxShadow: '0 26px 60px -20px rgba(124,58,237,0.55)',
+          background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brandLight} 52%, ${palette.brandLight} 100%)`,
+          boxShadow: '0 26px 60px -20px rgba(4,120,87,0.55)',
           '@keyframes srPulse': {
             '0%': { boxShadow: '0 0 0 0 rgba(255,255,255,0.5)' },
             '70%': { boxShadow: '0 0 0 12px rgba(255,255,255,0)' },
@@ -888,7 +889,7 @@ const ServiceRequestDetail = () => {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontWeight: 800, fontSize: '0.82rem',
                       backgroundColor: isActive ? '#fff' : 'rgba(255,255,255,0.12)',
-                      color: isActive ? '#6D28D9' : 'rgba(255,255,255,0.7)',
+                      color: isActive ? palette.brandDeep : 'rgba(255,255,255,0.7)',
                       border: isActive ? 'none' : '1.5px solid rgba(255,255,255,0.4)',
                       boxShadow: isActive ? '0 8px 20px -8px rgba(15,23,42,0.5)' : 'none',
                       transition: 'all .3s ease',
@@ -921,14 +922,14 @@ const ServiceRequestDetail = () => {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {/* Problem Description */}
           <Card sx={{ p: 3 }}>
-            <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
+            <Typography sx={{ fontWeight: 700, color: palette.ink, mb: 2, fontSize: '1rem' }}>
               Service Required
             </Typography>
             <Typography
               sx={{
-                color: '#374151', lineHeight: 1.7, fontSize: '0.9rem',
-                backgroundColor: '#F9FAFB', p: 2, borderRadius: '12px',
-                border: '1px solid #F3F4F6',
+                color: palette.textStrong, lineHeight: 1.7, fontSize: '0.9rem',
+                backgroundColor: palette.surfaceFaint, p: 2, borderRadius: '12px',
+                border: `1px solid ${palette.surfaceGray}`,
               }}
             >
               {sr.service_required || sr.problem_description}
@@ -937,78 +938,78 @@ const ServiceRequestDetail = () => {
 
           {/* Details Cards */}
           <Card sx={{ p: 3 }}>
-            <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
+            <Typography sx={{ fontWeight: 700, color: palette.ink, mb: 2, fontSize: '1rem' }}>
               Details
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {/* Facility */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#F5F3FF' }}>
-                <Avatar sx={{ backgroundColor: '#EDE9FE', color: '#7C3AED', width: 36, height: 36 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: palette.brandTint }}>
+                <Avatar sx={{ backgroundColor: palette.brandSoft, color: palette.brand, width: 36, height: 36 }}>
                   <BusinessIcon sx={{ fontSize: '1.1rem' }} />
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: palette.textDisabled, textTransform: 'uppercase' }}>
                     Facility
                   </Typography>
-                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                  <Typography sx={{ fontWeight: 600, color: palette.ink, fontSize: '0.9rem' }}>
                     {sr.facility_name || '—'}
                   </Typography>
                 </Box>
               </Box>
 
               {/* Equipment */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#EFF6FF' }}>
-                <Avatar sx={{ backgroundColor: '#DBEAFE', color: '#1D4ED8', width: 36, height: 36 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: palette.infoTint }}>
+                <Avatar sx={{ backgroundColor: palette.infoSoft, color: palette.info, width: 36, height: 36 }}>
                   <PrecisionManufacturingIcon sx={{ fontSize: '1.1rem' }} />
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: palette.textDisabled, textTransform: 'uppercase' }}>
                     Equipment
                   </Typography>
-                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                  <Typography sx={{ fontWeight: 600, color: palette.ink, fontSize: '0.9rem' }}>
                     {sr.equipment_name || '—'}
                   </Typography>
                 </Box>
               </Box>
 
               {/* Requester */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#FDF4FF' }}>
-                <Avatar sx={{ backgroundColor: '#F5D0FE', color: '#A21CAF', width: 36, height: 36 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: palette.brandTint }}>
+                <Avatar sx={{ backgroundColor: palette.brandSoft, color: palette.brand, width: 36, height: 36 }}>
                   <PersonIcon sx={{ fontSize: '1.1rem' }} />
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: palette.textDisabled, textTransform: 'uppercase' }}>
                     Requested By
                   </Typography>
-                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                  <Typography sx={{ fontWeight: 600, color: palette.ink, fontSize: '0.9rem' }}>
                     {sr.requested_by_name || sr.requester_name || '---'}
                   </Typography>
                 </Box>
               </Box>
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#FFF7ED' }}>
-                <Avatar sx={{ backgroundColor: '#FFEDD5', color: '#C2410C', width: 36, height: 36 }}>
+                <Avatar sx={{ backgroundColor: palette.warningPeach, color: '#C2410C', width: 36, height: 36 }}>
                   <AccessTimeIcon sx={{ fontSize: '1.1rem' }} />
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: palette.textDisabled, textTransform: 'uppercase' }}>
                     Preferred Date / Time
                   </Typography>
-                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                  <Typography sx={{ fontWeight: 600, color: palette.ink, fontSize: '0.9rem' }}>
                     {formatDateTime(sr.preferred_datetime)}
                   </Typography>
                 </Box>
               </Box>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#F8FAFC' }}>
-                <Avatar sx={{ backgroundColor: '#E2E8F0', color: '#475569', width: 36, height: 36 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: palette.surface }}>
+                <Avatar sx={{ backgroundColor: palette.borderSlate, color: palette.slate600, width: 36, height: 36 }}>
                   <ReceiptLongIcon sx={{ fontSize: '1.1rem' }} />
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: palette.textDisabled, textTransform: 'uppercase' }}>
                     Reference #
                   </Typography>
-                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                  <Typography sx={{ fontWeight: 600, color: palette.ink, fontSize: '0.9rem' }}>
                     {sr.reference_number || '---'}
                   </Typography>
                 </Box>
@@ -1027,15 +1028,15 @@ const ServiceRequestDetail = () => {
               )}
 
               {/* Technician */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#F0FDF4' }}>
-                <Avatar sx={{ backgroundColor: '#D1FAE5', color: '#047857', width: 36, height: 36 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: palette.successTint }}>
+                <Avatar sx={{ backgroundColor: palette.brandSoft, color: palette.brand, width: 36, height: 36 }}>
                   <EngineeringIcon sx={{ fontSize: '1.1rem' }} />
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: palette.textDisabled, textTransform: 'uppercase' }}>
                     Assigned Technician
                   </Typography>
-                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                  <Typography sx={{ fontWeight: 600, color: palette.ink, fontSize: '0.9rem' }}>
                     {sr.technician_name || 'Not assigned'}
                   </Typography>
                 </Box>
@@ -1044,12 +1045,12 @@ const ServiceRequestDetail = () => {
           </Card>
 
           <Card sx={{ p: 3 }}>
-            <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
+            <Typography sx={{ fontWeight: 700, color: palette.ink, mb: 2, fontSize: '1rem' }}>
               Service Request History
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 340, overflowY: 'auto', pr: 0.5 }}>
               {displayedHistory.length === 0 ? (
-                <Typography sx={{ color: '#94A3B8', fontSize: '0.875rem' }}>No history recorded yet.</Typography>
+                <Typography sx={{ color: palette.textFaint, fontSize: '0.875rem' }}>No history recorded yet.</Typography>
               ) : (
                 [...displayedHistory].reverse().map((entry, index) => {
                   const changes = getHistoryChanges(entry.changes)
@@ -1057,21 +1058,21 @@ const ServiceRequestDetail = () => {
                     .filter(([field]) => !HISTORY_HIDDEN_FIELDS.has(field))
                     .slice(0, 8)
                   return (
-                    <Box key={`${entry.timestamp}-${index}`} sx={{ display: 'flex', gap: 1.5, p: 1.5, borderRadius: '12px', backgroundColor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
-                      <Avatar sx={{ width: 32, height: 32, backgroundColor: '#EDE9FE', color: '#7C3AED' }}>
+                    <Box key={`${entry.timestamp}-${index}`} sx={{ display: 'flex', gap: 1.5, p: 1.5, borderRadius: '12px', backgroundColor: palette.surface, border: '1px solid #EEF2F7' }}>
+                      <Avatar sx={{ width: 32, height: 32, backgroundColor: palette.brandSoft, color: palette.brand }}>
                         <HistoryIcon sx={{ fontSize: '1rem' }} />
                       </Avatar>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '0.85rem' }}>
+                        <Typography sx={{ fontWeight: 800, color: palette.ink, fontSize: '0.85rem' }}>
                           {historyActionLabel(entry.action)}
                         </Typography>
-                        <Typography sx={{ color: '#64748B', fontSize: '0.78rem' }}>
+                        <Typography sx={{ color: palette.textSubtle, fontSize: '0.78rem' }}>
                           {entry.user || 'System'} - {formatDateTime(entry.timestamp)}
                         </Typography>
                         {(visibleChanges.length > 0 || Array.isArray(changes.test_equipment) || Array.isArray(changes.parts)) && (
                           <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
                             {visibleChanges.map(([field, change]) => (
-                              <Typography key={field} sx={{ color: '#475569', fontSize: '0.75rem' }}>
+                              <Typography key={field} sx={{ color: palette.slate600, fontSize: '0.75rem' }}>
                                 <strong>{HISTORY_FIELD_LABELS[field] || field.replace(/_/g, ' ')}:</strong> {renderHistoryChange(field, change)}
                               </Typography>
                             ))}
@@ -1089,7 +1090,7 @@ const ServiceRequestDetail = () => {
 
           {/* Timestamps */}
           <Card sx={{ p: 3 }}>
-            <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
+            <Typography sx={{ fontWeight: 700, color: palette.ink, mb: 2, fontSize: '1rem' }}>
               Timeline
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -1106,13 +1107,13 @@ const ServiceRequestDetail = () => {
                     opacity: item.value ? 1 : 0.4,
                   }}
                 >
-                  <Box sx={{ color: '#7C3AED', '& svg': { fontSize: '1rem' } }}>
+                  <Box sx={{ color: palette.brand, '& svg': { fontSize: '1rem' } }}>
                     {item.icon}
                   </Box>
-                  <Typography sx={{ fontWeight: 600, fontSize: '0.8rem', color: '#6B7280', minWidth: 80 }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: '0.8rem', color: palette.textMuted, minWidth: 80 }}>
                     {item.label}
                   </Typography>
-                  <Typography sx={{ fontSize: '0.85rem', color: '#1E1B4B', fontWeight: 500 }}>
+                  <Typography sx={{ fontSize: '0.85rem', color: palette.ink, fontWeight: 500 }}>
                     {formatDateTime(item.value)}
                   </Typography>
                 </Box>
@@ -1124,32 +1125,32 @@ const ServiceRequestDetail = () => {
         {/* Right Column — Actions */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {canLogWork && (
-            <Card sx={{ p: 3, border: '1px solid #D1FAE5' }}>
+            <Card sx={{ p: 3, border: `1px solid ${palette.brandSoft}` }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                <Avatar sx={{ bgcolor: '#D1FAE5', color: '#047857' }}>
+                <Avatar sx={{ bgcolor: palette.brandSoft, color: palette.brand }}>
                   <AccessTimeIcon />
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '1rem' }}>
+                  <Typography sx={{ fontWeight: 800, color: palette.ink, fontSize: '1rem' }}>
                     Technician Work Session
                   </Typography>
-                  <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: '0.82rem' }}>
+                  <Typography sx={{ color: palette.textSubtle, fontWeight: 700, fontSize: '0.82rem' }}>
                     Enter start/end time or directly enter total working hours for the session.
                   </Typography>
                 </Box>
               </Box>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mb: 2 }}>
-                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
+                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: palette.surface, border: '1px solid #EEF2F7' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase' }}>
                       Saved Total Time
                     </Typography>
                     {canManageServiceBilling && !editingTime && (
                       <IconButton
                         size="small"
                         onClick={() => { setEditTimeValue(timeSpentHours.toFixed(2)); setEditingTime(true) }}
-                        sx={{ p: 0.25, color: '#94A3B8', '&:hover': { color: '#7C3AED' } }}
+                        sx={{ p: 0.25, color: palette.textFaint, '&:hover': { color: palette.brand } }}
                       >
                         <EditIcon sx={{ fontSize: '0.85rem' }} />
                       </IconButton>
@@ -1167,13 +1168,13 @@ const ServiceRequestDetail = () => {
                         autoFocus
                         onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTime(); if (e.key === 'Escape') setEditingTime(false) }}
                       />
-                      <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
+                      <Typography sx={{ color: palette.textSubtle, fontSize: '0.82rem' }}>hrs</Typography>
                       <Button
                         size="small"
                         variant="contained"
                         onClick={handleSaveTime}
                         disabled={updateMutation.isPending}
-                        sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}
+                        sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep } }}
                       >
                         Save
                       </Button>
@@ -1187,79 +1188,79 @@ const ServiceRequestDetail = () => {
                     </Box>
                   ) : (
                     <>
-                      <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: '1.25rem' }}>
+                      <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: '1.25rem' }}>
                         {timeSpentHours.toFixed(2)} hrs
                       </Typography>
-                      <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
+                      <Typography sx={{ color: palette.textFaint, fontSize: '0.72rem', fontWeight: 700 }}>
                         Completed work sessions
                       </Typography>
                     </>
                   )}
                 </Box>
-                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#F0FDF4', border: '1px solid #EEF2F7' }}>
-                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: palette.successTint, border: '1px solid #EEF2F7' }}>
+                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase' }}>
                     Manual Work Session
                   </Typography>
-                  <Typography sx={{ fontWeight: 950, color: '#047857', fontSize: '1.25rem' }}>
+                  <Typography sx={{ fontWeight: 950, color: palette.brand, fontSize: '1.25rem' }}>
                     Start / End or Total Hours
                   </Typography>
-                  <Typography sx={{ color: '#94A3B8', fontSize: '0.72rem', fontWeight: 700 }}>
+                  <Typography sx={{ color: palette.textFaint, fontSize: '0.72rem', fontWeight: 700 }}>
                     Save one clean ledger entry per work session.
                   </Typography>
                 </Box>
               </Box>
 
-              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', mb: 2 }}>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>
+              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: palette.surface, border: `1px solid ${palette.borderSlate}`, mb: 2 }}>
+                <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>
                   Billing Calculation
                 </Typography>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, 1fr)' }, gap: 1.25 }}>
                   <Box>
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase' }}>
                       Asset Tier
                     </Typography>
-                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                    <Typography sx={{ fontWeight: 900, color: palette.ink }}>
                       {sr.tier_name || 'Not assigned'}
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase' }}>
                       Labor Rate
                     </Typography>
-                    <Typography sx={{ fontWeight: 900, color: '#047857' }}>
+                    <Typography sx={{ fontWeight: 900, color: palette.brand }}>
                       ${tierLaborRate.toFixed(2)} / hr
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase' }}>
                       Service Cost
                     </Typography>
-                    <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>
+                    <Typography sx={{ fontWeight: 950, color: palette.ink }}>
                       ${calculatedServiceCost.toFixed(2)}
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase' }}>
                       Mileage
                     </Typography>
-                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                    <Typography sx={{ fontWeight: 900, color: palette.ink }}>
                       {totalSessionMileage.toFixed(2)} mi x ${tierMileageRate.toFixed(2)}
                     </Typography>
                   </Box>
                 </Box>
                 {paidQuotations.length > 0 && (
-                  <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid #D1FAE5' }}>
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 950, color: '#047857', textTransform: 'uppercase', mb: 0.75 }}>
+                  <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${palette.brandSoft}` }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 950, color: palette.brand, textTransform: 'uppercase', mb: 0.75 }}>
                       Paid separately — excluded from final service total
                     </Typography>
                     <Box sx={{ display: 'grid', gap: 0.7 }}>
                       {paidQuotations.map(quotation => (
-                        <Box key={quotation.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, p: 1, borderRadius: '10px', bgcolor: '#ECFDF5', border: '1px solid #A7F3D0' }}>
+                        <Box key={quotation.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, p: 1, borderRadius: '10px', bgcolor: palette.brandTint, border: `1px solid ${palette.brandBorder}` }}>
                           <Box sx={{ minWidth: 0 }}>
-                            <Typography sx={{ color: '#065F46', fontWeight: 900, fontSize: 13 }}>{quotation.quotation_number}</Typography>
-                            <Typography noWrap title={quotation.description} sx={{ color: '#64748B', fontSize: 12 }}>{quotation.description}</Typography>
+                            <Typography sx={{ color: palette.brandDeep, fontWeight: 900, fontSize: 13 }}>{quotation.quotation_number}</Typography>
+                            <Typography noWrap title={quotation.description} sx={{ color: palette.textSubtle, fontSize: 12 }}>{quotation.description}</Typography>
                           </Box>
-                          <Typography sx={{ color: '#047857', fontWeight: 950, whiteSpace: 'nowrap' }}>
+                          <Typography sx={{ color: palette.brand, fontWeight: 950, whiteSpace: 'nowrap' }}>
                             ${quotation.paidAmount.toFixed(2)} Paid
                           </Typography>
                         </Box>
@@ -1348,12 +1349,12 @@ const ServiceRequestDetail = () => {
                   isOptionEqualToValue={(option, value) => option.id === value.id}
                   renderOption={(props, option) => (
                     <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
+                      <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: palette.brandTint, color: palette.brand }}>
                         <AssessmentIcon fontSize="small" />
                       </Avatar>
                       <Box>
                         <Typography sx={{ fontWeight: 800 }}>{option.tem}</Typography>
-                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                        <Typography variant="caption" sx={{ color: palette.textMuted }}>
                           {[option.mrf, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
                         </Typography>
                       </Box>
@@ -1385,12 +1386,12 @@ const ServiceRequestDetail = () => {
                   noOptionsText={partSearch ? 'No in-stock parts match this search' : 'No in-stock parts available'}
                   renderOption={(props, option) => (
                     <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" sx={{ width: 36, height: 36, bgcolor: '#ECFDF5', color: '#059669' }}>
+                      <Avatar src={resolveUploadUrl(option.default_picture_url)} variant="rounded" sx={{ width: 36, height: 36, bgcolor: palette.brandTint, color: palette.brandStrong }}>
                         <BuildIcon fontSize="small" />
                       </Avatar>
                       <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Typography sx={{ fontWeight: 900 }}>{option.part_number} - {option.description}</Typography>
-                        <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                        <Typography variant="caption" sx={{ color: palette.textMuted }}>
                           {[option.make, option.model, option.serial_number].filter(Boolean).join(' / ') || option.part_type} · {option.quantity_on_hand} in stock
                         </Typography>
                       </Box>
@@ -1414,13 +1415,13 @@ const ServiceRequestDetail = () => {
                         sx={{ p: 1.25, display: 'grid', gridTemplateColumns: { xs: '1fr auto', sm: 'minmax(0, 1fr) 140px auto' }, gap: 1.25, alignItems: 'center', borderRadius: '14px', borderColor: '#BBF7D0', bgcolor: '#F8FFFB' }}
                       >
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
-                          <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" sx={{ width: 42, height: 42, bgcolor: '#DCFCE7', color: '#059669' }}>
+                          <Avatar src={resolveUploadUrl(part.default_picture_url)} variant="rounded" sx={{ width: 42, height: 42, bgcolor: '#DCFCE7', color: palette.brandStrong }}>
                             <BuildIcon fontSize="small" />
                           </Avatar>
                           <Box sx={{ minWidth: 0 }}>
-                            <Typography noWrap sx={{ color: '#1E1B4B', fontWeight: 900 }}>{part.part_number}</Typography>
-                            <Typography noWrap sx={{ color: '#64748B', fontSize: 12 }}>{part.description}</Typography>
-                            <Typography sx={{ color: part.quantity_on_hand <= part.reorder_level ? '#DC2626' : '#059669', fontSize: 11, fontWeight: 900 }}>
+                            <Typography noWrap sx={{ color: palette.ink, fontWeight: 900 }}>{part.part_number}</Typography>
+                            <Typography noWrap sx={{ color: palette.textSubtle, fontSize: 12 }}>{part.description}</Typography>
+                            <Typography sx={{ color: part.quantity_on_hand <= part.reorder_level ? palette.dangerStrong : palette.brandStrong, fontSize: 11, fontWeight: 900 }}>
                               {part.quantity_on_hand} available
                             </Typography>
                           </Box>
@@ -1445,7 +1446,7 @@ const ServiceRequestDetail = () => {
                               return next
                             })
                           }}
-                          sx={{ color: '#DC2626' }}
+                          sx={{ color: palette.dangerStrong }}
                         >
                           <DeleteOutlineIcon />
                         </IconButton>
@@ -1472,7 +1473,7 @@ const ServiceRequestDetail = () => {
                   startIcon={workSessionMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleIcon />}
                   onClick={handleUpdateWorkOrder}
                   disabled={workSessionMutation.isPending}
-                  sx={{ alignSelf: 'flex-start', borderRadius: '12px', fontWeight: 900, bgcolor: '#059669', '&:hover': { bgcolor: '#047857' } }}
+                  sx={{ alignSelf: 'flex-start', borderRadius: '12px', fontWeight: 900, bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep } }}
                 >
                   Update Work Order
                 </Button>
@@ -1483,7 +1484,7 @@ const ServiceRequestDetail = () => {
           {/* Status Actions */}
           {!isTerminal && canManageOperationalStatus && (
             <Card sx={{ p: 3 }}>
-              <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
+              <Typography sx={{ fontWeight: 700, color: palette.ink, mb: 2, fontSize: '1rem' }}>
                 Work Order Actions
               </Typography>
 
@@ -1522,11 +1523,11 @@ const ServiceRequestDetail = () => {
               )}
 
               {sr.status !== 'new' && !canLogWork && (
-                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', mb: 2 }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: palette.surface, border: `1px solid ${palette.borderSlate}`, mb: 2 }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink }}>
                     Service workflow
                   </Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: '0.84rem', fontWeight: 700, mt: 0.5 }}>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: '0.84rem', fontWeight: 700, mt: 0.5 }}>
                     Update the request to waiting on parts, service in progress, approval, depot repair, vendor repair, or completed. Completion requires at least one saved work session.
                   </Typography>
                 </Box>
@@ -1541,11 +1542,11 @@ const ServiceRequestDetail = () => {
                     endIcon={updateMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : undefined}
                     sx={{
                       flex: 1, minWidth: 150,
-                      background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
-                      boxShadow: '0 8px 24px rgba(124,58,237,0.25)',
+                      background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)`,
+                      boxShadow: '0 8px 24px rgba(4,120,87,0.25)',
                       borderRadius: '12px', fontWeight: 800,
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)',
+                        background: `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.accent} 100%)`,
                       },
                     }}
                   >
@@ -1560,11 +1561,11 @@ const ServiceRequestDetail = () => {
                     startIcon={updateMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <CheckCircleIcon />}
                     sx={{
                       flex: 1, minWidth: 180,
-                      background: 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)',
-                      boxShadow: '0 8px 24px rgba(124,58,237,0.25)',
+                      background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)`,
+                      boxShadow: '0 8px 24px rgba(4,120,87,0.25)',
                       borderRadius: '12px', fontWeight: 800,
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #6D28D9 0%, #EC4899 100%)',
+                        background: `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.accent} 100%)`,
                       },
                     }}
                   >
@@ -1580,7 +1581,7 @@ const ServiceRequestDetail = () => {
                         setTechnicianId(sr.assigned_technician_id || '')
                         setChangeTechOpen(true)
                       }}
-                      sx={{ borderRadius: '12px', fontWeight: 600, borderColor: '#7C3AED', color: '#7C3AED' }}
+                      sx={{ borderRadius: '12px', fontWeight: 600, borderColor: palette.brand, color: palette.brand }}
                     >
                       Change Technician
                     </Button>
@@ -1589,7 +1590,7 @@ const ServiceRequestDetail = () => {
                       startIcon={<CreditCardIcon />}
                       onClick={() => handleUpdateFlag({ cc_auth_requested: true })}
                       disabled={updateMutation.isPending || sr.cc_auth_requested}
-                      sx={{ borderRadius: '12px', fontWeight: 600, borderColor: '#3B82F6', color: '#3B82F6' }}
+                      sx={{ borderRadius: '12px', fontWeight: 600, borderColor: palette.infoBright, color: palette.infoBright }}
                     >
                       {sr.cc_auth_requested ? 'CC Auth Requested' : 'Request CC Auth'}
                     </Button>
@@ -1600,9 +1601,9 @@ const ServiceRequestDetail = () => {
                   onClick={() => setCancelOpen(true)}
                   startIcon={<CancelIcon />}
                   sx={{
-                    borderColor: '#FCA5A5', color: '#EF4444', minWidth: 120,
+                    borderColor: '#FCA5A5', color: palette.dangerBright, minWidth: 120,
                     borderRadius: '12px', fontWeight: 600,
-                    '&:hover': { backgroundColor: '#FEF2F2', borderColor: '#EF4444' },
+                    '&:hover': { backgroundColor: palette.dangerWash, borderColor: palette.dangerBright },
                   }}
                 >
                   Cancel
@@ -1612,16 +1613,16 @@ const ServiceRequestDetail = () => {
           )}
 
           {!isTerminal && isFacilityCustomerView && (
-            <Card sx={{ p: 3, border: '1px solid #DDD6FE', background: 'linear-gradient(145deg, #FFFFFF 0%, #FAF8FF 100%)' }}>
+            <Card sx={{ p: 3, border: `1px solid ${palette.brandBorder}`, background: 'linear-gradient(145deg, #FFFFFF 0%, #f8fffe 100%)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                <Avatar sx={{ bgcolor: '#EDE9FE', color: '#7C3AED' }}>
+                <Avatar sx={{ bgcolor: palette.brandSoft, color: palette.brand }}>
                   <HistoryIcon />
                 </Avatar>
                 <Box>
-                  <Typography sx={{ fontWeight: 850, color: '#1E1B4B', fontSize: '1rem' }}>
+                  <Typography sx={{ fontWeight: 850, color: palette.ink, fontSize: '1rem' }}>
                     Request Progress
                   </Typography>
-                  <Typography sx={{ color: '#64748B', fontWeight: 650, fontSize: '0.82rem' }}>
+                  <Typography sx={{ color: palette.textSubtle, fontWeight: 650, fontSize: '0.82rem' }}>
                     Track the service team without changing operational work-order data.
                   </Typography>
                 </Box>
@@ -1630,10 +1631,10 @@ const ServiceRequestDetail = () => {
                 <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: sColor.color, textTransform: 'uppercase' }}>
                   Current Status
                 </Typography>
-                <Typography sx={{ mt: 0.35, fontWeight: 900, color: '#1E1B4B' }}>
+                <Typography sx={{ mt: 0.35, fontWeight: 900, color: palette.ink }}>
                   {STATUS_LABELS[sr.status] || sr.status.replace(/_/g, ' ')}
                 </Typography>
-                <Typography sx={{ mt: 0.75, color: '#64748B', fontSize: '0.82rem', lineHeight: 1.6 }}>
+                <Typography sx={{ mt: 0.75, color: palette.textSubtle, fontSize: '0.82rem', lineHeight: 1.6 }}>
                   Assignment, technician work sessions, service status, and invoice preparation are managed by the service team. Quotations requiring your action remain available below.
                 </Typography>
               </Box>
@@ -1653,15 +1654,15 @@ const ServiceRequestDetail = () => {
 
           {/* Resolution Info (if completed) */}
           {sr.status === 'completed' && (
-            <Card sx={{ p: 3, border: '1px solid #D1FAE5' }}>
+            <Card sx={{ p: 3, border: `1px solid ${palette.brandSoft}` }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <CheckCircleIcon sx={{ color: '#10B981' }} />
-                <Typography sx={{ fontWeight: 700, color: '#047857', fontSize: '1rem' }}>
+                <CheckCircleIcon sx={{ color: palette.brandMid }} />
+                <Typography sx={{ fontWeight: 700, color: palette.brand, fontSize: '1rem' }}>
                   Resolved
                 </Typography>
               </Box>
               {sr.resolution_description && (
-                <Typography sx={{ color: '#374151', fontSize: '0.9rem', mb: 2, lineHeight: 1.7 }}>
+                <Typography sx={{ color: palette.textStrong, fontSize: '0.9rem', mb: 2, lineHeight: 1.7 }}>
                   {sr.resolution_description}
                 </Typography>
               )}
@@ -1669,14 +1670,14 @@ const ServiceRequestDetail = () => {
                 {sr.time_spent_hours != null && (
                   <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                      <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: palette.textDisabled, textTransform: 'uppercase' }}>
                         Time Spent
                       </Typography>
                       {canManageServiceBilling && !editingTime && (
                         <IconButton
                           size="small"
                           onClick={() => { setEditTimeValue(Number(sr.time_spent_hours || 0).toFixed(2)); setEditingTime(true) }}
-                          sx={{ p: 0.25, color: '#9CA3AF', '&:hover': { color: '#7C3AED' } }}
+                          sx={{ p: 0.25, color: palette.textDisabled, '&:hover': { color: palette.brand } }}
                         >
                           <EditIcon sx={{ fontSize: '0.78rem' }} />
                         </IconButton>
@@ -1694,12 +1695,12 @@ const ServiceRequestDetail = () => {
                           autoFocus
                           onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTime(); if (e.key === 'Escape') setEditingTime(false) }}
                         />
-                        <Typography sx={{ color: '#64748B', fontSize: '0.82rem' }}>hrs</Typography>
-                        <Button size="small" variant="contained" onClick={handleSaveTime} disabled={updateMutation.isPending} sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: '#7C3AED', '&:hover': { bgcolor: '#6D28D9' } }}>Save</Button>
+                        <Typography sx={{ color: palette.textSubtle, fontSize: '0.82rem' }}>hrs</Typography>
+                        <Button size="small" variant="contained" onClick={handleSaveTime} disabled={updateMutation.isPending} sx={{ minWidth: 0, px: 1.5, py: 0.4, fontSize: '0.75rem', bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep } }}>Save</Button>
                         <Button size="small" onClick={() => setEditingTime(false)} sx={{ minWidth: 0, px: 1, py: 0.4, fontSize: '0.75rem' }}>Cancel</Button>
                       </Box>
                     ) : (
-                      <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+                      <Typography sx={{ fontWeight: 700, color: palette.ink }}>
                         {sr.time_spent_hours} hrs
                       </Typography>
                     )}
@@ -1707,23 +1708,23 @@ const ServiceRequestDetail = () => {
                 )}
                 {sr.total_cost && (
                   <Box>
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: palette.textDisabled, textTransform: 'uppercase' }}>
                       Total Cost
                     </Typography>
-                    <Typography sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+                    <Typography sx={{ fontWeight: 700, color: palette.ink }}>
                       ${Number(sr.total_cost).toFixed(2)}
                     </Typography>
                   </Box>
                 )}
                 {paidQuotations.length > 0 && (
                   <Box sx={{ minWidth: 220 }}>
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: palette.brand, textTransform: 'uppercase' }}>
                       Paid Quotations · Separate
                     </Typography>
-                    <Typography sx={{ fontWeight: 900, color: '#047857' }}>
+                    <Typography sx={{ fontWeight: 900, color: palette.brand }}>
                       ${paidQuotations.reduce((sum, quotation) => sum + quotation.paidAmount, 0).toFixed(2)}
                     </Typography>
-                    <Typography sx={{ color: '#64748B', fontSize: 11 }}>
+                    <Typography sx={{ color: palette.textSubtle, fontSize: 11 }}>
                       {paidQuotations.map(quotation => quotation.quotation_number).join(', ')} · not included in service total
                     </Typography>
                   </Box>
@@ -1736,15 +1737,15 @@ const ServiceRequestDetail = () => {
           {sr.status === 'completed' && canManageServiceBilling && (
             <Card sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 2.5 }}>
-                <Typography sx={{ fontWeight: 800, color: '#1E1B4B', fontSize: '1rem' }}>
+                <Typography sx={{ fontWeight: 800, color: palette.ink, fontSize: '1rem' }}>
                   Billing & Reports Actions
                 </Typography>
                 {resolvedInvoice && !sr.invoice_deleted && (
-                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.85, pl: 1.25, pr: 1.4, py: 0.5, borderRadius: '999px', border: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
-                    <ReceiptLongIcon sx={{ fontSize: '0.95rem', color: '#64748B' }} />
-                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{resolvedInvoice.invoice_number}</Typography>
-                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', ml: 0.25, backgroundColor: sr.billing_status === 'approved' ? '#059669' : sr.billing_status === 'not_approved' ? '#DC2626' : '#F59E0B' }} />
-                    <Typography sx={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.85, pl: 1.25, pr: 1.4, py: 0.5, borderRadius: '999px', border: `1px solid ${palette.borderSlate}`, backgroundColor: palette.surface }}>
+                    <ReceiptLongIcon sx={{ fontSize: '0.95rem', color: palette.textSubtle }} />
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: palette.slate600, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{resolvedInvoice.invoice_number}</Typography>
+                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', ml: 0.25, backgroundColor: sr.billing_status === 'approved' ? palette.brandStrong : sr.billing_status === 'not_approved' ? palette.dangerStrong : palette.warningBright }} />
+                    <Typography sx={{ fontSize: '0.66rem', fontWeight: 800, color: palette.textSubtle, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {sr.billing_status === 'approved' ? 'Approved' : sr.billing_status === 'not_approved' ? 'Not approved' : 'Pending'}
                     </Typography>
                   </Box>
@@ -1755,7 +1756,7 @@ const ServiceRequestDetail = () => {
               {resolvedInvoice && !sr.invoice_deleted ? (
                 <Button
                   fullWidth variant="contained" startIcon={<EditIcon />} onClick={openEditInvoice}
-                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(124,58,237,0.65)', background: 'linear-gradient(135deg, #7C3AED 0%, #9A55B0 100%)', '&:hover': { background: 'linear-gradient(135deg, #6D28D9 0%, #8A46C2 100%)', boxShadow: '0 14px 30px -14px rgba(124,58,237,0.75)' } }}
+                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(4,120,87,0.65)', background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brandLight} 100%)`, '&:hover': { background: `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.brandLight} 100%)`, boxShadow: '0 14px 30px -14px rgba(4,120,87,0.75)' } }}
                 >
                   Edit Invoice ({resolvedInvoice.invoice_number})
                 </Button>
@@ -1763,14 +1764,14 @@ const ServiceRequestDetail = () => {
                 <Button
                   fullWidth variant="contained" startIcon={<ReceiptLongIcon />} onClick={openInvoiceDialog}
                   disabled={invoiceMutation.isPending || sr.invoice_deleted}
-                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(124,58,237,0.65)', background: 'linear-gradient(135deg, #7C3AED 0%, #9A55B0 100%)', '&:hover': { background: 'linear-gradient(135deg, #6D28D9 0%, #8A46C2 100%)' } }}
+                  sx={{ borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.25, boxShadow: '0 12px 26px -14px rgba(4,120,87,0.65)', background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brandLight} 100%)`, '&:hover': { background: `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.brandLight} 100%)` } }}
                 >
                   Generate Invoice
                 </Button>
               )}
 
               {/* Billing approval — decision pair */}
-              <Typography sx={{ mt: 2.5, mb: 1, fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94A3B8' }}>Billing approval</Typography>
+              <Typography sx={{ mt: 2.5, mb: 1, fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: palette.textFaint }}>Billing approval</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
                 <Button
                   fullWidth variant={sr.billing_status === 'approved' ? 'contained' : 'outlined'}
@@ -1778,8 +1779,8 @@ const ServiceRequestDetail = () => {
                   onClick={() => handleUpdateFlag({ billing_status: 'approved' })}
                   disabled={updateMutation.isPending || sr.billing_status === 'approved' || !resolvedInvoice}
                   sx={sr.billing_status === 'approved'
-                    ? { borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.1, boxShadow: 'none', backgroundColor: '#059669', color: '#fff', '&.Mui-disabled': { backgroundColor: '#059669', color: '#fff', opacity: 0.92 } }
-                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#047857', borderColor: '#A7F3D0', backgroundColor: '#F0FDF4', '&:hover': { borderColor: '#059669', backgroundColor: '#DCFCE7' } }}
+                    ? { borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.1, boxShadow: 'none', backgroundColor: palette.brandStrong, color: '#fff', '&.Mui-disabled': { backgroundColor: palette.brandStrong, color: '#fff', opacity: 0.92 } }
+                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: palette.brand, borderColor: palette.brandBorder, backgroundColor: palette.successTint, '&:hover': { borderColor: palette.brandStrong, backgroundColor: '#DCFCE7' } }}
                 >
                   {sr.billing_status === 'approved'
                     ? 'Approved for Billing'
@@ -1793,20 +1794,20 @@ const ServiceRequestDetail = () => {
                   onClick={() => handleUpdateFlag({ billing_status: 'not_approved' })}
                   disabled={updateMutation.isPending || sr.billing_status === 'not_approved'}
                   sx={sr.billing_status === 'not_approved'
-                    ? { borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.1, boxShadow: 'none', backgroundColor: '#FEE2E2', color: '#B91C1C', '&.Mui-disabled': { backgroundColor: '#FEE2E2', color: '#B91C1C', opacity: 0.95 } }
-                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#64748B', borderColor: '#E2E8F0', backgroundColor: '#fff', '&:hover': { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', color: '#DC2626' } }}
+                    ? { borderRadius: '14px', fontWeight: 800, textTransform: 'none', py: 1.1, boxShadow: 'none', backgroundColor: palette.dangerTint, color: palette.danger, '&.Mui-disabled': { backgroundColor: palette.dangerTint, color: palette.danger, opacity: 0.95 } }
+                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: palette.textSubtle, borderColor: palette.borderSlate, backgroundColor: '#fff', '&:hover': { borderColor: '#FCA5A5', backgroundColor: palette.dangerWash, color: palette.dangerStrong } }}
                 >
                   {sr.billing_status === 'not_approved' ? 'Not Approved' : 'Not Approved for Billing'}
                 </Button>
               </Box>
 
               {/* Reports & payment */}
-              <Typography sx={{ mt: 2.5, mb: 1, fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94A3B8' }}>Reports & payment</Typography>
+              <Typography sx={{ mt: 2.5, mb: 1, fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: palette.textFaint }}>Reports & payment</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25 }}>
                 <Button
                   fullWidth variant="outlined" startIcon={<AssessmentIcon />}
                   onClick={() => navigate(`/reports?serviceRequest=${sr.id}`)}
-                  sx={{ borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#475569', borderColor: '#E2E8F0', backgroundColor: '#fff', '&:hover': { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' } }}
+                  sx={{ borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: palette.slate600, borderColor: palette.borderSlate, backgroundColor: '#fff', '&:hover': { borderColor: '#CBD5E1', backgroundColor: palette.surface } }}
                 >
                   View Report
                 </Button>
@@ -1815,24 +1816,24 @@ const ServiceRequestDetail = () => {
                   onClick={() => handleUpdateFlag({ cc_auth_requested: true })}
                   disabled={updateMutation.isPending || sr.cc_auth_requested}
                   sx={sr.cc_auth_requested
-                    ? { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#047857', borderColor: '#A7F3D0', backgroundColor: '#F0FDF4', '&.Mui-disabled': { color: '#047857', borderColor: '#A7F3D0', opacity: 0.95 } }
-                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: '#475569', borderColor: '#E2E8F0', backgroundColor: '#fff', '&:hover': { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' } }}
+                    ? { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: palette.brand, borderColor: palette.brandBorder, backgroundColor: palette.successTint, '&.Mui-disabled': { color: palette.brand, borderColor: palette.brandBorder, opacity: 0.95 } }
+                    : { borderRadius: '14px', fontWeight: 700, textTransform: 'none', py: 1.1, color: palette.slate600, borderColor: palette.borderSlate, backgroundColor: '#fff', '&:hover': { borderColor: '#CBD5E1', backgroundColor: palette.surface } }}
                 >
                   {sr.cc_auth_requested ? 'CC Auth Requested' : 'Request CC Auth'}
                 </Button>
               </Box>
 
               {/* Danger zone */}
-              <Box sx={{ mt: 2.5, pt: 2, borderTop: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
+              <Box sx={{ mt: 2.5, pt: 2, borderTop: `1px solid ${palette.surfaceMuted}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
                 <Box sx={{ minWidth: 0 }}>
                   <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: '#334155' }}>Delete this invoice</Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: '#94A3B8' }}>Removes the invoice from billing — this can't be undone.</Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: palette.textFaint }}>Removes the invoice from billing — this can't be undone.</Typography>
                 </Box>
                 <Button
                   variant="outlined" startIcon={<DeleteOutlineIcon />}
                   onClick={() => handleUpdateFlag({ invoice_deleted: true })}
                   disabled={updateMutation.isPending || sr.invoice_deleted}
-                  sx={{ borderRadius: '12px', fontWeight: 700, textTransform: 'none', py: 0.9, color: '#DC2626', borderColor: '#FECACA', backgroundColor: '#fff', '&:hover': { borderColor: '#EF4444', backgroundColor: '#FEF2F2' } }}
+                  sx={{ borderRadius: '12px', fontWeight: 700, textTransform: 'none', py: 0.9, color: palette.dangerStrong, borderColor: '#FECACA', backgroundColor: '#fff', '&:hover': { borderColor: palette.dangerBright, backgroundColor: palette.dangerWash } }}
                 >
                   {sr.invoice_deleted ? 'Invoice Deleted' : 'Delete Invoice'}
                 </Button>
@@ -1841,11 +1842,11 @@ const ServiceRequestDetail = () => {
           )}
 
           {sr.status === 'completed' && isFacilityCustomerView && (
-            <Card sx={{ p: 3, border: '1px solid #D1FAE5', background: 'linear-gradient(145deg, #FFFFFF 0%, #F7FFFB 100%)' }}>
-              <Typography sx={{ fontWeight: 800, color: '#1E1B4B', mb: 0.75, fontSize: '1rem' }}>
+            <Card sx={{ p: 3, border: `1px solid ${palette.brandSoft}`, background: 'linear-gradient(145deg, #FFFFFF 0%, #F7FFFB 100%)' }}>
+              <Typography sx={{ fontWeight: 800, color: palette.ink, mb: 0.75, fontSize: '1rem' }}>
                 Service Documents
               </Typography>
-              <Typography sx={{ color: '#64748B', fontSize: '0.84rem', lineHeight: 1.6, mb: 2 }}>
+              <Typography sx={{ color: palette.textSubtle, fontSize: '0.84rem', lineHeight: 1.6, mb: 2 }}>
                 The service work is complete. View the documents available to your account without changing operational or invoice records.
               </Typography>
               <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap' }}>
@@ -1864,13 +1865,13 @@ const ServiceRequestDetail = () => {
                     variant="contained"
                     startIcon={<ReceiptLongIcon />}
                     onClick={() => navigate(`/billing?search=${encodeURIComponent(resolvedInvoice.invoice_number)}`)}
-                    sx={{ borderRadius: '12px', fontWeight: 800, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+                    sx={{ borderRadius: '12px', fontWeight: 800, background: palette.gradientBrand }}
                   >
                     View Invoice in Billing
                   </Button>
                 )}
                 {!resolvedInvoice && (
-                  <Chip label="Invoice preparation pending" sx={{ bgcolor: '#F1F5F9', color: '#475569', fontWeight: 750 }} />
+                  <Chip label="Invoice preparation pending" sx={{ bgcolor: palette.surfaceMuted, color: palette.slate600, fontWeight: 750 }} />
                 )}
               </Box>
             </Card>
@@ -1878,10 +1879,10 @@ const ServiceRequestDetail = () => {
 
           {/* Cancelled info */}
           {sr.status === 'cancelled' && (
-            <Card sx={{ p: 3, border: '1px solid #E5E7EB' }}>
+            <Card sx={{ p: 3, border: `1px solid ${palette.border}` }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CancelIcon sx={{ color: '#9CA3AF' }} />
-                <Typography sx={{ fontWeight: 700, color: '#6B7280', fontSize: '1rem' }}>
+                <CancelIcon sx={{ color: palette.textDisabled }} />
+                <Typography sx={{ fontWeight: 700, color: palette.textMuted, fontSize: '1rem' }}>
                   This request has been cancelled
                 </Typography>
               </Box>
@@ -1890,7 +1891,7 @@ const ServiceRequestDetail = () => {
 
           {false && !isTerminal && sr?.status !== 'new' && (
             <Card sx={{ p: 3 }}>
-              <Typography sx={{ fontWeight: 700, color: '#1E1B4B', mb: 2, fontSize: '1rem' }}>
+              <Typography sx={{ fontWeight: 700, color: palette.ink, mb: 2, fontSize: '1rem' }}>
                 Change Technician
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1908,11 +1909,11 @@ const ServiceRequestDetail = () => {
                     ))}
                   </Select>
                 </FormControl>
-                <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: '#F8FAFC', border: '1px solid #EEF2F7' }}>
-                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 900, color: '#64748B', textTransform: 'uppercase' }}>
+                <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: palette.surface, border: '1px solid #EEF2F7' }}>
+                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 900, color: palette.textSubtle, textTransform: 'uppercase' }}>
                     Calculated Service Time
                   </Typography>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink }}>
                     {Number(sr?.time_spent_hours || 0).toFixed(2)} hrs
                   </Typography>
                 </Box>
@@ -1921,9 +1922,9 @@ const ServiceRequestDetail = () => {
                   onClick={handleChangeTechnician}
                   disabled={updateMutation.isPending}
                   sx={{
-                    borderColor: '#7C3AED', color: '#7C3AED',
+                    borderColor: palette.brand, color: palette.brand,
                     borderRadius: '12px', fontWeight: 700,
-                    '&:hover': { backgroundColor: '#F5F3FF' },
+                    '&:hover': { backgroundColor: palette.brandTint },
                   }}
                 >
                   {updateMutation.isPending ? <CircularProgress size={20} /> : 'Save Technician'}
@@ -1951,11 +1952,11 @@ const ServiceRequestDetail = () => {
         fullWidth
         PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
       >
-        <DialogTitle sx={{ fontWeight: 800, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 800, color: palette.ink }}>
           Change Technician
         </DialogTitle>
         <DialogContent>
-          <Typography sx={{ color: '#64748B', fontWeight: 700, mb: 2 }}>
+          <Typography sx={{ color: palette.textSubtle, fontWeight: 700, mb: 2 }}>
             Reassign this service request without changing the service history, hours, or billing calculation.
           </Typography>
           <SearchableSelect<number>
@@ -1980,7 +1981,7 @@ const ServiceRequestDetail = () => {
             variant="contained"
             disabled={updateMutation.isPending}
             sx={{
-              background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
+              background: palette.gradientBrand,
               borderRadius: '12px',
               fontWeight: 800,
             }}
@@ -1997,22 +1998,22 @@ const ServiceRequestDetail = () => {
         fullWidth
         PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}
       >
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           Generate Service Invoice
-          <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 13, mt: 0.5 }}>
+          <Typography sx={{ color: palette.textSubtle, fontWeight: 700, fontSize: 13, mt: 0.5 }}>
             Choose whether service quotations should be included in this invoice or billed separately.
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.2fr 0.8fr' }, gap: 2.5 }}>
             <Box sx={{ display: 'grid', gap: 1.5 }}>
-              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 0.75 }}>Service Labor</Typography>
+              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: palette.surface, border: `1px solid ${palette.borderSlate}` }}>
+                <Typography sx={{ fontWeight: 950, color: palette.ink, mb: 0.75 }}>Service Labor</Typography>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-                  <Typography sx={{ color: '#64748B', fontWeight: 700 }}>
+                  <Typography sx={{ color: palette.textSubtle, fontWeight: 700 }}>
                     {timeSpentHours.toFixed(2)} hrs x ${tierLaborRate.toFixed(2)} / hr
                   </Typography>
-                  <Typography sx={{ fontWeight: 950, color: '#047857' }}>
+                  <Typography sx={{ fontWeight: 950, color: palette.brand }}>
                     ${calculatedServiceCost.toFixed(2)}
                   </Typography>
                 </Box>
@@ -2052,17 +2053,17 @@ const ServiceRequestDetail = () => {
                 )}
               </Box>
               {invoiceTravelMode === 'mileage' && (
-                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: palette.infoTint, border: '1px solid #BFDBFE' }}>
                   <Typography sx={{ color: '#1E40AF', fontWeight: 900 }}>
                     Mileage travel: {totalSessionMileage.toFixed(2)} mi x ${tierMileageRate.toFixed(2)} / mi = ${calculatedMileageTravelCharge.toFixed(2)}
                   </Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 700, mt: 0.5 }}>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 700, mt: 0.5 }}>
                     Mileage is pulled from all saved technician work sessions for this service request.
                   </Typography>
                 </Box>
               )}
 
-              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: '#F5F3FF', border: '1px solid #DDD6FE' }}>
+              <Box sx={{ p: 2, borderRadius: '16px', bgcolor: palette.brandTint, border: `1px solid ${palette.brandBorder}` }}>
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -2077,8 +2078,8 @@ const ServiceRequestDetail = () => {
                   }
                   label={
                     <Box>
-                      <Typography sx={{ fontWeight: 950, color: '#1E1B4B' }}>Include service quotations in this invoice</Typography>
-                      <Typography sx={{ color: '#64748B', fontWeight: 700, fontSize: 12 }}>
+                      <Typography sx={{ fontWeight: 950, color: palette.ink }}>Include service quotations in this invoice</Typography>
+                      <Typography sx={{ color: palette.textSubtle, fontWeight: 700, fontSize: 12 }}>
                         Leave off to bill quotations separately in Billing.
                       </Typography>
                     </Box>
@@ -2087,9 +2088,9 @@ const ServiceRequestDetail = () => {
                 {includeQuotations && (
                   <Box sx={{ mt: 1.5, display: 'grid', gap: 1 }}>
                     {billableQuotations.length === 0 ? (
-                      <Typography sx={{ color: '#94A3B8', fontWeight: 700 }}>No open quotations available to include.</Typography>
+                      <Typography sx={{ color: palette.textFaint, fontWeight: 700 }}>No open quotations available to include.</Typography>
                     ) : billableQuotations.map(q => (
-                      <Box key={q.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, p: 1.25, borderRadius: '12px', bgcolor: '#fff', border: '1px solid #EDE9FE' }}>
+                      <Box key={q.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, p: 1.25, borderRadius: '12px', bgcolor: '#fff', border: `1px solid ${palette.brandSoft}` }}>
                         <FormControlLabel
                           control={
                             <Checkbox
@@ -2103,12 +2104,12 @@ const ServiceRequestDetail = () => {
                           }
                           label={
                             <Box>
-                              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{q.quotation_number}</Typography>
-                              <Typography sx={{ color: '#64748B', fontSize: 12 }}>{q.description || 'Service quotation'}</Typography>
+                              <Typography sx={{ fontWeight: 900, color: palette.ink }}>{q.quotation_number}</Typography>
+                              <Typography sx={{ color: palette.textSubtle, fontSize: 12 }}>{q.description || 'Service quotation'}</Typography>
                             </Box>
                           }
                         />
-                        <Typography sx={{ fontWeight: 950, color: '#047857' }}>${Number(q.amount || 0).toFixed(2)}</Typography>
+                        <Typography sx={{ fontWeight: 950, color: palette.brand }}>${Number(q.amount || 0).toFixed(2)}</Typography>
                       </Box>
                     ))}
                   </Box>
@@ -2125,8 +2126,8 @@ const ServiceRequestDetail = () => {
               />
             </Box>
 
-            <Box sx={{ p: 2, borderRadius: '18px', bgcolor: '#fff', border: '1px solid #E5E7EB', boxShadow: '0 14px 35px rgba(15,23,42,0.08)', height: 'fit-content' }}>
-              <Typography sx={{ fontWeight: 950, color: '#1E1B4B', mb: 1.5 }}>Invoice Summary</Typography>
+            <Box sx={{ p: 2, borderRadius: '18px', bgcolor: '#fff', border: `1px solid ${palette.border}`, boxShadow: '0 14px 35px rgba(15,23,42,0.08)', height: 'fit-content' }}>
+              <Typography sx={{ fontWeight: 950, color: palette.ink, mb: 1.5 }}>Invoice Summary</Typography>
               <TextField
                 label="Due Date"
                 type="date"
@@ -2161,16 +2162,16 @@ const ServiceRequestDetail = () => {
                 ['Tax', Number(invoiceTaxAmount || 0)],
                 ['Discount', -Number(invoiceDiscountAmount || 0)],
               ].map(([label, value]) => (
-                <Box key={String(label)} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: '1px solid #F1F5F9' }}>
-                  <Typography sx={{ color: '#64748B', fontWeight: 800 }}>{label}</Typography>
-                  <Typography sx={{ color: Number(value) < 0 ? '#DC2626' : '#1E1B4B', fontWeight: 900 }}>
+                <Box key={String(label)} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: `1px solid ${palette.surfaceMuted}` }}>
+                  <Typography sx={{ color: palette.textSubtle, fontWeight: 800 }}>{label}</Typography>
+                  <Typography sx={{ color: Number(value) < 0 ? palette.dangerStrong : palette.ink, fontWeight: 900 }}>
                     ${Number(value).toFixed(2)}
                   </Typography>
                 </Box>
               ))}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, p: 1.5, borderRadius: '14px', bgcolor: '#F0FDF4' }}>
-                <Typography sx={{ color: '#047857', fontWeight: 950 }}>Total</Typography>
-                <Typography sx={{ color: '#047857', fontWeight: 950, fontSize: 20 }}>${invoicePreviewTotal.toFixed(2)}</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, p: 1.5, borderRadius: '14px', bgcolor: palette.successTint }}>
+                <Typography sx={{ color: palette.brand, fontWeight: 950 }}>Total</Typography>
+                <Typography sx={{ color: palette.brand, fontWeight: 950, fontSize: 20 }}>${invoicePreviewTotal.toFixed(2)}</Typography>
               </Box>
             </Box>
           </Box>
@@ -2184,7 +2185,7 @@ const ServiceRequestDetail = () => {
             variant="contained"
             disabled={invoiceMutation.isPending}
             startIcon={invoiceMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <ReceiptLongIcon />}
-            sx={{ borderRadius: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+            sx={{ borderRadius: '12px', fontWeight: 900, background: palette.gradientBrand }}
           >
             Generate Invoice
           </Button>
@@ -2193,13 +2194,13 @@ const ServiceRequestDetail = () => {
 
       {/* Edit Invoice Dialog */}
       <Dialog open={editInvoiceOpen} onClose={() => setEditInvoiceOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <EditIcon sx={{ color: '#059669' }} />
+            <EditIcon sx={{ color: palette.brandStrong }} />
             Edit Invoice
           </Box>
           {resolvedInvoice && (
-            <Typography sx={{ fontSize: 13, color: '#6B7280', mt: 0.5 }}>
+            <Typography sx={{ fontSize: 13, color: palette.textMuted, mt: 0.5 }}>
               {resolvedInvoice.invoice_number} · Total <strong>${Number(resolvedInvoice.total_amount || 0).toFixed(2)}</strong>
             </Typography>
           )}
@@ -2263,7 +2264,7 @@ const ServiceRequestDetail = () => {
         onClose={() => setCancelOpen(false)}
         PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
       >
-        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 700, color: palette.ink }}>
           Cancel Service Request?
         </DialogTitle>
         <DialogContent>
@@ -2276,7 +2277,7 @@ const ServiceRequestDetail = () => {
           <Button
             onClick={() => setCancelOpen(false)}
             variant="outlined"
-            sx={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+            sx={{ borderColor: palette.border, color: palette.textMuted }}
           >
             Keep Open
           </Button>
@@ -2299,7 +2300,7 @@ const ServiceRequestDetail = () => {
         fullWidth
         PaperProps={{ sx: { borderRadius: '20px', overflow: 'hidden' } }}
       >
-        <DialogTitle sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 700, color: palette.ink }}>
           Attached Image
         </DialogTitle>
         <DialogContent sx={{ p: 0, backgroundColor: '#0F172A' }}>

@@ -36,6 +36,7 @@ import ContextTableRow from '@/components/ContextTableRow'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import { useListContext } from '@/contexts/ListContext'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 const PAGE_SIZE = 25
 const INVENTORY_SEARCH_FIELDS = [
@@ -63,8 +64,8 @@ const ACTION_MENU_PAPER = {
   sx: {
     borderRadius: '16px',
     minWidth: 190,
-    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
-    border: '1px solid #EEF0F6',
+    boxShadow: palette.shadowMenu,
+    border: `1px solid ${palette.borderSoft}`,
   },
 }
 const ACTION_MENU_ITEM = {
@@ -90,19 +91,19 @@ const INVENTORY_TABLE_SX = {
 }
 
 const INVENTORY_PAGINATION_SX = {
-  borderTop: '1px solid #EEF0F6',
+  borderTop: `1px solid ${palette.borderSoft}`,
   '& .MuiTablePagination-toolbar': { minHeight: 48, px: { xs: 0.5, sm: 1 } },
   '& .MuiTablePagination-selectLabel': { display: { xs: 'none', sm: 'block' } },
-  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: '#64748B' },
+  '& .MuiTablePagination-displayedRows': { m: 0, fontSize: 13, fontWeight: 750, color: palette.textSubtle },
 }
 
 const INVENTORY_ACTION_BUTTON_SX = {
   width: 34,
   height: 34,
   borderRadius: '10px',
-  bgcolor: '#F1F5F9',
-  color: '#7C3AED',
-  '&:hover': { bgcolor: '#EDE9FE' },
+  bgcolor: palette.surfaceMuted,
+  color: palette.brand,
+  '&:hover': { bgcolor: palette.brandSoft },
 }
 
 const emptyPart: InventoryPartPayload = {
@@ -429,7 +430,7 @@ const Inventory = () => {
     <Box className="page-enter" sx={{ width: '100%', maxWidth: 'none', minWidth: 0 }}>
       <Box sx={{ display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, mb: 2.5, gap: 1.5, flexDirection: { xs: 'column', sm: 'row' } }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body2" sx={{ color: '#9CA3AF' }}>
+          <Typography variant="body2" sx={{ color: palette.textDisabled }}>
             Register parts, track batches and serials, and record stock movement with full transaction history.
           </Typography>
         </Box>
@@ -448,7 +449,7 @@ const Inventory = () => {
             Capture by Photo
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenNew}
-            sx={{ minHeight: 40, backgroundColor: '#7C3AED', borderRadius: '10px', px: 2.25, fontWeight: 850, whiteSpace: 'nowrap' }}>
+            sx={{ minHeight: 40, backgroundColor: palette.brand, borderRadius: '10px', px: 2.25, fontWeight: 850, whiteSpace: 'nowrap' }}>
             Register Part
           </Button>
         </Box>
@@ -480,36 +481,36 @@ const Inventory = () => {
               alignItems: 'center',
               gap: 1.1,
               borderRadius: '16px',
-              border: stockView === card.key ? '2px solid #7C3AED' : '1px solid #EEF0F6',
-              boxShadow: stockView === card.key ? '0 14px 34px rgba(124,58,237,0.16)' : 'none',
+              border: stockView === card.key ? `2px solid ${palette.brand}` : `1px solid ${palette.borderSoft}`,
+              boxShadow: stockView === card.key ? '0 14px 34px rgba(4,120,87,0.16)' : 'none',
               cursor: 'pointer',
               transform: stockView === card.key ? 'translateY(-2px)' : 'none',
               transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
-              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 16px 38px rgba(124,58,237,0.14)' },
-              '&:focus-visible': { outline: '3px solid rgba(124,58,237,0.24)', outlineOffset: 2 },
+              '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 16px 38px rgba(4,120,87,0.14)' },
+              '&:focus-visible': { outline: '3px solid rgba(4,120,87,0.24)', outlineOffset: 2 },
             }}
           >
-            <Box sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: '12px', backgroundColor: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Box sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: '12px', backgroundColor: palette.brandTint, color: palette.brand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {card.icon}
             </Box>
             <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap title={card.label} sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{card.label}</Typography>
-              <Typography noWrap title={String(card.value)} sx={{ fontSize: { xs: 20, lg: 22 }, lineHeight: 1.2, fontWeight: 900, color: '#1E1B4B' }}>{card.value}</Typography>
+              <Typography noWrap title={card.label} sx={{ color: palette.textMuted, fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>{card.label}</Typography>
+              <Typography noWrap title={String(card.value)} sx={{ fontSize: { xs: 20, lg: 22 }, lineHeight: 1.2, fontWeight: 900, color: palette.ink }}>{card.value}</Typography>
             </Box>
           </Card>
         ))}
       </Box>
 
-      <Card sx={{ overflow: 'hidden', borderRadius: '22px', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(59,130,246,0.08)' }}>
-        <Box sx={{ p: { xs: 2, md: 2.5 }, borderBottom: '1px solid #E5E7EB' }}>
-          <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+      <Card sx={{ overflow: 'hidden', borderRadius: '22px', border: `1px solid ${palette.borderSoft}`, boxShadow: palette.shadowCard }}>
+        <Box sx={{ p: { xs: 2, md: 2.5 }, borderBottom: `1px solid ${palette.border}` }}>
+          <Typography variant="h6" sx={{ fontWeight: 900, color: palette.ink }}>
             Parts And Consumables
           </Typography>
-          <Typography variant="body2" sx={{ color: '#6B7280' }}>
+          <Typography variant="body2" sx={{ color: palette.textMuted }}>
             Spare parts, consumables, stock operations, and transaction history.
           </Typography>
         </Box>
-        <Box sx={{ p: { xs: 1.5, md: 2 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px minmax(220px, 1fr)', lg: '180px minmax(320px, 1fr) auto' }, gap: 1, borderBottom: '1px solid #E5E7EB', alignItems: 'center' }}>
+        <Box sx={{ p: { xs: 1.5, md: 2 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '160px minmax(220px, 1fr)', lg: '180px minmax(320px, 1fr) auto' }, gap: 1, borderBottom: `1px solid ${palette.border}`, alignItems: 'center' }}>
           <Box sx={{ minWidth: 0 }}><SearchFieldSelect
               value={searchField}
               options={INVENTORY_SEARCH_FIELDS}
@@ -518,10 +519,10 @@ const Inventory = () => {
             /></Box>
           <TextField size="small" placeholder={`Search ${INVENTORY_SEARCH_FIELDS.find((field) => field.value === searchField)?.label.toLowerCase() || 'inventory'}...`} value={search} onChange={(e) => setSearch(e.target.value)}
             fullWidth sx={{ minWidth: 0 }}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: '#9CA3AF' }} /></InputAdornment> }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: palette.textDisabled }} /></InputAdornment> }}
           />
           {isFetching && !isLoading && (
-            <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+            <CircularProgress size={18} thickness={5} sx={{ color: palette.brand }} />
           )}
         </Box>
 
@@ -562,34 +563,34 @@ const Inventory = () => {
                         <Avatar
                           src={resolveUploadUrl(part.default_picture_url)}
                           variant="rounded"
-                          sx={{ width: 42, height: 42, flexShrink: 0, bgcolor: '#F5F3FF', color: '#7C3AED', borderRadius: '11px' }}
+                          sx={{ width: 42, height: 42, flexShrink: 0, bgcolor: palette.brandTint, color: palette.brand, borderRadius: '11px' }}
                         >
                           <InventoryIcon fontSize="small" />
                         </Avatar>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, minWidth: 0 }}>
                             <ClippedTooltipText value={part.part_number} fontWeight={850} />
-                            {part.is_critical && <Chip label="Critical" size="small" sx={{ height: 22, flexShrink: 0, borderRadius: '7px', backgroundColor: '#FEF2F2', color: '#DC2626', fontSize: 10, fontWeight: 850, '& .MuiChip-label': { px: 0.8 } }} />}
+                            {part.is_critical && <Chip label="Critical" size="small" sx={{ height: 22, flexShrink: 0, borderRadius: '7px', backgroundColor: palette.dangerWash, color: palette.dangerStrong, fontSize: 10, fontWeight: 850, '& .MuiChip-label': { px: 0.8 } }} />}
                           </Box>
-                          <ClippedTooltipText value={`${part.part_type} - ${part.description}`} variant="caption" color="#6B7280" fontWeight={550} />
+                          <ClippedTooltipText value={`${part.part_type} - ${part.description}`} variant="caption" color={palette.textMuted} fontWeight={550} />
                         </Box>
                       </Box>
                     </TableCell>
                     <TableCell>
                       <ClippedTooltipText value={[part.make, part.model].filter(Boolean).join(' ') || part.condition || 'Unspecified'} />
-                      <ClippedTooltipText value={part.location || part.modality_name || 'No location'} variant="caption" color="#6B7280" fontWeight={500} />
+                      <ClippedTooltipText value={part.location || part.modality_name || 'No location'} variant="caption" color={palette.textMuted} fontWeight={500} />
                     </TableCell>
                     <TableCell>
                       <ClippedTooltipText value={part.batch_number || 'No batch'} />
-                      <ClippedTooltipText value={part.serial_number || 'No serial'} variant="caption" color="#6B7280" fontWeight={500} />
+                      <ClippedTooltipText value={part.serial_number || 'No serial'} variant="caption" color={palette.textMuted} fontWeight={500} />
                     </TableCell>
                     <TableCell>
                       <ClippedTooltipText value={part.supplier_name || 'Unspecified'} />
-                      <ClippedTooltipText value={part.supplier_phone ? formatUSPhone(part.supplier_phone) : part.supplier_email || ''} variant="caption" color="#6B7280" fontWeight={500} />
+                      <ClippedTooltipText value={part.supplier_phone ? formatUSPhone(part.supplier_phone) : part.supplier_email || ''} variant="caption" color={palette.textMuted} fontWeight={500} />
                     </TableCell>
                     <TableCell>
-                      <Chip label={`${part.quantity_on_hand} on hand`} size="small" title={`${part.quantity_on_hand} on hand`} sx={{ height: 26, maxWidth: 120, borderRadius: '8px', backgroundColor: low ? '#FEF2F2' : '#ECFDF5', color: low ? '#DC2626' : '#059669', fontSize: 11, fontWeight: 900, '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' } }} />
-                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: '#6B7280' }}>Reorder: {part.reorder_level}</Typography>
+                      <Chip label={`${part.quantity_on_hand} on hand`} size="small" title={`${part.quantity_on_hand} on hand`} sx={{ height: 26, maxWidth: 120, borderRadius: '8px', backgroundColor: low ? palette.dangerWash : palette.brandTint, color: low ? palette.dangerStrong : palette.brandStrong, fontSize: 11, fontWeight: 900, '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' } }} />
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: palette.textMuted }}>Reorder: {part.reorder_level}</Typography>
                     </TableCell>
                     <TableCell>{part.expiry_date || '-'}</TableCell>
                     <TableCell align="right">
@@ -625,25 +626,25 @@ const Inventory = () => {
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
         {actionPart && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setTransactionPart(actionPart); closeActions() }}>
-            <ListItemIcon><MoveUpIcon fontSize="small" sx={{ color: '#10B981' }} /></ListItemIcon>
+            <ListItemIcon><MoveUpIcon fontSize="small" sx={{ color: palette.brandMid }} /></ListItemIcon>
             Stock Operation
           </MenuItem>
         )}
         {actionPart && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setHistoryPart(actionPart); closeActions() }}>
-            <ListItemIcon><ReceiptLongIcon fontSize="small" sx={{ color: '#3B82F6' }} /></ListItemIcon>
+            <ListItemIcon><ReceiptLongIcon fontSize="small" sx={{ color: palette.infoBright }} /></ListItemIcon>
             History
           </MenuItem>
         )}
         {actionPart && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { handleOpenEdit(actionPart); closeActions() }}>
-            <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#F59E0B' }} /></ListItemIcon>
+            <ListItemIcon><EditIcon fontSize="small" sx={{ color: palette.warningBright }} /></ListItemIcon>
             Edit
           </MenuItem>
         )}
         {actionPart && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { deleteMut.mutate(actionPart.id); closeActions() }}>
-            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: palette.dangerBright }} /></ListItemIcon>
             Delete
           </MenuItem>
         )}
@@ -660,33 +661,33 @@ const Inventory = () => {
             borderRadius: { xs: 0, sm: '22px' },
             overflow: 'hidden',
             maxHeight: { xs: '100dvh', sm: 'calc(100dvh - 48px)' },
-            backgroundColor: '#F8FAFC',
-            boxShadow: '0 28px 80px rgba(30, 27, 75, 0.22)',
+            backgroundColor: palette.surface,
+            boxShadow: '0 28px 80px rgba(6,78,59, 0.22)',
           },
         }}
       >
-        <DialogTitle sx={{ p: { xs: 2, sm: 2.5 }, borderBottom: '1px solid #E5E7EB', bgcolor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+        <DialogTitle sx={{ p: { xs: 2, sm: 2.5 }, borderBottom: `1px solid ${palette.border}`, bgcolor: palette.white, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
           <Box sx={{ minWidth: 0 }}>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: { xs: 20, sm: 24 }, lineHeight: 1.2 }}>
+            <Typography sx={{ fontWeight: 900, color: palette.ink, fontSize: { xs: 20, sm: 24 }, lineHeight: 1.2 }}>
               {editingPart ? 'Edit Part' : 'Add New Part'}
             </Typography>
-            <Typography sx={{ mt: 0.4, color: '#64748B', fontSize: 13, fontWeight: 600 }}>
+            <Typography sx={{ mt: 0.4, color: palette.textSubtle, fontSize: 13, fontWeight: 600 }}>
               Product details, supplier information, acquisition history, and imagery.
             </Typography>
           </Box>
-          <IconButton aria-label="Close add part dialog" onClick={() => setPartDialogOpen(false)} sx={{ flexShrink: 0, width: 42, height: 42, color: '#4F46E5', bgcolor: '#EEF2FF', '&:hover': { bgcolor: '#E0E7FF' } }}>
+          <IconButton aria-label="Close add part dialog" onClick={() => setPartDialogOpen(false)} sx={{ flexShrink: 0, width: 42, height: 42, color: palette.indigo, bgcolor: palette.indigoTint, '&:hover': { bgcolor: '#E0E7FF' } }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ p: { xs: 1.5, sm: 2.5 }, bgcolor: '#F8FAFC' }}>
+        <DialogContent sx={{ p: { xs: 1.5, sm: 2.5 }, bgcolor: palette.surface }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 260px' }, gap: 2, alignItems: 'start', '& .MuiInputBase-root:not(.MuiInputBase-multiline)': { minHeight: 44 }, '& .MuiOutlinedInput-input:not(textarea)': { py: 1.25 } }}>
             <Box sx={{ display: 'grid', gap: 2, minWidth: 0 }}>
-              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
+              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: `1px solid ${palette.border}`, borderRadius: '16px', bgcolor: palette.white }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.75 }}>
-                  <Avatar sx={{ width: 34, height: 34, bgcolor: '#EEF2FF', color: '#4F46E5' }}><InventoryIcon fontSize="small" /></Avatar>
+                  <Avatar sx={{ width: 34, height: 34, bgcolor: palette.indigoTint, color: palette.indigo }}><InventoryIcon fontSize="small" /></Avatar>
                   <Box>
-                    <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Part Information</Typography>
-                    <Typography sx={{ color: '#64748B', fontSize: 12 }}>Core product identity, classification, condition, and pricing.</Typography>
+                    <Typography sx={{ fontWeight: 900, color: palette.ink }}>Part Information</Typography>
+                    <Typography sx={{ color: palette.textSubtle, fontSize: 12 }}>Core product identity, classification, condition, and pricing.</Typography>
                   </Box>
                 </Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
@@ -710,9 +711,9 @@ const Inventory = () => {
                 </Box>
               </Box>
 
-              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.35 }}>Supplier &amp; Contact</Typography>
-                <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1.75 }}>Company and primary sales contact for this part.</Typography>
+              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: `1px solid ${palette.border}`, borderRadius: '16px', bgcolor: palette.white }}>
+                <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 0.35 }}>Supplier &amp; Contact</Typography>
+                <Typography sx={{ color: palette.textSubtle, fontSize: 12, mb: 1.75 }}>Company and primary sales contact for this part.</Typography>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.25 }}>
                 <TextField label="Company" placeholder="Company Name" value={partForm.supplier_name} onChange={(e) => setPartForm({ ...partForm, supplier_name: e.target.value })} />
                 <TextField label="Sales Person Name" placeholder="Contact Name" value={partForm.supplier_contact} onChange={(e) => setPartForm({ ...partForm, supplier_contact: e.target.value })} />
@@ -722,9 +723,9 @@ const Inventory = () => {
                 </Box>
               </Box>
 
-              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.35 }}>Acquired From <Box component="span" sx={{ color: '#94A3B8', fontWeight: 700 }}>(Optional)</Box></Typography>
-                <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1.75 }}>Purchase source, shipment method, and receiving dates.</Typography>
+              <Box sx={{ p: { xs: 1.5, sm: 2 }, border: `1px solid ${palette.border}`, borderRadius: '16px', bgcolor: palette.white }}>
+                <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 0.35 }}>Acquired From <Box component="span" sx={{ color: palette.textFaint, fontWeight: 700 }}>(Optional)</Box></Typography>
+                <Typography sx={{ color: palette.textSubtle, fontSize: 12, mb: 1.75 }}>Purchase source, shipment method, and receiving dates.</Typography>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
                 <TextField label="Vendor Name" placeholder="Vendor Name" value={partForm.vendor_name || ''} onChange={(e) => setPartForm({ ...partForm, vendor_name: e.target.value })} />
                 <TextField label="Purchase Location" placeholder="Purchase Location" value={partForm.purchase_location || ''} onChange={(e) => setPartForm({ ...partForm, purchase_location: e.target.value })} />
@@ -735,29 +736,29 @@ const Inventory = () => {
               </Box>
             </Box>
 
-            <Box sx={{ p: 1.5, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF', position: { lg: 'sticky' }, top: { lg: 0 } }}>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Part Image</Typography>
-              <Box sx={{ height: { xs: 220, lg: 250 }, borderRadius: '12px', border: '1px dashed #C7D2FE', backgroundColor: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <Box sx={{ p: 1.5, border: `1px solid ${palette.border}`, borderRadius: '16px', bgcolor: palette.white, position: { lg: 'sticky' }, top: { lg: 0 } }}>
+              <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>Part Image</Typography>
+              <Box sx={{ height: { xs: 220, lg: 250 }, borderRadius: '12px', border: '1px dashed #C7D2FE', backgroundColor: palette.surface, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                 {partForm.default_picture_url ? (
                   <Box component="img" src={partForm.default_picture_url} alt="Part preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <Box sx={{ textAlign: 'center', color: '#94A3B8' }}>
+                  <Box sx={{ textAlign: 'center', color: palette.textFaint }}>
                     <ImageOutlinedIcon sx={{ fontSize: 54 }} />
                     <Typography sx={{ mt: 0.5, fontSize: 12, fontWeight: 700 }}>No image selected</Typography>
                   </Box>
                 )}
               </Box>
-              <Button fullWidth component="label" variant="outlined" startIcon={<ImageOutlinedIcon />} sx={{ mt: 1.25, minHeight: 42, borderRadius: '10px', textTransform: 'none', fontWeight: 800, color: '#4F46E5', borderColor: '#C7D2FE' }}>
+              <Button fullWidth component="label" variant="outlined" startIcon={<ImageOutlinedIcon />} sx={{ mt: 1.25, minHeight: 42, borderRadius: '10px', textTransform: 'none', fontWeight: 800, color: palette.indigo, borderColor: '#C7D2FE' }}>
                 {partForm.default_picture_url ? 'Replace Image' : 'Choose Image'}
                 <input hidden type="file" accept="image/*" onChange={(e) => handlePartImage(e.target.files?.[0])} />
               </Button>
-              <Typography sx={{ mt: 1, color: '#94A3B8', fontSize: 11, textAlign: 'center' }}>Use a clear product photo for Sales and Rental lists.</Typography>
+              <Typography sx={{ mt: 1, color: palette.textFaint, fontSize: 11, textAlign: 'center' }}>Use a clear product photo for Sales and Rental lists.</Typography>
             </Box>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: { xs: 2, md: 3 }, py: 1.75, justifyContent: 'flex-end', gap: 1, borderTop: '1px solid #E5E7EB', bgcolor: '#FFFFFF' }}>
-          <Button onClick={() => setPartDialogOpen(false)} sx={{ color: '#64748B', fontWeight: 800, borderRadius: '10px' }}>Cancel</Button>
-          <Button variant="contained" onClick={handleSavePart} disabled={createMut.isPending || updateMut.isPending} sx={{ minHeight: 42, background: 'linear-gradient(135deg, #4F46E5 0%, #9333EA 100%)', borderRadius: '10px', px: 3, fontWeight: 900 }}>
+        <DialogActions sx={{ px: { xs: 2, md: 3 }, py: 1.75, justifyContent: 'flex-end', gap: 1, borderTop: `1px solid ${palette.border}`, bgcolor: palette.white }}>
+          <Button onClick={() => setPartDialogOpen(false)} sx={{ color: palette.textSubtle, fontWeight: 800, borderRadius: '10px' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleSavePart} disabled={createMut.isPending || updateMut.isPending} sx={{ minHeight: 42, background: palette.gradientBrand, borderRadius: '10px', px: 3, fontWeight: 900 }}>
             {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : (editingPart ? 'Update Part' : 'Add Part')}
           </Button>
         </DialogActions>

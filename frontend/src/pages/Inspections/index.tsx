@@ -96,6 +96,7 @@ import DebouncedSearchField from '@/components/DebouncedSearchField'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
 import { formatUSPhone } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 const CHECK_FIELDS = [
   ['physical_inspection', 'Physical Inspection'],
@@ -638,17 +639,17 @@ const mergeSchemaDefaultsIntoReport = (currentReport: any, schema: InspectionFor
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
-    upcoming: { bg: '#E0E7FF', color: '#4338CA' },
-    in_progress: { bg: '#FEF3C7', color: '#B45309' },
-    completed: { bg: '#D1FAE5', color: '#047857' },
-    closed: { bg: '#F1F5F9', color: '#475569' },
-    pass: { bg: '#D1FAE5', color: '#047857' },
-    fail: { bg: '#FEE2E2', color: '#DC2626' },
-    pending: { bg: '#E0E7FF', color: '#4338CA' },
-    paid: { bg: '#E0E7FF', color: '#4338CA' },
-    overdue: { bg: '#FEE2E2', color: '#DC2626' },
+    upcoming: { bg: '#E0E7FF', color: palette.brand },
+    in_progress: { bg: palette.warningTint, color: palette.warning },
+    completed: { bg: palette.brandSoft, color: palette.brand },
+    closed: { bg: palette.surfaceMuted, color: palette.slate600 },
+    pass: { bg: palette.brandSoft, color: palette.brand },
+    fail: { bg: palette.dangerTint, color: palette.dangerStrong },
+    pending: { bg: '#E0E7FF', color: palette.brand },
+    paid: { bg: '#E0E7FF', color: palette.brand },
+    overdue: { bg: palette.dangerTint, color: palette.dangerStrong },
   }
-  return map[value] || { bg: '#EEF2FF', color: '#4F46E5' }
+  return map[value] || { bg: palette.indigoTint, color: palette.indigo }
 }
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
@@ -715,7 +716,7 @@ const REPORT_CSS = `
   body { margin: 0; background: #eef2f7; color: #111827; font-family: Arial, sans-serif; }
   .sheet { width: 8.5in; min-height: 11in; margin: 24px auto; background: #fff; box-shadow: 0 20px 60px rgba(15,23,42,0.16); overflow: hidden; }
   .page-break { page-break-after: always; }
-  .hero { display: flex; justify-content: space-between; gap: 24px; padding: 30px 38px; color: #fff; background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 58%, #EC4899 100%); }
+  .hero { display: flex; justify-content: space-between; gap: 24px; padding: 30px 38px; color: #fff; background: linear-gradient(135deg, #065F46 0%, #047857 58%, #0D9488 100%); }
   .brand { display: flex; gap: 16px; align-items: center; font-size: 22px; font-weight: 900; }
   .brand img { width: 116px; height: 76px; object-fit: contain; background: #fff; border-radius: 14px; padding: 8px; }
   .hero h1 { margin: 0; text-align: right; font-size: 30px; }
@@ -725,13 +726,13 @@ const REPORT_CSS = `
   .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
   .box { border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px; background: #F8FAFC; }
   .box small { display: block; color: #64748B; font-weight: 900; text-transform: uppercase; margin-bottom: 6px; }
-  .box strong { color: #1E1B4B; }
+  .box strong { color: #064E3B; }
   .section { border: 1px solid #E5E7EB; border-radius: 16px; padding: 18px; margin-top: 16px; page-break-inside: avoid; }
-  h2 { margin: 0 0 12px; color: #1E1B4B; font-size: 18px; }
+  h2 { margin: 0 0 12px; color: #064E3B; font-size: 18px; }
   h3 { margin: 18px 0 8px; color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
   p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #E5E7EB; border-radius: 14px; overflow: hidden; margin-top: 10px; font-size: 12px; }
-  th { text-align: left; background: #F5F3FF; color: #334155; padding: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+  th { text-align: left; background: #ECFDF5; color: #334155; padding: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
   td { border-top: 1px solid #EEF2F7; padding: 10px; vertical-align: top; }
   tfoot td { font-weight: 900; }
   .right { text-align: right; }
@@ -745,7 +746,7 @@ const REPORT_CSS = `
   .status.paid { background: #ECFDF5; color: #047857; }
   .status.overdue, .status.cancelled { background: #FEF2F2; color: #B91C1C; }
   .summary { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
-  .pill { padding: 8px 12px; border-radius: 999px; background: #F5F3FF; color: #7C3AED; font-weight: 900; }
+  .pill { padding: 8px 12px; border-radius: 999px; background: #ECFDF5; color: #047857; font-weight: 900; }
   .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E5E7EB; color: #64748B; font-size: 11px; display: flex; justify-content: space-between; }
   @media print {
     body { background: #fff; }
@@ -786,7 +787,7 @@ const buildInvoiceSheetHtml = (invoice: InspectionInvoice, pageBreak = false): s
   const service = Number(invoice.service_charges || 0)
   return `
     <main class="sheet${pageBreak ? ' page-break' : ''}">
-      <section class="hero" style="background:linear-gradient(135deg,#2563EB 0%,#4F46E5 55%,#7C3AED 100%)">
+      <section class="hero" style="background:linear-gradient(135deg,#064E3B 0%,#047857 55%,#0D9488 100%)">
         <div class="brand">
           <img src="/mr-biomed-logo.jpeg" alt="Mr. BioMed Tech Services" />
           <div>Mr. BioMed Tech Services<br><span style="font-size:12px;color:rgba(255,255,255,0.82)">Biomedical Equipment Repair &amp; Rental Services</span></div>
@@ -2428,12 +2429,12 @@ const Inspections = () => {
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
-      bgcolor: '#EEF2FF',
-      color: '#6D28D9',
-      border: '1px solid #DDD6FE',
+      bgcolor: palette.indigoTint,
+      color: palette.brandDeep,
+      border: `1px solid ${palette.brandBorder}`,
       cursor: 'grab',
       '&:active': { cursor: 'grabbing' },
-      '&:hover': { bgcolor: '#EDE9FE', borderColor: '#8B5CF6' },
+      '&:hover': { bgcolor: palette.brandSoft, borderColor: palette.brandStrong },
     } as const
 
     return (
@@ -2483,7 +2484,7 @@ const Inspections = () => {
                 p: isSelected ? 0.5 : 0,
                 borderRadius: '12px',
                 border: isSelected ? '1px dashed transparent' : 'none',
-                '&:hover': isSelected ? { borderColor: '#C4B5FD', bgcolor: 'rgba(245, 243, 255, 0.55)' } : undefined,
+                '&:hover': isSelected ? { borderColor: palette.brandPale, bgcolor: 'rgba(245, 243, 255, 0.55)' } : undefined,
               }}
             >
               {isSelected && (
@@ -2517,7 +2518,7 @@ const Inspections = () => {
 
           if (block.type === 'label') {
             return blockShell(
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>
+              <Typography sx={{ fontWeight: 900, color: palette.ink, textAlign: cell.align || 'center' }}>
                 {block.label || `Text ${blockIndex + 1}`}
               </Typography>,
             )
@@ -2533,7 +2534,7 @@ const Inspections = () => {
                 width: '100%',
                 maxWidth: block.width || 180,
               }}>
-                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569', whiteSpace: 'nowrap' }}>{block.label}</Typography>}
+                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: palette.slate600, whiteSpace: 'nowrap' }}>{block.label}</Typography>}
                 <TextField
                   size="small"
                   disabled
@@ -2548,7 +2549,7 @@ const Inspections = () => {
           if (block.type === 'textarea') {
             return blockShell(
               <Box sx={{ display: 'grid', gap: 0.75, width: '100%', maxWidth: block.width || 220 }}>
-                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: palette.slate600 }}>{block.label}</Typography>}
                 <TextField
                   size="small"
                   disabled
@@ -2564,7 +2565,7 @@ const Inspections = () => {
           if (block.type === 'radio') {
             return blockShell(
               <Box sx={{ display: 'grid', gap: 0.75, width: '100%' }}>
-                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+                {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: palette.slate600 }}>{block.label}</Typography>}
                 <Box sx={gridOptionContainerSx(block.optionLayout, cell.align)}>
                   {options.map((option, optionIndex) => (
                     <Box
@@ -2618,10 +2619,10 @@ const Inspections = () => {
                         px: isSelected ? 0.5 : 0,
                         border: isSelected ? '1px solid transparent' : 'none',
                         cursor: allowOptionDrag ? 'grab' : 'default',
-                        '&:hover': isSelected ? { borderColor: '#DDD6FE', bgcolor: '#F8FAFC' } : undefined,
+                        '&:hover': isSelected ? { borderColor: palette.brandBorder, bgcolor: palette.surface } : undefined,
                       }}
                     >
-                      {isSelected && <DragIndicatorIcon sx={{ fontSize: 16, color: '#94A3B8' }} />}
+                      {isSelected && <DragIndicatorIcon sx={{ fontSize: 16, color: palette.textFaint }} />}
                       {isSelected && (
                         <Box sx={{ display: 'inline-flex', gap: 0.25 }}>
                           <IconButton
@@ -2634,7 +2635,7 @@ const Inspections = () => {
                               event.stopPropagation()
                               nudgeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, -1)
                             }}
-                            sx={{ width: 24, height: 24, color: '#6D28D9' }}
+                            sx={{ width: 24, height: 24, color: palette.brandDeep }}
                           >
                             <KeyboardArrowLeftIcon fontSize="small" />
                           </IconButton>
@@ -2648,7 +2649,7 @@ const Inspections = () => {
                               event.stopPropagation()
                               nudgeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, 1)
                             }}
-                            sx={{ width: 24, height: 24, color: '#6D28D9' }}
+                            sx={{ width: 24, height: 24, color: palette.brandDeep }}
                           >
                             <KeyboardArrowRightIcon fontSize="small" />
                           </IconButton>
@@ -2657,7 +2658,7 @@ const Inspections = () => {
                       <FormControlLabel
                         control={<Radio disabled size="small" />}
                         label={option || `Option ${optionIndex + 1}`}
-                        sx={{ m: 0, '& .MuiFormControlLabel-label': { fontWeight: 800, color: '#475569' } }}
+                        sx={{ m: 0, '& .MuiFormControlLabel-label': { fontWeight: 800, color: palette.slate600 } }}
                       />
                     </Box>
                   ))}
@@ -2668,7 +2669,7 @@ const Inspections = () => {
 
           return blockShell(
             <Box sx={{ display: 'grid', gap: 0.75, width: '100%' }}>
-              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: palette.slate600 }}>{block.label}</Typography>}
               <Box sx={gridOptionContainerSx(block.optionLayout, cell.align)}>
                 {options.map((option, optionIndex) => (
                   <Box
@@ -2722,10 +2723,10 @@ const Inspections = () => {
                       px: isSelected ? 0.5 : 0,
                       border: isSelected ? '1px solid transparent' : 'none',
                       cursor: allowOptionDrag ? 'grab' : 'default',
-                      '&:hover': isSelected ? { borderColor: '#DDD6FE', bgcolor: '#F8FAFC' } : undefined,
+                      '&:hover': isSelected ? { borderColor: palette.brandBorder, bgcolor: palette.surface } : undefined,
                     }}
                   >
-                    {isSelected && <DragIndicatorIcon sx={{ fontSize: 16, color: '#94A3B8' }} />}
+                    {isSelected && <DragIndicatorIcon sx={{ fontSize: 16, color: palette.textFaint }} />}
                     {isSelected && (
                       <Box sx={{ display: 'inline-flex', gap: 0.25 }}>
                         <IconButton
@@ -2738,7 +2739,7 @@ const Inspections = () => {
                             event.stopPropagation()
                             nudgeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, -1)
                           }}
-                          sx={{ width: 24, height: 24, color: '#6D28D9' }}
+                          sx={{ width: 24, height: 24, color: palette.brandDeep }}
                         >
                           <KeyboardArrowLeftIcon fontSize="small" />
                         </IconButton>
@@ -2752,7 +2753,7 @@ const Inspections = () => {
                             event.stopPropagation()
                             nudgeGridCellBlockOption(rowIndex, columnIndex, blockIndex, optionIndex, 1)
                           }}
-                          sx={{ width: 24, height: 24, color: '#6D28D9' }}
+                          sx={{ width: 24, height: 24, color: palette.brandDeep }}
                         >
                           <KeyboardArrowRightIcon fontSize="small" />
                         </IconButton>
@@ -2761,7 +2762,7 @@ const Inspections = () => {
                     <FormControlLabel
                       control={<Checkbox disabled size="small" />}
                       label={option || `Option ${optionIndex + 1}`}
-                      sx={{ m: 0, '& .MuiFormControlLabel-label': { fontWeight: 800, color: '#475569' } }}
+                      sx={{ m: 0, '& .MuiFormControlLabel-label': { fontWeight: 800, color: palette.slate600 } }}
                     />
                   </Box>
                 ))}
@@ -3155,8 +3156,8 @@ const Inspections = () => {
       sx={{
         p: 2.2,
         borderRadius: '18px',
-        border: tab === targetTab ? `2px solid ${color}` : '1px solid #EEF0F6',
-        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(49,46,129,0.07)',
+        border: tab === targetTab ? `2px solid ${color}` : `1px solid ${palette.borderSoft}`,
+        boxShadow: tab === targetTab ? `0 18px 40px ${color}24` : '0 14px 34px rgba(6,78,59,0.07)',
         cursor: 'pointer',
         transform: tab === targetTab ? 'translateY(-2px)' : 'none',
         transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
@@ -3167,8 +3168,8 @@ const Inspections = () => {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.4 }}>
         <Avatar sx={{ bgcolor: `${color}18`, color, borderRadius: '14px' }}>{icon}</Avatar>
         <Box>
-          <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-          <Typography sx={{ color: '#1E1B4B', fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : value}</Typography>
+          <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+          <Typography sx={{ color: palette.ink, fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{typeof value === 'number' ? <AnimatedNumber value={value} /> : value}</Typography>
         </Box>
       </Box>
     </Card>
@@ -3194,7 +3195,7 @@ const Inspections = () => {
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Asset</TableCell>
@@ -3208,7 +3209,7 @@ const Inspections = () => {
           {loading ? Array.from({ length: 4 }).map((_, i) => (
             <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
           )) : items.length === 0 ? (
-            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspections found.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No inspections found.</TableCell></TableRow>
           ) : items.map(item => {
             const resultStyle = statusChip(item.result)
             return (
@@ -3218,7 +3219,7 @@ const Inspections = () => {
                 recordLabel={item.inspection_number}
                 hover
               >
-                <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(item, mode)} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.inspection_number} monospace color={palette.brand} fontWeight={900} onClick={() => openInspectionRecord(item, mode)} /></TableCell>
               <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
               <TableCell>
                 <ClippedTooltipText value={item.asset_name || item.equipment_name || '-'} fontWeight={800} onClick={() => openInspectionRecord(item, mode)} />
@@ -3254,7 +3255,7 @@ const Inspections = () => {
     <TableContainer className="list-scroll-panel">
       <Table stickyHeader>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ fontWeight: 900 }}>Work Order</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Assets</TableCell>
@@ -3267,7 +3268,7 @@ const Inspections = () => {
           {loading ? Array.from({ length: 4 }).map((_, i) => (
             <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
           )) : items.length === 0 ? (
-            <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No {mode === 'completed' ? 'completed' : 'in progress'} inspection batches.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No {mode === 'completed' ? 'completed' : 'in progress'} inspection batches.</TableCell></TableRow>
           ) : items.map(batch => {
             const done = batch.completed_count || 0
             const total = batch.asset_count || 0
@@ -3278,17 +3279,17 @@ const Inspections = () => {
                 recordLabel={batch.batch_number}
                 hover
               >
-                <TableCell><ClippedTooltipText value={batch.batch_number} monospace color="#7161D8" fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} /></TableCell>
+                <TableCell><ClippedTooltipText value={batch.batch_number} monospace color={palette.brand} fontWeight={900} onClick={() => setSelectedBatchId(batch.id)} /></TableCell>
                 <TableCell><ClippedTooltipText value={batch.facility_name || '-'} fontWeight={800} onClick={batch.facility_name ? () => openFacilityFromInspection(batch.facility_name) : undefined} /></TableCell>
                 <TableCell>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{total} asset{total === 1 ? '' : 's'}</Typography>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink }}>{total} asset{total === 1 ? '' : 's'}</Typography>
                   <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>{batch.inspection_frequency || 'instant'} inspection batch</Typography>
                 </TableCell>
                 <TableCell>
                   <Chip
                     size="small"
                     label={`${done} completed of ${total}`}
-                    sx={{ bgcolor: '#EEF2FF', color: '#4F46E5', fontWeight: 900 }}
+                    sx={{ bgcolor: palette.indigoTint, color: palette.indigo, fontWeight: 900 }}
                   />
                 </TableCell>
                 <TableCell>{formatDate(mode === 'completed' ? batch.completed_at : (batch.started_at || batch.scheduled_date))}</TableCell>
@@ -3305,7 +3306,7 @@ const Inspections = () => {
                                 printBatchReport(detail)
                               } catch { toast.error('Could not load batch') }
                             }}
-                            sx={{ bgcolor: '#EEF2FF', color: '#4F46E5', '&:hover': { bgcolor: '#E0E7FF' } }}
+                            sx={{ bgcolor: palette.indigoTint, color: palette.indigo, '&:hover': { bgcolor: '#E0E7FF' } }}
                           >
                             <AssessmentIcon fontSize="small" />
                           </IconButton>
@@ -3345,7 +3346,7 @@ const Inspections = () => {
           <col style={{ width: 140 }} />
         </colgroup>
         <TableHead>
-          <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+          <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
             <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
             <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
@@ -3360,7 +3361,7 @@ const Inspections = () => {
           {upcomingQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
             <TableRow key={i}><TableCell colSpan={8}><Skeleton /></TableCell></TableRow>
           )) : (upcomingQ.data?.items || []).length === 0 ? (
-            <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No upcoming inspections scheduled.</TableCell></TableRow>
+            <TableRow><TableCell colSpan={8} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No upcoming inspections scheduled.</TableCell></TableRow>
           ) : upcomingQ.data!.items.map(item => (
             <ContextTableRow
               key={item.id}
@@ -3368,7 +3369,7 @@ const Inspections = () => {
               recordLabel={item.inspection_number}
               hover
             >
-              <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} /></TableCell>
+              <TableCell><ClippedTooltipText value={item.inspection_number} monospace color={palette.brand} fontWeight={900} onClick={() => openInspectionInfo(item)} /></TableCell>
               <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
               <TableCell>
                 <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />
@@ -3386,7 +3387,7 @@ const Inspections = () => {
                     size="small"
                     aria-label={`Actions for ${item.inspection_number}`}
                     onClick={(event) => openUpcomingActions(event, item)}
-                    sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                    sx={{ bgcolor: '#f1fffb', color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}
                   >
                     <MoreVertIcon fontSize="small" />
                   </IconButton>
@@ -3403,7 +3404,7 @@ const Inspections = () => {
       anchorEl={upcomingActionAnchor}
       open={Boolean(upcomingActionAnchor && upcomingActionItem)}
       onClose={closeUpcomingActions}
-      PaperProps={{ sx: { borderRadius: '14px', minWidth: 190, boxShadow: '0 18px 45px rgba(30,27,75,0.16)' } }}
+      PaperProps={{ sx: { borderRadius: '14px', minWidth: 190, boxShadow: palette.shadowMenu } }}
     >
       <MenuItem
         onClick={() => {
@@ -3414,14 +3415,14 @@ const Inspections = () => {
         disabled={startMut.isPending}
         sx={{ gap: 1.25, fontWeight: 800 }}
       >
-        <PlayArrowIcon fontSize="small" sx={{ color: '#7C3AED' }} />
+        <PlayArrowIcon fontSize="small" sx={{ color: palette.brand }} />
         Start
       </MenuItem>
       <MenuItem
         onClick={() => upcomingActionItem && openRescheduleDialog(upcomingActionItem)}
         sx={{ gap: 1.25, fontWeight: 800 }}
       >
-        <EventAvailableIcon fontSize="small" sx={{ color: '#2563EB' }} />
+        <EventAvailableIcon fontSize="small" sx={{ color: palette.infoStrong }} />
         Reschedule
       </MenuItem>
       <Divider sx={{ my: 0.5 }} />
@@ -3431,7 +3432,7 @@ const Inspections = () => {
           closeUpcomingActions()
           if (inspection) setCloseInspectionTarget(inspection)
         }}
-        sx={{ gap: 1.25, fontWeight: 800, color: '#DC2626' }}
+        sx={{ gap: 1.25, fontWeight: 800, color: palette.dangerStrong }}
       >
         <CancelIcon fontSize="small" />
         Close inspection
@@ -3454,7 +3455,7 @@ const Inspections = () => {
             <col style={{ width: 120 }} />
           </colgroup>
           <TableHead>
-            <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+            <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
               <TableCell sx={{ fontWeight: 900 }}>Inspection #</TableCell>
               <TableCell sx={{ fontWeight: 900 }}>Facility</TableCell>
               <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
@@ -3468,7 +3469,7 @@ const Inspections = () => {
             {closedQ.isLoading ? Array.from({ length: 4 }).map((_, index) => (
               <TableRow key={index}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
             )) : (closedQ.data?.items || []).length === 0 ? (
-              <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No closed inspections match these filters.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No closed inspections match these filters.</TableCell></TableRow>
             ) : closedQ.data!.items.map(item => (
               <ContextTableRow
                 key={item.id}
@@ -3476,7 +3477,7 @@ const Inspections = () => {
                 recordLabel={item.inspection_number}
                 hover
               >
-                <TableCell><ClippedTooltipText value={item.inspection_number} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionInfo(item)} /></TableCell>
+                <TableCell><ClippedTooltipText value={item.inspection_number} monospace color={palette.brand} fontWeight={900} onClick={() => openInspectionInfo(item)} /></TableCell>
                 <TableCell><ClippedTooltipText value={item.facility_name || '-'} fontWeight={700} onClick={item.facility_name ? () => openFacilityFromInspection(item.facility_name) : undefined} /></TableCell>
                 <TableCell>
                   <ClippedTooltipText value={item.asset_name || '-'} fontWeight={800} onClick={() => openInspectionInfo(item)} />
@@ -3490,7 +3491,7 @@ const Inspections = () => {
                     <IconButton
                       size="small"
                       onClick={event => openClosedActions(event, item)}
-                      sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                      sx={{ bgcolor: '#f1fffb', color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}
                     >
                       <MoreVertIcon fontSize="small" />
                     </IconButton>
@@ -3507,7 +3508,7 @@ const Inspections = () => {
         anchorEl={closedActionAnchor}
         open={Boolean(closedActionAnchor && closedActionItem)}
         onClose={closeClosedActions}
-        PaperProps={{ sx: { borderRadius: '14px', minWidth: 190, boxShadow: '0 18px 45px rgba(30,27,75,0.16)' } }}
+        PaperProps={{ sx: { borderRadius: '14px', minWidth: 190, boxShadow: palette.shadowMenu } }}
       >
         <MenuItem
           onClick={() => {
@@ -3517,7 +3518,7 @@ const Inspections = () => {
           }}
           sx={{ gap: 1.25, fontWeight: 800 }}
         >
-          <VisibilityOutlinedIcon fontSize="small" sx={{ color: '#2563EB' }} />
+          <VisibilityOutlinedIcon fontSize="small" sx={{ color: palette.infoStrong }} />
           View
         </MenuItem>
         <MenuItem
@@ -3528,7 +3529,7 @@ const Inspections = () => {
           }}
           sx={{ gap: 1.25, fontWeight: 800 }}
         >
-          <EventAvailableIcon fontSize="small" sx={{ color: '#059669' }} />
+          <EventAvailableIcon fontSize="small" sx={{ color: palette.brandStrong }} />
           Reopen
         </MenuItem>
         <MenuItem
@@ -3539,7 +3540,7 @@ const Inspections = () => {
           }}
           sx={{ gap: 1.25, fontWeight: 800 }}
         >
-          <EditIcon fontSize="small" sx={{ color: '#7C3AED' }} />
+          <EditIcon fontSize="small" sx={{ color: palette.brand }} />
           Reschedule & reopen
         </MenuItem>
       </Menu>
@@ -3599,10 +3600,10 @@ const Inspections = () => {
     const status = computeLiveReportStatus()
     if (!status) return null
     const config = status === 'fail'
-      ? { label: 'FAIL', bgcolor: '#DC2626', icon: <CancelIcon sx={{ fontSize: 18, color: '#fff !important' }} /> }
+      ? { label: 'FAIL', bgcolor: palette.dangerStrong, icon: <CancelIcon sx={{ fontSize: 18, color: '#fff !important' }} /> }
       : status === 'pass'
-        ? { label: 'PASS', bgcolor: '#10B981', icon: <CheckCircleIcon sx={{ fontSize: 18, color: '#fff !important' }} /> }
-        : { label: 'IN PROGRESS', bgcolor: '#94A3B8', icon: undefined }
+        ? { label: 'PASS', bgcolor: palette.brand, icon: <CheckCircleIcon sx={{ fontSize: 18, color: '#fff !important' }} /> }
+        : { label: 'IN PROGRESS', bgcolor: palette.textFaint, icon: undefined }
     return (
       <Chip
         icon={config.icon}
@@ -3624,8 +3625,8 @@ const Inspections = () => {
     const rightChecks = ['cleaning', 'lubrication', 'calibration'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
     const maxRows = 6
     return (
-      <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Inspection Report</Typography>
+      <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+        <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1.5 }}>Inspection Report</Typography>
         <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
           <Table size="small">
             <TableHead>
@@ -3640,7 +3641,7 @@ const Inspections = () => {
                 const left = leftChecks[index]
                 const right = rightChecks[index]
                 return (
-                  <TableRow key={index} sx={{ bgcolor: index % 2 ? '#fff' : '#F3F4F6' }}>
+                  <TableRow key={index} sx={{ bgcolor: index % 2 ? '#fff' : palette.surfaceGray }}>
                     <TableCell align="center">{left?.[1] || ''}</TableCell>
                     {['pass', 'fail', 'na'].map(value => (
                       <TableCell key={`left-${value}`} align="center">
@@ -3682,13 +3683,13 @@ const Inspections = () => {
   const renderCustomGridCellBlocks = (cell: GridCellSchema, values: Record<string, any>, readOnly = false) => (
     <Box sx={{ display: 'grid', gap: 1, width: '100%', textAlign: cell.align || 'left' }}>
       {shouldShowGridCellTitle(cell) && (
-        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'left' }}>{cell.label}</Typography>
+        <Typography sx={{ fontWeight: 900, color: palette.ink, textAlign: cell.align || 'left' }}>{cell.label}</Typography>
       )}
       {(cell.blocks || []).map((block, blockIndex) => {
         const key = gridCellBlockValueKey(cell, block)
         if (block.type === 'label') {
           return (
-            <Typography key={block.id} sx={{ fontWeight: 900, color: '#475569', textAlign: cell.align || 'left' }}>
+            <Typography key={block.id} sx={{ fontWeight: 900, color: palette.slate600, textAlign: cell.align || 'left' }}>
               {block.label || `Label ${blockIndex + 1}`}
             </Typography>
           )
@@ -3697,7 +3698,7 @@ const Inspections = () => {
           const isInline = block.layout ? block.layout === 'inline' : Boolean(block.inline)
           return (
             <Box key={block.id} sx={{ display: isInline ? 'grid' : 'block', gridTemplateColumns: isInline ? 'auto minmax(80px, 1fr)' : undefined, gap: 1, alignItems: 'center', width: '100%', maxWidth: block.width || 180 }}>
-              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569', whiteSpace: 'nowrap' }}>{block.label}</Typography>}
+              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: palette.slate600, whiteSpace: 'nowrap' }}>{block.label}</Typography>}
               <TextField
                 disabled={readOnly}
                 size="small"
@@ -3712,7 +3713,7 @@ const Inspections = () => {
         if (block.type === 'textarea') {
           return (
             <Box key={block.id} sx={{ display: 'grid', gap: 0.75, width: '100%', maxWidth: block.width || 220 }}>
-              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: palette.slate600 }}>{block.label}</Typography>}
               <TextField
                 disabled={readOnly}
                 size="small"
@@ -3729,7 +3730,7 @@ const Inspections = () => {
           const options = block.options?.length ? block.options : ['Option']
           return (
             <Box key={block.id} sx={{ display: 'grid', gap: 0.5 }}>
-              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+              {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: palette.slate600 }}>{block.label}</Typography>}
               <RadioGroup
                 row={normalizeGridOptionLayout(block.optionLayout) !== 'vertical'}
                 value={values[key] || ''}
@@ -3751,7 +3752,7 @@ const Inspections = () => {
         const options = block.options?.length ? block.options : ['Option']
         return (
           <Box key={block.id} sx={{ display: 'grid', gap: 0.5 }}>
-            {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: '#475569' }}>{block.label}</Typography>}
+            {block.label?.trim() && <Typography sx={{ fontWeight: 900, color: palette.slate600 }}>{block.label}</Typography>}
             <Box sx={gridOptionContainerSx(block.optionLayout, cell.align)}>
               {options.map((option, optionIndex) => {
                 const optionKey = gridCellBlockValueKey(cell, block, optionIndex)
@@ -3783,14 +3784,14 @@ const Inspections = () => {
     const values = report?.custom_grid_values || {}
     const title = activeReportSchema?.title || report?.form_template?.name || selectedReportFormName()
     return (
-      <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-        <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>{title || 'Custom Inspection Form'}</Typography>
-        <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5, mt: 1 }}>{grid.title || 'Set Title'}</Typography>
+      <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.brandSoft}`, boxShadow: 'none' }}>
+        <Typography sx={{ fontWeight: 900, color: palette.ink }}>{title || 'Custom Inspection Form'}</Typography>
+        <Typography sx={{ fontWeight: 900, color: palette.indigo, mb: 1.5, mt: 1 }}>{grid.title || 'Set Title'}</Typography>
         <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
           <Table size="small">
             <TableBody>
               {grid.cells.map((row: GridCellSchema[], rowIndex: number) => (
-                <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : '#F3F4F6' }}>
+                <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : palette.surfaceGray }}>
                   {row.map((cell: GridCellSchema) => cell.hidden ? null : (
                     <TableCell
                       key={cell.id}
@@ -3818,7 +3819,7 @@ const Inspections = () => {
                         {cell.blocks?.length ? renderCustomGridCellBlocks(cell, values) : (
                           <>
                             {shouldShowGridCellTitle(cell) && (
-                              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
+                              <Typography sx={{ fontWeight: 900, color: palette.ink, textAlign: cell.align || 'center' }}>{cell.label}</Typography>
                             )}
                             {cell.type === 'text' ? null : cell.type === 'input' ? (
                           <TextField size="small" fullWidth value={values[cell.id] || ''} onChange={e => updateReportGridValue(cell.id, e.target.value)} />
@@ -3869,11 +3870,11 @@ const Inspections = () => {
     const formioForm = activeReportSchema?.formio_form || report?.formio_form
     if (!formioForm?.components) return null
     return (
-      <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>
+      <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.brandSoft}`, boxShadow: 'none' }}>
+        <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1.5 }}>
           {formioForm.title || activeReportSchema?.title || 'Custom Inspection Form'}
         </Typography>
-        <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+        <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>
           This form was created with the temporary Form.io builder. Please recreate it with the custom grid builder before using it for reports.
         </Typography>
       </Card>
@@ -3881,8 +3882,8 @@ const Inspections = () => {
   }
 
   const renderBiomedNotes = () => (
-    <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Biomed Notes</Typography>
+    <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+      <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1.5 }}>Biomed Notes</Typography>
       <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
         <Table size="small">
           <TableBody>
@@ -3918,11 +3919,11 @@ const Inspections = () => {
         ))}
       </Box>
       <Divider />
-      <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Checks</Typography>
+      <Typography sx={{ fontWeight: 900, color: palette.ink }}>Checks</Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
         {CHECK_FIELDS.map(([key, label]) => (
-          <Card key={key} sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-            <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: 13, mb: 0.5 }}>{label}</Typography>
+          <Card key={key} sx={{ p: 1.5, borderRadius: '14px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+            <Typography sx={{ color: palette.ink, fontWeight: 900, fontSize: 13, mb: 0.5 }}>{label}</Typography>
             <RadioGroup row value={report.checks?.[key] || 'pass'} onChange={e => updateReport('checks', key, e.target.value)}>
               <FormControlLabel value="pass" control={<Radio size="small" />} label="Pass" />
               <FormControlLabel value="fail" control={<Radio size="small" />} label="Fail" />
@@ -3944,8 +3945,8 @@ const Inspections = () => {
     if (!canvas?.elements?.length) return null
     const title = activeReportSchema?.title || selectedReportFormName()
     return (
-      <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-        <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>{title || 'Custom Inspection Form'}</Typography>
+      <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.brandSoft}`, boxShadow: 'none' }}>
+        <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1.5 }}>{title || 'Custom Inspection Form'}</Typography>
         <Box sx={{ overflowX: 'auto' }}>
           <CanvasFormViewer
             schema={canvas}
@@ -3963,17 +3964,17 @@ const Inspections = () => {
 
   return (
     <Box className="page-enter" sx={{ maxWidth: 1440, mx: 'auto' }}>
-      <Card sx={{ p: 3, mb: 3, borderRadius: '24px', border: '1px solid #E6E8F2', background: 'linear-gradient(135deg, #F8FAFF 0%, #F5F3FF 100%)', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
+      <Card sx={{ p: 3, mb: 3, borderRadius: '24px', border: '1px solid #E6E8F2', background: 'linear-gradient(135deg, #F8FAFF 0%, #ECFDF5 100%)', boxShadow: '0 18px 45px rgba(6,78,59,0.08)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
           <Box>
-            <Typography variant="h4" sx={{ color: '#1E1B4B', fontWeight: 900 }}>Inspection Module</Typography>
-            <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Schedule equipment compliance inspections, initiate on-demand checks, complete technician reports, and prepare billing.</Typography>
+            <Typography variant="h4" sx={{ color: palette.ink, fontWeight: 900 }}>Inspection Module</Typography>
+            <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>Schedule equipment compliance inspections, initiate on-demand checks, complete technician reports, and prepare billing.</Typography>
           </Box>
-          <Avatar sx={{ bgcolor: '#EFE7FF', color: '#7C3AED', width: 58, height: 58, borderRadius: '18px' }}><AssignmentTurnedInIcon /></Avatar>
+          <Avatar sx={{ bgcolor: palette.brandTint, color: palette.brand, width: 58, height: 58, borderRadius: '18px' }}><AssignmentTurnedInIcon /></Avatar>
         </Box>
       </Card>
 
-      <Card sx={{ p: 2, mb: 2.5, borderRadius: '20px', border: '1px solid #EEF0F6', boxShadow: '0 12px 30px rgba(49,46,129,0.06)' }}>
+      <Card sx={{ p: 2, mb: 2.5, borderRadius: '20px', border: `1px solid ${palette.borderSoft}`, boxShadow: '0 12px 30px rgba(6,78,59,0.06)' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flexWrap: 'wrap' }}>
           <TextField
             size="small"
@@ -4003,21 +4004,21 @@ const Inspections = () => {
               Clear Dates
             </Button>
           )}
-          <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, alignSelf: 'center', ml: { md: 'auto' } }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 700, alignSelf: 'center', ml: { md: 'auto' } }}>
             Dates filter inspection totals and the active inspection list without changing asset scheduling.
           </Typography>
         </Box>
       </Card>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2, mb: 3 }}>
-        {renderKpi('Upcoming', stats.upcoming, <EventAvailableIcon />, '#2563EB', 0)}
-        {renderKpi('Assets', stats.instantItems, <BoltIcon />, '#7C3AED', 1)}
-        {renderKpi('In Progress', stats.inProgress, <BuildIcon />, '#F59E0B', 2)}
-        {renderKpi('Completed', stats.completed, <CheckCircleIcon />, '#059669', 3)}
+        {renderKpi('Upcoming', stats.upcoming, <EventAvailableIcon />, palette.infoStrong, 0)}
+        {renderKpi('Assets', stats.instantItems, <BoltIcon />, palette.brand, 1)}
+        {renderKpi('In Progress', stats.inProgress, <BuildIcon />, palette.warningBright, 2)}
+        {renderKpi('Completed', stats.completed, <CheckCircleIcon />, palette.brandStrong, 3)}
       </Box>
 
-      <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
-        <Tabs value={tab} onChange={(_, v) => selectTab(v)} variant="scrollable" sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
+      <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: `1px solid ${palette.borderSoft}`, boxShadow: '0 18px 45px rgba(6,78,59,0.08)' }}>
+        <Tabs value={tab} onChange={(_, v) => selectTab(v)} variant="scrollable" sx={{ px: 2, borderBottom: `1px solid ${palette.borderSoft}` }}>
           <Tab value={0} icon={<EventAvailableIcon />} iconPosition="start" label="Upcoming" />
           <Tab value={1} icon={<BoltIcon />} iconPosition="start" label="Instant Inspection" />
           <Tab value={2} icon={<BuildIcon />} iconPosition="start" label="In Progress" />
@@ -4083,7 +4084,7 @@ const Inspections = () => {
                   />
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
-                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+                  <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>
                     {selectedEquipmentIds.length} of {equipment.length} asset{equipment.length === 1 ? '' : 's'} selected for scheduling.
                   </Typography>
                   <Button
@@ -4096,10 +4097,10 @@ const Inspections = () => {
                     {allScheduleEquipmentSelected ? 'Clear Selection' : 'Select All Assets'}
                   </Button>
                 </Box>
-                <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '18px' }}>
+                <TableContainer className="list-scroll-panel" sx={{ border: `1px solid ${palette.borderSoft}`, borderRadius: '18px' }}>
                   <Table size="small" stickyHeader>
                     <TableHead>
-                      <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                      <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                         <TableCell padding="checkbox" />
                         <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
                         <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
@@ -4110,7 +4111,7 @@ const Inspections = () => {
                     </TableHead>
                     <TableBody>
                       {equipmentQ.isLoading ? <TableRow><TableCell colSpan={6}><Skeleton /></TableCell></TableRow> : equipment.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: '#6B7280', fontWeight: 700 }}>No facility inventory found for scheduling.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: palette.textMuted, fontWeight: 700 }}>No facility inventory found for scheduling.</TableCell></TableRow>
                       ) : equipment.map((item: InspectionEquipmentItem) => (
                         <ContextTableRow
                           key={item.id}
@@ -4122,7 +4123,7 @@ const Inspections = () => {
                           sx={{ cursor: 'pointer' }}
                         >
                           <TableCell padding="checkbox"><Checkbox checked={selectedEquipmentIds.includes(item.id)} /></TableCell>
-                          <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
+                          <TableCell sx={{ fontFamily: 'monospace', color: palette.brand, fontWeight: 900 }}>{item.asset_tag}</TableCell>
                           <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
                           <TableCell>{item.modality_name || '-'}</TableCell>
                           <TableCell>{item.criticality}</TableCell>
@@ -4134,7 +4135,7 @@ const Inspections = () => {
                 </TableContainer>
               </Box>
             )}
-            <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+            <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) 220px' }, gap: 2, alignItems: 'center' }}>
                 <SearchFieldSelect
                   value={upcomingSearchField}
@@ -4162,7 +4163,7 @@ const Inspections = () => {
                   ))}
                 </TextField>
               </Box>
-              <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, mt: 1 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 700, mt: 1 }}>
                 {dateFrom || dateTo
                   ? `Showing inspections${dateFrom ? ` from ${formatDate(dateFrom)}` : ''}${dateTo ? ` through ${formatDate(dateTo)}` : ''}. Clear the module dates to use Due within.`
                   : `Showing inspections scheduled from ${formatDate(upcomingWindow.date_from)} to ${formatDate(upcomingWindow.date_to)}.`}
@@ -4207,7 +4208,7 @@ const Inspections = () => {
                 variant="contained"
                 onClick={startInspection}
                 disabled={!canInitiateInspections || !facilityId || !selectedInstantEquipmentIds.length || createMut.isPending}
-                sx={{ height: 54, borderRadius: '14px', px: 3, fontWeight: 900, textTransform: 'none', background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+                sx={{ height: 54, borderRadius: '14px', px: 3, fontWeight: 900, textTransform: 'none', background: palette.gradientBrand }}
               >
                 Start Selected Inspection{selectedInstantEquipmentIds.length === 1 ? '' : 's'}
               </Button>
@@ -4230,7 +4231,7 @@ const Inspections = () => {
                   />
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-                  <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+                  <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>
                     {selectedFacility.name}: {selectedInstantEquipmentIds.length} selected; {equipment.length} matching asset{equipment.length === 1 ? '' : 's'} shown.
                   </Typography>
                   <Button
@@ -4248,7 +4249,7 @@ const Inspections = () => {
             <TableContainer className="list-scroll-panel">
               <Table stickyHeader>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                  <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                     <TableCell padding="checkbox" />
                     <TableCell sx={{ fontWeight: 900 }}>Asset Tag</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
@@ -4261,7 +4262,7 @@ const Inspections = () => {
                   {equipmentQ.isLoading ? Array.from({ length: 4 }).map((_, i) => (
                     <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
                   )) : equipment.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>Select a facility with assets.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>Select a facility with assets.</TableCell></TableRow>
                   ) : equipment.map((item: InspectionEquipmentItem) => (
                     <ContextTableRow
                       key={item.id}
@@ -4273,7 +4274,7 @@ const Inspections = () => {
                       sx={{ cursor: 'pointer' }}
                     >
                       <TableCell padding="checkbox"><Checkbox checked={selectedInstantEquipmentIds.includes(item.id)} /></TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', color: palette.brand, fontWeight: 900 }}>{item.asset_tag}</TableCell>
                       <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
                       <TableCell>{item.modality_name || '-'}</TableCell>
                       <TableCell><ClippedTooltipText value={item.serial_number || '-'} /></TableCell>
@@ -4309,8 +4310,8 @@ const Inspections = () => {
             {renderBatchRows(inProgressBatchesQ.data?.items || [], inProgressBatchesQ.isLoading)}
             {renderPagination(inProgressBatchesQ.data?.total || 0, inProgressBatchPage, setInProgressBatchPage)}
             {(inProgressQ.data?.total || 0) > 0 && (
-              <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
-                <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
+              <Box sx={{ borderTop: `1px solid ${palette.borderSoft}` }}>
+                <Typography sx={{ px: 3, pt: 2, pb: 1, color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
                   Legacy Individual Inspections
                 </Typography>
                 {renderInspectionRows(legacyInProgress, inProgressQ.isLoading, 'progress')}
@@ -4342,8 +4343,8 @@ const Inspections = () => {
             {renderBatchRows(completedBatchesQ.data?.items || [], completedBatchesQ.isLoading, 'completed')}
             {renderPagination(completedBatchesQ.data?.total || 0, completedBatchPage, setCompletedBatchPage)}
             {(completedQ.data?.total || 0) > 0 && (
-              <Box sx={{ borderTop: '1px solid #EEF0F6' }}>
-                <Typography sx={{ px: 3, pt: 2, pb: 1, color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
+              <Box sx={{ borderTop: `1px solid ${palette.borderSoft}` }}>
+                <Typography sx={{ px: 3, pt: 2, pb: 1, color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
                   Legacy Individual Inspections
                 </Typography>
                 {renderInspectionRows(legacyCompleted, completedQ.isLoading, 'completed')}
@@ -4355,7 +4356,7 @@ const Inspections = () => {
 
         {tab === 5 && (
           <Box sx={{ p: 3 }}>
-            <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
+            <Card sx={{ p: 2, mb: 2, borderRadius: '18px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) 320px' }, gap: 2 }}>
                 <SearchFieldSelect
                   value={closedSearchField}
@@ -4387,7 +4388,7 @@ const Inspections = () => {
                   helperText="Leave empty to include all facilities"
                 />
               </Box>
-              <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 700, mt: 1 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 700, mt: 1 }}>
                 Module From/To dates also filter this list by its scheduled date. Reopening preserves the existing schedule; rescheduling assigns a new date and reopens it.
               </Typography>
             </Card>
@@ -4421,7 +4422,7 @@ const Inspections = () => {
             <TableContainer className="list-scroll-panel">
               <Table stickyHeader>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                  <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                     <TableCell sx={{ fontWeight: 900 }}>Form</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>Fields</TableCell>
@@ -4432,7 +4433,7 @@ const Inspections = () => {
                   {formsQ.isLoading ? Array.from({ length: 3 }).map((_, i) => (
                     <TableRow key={i}><TableCell colSpan={4}><Skeleton /></TableCell></TableRow>
                   )) : (formsQ.data?.items || []).length === 0 ? (
-                    <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>No inspection forms found.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>No inspection forms found.</TableCell></TableRow>
                   ) : formsQ.data!.items.map((form: InspectionFormOption) => {
                     const schema = schemaForForm(form)
                     const grid = schema.custom_grid
@@ -4446,7 +4447,7 @@ const Inspections = () => {
                         recordLabel={form.name}
                         hover
                       >
-                        <TableCell sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+                        <TableCell sx={{ fontWeight: 900, color: palette.ink }}>
                           <ClippedTooltipText value={form.name} fontWeight={900} onClick={() => setViewForm(form)} />
                           <Typography sx={{ color: '#8B95A7', fontSize: 12 }}>
                             Fixed checklist + {formioForm ? 'temporary external form' : grid ? `${grid.rows}x${grid.columns} custom grid` : 'no custom form'} + Biomed Notes
@@ -4461,7 +4462,7 @@ const Inspections = () => {
                               setFormActionAnchor(event.currentTarget)
                               setFormActionItem(form)
                             }}
-                            sx={{ bgcolor: '#F4F1FF', color: '#7C3AED' }}
+                            sx={{ bgcolor: '#f1fffb', color: palette.brand }}
                           >
                             <MoreVertIcon fontSize="small" />
                           </IconButton>
@@ -4477,10 +4478,10 @@ const Inspections = () => {
       </Card>
 
       <Dialog open={Boolean(selectedBatchId)} onClose={() => setSelectedBatchId(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', fontWeight: 900, color: palette.ink }}>
           <Box>
             Inspection Batch
-            <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
               {selectedBatch?.batch_number || 'Loading'} - {selectedBatch?.facility_name || ''}
             </Typography>
           </Box>
@@ -4490,14 +4491,14 @@ const Inspections = () => {
                 <Chip
                   size="small"
                   label="Billing approved · batch locked"
-                  sx={{ alignSelf: 'center', bgcolor: '#ECFDF5', color: '#047857', fontWeight: 900 }}
+                  sx={{ alignSelf: 'center', bgcolor: palette.brandTint, color: palette.brand, fontWeight: 900 }}
                 />
               )}
               {selectedBatch.batch_invoice && !selectedBatchBillingApproved && (
                 <Chip
                   size="small"
                   label={`${selectedBatch.batch_invoice.invoice_number} will be updated`}
-                  sx={{ alignSelf: 'center', bgcolor: '#F5F3FF', color: '#6D28D9', fontWeight: 900 }}
+                  sx={{ alignSelf: 'center', bgcolor: palette.brandTint, color: palette.brandDeep, fontWeight: 900 }}
                 />
               )}
               <Tooltip
@@ -4526,7 +4527,7 @@ const Inspections = () => {
                     startIcon={<AddIcon />}
                     onClick={() => setAddAssetOpen(true)}
                     disabled={!canAddAssetsToSelectedBatch}
-                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: '#10B981' }}
+                    sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 900, bgcolor: palette.brand }}
                   >
                     Add New Inventory
                   </Button>
@@ -4543,31 +4544,31 @@ const Inspections = () => {
           ) : selectedBatch ? (
             <Box sx={{ display: 'grid', gap: 2 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-                  <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Work Order</Typography>
-                  <Typography sx={{ color: '#6D28D9', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontWeight: 900, fontSize: '1.02rem', mt: 0.75 }}>{selectedBatch.batch_number}</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+                  <Typography sx={{ color: palette.textFaint, fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Work Order</Typography>
+                  <Typography sx={{ color: palette.brandDeep, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontWeight: 900, fontSize: '1.02rem', mt: 0.75 }}>{selectedBatch.batch_number}</Typography>
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-                  <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Assets</Typography>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: '1.6rem', lineHeight: 1, mt: 0.75 }}>{selectedBatch.asset_count}</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+                  <Typography sx={{ color: palette.textFaint, fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Assets</Typography>
+                  <Typography sx={{ color: palette.ink, fontWeight: 900, fontSize: '1.6rem', lineHeight: 1, mt: 0.75 }}>{selectedBatch.asset_count}</Typography>
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-                  <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Completed</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+                  <Typography sx={{ color: palette.textFaint, fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Completed</Typography>
                   <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mt: 0.75 }}>
-                    <Typography sx={{ color: '#059669', fontWeight: 900, fontSize: '1.6rem', lineHeight: 1 }}>{selectedBatch.completed_count}</Typography>
-                    <Typography sx={{ color: '#94A3B8', fontWeight: 800, fontSize: '0.85rem' }}>/ {selectedBatch.asset_count}</Typography>
+                    <Typography sx={{ color: palette.brandStrong, fontWeight: 900, fontSize: '1.6rem', lineHeight: 1 }}>{selectedBatch.completed_count}</Typography>
+                    <Typography sx={{ color: palette.textFaint, fontWeight: 800, fontSize: '0.85rem' }}>/ {selectedBatch.asset_count}</Typography>
                   </Box>
-                  <Box sx={{ mt: 1, height: 6, borderRadius: '999px', bgcolor: '#ECFDF5', overflow: 'hidden' }}>
-                    <Box sx={{ height: '100%', borderRadius: '999px', bgcolor: '#10B981', transition: 'width .4s ease', width: `${selectedBatch.asset_count ? Math.round((selectedBatch.completed_count / selectedBatch.asset_count) * 100) : 0}%` }} />
+                  <Box sx={{ mt: 1, height: 6, borderRadius: '999px', bgcolor: palette.brandTint, overflow: 'hidden' }}>
+                    <Box sx={{ height: '100%', borderRadius: '999px', bgcolor: palette.brandMid, transition: 'width .4s ease', width: `${selectedBatch.asset_count ? Math.round((selectedBatch.completed_count / selectedBatch.asset_count) * 100) : 0}%` }} />
                   </Box>
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-                  <Typography sx={{ color: '#94A3B8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Technician</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+                  <Typography sx={{ color: palette.textFaint, fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Technician</Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.75, minWidth: 0 }}>
-                    <Box sx={{ width: 26, height: 26, borderRadius: '50%', bgcolor: '#F4F1FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Box sx={{ width: 26, height: 26, borderRadius: '50%', bgcolor: '#f1fffb', color: palette.brand, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <PersonIcon sx={{ fontSize: '0.95rem' }} />
                     </Box>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 900, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedBatch.inspector_name || '—'}</Typography>
+                    <Typography sx={{ color: palette.ink, fontWeight: 900, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedBatch.inspector_name || '—'}</Typography>
                   </Box>
                 </Card>
               </Box>
@@ -4575,7 +4576,7 @@ const Inspections = () => {
               <TableContainer className="list-scroll-panel">
                 <Table stickyHeader>
                   <TableHead>
-                    <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                    <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                       <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Serial</TableCell>
                       <TableCell sx={{ fontWeight: 900 }}>Description</TableCell>
@@ -4595,15 +4596,15 @@ const Inspections = () => {
                           recordLabel={asset.inspection_number}
                           hover
                         >
-                          <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color="#7161D8" fontWeight={900} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
+                          <TableCell><ClippedTooltipText value={asset.asset_tag || asset.part_number || '-'} monospace color={palette.brand} fontWeight={900} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
                           <TableCell><ClippedTooltipText value={asset.serial_number || '-'} onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')} /></TableCell>
                           <TableCell>
                             <ClippedTooltipText
                               value={asset.asset_name || asset.equipment_name || '-'}
                               fontWeight={800}
-                              color="#312E81"
+                              color={palette.brandDeep}
                               maxWidth={210}
-                              sx={{ display: 'inline-block', width: 210, maxWidth: 210, px: 1.1, py: 0.5, borderRadius: '8px', bgcolor: '#F5F3FF' }}
+                              sx={{ display: 'inline-block', width: 210, maxWidth: 210, px: 1.1, py: 0.5, borderRadius: '8px', bgcolor: palette.brandTint }}
                               onClick={() => openInspectionRecord(asset, selectedBatch.status === 'completed' ? 'completed' : 'progress')}
                             />
                           </TableCell>
@@ -4611,15 +4612,15 @@ const Inspections = () => {
                             <ClippedTooltipText
                               value={asset.tier_name || '-'}
                               fontWeight={700}
-                              color="#475569"
+                              color={palette.slate600}
                               maxWidth={210}
-                              sx={{ display: 'inline-block', width: 210, maxWidth: 210, px: 1.1, py: 0.5, borderRadius: '8px', bgcolor: '#F1F5F9' }}
+                              sx={{ display: 'inline-block', width: 210, maxWidth: 210, px: 1.1, py: 0.5, borderRadius: '8px', bgcolor: palette.surfaceMuted }}
                             />
                           </TableCell>
                           <TableCell>{asset.inspector_name || '-'}</TableCell>
                           <TableCell><Chip size="small" label={String(asset.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())} sx={{ bgcolor: chip.bg, color: chip.color, fontWeight: 800, textTransform: 'none', borderRadius: '8px' }} /></TableCell>
                           <TableCell align="right">
-                            <IconButton size="small" onClick={(event) => openAssetActions(event, asset)} sx={{ bgcolor: '#F4F1FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}>
+                            <IconButton size="small" onClick={(event) => openAssetActions(event, asset)} sx={{ bgcolor: '#f1fffb', color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}>
                               <MoreVertIcon fontSize="small" />
                             </IconButton>
                           </TableCell>
@@ -4631,7 +4632,7 @@ const Inspections = () => {
               </TableContainer>
             </Box>
           ) : (
-            <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Batch not found.</Typography>
+            <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>Batch not found.</Typography>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
@@ -4657,7 +4658,7 @@ const Inspections = () => {
                   Boolean(selectedBatch.batch_invoice) ||
                   generateBatchInvoiceMut.isPending
                 }
-                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: '#059669', borderColor: '#059669', '&:hover': { borderColor: '#047857', bgcolor: '#F0FDF4' } }}
+                sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: palette.brandStrong, borderColor: palette.brandStrong, '&:hover': { borderColor: palette.brand, bgcolor: palette.successTint } }}
               >
                 {selectedBatch.batch_invoice ? 'Batch Invoice Generated' : 'Generate Batch Invoice'}
               </Button>
@@ -4714,7 +4715,7 @@ const Inspections = () => {
               }
               closeAssetActions()
             }}
-            sx={{ color: '#DC2626', borderTop: '1px solid #F1F5F9', mt: 0.5, pt: 1 }}
+            sx={{ color: palette.dangerStrong, borderTop: `1px solid ${palette.surfaceMuted}`, mt: 0.5, pt: 1 }}
           >
             <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Remove from Batch
           </MenuItem>
@@ -4788,7 +4789,7 @@ const Inspections = () => {
               setFormActionAnchor(null)
               setFormActionItem(null)
             }}
-            sx={{ color: '#B91C1C' }}
+            sx={{ color: palette.danger }}
           >
             <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} /> Delete Form
           </MenuItem>,
@@ -4805,7 +4806,7 @@ const Inspections = () => {
         fullWidth
         PaperProps={{ sx: { borderRadius: '18px' } }}
       >
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           Remove {removingForm?.name}?
         </DialogTitle>
         <DialogContent dividers>
@@ -4823,7 +4824,7 @@ const Inspections = () => {
                 against this form, so it cannot be deleted — those
                 inspections would no longer open.
               </Typography>
-              <Typography sx={{ fontSize: 13.5, color: '#64748B' }}>
+              <Typography sx={{ fontSize: 13.5, color: palette.textSubtle }}>
                 Archiving takes it out of the picker so nobody starts a new
                 inspection with it. Everything already built on it is
                 untouched.
@@ -4858,7 +4859,7 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={Boolean(techEdit)} onClose={() => setTechEdit(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Change Technician</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Change Technician</DialogTitle>
         <DialogContent dividers>
           <SearchableSelect<number>
             label="Technician"
@@ -4883,9 +4884,9 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={addExistingAssetOpen} onClose={() => setAddExistingAssetOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           Add Existing Inventory to Batch
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
             Select assets from {selectedBatch?.facility_name || 'this facility'} that are not already part of this inspection batch.
           </Typography>
         </DialogTitle>
@@ -4899,7 +4900,7 @@ const Inspections = () => {
             sx={{ mb: 2 }}
           />
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
-            <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+            <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>
               {selectedExistingEquipmentIds.length} of {availableExistingBatchAssets.length} available asset{availableExistingBatchAssets.length === 1 ? '' : 's'} selected.
             </Typography>
             <Button
@@ -4912,10 +4913,10 @@ const Inspections = () => {
               {allExistingBatchEquipmentSelected ? 'Clear Selection' : 'Select All Assets'}
             </Button>
           </Box>
-          <TableContainer className="list-scroll-panel" sx={{ border: '1px solid #EEF0F6', borderRadius: '16px' }}>
+          <TableContainer className="list-scroll-panel" sx={{ border: `1px solid ${palette.borderSoft}`, borderRadius: '16px' }}>
             <Table stickyHeader size="small">
               <TableHead>
-                <TableRow sx={{ bgcolor: '#F9FAFB' }}>
+                <TableRow sx={{ bgcolor: palette.surfaceFaint }}>
                   <TableCell padding="checkbox" />
                   <TableCell sx={{ fontWeight: 900 }}>Asset #</TableCell>
                   <TableCell sx={{ fontWeight: 900 }}>Equipment</TableCell>
@@ -4931,7 +4932,7 @@ const Inspections = () => {
                   ))
                 ) : availableExistingBatchAssets.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 5, color: '#6B7280', fontWeight: 700 }}>
+                    <TableCell colSpan={6} align="center" sx={{ py: 5, color: palette.textMuted, fontWeight: 700 }}>
                       {batchEquipmentIds.size ? 'No remaining facility assets available for this batch.' : 'No facility assets found.'}
                     </TableCell>
                   </TableRow>
@@ -4946,7 +4947,7 @@ const Inspections = () => {
                     sx={{ cursor: 'pointer' }}
                   >
                     <TableCell padding="checkbox"><Checkbox checked={selectedExistingEquipmentIds.includes(item.id)} /></TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', color: '#7161D8', fontWeight: 900 }}>{item.asset_tag}</TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', color: palette.brand, fontWeight: 900 }}>{item.asset_tag}</TableCell>
                     <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} fontWeight={800} /></TableCell>
                     <TableCell>{item.modality_name || '-'}</TableCell>
                     <TableCell><ClippedTooltipText value={item.serial_number || '-'} /></TableCell>
@@ -4972,7 +4973,7 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={addAssetOpen} onClose={() => setAddAssetOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Add New Inventory to Batch</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Add New Inventory to Batch</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, pt: 1 }}>
             <TextField label="Asset # *" value={batchAssetForm.asset_tag} onChange={e => setBatchAssetForm(prev => ({ ...prev, asset_tag: e.target.value }))} />
@@ -5010,7 +5011,7 @@ const Inspections = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setAddAssetOpen(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={addBatchAssetMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitBatchAsset} disabled={!canAddAssetsToSelectedBatch || addBatchAssetMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: '#10B981' }}>
+          <Button startIcon={addBatchAssetMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitBatchAsset} disabled={!canAddAssetsToSelectedBatch || addBatchAssetMut.isPending} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', bgcolor: palette.brandMid }}>
             Add Asset
           </Button>
         </DialogActions>
@@ -5025,16 +5026,16 @@ const Inspections = () => {
         const rightChecks = ['cleaning', 'lubrication', 'calibration'].map(key => [key, CHECK_FIELD_LABELS[key]] as [string, string])
         return (
           <Dialog open={Boolean(viewForm)} onClose={() => setViewForm(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-            <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+            <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
               {viewForm.name}
-              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
                 {viewForm.description || 'Inspection form preview'}
               </Typography>
             </DialogTitle>
             <DialogContent dividers>
               <Box sx={{ display: 'grid', gap: 2.5 }}>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Inspection Report</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1.5 }}>Inspection Report</Typography>
                   <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
                     <Table size="small">
                       <TableHead>
@@ -5049,7 +5050,7 @@ const Inspections = () => {
                           const left = leftChecks[index]
                           const right = rightChecks[index]
                           return (
-                            <TableRow key={index} sx={{ bgcolor: index % 2 ? '#fff' : '#F3F4F6' }}>
+                            <TableRow key={index} sx={{ bgcolor: index % 2 ? '#fff' : palette.surfaceGray }}>
                               <TableCell align="center">{left?.[1] || ''}</TableCell>
                               {['pass', 'fail', 'na'].map(value => (
                                 <TableCell key={`preview-left-${value}`} align="center">{left && <Radio disabled size="small" />}</TableCell>
@@ -5074,24 +5075,24 @@ const Inspections = () => {
                   </TableContainer>
                 </Card>
 
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#4F46E5', mb: 1.5 }}>{canvasForm ? previewSchema.title : formioForm?.title || grid?.title || 'Custom Form'}</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.brandSoft}`, boxShadow: 'none' }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.indigo, mb: 1.5 }}>{canvasForm ? previewSchema.title : formioForm?.title || grid?.title || 'Custom Form'}</Typography>
                   {canvasForm ? (
                     <Box sx={{ overflowX: 'auto' }}>
                       <CanvasFormViewer schema={canvasForm} readOnly />
                     </Box>
                   ) : formioForm?.components ? (
-                    <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>
+                    <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>
                       This is a temporary Form.io form. Please edit/recreate it with the custom grid builder.
                     </Typography>
                   ) : !grid ? (
-                    <Typography sx={{ color: '#6B7280', fontWeight: 800 }}>No custom grid is saved on this form.</Typography>
+                    <Typography sx={{ color: palette.textMuted, fontWeight: 800 }}>No custom grid is saved on this form.</Typography>
                   ) : (
                     <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
                       <Table size="small">
                         <TableBody>
                           {grid.cells.map((row, rowIndex) => (
-                            <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : '#F3F4F6' }}>
+                            <TableRow key={rowIndex} sx={{ bgcolor: rowIndex % 2 ? '#fff' : palette.surfaceGray }}>
                               {row.map((cell) => cell.hidden ? null : (
                                 <TableCell
                                   key={cell.id}
@@ -5119,7 +5120,7 @@ const Inspections = () => {
                                     {cell.blocks?.length ? renderCustomGridCellBlocks(cell, {}, true) : (
                                       <>
                                         {shouldShowGridCellTitle(cell) && (
-                                          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>{cell.label}</Typography>
+                                          <Typography sx={{ fontWeight: 900, color: palette.ink, textAlign: cell.align || 'center' }}>{cell.label}</Typography>
                                         )}
                                         {cell.type === 'text' ? null : cell.type === 'input' ? (
                 <TextField disabled size="small" fullWidth placeholder="" />
@@ -5151,8 +5152,8 @@ const Inspections = () => {
                   )}
                 </Card>
 
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', boxShadow: 'none' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1.5 }}>Biomed Notes</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, boxShadow: 'none' }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1.5 }}>Biomed Notes</Typography>
                   <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '10px' }}>
                     <Table size="small">
                       <TableBody>
@@ -5181,9 +5182,9 @@ const Inspections = () => {
       })()}
 
       <Dialog open={formBuilderOpen} onClose={() => setFormBuilderOpen(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           {formBuilderMode === 'create' ? 'Create Inspection Form' : formBuilderMode === 'report-custom' ? 'Customize Report Form' : 'Edit Inspection Form'}
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
             The default Inspection Report and Biomed Notes stay fixed. Build the reusable middle custom grid here.
           </Typography>
         </DialogTitle>
@@ -5194,19 +5195,19 @@ const Inspections = () => {
               <TextField label="Description" value={formBuilderDescription} onChange={e => setFormBuilderDescription(e.target.value)} />
             </Box>
 
-            <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: 'none' }}>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Inspection Report</Typography>
-              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.border}`, boxShadow: 'none' }}>
+              <Typography sx={{ fontWeight: 900, color: palette.ink }}>Inspection Report</Typography>
+              <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
                 Fixed default checklist: test rows, Pass / Fail / N/A radio buttons, Set / Read, Replaced On / Due.
               </Typography>
             </Card>
 
-            <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', boxShadow: 'none' }}>
+            <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.brandSoft}`, boxShadow: 'none' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Middle Custom Section</Typography>
+                <Typography sx={{ fontWeight: 900, color: palette.ink }}>Middle Custom Section</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography sx={{ fontSize: 12, color: '#64748B', fontWeight: 700 }}>Builder:</Typography>
-                  <Box sx={{ display: 'flex', borderRadius: '10px', border: '1px solid #DDD6FE', overflow: 'hidden' }}>
+                  <Typography sx={{ fontSize: 12, color: palette.textSubtle, fontWeight: 700 }}>Builder:</Typography>
+                  <Box sx={{ display: 'flex', borderRadius: '10px', border: `1px solid ${palette.brandBorder}`, overflow: 'hidden' }}>
                     {(['grid', 'canvas'] as const).map(eng => (
                       <Box
                         key={eng}
@@ -5216,10 +5217,10 @@ const Inspections = () => {
                         }}
                         sx={{
                           px: 2, py: 0.5, cursor: 'pointer', fontSize: 12, fontWeight: 800,
-                          bgcolor: formBuilderEngine === eng ? '#7C3AED' : 'transparent',
-                          color: formBuilderEngine === eng ? '#fff' : '#5B21B6',
+                          bgcolor: formBuilderEngine === eng ? palette.brand : 'transparent',
+                          color: formBuilderEngine === eng ? '#fff' : palette.ink,
                           transition: 'all 0.15s',
-                          '&:hover': { bgcolor: formBuilderEngine === eng ? '#6D28D9' : '#F5F3FF' },
+                          '&:hover': { bgcolor: formBuilderEngine === eng ? palette.brandDeep : palette.brandTint },
                           textTransform: 'capitalize',
                         }}
                       >
@@ -5231,7 +5232,7 @@ const Inspections = () => {
               </Box>
 
               {formBuilderEngine === 'canvas' && (
-                <Box sx={{ height: 640, borderRadius: '12px', overflow: 'auto', border: '1px solid #E2E8F0', WebkitOverflowScrolling: 'touch' }}>
+                <Box sx={{ height: 640, borderRadius: '12px', overflow: 'auto', border: `1px solid ${palette.borderSlate}`, WebkitOverflowScrolling: 'touch' }}>
                   <CanvasFormBuilder
                     schema={canvasFormSchema}
                     onChange={setCanvasFormSchema}
@@ -5251,21 +5252,21 @@ const Inspections = () => {
               )}
               {formBuilderEngine !== 'canvas' && (
               <Box>
-              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700, mb: 1.5 }}>
                 Create the table first, then click any cell to add input fields, radio groups, checkboxes, or text.
               </Typography>
               {!formBuilderSchema.custom_grid ? (
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #DDD6FE', bgcolor: '#FBFAFF', boxShadow: 'none' }}>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.brandBorder}`, bgcolor: '#fafffe', boxShadow: 'none' }}>
                   <Box sx={{ display: 'flex', gap: 2.5, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
                     <Box sx={{ textAlign: { xs: 'center', md: 'left' } }}>
-                      <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 18 }}>Insert table</Typography>
-                      <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 800 }}>
+                      <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: 18 }}>Insert table</Typography>
+                      <Typography sx={{ color: palette.textSubtle, fontSize: 13, fontWeight: 800 }}>
                         Hover over the boxes and click the size you want.
                       </Typography>
                       <Chip
                         size="small"
                         label={tablePickerHover ? `${tablePickerHover.rows} x ${tablePickerHover.columns}` : 'Select table size'}
-                        sx={{ mt: 1, bgcolor: '#EDE9FE', color: '#5B21B6', fontWeight: 950 }}
+                        sx={{ mt: 1, bgcolor: palette.brandSoft, color: palette.ink, fontWeight: 950 }}
                       />
                     </Box>
                     <Box
@@ -5276,8 +5277,8 @@ const Inspections = () => {
                         gap: 0.5,
                         p: 1,
                         borderRadius: '12px',
-                        bgcolor: '#FFFFFF',
-                        border: '1px solid #E5E7EB',
+                        bgcolor: palette.white,
+                        border: `1px solid ${palette.border}`,
                       }}
                     >
                       {Array.from({ length: 100 }).map((_, index) => {
@@ -5310,8 +5311,8 @@ const Inspections = () => {
                               width: 22,
                               height: 22,
                               borderRadius: '5px',
-                              border: active ? '1px solid #7C3AED' : '1px solid #CBD5E1',
-                              bgcolor: active ? '#DDD6FE' : '#FFFFFF',
+                              border: active ? `1px solid ${palette.brand}` : '1px solid #CBD5E1',
+                              bgcolor: active ? palette.brandBorder : palette.white,
                               cursor: 'pointer',
                               transition: 'all 120ms ease',
                               '&:hover': { transform: 'scale(1.08)' },
@@ -5329,11 +5330,11 @@ const Inspections = () => {
                     value={formBuilderSchema.custom_grid?.title || 'Set Title'}
                     onChange={e => updateBuilderGridTitle(e.target.value)}
                   />
-                  <Card sx={{ p: 1.5, borderRadius: '14px', border: '1px solid #DDD6FE', bgcolor: '#FBFAFF', boxShadow: 'none' }}>
+                  <Card sx={{ p: 1.5, borderRadius: '14px', border: `1px solid ${palette.brandBorder}`, bgcolor: '#fafffe', boxShadow: 'none' }}>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                       <Chip
                         label={selectedBuilderCell ? `Selected: Cell ${selectedBuilderCell.row + 1}.${selectedBuilderCell.column + 1}` : 'Select a cell to edit'}
-                        sx={{ fontWeight: 900, bgcolor: '#EDE9FE', color: '#5B21B6' }}
+                        sx={{ fontWeight: 900, bgcolor: palette.brandSoft, color: palette.ink }}
                       />
                       <Divider orientation="vertical" flexItem />
                       <Button size="small" startIcon={<AddIcon />} onClick={addBuilderRow} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Add Row</Button>
@@ -5347,19 +5348,19 @@ const Inspections = () => {
                       <Button size="small" onClick={splitSelectedBuilderCell} disabled={!selectedBuilderCell || !selectedGridCell || ((selectedGridCell.rowSpan || 1) === 1 && (selectedGridCell.colSpan || 1) === 1)} sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Split</Button>
                       <Button size="small" onClick={clearSelectedBuilderCell} disabled={!selectedBuilderCell} color="error" sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 900 }}>Clear Cell</Button>
                     </Box>
-                    <Typography sx={{ mt: 1, color: '#64748B', fontSize: 12, fontWeight: 800 }}>
+                    <Typography sx={{ mt: 1, color: palette.textSubtle, fontSize: 12, fontWeight: 800 }}>
                       Tip: drag the right edge of a cell to resize width, or the bottom edge to resize height.
                     </Typography>
                   </Card>
 
                   {selectedBuilderCell && selectedGridCell && (
-                    <Card sx={{ p: 1.5, borderRadius: '16px', border: '1px solid #C4B5FD', bgcolor: '#FFFFFF', boxShadow: 'none' }}>
+                    <Card sx={{ p: 1.5, borderRadius: '16px', border: `1px solid ${palette.brandPale}`, bgcolor: palette.white, boxShadow: 'none' }}>
                       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
                         <Box>
-                          <Typography sx={{ fontWeight: 950, color: '#1E1B4B', fontSize: 20 }}>
+                          <Typography sx={{ fontWeight: 950, color: palette.ink, fontSize: 20 }}>
                             Edit Cell {selectedBuilderCell.row + 1}.{selectedBuilderCell.column + 1}
                           </Typography>
-                          <Typography sx={{ color: '#64748B', fontSize: 13, fontWeight: 800 }}>
+                          <Typography sx={{ color: palette.textSubtle, fontSize: 13, fontWeight: 800 }}>
                             Add what this table cell should contain. The table preview updates below.
                           </Typography>
                         </Box>
@@ -5383,7 +5384,7 @@ const Inspections = () => {
                         </Box>
                       </Box>
 
-                      <Typography sx={{ color: '#475569', fontSize: 12, fontWeight: 950, mb: 0.75 }}>Add to this cell</Typography>
+                      <Typography sx={{ color: palette.slate600, fontSize: 12, fontWeight: 950, mb: 0.75 }}>Add to this cell</Typography>
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(5, 1fr)' }, gap: 1, mb: 1.5 }}>
                         {[
                           { label: 'Input', helper: 'Single text box', type: 'input' as GridCellBlockType },
@@ -5399,13 +5400,13 @@ const Inspections = () => {
                             sx={{
                               p: 1.25,
                               borderRadius: '14px',
-                              border: '1px solid #DDD6FE',
-                              bgcolor: '#FFFFFF',
-                              color: '#1E1B4B',
+                              border: `1px solid ${palette.brandBorder}`,
+                              bgcolor: palette.white,
+                              color: palette.ink,
                               textTransform: 'none',
                               justifyContent: 'flex-start',
                               textAlign: 'left',
-                              '&:hover': { bgcolor: '#F5F3FF', borderColor: '#7C3AED' },
+                              '&:hover': { bgcolor: palette.brandTint, borderColor: palette.brand },
                             }}
                           >
                             <Box>
@@ -5416,7 +5417,7 @@ const Inspections = () => {
                         ))}
                       </Box>
 
-                      <Typography sx={{ color: '#475569', fontSize: 12, fontWeight: 950, mb: 0.75 }}>Cell contents</Typography>
+                      <Typography sx={{ color: palette.slate600, fontSize: 12, fontWeight: 950, mb: 0.75 }}>Cell contents</Typography>
                       {selectedGridCell.blocks?.length ? (
                         <Box sx={{ display: 'grid', gap: 1 }}>
                           {selectedGridCell.blocks.map((block, blockIndex) => {
@@ -5449,17 +5450,17 @@ const Inspections = () => {
                                   const fromIndex = Number(event.dataTransfer.getData('application/x-grid-block-index'))
                                   if (Number.isFinite(fromIndex)) moveGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, fromIndex, blockIndex)
                                 }}
-                                sx={{ p: 1.25, borderRadius: '14px', border: '1px solid #E5E7EB', bgcolor: '#F8FAFC', display: 'grid', gap: 1, cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
+                                sx={{ p: 1.25, borderRadius: '14px', border: `1px solid ${palette.border}`, bgcolor: palette.surface, display: 'grid', gap: 1, cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
                               >
                                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'auto 1fr auto' }, gap: 1, alignItems: 'center' }}>
-                                  <Chip size="small" label={`Drag · ${blockName}`} sx={{ fontWeight: 950, bgcolor: '#EDE9FE', color: '#5B21B6' }} />
+                                  <Chip size="small" label={`Drag · ${blockName}`} sx={{ fontWeight: 950, bgcolor: palette.brandSoft, color: palette.ink }} />
                                   <TextField
                                     size="small"
                                     label={labelName}
                                     value={block.label}
                                     onChange={e => updateGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, { label: e.target.value })}
                                   />
-                                  <IconButton size="small" color="error" onClick={() => removeGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex)} sx={{ border: '1px solid #FECACA', bgcolor: '#FEF2F2' }}>
+                                  <IconButton size="small" color="error" onClick={() => removeGridCellBlock(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex)} sx={{ border: '1px solid #FECACA', bgcolor: palette.dangerWash }}>
                                     <RemoveIcon fontSize="small" />
                                   </IconButton>
                                 </Box>
@@ -5480,7 +5481,7 @@ const Inspections = () => {
                                 {(block.type === 'checkbox' || block.type === 'radio') && (
                                   <Box sx={{ display: 'grid', gap: 0.75, pl: { xs: 0, md: 8 } }}>
                                     <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
-                                      <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 950, mr: 0.5 }}>
+                                      <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 950, mr: 0.5 }}>
                                         Option layout
                                       </Typography>
                                       {([
@@ -5510,7 +5511,7 @@ const Inspections = () => {
                                             aria-label="Move option up"
                                             disabled={optionIndex === 0}
                                             onClick={() => nudgeGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex, -1)}
-                                            sx={{ width: 30, height: 30, color: '#6D28D9', border: '1px solid #EDE9FE' }}
+                                            sx={{ width: 30, height: 30, color: palette.brandDeep, border: `1px solid ${palette.brandSoft}` }}
                                           >
                                             <KeyboardArrowUpIcon fontSize="small" />
                                           </IconButton>
@@ -5519,7 +5520,7 @@ const Inspections = () => {
                                             aria-label="Move option down"
                                             disabled={optionIndex >= (block.options?.length ? block.options : ['Option']).length - 1}
                                             onClick={() => nudgeGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex, 1)}
-                                            sx={{ width: 30, height: 30, color: '#6D28D9', border: '1px solid #EDE9FE' }}
+                                            sx={{ width: 30, height: 30, color: palette.brandDeep, border: `1px solid ${palette.brandSoft}` }}
                                           >
                                             <KeyboardArrowDownIcon fontSize="small" />
                                           </IconButton>
@@ -5530,7 +5531,7 @@ const Inspections = () => {
                                           value={option}
                                           onChange={e => updateGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex, e.target.value)}
                                         />
-                                        <IconButton size="small" onClick={() => removeGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex)} disabled={(block.options?.length ? block.options : ['Option']).length <= 1} sx={{ color: '#DC2626' }}>
+                                        <IconButton size="small" onClick={() => removeGridCellBlockOption(selectedBuilderCell.row, selectedBuilderCell.column, blockIndex, optionIndex)} disabled={(block.options?.length ? block.options : ['Option']).length <= 1} sx={{ color: palette.dangerStrong }}>
                                           <RemoveIcon fontSize="small" />
                                         </IconButton>
                                       </Box>
@@ -5545,8 +5546,8 @@ const Inspections = () => {
                           })}
                         </Box>
                       ) : (
-                        <Box sx={{ p: 2, borderRadius: '12px', border: '1px dashed #C4B5FD', bgcolor: '#FAF5FF' }}>
-                          <Typography sx={{ color: '#5B21B6', fontWeight: 900 }}>
+                        <Box sx={{ p: 2, borderRadius: '12px', border: `1px dashed ${palette.brandPale}`, bgcolor: '#f5ffff' }}>
+                          <Typography sx={{ color: palette.ink, fontWeight: 900 }}>
                             Empty cell. Choose Input, Radio, Checkboxes, Text, or Comments above.
                           </Typography>
                         </Box>
@@ -5554,7 +5555,7 @@ const Inspections = () => {
                     </Card>
                   )}
 
-                  <TableContainer sx={{ display: 'none', border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 560, overflow: 'auto', bgcolor: '#FFFFFF' }}>
+                  <TableContainer sx={{ display: 'none', border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 560, overflow: 'auto', bgcolor: palette.white }}>
                     <Table size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
                       <TableBody>
                         {formBuilderSchema.custom_grid.cells.map((row, rowIndex) => (
@@ -5576,8 +5577,8 @@ const Inspections = () => {
                                     height: cell.height || 74,
                                     verticalAlign: cell.verticalAlign || 'middle',
                                     border: '1px solid #D8DEE9',
-                                    bgcolor: isSelected ? '#F5F3FF' : rowIndex % 2 ? '#FAFAFA' : '#FFFFFF',
-                                    outline: isSelected ? '2px solid #7C3AED' : 'none',
+                                    bgcolor: isSelected ? palette.brandTint : rowIndex % 2 ? '#FAFAFA' : palette.white,
+                                    outline: isSelected ? `2px solid ${palette.brand}` : 'none',
                                     outlineOffset: '-2px',
                                     cursor: 'pointer',
                                     position: 'relative',
@@ -5596,18 +5597,18 @@ const Inspections = () => {
                                       textAlign: cell.align || 'center',
                                     }}
                                   >
-                                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 900 }}>
+                                    <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 900 }}>
                                       Cell {rowIndex + 1}.{columnIndex + 1}
                                       {(cell.rowSpan || 1) > 1 || (cell.colSpan || 1) > 1
                                         ? ` · ${cell.rowSpan || 1}x${cell.colSpan || 1}`
                                         : ''}
                                     </Typography>
                                     {shouldShowGridCellTitle(cell) ? (
-                                      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>
+                                      <Typography sx={{ fontWeight: 900, color: palette.ink, textAlign: cell.align || 'center' }}>
                                         {cell.label}
                                       </Typography>
                                     ) : !cell.blocks?.length && cell.type === 'text' ? (
-                                      <Typography sx={{ color: '#94A3B8', fontSize: 12, fontWeight: 800 }}>
+                                      <Typography sx={{ color: palette.textFaint, fontSize: 12, fontWeight: 800 }}>
                                         Click to edit
                                       </Typography>
                                     ) : null}
@@ -5643,7 +5644,7 @@ const Inspections = () => {
                     </Table>
                   </TableContainer>
 
-                  <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 560, overflow: 'auto', bgcolor: '#FFFFFF' }}>
+                  <TableContainer sx={{ border: '1px solid #D8DEE9', borderRadius: '12px', maxHeight: 560, overflow: 'auto', bgcolor: palette.white }}>
                     <Table size="small" sx={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
                       <TableBody>
                         {formBuilderSchema.custom_grid.cells.map((row, rowIndex) => (
@@ -5681,16 +5682,16 @@ const Inspections = () => {
                                 maxWidth: 22,
                                 p: 0,
                                 border: '1px solid #D8DEE9',
-                                bgcolor: '#F8FAFC',
+                                bgcolor: palette.surface,
                                 textAlign: 'center',
                                 verticalAlign: 'middle',
                                 cursor: 'grab',
                                 '&:active': { cursor: 'grabbing' },
-                                '&:hover': { bgcolor: '#EDE9FE' },
+                                '&:hover': { bgcolor: palette.brandSoft },
                               }}
                             >
                               <Tooltip title={`Drag to reorder row ${rowIndex + 1}`} placement="left">
-                                <DragIndicatorIcon sx={{ fontSize: 16, color: '#94A3B8', display: 'block', mx: 'auto' }} />
+                                <DragIndicatorIcon sx={{ fontSize: 16, color: palette.textFaint, display: 'block', mx: 'auto' }} />
                               </Tooltip>
                             </TableCell>
                             {row.map((cell, columnIndex) => {
@@ -5710,8 +5711,8 @@ const Inspections = () => {
                                     height: cell.height || 74,
                                     verticalAlign: cell.verticalAlign || 'middle',
                                     border: '1px solid #D8DEE9',
-                                    bgcolor: isSelected ? '#F5F3FF' : rowIndex % 2 ? '#FAFAFA' : '#FFFFFF',
-                                    outline: isSelected ? '2px solid #7C3AED' : 'none',
+                                    bgcolor: isSelected ? palette.brandTint : rowIndex % 2 ? '#FAFAFA' : palette.white,
+                                    outline: isSelected ? `2px solid ${palette.brand}` : 'none',
                                     outlineOffset: '-2px',
                                     cursor: 'pointer',
                                     position: 'relative',
@@ -5730,18 +5731,18 @@ const Inspections = () => {
                                       textAlign: cell.align || 'center',
                                     }}
                                   >
-                                    <Typography sx={{ color: '#64748B', fontSize: 12, fontWeight: 900 }}>
+                                    <Typography sx={{ color: palette.textSubtle, fontSize: 12, fontWeight: 900 }}>
                                       Cell {rowIndex + 1}.{columnIndex + 1}
                                       {(cell.rowSpan || 1) > 1 || (cell.colSpan || 1) > 1
                                         ? ` · ${cell.rowSpan || 1}x${cell.colSpan || 1}`
                                         : ''}
                                     </Typography>
                                     {shouldShowGridCellTitle(cell) ? (
-                                      <Typography sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: cell.align || 'center' }}>
+                                      <Typography sx={{ fontWeight: 900, color: palette.ink, textAlign: cell.align || 'center' }}>
                                         {cell.label}
                                       </Typography>
                                     ) : !cell.blocks?.length && cell.type === 'text' ? (
-                                      <Typography sx={{ color: '#94A3B8', fontSize: 12, fontWeight: 800 }}>
+                                      <Typography sx={{ color: palette.textFaint, fontSize: 12, fontWeight: 800 }}>
                                         Click to edit
                                       </Typography>
                                     ) : null}
@@ -5801,9 +5802,9 @@ const Inspections = () => {
                                                   sx={{
                                                     width: 24, height: 24,
                                                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                    cursor: 'grab', color: '#94A3B8', borderRadius: '6px',
+                                                    cursor: 'grab', color: palette.textFaint, borderRadius: '6px',
                                                     '&:active': { cursor: 'grabbing' },
-                                                    '&:hover': { bgcolor: '#EDE9FE', color: '#6D28D9' },
+                                                    '&:hover': { bgcolor: palette.brandSoft, color: palette.brandDeep },
                                                   }}
                                                 >
                                                   <DragIndicatorIcon sx={{ fontSize: 16 }} />
@@ -5824,7 +5825,7 @@ const Inspections = () => {
                                                   removeGridCellOption(rowIndex, columnIndex, optionIndex)
                                                 }}
                                                 disabled={cell.type === 'radio' && options.length <= 1}
-                                                sx={{ color: '#DC2626' }}
+                                                sx={{ color: palette.dangerStrong }}
                                               >
                                                 <RemoveIcon fontSize="small" />
                                               </IconButton>
@@ -5856,7 +5857,7 @@ const Inspections = () => {
                                       height: '100%',
                                       cursor: 'col-resize',
                                       zIndex: 2,
-                                      '&:hover': { bgcolor: 'rgba(124, 58, 237, 0.18)' },
+                                      '&:hover': { bgcolor: 'rgba(4,120,87, 0.18)' },
                                     }}
                                   />
                                   <Box
@@ -5870,7 +5871,7 @@ const Inspections = () => {
                                       height: 7,
                                       cursor: 'row-resize',
                                       zIndex: 2,
-                                      '&:hover': { bgcolor: 'rgba(124, 58, 237, 0.18)' },
+                                      '&:hover': { bgcolor: 'rgba(4,120,87, 0.18)' },
                                     }}
                                   />
                                 </TableCell>
@@ -5887,10 +5888,10 @@ const Inspections = () => {
               )}
             </Card>
 
-            <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: 'none' }}>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Biomed Notes</Typography>
+            <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.border}`, boxShadow: 'none' }}>
+              <Typography sx={{ fontWeight: 900, color: palette.ink }}>Biomed Notes</Typography>
 
-              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+              <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
                 Fixed default notes: Reported Problem, Problem Found, Corrective action taken, and Summary.
               </Typography>
             </Card>
@@ -5911,10 +5912,10 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={Boolean(reportInspection)} onClose={() => setReportInspection(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
           <Box>
             Technician Inspection Report
-            <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+            <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
               {reportInspection?.batch_number || reportInspection?.inspection_number} - {reportInspection?.asset_name || reportInspection?.equipment_name}
             </Typography>
           </Box>
@@ -5923,9 +5924,9 @@ const Inspections = () => {
         <DialogContent dividers>
           {report && (
             <Box sx={{ display: 'grid', gap: 3 }}>
-              <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EDE9FE', bgcolor: '#FAF5FF' }}>
-                <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.5 }}>Report Activity Form</Typography>
-                <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700, mb: 1.5 }}>
+              <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.brandSoft}`, bgcolor: '#f5ffff' }}>
+                <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 0.5 }}>Report Activity Form</Typography>
+                <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700, mb: 1.5 }}>
                   Choose the form source for this inspection report. Custom forms can be saved for future assets.
                 </Typography>
                 <RadioGroup row value={reportFormSource} onChange={(event) => applyReportFormSource(event.target.value as ReportFormSource)}>
@@ -5948,8 +5949,8 @@ const Inspections = () => {
                   />
                   <FormControlLabel value="custom" control={<Radio />} label="Customize Form" />
                 </RadioGroup>
-                <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '14px', bgcolor: '#FFFFFF', border: reportFormSource === 'existing' ? '1px solid #7C3AED' : '1px solid #EDE9FE', maxWidth: 620 }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.75 }}>
+                <Box sx={{ mt: 1.5, p: 1.5, borderRadius: '14px', bgcolor: palette.white, border: reportFormSource === 'existing' ? `1px solid ${palette.brand}` : `1px solid ${palette.brandSoft}`, maxWidth: 620 }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 0.75 }}>
                     Use Existing Inspection Form
                   </Typography>
                   <TextField
@@ -6021,10 +6022,10 @@ const Inspections = () => {
                 </>
               ) : renderDefaultReportCore()}
               <Divider />
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Operational Report Details</Typography>
+              <Typography sx={{ fontWeight: 900, color: palette.ink }}>Operational Report Details</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.2fr 1fr' }, gap: 2 }}>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Measurements</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}` }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>Measurements</Typography>
                   {(report.measurements || []).map((item: any, index: number) => (
                     <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 0.8fr 0.6fr 0.8fr', gap: 1, mb: 1 }}>
                       <TextField size="small" label="Measurement" value={item.name} onChange={e => updateArrayReport('measurements', index, 'name', e.target.value)} />
@@ -6038,8 +6039,8 @@ const Inspections = () => {
                     </Box>
                   ))}
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Photo Documentation</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}` }}>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>Photo Documentation</Typography>
                   {(report.photo_documentation || []).map((item: any, index: number) => (
                     <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 1, mb: 1 }}>
                       <TextField size="small" label="Label" value={item.label} onChange={e => updateArrayReport('photo_documentation', index, 'label', e.target.value)} />
@@ -6058,9 +6059,9 @@ const Inspections = () => {
                 <TextField label="Recommendations" value={report.compliance?.recommendations || ''} onChange={e => updateReport('compliance', 'recommendations', e.target.value)} />
               </Box>
               <Divider />
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Parts & Test Equipment</Typography>
+              <Typography sx={{ fontWeight: 900, color: palette.ink }}>Parts & Test Equipment</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}` }}>
                   <Autocomplete
                     multiple
                     options={reportPartsQ.data?.items || []}
@@ -6079,12 +6080,12 @@ const Inspections = () => {
                     loading={reportPartsQ.isLoading}
                     renderOption={(props, option) => (
                       <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Avatar variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#EEF2FF', color: '#4F46E5', fontWeight: 900 }}>
+                        <Avatar variant="rounded" sx={{ width: 34, height: 34, bgcolor: palette.indigoTint, color: palette.indigo, fontWeight: 900 }}>
                           {(option.part_number || 'P').slice(0, 1).toUpperCase()}
                         </Avatar>
                         <Box sx={{ minWidth: 0 }}>
                           <Typography sx={{ fontWeight: 800 }}>{option.part_number}</Typography>
-                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                          <Typography variant="caption" sx={{ color: palette.textMuted }}>
                             {[option.description, option.make, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
                           </Typography>
                         </Box>
@@ -6104,7 +6105,7 @@ const Inspections = () => {
                     </Box>
                   ))}
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}` }}>
                   <Autocomplete
                     multiple
                     options={testEquipmentQ.data?.items || []}
@@ -6120,12 +6121,12 @@ const Inspections = () => {
                     loading={testEquipmentQ.isLoading}
                     renderOption={(props, option) => (
                       <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: '#F5F3FF', color: '#7C3AED' }}>
+                        <Avatar src={resolveUploadUrl(option.image_url)} variant="rounded" sx={{ width: 34, height: 34, bgcolor: palette.brandTint, color: palette.brand }}>
                           <AssessmentIcon fontSize="small" />
                         </Avatar>
                         <Box>
                           <Typography sx={{ fontWeight: 800 }}>{option.tem}</Typography>
-                          <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                          <Typography variant="caption" sx={{ color: palette.textMuted }}>
                             {[option.mrf, option.model, option.serial_number].filter(Boolean).join(' / ') || 'No details'}
                           </Typography>
                         </Box>
@@ -6177,9 +6178,9 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={Boolean(rescheduleInspection)} onClose={() => !rescheduleMut.isPending && setRescheduleInspection(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           {rescheduleInspection?.status === 'closed' ? 'Reschedule & Reopen Inspection' : 'Reschedule Inspection'}
-          <Typography sx={{ mt: 0.5, color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ mt: 0.5, color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
             {rescheduleInspection?.inspection_number}
           </Typography>
         </DialogTitle>
@@ -6211,9 +6212,9 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={Boolean(closeInspectionTarget)} onClose={() => !closeInspectionMut.isPending && setCloseInspectionTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Close Inspection?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Close Inspection?</DialogTitle>
         <DialogContent dividers>
-          <Typography sx={{ color: '#475569', fontWeight: 650, lineHeight: 1.65 }}>
+          <Typography sx={{ color: palette.slate600, fontWeight: 650, lineHeight: 1.65 }}>
             {closeInspectionTarget?.inspection_number} will be removed from Upcoming without being completed or deleted. Its audit record will remain available.
           </Typography>
         </DialogContent>
@@ -6233,9 +6234,9 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={Boolean(reopenInspectionTarget)} onClose={() => !reopenInspectionMut.isPending && setReopenInspectionTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Reopen Inspection?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>Reopen Inspection?</DialogTitle>
         <DialogContent dividers>
-          <Typography sx={{ color: '#475569', fontWeight: 650, lineHeight: 1.65 }}>
+          <Typography sx={{ color: palette.slate600, fontWeight: 650, lineHeight: 1.65 }}>
             {reopenInspectionTarget?.inspection_number} will return to Upcoming using its existing scheduled date of {formatDate(reopenInspectionTarget?.scheduled_date)}.
           </Typography>
         </DialogContent>
@@ -6255,11 +6256,11 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={Boolean(infoInspection)} onClose={closeInspectionInfo} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ color: '#1E1B4B' }}>
+        <DialogTitle sx={{ color: palette.ink }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
             <Box>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: '1.15rem' }}>Inspection Details</Typography>
-              <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+              <Typography sx={{ fontWeight: 900, color: palette.ink, fontSize: '1.15rem' }}>Inspection Details</Typography>
+              <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
                 {infoEditing ? 'Edit upcoming inspection information' : 'Inspection information'}
               </Typography>
             </Box>
@@ -6267,7 +6268,7 @@ const Inspections = () => {
               <Tooltip title="Edit inspection details">
                 <IconButton
                   onClick={() => setInfoEditing(true)}
-                  sx={{ bgcolor: '#F3E8FF', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                  sx={{ bgcolor: palette.brandTint, color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}
                 >
                   <EditIcon />
                 </IconButton>
@@ -6279,8 +6280,8 @@ const Inspections = () => {
           {infoInspection && (
             <Box sx={{ display: 'grid', gap: 2 }}>
               {infoEditing && infoDraft && (
-                <Card sx={{ p: 2.25, borderRadius: '16px', border: '1px solid #DDD6FE', bgcolor: '#FAFAFF' }}>
-                  <Typography sx={{ mb: 2, color: '#1E1B4B', fontWeight: 900 }}>Editable scheduling information</Typography>
+                <Card sx={{ p: 2.25, borderRadius: '16px', border: `1px solid ${palette.brandBorder}`, bgcolor: '#FAFAFF' }}>
+                  <Typography sx={{ mb: 2, color: palette.ink, fontWeight: 900 }}>Editable scheduling information</Typography>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
                     <TextField
                       type="datetime-local"
@@ -6348,18 +6349,18 @@ const Inspections = () => {
                       sx={{ gridColumn: { md: '1 / -1' } }}
                     />
                   </Box>
-                  <Typography sx={{ mt: 1.5, color: '#64748B', fontSize: 12.5, fontWeight: 700 }}>
+                  <Typography sx={{ mt: 1.5, color: palette.textSubtle, fontSize: 12.5, fontWeight: 700 }}>
                     Facility, equipment, asset tag, serial number, and batch identity stay read-only to protect inspection history.
                   </Typography>
                 </Card>
               )}
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Inspection #</Typography>
-                  <Typography sx={{ color: '#7161D8', fontWeight: 900, fontFamily: 'monospace' }}>{infoInspection.inspection_number}</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}` }}>
+                  <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Inspection #</Typography>
+                  <Typography sx={{ color: palette.brand, fontWeight: 900, fontFamily: 'monospace' }}>{infoInspection.inspection_number}</Typography>
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Status</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}` }}>
+                  <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Status</Typography>
                   <Chip
                     size="small"
                     label={String(infoInspection.status).replace(/_/g, ' ')}
@@ -6372,13 +6373,13 @@ const Inspections = () => {
                     }}
                   />
                 </Card>
-                <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6' }}>
-                  <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Scheduled</Typography>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>{formatDate(infoInspection.scheduled_date)}</Typography>
+                <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}` }}>
+                  <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Scheduled</Typography>
+                  <Typography sx={{ color: palette.ink, fontWeight: 900 }}>{formatDate(infoInspection.scheduled_date)}</Typography>
                 </Card>
               </Box>
 
-              <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #EEF0F6', bgcolor: '#F8FAFC' }}>
+              <Card sx={{ p: 2, borderRadius: '16px', border: `1px solid ${palette.borderSoft}`, bgcolor: palette.surface }}>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
                   {[
                     ['Facility', infoInspection.facility_name || '-'],
@@ -6393,13 +6394,13 @@ const Inspections = () => {
                     ['Batch', infoInspection.batch_number || '-'],
                   ].map(([label, value]) => (
                     <Box key={label}>
-                      <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
-                      <Typography sx={{ color: '#1E1B4B', fontWeight: 800 }}>{value}</Typography>
+                      <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</Typography>
+                      <Typography sx={{ color: palette.ink, fontWeight: 800 }}>{value}</Typography>
                     </Box>
                   ))}
                   <Box sx={{ gridColumn: '1 / -1' }}>
-                    <Typography sx={{ color: '#6B7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Requirement</Typography>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 800, whiteSpace: 'pre-wrap' }}>{infoInspection.compliance_requirement || '-'}</Typography>
+                    <Typography sx={{ color: palette.textMuted, fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Requirement</Typography>
+                    <Typography sx={{ color: palette.ink, fontWeight: 800, whiteSpace: 'pre-wrap' }}>{infoInspection.compliance_requirement || '-'}</Typography>
                   </Box>
                 </Box>
               </Card>
@@ -6458,13 +6459,13 @@ const Inspections = () => {
       </Dialog>
 
       <Dialog open={Boolean(viewReport)} onClose={() => setViewReport(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '22px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
+        <DialogTitle sx={{ fontWeight: 900, color: palette.ink }}>
           Inspection Report
-          <Typography sx={{ color: '#6B7280', fontSize: 13, fontWeight: 700 }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: 13, fontWeight: 700 }}>
             {viewReport?.inspection_number} - {viewReport?.asset_name}
           </Typography>
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, bgcolor: '#F5F3FF' }}>
+        <DialogContent dividers sx={{ p: 0, bgcolor: palette.brandTint }}>
           <Box
             component="iframe"
             title="Inspection report preview"
@@ -6479,7 +6480,7 @@ const Inspections = () => {
               onClick={() => viewReport && generateInvoiceMut.mutate(viewReport.id)}
               disabled={!canEditInspections || Boolean(viewReport.invoice) || generateInvoiceMut.isPending}
               variant="outlined"
-              sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: '#059669', borderColor: '#059669', '&:hover': { borderColor: '#047857', bgcolor: '#F0FDF4' } }}
+              sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', color: palette.brandStrong, borderColor: palette.brandStrong, '&:hover': { borderColor: palette.brand, bgcolor: palette.successTint } }}
             >
               {viewReport.invoice ? 'Invoice Generated' : 'Generate Invoice'}
             </Button>

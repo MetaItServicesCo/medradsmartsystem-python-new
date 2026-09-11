@@ -1,5 +1,6 @@
 import { type MouseEventHandler, type ReactNode } from 'react'
 import { Box, Typography, type SxProps, type Theme } from '@mui/material'
+import { palette } from '@/theme/palette'
 
 type Props = {
   value: ReactNode
@@ -34,7 +35,7 @@ const ClippedTooltipText = ({
   maxWidth = '100%',
   variant = 'body2',
   fontWeight = 600,
-  color = '#1E1B4B',
+  color = palette.ink,
   monospace = false,
   sx,
   textSx,
@@ -68,13 +69,13 @@ const ClippedTooltipText = ({
         cursor: clickable ? 'pointer' : undefined,
         transition: clickable ? 'all 0.15s ease' : undefined,
         '&:hover .MuiTypography-root': clickable ? {
-          color: '#7C3AED',
+          color: palette.brand,
           textDecoration: 'underline',
           textUnderlineOffset: '3px',
         } : undefined,
         ...(field ? {
-          border: '1px solid #E5E7EB',
-          bgcolor: '#F8FAFC',
+          border: `1px solid ${palette.border}`,
+          bgcolor: palette.surface,
           borderRadius: '12px',
           px: 1.4,
           py: 0.9,
@@ -82,8 +83,8 @@ const ClippedTooltipText = ({
           display: 'flex',
           alignItems: 'center',
           '&:hover': clickable ? {
-            borderColor: '#A78BFA',
-            bgcolor: '#F5F3FF',
+            borderColor: palette.brandLight,
+            bgcolor: palette.brandTint,
           } : undefined,
         } : {}),
         ...sx,

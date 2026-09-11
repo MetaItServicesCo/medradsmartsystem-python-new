@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { Box } from '@mui/material'
 import { motion, useReducedMotion } from 'framer-motion'
+import { palette } from '@/theme/palette'
 
 /**
  * A subtle, module-relevant background watermark that sits behind page content.
@@ -192,27 +193,27 @@ type ModuleTheme = { key: string; accent: string; soft: string }
 // (indigo / violet / rose / blue / teal). Order matters: longer, more specific
 // prefixes are matched first.
 const MODULE_TABLE: Array<{ prefix: string; theme: ModuleTheme }> = [
-  { prefix: '/dashboard', theme: { key: 'dashboard', accent: '#6757D8', soft: '#F0528A' } },
-  { prefix: '/facilities', theme: { key: 'facilities', accent: '#2563EB', soft: '#7C3AED' } },
-  { prefix: '/users', theme: { key: 'users', accent: '#7C3AED', soft: '#EC4899' } },
-  { prefix: '/service-requests', theme: { key: 'service-requests', accent: '#F0528A', soft: '#7161D8' } },
-  { prefix: '/inspections', theme: { key: 'inspections', accent: '#3B82F6', soft: '#7C3AED' } },
-  { prefix: '/sales', theme: { key: 'sales', accent: '#7C3AED', soft: '#F0528A' } },
-  { prefix: '/rentals', theme: { key: 'rentals', accent: '#0EA5E9', soft: '#7161D8' } },
-  { prefix: '/inventory', theme: { key: 'inventory', accent: '#13A77B', soft: '#3B82F6' } },
-  { prefix: '/test-equipment', theme: { key: 'test-equipment', accent: '#F59E0B', soft: '#F0528A' } },
-  { prefix: '/hr', theme: { key: 'hr', accent: '#6366F1', soft: '#EC4899' } },
-  { prefix: '/my-timesheets', theme: { key: 'my-timesheets', accent: '#7161D8', soft: '#0EA5E9' } },
-  { prefix: '/my-leave', theme: { key: 'my-leave', accent: '#F59E0B', soft: '#0EA5E9' } },
-  { prefix: '/reports', theme: { key: 'reports', accent: '#8B5CF6', soft: '#EC4899' } },
-  { prefix: '/billing', theme: { key: 'billing', accent: '#EC4899', soft: '#7C3AED' } },
-  { prefix: '/attendance', theme: { key: 'attendance', accent: '#06B6D4', soft: '#7161D8' } },
-  { prefix: '/chat', theme: { key: 'chat', accent: '#7C3AED', soft: '#0EA5E9' } },
-  { prefix: '/calendar', theme: { key: 'calendar', accent: '#3B82F6', soft: '#7C3AED' } },
-  { prefix: '/profile', theme: { key: 'profile', accent: '#6757D8', soft: '#F0528A' } },
+  { prefix: '/dashboard', theme: { key: 'dashboard', accent: palette.brandPale, soft: palette.accentLight } },
+  { prefix: '/facilities', theme: { key: 'facilities', accent: palette.infoStrong, soft: palette.brand } },
+  { prefix: '/users', theme: { key: 'users', accent: palette.brand, soft: palette.accent } },
+  { prefix: '/service-requests', theme: { key: 'service-requests', accent: palette.accentLight, soft: palette.brand } },
+  { prefix: '/inspections', theme: { key: 'inspections', accent: palette.infoBright, soft: palette.brand } },
+  { prefix: '/sales', theme: { key: 'sales', accent: palette.brand, soft: palette.accentLight } },
+  { prefix: '/rentals', theme: { key: 'rentals', accent: '#0EA5E9', soft: palette.brand } },
+  { prefix: '/inventory', theme: { key: 'inventory', accent: '#13A77B', soft: palette.infoBright } },
+  { prefix: '/test-equipment', theme: { key: 'test-equipment', accent: palette.warningBright, soft: palette.accentLight } },
+  { prefix: '/hr', theme: { key: 'hr', accent: palette.brandStrong, soft: palette.accent } },
+  { prefix: '/my-timesheets', theme: { key: 'my-timesheets', accent: palette.brand, soft: '#0EA5E9' } },
+  { prefix: '/my-leave', theme: { key: 'my-leave', accent: palette.warningBright, soft: '#0EA5E9' } },
+  { prefix: '/reports', theme: { key: 'reports', accent: palette.brandStrong, soft: palette.accent } },
+  { prefix: '/billing', theme: { key: 'billing', accent: palette.accent, soft: palette.brand } },
+  { prefix: '/attendance', theme: { key: 'attendance', accent: '#06B6D4', soft: palette.brand } },
+  { prefix: '/chat', theme: { key: 'chat', accent: palette.brand, soft: '#0EA5E9' } },
+  { prefix: '/calendar', theme: { key: 'calendar', accent: palette.infoBright, soft: palette.brand } },
+  { prefix: '/profile', theme: { key: 'profile', accent: palette.brandPale, soft: palette.accentLight } },
 ]
 
-const DEFAULT_THEME: ModuleTheme = { key: 'dashboard', accent: '#6757D8', soft: '#F0528A' }
+const DEFAULT_THEME: ModuleTheme = { key: 'dashboard', accent: palette.brandPale, soft: palette.accentLight }
 
 const themeForPath = (pathname: string): ModuleTheme =>
   MODULE_TABLE.find((entry) => pathname === entry.prefix || pathname.startsWith(entry.prefix + '/'))?.theme

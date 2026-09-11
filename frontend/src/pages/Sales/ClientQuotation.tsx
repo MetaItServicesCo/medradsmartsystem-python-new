@@ -52,6 +52,7 @@ import {
   customerPortalSx,
 } from '@/components/Documents/CustomerDocumentUI'
 import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
+import { palette } from '@/theme/palette'
 
 const money = (value: number | string | null | undefined) => `$${Number(value || 0).toFixed(2)}`
 const dateLabel = (value?: string | null) => value
@@ -261,11 +262,11 @@ const ClientQuotation = () => {
   }
 
   if (quoteQ.isLoading) {
-    return <Box sx={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', bgcolor: '#F5F3FF' }}><CircularProgress /></Box>
+    return <Box sx={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', bgcolor: palette.brandTint }}><CircularProgress /></Box>
   }
   if (quoteQ.isError || !data || !quotation) {
     return (
-      <Box sx={{ minHeight: '100dvh', p: { xs: 2, sm: 4 }, bgcolor: '#F5F3FF' }}>
+      <Box sx={{ minHeight: '100dvh', p: { xs: 2, sm: 4 }, bgcolor: palette.brandTint }}>
         <Alert severity="error" sx={{ maxWidth: 760, mx: 'auto' }}>
           {(quoteQ.error as any)?.response?.data?.detail || 'This sales document is unavailable or its link has expired.'}
         </Alert>
@@ -323,8 +324,8 @@ const ClientQuotation = () => {
                   overflow: 'hidden',
                   p: { xs: 2.5, md: 3.5 },
                   borderRadius: '20px',
-                  color: '#064E3B',
-                  border: '1px solid #A7F3D0',
+                  color: palette.ink,
+                  border: `1px solid ${palette.brandBorder}`,
                   background: 'linear-gradient(135deg, #ECFDF5 0%, #F0FDFA 55%, #FFFFFF 100%)',
                   boxShadow: '0 16px 38px rgba(5,150,105,0.10)',
                   scrollMarginTop: 24,
@@ -341,9 +342,9 @@ const ClientQuotation = () => {
                       display: 'grid',
                       placeItems: 'center',
                       borderRadius: '16px',
-                      bgcolor: '#10B981',
-                      color: '#FFFFFF',
-                      boxShadow: '0 8px 20px rgba(16,185,129,0.25)',
+                      bgcolor: palette.brand,
+                      color: palette.white,
+                      boxShadow: '0 8px 20px rgba(4,120,87,0.25)',
                       animation: `${checkPop} 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both, ${ringPulse} 2s ease-out 0.75s 2`,
                       '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                     }}
@@ -351,10 +352,10 @@ const ClientQuotation = () => {
                     <CheckCircleOutlineIcon sx={{ fontSize: 32 }} />
                   </Box>
                   <Box sx={{ minWidth: 0, animation: `${riseFade} 0.5s ease-out 0.28s both` }}>
-                    <Typography variant="h5" sx={{ fontWeight: 950, color: '#064E3B' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 950, color: palette.ink }}>
                       Thank you for your payment 🎉
                     </Typography>
-                    <Typography sx={{ mt: 0.7, color: '#047857', lineHeight: 1.6 }}>
+                    <Typography sx={{ mt: 0.7, color: palette.brand, lineHeight: 1.6 }}>
                       Your payment has been received successfully. Invoice {data.invoice.invoice_number} is fully paid,
                       and no further payment is due.
                     </Typography>
@@ -385,10 +386,10 @@ const ClientQuotation = () => {
                         '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                       }}
                     >
-                      <Typography sx={{ color: '#6B7280', fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
+                      <Typography sx={{ color: palette.textMuted, fontSize: 11, fontWeight: 900, textTransform: 'uppercase' }}>
                         {label}
                       </Typography>
-                      <Typography sx={{ mt: 0.35, color: '#064E3B', fontWeight: 950, overflowWrap: 'anywhere' }}>
+                      <Typography sx={{ mt: 0.35, color: palette.ink, fontWeight: 950, overflowWrap: 'anywhere' }}>
                         {value}
                       </Typography>
                     </Box>
@@ -413,8 +414,8 @@ const ClientQuotation = () => {
                   mt: 2,
                   p: 2.4,
                   borderRadius: '16px',
-                  border: '1px solid #C4B5FD',
-                  bgcolor: '#F8F7FF',
+                  border: `1px solid ${palette.brandPale}`,
+                  bgcolor: '#f7fffc',
                   display: { sm: 'flex' },
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -423,16 +424,16 @@ const ClientQuotation = () => {
               >
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                    <Typography sx={{ color: '#1E1B4B', fontWeight: 950 }}>Secure card payment</Typography>
+                    <Typography sx={{ color: palette.ink, fontWeight: 950 }}>Secure card payment</Typography>
                     {data.square_payment.environment === 'sandbox' && (
                       <Chip
                         size="small"
                         label="Square Sandbox"
-                        sx={{ bgcolor: '#FEF3C7', color: '#92400E', fontWeight: 900 }}
+                        sx={{ bgcolor: palette.warningTint, color: palette.warningDeep, fontWeight: 900 }}
                       />
                     )}
                   </Box>
-                  <Typography sx={{ color: '#64748B', fontSize: 13, mt: 0.4 }}>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 13, mt: 0.4 }}>
                     Pay the outstanding balance of {money(data.invoice.balance_due)}. Card details are handled securely by Square.
                   </Typography>
                 </Box>
@@ -448,9 +449,9 @@ const ClientQuotation = () => {
               </Box>
             )}
             {data.test_payment_enabled && !data.square_payment.enabled && data.invoice && data.invoice.status !== 'paid' && (
-              <Box sx={{ mt: 2, p: 2.2, borderRadius: '16px', border: '1px dashed #F59E0B', bgcolor: '#FFFBEB' }}>
-                <Typography sx={{ color: '#92400E', fontWeight: 950 }}>Simulated workflow fallback</Typography>
-                <Typography sx={{ color: '#92400E', fontSize: 13, mb: 1.5 }}>
+              <Box sx={{ mt: 2, p: 2.2, borderRadius: '16px', border: `1px dashed ${palette.warningBright}`, bgcolor: palette.warningWash }}>
+                <Typography sx={{ color: palette.warningDeep, fontWeight: 950 }}>Simulated workflow fallback</Typography>
+                <Typography sx={{ color: palette.warningDeep, fontSize: 13, mb: 1.5 }}>
                   Pay the balance of {money(data.invoice.balance_due)} here for workflow testing.
                   No card, bank account, or real funds will be used.
                 </Typography>
@@ -471,18 +472,18 @@ const ClientQuotation = () => {
           <Box
             ref={responseRef}
             sx={{
-              border: '1px solid #DDD6FE',
+              border: `1px solid ${palette.brandBorder}`,
               borderRadius: '18px',
-              bgcolor: '#FAF8FF',
+              bgcolor: '#f8fffe',
               p: { xs: 2, md: 3 },
               scrollMarginTop: 24,
               '@media print': { display: 'none' },
             }}
           >
-            <Typography variant="h6" sx={{ color: '#1E1B4B', fontWeight: 900, mb: 0.5 }}>
+            <Typography variant="h6" sx={{ color: palette.ink, fontWeight: 900, mb: 0.5 }}>
               Sign and approve this {isDirectInvoice ? 'invoice' : 'quotation'}
             </Typography>
-            <Typography sx={{ color: '#6B7280', mb: 2 }}>
+            <Typography sx={{ color: palette.textMuted, mb: 2 }}>
               Confirm your selected option, enter the signer’s name, and accept the terms.
             </Typography>
             <TextField
@@ -528,7 +529,7 @@ const ClientQuotation = () => {
         fullWidth
         PaperProps={{ sx: { borderRadius: '20px' } }}
       >
-        <DialogTitle sx={{ color: '#1E1B4B', fontWeight: 950 }}>
+        <DialogTitle sx={{ color: palette.ink, fontWeight: 950 }}>
           Pay Invoice Securely
         </DialogTitle>
         <DialogContent dividers>
@@ -537,7 +538,7 @@ const ClientQuotation = () => {
               Square Sandbox is active. Use a Square sandbox test card; no real funds will be charged.
             </Alert>
           )}
-          <Typography sx={{ mb: 2, color: '#475569', fontWeight: 800 }}>
+          <Typography sx={{ mb: 2, color: palette.slate600, fontWeight: 800 }}>
             Invoice {data.invoice?.invoice_number} · {money(data.invoice?.balance_due)}
           </Typography>
           {data.square_payment.application_id && data.square_payment.location_id && data.invoice && (
@@ -568,7 +569,7 @@ const ClientQuotation = () => {
       </Dialog>
 
       <Dialog open={testPayOpen} onClose={() => !testPaymentMut.isPending && setTestPayOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ color: '#92400E', fontWeight: 950 }}>Complete Test Payment</DialogTitle>
+        <DialogTitle sx={{ color: palette.warningDeep, fontWeight: 950 }}>Complete Test Payment</DialogTitle>
         <DialogContent dividers>
           <Alert severity="warning" sx={{ mb: 2 }}>
             Testing only: this marks the invoice paid and updates the ledger, but no money is charged.

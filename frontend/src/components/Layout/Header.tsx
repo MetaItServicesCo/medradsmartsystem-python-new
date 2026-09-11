@@ -13,6 +13,7 @@ import { fetchNotifications, markAllNotificationsRead, markNotificationRead, typ
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import RecentActivityMenu from '../RecentActivityMenu'
+import { palette } from '@/theme/palette'
 
 interface HeaderProps {
   title: string
@@ -127,7 +128,7 @@ const Header = ({ title }: HeaderProps) => {
     >
       {/* Page title */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography noWrap variant="h5" sx={{ fontWeight: 900, color: '#1E1B4B', lineHeight: 1.2, letterSpacing: '-0.5px', fontSize: { xs: '1rem', sm: '1.5rem' } }}>
+        <Typography noWrap variant="h5" sx={{ fontWeight: 900, color: palette.ink, lineHeight: 1.2, letterSpacing: '-0.5px', fontSize: { xs: '1rem', sm: '1.5rem' } }}>
           {title}
         </Typography>
       </Box>
@@ -146,11 +147,11 @@ const Header = ({ title }: HeaderProps) => {
           border: '1px solid #E8ECF4',
           boxShadow: '0 12px 30px rgba(71,85,105,0.06)',
           transition: 'all 0.2s ease',
-          '&:hover': { backgroundColor: '#F3F0FF', transform: 'translateY(-1px)' },
+          '&:hover': { backgroundColor: '#f0fffb', transform: 'translateY(-1px)' },
         }}
       >
-        <Badge badgeContent={unreadCount} color="secondary" sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', fontWeight: 800, background: 'linear-gradient(135deg, #EC4899, #F472B6)' } }}>
-          <NotificationsNoneIcon sx={{ fontSize: '1.4rem', color: '#7C3AED' }} />
+        <Badge badgeContent={unreadCount} color="secondary" sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', fontWeight: 800, background: `linear-gradient(135deg, ${palette.accent}, ${palette.accentLight})` } }}>
+          <NotificationsNoneIcon sx={{ fontSize: '1.4rem', color: palette.brand }} />
         </Badge>
       </IconButton>
       <Menu
@@ -164,7 +165,7 @@ const Header = ({ title }: HeaderProps) => {
             width: 380,
             maxWidth: 'calc(100vw - 24px)',
             borderRadius: '16px',
-            border: '1px solid #E5E7EB',
+            border: `1px solid ${palette.border}`,
             boxShadow: '0 20px 50px rgba(15,23,42,0.16)',
             overflow: 'hidden',
           },
@@ -174,14 +175,14 @@ const Header = ({ title }: HeaderProps) => {
       >
         <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Notifications</Typography>
-            <Typography variant="caption" sx={{ color: '#6B7280' }}>{unreadCount} unread</Typography>
+            <Typography sx={{ fontWeight: 900, color: palette.ink }}>Notifications</Typography>
+            <Typography variant="caption" sx={{ color: palette.textMuted }}>{unreadCount} unread</Typography>
           </Box>
           <Button
             size="small"
             disabled={unreadCount === 0 || markAllReadMutation.isPending}
             onClick={() => markAllReadMutation.mutate()}
-            sx={{ color: '#7C3AED', fontWeight: 800 }}
+            sx={{ color: palette.brand, fontWeight: 800 }}
           >
             Mark all read
           </Button>
@@ -194,8 +195,8 @@ const Header = ({ title }: HeaderProps) => {
             </Box>
           ) : notifications.length === 0 ? (
             <Box sx={{ px: 2, py: 4, textAlign: 'center' }}>
-              <Typography sx={{ fontWeight: 800, color: '#374151' }}>No notifications</Typography>
-              <Typography variant="body2" sx={{ color: '#9CA3AF' }}>You are all caught up.</Typography>
+              <Typography sx={{ fontWeight: 800, color: palette.textStrong }}>No notifications</Typography>
+              <Typography variant="body2" sx={{ color: palette.textDisabled }}>You are all caught up.</Typography>
             </Box>
           ) : (
             notifications.map((notification) => (
@@ -208,8 +209,8 @@ const Header = ({ title }: HeaderProps) => {
                   px: 2,
                   py: 1.4,
                   whiteSpace: 'normal',
-                  backgroundColor: notification.is_read ? '#fff' : '#F5F3FF',
-                  '&:hover': { backgroundColor: notification.is_read ? '#F9FAFB' : '#EDE9FE' },
+                  backgroundColor: notification.is_read ? '#fff' : palette.brandTint,
+                  '&:hover': { backgroundColor: notification.is_read ? palette.surfaceFaint : palette.brandSoft },
                 }}
               >
                 <Box
@@ -218,7 +219,7 @@ const Header = ({ title }: HeaderProps) => {
                     height: 9,
                     borderRadius: '50%',
                     mt: 0.7,
-                    backgroundColor: notification.is_read ? '#CBD5E1' : '#7C3AED',
+                    backgroundColor: notification.is_read ? '#CBD5E1' : palette.brand,
                     flexShrink: 0,
                   }}
                 />
@@ -227,11 +228,11 @@ const Header = ({ title }: HeaderProps) => {
                     {notification.title}
                   </Typography>
                   {notification.message && (
-                    <Typography variant="body2" sx={{ color: '#6B7280', fontSize: '0.78rem', mt: 0.25 }}>
+                    <Typography variant="body2" sx={{ color: palette.textMuted, fontSize: '0.78rem', mt: 0.25 }}>
                       {notification.message}
                     </Typography>
                   )}
-                  <Typography variant="caption" sx={{ color: '#9CA3AF', display: 'block', mt: 0.5 }}>
+                  <Typography variant="caption" sx={{ color: palette.textDisabled, display: 'block', mt: 0.5 }}>
                     {new Date(notification.created_at).toLocaleString()}
                   </Typography>
                 </Box>
@@ -249,17 +250,18 @@ const Header = ({ title }: HeaderProps) => {
           sx={{
             width: { xs: 38, sm: 44 },
             height: { xs: 38, sm: 44 },
-            // The purple the landing page and dashboard settled on, in place
-            // of the violet-to-pink gradient. Solid, so it reads as one
-            // colour beside the rest of the header.
-            background: '#6550bd',
+            // The brand the landing page and dashboard settled on, in place
+            // of the old two-tone gradient. Solid, so it reads as one
+            // colour beside the rest of the header, and dark enough to
+            // carry the white initials.
+            background: palette.brand,
             fontSize: '1rem',
             fontWeight: 800,
             cursor: 'pointer',
-            boxShadow: '0 8px 16px rgba(101,80,189,0.25)',
+            boxShadow: '0 8px 16px rgba(4,120,87,0.25)',
             border: '2px solid #fff',
             transition: 'all 0.2s ease',
-            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 10px 20px rgba(101,80,189,0.35)' }
+            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 10px 20px rgba(4,120,87,0.35)' }
           }}
         >
           {initials}
@@ -300,10 +302,10 @@ const Header = ({ title }: HeaderProps) => {
           anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
         >
           <Box sx={{ px: 2, py: 1.5 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E1B4B' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: palette.ink }}>
               {user?.full_name}
             </Typography>
-            <Typography variant="body2" sx={{ color: '#6B7280', fontSize: '0.75rem' }}>
+            <Typography variant="body2" sx={{ color: palette.textMuted, fontSize: '0.75rem' }}>
               {user?.email}
             </Typography>
           </Box>
@@ -314,9 +316,9 @@ const Header = ({ title }: HeaderProps) => {
             </ListItemIcon>
             My Profile
           </MenuItem>
-          <MenuItem onClick={handleLogout} sx={{ color: '#EF4444' }}>
+          <MenuItem onClick={handleLogout} sx={{ color: palette.dangerBright }}>
             <ListItemIcon>
-              <LogoutIcon fontSize="small" sx={{ color: '#EF4444' }} />
+              <LogoutIcon fontSize="small" sx={{ color: palette.dangerBright }} />
             </ListItemIcon>
             Logout
           </MenuItem>

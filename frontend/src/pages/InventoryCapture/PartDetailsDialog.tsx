@@ -15,6 +15,7 @@ import {
   type DefinitionDetails,
   type PartDefinition,
 } from '@/api/inventoryCapture'
+import { palette } from '@/theme/palette'
 
 /**
  * The details of a captured part, asked for exactly the way Add Part asks.
@@ -255,17 +256,17 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
           borderRadius: { xs: 0, sm: '22px' },
           overflow: 'hidden',
           maxHeight: { xs: '100dvh', sm: 'calc(100dvh - 48px)' },
-          backgroundColor: '#F8FAFC',
-          boxShadow: '0 28px 80px rgba(30, 27, 75, 0.22)',
+          backgroundColor: palette.surface,
+          boxShadow: '0 28px 80px rgba(6,78,59, 0.22)',
         },
       }}
     >
-      <DialogTitle sx={{ p: { xs: 2, sm: 2.5 }, borderBottom: '1px solid #E5E7EB', bgcolor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+      <DialogTitle sx={{ p: { xs: 2, sm: 2.5 }, borderBottom: `1px solid ${palette.border}`, bgcolor: palette.white, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontWeight: 900, color: '#1E1B4B', fontSize: { xs: 20, sm: 24 }, lineHeight: 1.2 }}>
+          <Typography sx={{ fontWeight: 900, color: palette.ink, fontSize: { xs: 20, sm: 24 }, lineHeight: 1.2 }}>
             Part Details
           </Typography>
-          <Typography sx={{ mt: 0.4, color: '#64748B', fontSize: 13, fontWeight: 600 }}>
+          <Typography sx={{ mt: 0.4, color: palette.textSubtle, fontSize: 13, fontWeight: 600 }}>
             Product details, supplier information, acquisition history, and imagery. Saved once and carried by {forAll}.
           </Typography>
           {/* Where these details came from. A decoded barcode is the
@@ -274,7 +275,7 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
           {reading && (
             <Box sx={{ mt: 0.9, display: 'flex', alignItems: 'center', gap: 1 }}>
               <CircularProgress size={13} />
-              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#64748B' }}>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: palette.textSubtle }}>
                 Reading the label…
               </Typography>
             </Box>
@@ -287,25 +288,25 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
                 : 'Read off the label — please check these'}
               sx={{
                 mt: 0.9, fontWeight: 800, fontSize: 11.5, maxWidth: '100%',
-                bgcolor: identifiedFrom === 'udi' ? '#DCFCE7' : '#FEF3C7',
-                color: identifiedFrom === 'udi' ? '#15803D' : '#92400E',
+                bgcolor: identifiedFrom === 'udi' ? '#DCFCE7' : palette.warningTint,
+                color: identifiedFrom === 'udi' ? palette.success : palette.warningDeep,
               }}
             />
           )}
         </Box>
-        <IconButton aria-label="Close part details dialog" onClick={onClose} sx={{ flexShrink: 0, width: 42, height: 42, color: '#4F46E5', bgcolor: '#EEF2FF', '&:hover': { bgcolor: '#E0E7FF' } }}>
+        <IconButton aria-label="Close part details dialog" onClick={onClose} sx={{ flexShrink: 0, width: 42, height: 42, color: palette.indigo, bgcolor: palette.indigoTint, '&:hover': { bgcolor: '#E0E7FF' } }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      <DialogContent sx={{ p: { xs: 1.5, sm: 2.5 }, bgcolor: '#F8FAFC' }}>
+      <DialogContent sx={{ p: { xs: 1.5, sm: 2.5 }, bgcolor: palette.surface }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 260px' }, gap: 2, alignItems: 'start', '& .MuiInputBase-root:not(.MuiInputBase-multiline)': { minHeight: 44 }, '& .MuiOutlinedInput-input:not(textarea)': { py: 1.25 } }}>
           <Box sx={{ display: 'grid', gap: 2, minWidth: 0 }}>
-            <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
+            <Box sx={{ p: { xs: 1.5, sm: 2 }, border: `1px solid ${palette.border}`, borderRadius: '16px', bgcolor: palette.white }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.75 }}>
-                <Avatar sx={{ width: 34, height: 34, bgcolor: '#EEF2FF', color: '#4F46E5' }}><InventoryIcon fontSize="small" /></Avatar>
+                <Avatar sx={{ width: 34, height: 34, bgcolor: palette.indigoTint, color: palette.indigo }}><InventoryIcon fontSize="small" /></Avatar>
                 <Box>
-                  <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>Part Information</Typography>
-                  <Typography sx={{ color: '#64748B', fontSize: 12 }}>Core product identity, classification, condition, and pricing.</Typography>
+                  <Typography sx={{ fontWeight: 900, color: palette.ink }}>Part Information</Typography>
+                  <Typography sx={{ color: palette.textSubtle, fontSize: 12 }}>Core product identity, classification, condition, and pricing.</Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
@@ -330,9 +331,9 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
               </Box>
             </Box>
 
-            <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.35 }}>Supplier &amp; Contact</Typography>
-              <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1.75 }}>Company and primary sales contact for this part.</Typography>
+            <Box sx={{ p: { xs: 1.5, sm: 2 }, border: `1px solid ${palette.border}`, borderRadius: '16px', bgcolor: palette.white }}>
+              <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 0.35 }}>Supplier &amp; Contact</Typography>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 12, mb: 1.75 }}>Company and primary sales contact for this part.</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1.25 }}>
               <TextField label="Company" placeholder="Company Name" value={form.supplier_name} onChange={(e) => set({ supplier_name: e.target.value })} />
               <TextField label="Sales Person Name" placeholder="Contact Name" value={form.supplier_contact} onChange={(e) => set({ supplier_contact: e.target.value })} />
@@ -342,9 +343,9 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
               </Box>
             </Box>
 
-            <Box sx={{ p: { xs: 1.5, sm: 2 }, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF' }}>
-              <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 0.35 }}>Acquired From <Box component="span" sx={{ color: '#94A3B8', fontWeight: 700 }}>(Optional)</Box></Typography>
-              <Typography sx={{ color: '#64748B', fontSize: 12, mb: 1.75 }}>Purchase source, shipment method, and receiving dates.</Typography>
+            <Box sx={{ p: { xs: 1.5, sm: 2 }, border: `1px solid ${palette.border}`, borderRadius: '16px', bgcolor: palette.white }}>
+              <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 0.35 }}>Acquired From <Box component="span" sx={{ color: palette.textFaint, fontWeight: 700 }}>(Optional)</Box></Typography>
+              <Typography sx={{ color: palette.textSubtle, fontSize: 12, mb: 1.75 }}>Purchase source, shipment method, and receiving dates.</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))' }, gap: 1.25 }}>
               <TextField label="Vendor Name" placeholder="Vendor Name" value={form.vendor_name} onChange={(e) => set({ vendor_name: e.target.value })} />
               <TextField label="Purchase Location" placeholder="Purchase Location" value={form.purchase_location} onChange={(e) => set({ purchase_location: e.target.value })} />
@@ -355,23 +356,23 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
             </Box>
           </Box>
 
-          <Box sx={{ p: 1.5, border: '1px solid #E5E7EB', borderRadius: '16px', bgcolor: '#FFFFFF', position: { lg: 'sticky' }, top: { lg: 0 } }}>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B', mb: 1 }}>Part Image</Typography>
-            <Box sx={{ height: { xs: 220, lg: 250 }, borderRadius: '12px', border: '1px dashed #C7D2FE', backgroundColor: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          <Box sx={{ p: 1.5, border: `1px solid ${palette.border}`, borderRadius: '16px', bgcolor: palette.white, position: { lg: 'sticky' }, top: { lg: 0 } }}>
+            <Typography sx={{ fontWeight: 900, color: palette.ink, mb: 1 }}>Part Image</Typography>
+            <Box sx={{ height: { xs: 220, lg: 250 }, borderRadius: '12px', border: '1px dashed #C7D2FE', backgroundColor: palette.surface, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               {shownImage ? (
                 <Box component="img" src={shownImage} alt="Part preview" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
-                <Box sx={{ textAlign: 'center', color: '#94A3B8' }}>
+                <Box sx={{ textAlign: 'center', color: palette.textFaint }}>
                   <ImageOutlinedIcon sx={{ fontSize: 54 }} />
                   <Typography sx={{ mt: 0.5, fontSize: 12, fontWeight: 700 }}>No image selected</Typography>
                 </Box>
               )}
             </Box>
-            <Button fullWidth component="label" variant="outlined" startIcon={<ImageOutlinedIcon />} sx={{ mt: 1.25, minHeight: 42, borderRadius: '10px', textTransform: 'none', fontWeight: 800, color: '#4F46E5', borderColor: '#C7D2FE' }}>
+            <Button fullWidth component="label" variant="outlined" startIcon={<ImageOutlinedIcon />} sx={{ mt: 1.25, minHeight: 42, borderRadius: '10px', textTransform: 'none', fontWeight: 800, color: palette.indigo, borderColor: '#C7D2FE' }}>
               {shownImage ? 'Replace Image' : 'Choose Image'}
               <input hidden type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} />
             </Button>
-            <Typography sx={{ mt: 1, color: '#94A3B8', fontSize: 11, textAlign: 'center' }}>
+            <Typography sx={{ mt: 1, color: palette.textFaint, fontSize: 11, textAlign: 'center' }}>
               {showingCapture
                 ? 'The photograph taken when this part was captured. Replace it with a clearer product photo if you have one.'
                 : 'Use a clear product photo for Sales and Rental lists.'}
@@ -379,9 +380,9 @@ const PartDetailsDialog = ({ definition, onClose, onSave, saving }: Props) => {
           </Box>
         </Box>
       </DialogContent>
-      <DialogActions sx={{ px: { xs: 2, md: 3 }, py: 1.75, justifyContent: 'flex-end', gap: 1, borderTop: '1px solid #E5E7EB', bgcolor: '#FFFFFF' }}>
-        <Button onClick={onClose} sx={{ color: '#64748B', fontWeight: 800, borderRadius: '10px' }}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ minHeight: 42, background: 'linear-gradient(135deg, #4F46E5 0%, #9333EA 100%)', borderRadius: '10px', px: 3, fontWeight: 900 }}>
+      <DialogActions sx={{ px: { xs: 2, md: 3 }, py: 1.75, justifyContent: 'flex-end', gap: 1, borderTop: `1px solid ${palette.border}`, bgcolor: palette.white }}>
+        <Button onClick={onClose} sx={{ color: palette.textSubtle, fontWeight: 800, borderRadius: '10px' }}>Cancel</Button>
+        <Button variant="contained" onClick={handleSave} disabled={saving} sx={{ minHeight: 42, background: palette.gradientBrand, borderRadius: '10px', px: 3, fontWeight: 900 }}>
           {saving ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : `Save for ${forAll}`}
         </Button>
       </DialogActions>

@@ -23,6 +23,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useChatStore } from '@/stores/chatStore'
 import CallPanel from './CallPanel'
 import ProtectedChatImage from './ProtectedChatImage'
+import { palette } from '@/theme/palette'
 
 // Helper: get icon for file type
 const getFileIcon = (fileType: string | null) => {
@@ -240,20 +241,20 @@ const MessagePanel = ({ user }: Props) => {
           gap: 1.5,
           p: 1.5,
           borderRadius: '12px',
-          backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : 'rgba(124,58,237,0.04)',
-          border: `1px solid ${isMine ? 'rgba(255,255,255,0.2)' : 'rgba(124,58,237,0.1)'}`,
+          backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : 'rgba(4,120,87,0.04)',
+          border: `1px solid ${isMine ? 'rgba(255,255,255,0.2)' : 'rgba(4,120,87,0.1)'}`,
           textDecoration: 'none',
           color: 'inherit',
           transition: 'all 0.2s ease',
-          '&:hover': { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : 'rgba(124,58,237,0.08)' },
+          '&:hover': { backgroundColor: isMine ? 'rgba(255,255,255,0.18)' : 'rgba(4,120,87,0.08)' },
         }}
       >
         <Box sx={{
           width: 40, height: 40, borderRadius: '10px',
-          backgroundColor: isMine ? 'rgba(255,255,255,0.15)' : '#F5F3FF',
+          backgroundColor: isMine ? 'rgba(255,255,255,0.15)' : palette.brandTint,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
-          color: isMine ? '#fff' : '#7C3AED',
+          color: isMine ? '#fff' : palette.brand,
         }}>
           {getFileIcon(msg.file_type)}
         </Box>
@@ -277,35 +278,35 @@ const MessagePanel = ({ user }: Props) => {
     <Box sx={{
       flex: 1, display: 'flex', flexDirection: 'column',
       backgroundColor: '#fff', borderRadius: '20px',
-      boxShadow: '0 4px 24px rgba(124,58,237,0.08)',
-      border: '1px solid rgba(124,58,237,0.06)',
+      boxShadow: '0 4px 24px rgba(4,120,87,0.08)',
+      border: '1px solid rgba(4,120,87,0.06)',
       overflow: 'hidden',
     }}>
       {/* Header */}
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 1.5,
-        px: 3, py: 2, borderBottom: '1px solid #F3F4F6',
+        px: 3, py: 2, borderBottom: `1px solid ${palette.surfaceGray}`,
       }}>
-        <Avatar sx={{ width: 40, height: 40, backgroundColor: '#7C3AED', fontWeight: 700, fontSize: '0.9rem' }}>
+        <Avatar sx={{ width: 40, height: 40, backgroundColor: palette.brand, fontWeight: 700, fontSize: '0.9rem' }}>
           {initials}
         </Avatar>
         <Box sx={{ flex: 1 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '0.95rem', color: '#1E1B4B' }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.95rem', color: palette.ink }}>
             {displayName}
           </Typography>
-          <Typography variant="caption" sx={{ color: isOnline ? '#10B981' : '#9CA3AF' }}>
+          <Typography variant="caption" sx={{ color: isOnline ? palette.brandMid : palette.textDisabled }}>
             {isTyping ? 'Typing...' : isOnline ? 'Online' : 'Offline'}
           </Typography>
         </Box>
         <Tooltip title="Voice Call">
           <IconButton onClick={() => handleStartCall('voice')}
-            sx={{ color: '#7C3AED', backgroundColor: '#F5F3FF', '&:hover': { backgroundColor: '#EDE9FE' } }}>
+            sx={{ color: palette.brand, backgroundColor: palette.brandTint, '&:hover': { backgroundColor: palette.brandSoft } }}>
             <CallIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Tooltip title="Video Call">
           <IconButton onClick={() => handleStartCall('video')}
-            sx={{ color: '#7C3AED', backgroundColor: '#F5F3FF', '&:hover': { backgroundColor: '#EDE9FE' } }}>
+            sx={{ color: palette.brand, backgroundColor: palette.brandTint, '&:hover': { backgroundColor: palette.brandSoft } }}>
             <VideocamIcon fontSize="small" />
           </IconButton>
         </Tooltip>
@@ -315,11 +316,11 @@ const MessagePanel = ({ user }: Props) => {
       <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2 }}>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress size={28} sx={{ color: '#7C3AED' }} />
+            <CircularProgress size={28} sx={{ color: palette.brand }} />
           </Box>
         ) : messages.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 6 }}>
-            <Typography variant="body2" sx={{ color: '#9CA3AF' }}>
+            <Typography variant="body2" sx={{ color: palette.textDisabled }}>
               No messages yet. Say hello! 👋
             </Typography>
           </Box>
@@ -340,7 +341,7 @@ const MessagePanel = ({ user }: Props) => {
                 }}
               >
                 {!isMine && showAvatar && (
-                  <Avatar sx={{ width: 28, height: 28, backgroundColor: '#7C3AED', fontSize: '0.65rem', fontWeight: 700 }}>
+                  <Avatar sx={{ width: 28, height: 28, backgroundColor: palette.brand, fontSize: '0.65rem', fontWeight: 700 }}>
                     {initials}
                   </Avatar>
                 )}
@@ -350,10 +351,10 @@ const MessagePanel = ({ user }: Props) => {
                   px: isFile && isImageFile(msg.file_type) ? 0.5 : 2.2,
                   py: isFile && isImageFile(msg.file_type) ? 0.5 : 1.2,
                   borderRadius: isMine ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                  background: isMine ? 'linear-gradient(135deg, #7C3AED 0%, #F472B6 100%)' : '#FFFFFF',
-                  color: isMine ? '#FFFFFF' : '#1E1B4B',
-                  boxShadow: isMine ? '0 8px 24px rgba(124,58,237,0.15)' : '0 4px 12px rgba(0,0,0,0.03)',
-                  border: isMine ? 'none' : '1px solid rgba(124,58,237,0.08)',
+                  background: isMine ? `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)` : palette.white,
+                  color: isMine ? palette.white : palette.ink,
+                  boxShadow: isMine ? '0 8px 24px rgba(4,120,87,0.15)' : '0 4px 12px rgba(0,0,0,0.03)',
+                  border: isMine ? 'none' : '1px solid rgba(4,120,87,0.08)',
                   transition: 'transform 0.2s ease',
                   '&:hover': { transform: 'scale(1.01)' },
                   overflow: 'hidden',
@@ -373,7 +374,7 @@ const MessagePanel = ({ user }: Props) => {
                   )}
                   <Typography sx={{
                     fontSize: '0.65rem', mt: 0.5,
-                    color: isMine ? 'rgba(255,255,255,0.7)' : '#9CA3AF',
+                    color: isMine ? 'rgba(255,255,255,0.7)' : palette.textDisabled,
                     textAlign: 'right',
                     fontWeight: 600,
                     px: isFile && isImageFile(msg.file_type) ? 1.5 : 0,
@@ -404,26 +405,26 @@ const MessagePanel = ({ user }: Props) => {
           display: 'flex', alignItems: 'center', gap: 1.5,
           mx: 2, mb: 0.5, p: 1.5,
           borderRadius: '12px',
-          backgroundColor: '#F5F3FF',
-          border: '1px solid rgba(124,58,237,0.1)',
+          backgroundColor: palette.brandTint,
+          border: '1px solid rgba(4,120,87,0.1)',
         }}>
           <Box sx={{
             width: 36, height: 36, borderRadius: '8px',
-            backgroundColor: '#EDE9FE',
+            backgroundColor: palette.brandSoft,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#7C3AED',
+            color: palette.brand,
           }}>
             {getFileIcon(pendingFile.file_type)}
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: '#1E1B4B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: palette.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {pendingFile.file_name}
             </Typography>
-            <Typography sx={{ fontSize: '0.7rem', color: '#9CA3AF' }}>
+            <Typography sx={{ fontSize: '0.7rem', color: palette.textDisabled }}>
               {formatFileSize(pendingFile.file_size)}
             </Typography>
           </Box>
-          <IconButton size="small" onClick={() => setPendingFile(null)} sx={{ color: '#9CA3AF' }}>
+          <IconButton size="small" onClick={() => setPendingFile(null)} sx={{ color: palette.textDisabled }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -434,8 +435,8 @@ const MessagePanel = ({ user }: Props) => {
         <Box sx={{ px: 2, pb: 0.5 }}>
           <LinearProgress sx={{
             borderRadius: 4,
-            '& .MuiLinearProgress-bar': { backgroundColor: '#7C3AED' },
-            backgroundColor: '#EDE9FE',
+            '& .MuiLinearProgress-bar': { backgroundColor: palette.brand },
+            backgroundColor: palette.brandSoft,
           }} />
         </Box>
       )}
@@ -452,16 +453,16 @@ const MessagePanel = ({ user }: Props) => {
       {/* Input area */}
       <Box sx={{
         display: 'flex', alignItems: 'center', gap: 1,
-        px: 2, py: 1.5, borderTop: '1px solid #F3F4F6',
+        px: 2, py: 1.5, borderTop: `1px solid ${palette.surfaceGray}`,
       }}>
-        <IconButton onClick={() => setShowEmoji(!showEmoji)} sx={{ color: showEmoji ? '#7C3AED' : '#9CA3AF' }}>
+        <IconButton onClick={() => setShowEmoji(!showEmoji)} sx={{ color: showEmoji ? palette.brand : palette.textDisabled }}>
           <EmojiEmotionsIcon />
         </IconButton>
         <Tooltip title="Attach file">
           <IconButton
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            sx={{ color: pendingFile ? '#7C3AED' : '#9CA3AF', '&:hover': { color: '#7C3AED' } }}
+            sx={{ color: pendingFile ? palette.brand : palette.textDisabled, '&:hover': { color: palette.brand } }}
           >
             <AttachFileIcon sx={{ transform: 'rotate(45deg)' }} />
           </IconButton>
@@ -473,8 +474,8 @@ const MessagePanel = ({ user }: Props) => {
           multiline maxRows={3}
           sx={{
             '& .MuiOutlinedInput-root': {
-              borderRadius: '12px', backgroundColor: '#F9FAFB',
-              '& fieldset': { borderColor: '#E5E7EB' },
+              borderRadius: '12px', backgroundColor: palette.surfaceFaint,
+              '& fieldset': { borderColor: palette.border },
             },
           }}
         />
@@ -482,9 +483,9 @@ const MessagePanel = ({ user }: Props) => {
           onClick={handleSend}
           disabled={!message.trim() && !pendingFile}
           sx={{
-            backgroundColor: '#7C3AED', color: '#fff',
-            '&:hover': { backgroundColor: '#6D28D9' },
-            '&.Mui-disabled': { backgroundColor: '#E9D5FF', color: '#C4B5FD' },
+            backgroundColor: palette.brand, color: '#fff',
+            '&:hover': { backgroundColor: palette.brandDeep },
+            '&.Mui-disabled': { backgroundColor: palette.brandBorder, color: palette.brandPale },
             width: 40, height: 40,
           }}
         >

@@ -22,6 +22,7 @@ import {
   fetchModalities, createModality, updateModality, duplicateModality, deleteModality,
   type Modality, type ModalityCreate, type ModalityUpdate
 } from '@/api/modalities'
+import { palette } from '@/theme/palette'
 
 const CATEGORIES = [
   { value: 'imaging', label: 'Imaging' },
@@ -31,10 +32,10 @@ const CATEGORIES = [
 ]
 
 const CAT_COLORS: Record<string, { bg: string; color: string }> = {
-  imaging: { bg: '#EFF6FF', color: '#3B82F6' },
-  patient_monitoring: { bg: '#F0FDF4', color: '#10B981' },
-  laboratory: { bg: '#FFF7ED', color: '#F59E0B' },
-  treatment: { bg: '#FDF2F8', color: '#EC4899' },
+  imaging: { bg: palette.infoTint, color: palette.infoBright },
+  patient_monitoring: { bg: palette.successTint, color: palette.brandMid },
+  laboratory: { bg: '#FFF7ED', color: palette.warningBright },
+  treatment: { bg: '#FDF2F8', color: palette.accent },
 }
 
 interface Props {
@@ -124,14 +125,14 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
         <Box sx={{
           display: 'flex', alignItems: 'center', gap: 1.5,
           p: 1.5, pl: 1.5 + depth * 3, borderRadius: '12px',
-          backgroundColor: viewMod?.id === mod.id ? '#F5F3FF' : '#FAFAFA',
+          backgroundColor: viewMod?.id === mod.id ? palette.brandTint : '#FAFAFA',
           mb: 0.75, transition: 'all 0.15s',
-          '&:hover': { backgroundColor: '#F5F3FF' },
+          '&:hover': { backgroundColor: palette.brandTint },
         }}>
-          {depth > 0 && <SubdirectoryArrowRightIcon sx={{ fontSize: '1rem', color: '#C4B5FD', ml: -1 }} />}
+          {depth > 0 && <SubdirectoryArrowRightIcon sx={{ fontSize: '1rem', color: palette.brandPale, ml: -1 }} />}
           {hasChildren && (
             <IconButton size="small" onClick={() => setExpandedId(isExpanded ? null : mod.id)}
-              sx={{ width: 24, height: 24, color: '#7C3AED' }}>
+              sx={{ width: 24, height: 24, color: palette.brand }}>
               {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
             </IconButton>
           )}
@@ -146,8 +147,8 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
           </Box>
 
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E1B4B' }}>{mod.name}</Typography>
-            {mod.description && <Typography variant="caption" sx={{ color: '#9CA3AF' }}>{mod.description}</Typography>}
+            <Typography variant="body2" sx={{ fontWeight: 600, color: palette.ink }}>{mod.name}</Typography>
+            {mod.description && <Typography variant="caption" sx={{ color: palette.textDisabled }}>{mod.description}</Typography>}
           </Box>
 
           <Chip label={mod.category.replace('_', ' ')} size="small"
@@ -155,11 +156,11 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
 
           {mod.inspection_frequency_days && (
             <Chip label={`${mod.inspection_frequency_days}d`} size="small"
-              sx={{ backgroundColor: '#F3F4F6', color: '#6B7280', fontWeight: 600, fontSize: '0.65rem' }} />
+              sx={{ backgroundColor: palette.surfaceGray, color: palette.textMuted, fontWeight: 600, fontSize: '0.65rem' }} />
           )}
 
           <IconButton size="small" onClick={(e) => openMenu(e, mod)}
-            sx={{ color: '#7C3AED', backgroundColor: '#F5F3FF', borderRadius: '8px', '&:hover': { backgroundColor: '#EDE9FE' } }}>
+            sx={{ color: palette.brand, backgroundColor: palette.brandTint, borderRadius: '8px', '&:hover': { backgroundColor: palette.brandSoft } }}>
             <MoreVertIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -176,7 +177,7 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden' } }}>
       <Box sx={{
-        background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)',
+        background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.ink} 100%)`,
         px: 3.5, py: 3, display: 'flex', alignItems: 'center', gap: 2,
       }}>
         <Box sx={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -198,8 +199,8 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
       <DialogContent sx={{ p: { xs: 2, sm: 3.5 } }}>
         {/* Form */}
         {showForm && (
-          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid rgba(124,58,237,0.12)' }}>
-            <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, mb: 1.5, display: 'block' }}>
+          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: palette.brandTint, border: '1px solid rgba(4,120,87,0.12)' }}>
+            <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, mb: 1.5, display: 'block' }}>
               {editingId ? 'Edit Modality' : form.parent_id ? 'Add Sub-Modality' : 'New Modality'}
             </Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2, mb: 2 }}>
@@ -213,10 +214,10 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
                 onChange={e => setForm({ ...form, inspection_frequency_days: e.target.value ? Number(e.target.value) : undefined })} />
             </Box>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button size="small" onClick={resetForm} sx={{ color: '#6B7280' }}>Cancel</Button>
+              <Button size="small" onClick={resetForm} sx={{ color: palette.textMuted }}>Cancel</Button>
               <Button size="small" variant="contained" onClick={handleSubmit}
                 disabled={createMut.isPending || updateMut.isPending}
-                sx={{ backgroundColor: '#7C3AED', '&:hover': { backgroundColor: '#6D28D9' } }}>
+                sx={{ backgroundColor: palette.brand, '&:hover': { backgroundColor: palette.brandDeep } }}>
                 {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : editingId ? 'Save' : 'Create'}
               </Button>
             </Box>
@@ -225,12 +226,12 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
 
         {/* View detail */}
         {viewMod && (
-          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F0FDF4', border: '1px solid rgba(16,185,129,0.12)' }}>
-            <Typography variant="overline" sx={{ color: '#10B981', fontWeight: 700, mb: 1, display: 'block' }}>Modality Details</Typography>
+          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: palette.successTint, border: '1px solid rgba(16,185,129,0.12)' }}>
+            <Typography variant="overline" sx={{ color: palette.brandMid, fontWeight: 700, mb: 1, display: 'block' }}>Modality Details</Typography>
             <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{viewMod.name}</Typography>
-            <Typography variant="caption" sx={{ color: '#6B7280' }}>Category: {viewMod.category} | Children: {viewMod.children?.length || 0}</Typography>
-            {viewMod.description && <Typography variant="body2" sx={{ mt: 1, color: '#374151' }}>{viewMod.description}</Typography>}
-            <Button size="small" onClick={() => setViewMod(null)} sx={{ mt: 1, color: '#6B7280' }}>Close</Button>
+            <Typography variant="caption" sx={{ color: palette.textMuted }}>Category: {viewMod.category} | Children: {viewMod.children?.length || 0}</Typography>
+            {viewMod.description && <Typography variant="body2" sx={{ mt: 1, color: palette.textStrong }}>{viewMod.description}</Typography>}
+            <Button size="small" onClick={() => setViewMod(null)} sx={{ mt: 1, color: palette.textMuted }}>Close</Button>
           </Box>
         )}
 
@@ -244,12 +245,12 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.1rem' }} />
+                  <SearchIcon sx={{ color: palette.textDisabled, fontSize: '1.1rem' }} />
                 </InputAdornment>
               ),
               endAdornment: isFetching && !isLoading ? (
                 <InputAdornment position="end">
-                  <CircularProgress size={16} sx={{ color: '#7C3AED' }} />
+                  <CircularProgress size={16} sx={{ color: palette.brand }} />
                 </InputAdornment>
               ) : undefined,
             }}
@@ -267,7 +268,7 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} variant="rounded" height={50} sx={{ borderRadius: '12px', mb: 0.75 }} />)
         ) : modalities.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 5 }}>
-            <CategoryIcon sx={{ fontSize: '3rem', color: '#E5E7EB', mb: 1 }} />
+            <CategoryIcon sx={{ fontSize: '3rem', color: palette.border, mb: 1 }} />
             <Typography variant="body2" color="text.secondary">
               {deferredSearch ? 'No modalities found' : 'No modalities configured'}
             </Typography>
@@ -279,27 +280,27 @@ const ModalitiesModal = ({ open, onClose }: Props) => {
 
       {/* Actions Menu */}
       <Menu anchorEl={anchorEl} open={!!anchorEl} onClose={closeMenu}
-        PaperProps={{ sx: { borderRadius: '14px', boxShadow: '0 4px 24px rgba(124,58,237,0.15)', minWidth: 200 } }}>
+        PaperProps={{ sx: { borderRadius: '14px', boxShadow: '0 4px 24px rgba(4,120,87,0.15)', minWidth: 200 } }}>
         <MenuItem onClick={() => { setViewMod(menuMod); closeMenu() }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
-          <ListItemIcon><VisibilityOutlinedIcon sx={{ color: '#7C3AED', fontSize: '1.1rem' }} /></ListItemIcon>
+          <ListItemIcon><VisibilityOutlinedIcon sx={{ color: palette.brand, fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="View" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
         </MenuItem>
         <MenuItem onClick={() => menuMod && handleEdit(menuMod)} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
-          <ListItemIcon><EditOutlinedIcon sx={{ color: '#6D28D9', fontSize: '1.1rem' }} /></ListItemIcon>
+          <ListItemIcon><EditOutlinedIcon sx={{ color: palette.brandDeep, fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="Edit Modality" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
         </MenuItem>
         <MenuItem onClick={() => { menuMod && handleAddSub(menuMod.id) }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
-          <ListItemIcon><SubdirectoryArrowRightIcon sx={{ color: '#3B82F6', fontSize: '1.1rem' }} /></ListItemIcon>
+          <ListItemIcon><SubdirectoryArrowRightIcon sx={{ color: palette.infoBright, fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="Add Sub-Modality" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
         </MenuItem>
         <MenuItem onClick={() => { menuMod && dupMut.mutate(menuMod.id); closeMenu() }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px' }}>
-          <ListItemIcon><ContentCopyIcon sx={{ color: '#10B981', fontSize: '1.1rem' }} /></ListItemIcon>
+          <ListItemIcon><ContentCopyIcon sx={{ color: palette.brandMid, fontSize: '1.1rem' }} /></ListItemIcon>
           <ListItemText primary="Duplicate" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600 }} />
         </MenuItem>
-        <Divider sx={{ mx: 2, borderColor: 'rgba(124,58,237,0.08)' }} />
-        <MenuItem onClick={() => { menuMod && delMut.mutate(menuMod.id); closeMenu() }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px', '&:hover': { backgroundColor: '#FEF2F2' } }}>
-          <ListItemIcon><DeleteOutlineIcon sx={{ color: '#EF4444', fontSize: '1.1rem' }} /></ListItemIcon>
-          <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600, color: '#EF4444' }} />
+        <Divider sx={{ mx: 2, borderColor: 'rgba(4,120,87,0.08)' }} />
+        <MenuItem onClick={() => { menuMod && delMut.mutate(menuMod.id); closeMenu() }} sx={{ py: 1.2, mx: 0.75, borderRadius: '8px', '&:hover': { backgroundColor: palette.dangerWash } }}>
+          <ListItemIcon><DeleteOutlineIcon sx={{ color: palette.dangerBright, fontSize: '1.1rem' }} /></ListItemIcon>
+          <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: '0.85rem', fontWeight: 600, color: palette.dangerBright }} />
         </MenuItem>
       </Menu>
     </Dialog>

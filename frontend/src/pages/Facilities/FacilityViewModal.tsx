@@ -22,6 +22,7 @@ import DownloadIcon from '@mui/icons-material/Download'
 import { type Facility, downloadFacilityDocument, fetchFacilityDocuments, exportFacilityPdf, fetchFacility } from '@/api/facilities'
 import { toast } from 'react-toastify'
 import { facilityTimezoneLabel, formatUSPhone } from '@/utils/formatters'
+import { palette } from '@/theme/palette'
 
 interface Props {
   open: boolean
@@ -60,22 +61,22 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
       <Box sx={{
         display: 'flex', alignItems: 'flex-start', gap: 1.5,
         p: 1.5, borderRadius: '12px', backgroundColor: '#FAFAFA',
-        transition: 'all 0.15s', '&:hover': { backgroundColor: '#F5F3FF' },
+        transition: 'all 0.15s', '&:hover': { backgroundColor: palette.brandTint },
         height: '100%',
       }}>
         <Box sx={{
           width: 32, height: 32, borderRadius: '8px',
-          background: 'linear-gradient(135deg, #7C3AED20, #6D28D920)',
+          background: `linear-gradient(135deg, ${palette.brand}20, ${palette.brandDeep}20)`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0, '& svg': { fontSize: '1rem', color: '#7C3AED' },
+          flexShrink: 0, '& svg': { fontSize: '1rem', color: palette.brand },
         }}>
           {icon}
         </Box>
         <Box sx={{ wordBreak: 'break-word' }}>
-          <Typography variant="caption" sx={{ color: '#9CA3AF', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <Typography variant="caption" sx={{ color: palette.textDisabled, fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {label}
           </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.85rem' }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: palette.ink, fontSize: '0.85rem' }}>
             {value || '—'}
           </Typography>
         </Box>
@@ -90,7 +91,7 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
       PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden' } }}
     >
       <Box sx={{
-        background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)',
+        background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.ink} 100%)`,
         px: { xs: 2, sm: 3.5 }, py: { xs: 2, sm: 3 }, display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap',
         position: 'relative', overflow: 'hidden',
       }}>
@@ -129,21 +130,21 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
       <DialogContent sx={{ p: { xs: 2, sm: 3.5 } }}>
         <Box sx={{ mb: 2.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Chip label={facility.status || 'Active'} size="small"
-            sx={{ backgroundColor: facility.status === 'inactive' ? '#FEF2F2' : '#F0FDF4', color: facility.status === 'inactive' ? '#991B1B' : '#10B981', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize' }}
+            sx={{ backgroundColor: facility.status === 'inactive' ? palette.dangerWash : palette.successTint, color: facility.status === 'inactive' ? '#991B1B' : palette.brandMid, fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize' }}
           />
           <Chip label={facility.tier_id ? `Tier #${facility.tier_id}` : 'No Tier Assigned'} size="small"
-            sx={{ backgroundColor: facility.tier_id ? '#F5F3FF' : '#F3F4F6', color: facility.tier_id ? '#7C3AED' : '#9CA3AF', fontWeight: 600, fontSize: '0.75rem' }}
+            sx={{ backgroundColor: facility.tier_id ? palette.brandTint : palette.surfaceGray, color: facility.tier_id ? palette.brand : palette.textDisabled, fontWeight: 600, fontSize: '0.75rem' }}
           />
           <Chip label={`Created ${new Date(facility.created_at).toLocaleDateString()}`} size="small"
-            sx={{ backgroundColor: '#F3F4F6', color: '#4B5563', fontWeight: 600, fontSize: '0.7rem' }}
+            sx={{ backgroundColor: palette.surfaceGray, color: '#4B5563', fontWeight: 600, fontSize: '0.7rem' }}
           />
         </Box>
 
-        <Divider sx={{ mb: 3, borderColor: 'rgba(124,58,237,0.08)' }} />
+        <Divider sx={{ mb: 3, borderColor: 'rgba(4,120,87,0.08)' }} />
 
         {/* General Info */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 2 }}>
-          <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em' }}>
+          <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, letterSpacing: '0.08em' }}>
             General Information
           </Typography>
           {onEdit && (
@@ -156,10 +157,10 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
                 width: 30,
                 height: 30,
                 ml: 'auto',
-                color: '#7C3AED',
-                bgcolor: '#F5F3FF',
-                border: '1px solid #DDD6FE',
-                '&:hover': { bgcolor: '#EDE9FE' },
+                color: palette.brand,
+                bgcolor: palette.brandTint,
+                border: `1px solid ${palette.brandBorder}`,
+                '&:hover': { bgcolor: palette.brandSoft },
               }}
             >
               <EditOutlinedIcon sx={{ fontSize: 17 }} />
@@ -178,13 +179,13 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
         </Grid>
 
         {/* Details & Parent */}
-        <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>Facility Lineage</Typography>
+        <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>Facility Lineage</Typography>
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <InfoItem icon={<BusinessIcon />} label="Parent Facility" value={parentFacility ? parentFacility.name : (facility.parent_facility_id ? `ID #${facility.parent_facility_id}` : 'None')} />
         </Grid>
 
         {/* Billing */}
-        <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>Billing Information</Typography>
+        <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>Billing Information</Typography>
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <InfoItem icon={<PersonIcon />} label="Billing Name" value={facility.billing_name} />
           <InfoItem icon={<EmailIcon />} label="Billing Email" value={facility.billing_email} />
@@ -196,7 +197,7 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
         </Grid>
 
         {/* Settings */}
-        <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>Other Settings</Typography>
+        <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>Other Settings</Typography>
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <InfoItem icon={<PaymentsIcon />} label="Payment Method" value={facility.payment_method} />
           <InfoItem icon={<PaymentsIcon />} label="Installment Type" value={facility.installment_type} />
@@ -206,32 +207,32 @@ const FacilityViewModal = ({ open, onClose, facility, onEdit, onManageUsers }: P
         </Grid>
 
         {/* Documents */}
-        <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>Attached Documents</Typography>
+        <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, letterSpacing: '0.08em', mb: 2, display: 'block' }}>Attached Documents</Typography>
         {docsLoading ? (
           <Skeleton variant="rounded" height={60} sx={{ borderRadius: '12px' }} />
         ) : documents.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 3, backgroundColor: '#FAFAFA', borderRadius: '12px', border: '1px dashed #E5E7EB' }}>
-            <Typography variant="body2" sx={{ color: '#9CA3AF' }}>No documents attached.</Typography>
+          <Box sx={{ textAlign: 'center', py: 3, backgroundColor: '#FAFAFA', borderRadius: '12px', border: `1px dashed ${palette.border}` }}>
+            <Typography variant="body2" sx={{ color: palette.textDisabled }}>No documents attached.</Typography>
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             {documents.map(doc => (
               <Box key={doc.id} sx={{
                 display: 'flex', alignItems: 'center', gap: 2, p: 2,
-                borderRadius: '12px', border: '1px solid #E5E7EB',
+                borderRadius: '12px', border: `1px solid ${palette.border}`,
                 backgroundColor: '#fff',
               }}>
-                <InsertDriveFileIcon sx={{ color: '#7C3AED' }} />
+                <InsertDriveFileIcon sx={{ color: palette.brand }} />
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#1E1B4B' }}>{doc.filename}</Typography>
-                  <Typography variant="caption" sx={{ color: '#6B7280' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: palette.ink }}>{doc.filename}</Typography>
+                  <Typography variant="caption" sx={{ color: palette.textMuted }}>
                     {new Date(doc.uploaded_at).toLocaleDateString()} · {Math.round((doc.file_size || 0) / 1024)} KB
                   </Typography>
                 </Box>
                 <IconButton
                   aria-label={`Download ${doc.filename}`}
                   onClick={() => downloadFacilityDocument(facility.id, doc).catch(() => toast.error('Unable to download document'))}
-                  sx={{ color: '#7C3AED' }}
+                  sx={{ color: palette.brand }}
                 >
                   <DownloadIcon />
                 </IconButton>

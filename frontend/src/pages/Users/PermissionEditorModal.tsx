@@ -15,6 +15,7 @@ import {
   type UserPermissionRule,
 } from '@/api/users'
 import { buildDefaultPermissionMatrix, emptyRule, normalizePermissionMatrix } from '@/config/permissions'
+import { palette } from '@/theme/palette'
 
 const ACTION_LABELS: Array<keyof Omit<UserPermissionRule, 'scope'>> = ['index', 'view', 'add', 'edit', 'delete']
 const CHILD_ACTIONS: Array<keyof Omit<UserPermissionRule, 'scope'>> = ['view', 'add', 'edit', 'delete']
@@ -165,33 +166,33 @@ const PermissionEditorModal = ({ open, user, onClose }: Props) => {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
       <DialogTitle sx={{ p: 0 }}>
-        <Box sx={{ px: 3, py: 2.25, background: 'linear-gradient(135deg, #F8FAFC 0%, #F5F3FF 100%)', display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid #E5E7EB' }}>
-          <Box sx={{ width: 42, height: 42, borderRadius: '12px', backgroundColor: '#EDE9FE', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box sx={{ px: 3, py: 2.25, background: `linear-gradient(135deg, ${palette.surface} 0%, ${palette.brandTint} 100%)`, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: `1px solid ${palette.border}` }}>
+          <Box sx={{ width: 42, height: 42, borderRadius: '12px', backgroundColor: palette.brandSoft, color: palette.brand, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <SecurityIcon />
           </Box>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E1B4B' }}>Permission Matrix</Typography>
-            <Typography variant="body2" sx={{ color: '#6B7280' }}>
+            <Typography variant="h6" sx={{ fontWeight: 900, color: palette.ink }}>Permission Matrix</Typography>
+            <Typography variant="body2" sx={{ color: palette.textMuted }}>
               {user ? `${user.full_name} · ${user.role.replace('_', ' ')}` : 'Select module access'}
             </Typography>
           </Box>
-          <Chip label={`${allowedCount} permissions enabled`} sx={{ backgroundColor: '#EEF2FF', color: '#4F46E5', fontWeight: 800 }} />
+          <Chip label={`${allowedCount} permissions enabled`} sx={{ backgroundColor: palette.indigoTint, color: palette.indigo, fontWeight: 800 }} />
           <IconButton onClick={onClose}><CloseIcon /></IconButton>
         </Box>
       </DialogTitle>
 
-      <DialogContent sx={{ p: 3, backgroundColor: '#F8FAFC' }}>
+      <DialogContent sx={{ p: 3, backgroundColor: palette.surface }}>
         {isBusy ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-            <CircularProgress sx={{ color: '#7C3AED' }} />
+            <CircularProgress sx={{ color: palette.brand }} />
           </Box>
         ) : (
-          <Paper sx={{ overflow: 'hidden', borderRadius: '16px', border: '1px solid #E5E7EB' }} elevation={0}>
-            <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid #E5E7EB' }}>
+          <Paper sx={{ overflow: 'hidden', borderRadius: '16px', border: `1px solid ${palette.border}` }} elevation={0}>
+            <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${palette.border}` }}>
               <Button size="small" onClick={selectAllEverything} sx={{ fontWeight: 800 }}>
                 Select All
               </Button>
-              <Typography variant="caption" sx={{ color: '#94A3B8' }}>
+              <Typography variant="caption" sx={{ color: palette.textFaint }}>
                 Scope controls which records this user can see or modify inside each module.
               </Typography>
             </Box>
@@ -214,7 +215,7 @@ const PermissionEditorModal = ({ open, user, onClose }: Props) => {
                     const rule = matrix[module.key] || emptyRule()
                     return (
                       <TableRow key={module.key} hover>
-                        <TableCell sx={{ color: '#94A3B8' }}>{index + 1}</TableCell>
+                        <TableCell sx={{ color: palette.textFaint }}>{index + 1}</TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Typography sx={{ fontWeight: 900, color: '#111827' }}>{module.label}</Typography>
@@ -229,7 +230,7 @@ const PermissionEditorModal = ({ open, user, onClose }: Props) => {
                               size="small"
                               checked={Boolean(rule[action])}
                               onChange={() => toggleAction(module.key, action)}
-                              sx={{ color: '#7C3AED', '&.Mui-checked': { color: '#4F46E5' } }}
+                              sx={{ color: palette.brand, '&.Mui-checked': { color: palette.indigo } }}
                             />
                           </TableCell>
                         ))}
@@ -257,13 +258,13 @@ const PermissionEditorModal = ({ open, user, onClose }: Props) => {
         )}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid #E5E7EB' }}>
+      <DialogActions sx={{ px: 3, py: 2, borderTop: `1px solid ${palette.border}` }}>
         <Button onClick={onClose}>Cancel</Button>
         <Button
           variant="contained"
           onClick={() => updateMutation.mutate()}
           disabled={updateMutation.isPending || !user}
-          sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)', fontWeight: 900 }}
+          sx={{ background: palette.gradientBrand, fontWeight: 900 }}
         >
           {updateMutation.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Save Permissions'}
         </Button>

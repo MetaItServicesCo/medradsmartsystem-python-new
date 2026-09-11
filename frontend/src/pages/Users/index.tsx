@@ -36,6 +36,7 @@ import ContextTableRow from '@/components/ContextTableRow'
 import { useListContext } from '@/contexts/ListContext'
 import { fetchFacility } from '@/api/facilities'
 import { hasPermission } from '@/config/permissions'
+import { palette } from '@/theme/palette'
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All Roles' },
@@ -63,22 +64,22 @@ const USER_SEARCH_FIELDS = [
 ]
 
 const ROLE_COLORS: Record<string, string> = {
-  superadmin: '#7C3AED',
-  admin: '#6D28D9',
-  facility_admin: '#2563EB',
-  technician: '#059669',
-  hr_manager: '#D97706',
+  superadmin: palette.brand,
+  admin: palette.brandDeep,
+  facility_admin: palette.infoStrong,
+  technician: palette.brandStrong,
+  hr_manager: palette.warningStrong,
   facility_manager: '#0891B2',
-  employee: '#6B7280',
-  client: '#9CA3AF',
+  employee: palette.textMuted,
+  client: palette.textDisabled,
 }
 
 const ACTION_MENU_PAPER = {
   sx: {
     borderRadius: '16px',
     minWidth: 190,
-    boxShadow: '0 18px 45px rgba(30,27,75,0.16)',
-    border: '1px solid #EEF0F6',
+    boxShadow: palette.shadowMenu,
+    border: `1px solid ${palette.borderSoft}`,
   },
 }
 const ACTION_MENU_ITEM = {
@@ -262,7 +263,7 @@ const Users = () => {
 
   return (
     <Box className="page-enter">
-      <Typography variant="body2" sx={{ color: '#9CA3AF', mb: 3 }}>
+      <Typography variant="body2" sx={{ color: palette.textDisabled, mb: 3 }}>
         Manage system users, credentials, and role assignments.
       </Typography>
 
@@ -304,7 +305,7 @@ const Users = () => {
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon sx={{ color: '#9CA3AF', fontSize: '1.2rem' }} />
+                <SearchIcon sx={{ color: palette.textDisabled, fontSize: '1.2rem' }} />
               </InputAdornment>
             ),
           }}
@@ -323,7 +324,7 @@ const Users = () => {
         </FormControl>
         <Box sx={{ flex: 1 }} />
         {isFetching && !isLoading && (
-          <CircularProgress size={18} thickness={5} sx={{ color: '#7C3AED' }} />
+          <CircularProgress size={18} thickness={5} sx={{ color: palette.brand }} />
         )}
         {facilityId && selectedFacility && canAddUsers && (
           <Button
@@ -342,8 +343,8 @@ const Users = () => {
             onClick={() => setCreateOpen(true)}
             disabled={Boolean(facilityId) && !selectedFacility}
             sx={{
-              background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
-              boxShadow: '0 4px 14px rgba(124,58,237,0.3)',
+              background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.brandDeep} 100%)`,
+              boxShadow: '0 4px 14px rgba(4,120,87,0.3)',
             }}
           >
             Create User
@@ -354,7 +355,7 @@ const Users = () => {
       {/* Table */}
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress sx={{ color: '#7C3AED' }} />
+          <CircularProgress sx={{ color: palette.brand }} />
         </Box>
       ) : (
         <TableContainer component={Paper} className="list-scroll-panel" sx={{ borderRadius: '16px' }}>
@@ -390,7 +391,7 @@ const Users = () => {
                         <Avatar
                           sx={{
                             width: 36, height: 36,
-                            backgroundColor: ROLE_COLORS[u.role] || '#7C3AED',
+                            backgroundColor: ROLE_COLORS[u.role] || palette.brand,
                             fontSize: '0.85rem', fontWeight: 700,
                           }}
                         >
@@ -398,7 +399,7 @@ const Users = () => {
                         </Avatar>
                         <Box sx={{ minWidth: 0, maxWidth: 190 }}>
                           <ClippedTooltipText value={u.full_name} fontWeight={600} textSx={{ fontSize: '0.875rem' }} onClick={isSuperAdmin ? () => openUserDetails(u) : undefined} />
-                          <ClippedTooltipText value={`@${u.username}`} variant="caption" color="#9CA3AF" fontWeight={500} onClick={isSuperAdmin ? () => openUserDetails(u) : undefined} />
+                          <ClippedTooltipText value={`@${u.username}`} variant="caption" color={palette.textDisabled} fontWeight={500} onClick={isSuperAdmin ? () => openUserDetails(u) : undefined} />
                         </Box>
                       </Box>
                     </TableCell>
@@ -412,8 +413,8 @@ const Users = () => {
                           size="small"
                           onClick={() => { setRoleEditUser(u); setSelectedRole(u.role) }}
                           sx={{
-                            backgroundColor: `${ROLE_COLORS[u.role] || '#7C3AED'}18`,
-                            color: ROLE_COLORS[u.role] || '#7C3AED',
+                            backgroundColor: `${ROLE_COLORS[u.role] || palette.brand}18`,
+                            color: ROLE_COLORS[u.role] || palette.brand,
                             fontWeight: 600,
                             cursor: 'pointer',
                             '&:hover': { opacity: 0.8 },
@@ -424,8 +425,8 @@ const Users = () => {
                           label={getRoleLabel(u.role)}
                           size="small"
                           sx={{
-                            backgroundColor: `${ROLE_COLORS[u.role] || '#7C3AED'}18`,
-                            color: ROLE_COLORS[u.role] || '#7C3AED',
+                            backgroundColor: `${ROLE_COLORS[u.role] || palette.brand}18`,
+                            color: ROLE_COLORS[u.role] || palette.brand,
                             fontWeight: 600,
                           }}
                         />
@@ -452,8 +453,8 @@ const Users = () => {
                         label={u.is_active ? 'Active' : 'Inactive'}
                         size="small"
                         sx={{
-                          backgroundColor: u.is_active ? '#ECFDF5' : '#FEF2F2',
-                          color: u.is_active ? '#059669' : '#DC2626',
+                          backgroundColor: u.is_active ? palette.brandTint : palette.dangerWash,
+                          color: u.is_active ? palette.brandStrong : palette.dangerStrong,
                           fontWeight: 600,
                         }}
                       />
@@ -464,7 +465,7 @@ const Users = () => {
                           <IconButton
                             size="small"
                             onClick={(event) => openActions(event, u)}
-                            sx={{ borderRadius: '12px', bgcolor: '#F3F4F6', color: '#7C3AED', '&:hover': { bgcolor: '#EDE9FE' } }}
+                            sx={{ borderRadius: '12px', bgcolor: palette.surfaceGray, color: palette.brand, '&:hover': { bgcolor: palette.brandSoft } }}
                           >
                             <MoreVertIcon fontSize="small" />
                           </IconButton>
@@ -482,7 +483,7 @@ const Users = () => {
       {/* Total count */}
       {data && (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2, gap: 2, flexWrap: 'wrap' }}>
-          <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
+          <Typography variant="caption" sx={{ color: palette.textDisabled }}>
             Showing {users.length} of {data.total} users
           </Typography>
           <TablePagination
@@ -503,13 +504,13 @@ const Users = () => {
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={ACTION_MENU_PAPER}>
         {actionUser && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setEditUser(actionUser); closeActions() }}>
-            <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#7C3AED' }} /></ListItemIcon>
+            <ListItemIcon><EditIcon fontSize="small" sx={{ color: palette.brand }} /></ListItemIcon>
             Edit User
           </MenuItem>
         )}
         {actionUser && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setPermissionUser(actionUser); closeActions() }}>
-            <ListItemIcon><SecurityIcon fontSize="small" sx={{ color: '#4F46E5' }} /></ListItemIcon>
+            <ListItemIcon><SecurityIcon fontSize="small" sx={{ color: palette.indigo }} /></ListItemIcon>
             Edit Permissions
           </MenuItem>
         )}
@@ -520,20 +521,20 @@ const Users = () => {
             onClick={() => { impersonateMutation.mutate(actionUser.id); closeActions() }}
           >
             <ListItemIcon>
-              {impersonateMutation.isPending ? <CircularProgress size={18} /> : <LoginIcon fontSize="small" sx={{ color: '#8B5CF6' }} />}
+              {impersonateMutation.isPending ? <CircularProgress size={18} /> : <LoginIcon fontSize="small" sx={{ color: palette.brandStrong }} />}
             </ListItemIcon>
             Login as User
           </MenuItem>
         )}
         {actionUser && actionUser.is_active && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { setConfirmDeactivate(actionUser); closeActions() }}>
-            <ListItemIcon><BlockIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            <ListItemIcon><BlockIcon fontSize="small" sx={{ color: palette.dangerBright }} /></ListItemIcon>
             Deactivate
           </MenuItem>
         )}
         {actionUser && !actionUser.is_active && (
           <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { activateMutation.mutate(actionUser.id); closeActions() }}>
-            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: '#10B981' }} /></ListItemIcon>
+            <ListItemIcon><CheckCircleIcon fontSize="small" sx={{ color: palette.brandMid }} /></ListItemIcon>
             Activate
           </MenuItem>
         )}
@@ -543,7 +544,7 @@ const Users = () => {
             disabled={actionUser.id === currentUser?.id}
             onClick={() => { setConfirmDelete(actionUser); closeActions() }}
           >
-            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
+            <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: palette.dangerBright }} /></ListItemIcon>
             Delete Permanently
           </MenuItem>
         )}
@@ -587,7 +588,7 @@ const Users = () => {
         <DialogContent>
           {roleEditUser && (
             <Box sx={{ pt: 1 }}>
-              <Typography variant="body2" sx={{ mb: 2, color: '#6B7280' }}>
+              <Typography variant="body2" sx={{ mb: 2, color: palette.textMuted }}>
                 Changing role for <strong>{roleEditUser.full_name}</strong>
               </Typography>
               <FormControl fullWidth size="small">
@@ -615,7 +616,7 @@ const Users = () => {
 
       {/* Confirm Deactivate Dialog */}
       <Dialog open={!!confirmDeactivate} onClose={() => setConfirmDeactivate(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, color: '#EF4444' }}>Deactivate User</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: palette.dangerBright }}>Deactivate User</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mt: 1, borderRadius: '12px' }}>
             This will prevent <strong>{confirmDeactivate?.full_name}</strong> from logging in. You can reactivate later.
@@ -636,7 +637,7 @@ const Users = () => {
 
       {/* Confirm Delete Dialog */}
       <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, color: '#DC2626' }}>Delete User Permanently</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: palette.dangerStrong }}>Delete User Permanently</DialogTitle>
         <DialogContent>
           <Alert severity="error" sx={{ mt: 1, borderRadius: '12px' }}>
             Are you sure you want to delete <strong>{confirmDelete?.full_name}</strong>? This action is <strong>irreversible</strong> and will remove all their system associations.

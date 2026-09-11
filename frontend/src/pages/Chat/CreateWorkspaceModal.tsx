@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 import { createWorkspace } from '@/api/chat'
 import { searchUsers, type UserSearchResult } from '@/api/users'
+import { palette } from '@/theme/palette'
 
 interface Props {
   open: boolean
@@ -67,7 +68,7 @@ const CreateWorkspaceModal = ({ open, onClose }: Props) => {
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700 }}>
         Create Workspace
-        <Typography variant="body2" sx={{ color: '#9CA3AF', fontWeight: 400 }}>
+        <Typography variant="body2" sx={{ color: palette.textDisabled, fontWeight: 400 }}>
           Create a group chat space with multiple users
         </Typography>
       </DialogTitle>
@@ -86,7 +87,7 @@ const CreateWorkspaceModal = ({ open, onClose }: Props) => {
           {/* Selected members */}
           {selectedMembers.length > 0 && (
             <Box>
-              <Typography variant="caption" sx={{ color: '#6B7280', fontWeight: 600, mb: 0.5, display: 'block' }}>
+              <Typography variant="caption" sx={{ color: palette.textMuted, fontWeight: 600, mb: 0.5, display: 'block' }}>
                 Members ({selectedMembers.length})
               </Typography>
               <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
@@ -96,7 +97,7 @@ const CreateWorkspaceModal = ({ open, onClose }: Props) => {
                     label={m.full_name}
                     size="small"
                     onDelete={() => removeMember(m.id)}
-                    sx={{ backgroundColor: '#F5F3FF', color: '#7C3AED', fontWeight: 500 }}
+                    sx={{ backgroundColor: palette.brandTint, color: palette.brand, fontWeight: 500 }}
                   />
                 ))}
               </Box>
@@ -113,7 +114,7 @@ const CreateWorkspaceModal = ({ open, onClose }: Props) => {
               {searchResults.map((u) => (
                 <ListItemButton key={u.id} onClick={() => addMember(u)} sx={{ borderRadius: '8px' }}>
                   <ListItemAvatar>
-                    <Avatar sx={{ width: 32, height: 32, backgroundColor: '#7C3AED', fontSize: '0.75rem', fontWeight: 700 }}>
+                    <Avatar sx={{ width: 32, height: 32, backgroundColor: palette.brand, fontSize: '0.75rem', fontWeight: 700 }}>
                       {u.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                     </Avatar>
                   </ListItemAvatar>

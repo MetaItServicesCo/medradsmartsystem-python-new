@@ -27,13 +27,14 @@ import SearchableSelect from '@/components/SearchableSelect'
 import { formatUSPhoneInput } from '@/utils/formatters'
 import { useAuthStore } from '@/stores/authStore'
 import { hasPermission } from '@/config/permissions'
+import { palette } from '@/theme/palette'
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  active: { bg: '#F0FDF4', color: '#10B981' },
-  inactive: { bg: '#F3F4F6', color: '#6B7280' },
-  rented: { bg: '#FFF7ED', color: '#F59E0B' },
-  in_maintenance: { bg: '#FEF2F2', color: '#EF4444' },
-  retired: { bg: '#F3F4F6', color: '#6B7280' },
+  active: { bg: palette.successTint, color: palette.brandMid },
+  inactive: { bg: palette.surfaceGray, color: palette.textMuted },
+  rented: { bg: '#FFF7ED', color: palette.warningBright },
+  in_maintenance: { bg: palette.dangerWash, color: palette.dangerBright },
+  retired: { bg: palette.surfaceGray, color: palette.textMuted },
 }
 
 const INSPECTION_SCHEDULE_MONTHS: Record<string, number> = {
@@ -327,7 +328,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: '24px', overflow: 'hidden' } }}>
-      <Box sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)', px: 3.5, py: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ background: `linear-gradient(135deg, ${palette.brand} 0%, ${palette.ink} 100%)`, px: 3.5, py: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
         <Box sx={{ width: 48, height: 48, borderRadius: '14px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <InventoryIcon sx={{ color: '#fff', fontSize: '1.5rem' }} />
         </Box>
@@ -352,12 +353,12 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
 
       <DialogContent sx={{ p: 3.5 }}>
         {showForm && (
-          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: '#F5F3FF', border: '1px solid rgba(124,58,237,0.12)' }}>
-            <Typography variant="overline" sx={{ color: '#7C3AED', fontWeight: 700, mb: 1.5, display: 'block' }}>
+          <Box sx={{ mb: 3, p: 2.5, borderRadius: '16px', backgroundColor: palette.brandTint, border: '1px solid rgba(4,120,87,0.12)' }}>
+            <Typography variant="overline" sx={{ color: palette.brand, fontWeight: 700, mb: 1.5, display: 'block' }}>
               {editItemId ? 'Edit Inventory Item' : 'New Inventory Item'}
             </Typography>
             <Box sx={{ display: 'grid', gap: 2, mb: 2 }}>
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 900 }}>Equipment Description</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 900 }}>Equipment Description</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
               <TextField size="small" label="Asset # *" value={form.asset_tag} onChange={e => setForm({ ...form, asset_tag: e.target.value })} />
               <TextField size="small" label="Make *" value={form.make} onChange={e => setForm({ ...form, make: e.target.value })} />
@@ -428,7 +429,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
               </TextField>
               </Box>
 
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mt: 1 }}>Acquisition Authorized By</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 900, mt: 1 }}>Acquisition Authorized By</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
                 <TextField size="small" label="Department" value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })} />
                 <TextField size="small" label="PO No" value={form.po_no || ''} onChange={e => setForm({ ...form, po_no: e.target.value })} />
@@ -441,7 +442,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <TextField size="small" label="Owning Department" value={form.owning_department || ''} onChange={e => setForm({ ...form, owning_department: e.target.value })} />
               </Box>
 
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mt: 1 }}>Acquired From</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 900, mt: 1 }}>Acquired From</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
                 <TextField size="small" label="Acquisition Method" select value={form.acquisition_method || 'Purchased'} onChange={e => setForm({ ...form, acquisition_method: e.target.value })}>
                   <MenuItem value="Purchased">Purchased</MenuItem>
@@ -458,7 +459,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <TextField size="small" label="Mailing Address" value={form.acquired_mailing_address || ''} onChange={e => setForm({ ...form, acquired_mailing_address: e.target.value })} sx={{ gridColumn: { md: 'span 2' } }} />
               </Box>
 
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mt: 1 }}>Cost & Warranty</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 900, mt: 1 }}>Cost & Warranty</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
                 <TextField size="small" type="number" label="Cost" value={form.cost || 0} onChange={e => setForm({ ...form, cost: Number(e.target.value) })} />
                 <TextField size="small" type="date" label="Acquisition date" InputLabelProps={{ shrink: true }} value={form.acquisition_date || ''} onChange={e => setForm({ ...form, acquisition_date: e.target.value || null })} />
@@ -475,7 +476,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 <TextField size="small" type="date" label="Labor Warranty End Date" InputLabelProps={{ shrink: true }} value={form.labor_warranty_end_date || ''} onChange={e => setForm({ ...form, labor_warranty_end_date: e.target.value || null })} />
               </Box>
 
-              <Typography sx={{ color: '#1E1B4B', fontWeight: 900, mt: 1 }}>Service and Maintenance</Typography>
+              <Typography sx={{ color: palette.ink, fontWeight: 900, mt: 1 }}>Service and Maintenance</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
                 <TextField size="small" label="PM Scheduling" select value={form.pm_scheduling || 'Annual'} onChange={e => setForm({ ...form, pm_scheduling: e.target.value })}>
                   <MenuItem value="Monthly">Monthly</MenuItem>
@@ -512,8 +513,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
               </Box>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button size="small" onClick={() => { setShowForm(false); resetForm() }} sx={{ color: '#6B7280' }}>Cancel</Button>
-              <Button size="small" variant="contained" onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} sx={{ backgroundColor: '#7C3AED', '&:hover': { backgroundColor: '#6D28D9' } }}>
+              <Button size="small" onClick={() => { setShowForm(false); resetForm() }} sx={{ color: palette.textMuted }}>Cancel</Button>
+              <Button size="small" variant="contained" onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending} sx={{ backgroundColor: palette.brand, '&:hover': { backgroundColor: palette.brandDeep } }}>
                 {(createMut.isPending || updateMut.isPending) ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : (editItemId ? 'Update Item' : 'Add Item')}
               </Button>
             </Box>
@@ -551,7 +552,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
               ) : items.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                    <InventoryIcon sx={{ fontSize: '2.5rem', color: '#E5E7EB', mb: 1, display: 'block', mx: 'auto' }} />
+                    <InventoryIcon sx={{ fontSize: '2.5rem', color: palette.border, mb: 1, display: 'block', mx: 'auto' }} />
                     <Typography variant="body2" color="text.secondary">No inventory items for this facility</Typography>
                   </TableCell>
                 </TableRow>
@@ -563,7 +564,7 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                     <TableCell><ClippedTooltipText value={`${item.make} ${item.model}`} /></TableCell>
                     <TableCell><ClippedTooltipText value={item.serial_number} monospace textSx={{ fontSize: '0.8rem' }} /></TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{ color: item.tier_id ? '#7C3AED' : '#9CA3AF', fontWeight: item.tier_id ? 600 : 400 }}>
+                      <Typography variant="body2" sx={{ color: item.tier_id ? palette.brand : palette.textDisabled, fontWeight: item.tier_id ? 600 : 400 }}>
                         {tiers.find((tier) => tier.id === item.tier_id)?.name || 'No tier'}
                       </Typography>
                     </TableCell>
@@ -619,15 +620,15 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
         )}
         {canDeleteInventory && (
           <MenuItem onClick={() => { if (actionItem) deleteMut.mutate(actionItem.id); closeActionMenu() }}>
-            <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: '#EF4444' }} /></ListItemIcon>
-            <ListItemText primary="Delete" primaryTypographyProps={{ color: '#EF4444' }} />
+            <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: palette.dangerBright }} /></ListItemIcon>
+            <ListItemText primary="Delete" primaryTypographyProps={{ color: palette.dangerBright }} />
           </MenuItem>
         )}
       </Menu>
 
       <Dialog open={Boolean(viewItem)} onClose={() => setViewItem(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
         <DialogContent sx={{ p: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 900, color: '#1E1B4B', mb: 2 }}>Inventory Item</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 900, color: palette.ink, mb: 2 }}>Inventory Item</Typography>
           {viewItem && (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
               {[
@@ -641,8 +642,8 @@ const FacilityInventoryModal = ({ open, onClose, facility, mode }: Props) => {
                 ['PM Scheduling', viewItem.pm_scheduling || '-'],
               ].map(([label, value]) => (
                 <Box key={label}>
-                  <Typography variant="caption" sx={{ color: '#6B7280', fontWeight: 800 }}>{label}</Typography>
-                  <Typography sx={{ color: '#1E1B4B', fontWeight: 700, textTransform: label === 'Status' ? 'capitalize' : 'none' }}>{value}</Typography>
+                  <Typography variant="caption" sx={{ color: palette.textMuted, fontWeight: 800 }}>{label}</Typography>
+                  <Typography sx={{ color: palette.ink, fontWeight: 700, textTransform: label === 'Status' ? 'capitalize' : 'none' }}>{value}</Typography>
                 </Box>
               ))}
             </Box>
