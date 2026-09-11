@@ -32,6 +32,7 @@ import {
   type LocationNode, type LocationTypeMeta,
 } from '@/api/locations'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
+import SetupBuildingWizard from './SetupBuildingWizard'
 import SpaceContents from './SpaceContents'
 import SpaceDetail from './SpaceDetail'
 import { hasPermission } from '@/config/permissions'
@@ -185,6 +186,7 @@ export default function LocationsPage() {
   const [filter, setFilter] = useState('')
   const [tab, setTab] = useState(0)
   const [addOpen, setAddOpen] = useState(false)
+  const [setupOpen, setSetupOpen] = useState(false)
 
   const canEdit = hasPermission(user, 'locations', 'add')
 
@@ -367,6 +369,23 @@ export default function LocationsPage() {
                 <Tab label="Floor plan" disabled={!selectedTypeMeta?.can_hold_plan} />
               </Tabs>
 
+              {tab === 0 && detail.location_type === 'building' && canEdit && (
+                <Box sx={{ px: 2.25, pt: 2 }}>
+                  <Button
+                    variant="contained" fullWidth onClick={() => setSetupOpen(true)}
+                    sx={{ fontWeight: 900, borderRadius: '12px', py: 1.1,
+                          bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep } }}
+                  >
+                    Set up this building
+                  </Button>
+                  <Typography sx={{ mt: 0.75, fontSize: 12, color: palette.textFaint,
+                                    textAlign: 'center' }}>
+                    Answer how many floors, what is on each, and how many rooms
+                    per department — the structure is built from that.
+                  </Typography>
+                </Box>
+              )}
+
               {tab === 0 && (
                 <SpaceContents
                   locationId={detail.id}
@@ -398,6 +417,16 @@ export default function LocationsPage() {
           )}
         </Card>
       </Box>
+
+      {setupOpen && detail && effectiveFacilityId && (
+        <SetupBuildingWizard
+          open={setupOpen}
+          onClose={() => setSetupOpen(false)}
+          facilityId={effectiveFacilityId}
+          building={{ id: detail.id, code: detail.code, name: detail.name }}
+          onCreated={() => setSetupOpen(false)}
+        />
+      )}
 
       <AddLocationDialog
         open={addOpen}
