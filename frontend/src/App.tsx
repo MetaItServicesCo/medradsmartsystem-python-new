@@ -36,6 +36,8 @@ const Vendors = lazyWithReload(() => import('./pages/Vendors'))
 const Permits = lazyWithReload(() => import('./pages/Permits'))
 const Compliance = lazyWithReload(() => import('./pages/Compliance'))
 const Maintenance = lazyWithReload(() => import('./pages/Maintenance'))
+const Sites = lazyWithReload(() => import('./pages/Sites'))
+const SiteDashboard = lazyWithReload(() => import('./pages/Sites/SiteDashboard'))
 const Assets = lazyWithReload(() => import('./pages/Assets'))
 const AssetLedger = lazyWithReload(() => import('./pages/AssetLedger'))
 
@@ -153,6 +155,8 @@ function App() {
           <Route path="permits/*" element={<ProtectedPage module="permits"><Permits /></ProtectedPage>} />
           <Route path="compliance/*" element={<ProtectedPage module="compliance"><Compliance /></ProtectedPage>} />
           <Route path="maintenance/*" element={<ProtectedPage module="maintenance"><Maintenance /></ProtectedPage>} />
+          <Route path="sites" element={<ProtectedPage module="facilities"><Sites /></ProtectedPage>} />
+          <Route path="sites/:id" element={<ProtectedPage module="facilities"><SiteDashboard /></ProtectedPage>} />
           <Route path="assets/*" element={<ProtectedPage module="facility-inventory"><Assets /></ProtectedPage>} />
           <Route path="asset-ledger/*" element={<ProtectedPage module="facility-inventory"><AssetLedger /></ProtectedPage>} />
         </Route>

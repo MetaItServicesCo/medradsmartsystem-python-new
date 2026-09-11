@@ -287,3 +287,23 @@ export const exportScopedFacility = async (
   window.URL.revokeObjectURL(url)
   a.remove()
 }
+
+export interface SiteOverview {
+  facility_id: number
+  estate: {
+    buildings: number; floors: number; rooms: number
+    beds: number; spaces_total: number
+  }
+  spaces: { unavailable: number; by_state: Record<string, number> }
+  work: { open: number; by_priority: Record<string, number>; critical: number; high: number }
+  compliance: { overdue: number; due_within_30_days: number }
+  permits: { active: number }
+  assets: { total: number }
+  fixtures: { total: number; faulty: number }
+}
+
+/** Everything one site's dashboard opens on, in a single request. */
+export const fetchSiteOverview = async (id: number): Promise<SiteOverview> => {
+  const res = await apiClient.get(`/facilities/${id}/overview`)
+  return res.data
+}

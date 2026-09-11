@@ -58,8 +58,8 @@ const groupOrder: ModuleGroup[] = [
 ]
 
 const allMenuItems: SidebarItem[] = [
+  { text: 'Sites', description: 'The hospitals you run — open one to work in it', icon: <BusinessIcon />, path: '/sites', module: 'facilities', group: 'Overview' },
   { text: 'Dashboard', description: 'Your operational overview', icon: <DashboardIcon />, path: '/dashboard', module: 'dashboard', group: 'Overview' },
-  { text: 'Sites', description: 'Facilities and asset records', icon: <BusinessIcon />, path: '/facilities', module: 'facilities', group: 'The Building' },
   { text: 'Work Orders', description: 'Service requests and work orders', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests', group: 'Maintenance' },
   { text: 'Inspections', description: 'Schedules, batches, and reports', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections', group: 'Maintenance' },
   { text: 'Buildings & Rooms', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'The Building' },

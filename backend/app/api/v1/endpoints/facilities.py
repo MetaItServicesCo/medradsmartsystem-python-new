@@ -811,6 +811,26 @@ def create_facility(
     return _facility_response(db, facility)
 
 
+@router.get("/{id}/overview")
+def facility_overview(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """The numbers this site's dashboard opens on.
+
+    One request rather than the browser firing eight list calls and counting
+    rows, which is slower and also wrong: a list capped at 200 reports 200 beds
+    however many there really are.
+    """
+    facility = db.query(Facility).filter(Facility.id == id).first()
+    if not facility:
+        raise HTTPException(status_code=404, detail="Facility not found")
+    require_facility_access(db, current_user, id)
+    from app.services import site_overview
+    return site_overview.build(db, id)
+
+
 @router.get("/{id}", response_model=schemas.Facility)
 def read_facility(
     *,
