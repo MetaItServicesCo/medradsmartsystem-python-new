@@ -32,6 +32,7 @@ import {
   type LocationNode, type LocationTypeMeta,
 } from '@/api/locations'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
+import RoomContents from './RoomContents'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import FloorPlanEditor from './FloorPlanEditor'
@@ -351,11 +352,20 @@ export default function LocationsPage() {
                 value={tab} onChange={(_, v) => setTab(v)}
                 sx={{ px: 2, borderBottom: `1px solid ${palette.borderSoft}`, '& .MuiTab-root': { fontWeight: 800, textTransform: 'none' }, '& .Mui-selected': { color: `${BRAND} !important` }, '& .MuiTabs-indicator': { backgroundColor: BRAND } }}
               >
+                <Tab label="What's in here" />
                 <Tab label="Detail" />
                 <Tab label="Floor plan" disabled={!selectedTypeMeta?.can_hold_plan} />
               </Tabs>
 
               {tab === 0 && (
+                <RoomContents
+                  locationId={detail.id}
+                  locationName={detail.name || detail.code}
+                  canEdit={canEdit}
+                />
+              )}
+
+              {tab === 1 && (
                 <Box sx={{ p: 2.25 }}>
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
                     {[
@@ -398,7 +408,7 @@ export default function LocationsPage() {
                 </Box>
               )}
 
-              {tab === 1 && selectedTypeMeta?.can_hold_plan && (
+              {tab === 2 && selectedTypeMeta?.can_hold_plan && (
                 <FloorPlanEditor
                   location={detail}
                   canEdit={canEdit}

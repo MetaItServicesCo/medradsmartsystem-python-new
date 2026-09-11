@@ -101,3 +101,4 @@ from app.models.asset_ledger import (
     AssetLedgerEntry, LedgerEntryType, DepreciationMethod,
     LEDGER_ENTRY_TYPES, DEPRECIATION_METHODS,
 )
+from app.models.fixture import Fixture, FixtureStatus, FIXTURE_STATUSES

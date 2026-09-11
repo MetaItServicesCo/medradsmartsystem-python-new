@@ -45,7 +45,9 @@ from app.models.permit import WorkPermit, PermitApproval  # noqa: E402
 from app.models.compliance import ComplianceProgram, ComplianceTask  # noqa: E402
 from app.models.maintenance_schedule import MaintenanceSchedule  # noqa: E402
 from app.models.asset_ledger import AssetLedgerEntry  # noqa: E402
+from app.models.fixture import Fixture  # noqa: E402
 from app.services import location_tree  # noqa: E402
+from app.services import fixture as fixture_service  # noqa: E402
 
 FACILITY_NAME = "Medpro Regional Medical Center"
 TODAY = date.today()
@@ -794,6 +796,120 @@ def main() -> None:
             discipline="vertical_transport",
         )
 
+        # -- What is actually in each room -----------------------------------
+        # The founding use case lives here: a socket in a theatre stops working
+        # and a ticket reaches electrical. That needs the socket to exist
+        # first, so the rooms are furnished the way they really are.
+        def furnish(room, plan):
+            for fixture_type, count, spec, label, circuit in plan:
+                fixture_service.bulk_create(
+                    db, location=room, fixture_type=fixture_type, count=count,
+                    spec=spec, label=label, circuit_ref=circuit,
+                    created_by_id=fm.id,
+                )
+
+        for n in range(1, 5):
+            furnish(rooms["OR-%d" % n], [
+                # A theatre runs almost everything on the critical branch.
+                ("receptacle", 12, {"branch": "critical", "amperage_a": 20,
+                                    "hospital_grade": True}, "perimeter", "EM-%d/12" % n),
+                ("receptacle", 4, {"branch": "equipment", "amperage_a": 20,
+                                   "hospital_grade": True}, "ceiling column", "EQ-%d/4" % n),
+                ("light_fixture", 8, {"lamp_type": "LED", "sealed": True,
+                                      "mounting": "recessed"}, "general", None),
+                ("light_fixture", 1, {"mounting": "surgical boom",
+                                      "on_emergency": True}, "surgical", None),
+                ("med_gas_outlet", 2, {"gas": "oxygen", "pressure_psi": 50},
+                 "anaesthesia column", None),
+                ("med_gas_outlet", 2, {"gas": "medical air", "pressure_psi": 50},
+                 "anaesthesia column", None),
+                ("med_gas_outlet", 2, {"gas": "vacuum"}, "anaesthesia column", None),
+                ("med_gas_outlet", 1, {"gas": "WAGD"}, "anaesthesia column", None),
+                ("supply_diffuser", 4, {"airflow_cfm": 620, "pattern": "laminar array",
+                                        "hepa": True}, "over table", None),
+                ("return_grille", 4, {"airflow_cfm": 540, "service": "return"},
+                 "low wall", None),
+                ("pressure_monitor", 1, {"required_polarity": "positive",
+                                         "setpoint_inwc": 0.01}, "at door", None),
+                ("sink", 2, {"sink_type": "scrub", "faucet_control": "knee",
+                             "flow_gpm": 2.2}, "scrub alcove", None),
+                ("data_port", 4, {"category": "Cat6A", "ports": 2}, None, None),
+                ("sprinkler_head", 4, {"temperature_f": 155, "response": "quick"},
+                 None, None),
+                ("door", 2, {"door_type": "automatic", "width_in": 48}, None, None),
+            ])
+
+        for n in range(1, 9):
+            furnish(rooms["ICU-%d" % n], [
+                ("receptacle", 10, {"branch": "critical", "amperage_a": 20,
+                                    "hospital_grade": True}, "head of bed", "EM-C/%d" % n),
+                ("light_fixture", 3, {"lamp_type": "LED"}, None, None),
+                ("med_gas_outlet", 1, {"gas": "oxygen"}, "head of bed", None),
+                ("med_gas_outlet", 1, {"gas": "medical air"}, "head of bed", None),
+                ("med_gas_outlet", 1, {"gas": "vacuum"}, "head of bed", None),
+                ("nurse_call", 1, {"station_type": "bedside"}, "head of bed", None),
+                ("data_port", 2, {"category": "Cat6A"}, None, None),
+                ("supply_diffuser", 2, {"airflow_cfm": 310}, None, None),
+                ("sink", 1, {"sink_type": "hand wash", "faucet_control": "sensor"},
+                 "at entry", None),
+                ("sprinkler_head", 2, {"temperature_f": 155}, None, None),
+            ])
+
+        for n in range(301, 311):
+            furnish(rooms[str(n)], [
+                ("receptacle", 8, {"branch": "normal", "amperage_a": 20},
+                 "head of bed", "NP-3/%d" % (n - 300)),
+                ("receptacle", 2, {"branch": "critical", "amperage_a": 20},
+                 "head of bed", "EM-3/%d" % (n - 300)),
+                ("light_fixture", 4, {"lamp_type": "LED"}, None, None),
+                ("med_gas_outlet", 2, {"gas": "oxygen"}, "head of bed", None),
+                ("nurse_call", 2, {"station_type": "bedside"}, "head of bed", None),
+                ("nurse_call", 1, {"station_type": "bathroom pull",
+                                   "pull_cord": True}, "bathroom", None),
+                ("sink", 1, {"sink_type": "hand wash"}, None, None),
+                ("water_closet", 1, {"flush_gpf": 1.28}, "bathroom", None),
+                ("data_port", 2, {"category": "Cat6"}, None, None),
+                ("sprinkler_head", 2, {"temperature_f": 155}, None, None),
+            ])
+
+        furnish(rooms["ED-MAIN"], [
+            ("receptacle", 24, {"branch": "critical", "amperage_a": 20}, None, "EM-1/ED"),
+            ("light_fixture", 18, {"lamp_type": "LED"}, None, None),
+            ("med_gas_outlet", 8, {"gas": "oxygen"}, "bay heads", None),
+            ("nurse_call", 6, {"station_type": "code blue"}, None, None),
+            ("eyewash", 1, {"unit_type": "combination", "flow_gpm": 0.4}, None, None),
+            ("sprinkler_head", 12, {"temperature_f": 155}, None, None),
+        ])
+        furnish(rooms["PLANT"], [
+            ("receptacle", 6, {"branch": "equipment", "amperage_a": 20}, None, "MCC-B/6"),
+            ("light_fixture", 12, {"lamp_type": "LED", "mounting": "surface"}, None, None),
+            ("floor_drain", 4, {"size_in": 4, "trap_primer": True}, None, None),
+            ("eyewash", 1, {"unit_type": "drench shower"}, None, None),
+            ("backflow_preventer", 1, {"device_type": "RPZ", "size_in": 4}, None, None),
+        ])
+        furnish(rooms["DATA"], [
+            ("receptacle", 8, {"branch": "critical", "amperage_a": 30,
+                               "nema_config": "L6-30R"}, "rack whips", "UPS-A/8"),
+            ("smoke_detector", 4, {"detector_type": "aspirating"}, None, None),
+            ("thermostat", 1, {"setpoint_f": 68, "min_f": 64, "max_f": 72}, None, None),
+        ])
+        db.flush()
+
+        # One genuinely reported fault, so the board is not uniformly green and
+        # the work order it raised is visible against the socket that caused it.
+        dead_socket = (
+            db.query(Fixture)
+            .filter(Fixture.location_id == rooms["OR-2"].id,
+                    Fixture.fixture_type == "receptacle")
+            .order_by(Fixture.code)
+            .offset(3).first()
+        )
+        if dead_socket is not None:
+            fixture_service.report_fault(
+                db, fixture=dead_socket, reported_by_id=nurse.id,
+                description="Dead, confirmed with a second device",
+            )
+
         db.commit()
 
         print("Seeded:")
@@ -808,6 +924,7 @@ def main() -> None:
             ("permit approvals", PermitApproval),
             ("asset ledger entries", AssetLedgerEntry),
             ("service requests", ServiceRequest),
+            ("room fixtures", Fixture),
         ):
             print(f"  {db.query(model).count():4d}  {label}")
         print("\nSign in as  admin  /  Demo!2026   — change this immediately.")

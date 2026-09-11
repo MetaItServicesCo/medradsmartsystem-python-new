@@ -30,6 +30,7 @@ from app.api.v1.endpoints import (
     billing,
     square_webhooks,
     locations,
+    fixtures,
     vendors,
     spaces,
     disciplines,
@@ -81,6 +82,7 @@ api_router.include_router(assistant.voice_router, tags=["assistant"])
 # Their own prefixes, so nothing that already answers under /equipment,
 # /facilities or /service-requests changes shape.
 api_router.include_router(locations.router, prefix="/locations", tags=["locations"])
+api_router.include_router(fixtures.router, prefix="/fixtures", tags=["fixtures"])
 api_router.include_router(spaces.router, prefix="/spaces", tags=["spaces"])
 api_router.include_router(vendors.router, prefix="/vendors", tags=["vendors"])
 api_router.include_router(disciplines.router, prefix="/disciplines", tags=["disciplines"])
