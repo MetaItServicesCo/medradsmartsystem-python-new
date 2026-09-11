@@ -17,6 +17,7 @@ from app.schemas.equipment import (
     Equipment as EquipmentSchema, EquipmentListResponse
 )
 from app.utils.inspection_schedule import next_inspection_date
+from app.services import asset as asset_service
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
 from app.utils.permission_deps import require_module_access
 from app.utils.read_cache import cached_read
@@ -141,6 +142,35 @@ def create_equipment(
         equip_in.last_pm_date,
         equip_in.pm_scheduling,
     )
+
+    # The MEP foreign keys cross facility boundaries if nothing checks them, and
+    # the payload goes through model_dump() wholesale.
+    asset_service.validate_placement(
+        db,
+        facility_id=equip_in.facility_id,
+        location_id=create_data.get("location_id"),
+        parent_equipment_id=create_data.get("parent_equipment_id"),
+        discipline_id=create_data.get("discipline_id"),
+        service_vendor_id=create_data.get("service_vendor_id"),
+    )
+    # A plant asset in an operating theatre inherits that theatre's criticality
+    # unless it states its own, so nobody has to remember to set it by hand.
+    create_data["criticality"] = asset_service.inherit_criticality(
+        db, location_id=create_data.get("location_id"), explicit=create_data.get("criticality"),
+    )
+    # Seed the book life from the trade — a lift is twenty years, a clinical
+    # monitor is seven — so nobody types one four hundred times. Overridable,
+    # and finance will have opinions about some of them.
+    if not create_data.get("useful_life_years") and create_data.get("discipline_id"):
+        from app.models.discipline import Discipline
+        from app.services import depreciation as depreciation_service
+
+        row = db.query(Discipline.code).filter(
+            Discipline.id == create_data["discipline_id"]
+        ).first()
+        create_data["useful_life_years"] = depreciation_service.default_useful_life(
+            row[0] if row else None,
+        )
     return crud.equipment.create(db=db, obj_in=create_data)
 
 
@@ -167,6 +197,20 @@ def update_equipment(
         last_inspection_date = update_data.get("last_pm_date", item.last_pm_date)
         schedule = update_data.get("pm_scheduling", item.pm_scheduling)
         update_data["next_generated_pm_date"] = next_inspection_date(last_inspection_date, schedule)
+
+    # Validate against the facility the asset will end up in, not the one it is
+    # leaving — a move and a re-placement can arrive in the same request.
+    if any(field in update_data for field in
+           ("location_id", "parent_equipment_id", "discipline_id", "service_vendor_id")):
+        asset_service.validate_placement(
+            db,
+            facility_id=target_facility_id or item.facility_id,
+            location_id=update_data.get("location_id", item.location_id),
+            parent_equipment_id=update_data.get("parent_equipment_id", item.parent_equipment_id),
+            discipline_id=update_data.get("discipline_id", item.discipline_id),
+            service_vendor_id=update_data.get("service_vendor_id", item.service_vendor_id),
+            equipment_id=item.id,
+        )
     return crud.equipment.update(db=db, db_obj=item, obj_in=update_data)
 
 

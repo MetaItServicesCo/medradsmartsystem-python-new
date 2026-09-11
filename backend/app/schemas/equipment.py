@@ -54,6 +54,26 @@ class EquipmentBase(BaseModel):
     warranty_expiration: Optional[date] = None
     status: str = "active"
 
+    # ── Facilities / MEP ────────────────────────────────────────────────────
+    # All optional, so every existing caller keeps working unchanged. Without
+    # these an MEP asset cannot be created through the API at all: the columns
+    # exist on the model but nothing can set them.
+    #
+    # `location` above stays as it is — the legacy free-text string, still the
+    # fallback display for an asset that has not been placed in the tree.
+    discipline_id: Optional[int] = None
+    location_id: Optional[int] = None
+    parent_equipment_id: Optional[int] = None
+    criticality: Optional[str] = None
+    electrical_branch: Optional[str] = None
+    service_vendor_id: Optional[int] = None
+
+    # ── Depreciation ────────────────────────────────────────────────────────
+    depreciation_method: Optional[str] = None
+    salvage_value: Optional[Decimal] = None
+    useful_life_years: Optional[Decimal] = None
+    total_expected_units: Optional[Decimal] = None
+
 
 class EquipmentCreate(EquipmentBase):
     pass
@@ -108,6 +128,26 @@ class EquipmentUpdate(BaseModel):
     purchase_date: Optional[date] = None
     warranty_expiration: Optional[date] = None
     status: Optional[str] = None
+
+    # ── Facilities / MEP ────────────────────────────────────────────────────
+    # All optional, so every existing caller keeps working unchanged. Without
+    # these an MEP asset cannot be created through the API at all: the columns
+    # exist on the model but nothing can set them.
+    #
+    # `location` above stays as it is — the legacy free-text string, still the
+    # fallback display for an asset that has not been placed in the tree.
+    discipline_id: Optional[int] = None
+    location_id: Optional[int] = None
+    parent_equipment_id: Optional[int] = None
+    criticality: Optional[str] = None
+    electrical_branch: Optional[str] = None
+    service_vendor_id: Optional[int] = None
+
+    # ── Depreciation ────────────────────────────────────────────────────────
+    depreciation_method: Optional[str] = None
+    salvage_value: Optional[Decimal] = None
+    useful_life_years: Optional[Decimal] = None
+    total_expected_units: Optional[Decimal] = None
 
 
 class Equipment(EquipmentBase):

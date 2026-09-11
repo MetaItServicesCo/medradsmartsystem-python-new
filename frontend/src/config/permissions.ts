@@ -30,6 +30,12 @@ export type Module =
   | 'my-leave'
   | 'chat'
   | 'calendar'
+  | 'locations'
+  | 'spaces'
+  | 'vendors'
+  | 'permits'
+  | 'compliance'
+  | 'maintenance'
 
 export interface PermissionRule {
   index: boolean
@@ -68,6 +74,12 @@ export const MODULES: Array<{ key: Module; label: string }> = [
   { key: 'my-leave', label: 'My Leave' },
   { key: 'chat', label: 'Chat' },
   { key: 'calendar', label: 'Calendar' },
+  { key: 'locations', label: 'Locations' },
+  { key: 'spaces', label: 'Space Status' },
+  { key: 'vendors', label: 'Vendors' },
+  { key: 'permits', label: 'Permits to Work' },
+  { key: 'compliance', label: 'Compliance' },
+  { key: 'maintenance', label: 'Maintenance Plans' },
 ]
 
 // ── Action flag sets ──────────────────────────────────────────────────────────
@@ -86,6 +98,12 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
   superadmin: Object.fromEntries(MODULES.map((m) => [m.key, _F])) as Record<Module, ActionFlags>,
 
   admin: {
+    permits:           _F,
+    compliance:        _F,
+    maintenance:       _F,
+    locations:         _F,
+    spaces:            _F,
+    vendors:           _F,
     dashboard:          _F,
     facilities:         _F,
     users:              _V,
@@ -119,6 +137,12 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
   },
 
   facility_admin: {
+    permits:           _W,
+    compliance:        _W,
+    maintenance:       _W,
+    locations:         _W,
+    spaces:            _W,
+    vendors:           _V,
     dashboard:          _V,
     facilities:         _V,
     'service-requests': _W,
@@ -136,6 +160,12 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
   },
 
   facility_manager: {
+    permits:           _W,
+    compliance:        _W,
+    maintenance:       _W,
+    locations:         _W,
+    spaces:            _W,
+    vendors:           _V,
     dashboard:          _V,
     facilities:         _V,
     'service-requests': _W,
@@ -153,6 +183,12 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
   },
 
   technician: {
+    permits:           _W,
+    compliance:        _W,
+    maintenance:       _V,
+    locations:         _V,
+    spaces:            _W,
+    vendors:           _V,
     dashboard:          _V,
     facilities:         _V,
     'service-requests': _W,
@@ -167,6 +203,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
   },
 
   employee: {
+    locations:         _V,
     dashboard:          _V,
     facilities:         _V,
     'service-requests': _W,
@@ -178,6 +215,7 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
   },
 
   client: {
+    locations:         _V,
     dashboard:          _V,
     facilities:         _V,
     'service-requests': _W,

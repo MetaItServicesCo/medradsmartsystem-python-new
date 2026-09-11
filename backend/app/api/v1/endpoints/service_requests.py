@@ -1314,17 +1314,57 @@ def create_service_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),  # any authenticated user
 ) -> Any:
-    """Create a new service request (any authenticated user)."""
+    """Create a new work order (any authenticated user).
+
+    Handles both the medical equipment case this endpoint has always served and
+    the facilities case, where the subject is a room rather than an asset. The
+    difference is entirely in what gets validated and what the SLA is computed
+    from; the queue, the numbering and the workflow stay one thing, because a
+    hospital runs one work-control desk.
+    """
+    from app.services import sla as sla_service, work_order as work_order_service
+
     # Validate facility
     if not db.query(Facility).filter(Facility.id == sr_in.facility_id).first():
         raise HTTPException(status_code=404, detail="Facility not found")
     _require_service_facility_access(db, current_user, sr_in.facility_id)
-    # Validate equipment
-    equipment = db.query(Equipment).filter(Equipment.id == sr_in.equipment_id).first()
-    if not equipment:
-        raise HTTPException(status_code=404, detail="Equipment not found")
-    if equipment.facility_id != sr_in.facility_id:
-        raise HTTPException(status_code=400, detail="Equipment does not belong to the selected facility")
+
+    work_order_type = work_order_service.validate_type(sr_in.work_order_type)
+
+    # Equipment, location, or both — never neither. This is the invariant the
+    # NOT NULL on equipment_id used to provide.
+    equipment, location = work_order_service.validate_subject(
+        db,
+        equipment_id=sr_in.equipment_id,
+        location_id=sr_in.location_id,
+        facility_id=sr_in.facility_id,
+    )
+
+    # Fall back to where the asset lives, so every asset-based ticket still
+    # lands on the space board and the capacity report stays complete.
+    location_id = work_order_service.infer_location(equipment, location)
+    if location is None and location_id is not None:
+        from app.models.location import Location as LocationModel
+        location = db.query(LocationModel).filter(LocationModel.id == location_id).first()
+
+    discipline_id = work_order_service.infer_discipline(
+        db, equipment=equipment, explicit_discipline_id=sr_in.discipline_id,
+    )
+    priority = sr_in.priority or work_order_service.default_priority(location)
+    is_billable = work_order_service.resolve_billable(work_order_type, sr_in.is_billable)
+
+    contract = None
+    if sr_in.assigned_vendor_id is not None:
+        # Refuse to dispatch a vendor whose insurance or licence has lapsed.
+        # Blocking here is the only point where that is still cheap to fix.
+        work_order_service.assert_vendor_dispatchable(db, sr_in.assigned_vendor_id)
+        contract = work_order_service.find_covering_contract(
+            db,
+            vendor_id=sr_in.assigned_vendor_id,
+            facility_id=sr_in.facility_id,
+            equipment_id=sr_in.equipment_id,
+            discipline_id=discipline_id,
+        )
 
     # Generate unique request number
     last = db.query(ServiceRequest).order_by(ServiceRequest.id.desc()).first()
@@ -1335,25 +1375,51 @@ def create_service_request(
         request_number=request_number,
         facility_id=sr_in.facility_id,
         equipment_id=sr_in.equipment_id,
+        location_id=location_id,
         problem_description=sr_in.problem_description,
         service_required=sr_in.service_required or sr_in.problem_description,
         preferred_datetime=sr_in.preferred_datetime,
         requested_by_name=sr_in.requested_by_name,
         reference_number=sr_in.reference_number,
         request_image_url=sr_in.request_image_url,
-        priority=sr_in.priority,
+        priority=priority,
         requester_id=sr_in.requester_id or current_user.id,
         status=ServiceRequestStatus.NEW,
+        work_order_type=work_order_type,
+        discipline_id=discipline_id,
+        assigned_vendor_id=sr_in.assigned_vendor_id,
+        vendor_contract_id=contract.id if contract is not None else None,
+        is_billable=is_billable,
+        cost_center=sr_in.cost_center,
+        takes_space_out_of_service=sr_in.takes_space_out_of_service,
         history=[_history_entry("created", current_user, {
             "facility_id": sr_in.facility_id,
             "equipment_id": sr_in.equipment_id,
-            "priority": sr_in.priority,
+            "location_id": location_id,
+            "work_order_type": work_order_type,
+            "priority": priority,
             "preferred_datetime": sr_in.preferred_datetime.isoformat() if sr_in.preferred_datetime else None,
             "requested_by_name": sr_in.requested_by_name,
             "reference_number": sr_in.reference_number,
         })],
     )
     db.add(db_sr)
+    db.flush()
+
+    # The clock starts from creation, and the space leads: the same dead
+    # receptacle is a Tuesday ticket in a store room and a cancelled case in an
+    # operating theatre.
+    sla_service.apply_sla(db, db_sr, location=location, contract=contract)
+
+    # Take the space down if the reporter said the work does that. Opens the
+    # downtime interval the capacity report is built from — an interval that
+    # cannot be reconstructed after the fact.
+    if sr_in.takes_space_out_of_service and location is not None:
+        from app.services import space_status as space_status_service
+        space_status_service.take_out_of_service_for_work_order(
+            db, location, db_sr, changed_by_id=current_user.id,
+        )
+
     db.commit()
     db.refresh(db_sr)
     notify_admins(
@@ -1450,6 +1516,42 @@ def update_service_request(
                 reason=f"Service invoice marked {requested_billing_status.replace('_', ' ')}",
             )
 
+    # ── Facilities / MEP ────────────────────────────────────────────────────
+    from app.services import sla as sla_service, work_order as work_order_service
+
+    if "work_order_type" in update_data and update_data["work_order_type"]:
+        work_order_service.validate_type(update_data["work_order_type"])
+
+    if update_data.get("location_id") is not None:
+        # Same-facility check; the subject rule itself still holds because an
+        # existing work order already has a subject.
+        work_order_service.validate_subject(
+            db,
+            equipment_id=db_sr.equipment_id,
+            location_id=update_data["location_id"],
+            facility_id=db_sr.facility_id,
+        )
+
+    if update_data.get("assigned_vendor_id") is not None:
+        # Refuse to dispatch a contractor whose insurance or licence has lapsed.
+        # Assignment is the last point at which that is still cheap to fix.
+        work_order_service.assert_vendor_dispatchable(db, update_data["assigned_vendor_id"])
+        contract = work_order_service.find_covering_contract(
+            db,
+            vendor_id=update_data["assigned_vendor_id"],
+            facility_id=db_sr.facility_id,
+            equipment_id=db_sr.equipment_id,
+            discipline_id=update_data.get("discipline_id", db_sr.discipline_id),
+        )
+        update_data["vendor_contract_id"] = contract.id if contract is not None else None
+
+    # Re-clock when priority or place changes. Recomputed from the original
+    # created_at, so escalating a three-hour-old ticket makes it due relative to
+    # when it was raised rather than to when somebody noticed.
+    sla_inputs_changed = any(
+        field in update_data for field in ("priority", "location_id", "assigned_vendor_id")
+    )
+
     # Enforce ordered status transitions
     if "status" in update_data and update_data["status"]:
         new_status = ServiceRequestStatus(update_data["status"])
@@ -1520,6 +1622,10 @@ def update_service_request(
             link_url=f"/service-requests/{db_sr.id}",
             actor_id=current_user.id,
         )
+    # Re-clock once the edit has landed, so the calculation sees the final
+    # priority and location rather than the values it started with.
+    if sla_inputs_changed:
+        sla_service.apply_sla(db, db_sr)
     db.commit()
 
     return _enrich(
@@ -1701,6 +1807,17 @@ def clock_in_service_request(
     elif db_sr.status != ServiceRequestStatus.IN_PROGRESS:
         raise HTTPException(status_code=400, detail="Service request must be assigned before clock-in")
 
+    # Clocking in is where work physically begins, so this is where the permits
+    # are checked. A permit system that cannot refuse anything is a filing
+    # cabinet; this raises if one is missing, unsigned or out of window.
+    from app.services import permit as permit_service, sla as sla_service
+    permit_service.assert_work_permitted(db, db_sr)
+    permit_service.activate_for_work_order(db, db_sr, now=now)
+
+    # First contact — usually earlier than the first saved work session, so the
+    # response clock stops here.
+    sla_service.mark_responded(db_sr, now=now)
+
     session_id = uuid.uuid4().hex
     history = list(db_sr.history or [])
     history.append(_history_entry("technician_clock_in", current_user, {
@@ -1820,11 +1937,30 @@ def create_manual_work_session(
     if target_status is None and previous_status == ServiceRequestStatus.ASSIGNED:
         target_status = ServiceRequestStatus.IN_PROGRESS
 
+    # First technician contact is what a response SLA actually measures.
+    # Idempotent, so a second technician picking the job up later cannot
+    # overwrite a target that has already been met.
+    from app.services import sla as sla_service
+    sla_service.mark_responded(db_sr, now=now)
+
     if target_status is not None and target_status != previous_status:
         if target_status == ServiceRequestStatus.COMPLETED:
             if _active_clock_session(db_sr):
                 raise HTTPException(status_code=400, detail="End the active work session before marking this service request complete")
             db_sr.completed_at = now
+            # Bring back any space this job took down, closing the downtime
+            # interval. Beds return dirty rather than clean: a room that has
+            # had a technician and a ladder in it needs housekeeping before it
+            # takes a patient, and marking it clean would be a comfortable lie.
+            from app.services import space_status as space_status_service
+            space_status_service.restore_spaces_for_work_order(
+                db, db_sr, changed_by_id=current_user.id, now=now,
+            )
+            # Advance any schedule this work order was generated from, so a
+            # technician finishing a PM does not also have to remember to reset
+            # its schedule — and so the next one actually generates.
+            from app.services import pm as pm_service
+            pm_service.close_out_for_work_order(db, db_sr)
         elif target_status in SERVICE_WORKFLOW_STATUSES and not db_sr.started_at:
             db_sr.started_at = now
         db_sr.status = target_status

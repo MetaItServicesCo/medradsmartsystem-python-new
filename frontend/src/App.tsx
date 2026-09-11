@@ -4,6 +4,7 @@ import { useAuthStore } from './stores/authStore'
 import Layout from './components/Layout'
 import { canAccessModule, getVisibleModules, type Module } from './config/permissions'
 import { lazyWithReload } from './utils/lazyWithReload'
+import { palette } from '@/theme/palette'
 
 const Landing = lazyWithReload(() => import('./pages/Landing'))
 const Login = lazyWithReload(() => import('./pages/Auth/Login'))
@@ -29,6 +30,13 @@ const MyLeave = lazyWithReload(() => import('./pages/MyLeave'))
 const ClientQuotation = lazyWithReload(() => import('./pages/Sales/ClientQuotation'))
 const PublicSalesPayment = lazyWithReload(() => import('./pages/Sales/PublicSalesPayment'))
 const ClientRental = lazyWithReload(() => import('./pages/Rentals/ClientRental'))
+const Locations = lazyWithReload(() => import('./pages/Locations'))
+const Spaces = lazyWithReload(() => import('./pages/Spaces'))
+const Vendors = lazyWithReload(() => import('./pages/Vendors'))
+const Permits = lazyWithReload(() => import('./pages/Permits'))
+const Compliance = lazyWithReload(() => import('./pages/Compliance'))
+const Maintenance = lazyWithReload(() => import('./pages/Maintenance'))
+const AssetLedger = lazyWithReload(() => import('./pages/AssetLedger'))
 
 const RouteFallback = () => (
   <div
@@ -38,15 +46,15 @@ const RouteFallback = () => (
       minHeight: 'calc(100vh - 96px)',
       display: 'grid',
       placeItems: 'center',
-      background: '#F7F8FC',
+      background: palette.pageAlt,
     }}
   >
     <div
       style={{
         width: 38,
         height: 38,
-        border: '4px solid #E9E4FF',
-        borderTopColor: '#7C3AED',
+        border: `4px solid ${palette.brandSoft}`,
+        borderTopColor: palette.brand,
         borderRadius: '50%',
         animation: 'medrad-route-spin 0.8s linear infinite',
       }}
@@ -74,6 +82,12 @@ const modulePath: Record<Module, string> = {
   'my-leave': '/my-leave',
   chat: '/chat',
   calendar: '/calendar',
+  locations: '/locations',
+  spaces: '/spaces',
+  vendors: '/vendors',
+  permits: '/permits',
+  compliance: '/compliance',
+  maintenance: '/maintenance',
 }
 
 const fallbackPathFor = (user: ReturnType<typeof useAuthStore.getState>['user'], currentModule: Module) => {
@@ -131,6 +145,14 @@ function App() {
           <Route path="my-timesheets" element={<ProtectedPage module="my-timesheets"><MyTimesheets /></ProtectedPage>} />
           <Route path="my-leave" element={<ProtectedPage module="my-leave"><MyLeave /></ProtectedPage>} />
           <Route path="billing/*" element={<ProtectedPage module="billing"><Billing /></ProtectedPage>} />
+          {/* Facilities / MEP */}
+          <Route path="locations/*" element={<ProtectedPage module="locations"><Locations /></ProtectedPage>} />
+          <Route path="spaces/*" element={<ProtectedPage module="spaces"><Spaces /></ProtectedPage>} />
+          <Route path="vendors/*" element={<ProtectedPage module="vendors"><Vendors /></ProtectedPage>} />
+          <Route path="permits/*" element={<ProtectedPage module="permits"><Permits /></ProtectedPage>} />
+          <Route path="compliance/*" element={<ProtectedPage module="compliance"><Compliance /></ProtectedPage>} />
+          <Route path="maintenance/*" element={<ProtectedPage module="maintenance"><Maintenance /></ProtectedPage>} />
+          <Route path="asset-ledger/*" element={<ProtectedPage module="facility-inventory"><AssetLedger /></ProtectedPage>} />
         </Route>
       </Routes>
     </Suspense>

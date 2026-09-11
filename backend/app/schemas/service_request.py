@@ -157,18 +157,38 @@ class ServiceRequestQuotationListResponse(ServiceRequestQuotationResponse):
 
 class ServiceRequestBase(BaseModel):
     facility_id: int
-    equipment_id: int
+    # Was required. A nurse reporting a dead socket in an operating theatre
+    # knows the room and does not know the receptacle's asset tag; making them
+    # find one is how that report never gets filed. `app.services.work_order`
+    # enforces the real rule — equipment or location, never neither.
+    equipment_id: Optional[int] = None
+    location_id: Optional[int] = None
     problem_description: str
     service_required: Optional[str] = None
     preferred_datetime: Optional[datetime] = None
     requested_by_name: Optional[str] = None
     reference_number: Optional[str] = None
     request_image_url: Optional[str] = None
-    priority: str  # low / medium / high / critical
+    # Optional now: it is seeded from the criticality of the space when the
+    # reporter does not choose, because a nurse is not grading a fault against
+    # an SLA matrix and defaulting everything to medium is how a theatre
+    # outage queues behind a broken office chair.
+    priority: Optional[str] = None  # low / medium / high / critical
 
 
 class ServiceRequestCreate(ServiceRequestBase):
     requester_id: Optional[int] = None  # Set server-side from current_user if omitted
+
+    # ── Facilities / MEP ────────────────────────────────────────────────────
+    work_order_type: str = "corrective"
+    discipline_id: Optional[int] = None
+    assigned_vendor_id: Optional[int] = None
+    # None means "decide from the work order type" — in-house plant work is not
+    # dragged through the quotation flow built for billing medical equipment
+    # service, but an explicit choice always wins.
+    is_billable: Optional[bool] = None
+    cost_center: Optional[str] = None
+    takes_space_out_of_service: bool = False
 
 
 class ServiceRequestUpdate(BaseModel):
@@ -187,6 +207,17 @@ class ServiceRequestUpdate(BaseModel):
     billing_status: Optional[str] = None
     cc_auth_requested: Optional[bool] = None
     invoice_deleted: Optional[bool] = None
+
+    # ── Facilities / MEP ────────────────────────────────────────────────────
+    # The dispatch fields. Editable after creation because the trade is often
+    # wrong at intake — "the socket is dead" gets filed as electrical and turns
+    # out to be the panel, or turns out to need the elevator contractor.
+    location_id: Optional[int] = None
+    work_order_type: Optional[str] = None
+    discipline_id: Optional[int] = None
+    assigned_vendor_id: Optional[int] = None
+    is_billable: Optional[bool] = None
+    cost_center: Optional[str] = None
 
 
 class ServiceRequestNoteCreate(BaseModel):
@@ -226,7 +257,11 @@ class ServiceRequestResponse(BaseModel):
     id: int
     request_number: str
     facility_id: int
-    equipment_id: int
+    # Optional since facilities work orders may be about a room and no asset.
+    # Left as a required int, serialising a location-only work order would fail
+    # validation on the way out rather than at the point it was created.
+    equipment_id: Optional[int] = None
+    location_id: Optional[int] = None
     requester_id: int
     assigned_technician_id: Optional[int] = None
     problem_description: str
@@ -250,7 +285,23 @@ class ServiceRequestResponse(BaseModel):
     cc_auth_requested: Optional[bool] = False
     invoice_deleted: Optional[bool] = False
     history: Optional[list] = []
-    
+
+    # ── Facilities / MEP ────────────────────────────────────────────────────
+    # Defaulted so that every existing caller keeps deserialising unchanged.
+    work_order_type: Optional[str] = "corrective"
+    discipline_id: Optional[int] = None
+    assigned_vendor_id: Optional[int] = None
+    vendor_contract_id: Optional[int] = None
+    is_billable: Optional[bool] = True
+    cost_center: Optional[str] = None
+    # The response clock. `sla_due_at` is what a queue sorts by and
+    # `sla_breached` is what it colours by.
+    sla_response_hours: Optional[int] = None
+    sla_due_at: Optional[datetime] = None
+    responded_at: Optional[datetime] = None
+    sla_breached: Optional[bool] = False
+    takes_space_out_of_service: Optional[bool] = False
+
     quotations: List[ServiceRequestQuotationResponse] = []
 
     # Denormalized names for UI display

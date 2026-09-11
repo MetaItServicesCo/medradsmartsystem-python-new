@@ -72,3 +72,32 @@ from app.models.hr import (
     EmployeeDocument, EmployeeContract, ContractStatus, EmployeeAcknowledgment,
     Timesheet, TimesheetStatus, DayStatus,
 )
+
+# ── Facilities / MEP ─────────────────────────────────────────────────────────
+from app.models.discipline import Discipline, UserDiscipline, SEED_DISCIPLINES
+from app.models.location import (
+    Location, FloorPlan, LocationType, SpaceUse, Criticality, ElectricalBranch,
+    OccupancyStatus, LOCATION_TYPES, SPACE_USES,
+)
+from app.models.space_status import (
+    SpaceStatus, SpaceStatusHistory, Availability, OutOfServiceReason, StatusSource,
+)
+from app.models.vendor import (
+    Vendor, VendorContact, VendorCredential, VendorContract, VendorContractAsset,
+    VendorType, VendorStatus, CredentialType, VendorContractType, VendorContractStatus,
+)
+from app.models.asset_link import AssetServesAsset, AssetServesLocation, ServiceType
+from app.models.reading import ReadingPoint, Reading, UnitOfMeasure, ReadingPointKind
+from app.models.permit import (
+    WorkPermit, PermitApproval, PermitType, PermitStatus, ApprovalRole, ApprovalStatus,
+    ConstructionActivityType, PatientRiskGroup, ICRAClass,
+)
+from app.models.compliance import (
+    ComplianceProgram, ComplianceTask, ComplianceAuthority, ComplianceFrequency,
+    ComplianceTaskStatus, ComplianceResult,
+)
+from app.models.maintenance_schedule import MaintenanceSchedule, ScheduleBasis, ScheduleStatus
+from app.models.asset_ledger import (
+    AssetLedgerEntry, LedgerEntryType, DepreciationMethod,
+    LEDGER_ENTRY_TYPES, DEPRECIATION_METHODS,
+)

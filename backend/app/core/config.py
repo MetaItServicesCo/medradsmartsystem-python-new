@@ -176,6 +176,14 @@ class Settings(BaseSettings):
     # protected by a PostgreSQL advisory lock, so a short interval is safe and
     # also drains failed receipt deliveries promptly.
     RENTAL_BILLING_INTERVAL_SECONDS: int = 900
+
+    # Facilities scheduling. Half-hourly is plenty: the shortest thing it
+    # generates is a daily compliance task, and every operation it performs is
+    # idempotent, so a longer interval costs nothing but freshness.
+    FACILITIES_SCHEDULER_INTERVAL_SECONDS: int = 1800
+    # How far ahead compliance tasks are created. Thirty days gives a planner
+    # visibility without filling the list with work nobody can start yet.
+    FACILITIES_COMPLIANCE_HORIZON_DAYS: int = 30
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

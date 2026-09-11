@@ -188,6 +188,39 @@ class Priority(str, enum.Enum):
     HIGH = "high"
     CRITICAL = "critical"
 
+
+class WorkOrderType(str, enum.Enum):
+    """What kind of work this is.
+
+    One table for medical equipment and plant work rather than two, because a
+    hospital runs one work-control desk. Two tables would mean two number
+    series, two queues, two mobile views for the same technician, and a second
+    copy of the quotation, authorisation, payment and ledger machinery that
+    already lives in this file.
+
+    The type is what makes that safe: it is the switch that decides whether the
+    billing path applies, whether an asset is required, and which SLA applies.
+    """
+
+    CORRECTIVE = "corrective"        # something broke — the default, and today's only behaviour
+    PREVENTIVE = "preventive"        # scheduled PM, generated from a schedule
+    ROUNDS = "rounds"                # a tour capturing readings, not a repair
+    PROJECT = "project"              # capital or improvement work
+    SAFETY = "safety"                # hazard or life-safety deficiency
+    UTILITY_SHUTDOWN = "utility_shutdown"   # planned outage with an impact list
+
+
+# Work order types that are internal plant work and are not billed through the
+# quotation/authorisation/payment path. Medical equipment service is billed to
+# the facility; a house electrician replacing a receptacle is not, and forcing
+# in-house work through a quotation flow is how a CMMS stops being used.
+NON_BILLABLE_TYPES: frozenset[str] = frozenset({
+    WorkOrderType.PREVENTIVE.value,
+    WorkOrderType.ROUNDS.value,
+    WorkOrderType.SAFETY.value,
+    WorkOrderType.UTILITY_SHUTDOWN.value,
+})
+
 class ServiceRequestStatus(str, enum.Enum):
     NEW = "new"
     ASSIGNED = "assigned"
@@ -216,7 +249,19 @@ class ServiceRequest(Base):
     id = Column(Integer, primary_key=True, index=True)
     request_number = Column(String, unique=True, nullable=False, index=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False, index=True)
-    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=False)
+
+    # Was NOT NULL. Relaxed because the reporting case that matters most for
+    # facilities has no asset: "the socket in OR-3 is dead" is reported by a
+    # nurse who knows the room and does not know — and must not be made to
+    # hunt for — the receptacle's tag or which panel feeds it. The asset gets
+    # attached later by the technician, and it is routinely a different asset
+    # than anyone guessed at intake.
+    #
+    # Enforced instead in `app.services.work_order`: a work order must carry an
+    # equipment_id or a location_id, and never neither.
+    equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=True)
+    location_id = Column(Integer, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
+
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     assigned_technician_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     problem_description = Column(Text, nullable=False)
@@ -242,9 +287,51 @@ class ServiceRequest(Base):
     invoice_deleted = Column(Boolean, default=False)
     history = Column(JSON, default=list)
 
+    # ── Facilities / MEP ────────────────────────────────────────────────────
+    work_order_type = Column(String, nullable=False, default=WorkOrderType.CORRECTIVE.value, index=True)
+    discipline_id = Column(Integer, ForeignKey("disciplines.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Dispatched outside. `WAITING_FOR_VENDOR_REPAIR` already existed in the
+    # status enum with nowhere to record who the vendor actually was.
+    assigned_vendor_id = Column(Integer, ForeignKey("vendors.id", ondelete="SET NULL"), nullable=True, index=True)
+    vendor_contract_id = Column(Integer, ForeignKey("vendor_contracts.id", ondelete="SET NULL"), nullable=True)
+
+    # Whether the quotation -> authorisation -> payment path applies at all.
+    # In-house plant work is internal labour, optionally charged to a department
+    # cost centre, and must not be dragged through a billing flow built for
+    # billing a customer for medical equipment service.
+    is_billable = Column(Boolean, nullable=False, default=True, index=True)
+    cost_center = Column(String, nullable=True)
+
+    # ── SLA ─────────────────────────────────────────────────────────────────
+    # `Tier.response_time_hours` has been stored and displayed since the tier
+    # feature shipped, and nothing has ever computed against it: there was no
+    # due date and no breach. For facilities work that will not do, because the
+    # clock is the whole product — and because the interesting input is not the
+    # facility's tier but the criticality of the space. The same dead
+    # receptacle is a Tuesday ticket in a store room and a cancelled case in an
+    # operating room.
+    #
+    # Computed at creation by `app.services.sla`, and recomputed if priority or
+    # location changes. `responded_at` is first technician contact, which is
+    # what a response SLA actually measures — not completion.
+    sla_response_hours = Column(Integer, nullable=True)
+    sla_due_at = Column(DateTime, nullable=True, index=True)
+    responded_at = Column(DateTime, nullable=True)
+    sla_breached = Column(Boolean, nullable=False, default=False, index=True)
+
+    # Set when this work order is why a space is out of service. The other half
+    # of the link lives on SpaceStatus.work_order_id; this side is what lets a
+    # technician closing a job be asked whether the space comes back with it.
+    takes_space_out_of_service = Column(Boolean, nullable=False, default=False)
+
     # Relationships
     facility = relationship("Facility", back_populates="service_requests")
     equipment = relationship("Equipment", back_populates="service_requests")
     requester = relationship("User", foreign_keys=[requester_id], back_populates="service_requests")
     assigned_technician = relationship("User", foreign_keys=[assigned_technician_id])
+    location = relationship("Location", foreign_keys=[location_id])
+    discipline = relationship("Discipline")
+    assigned_vendor = relationship("Vendor", foreign_keys=[assigned_vendor_id])
+    vendor_contract = relationship("VendorContract", foreign_keys=[vendor_contract_id])
     quotations = relationship("ServiceRequestQuotation", back_populates="service_request", cascade="all, delete-orphan", order_by="ServiceRequestQuotation.created_at.desc()")

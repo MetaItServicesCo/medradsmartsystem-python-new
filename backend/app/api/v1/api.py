@@ -29,6 +29,15 @@ from app.api.v1.endpoints import (
     reports,
     billing,
     square_webhooks,
+    locations,
+    vendors,
+    spaces,
+    disciplines,
+    readings,
+    permits,
+    compliance,
+    maintenance,
+    asset_ledger,
 )
 
 api_router = APIRouter()
@@ -67,3 +76,16 @@ api_router.include_router(square_webhooks.router, prefix="/webhooks", tags=["web
 api_router.include_router(assistant.router, prefix="/assistant", tags=["assistant"])
 # No prefix: the path must stay under /api/v1/ws/ for the proxy to upgrade it.
 api_router.include_router(assistant.voice_router, tags=["assistant"])
+
+# ── Facilities / MEP ─────────────────────────────────────────────────────────
+# Their own prefixes, so nothing that already answers under /equipment,
+# /facilities or /service-requests changes shape.
+api_router.include_router(locations.router, prefix="/locations", tags=["locations"])
+api_router.include_router(spaces.router, prefix="/spaces", tags=["spaces"])
+api_router.include_router(vendors.router, prefix="/vendors", tags=["vendors"])
+api_router.include_router(disciplines.router, prefix="/disciplines", tags=["disciplines"])
+api_router.include_router(readings.router, prefix="/readings", tags=["readings"])
+api_router.include_router(permits.router, prefix="/permits", tags=["permits"])
+api_router.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
+api_router.include_router(maintenance.router, prefix="/maintenance", tags=["maintenance"])
+api_router.include_router(asset_ledger.router, prefix="/asset-ledger", tags=["asset-ledger"])

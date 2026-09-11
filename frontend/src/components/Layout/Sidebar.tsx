@@ -5,6 +5,13 @@ import DashboardIcon from '@mui/icons-material/Dashboard'
 import BusinessIcon from '@mui/icons-material/Business'
 import BuildIcon from '@mui/icons-material/Build'
 import AssignmentIcon from '@mui/icons-material/Assignment'
+import MapIcon from '@mui/icons-material/Map'
+import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
+import HandshakeIcon from '@mui/icons-material/Handshake'
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
+import FactCheckIcon from '@mui/icons-material/FactCheck'
+import EventRepeatIcon from '@mui/icons-material/EventRepeat'
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import InventoryIcon from '@mui/icons-material/Inventory'
@@ -25,6 +32,7 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
+import { palette } from '@/theme/palette'
 
 type ModuleGroup = 'Overview' | 'Operations' | 'Commerce' | 'People' | 'Workspace'
 
@@ -45,6 +53,13 @@ const allMenuItems: SidebarItem[] = [
   { text: 'Facilities', description: 'Facilities and asset records', icon: <BusinessIcon />, path: '/facilities', module: 'facilities', group: 'Operations' },
   { text: 'Services', description: 'Service requests and work orders', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests', group: 'Operations' },
   { text: 'Inspections', description: 'Schedules, batches, and reports', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections', group: 'Operations' },
+  { text: 'Locations', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'Operations' },
+  { text: 'Space Status', description: 'Availability and capacity lost', icon: <MeetingRoomIcon />, path: '/spaces', module: 'spaces', group: 'Operations' },
+  { text: 'Vendors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Operations' },
+  { text: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />, path: '/permits', module: 'permits', group: 'Operations' },
+  { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Operations' },
+  { text: 'Maintenance Plans', description: 'Recurring calendar and runtime work', icon: <EventRepeatIcon />, path: '/maintenance', module: 'maintenance', group: 'Operations' },
+  { text: 'Asset Ledger', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Operations' },
   {
     text: 'Sales', description: 'Quotations, invoices, and sales', icon: <ShoppingCartIcon />, path: '/sales/quotations', module: 'sales', group: 'Commerce',
     subItems: [
@@ -141,12 +156,14 @@ const Sidebar = () => {
       sx={{
         width: { xs: '100%', sm: 72 },
         height: { xs: 'calc(64px + env(safe-area-inset-bottom))', sm: '100dvh', md: 'calc(100dvh - 24px)' },
-        // The landing page purple, --lp-purple, flat rather than the old
-        // violet gradient so the rail is the one colour the public pages use.
-        background: '#6550bd',
+        // The landing page brand, --lp-brand, flat rather than the old
+        // gradient so the rail is the one colour the public pages use.
+        // Not brandLight: the rail carries white icons, and white on
+        // brandLight is 1.92:1.
+        background: palette.brand,
         display: 'flex', flexDirection: { xs: 'row', sm: 'column' }, alignItems: 'center',
         py: { xs: 1, sm: 3 }, px: { xs: 1.25, sm: 0 }, gap: 1, flexShrink: 0, overflow: 'visible',
-        boxShadow: '0 24px 60px rgba(101,80,189,0.22)',
+        boxShadow: '0 24px 60px rgba(4,120,87,0.22)',
         position: { xs: 'fixed', sm: 'relative' },
         left: 0, right: 0, bottom: 0,
         zIndex: 1300,
@@ -161,7 +178,7 @@ const Sidebar = () => {
           alignItems: 'center', justifyContent: 'center', mb: { xs: 0, sm: 3 },
           border: '1px solid rgba(255,255,255,0.25)', backdropFilter: 'blur(10px)',
           fontWeight: 900, fontSize: '1.2rem', color: '#fff',
-          boxShadow: '0 12px 28px rgba(35,28,97,0.18)',
+          boxShadow: '0 12px 28px rgba(6,78,59,0.18)',
         }}
       >
         M
@@ -176,16 +193,16 @@ const Sidebar = () => {
             width: { xs: 42, sm: 48 }, height: { xs: 42, sm: 48 }, p: 0, borderRadius: { xs: '14px', sm: '16px' },
             border: '1px solid rgba(255,255,255,0.26)',
             background: launcherOpen ? '#fff' : 'rgba(255,255,255,0.17)',
-            color: launcherOpen ? '#6553C8' : '#fff', display: 'flex',
+            color: launcherOpen ? palette.brand : '#fff', display: 'flex',
             alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative',
-            boxShadow: launcherOpen ? '0 16px 34px rgba(31,26,82,0.28)' : '0 10px 24px rgba(31,26,82,0.14)',
+            boxShadow: launcherOpen ? '0 16px 34px rgba(6,78,59,0.28)' : '0 10px 24px rgba(6,78,59,0.14)',
             transition: 'transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease',
             '&:hover': { transform: 'translateY(-2px)', background: launcherOpen ? '#fff' : 'rgba(255,255,255,0.24)' },
             '&:focus-visible': { outline: '3px solid rgba(255,255,255,0.42)', outlineOffset: 3 },
             '&::after': currentItem ? {
               content: '""', position: 'absolute', right: -3, top: -3,
               width: 10, height: 10, borderRadius: '50%', bgcolor: '#FF7AAE',
-              border: '2px solid #6553C8', boxShadow: '0 0 0 3px rgba(255,122,174,0.18)',
+              border: `2px solid ${palette.brandLight}`, boxShadow: '0 0 0 3px rgba(255,122,174,0.18)',
             } : undefined,
           }}
         >
@@ -199,7 +216,7 @@ const Sidebar = () => {
             sx={{
               mt: { xs: 0, sm: 1 }, width: 40, height: 40, borderRadius: '14px', display: 'flex',
               alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.8)',
-              background: 'rgba(35,28,97,0.14)', '& svg': { fontSize: '1.2rem' },
+              background: 'rgba(6,78,59,0.14)', '& svg': { fontSize: '1.2rem' },
             }}
           >
             {currentItem.icon}
@@ -233,7 +250,7 @@ const Sidebar = () => {
             aria-hidden="true" onClick={closeLauncher}
             sx={{
               position: 'fixed', inset: 0, zIndex: 1290,
-              background: 'rgba(30,27,75,0.14)', backdropFilter: 'blur(2px)',
+              background: 'rgba(6,78,59,0.14)', backdropFilter: 'blur(2px)',
               animation: 'moduleLauncherFade 160ms ease-out',
               '@keyframes moduleLauncherFade': { from: { opacity: 0 }, to: { opacity: 1 } },
             }}
@@ -250,7 +267,7 @@ const Sidebar = () => {
               display: 'flex', flexDirection: 'column', overflow: 'hidden',
               borderRadius: { xs: '22px', md: '28px' }, background: 'rgba(255,255,255,0.97)',
               border: '1px solid rgba(255,255,255,0.86)',
-              boxShadow: '0 30px 90px rgba(30,27,75,0.28), 0 4px 18px rgba(113,97,216,0.12)',
+              boxShadow: '0 30px 90px rgba(6,78,59,0.28), 0 4px 18px rgba(4,120,87,0.12)',
               backdropFilter: 'blur(24px)', transformOrigin: 'left top',
               animation: 'moduleLauncherIn 210ms cubic-bezier(0.16, 1, 0.3, 1)',
               '@keyframes moduleLauncherIn': {
@@ -259,10 +276,10 @@ const Sidebar = () => {
               },
             }}
           >
-            <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 2.5, pb: 2, borderBottom: '1px solid #EEF0F6' }}>
+            <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 2.5, pb: 2, borderBottom: `1px solid ${palette.borderSoft}` }}>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 2 }}>
                 <Box>
-                  <Typography sx={{ fontSize: '1.15rem', fontWeight: 900, color: '#1E1B4B', letterSpacing: '-0.02em' }}>
+                  <Typography sx={{ fontSize: '1.15rem', fontWeight: 900, color: palette.ink, letterSpacing: '-0.02em' }}>
                     Modules
                   </Typography>
                   <Typography sx={{ mt: 0.25, fontSize: '0.78rem', color: '#7B8497', fontWeight: 600 }}>
@@ -272,9 +289,9 @@ const Sidebar = () => {
                 <Box
                   component="button" type="button" aria-label="Close module navigation" onClick={closeLauncher}
                   sx={{
-                    width: 34, height: 34, p: 0, border: 0, borderRadius: '11px', bgcolor: '#F3F1FF',
-                    color: '#6553C8', display: 'grid', placeItems: 'center', cursor: 'pointer',
-                    '&:hover': { bgcolor: '#EAE6FF' },
+                    width: 34, height: 34, p: 0, border: 0, borderRadius: '11px', bgcolor: '#f1fffa',
+                    color: palette.brandLight, display: 'grid', placeItems: 'center', cursor: 'pointer',
+                    '&:hover': { bgcolor: palette.brandTint },
                   }}
                 >
                   <CloseRoundedIcon sx={{ fontSize: 20 }} />
@@ -283,16 +300,16 @@ const Sidebar = () => {
               <Box
                 sx={{
                   height: 48, display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5,
-                  borderRadius: '15px', bgcolor: '#F7F6FC', border: '1px solid #E9E6F7',
+                  borderRadius: '15px', bgcolor: '#f6fcfa', border: '1px solid #e6f7f2',
                   transition: 'border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease',
-                  '&:focus-within': { bgcolor: '#fff', borderColor: '#8B7AE6', boxShadow: '0 0 0 4px rgba(113,97,216,0.11)' },
+                  '&:focus-within': { bgcolor: '#fff', borderColor: palette.brandPale, boxShadow: '0 0 0 4px rgba(4,120,87,0.11)' },
                 }}
               >
                 <SearchRoundedIcon sx={{ color: '#8A94A6', fontSize: 21 }} />
                 <InputBase
                   autoFocus fullWidth value={search} onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search modules" inputProps={{ 'aria-label': 'Search modules' }}
-                  sx={{ color: '#1E1B4B', fontSize: '0.9rem', fontWeight: 600, '& input::placeholder': { color: '#98A1B2', opacity: 1 } }}
+                  sx={{ color: palette.ink, fontSize: '0.9rem', fontWeight: 600, '& input::placeholder': { color: '#98A1B2', opacity: 1 } }}
                 />
                 {search && (
                   <Box
@@ -308,7 +325,7 @@ const Sidebar = () => {
             <Box
               sx={{
                 flex: 1, minHeight: 0, overflowY: 'auto', px: { xs: 1.5, sm: 2 }, py: 1.5,
-                scrollbarWidth: 'thin', scrollbarColor: 'rgba(113,97,216,0.25) transparent',
+                scrollbarWidth: 'thin', scrollbarColor: 'rgba(4,120,87,0.25) transparent',
               }}
             >
               {groupedItems.map(({ group, items }) => (
@@ -326,36 +343,36 @@ const Sidebar = () => {
                           sx={{
                             minWidth: 0, minHeight: 72, display: 'flex', alignItems: 'center', gap: 1.25,
                             p: 1.15, textAlign: 'left', borderRadius: '16px',
-                            border: active ? '1px solid rgba(113,97,216,0.34)' : '1px solid transparent',
-                            background: active ? 'linear-gradient(135deg, #F2EFFF 0%, #FFF3F8 100%)' : 'transparent',
-                            cursor: 'pointer', color: '#1E1B4B',
+                            border: active ? '1px solid rgba(4,120,87,0.34)' : '1px solid transparent',
+                            background: active ? 'linear-gradient(135deg, #effffb 0%, #FFF3F8 100%)' : 'transparent',
+                            cursor: 'pointer', color: palette.ink,
                             transition: 'transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease',
                             '&:hover': {
-                              transform: 'translateY(-1px)', bgcolor: active ? undefined : '#F8F7FC',
-                              borderColor: active ? undefined : '#ECE9F7', boxShadow: '0 10px 24px rgba(71,61,150,0.08)',
+                              transform: 'translateY(-1px)', bgcolor: active ? undefined : '#f7fcfb',
+                              borderColor: active ? undefined : palette.brandBorder, boxShadow: '0 10px 24px rgba(4,120,87,0.08)',
                             },
-                            '&:focus-visible': { outline: '3px solid rgba(113,97,216,0.2)', outlineOffset: 1 },
+                            '&:focus-visible': { outline: '3px solid rgba(4,120,87,0.2)', outlineOffset: 1 },
                           }}
                         >
                           <Box
                             sx={{
                               width: 42, height: 42, borderRadius: '14px', flexShrink: 0, display: 'grid', placeItems: 'center',
-                              color: active ? '#fff' : '#6D5BD0',
-                              background: active ? 'linear-gradient(135deg, #7161D8, #F05D92)' : '#EEEAFE',
-                              boxShadow: active ? '0 10px 22px rgba(113,97,216,0.24)' : 'none', '& svg': { fontSize: 21 },
+                              color: active ? '#fff' : palette.brandLight,
+                              background: active ? `linear-gradient(135deg, ${palette.brand}, ${palette.accent})` : palette.brandTint,
+                              boxShadow: active ? '0 10px 22px rgba(4,120,87,0.24)' : 'none', '& svg': { fontSize: 21 },
                             }}
                           >
                             {item.icon}
                           </Box>
                           <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography sx={{ fontSize: '0.84rem', fontWeight: 850, color: '#24204E', lineHeight: 1.25 }} noWrap>
+                            <Typography sx={{ fontSize: '0.84rem', fontWeight: 850, color: palette.brandDeep, lineHeight: 1.25 }} noWrap>
                               {item.text}
                             </Typography>
                             <Typography sx={{ mt: 0.25, fontSize: '0.67rem', fontWeight: 600, color: '#8992A4', lineHeight: 1.35 }} noWrap>
                               {item.description}
                             </Typography>
                           </Box>
-                          <ArrowForwardRoundedIcon sx={{ fontSize: 17, color: active ? '#7867D8' : '#C0C5D0', flexShrink: 0 }} />
+                          <ArrowForwardRoundedIcon sx={{ fontSize: 17, color: active ? palette.brandPale : '#C0C5D0', flexShrink: 0 }} />
                         </Box>
                       )
                     })}
@@ -365,16 +382,16 @@ const Sidebar = () => {
 
               {groupedItems.length === 0 && (
                 <Box sx={{ py: 6, px: 2, textAlign: 'center' }}>
-                  <Box sx={{ width: 50, height: 50, borderRadius: '17px', bgcolor: '#F1EEFF', color: '#7161D8', display: 'grid', placeItems: 'center', mx: 'auto', mb: 1.5 }}>
+                  <Box sx={{ width: 50, height: 50, borderRadius: '17px', bgcolor: '#eefffa', color: palette.brand, display: 'grid', placeItems: 'center', mx: 'auto', mb: 1.5 }}>
                     <SearchRoundedIcon />
                   </Box>
-                  <Typography sx={{ fontWeight: 900, color: '#24204E' }}>No modules found</Typography>
+                  <Typography sx={{ fontWeight: 900, color: palette.brandDeep }}>No modules found</Typography>
                   <Typography sx={{ mt: 0.4, fontSize: '0.78rem', color: '#8992A4' }}>Try a different module name.</Typography>
                 </Box>
               )}
             </Box>
 
-            <Box sx={{ px: 2.5, py: 1.25, borderTop: '1px solid #EEF0F6', bgcolor: '#FBFBFE', display: { xs: 'none', sm: 'flex' }, justifyContent: 'space-between' }}>
+            <Box sx={{ px: 2.5, py: 1.25, borderTop: `1px solid ${palette.borderSoft}`, bgcolor: '#FBFBFE', display: { xs: 'none', sm: 'flex' }, justifyContent: 'space-between' }}>
               <Typography sx={{ color: '#9AA2B2', fontSize: '0.68rem', fontWeight: 650 }}>Showing permitted modules only</Typography>
               <Typography sx={{ color: '#9AA2B2', fontSize: '0.68rem', fontWeight: 650 }}>Esc to close</Typography>
             </Box>

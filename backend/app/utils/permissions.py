@@ -22,6 +22,19 @@ PermissionAction = str
 # Alternate module keys that some callers use → canonical key
 MODULE_ALIASES: dict[str, str] = {
     "service_requests":      "service-requests",
+    "floor_plans":           "locations",
+    "space_status":          "spaces",
+    "disciplines":           "locations",
+    "readings":              "locations",
+    "reading_points":        "locations",
+    "work_permits":          "permits",
+    "permit_approvals":      "permits",
+    "compliance_programs":   "compliance",
+    "compliance_tasks":      "compliance",
+    "maintenance_schedules": "maintenance",
+    "asset_ledger":          "facility-inventory",
+    "depreciation":          "facility-inventory",
+    "vendor_contracts":      "vendors",
     "test_equipment":        "test-equipment",
     "facility_inventory":    "facility-inventory",
     "equipment":             "facility-inventory",
@@ -35,6 +48,12 @@ ALL_MODULES: list[str] = [
     "dashboard", "facilities", "users", "service-requests", "inspections",
     "sales", "rentals", "facility-inventory", "inventory", "test-equipment", "reports", "billing", "hr",
     "my-timesheets", "my-leave", "chat", "attendance", "calendar",
+    # ── Facilities / MEP ──────────────────────────────────────────────────
+    # "locations" covers the space register and its floor plans; "spaces"
+    # covers availability, which is separated on purpose: a housekeeping
+    # supervisor should be able to flip a bed to clean without also being
+    # able to re-plan the building.
+    "locations", "spaces", "vendors", "permits", "compliance", "maintenance",
 ]
 
 # ── Action sets ───────────────────────────────────────────────────────────────
@@ -55,6 +74,12 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
     "superadmin": {m: _F for m in ALL_MODULES},
 
     "admin": {
+        "permits":           _F,
+        "compliance":        _F,
+        "maintenance":       _F,
+        "locations":         _F,
+        "spaces":            _F,
+        "vendors":           _F,
         "dashboard":        _F,
         "facilities":       _F,
         "users":            _V,   # admins see users; superadmin/hr_manager manage them
@@ -90,6 +115,12 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
 
     # ── Facility roles ──────────────────────────────────────────────────────
     "facility_admin": {
+        "permits":           _W,
+        "compliance":        _W,
+        "maintenance":       _W,
+        "locations":         _W,
+        "spaces":            _W,
+        "vendors":           _V,
         "dashboard":        _V,
         "facilities":       _V,   # view only; only admin can create/delete facilities
         "service-requests": _W,
@@ -107,6 +138,12 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
     },
 
     "facility_manager": {
+        "permits":           _W,
+        "compliance":        _W,
+        "maintenance":       _W,
+        "locations":         _W,
+        "spaces":            _W,
+        "vendors":           _V,
         "dashboard":        _V,
         "facilities":       _V,
         "service-requests": _W,
@@ -125,6 +162,12 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
 
     # ── Operational roles ───────────────────────────────────────────────────
     "technician": {
+        "permits":           _W,
+        "compliance":        _W,
+        "maintenance":       _V,
+        "locations":         _V,
+        "spaces":            _W,
+        "vendors":           _V,
         "dashboard":        _V,
         "facilities":       _V,   # needed for inspection / service-request routing
         "service-requests": _W,
@@ -139,6 +182,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
     },
 
     "employee": {
+        "locations":         _V,
         "dashboard":        _V,
         "facilities":       _V,
         "service-requests": _W,   # can raise and track own requests
@@ -150,6 +194,7 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
     },
 
     "client": {
+        "locations":         _V,
         "dashboard":        _V,
         "facilities":       _V,   # sees their own facility
         "service-requests": _W,

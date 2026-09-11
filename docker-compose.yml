@@ -202,6 +202,43 @@ services:
     networks:
       - medrad_network
 
+  # Compliance tasks, planned maintenance, and expiring permits. Every
+  # operation it performs is idempotent, so a run overlapping with somebody
+  # pressing the equivalent button in the UI cannot double anything.
+  facilities_scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medrad_facilities_scheduler
+    restart: unless-stopped
+    init: true
+    command: python -m app.jobs.facilities_scheduler
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-medrad}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be configured}@postgres:5432/${POSTGRES_DB:-medrad_db}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be configured}
+      - APP_ENV=${APP_ENV:-production}
+      - ENABLE_API_DOCS=false
+      - RUN_STARTUP_MIGRATIONS=false
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["https://medcodesolution.com","https://www.medcodesolution.com"]}
+      - TRUSTED_HOSTS=${TRUSTED_HOSTS:-["medcodesolution.com","www.medcodesolution.com","api.medcodesolution.com","localhost","127.0.0.1"]}
+      # It reads and writes in short bursts every half hour, so it needs far
+      # less of the pool than a request-serving process.
+      - DATABASE_POOL_SIZE=${FACILITIES_DATABASE_POOL_SIZE:-2}
+      - DATABASE_MAX_OVERFLOW=${FACILITIES_DATABASE_MAX_OVERFLOW:-1}
+      - PAYMENT_DATA_ENCRYPTION_KEYS=${PAYMENT_DATA_ENCRYPTION_KEYS:-}
+      - FACILITIES_SCHEDULER_INTERVAL_SECONDS=${FACILITIES_SCHEDULER_INTERVAL_SECONDS:-1800}
+      - FACILITIES_COMPLIANCE_HORIZON_DAYS=${FACILITIES_COMPLIANCE_HORIZON_DAYS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - medrad_network
+
   payment_proof_ocr_worker:
     build:
       context: ./backend
