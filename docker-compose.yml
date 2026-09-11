@@ -222,6 +222,10 @@ services:
       - APP_ENV=${APP_ENV:-production}
       - ENABLE_API_DOCS=false
       - RUN_STARTUP_MIGRATIONS=false
+      # Settings refuses to construct in production unless this is HTTPS, and
+      # it is validated at import time, so omitting it crash-loops the worker
+      # before it reaches a single line of its own code.
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL:-https://medcodesolution.com}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["https://medcodesolution.com","https://www.medcodesolution.com"]}
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-["medcodesolution.com","www.medcodesolution.com","api.medcodesolution.com","localhost","127.0.0.1"]}
       # It reads and writes in short bursts every half hour, so it needs far
