@@ -31,6 +31,7 @@ import AppsRoundedIcon from '@mui/icons-material/AppsRounded'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
+import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
 import { palette } from '@/theme/palette'
@@ -42,6 +43,16 @@ type ModuleGroup =
   | 'Overview' | 'The Building' | 'Maintenance' | 'Assets'
   | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
 
+/**
+ * Whether a module belongs to one hospital or to the organisation above them.
+ *
+ * Once you are inside a site, the navigation should be that site's — Buildings
+ * & Rooms means *these* buildings. Users, HR and the site list itself are not
+ * about any one hospital, so they stay in a separate section rather than
+ * implying they are scoped when they are not.
+ */
+type ModuleScope = 'site' | 'org'
+
 interface SidebarItem {
   text: string
   description: string
@@ -49,6 +60,7 @@ interface SidebarItem {
   path: string
   module: Module
   group: ModuleGroup
+  scope?: ModuleScope
   subItems?: { text: string; path: string }[]
 }
 
@@ -58,7 +70,7 @@ const groupOrder: ModuleGroup[] = [
 ]
 
 const allMenuItems: SidebarItem[] = [
-  { text: 'Sites', description: 'The hospitals you run — open one to work in it', icon: <BusinessIcon />, path: '/sites', module: 'facilities', group: 'Overview' },
+  { text: 'Sites', description: 'The hospitals you run — open one to work in it', icon: <BusinessIcon />, path: '/sites', module: 'facilities', group: 'Overview', scope: 'org' },
   { text: 'Dashboard', description: 'Your operational overview', icon: <DashboardIcon />, path: '/dashboard', module: 'dashboard', group: 'Overview' },
   { text: 'Work Orders', description: 'Service requests and work orders', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests', group: 'Maintenance' },
   { text: 'Inspections', description: 'Schedules, batches, and reports', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections', group: 'Maintenance' },
@@ -71,7 +83,7 @@ const allMenuItems: SidebarItem[] = [
   { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Assets' },
   { text: 'Assets & Value', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Assets' },
   {
-    text: 'Sales', description: 'Quotations, invoices, and sales', icon: <ShoppingCartIcon />, path: '/sales/quotations', module: 'sales', group: 'Commerce',
+    text: 'Sales', description: 'Quotations, invoices, and sales', icon: <ShoppingCartIcon />, path: '/sales/quotations', module: 'sales', group: 'Commerce', scope: 'org',
     subItems: [
       { text: 'Quotations', path: '/sales/quotations' },
       { text: 'Invoice', path: '/sales/invoices' },
@@ -80,7 +92,7 @@ const allMenuItems: SidebarItem[] = [
     ],
   },
   {
-    text: 'Rentals', description: 'Agreements and recurring billing', icon: <LocalShippingIcon />, path: '/rentals/agreements', module: 'rentals', group: 'Commerce',
+    text: 'Rentals', description: 'Agreements and recurring billing', icon: <LocalShippingIcon />, path: '/rentals/agreements', module: 'rentals', group: 'Commerce', scope: 'org',
     subItems: [
       { text: 'Agreements', path: '/rentals/agreements' },
       { text: 'Invoice', path: '/rentals/invoices' },
@@ -90,15 +102,15 @@ const allMenuItems: SidebarItem[] = [
   },
   { text: 'Parts & Spares', description: 'Sales and rental parts', icon: <InventoryIcon />, path: '/inventory', module: 'inventory', group: 'Assets' },
   { text: 'Test Equipment', description: 'Global test equipment library', icon: <ScienceIcon />, path: '/test-equipment', module: 'test-equipment', group: 'Assets' },
-  { text: 'Billing', description: 'Invoices, payments, and ledgers', icon: <PaymentIcon />, path: '/billing', module: 'billing', group: 'Commerce' },
-  { text: 'Users', description: 'Users, roles, and permissions', icon: <PeopleIcon />, path: '/users', module: 'users', group: 'People' },
-  { text: 'HR', description: 'Human resources management', icon: <GroupsIcon />, path: '/hr', module: 'hr', group: 'People' },
-  { text: 'Attendance', description: 'Attendance and working hours', icon: <AccessTimeIcon />, path: '/attendance', module: 'attendance', group: 'People' },
-  { text: 'My Timesheets', description: 'Personal time records', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets', group: 'People' },
-  { text: 'My Leave', description: 'Personal leave requests', icon: <BeachAccessIcon />, path: '/my-leave', module: 'my-leave', group: 'People' },
-  { text: 'Reports', description: 'Service and inspection reporting', icon: <AssessmentIcon />, path: '/reports', module: 'reports', group: 'Workspace' },
-  { text: 'Chat', description: 'Team and facility conversations', icon: <ChatBubbleIcon />, path: '/chat', module: 'chat', group: 'Workspace' },
-  { text: 'Calendar', description: 'Schedules and shared events', icon: <CalendarMonthIcon />, path: '/calendar', module: 'calendar', group: 'Workspace' },
+  { text: 'Billing', description: 'Invoices, payments, and ledgers', icon: <PaymentIcon />, path: '/billing', module: 'billing', group: 'Commerce', scope: 'org' },
+  { text: 'Users', description: 'Users, roles, and permissions', icon: <PeopleIcon />, path: '/users', module: 'users', group: 'People', scope: 'org' },
+  { text: 'HR', description: 'Human resources management', icon: <GroupsIcon />, path: '/hr', module: 'hr', group: 'People', scope: 'org' },
+  { text: 'Attendance', description: 'Attendance and working hours', icon: <AccessTimeIcon />, path: '/attendance', module: 'attendance', group: 'People', scope: 'org' },
+  { text: 'My Timesheets', description: 'Personal time records', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets', group: 'People', scope: 'org' },
+  { text: 'My Leave', description: 'Personal leave requests', icon: <BeachAccessIcon />, path: '/my-leave', module: 'my-leave', group: 'People', scope: 'org' },
+  { text: 'Reports', description: 'Service and inspection reporting', icon: <AssessmentIcon />, path: '/reports', module: 'reports', group: 'Workspace', scope: 'org' },
+  { text: 'Chat', description: 'Team and facility conversations', icon: <ChatBubbleIcon />, path: '/chat', module: 'chat', group: 'Workspace', scope: 'org' },
+  { text: 'Calendar', description: 'Schedules and shared events', icon: <CalendarMonthIcon />, path: '/calendar', module: 'calendar', group: 'Workspace', scope: 'org' },
 ]
 
 const Sidebar = () => {
@@ -109,6 +121,7 @@ const Sidebar = () => {
   const [launcherOpen, setLauncherOpen] = useState(false)
   const [search, setSearch] = useState('')
 
+  const { facility } = useActiveFacility()
   const visibleModules = getVisibleModules(user)
   const menuItems = useMemo(
     () => allMenuItems.filter((item) => visibleModules.includes(item.module)),
@@ -116,6 +129,9 @@ const Sidebar = () => {
   )
 
   const isActive = (item: SidebarItem) => {
+    if (item.module === 'dashboard' && facility) {
+      return location.pathname === `/sites/${facility.id}`
+    }
     if (item.subItems) {
       return item.subItems.some((subItem) => (
         location.pathname === subItem.path || location.pathname.startsWith(`${subItem.path}/`)
@@ -132,9 +148,19 @@ const Sidebar = () => {
     || item.description.toLowerCase().includes(normalizedSearch)
     || item.group.toLowerCase().includes(normalizedSearch)
   ))
-  const groupedItems = groupOrder
-    .map((group) => ({ group, items: filteredItems.filter((item) => item.group === group) }))
+  const groupsOf = (scope: ModuleScope) => groupOrder
+    .map((group) => ({
+      group,
+      items: filteredItems.filter(
+        (item) => item.group === group && (item.scope ?? 'site') === scope,
+      ),
+    }))
     .filter(({ items }) => items.length > 0)
+
+  const siteGroups = groupsOf('site')
+  const orgGroups = groupsOf('org')
+  // Used only for the empty-search message, so it still reflects everything.
+  const groupedItems = [...siteGroups, ...orgGroups]
 
   const closeLauncher = () => {
     setLauncherOpen(false)
@@ -159,6 +185,67 @@ const Sidebar = () => {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [launcherOpen])
+
+  /**
+   * Inside a site, Dashboard means *this* site's dashboard. Sending it to the
+   * global one would quietly drop the context the launcher header is showing.
+   */
+  const pathFor = (item: SidebarItem) =>
+    item.module === 'dashboard' && facility ? `/sites/${facility.id}` : item.path
+
+  /** One section of the launcher. Shared so the two cannot drift apart. */
+  const renderGroups = (groups: Array<{ group: ModuleGroup; items: SidebarItem[] }>) =>
+    groups.map(({ group, items }) => (
+                <Box key={group} sx={{ mb: 1.75 }}>
+                  <Typography sx={{ px: 0.75, mb: 0.7, color: '#8992A4', fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
+                    {group}
+                  </Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.75 }}>
+                    {items.map((item) => {
+                      const active = isActive(item)
+                      return (
+                        <Box
+                          key={item.module} component="button" type="button" onClick={() => openModule(pathFor(item))}
+                          aria-current={active ? 'page' : undefined}
+                          sx={{
+                            minWidth: 0, minHeight: 72, display: 'flex', alignItems: 'center', gap: 1.25,
+                            p: 1.15, textAlign: 'left', borderRadius: '16px',
+                            border: active ? '1px solid rgba(4,120,87,0.34)' : '1px solid transparent',
+                            background: active ? 'linear-gradient(135deg, #effffb 0%, #FFF3F8 100%)' : 'transparent',
+                            cursor: 'pointer', color: palette.ink,
+                            transition: 'transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease',
+                            '&:hover': {
+                              transform: 'translateY(-1px)', bgcolor: active ? undefined : '#f7fcfb',
+                              borderColor: active ? undefined : palette.brandBorder, boxShadow: '0 10px 24px rgba(4,120,87,0.08)',
+                            },
+                            '&:focus-visible': { outline: '3px solid rgba(4,120,87,0.2)', outlineOffset: 1 },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 42, height: 42, borderRadius: '14px', flexShrink: 0, display: 'grid', placeItems: 'center',
+                              color: active ? '#fff' : palette.brandLight,
+                              background: active ? `linear-gradient(135deg, ${palette.brand}, ${palette.accent})` : palette.brandTint,
+                              boxShadow: active ? '0 10px 22px rgba(4,120,87,0.24)' : 'none', '& svg': { fontSize: 21 },
+                            }}
+                          >
+                            {item.icon}
+                          </Box>
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography sx={{ fontSize: '0.84rem', fontWeight: 850, color: palette.brandDeep, lineHeight: 1.25 }} noWrap>
+                              {item.text}
+                            </Typography>
+                            <Typography sx={{ mt: 0.25, fontSize: '0.67rem', fontWeight: 600, color: '#8992A4', lineHeight: 1.35 }} noWrap>
+                              {item.description}
+                            </Typography>
+                          </Box>
+                          <ArrowForwardRoundedIcon sx={{ fontSize: 17, color: active ? palette.brandPale : '#C0C5D0', flexShrink: 0 }} />
+                        </Box>
+                      )
+                    })}
+                  </Box>
+                </Box>
+    ))
 
   return (
     <Box
@@ -288,13 +375,30 @@ const Sidebar = () => {
           >
             <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 2.5, pb: 2, borderBottom: `1px solid ${palette.borderSoft}` }}>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 2 }}>
-                <Box>
-                  <Typography sx={{ fontSize: '1.15rem', fontWeight: 900, color: palette.ink, letterSpacing: '-0.02em' }}>
-                    Modules
+                <Box sx={{ minWidth: 0 }}>
+                  {/* The hospital you are in, not the word "Modules". Everything
+                      in the first section below is scoped to it. */}
+                  <Typography noWrap sx={{ fontSize: '1.15rem', fontWeight: 900, color: palette.ink, letterSpacing: '-0.02em' }}>
+                    {facility?.name ?? 'Modules'}
                   </Typography>
-                  <Typography sx={{ mt: 0.25, fontSize: '0.78rem', color: '#7B8497', fontWeight: 600 }}>
-                    {currentItem ? `Currently in ${currentItem.text}` : 'Choose your workspace'}
-                  </Typography>
+                  <Box sx={{ mt: 0.25, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                    <Typography sx={{ fontSize: '0.78rem', color: '#7B8497', fontWeight: 600 }}>
+                      {currentItem ? `Currently in ${currentItem.text}` : 'Choose your workspace'}
+                    </Typography>
+                    {facility && (
+                      <Box
+                        component="button" type="button"
+                        onClick={() => openModule('/sites')}
+                        sx={{
+                          border: 0, p: 0, bgcolor: 'transparent', cursor: 'pointer',
+                          fontSize: '0.78rem', fontWeight: 800, color: palette.brand,
+                          '&:hover': { textDecoration: 'underline' },
+                        }}
+                      >
+                        Switch site
+                      </Box>
+                    )}
+                  </Box>
                 </Box>
                 <Box
                   component="button" type="button" aria-label="Close module navigation" onClick={closeLauncher}
@@ -338,57 +442,17 @@ const Sidebar = () => {
                 scrollbarWidth: 'thin', scrollbarColor: 'rgba(4,120,87,0.25) transparent',
               }}
             >
-              {groupedItems.map(({ group, items }) => (
-                <Box key={group} sx={{ mb: 1.75 }}>
-                  <Typography sx={{ px: 0.75, mb: 0.7, color: '#8992A4', fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
-                    {group}
+              {renderGroups(siteGroups)}
+
+              {orgGroups.length > 0 && (
+                <Box sx={{ mt: 0.5, pt: 1.75, borderTop: `1px solid ${palette.borderSoft}` }}>
+                  <Typography sx={{ px: 0.75, mb: 1.25, color: palette.textFaint, fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
+                    Across all sites
                   </Typography>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.75 }}>
-                    {items.map((item) => {
-                      const active = isActive(item)
-                      return (
-                        <Box
-                          key={item.module} component="button" type="button" onClick={() => openModule(item.path)}
-                          aria-current={active ? 'page' : undefined}
-                          sx={{
-                            minWidth: 0, minHeight: 72, display: 'flex', alignItems: 'center', gap: 1.25,
-                            p: 1.15, textAlign: 'left', borderRadius: '16px',
-                            border: active ? '1px solid rgba(4,120,87,0.34)' : '1px solid transparent',
-                            background: active ? 'linear-gradient(135deg, #effffb 0%, #FFF3F8 100%)' : 'transparent',
-                            cursor: 'pointer', color: palette.ink,
-                            transition: 'transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease',
-                            '&:hover': {
-                              transform: 'translateY(-1px)', bgcolor: active ? undefined : '#f7fcfb',
-                              borderColor: active ? undefined : palette.brandBorder, boxShadow: '0 10px 24px rgba(4,120,87,0.08)',
-                            },
-                            '&:focus-visible': { outline: '3px solid rgba(4,120,87,0.2)', outlineOffset: 1 },
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              width: 42, height: 42, borderRadius: '14px', flexShrink: 0, display: 'grid', placeItems: 'center',
-                              color: active ? '#fff' : palette.brandLight,
-                              background: active ? `linear-gradient(135deg, ${palette.brand}, ${palette.accent})` : palette.brandTint,
-                              boxShadow: active ? '0 10px 22px rgba(4,120,87,0.24)' : 'none', '& svg': { fontSize: 21 },
-                            }}
-                          >
-                            {item.icon}
-                          </Box>
-                          <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography sx={{ fontSize: '0.84rem', fontWeight: 850, color: palette.brandDeep, lineHeight: 1.25 }} noWrap>
-                              {item.text}
-                            </Typography>
-                            <Typography sx={{ mt: 0.25, fontSize: '0.67rem', fontWeight: 600, color: '#8992A4', lineHeight: 1.35 }} noWrap>
-                              {item.description}
-                            </Typography>
-                          </Box>
-                          <ArrowForwardRoundedIcon sx={{ fontSize: 17, color: active ? palette.brandPale : '#C0C5D0', flexShrink: 0 }} />
-                        </Box>
-                      )
-                    })}
-                  </Box>
+                  {renderGroups(orgGroups)}
                 </Box>
-              ))}
+              )}
+
 
               {groupedItems.length === 0 && (
                 <Box sx={{ py: 6, px: 2, textAlign: 'center' }}>
