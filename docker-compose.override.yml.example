@@ -8,20 +8,47 @@
 # tracked file, so upstream changes and host configuration stop colliding.
 #
 # Needed when another stack already holds the default ports or container names.
+#
+# `!override` is load-bearing. Compose *merges* sequence fields by default, so
+# a plain `ports:` entry appends to the base list rather than replacing it —
+# the container then tries to bind both the old port and the new one, and the
+# old one is exactly the one another stack is already holding. `!override`
+# replaces the list. It needs Compose 2.24.4 or newer; check `docker compose
+# version` before relying on it, and verify with:
+#
+#   docker compose config | grep -E "container_name|published"
+#
+# Every name should read phealth_*, and each service should list exactly one
+# published port.
 services:
   postgres:
     container_name: phealth_postgres
-    ports: ["127.0.0.1:5434:5432"]
+    ports: !override ["127.0.0.1:5434:5432"]
   redis:
     container_name: phealth_redis
-    ports: ["127.0.0.1:6380:6379"]
+    ports: !override ["127.0.0.1:6380:6379"]
   backend:
     container_name: phealth_backend
-    ports: ["127.0.0.1:8010:8000"]
+    ports: !override ["127.0.0.1:8010:8000"]
   frontend:
     container_name: phealth_frontend
-    ports: ["127.0.0.1:3010:3000"]
+    ports: !override ["127.0.0.1:3010:3000"]
   facilities_scheduler:
     container_name: phealth_facilities_scheduler
   rental_scheduler:
     container_name: phealth_rental_scheduler
+  payment_proof_ocr_worker:
+    container_name: phealth_payment_proof_ocr_worker
+
+  # Renamed but deliberately not re-ported. These four are not involved in
+  # facilities, and coturn in particular publishes 3478 plus a forty-port media
+  # range that cannot be shared. Start them only if you need them, and give
+  # coturn its own ports first.
+  agent:
+    container_name: phealth_agent
+  speech:
+    container_name: phealth_speech
+  voice:
+    container_name: phealth_voice
+  coturn:
+    container_name: phealth_coturn
