@@ -379,11 +379,13 @@ const Sidebar = () => {
                   {/* The hospital you are in, not the word "Modules". Everything
                       in the first section below is scoped to it. */}
                   <Typography noWrap sx={{ fontSize: '1.15rem', fontWeight: 900, color: palette.ink, letterSpacing: '-0.02em' }}>
-                    {facility?.name ?? 'Modules'}
+                    {facility?.name ?? 'Choose a site'}
                   </Typography>
                   <Box sx={{ mt: 0.25, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                     <Typography sx={{ fontSize: '0.78rem', color: '#7B8497', fontWeight: 600 }}>
-                      {currentItem ? `Currently in ${currentItem.text}` : 'Choose your workspace'}
+                      {facility
+                        ? (currentItem ? `Currently in ${currentItem.text}` : 'Choose your workspace')
+                        : 'Open a hospital to work in it'}
                     </Typography>
                     {facility && (
                       <Box
@@ -442,13 +444,17 @@ const Sidebar = () => {
                 scrollbarWidth: 'thin', scrollbarColor: 'rgba(4,120,87,0.25) transparent',
               }}
             >
-              {renderGroups(siteGroups)}
+              {facility && renderGroups(siteGroups)}
 
               {orgGroups.length > 0 && (
-                <Box sx={{ mt: 0.5, pt: 1.75, borderTop: `1px solid ${palette.borderSoft}` }}>
-                  <Typography sx={{ px: 0.75, mb: 1.25, color: palette.textFaint, fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
-                    Across all sites
-                  </Typography>
+                <Box sx={facility
+                  ? { mt: 0.5, pt: 1.75, borderTop: `1px solid ${palette.borderSoft}` }
+                  : {}}>
+                  {facility && (
+                    <Typography sx={{ px: 0.75, mb: 1.25, color: palette.textFaint, fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
+                      Across all sites
+                    </Typography>
+                  )}
                   {renderGroups(orgGroups)}
                 </Box>
               )}

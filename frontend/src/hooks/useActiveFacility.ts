@@ -1,26 +1,23 @@
 /**
- * The hospital you are working in, resolved once and then left alone.
+ * Which hospital you are working in.
  *
- * The system this grew out of was built for a contractor: one company, many
- * client sites, so every screen reasonably began by asking which site you
- * meant. A hospital's own system has one site. Asking on every screen is not a
- * small annoyance there — it makes the building feel like somebody else's.
+ * Every site is its own world: you choose one at login and everything from
+ * that point — buildings, rooms, fixtures, assets, work orders — is that
+ * site's. So this deliberately does not guess.
  *
- * So the facility becomes ambient. It resolves in this order:
+ * An earlier version fell back to the user's own facility and then to the only
+ * one that existed, which made the Sites screen unreachable: something was
+ * always selected, so the page whose whole purpose is choosing could never be
+ * the page you landed on.
  *
- *   1. whatever you last chose, if it still exists
- *   2. the facility your user account belongs to
- *   3. the only one there is
- *
- * and a picker appears at all only when more than one site exists. A
- * single-site install never sees it.
+ * `facilityId` is therefore undefined until somebody picks, and that is a real
+ * state — `RequireSite` in App.tsx checks for it and sends you to Sites.
  */
 import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { fetchFacilities, type Facility } from '@/api/facilities'
-import { useAuthStore } from '@/stores/authStore'
 
 interface FacilityState {
   facilityId: number | null
@@ -49,7 +46,6 @@ export interface ActiveFacility {
 }
 
 export function useActiveFacility(): ActiveFacility {
-  const user = useAuthStore((s) => s.user)
   const stored = useFacilityStore((s) => s.facilityId)
   const setFacilityId = useFacilityStore((s) => s.setFacilityId)
 
@@ -62,22 +58,18 @@ export function useActiveFacility(): ActiveFacility {
   const facilities = useMemo(() => (data?.items ?? []) as Facility[], [data])
 
   const resolved = useMemo(() => {
-    if (!facilities.length) return undefined
+    if (!facilities.length || stored == null) return undefined
     // A remembered choice only counts while it still exists. A facility can be
     // renamed or removed between sessions, and a stale id silently filters
     // every list to nothing — which reads as "no data" rather than as an error.
-    const remembered = facilities.find((f) => f.id === stored)
-    if (remembered) return remembered
-    const own = facilities.find((f) => f.id === user?.facility_id)
-    if (own) return own
-    return facilities[0]
-  }, [facilities, stored, user?.facility_id])
+    return facilities.find((f) => f.id === stored)
+  }, [facilities, stored])
 
-  // Write the resolution back so the rest of the app reads one value rather
-  // than each screen re-deriving it and disagreeing at the edges.
+  // Drop a remembered id that no longer resolves, so the guard sends the user
+  // back to Sites rather than leaving every screen mysteriously empty.
   useEffect(() => {
-    if (resolved && resolved.id !== stored) setFacilityId(resolved.id)
-  }, [resolved, stored, setFacilityId])
+    if (stored != null && facilities.length && !resolved) setFacilityId(null)
+  }, [stored, facilities.length, resolved, setFacilityId])
 
   return {
     facilityId: resolved?.id,

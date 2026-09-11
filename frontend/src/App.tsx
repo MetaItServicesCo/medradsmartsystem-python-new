@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useFacilityStore } from './hooks/useActiveFacility'
 import { useAuthStore } from './stores/authStore'
 import Layout from './components/Layout'
 import { canAccessModule, getVisibleModules, type Module } from './config/permissions'
@@ -98,6 +99,19 @@ const fallbackPathFor = (user: ReturnType<typeof useAuthStore.getState>['user'],
   return nextModule ? modulePath[nextModule] : '/profile'
 }
 
+/**
+ * A screen that only means anything inside one hospital.
+ *
+ * Buildings & Rooms with no site chosen is not an empty list, it is an
+ * unanswerable question — so it sends you to pick one rather than rendering
+ * nothing and looking broken.
+ */
+const RequireSite = ({ children }: { children: JSX.Element }) => {
+  const facilityId = useFacilityStore((state) => state.facilityId)
+  if (facilityId == null) return <Navigate to="/sites" replace />
+  return children
+}
+
 const ProtectedPage = ({ module, children }: { module: Module; children: JSX.Element }) => {
   const user = useAuthStore((state) => state.user)
   if (!canAccessModule(user, module)) {
@@ -119,7 +133,7 @@ function App() {
         <Route path="/payment/sales/:token" element={<PublicSalesPayment />} />
         <Route path="/rental/:token" element={<ClientRental />} />
         <Route path="/rental-extension/:extensionToken" element={<ClientRental />} />
-        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
+        <Route path="/" element={isAuthenticated ? <Navigate to="/sites" replace /> : <Landing />} />
 
         <Route
           path="/"
@@ -133,15 +147,15 @@ function App() {
           <Route path="chat/*" element={<ProtectedPage module="chat"><Chat /></ProtectedPage>} />
           <Route path="calendar" element={<ProtectedPage module="calendar"><Calendar /></ProtectedPage>} />
           <Route path="profile" element={<Profile />} />
-          <Route path="service-requests/*" element={<ProtectedPage module="service-requests"><ServiceRequests /></ProtectedPage>} />
-          <Route path="inspections/*" element={<ProtectedPage module="inspections"><Inspections /></ProtectedPage>} />
+          <Route path="service-requests/*" element={<RequireSite><ProtectedPage module="service-requests"><ServiceRequests /></ProtectedPage></RequireSite>} />
+          <Route path="inspections/*" element={<RequireSite><ProtectedPage module="inspections"><Inspections /></ProtectedPage></RequireSite>} />
           <Route path="sales/*" element={<ProtectedPage module="sales"><Sales /></ProtectedPage>} />
           <Route path="rentals/account/:rentalId" element={<ProtectedPage module="rentals"><ClientRental /></ProtectedPage>} />
           <Route path="rentals/*" element={<ProtectedPage module="rentals"><Rentals /></ProtectedPage>} />
           {/* Its own route: the inventory page is untouched by this. */}
-          <Route path="inventory-capture" element={<ProtectedPage module="inventory"><InventoryCapture /></ProtectedPage>} />
-          <Route path="inventory/*" element={<ProtectedPage module="inventory"><Inventory /></ProtectedPage>} />
-          <Route path="test-equipment/*" element={<ProtectedPage module="test-equipment"><TestEquipment /></ProtectedPage>} />
+          <Route path="inventory-capture" element={<RequireSite><ProtectedPage module="inventory"><InventoryCapture /></ProtectedPage></RequireSite>} />
+          <Route path="inventory/*" element={<RequireSite><ProtectedPage module="inventory"><Inventory /></ProtectedPage></RequireSite>} />
+          <Route path="test-equipment/*" element={<RequireSite><ProtectedPage module="test-equipment"><TestEquipment /></ProtectedPage></RequireSite>} />
           <Route path="hr/*" element={<ProtectedPage module="hr"><HR /></ProtectedPage>} />
           <Route path="reports/*" element={<ProtectedPage module="reports"><Reports /></ProtectedPage>} />
           <Route path="attendance/*" element={<ProtectedPage module="attendance"><Attendance /></ProtectedPage>} />
@@ -149,16 +163,16 @@ function App() {
           <Route path="my-leave" element={<ProtectedPage module="my-leave"><MyLeave /></ProtectedPage>} />
           <Route path="billing/*" element={<ProtectedPage module="billing"><Billing /></ProtectedPage>} />
           {/* Facilities / MEP */}
-          <Route path="locations/*" element={<ProtectedPage module="locations"><Locations /></ProtectedPage>} />
-          <Route path="spaces/*" element={<ProtectedPage module="spaces"><Spaces /></ProtectedPage>} />
-          <Route path="vendors/*" element={<ProtectedPage module="vendors"><Vendors /></ProtectedPage>} />
-          <Route path="permits/*" element={<ProtectedPage module="permits"><Permits /></ProtectedPage>} />
-          <Route path="compliance/*" element={<ProtectedPage module="compliance"><Compliance /></ProtectedPage>} />
-          <Route path="maintenance/*" element={<ProtectedPage module="maintenance"><Maintenance /></ProtectedPage>} />
+          <Route path="locations/*" element={<RequireSite><ProtectedPage module="locations"><Locations /></ProtectedPage></RequireSite>} />
+          <Route path="spaces/*" element={<RequireSite><ProtectedPage module="spaces"><Spaces /></ProtectedPage></RequireSite>} />
+          <Route path="vendors/*" element={<RequireSite><ProtectedPage module="vendors"><Vendors /></ProtectedPage></RequireSite>} />
+          <Route path="permits/*" element={<RequireSite><ProtectedPage module="permits"><Permits /></ProtectedPage></RequireSite>} />
+          <Route path="compliance/*" element={<RequireSite><ProtectedPage module="compliance"><Compliance /></ProtectedPage></RequireSite>} />
+          <Route path="maintenance/*" element={<RequireSite><ProtectedPage module="maintenance"><Maintenance /></ProtectedPage></RequireSite>} />
           <Route path="sites" element={<ProtectedPage module="facilities"><Sites /></ProtectedPage>} />
           <Route path="sites/:id" element={<ProtectedPage module="facilities"><SiteDashboard /></ProtectedPage>} />
-          <Route path="assets/*" element={<ProtectedPage module="facility-inventory"><Assets /></ProtectedPage>} />
-          <Route path="asset-ledger/*" element={<ProtectedPage module="facility-inventory"><AssetLedger /></ProtectedPage>} />
+          <Route path="assets/*" element={<RequireSite><ProtectedPage module="facility-inventory"><Assets /></ProtectedPage></RequireSite>} />
+          <Route path="asset-ledger/*" element={<RequireSite><ProtectedPage module="facility-inventory"><AssetLedger /></ProtectedPage></RequireSite>} />
         </Route>
       </Routes>
     </Suspense>

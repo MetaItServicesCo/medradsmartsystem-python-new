@@ -26,7 +26,7 @@ const Login = () => {
   const { login, isAuthenticated } = useAuthStore()
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/dashboard')
+    if (isAuthenticated) navigate('/sites')
   }, [isAuthenticated, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,7 +58,7 @@ const Login = () => {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         })
         login(res.data.user, res.data.access_token)
-        navigate('/dashboard')
+        navigate('/sites')
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'An error occurred')
