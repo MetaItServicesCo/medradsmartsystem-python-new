@@ -174,6 +174,8 @@ export interface FloorSpec {
   existingCounts?: Record<string, number>
   /** The real code of each existing department, which need not follow the scheme. */
   deptCodes?: Record<string, string>
+  /** The ids of the rooms already there, per room kind, so their contents can be topped up. */
+  existingRoomIds?: Record<string, number[]>
 }
 
 /** A node from the location tree, as much of it as the wizard reads. */
@@ -213,6 +215,7 @@ export function loadExisting(buildingCode: string, children: ExistingNode[]) {
       const spec: FloorSpec = {
         code: floor.code, name: floor.name || floor.code, depts: [], counts: {},
         existing: true, existingDepts: [], existingCounts: {}, deptCodes: {},
+        existingRoomIds: {},
       }
 
       for (const wing of (floor.children ?? []).filter((c) => c.location_type === 'wing')) {
@@ -248,6 +251,7 @@ export function loadExisting(buildingCode: string, children: ExistingNode[]) {
           }
           const key = `${dept.key}:${kind.key}`
           spec.existingCounts![key] = (spec.existingCounts![key] ?? 0) + 1
+          spec.existingRoomIds![key] = [...(spec.existingRoomIds![key] ?? []), room.id]
           spec.counts[key] = spec.existingCounts![key]
         }
       }
@@ -381,4 +385,85 @@ export function generateRows(
       }
     }
     return out
+}
+
+/** One call that tops a set of existing rooms up to what their kind contains. */
+export interface FillGroup {
+  label: string
+  location_ids: number[]
+  items: Array<{
+    fixture_type: string
+    count: number
+    discipline_code: string | null
+    code_prefix: string | null
+  }>
+}
+
+/**
+ * The rooms that already exist and whose kind now says what they contain.
+ *
+ * generateRows only sends rooms that are not there yet, so without this a
+ * Conference rooms type given twelve chairs would reach none of the
+ * conference rooms already in the register. The server tops each room up and
+ * never removes, so sending this again after a second save changes nothing.
+ *
+ * Beds are left out: in an existing room they are spaces of their own, and
+ * adding them is done on the room itself.
+ */
+export function fillPlan(
+  floors: FloorSpec[],
+  departments: DeptKind[],
+  customRooms: Record<string, RoomKind[]>,
+): FillGroup[] {
+  const groups = new Map<string, FillGroup>()
+  for (const floor of floors) {
+    for (const deptKey of floor.depts) {
+      const dept = departments.find((d) => d.key === deptKey)
+      if (!dept) continue
+      for (const room of mergeRooms(dept.rooms, customRooms[dept.key])) {
+        const key = `${deptKey}:${room.key}`
+        const ids = floor.existingRoomIds?.[key] ?? []
+        const items = (room.contents ?? []).filter((c) => c.count > 0 && c.fixtureType)
+        if (!ids.length || !items.length) continue
+        const group = groups.get(key) ?? {
+          label: room.label,
+          location_ids: [],
+          items: items.map((c) => ({
+            fixture_type: c.fixtureType,
+            count: c.count,
+            discipline_code: c.disciplineCode ?? null,
+            code_prefix: c.prefix ?? null,
+          })),
+        }
+        group.location_ids.push(...ids)
+        groups.set(key, group)
+      }
+    }
+  }
+  return [...groups.values()]
+}
+
+/** How many rooms of this kind already exist, across every floor. */
+export function existingRoomsOf(floors: FloorSpec[], deptKey: string, roomKey: string): number {
+  return floors.reduce((n, f) => n + (f.existingCounts?.[`${deptKey}:${roomKey}`] ?? 0), 0)
+}
+
+/**
+ * Whether something typed names a catalogue item: "Chairs" is Chair, "TV" is
+ * "Display screen / TV". Without this a plural became a second, custom kind of
+ * chair that had to be given a trade the catalogue already knew.
+ */
+export function sameItemName(typed: string, label: string, key?: string): boolean {
+  const norm = (s: string) => singular(s.trim().toLowerCase().replace(/[_\s]+/g, ' '))
+  const wanted = norm(typed)
+  if (!wanted) return false
+  const names = [...label.split('/'), ...(key ? [key] : [])]
+  return names.some((n) => norm(n) === wanted)
+}
+
+function singular(word: string): string {
+  if (/ies$/.test(word)) return word.replace(/ies$/, 'y')
+  if (/(ches|shes|sses|xes)$/.test(word)) return word.slice(0, -2)
+  if (/[^s]s$/.test(word)) return word.slice(0, -1)
+  return word
 }

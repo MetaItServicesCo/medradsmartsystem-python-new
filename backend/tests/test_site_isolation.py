@@ -237,6 +237,34 @@ def test_a_user_created_in_a_site_belongs_to_it():
     print("ok  a person created inside a site belongs to that site")
 
 
+def test_a_fault_cannot_be_raised_on_another_sites_fixture():
+    """Report-fault looked the fixture up by id and never asked whose it was."""
+    from app.api.v1.endpoints import fixtures as routes
+    from app.schemas.fixture import FixtureFill, FixtureUpdate, ReportFaultRequest
+
+    db, a, b, people = build()
+    theirs = db.query(Fixture).filter_by(facility_id=b.id).one()
+    their_room = db.get(Location, theirs.location_id)
+    attempts = {
+        "report a fault": lambda: routes.report_fault(
+            theirs.id, ReportFaultRequest(description="Not working"),
+            db=db, current_user=people["tech_a"]),
+        "edit": lambda: routes.update_fixture(
+            theirs.id, FixtureUpdate(label="mine now"), db=db, current_user=people["tech_a"]),
+        "fill": lambda: routes.fill_rooms(
+            FixtureFill(location_ids=[their_room.id], items=[{"fixture_type": "chair", "count": 1}]),
+            db=db, current_user=people["tech_a"]),
+    }
+    for name, attempt in attempts.items():
+        try:
+            attempt()
+            raise AssertionError(f"could {name} on another hospital's fixture")
+        except HTTPException as exc:
+            assert exc.status_code == 403, f"{name}: {exc.status_code} {exc.detail}"
+    db.close()
+    print("ok  another site's fixtures cannot be faulted, edited or filled")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

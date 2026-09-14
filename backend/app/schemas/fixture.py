@@ -52,6 +52,26 @@ class FixtureBulkCreate(BaseModel):
     code_prefix: Optional[str] = None
 
 
+class FixtureFillItem(BaseModel):
+    fixture_type: str
+    # How many each room should have. Zero is allowed and does nothing.
+    count: int = Field(ge=0, le=200)
+    discipline_code: Optional[str] = None
+    code_prefix: Optional[str] = None
+
+
+class FixtureFill(BaseModel):
+    """Top up existing rooms to what their room type contains."""
+
+    location_ids: list[int] = Field(min_length=1, max_length=2000)
+    items: list[FixtureFillItem] = Field(min_length=1, max_length=50)
+
+
+class FixtureFillResponse(BaseModel):
+    created: int
+    rooms_changed: int
+
+
 class FixtureUpdate(BaseModel):
     label: Optional[str] = None
     manufacturer: Optional[str] = None

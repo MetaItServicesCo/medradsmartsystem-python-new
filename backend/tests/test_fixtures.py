@@ -303,6 +303,114 @@ def test_no_two_fixture_types_share_a_code_prefix():
     print(f"ok  every fixture type has its own code prefix ({len(seen)} prefixes)")
 
 
+def _admin(db):
+    boss = User(username="boss", email="boss@b.c", full_name="Boss", hashed_password="x",
+                user_type=UserType.EMPLOYEE, role=UserRole.SUPERADMIN)
+    db.add(boss)
+    db.flush()
+    return boss
+
+
+def test_the_fixture_routes_run_end_to_end():
+    """Call the endpoints themselves, not only the service underneath them.
+
+    Every other check here goes through the service, which is why a helper that
+    called itself with a name it was never given shipped: editing or removing a
+    fixture raised before reaching any code these checks exercise.
+    """
+    from app.api.v1.endpoints import fixtures as routes
+    from app.schemas.fixture import FixtureUpdate, ReportFaultRequest
+
+    db, facility, user, theatre = build()
+    boss = _admin(db)
+    sockets = fixture_service.bulk_create(db, location=theatre, fixture_type="receptacle", count=3)
+    db.commit()
+
+    edited = routes.update_fixture(sockets[0].id, FixtureUpdate(label="Behind the anaesthesia boom"),
+                                   db=db, current_user=boss)
+    assert edited.label == "Behind the anaesthesia boom"
+
+    reported = routes.report_fault(sockets[1].id, ReportFaultRequest(description="No power"),
+                                   db=db, current_user=boss)
+    assert reported.fixture_status == FixtureStatus.FAULTY.value
+
+    routes.deactivate_fixture(sockets[2].id, db=db, current_user=boss)
+    assert db.get(Fixture, sockets[2].id).is_active is False
+
+    from fastapi import HTTPException
+    try:
+        routes.update_fixture(999999, FixtureUpdate(label="x"), db=db, current_user=boss)
+        raise AssertionError("a missing fixture should be a 404")
+    except HTTPException as exc:
+        assert exc.status_code == 404
+    db.close()
+    print("ok  edit, report fault and remove run through the real routes")
+
+
+def test_topping_up_adds_only_what_a_room_is_missing():
+    """Giving a room type 12 chairs has to reach rooms that already exist."""
+    db, facility, user, theatre = build()
+    db.add(Discipline(code="building_envelope", name="Building", sort_order=5))
+    db.flush()
+    fixture_service.bulk_create(db, location=theatre, fixture_type="chair", count=5)
+
+    added = fixture_service.top_up(db, location=theatre, fixture_type="chair", count=12)
+    assert len(added) == 7, len(added)
+    assert [f.code for f in added][:1] == ["CHR-06"], "numbering carries on"
+
+    # Asking again changes nothing, so saving the setup twice is harmless.
+    assert fixture_service.top_up(db, location=theatre, fixture_type="chair", count=12) == []
+    # And a smaller number never takes chairs away.
+    assert fixture_service.top_up(db, location=theatre, fixture_type="chair", count=3) == []
+    assert db.query(Fixture).filter_by(location_id=theatre.id, fixture_type="chair").count() == 12
+
+    # A removed chair is not a chair in the room.
+    gone = db.query(Fixture).filter_by(location_id=theatre.id, code="CHR-01").one()
+    gone.is_active = False
+    db.flush()
+    again = fixture_service.top_up(db, location=theatre, fixture_type="chair", count=12)
+    assert len(again) == 1 and again[0].code == "CHR-13", [f.code for f in again]
+    db.close()
+    print("ok  topping up adds the shortfall, is repeatable, and never removes")
+
+
+def test_filling_rooms_through_the_route_is_all_or_nothing():
+    from app.api.v1.endpoints import fixtures as routes
+    from app.schemas.fixture import FixtureFill
+
+    db, facility, user, theatre = build()
+    boss = _admin(db)
+    db.add(Discipline(code="building_envelope", name="Building", sort_order=5))
+    second = Location(facility_id=facility.id, location_type="room", code="CONF-2",
+                      name="Conference 2", path="/9/", depth=0)
+    db.add(second)
+    db.commit()
+
+    result = routes.fill_rooms(FixtureFill(
+        location_ids=[theatre.id, second.id],
+        items=[{"fixture_type": "chair", "count": 12}, {"fixture_type": "table", "count": 2}],
+    ), db=db, current_user=boss)
+    assert result.created == 28 and result.rooms_changed == 2, result
+
+    # One bad item refuses the lot rather than leaving half the rooms filled.
+    third = Location(facility_id=facility.id, location_type="room", code="CONF-3",
+                     name="Conference 3", path="/10/", depth=0)
+    db.add(third)
+    db.commit()
+    from fastapi import HTTPException
+    try:
+        routes.fill_rooms(FixtureFill(
+            location_ids=[third.id],
+            items=[{"fixture_type": "chair", "count": 4}, {"fixture_type": "mystery", "count": 1}],
+        ), db=db, current_user=boss)
+        raise AssertionError("an uncatalogued item with no trade was accepted")
+    except HTTPException as exc:
+        assert exc.status_code == 422
+    assert db.query(Fixture).filter_by(location_id=third.id).count() == 0
+    db.close()
+    print("ok  filling rooms is all or nothing")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

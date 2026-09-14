@@ -13,14 +13,14 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
+  Alert, Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
   Divider, IconButton, MenuItem, Stack, TextField, Typography,
 } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { fetchDisciplines } from '@/api/disciplines'
 import { fetchFixtureCatalog } from '@/api/fixtures'
 import { palette } from '@/theme/palette'
-import { prefixFrom, type RoomContent, type RoomKind } from './wizardModel'
+import { prefixFrom, sameItemName, type RoomContent, type RoomKind } from './wizardModel'
 
 /** The pseudo-item that means "bed spaces", not a fixture. */
 const BEDS = '__beds__'
@@ -41,10 +41,12 @@ interface Row {
 }
 
 export default function RoomTypeDialog({
-  initial, spaceUses, existingPrefixes, onCancel, onSave,
+  initial, existingRooms = 0, spaceUses, existingPrefixes, onCancel, onSave,
 }: {
   /** An existing kind to edit, or undefined to define a new one. */
   initial?: RoomKind
+  /** How many rooms of this kind are already in the register. */
+  existingRooms?: number
   spaceUses: Array<{ value: string; label: string }>
   existingPrefixes: Set<string>
   onCancel: () => void
@@ -67,6 +69,10 @@ export default function RoomTypeDialog({
       value: t.key, label: t.label, group: t.discipline.replace(/_/g, ' '),
     })),
   ], [catalog])
+  const tradeName = (value: string) => {
+    const code = catalog?.types.find((t) => t.key === value)?.discipline
+    return disciplines?.items.find((d) => d.code === code)?.name ?? code?.replace(/_/g, ' ') ?? ''
+  }
 
   const byValue = useMemo(() => new Map(options.map((o) => [o.value, o])), [options])
 
@@ -88,16 +94,17 @@ export default function RoomTypeDialog({
   const setRow = (i: number, patch: Partial<Row>) =>
     setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)))
 
-  const isCustom = (item: Row['item']) => typeof item === 'string' && item.trim().length > 0
-    && !options.some((o) => o.label.toLowerCase() === (item as string).trim().toLowerCase())
-
-  // The typed-in version of an option counts as that option, so "chair" picks
-  // the catalogued Chair rather than creating a second, trade-less one.
+  // The typed-in version of an option counts as that option, so "Chairs" picks
+  // the catalogued Chair rather than creating a second, custom kind of chair.
   const resolve = (item: Row['item']): ItemOption | null => {
     if (!item) return null
     if (typeof item !== 'string') return item
-    return options.find((o) => o.label.toLowerCase() === item.trim().toLowerCase()) ?? null
+    return options.find((o) => sameItemName(item, o.label, o.value === BEDS ? undefined : o.value))
+      ?? null
   }
+
+  const isCustom = (item: Row['item']) =>
+    typeof item === 'string' && item.trim().length > 0 && !resolve(item)
 
   const prefix = label.trim() ? (initial?.prefix ?? prefixFrom(label, existingPrefixes)) : ''
 
@@ -147,6 +154,7 @@ export default function RoomTypeDialog({
   // send when it breaks.
   const missingTrade = rows.some((r) => isCustom(r.item) && !r.trade)
   const knownUse = spaceUses.some((u) => u.value === spaceUse || u.label === spaceUse)
+  const renamed = editing && label.trim() !== initial!.label
 
   return (
     <Dialog open onClose={onCancel} maxWidth="sm" fullWidth
@@ -160,7 +168,9 @@ export default function RoomTypeDialog({
             autoFocus size="small" label="What are these rooms called" required
             value={label} onChange={(e) => setLabel(e.target.value)}
             placeholder="Conference rooms"
-            helperText={prefix ? `Codes start ${prefix}-` : ' '}
+            helperText={renamed && existingRooms
+              ? `New rooms get this name. The ${existingRooms} already there keep theirs; rename those on the room itself.`
+              : (prefix ? `Codes start ${prefix}-` : ' ')}
           />
 
           <Autocomplete
@@ -189,6 +199,14 @@ export default function RoomTypeDialog({
             </Typography>
           </Divider>
 
+          {existingRooms > 0 && (
+            <Alert severity="info" sx={{ borderRadius: '12px', py: 0.25 }}>
+              {existingRooms === 1 ? '1 of these rooms already exists' : `${existingRooms} of these rooms already exist`}.
+              Saving the setup tops each one up to these quantities. Nothing is removed,
+              and a room that already has enough is left as it is.
+            </Alert>
+          )}
+
           {rows.map((row, i) => {
             const custom = isCustom(row.item)
             const known = resolve(row.item)
@@ -201,6 +219,8 @@ export default function RoomTypeDialog({
                     groupBy={(o) => (typeof o === 'string' ? '' : o.group)}
                     getOptionLabel={(o) => (typeof o === 'string' ? o : o.label)}
                     value={row.item}
+                    isOptionEqualToValue={(o, v) =>
+                      typeof o !== 'string' && typeof v !== 'string' && o.value === v.value}
                     onChange={(_, v) => setRow(i, { item: v })}
                     onInputChange={(_, v, reason) => { if (reason === 'input') setRow(i, { item: v }) }}
                     renderInput={(params) => (
@@ -208,8 +228,12 @@ export default function RoomTypeDialog({
                     )}
                   />
                   <TextField
-                    size="small" type="number" label="Each room" value={row.count}
-                    onChange={(e) => setRow(i, { count: e.target.value })} sx={{ width: 110 }}
+                    size="small" type="number" label="Quantity" value={row.count}
+                    onChange={(e) => setRow(i, { count: e.target.value })}
+                    onFocus={(e) => e.target.select()}
+                    inputProps={{ min: 0, max: 200 }}
+                    helperText="in each room"
+                    sx={{ width: 120 }}
                   />
                   <IconButton size="small" sx={{ mt: 0.5, color: palette.textFaint }}
                               onClick={() => setRows(rows.filter((_, j) => j !== i))}>
@@ -228,9 +252,16 @@ export default function RoomTypeDialog({
                     ))}
                   </TextField>
                 )}
+                {known && known.value !== BEDS && (
+                  <Typography sx={{ mt: 0.5, fontSize: 11.5, color: palette.textFaint }}>
+                    From the catalogue: {known.label}
+                    {tradeName(known.value) ? ` · faults go to ${tradeName(known.value)}` : ''}
+                  </Typography>
+                )}
                 {known?.value === BEDS && (
                   <Typography sx={{ mt: 0.5, fontSize: 11.5, color: palette.textFaint }}>
                     Beds become spaces of their own, with a status of occupied or available.
+                    {existingRooms > 0 && ' They are added to new rooms only.'}
                   </Typography>
                 )}
               </Box>

@@ -11,7 +11,8 @@
  * already set up with a basement and a ground floor, opened again to add to it.
  */
 import {
-  DEPARTMENTS, generateRows, loadExisting, mergeRooms, type ExistingNode,
+  DEPARTMENTS, fillPlan, generateRows, loadExisting, mergeRooms, sameItemName,
+  type ExistingNode,
 } from './wizardModel'
 
 let passed = 0
@@ -184,6 +185,48 @@ check('a ward room still gets its beds and nothing else', () => {
   assert(room, `no room in ${rows.map((r) => r.location_type).join(', ')}`)
   assert(rows.filter((r) => r.location_type === 'bed').length === 2, 'patient rooms hold two beds')
   assert((room.fixtures ?? []).length === 0, 'no invented contents')
+})
+
+check('giving an existing room type contents tops up the rooms already there', () => {
+  const loaded = loadExisting(B, existingBuilding())
+  const ground = loaded.floors.find((f) => f.code === `${B}-00`)!
+  const itKey = Object.keys(ground.existingCounts!).find((k) => k.startsWith('it:'))!
+  const [deptKey, roomKey] = itKey.split(':')
+  const kind = mergeRooms(DEPARTMENTS.find((d) => d.key === deptKey)!.rooms,
+    loaded.customRooms[deptKey]).find((r) => r.key === roomKey)!
+  const customRooms = {
+    ...loaded.customRooms,
+    [deptKey]: [...(loaded.customRooms[deptKey] ?? []).filter((r) => r.key !== roomKey),
+                { ...kind, contents: [{ fixtureType: 'chair', label: 'Chair', count: 12 }] }],
+  }
+  const all = [...DEPARTMENTS, ...loaded.customDepts]
+
+  // The trap: no new rooms, so nothing would have been sent at all.
+  assert(generateRows(loaded.floors, B, all, customRooms, loaded.taken).length === 0,
+    'no new spaces were asked for')
+  const plan = fillPlan(loaded.floors, all, customRooms)
+  assert(plan.length === 1, `expected one group, got ${plan.length}`)
+  const dc1 = ground.existingRoomIds![itKey]
+  assert(plan[0].location_ids.join() === dc1.join() && dc1.length === 1,
+    `should target the existing room, got ${plan[0].location_ids}`)
+  assert(plan[0].items[0].fixture_type === 'chair' && plan[0].items[0].count === 12, 'twelve chairs')
+})
+
+check('rooms whose type lists nothing are left alone', () => {
+  const loaded = loadExisting(B, existingBuilding())
+  const plan = fillPlan(loaded.floors, [...DEPARTMENTS, ...loaded.customDepts], loaded.customRooms)
+  assert(plan.length === 0, `nothing was edited, but ${plan.length} groups were planned`)
+})
+
+check('a typed plural or alternative name finds the catalogue item', () => {
+  assert(sameItemName('Chairs', 'Chair', 'chair'), 'Chairs is Chair')
+  assert(sameItemName('  tables ', 'Table'), 'case and spaces do not matter')
+  assert(sameItemName('TV', 'Display screen / TV', 'display_screen'), 'TV is the display screen')
+  assert(sameItemName('display screens', 'Display screen / TV'), 'plural of the first name')
+  assert(sameItemName('Benches', 'Bench'), 'benches')
+  assert(sameItemName('Beds', 'Beds'), 'beds is still beds')
+  assert(!sameItemName('Chair lift', 'Chair'), 'a different thing is not a chair')
+  assert(!sameItemName('', 'Chair'), 'blank matches nothing')
 })
 
 console.log(`\n${passed} checks passed`)

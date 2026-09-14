@@ -25,9 +25,11 @@ import { toast } from 'react-toastify'
 import {
   bulkImportLocations, fetchLocationMeta, type BulkLocationRow,
 } from '@/api/locations'
+import { fillRooms } from '@/api/fixtures'
 import { palette } from '@/theme/palette'
 import {
-  DEPARTMENTS, defaultFloors, generateRows, loadExisting, mergeRooms, pad, prefixFrom,
+  DEPARTMENTS, defaultFloors, existingRoomsOf, fillPlan, generateRows, loadExisting, mergeRooms,
+  pad, prefixFrom,
   type DeptKind, type ExistingNode, type FloorSpec, type RoomKind,
 } from './wizardModel'
 import RoomTypeDialog from './RoomTypeDialog'
@@ -171,22 +173,42 @@ export default function SetupBuildingWizard({
     [floors, building.code, allDepartments, customRooms, loaded.taken],
   )
 
+  // Rooms already there whose type now lists contents: topped up, not recreated.
+  const fills = useMemo(
+    () => fillPlan(floors, allDepartments, customRooms),
+    [floors, allDepartments, customRooms],
+  )
+  const roomsToFill = fills.reduce((n, g) => n + g.location_ids.length, 0)
+
   const create = useMutation({
     mutationFn: async () => {
-      // Validate everything before writing anything. The endpoint defaults to
-      // a dry run for exactly this reason.
-      const check = await bulkImportLocations({
-        facility_id: facilityId, rows, dry_run: true,
-      })
-      const bad = check.issues.filter((i) => i.severity === 'error')
-      if (bad.length) {
-        setErrors(bad.map((e) => `${e.code}: ${e.message}`))
-        throw new Error('validation')
+      let created = 0
+      if (rows.length) {
+        // Validate everything before writing anything. The endpoint defaults to
+        // a dry run for exactly this reason.
+        const check = await bulkImportLocations({
+          facility_id: facilityId, rows, dry_run: true,
+        })
+        const bad = check.issues.filter((i) => i.severity === 'error')
+        if (bad.length) {
+          setErrors(bad.map((e) => `${e.code}: ${e.message}`))
+          throw new Error('validation')
+        }
+        created = (await bulkImportLocations({ facility_id: facilityId, rows, dry_run: false })).created
       }
-      return bulkImportLocations({ facility_id: facilityId, rows, dry_run: false })
+      let items = 0
+      for (const group of fills) {
+        items += (await fillRooms({ location_ids: group.location_ids, items: group.items })).created
+      }
+      return { created, items }
     },
     onSuccess: (res) => {
-      toast.success(`${res.created} spaces created`)
+      toast.success([
+        res.created ? `${res.created} spaces created` : '',
+        res.items ? `${res.items} items added to existing rooms` : '',
+      ].filter(Boolean).join(' · ') || 'Nothing needed adding')
+      queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+      queryClient.invalidateQueries({ queryKey: ['fixture-summary'] })
       queryClient.invalidateQueries({ queryKey: ['location-tree'] })
       queryClient.invalidateQueries({ queryKey: ['site-overview'] })
       onCreated()
@@ -399,10 +421,26 @@ export default function SetupBuildingWizard({
         {step === 3 && (
           <Box>
             <Typography sx={{ mb: 2, fontWeight: 800, color: palette.ink }}>
-              {rows.length === 0
+              {rows.length === 0 && !roomsToFill
                 ? 'Nothing new to add yet'
-                : `This will ${editing ? 'add' : 'create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}`}
+                : [
+                    rows.length ? `This will ${editing ? 'add' : 'create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}` : '',
+                    roomsToFill ? `${rows.length ? 'and top up' : 'This will top up'} ${roomsToFill} existing ${roomsToFill === 1 ? 'room' : 'rooms'}` : '',
+                  ].filter(Boolean).join(' ')}
             </Typography>
+            {fills.length > 0 && (
+              <Alert severity="info" sx={{ mb: 2, borderRadius: '12px' }}>
+                {fills.map((g) => (
+                  <Typography key={g.label} sx={{ fontSize: 12.5 }}>
+                    <b>{g.label}</b> ({g.location_ids.length} existing):{' '}
+                    up to {g.items.map((i) => `${i.count} ${i.fixture_type.replace(/_/g, ' ')}`).join(', ')} each.
+                  </Typography>
+                ))}
+                <Typography sx={{ fontSize: 12, mt: 0.5, color: palette.textMuted }}>
+                  Only what a room is short of is added. Nothing is removed.
+                </Typography>
+              </Alert>
+            )}
             <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
               {[
                 ['Floors', counts.floors], ['Departments', counts.depts],
@@ -462,6 +500,7 @@ export default function SetupBuildingWizard({
       {asking?.kind === 'room' && (
         <RoomTypeDialog
           initial={asking.room}
+          existingRooms={asking.room ? existingRoomsOf(floors, asking.deptKey, asking.room.key) : 0}
           spaceUses={meta?.space_uses ?? []}
           existingPrefixes={new Set(
             allDepartments.flatMap((d) => roomsOf(d).map((r) => r.prefix)),
@@ -512,12 +551,14 @@ export default function SetupBuildingWizard({
         )}
         {step === 3 && (
           <Button
-            variant="contained" disabled={!rows.length || create.isPending}
+            variant="contained" disabled={(!rows.length && !roomsToFill) || create.isPending}
             onClick={() => { setErrors([]); create.mutate() }}
             sx={{ fontWeight: 900, borderRadius: '10px', bgcolor: palette.brand,
                   '&:hover': { bgcolor: palette.brandDeep } }}
           >
-            {create.isPending ? 'Saving…' : `${editing ? 'Add' : 'Create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}`}
+            {create.isPending ? 'Saving…'
+              : rows.length ? `${editing ? 'Add' : 'Create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}`
+              : `Top up ${roomsToFill} ${roomsToFill === 1 ? 'room' : 'rooms'}`}
           </Button>
         )}
       </DialogActions>

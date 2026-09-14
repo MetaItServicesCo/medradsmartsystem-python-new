@@ -129,6 +129,39 @@ def bulk_create(
     return created
 
 
+def top_up(
+    db: Session,
+    *,
+    location: Location,
+    fixture_type: str,
+    count: int,
+    discipline_code: str | None = None,
+    code_prefix: str | None = None,
+    created_by_id: int | None = None,
+) -> list[Fixture]:
+    """Add whatever a room is short of `count` fixtures of one type.
+
+    Never removes: fixtures carry work-order history, and a lower number on a
+    room type is not evidence that somebody took the chairs out. Removed
+    fixtures do not count as present. Repeating the call adds nothing, so a
+    setup saved twice does not double the furniture.
+    """
+    have = (
+        db.query(func.count(Fixture.id))
+        .filter(Fixture.location_id == location.id,
+                Fixture.fixture_type == fixture_type,
+                Fixture.is_active.is_(True))
+        .scalar()
+    ) or 0
+    if count <= have:
+        return []
+    return bulk_create(
+        db, location=location, fixture_type=fixture_type, count=count - have,
+        discipline_code=discipline_code, code_prefix=code_prefix,
+        created_by_id=created_by_id,
+    )
+
+
 def _next_request_number(db: Session) -> str:
     last = db.query(ServiceRequest).order_by(ServiceRequest.id.desc()).first()
     return f"SR-{((last.id + 1) if last else 1):06d}"
