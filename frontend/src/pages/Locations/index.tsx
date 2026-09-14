@@ -211,6 +211,10 @@ export default function LocationsPage() {
     enabled: !!selectedId,
   })
 
+  // A building that already has floors gets the wizard in edit mode.
+  const buildingHasFloors = !!detail && (findNode(tree?.items ?? [], detail.id)?.children ?? [])
+    .some((c: any) => c.location_type === 'floor')
+
   const toggle = (id: number) => {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -376,12 +380,13 @@ export default function LocationsPage() {
                     sx={{ fontWeight: 900, borderRadius: '12px', py: 1.1,
                           bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep } }}
                   >
-                    Set up this building
+                    {buildingHasFloors ? 'Edit building setup' : 'Set up this building'}
                   </Button>
                   <Typography sx={{ mt: 0.75, fontSize: 12, color: palette.textFaint,
                                     textAlign: 'center' }}>
-                    Answer how many floors, what is on each, and how many rooms
-                    per department — the structure is built from that.
+                    {buildingHasFloors
+                      ? 'Add floors, departments or rooms to what is already here.'
+                      : 'Answer how many floors, what is on each, and how many rooms per department — the structure is built from that.'}
                   </Typography>
                 </Box>
               )}
@@ -394,6 +399,9 @@ export default function LocationsPage() {
                   children={findNode(tree?.items ?? [], detail.id)?.children ?? []}
                   canEdit={canEdit}
                   onSelectChild={setSelectedId}
+                  // Adds inside the space being looked at, which is what the dialog
+                  // already takes as its parent.
+                  onAddSpace={() => setAddOpen(true)}
                 />
               )}
 
@@ -424,6 +432,9 @@ export default function LocationsPage() {
           onClose={() => setSetupOpen(false)}
           facilityId={effectiveFacilityId}
           building={{ id: detail.id, code: detail.code, name: detail.name }}
+          // What is already there, so a second run edits instead of describing
+          // a second copy of the building from a blank "how many floors?".
+          existing={findNode(tree?.items ?? [], detail.id)?.children ?? []}
           onCreated={() => setSetupOpen(false)}
         />
       )}

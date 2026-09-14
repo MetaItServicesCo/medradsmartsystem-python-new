@@ -247,6 +247,46 @@ def test_codes_are_unique_within_a_room_not_globally():
     print("ok  codes repeat across rooms and are unique within one")
 
 
+def test_a_fixture_the_catalogue_does_not_know_needs_a_trade():
+    """A sump pump is not catalogued. It is still a fixture somebody maintains."""
+    db, facility, user, theatre = build()
+    try:
+        fixture_service.bulk_create(db, location=theatre, fixture_type="sump_pump", count=1)
+        raise AssertionError("an uncatalogued type with no trade was accepted")
+    except ValueError as exc:
+        assert "trade" in str(exc)
+
+    made = fixture_service.bulk_create(
+        db, location=theatre, fixture_type="sump_pump", count=2,
+        discipline_code="plumbing", code_prefix="sump", spec={"flow_gpm": 40},
+    )
+    plumbing = db.query(Discipline).filter_by(code="plumbing").first()
+    assert [f.code for f in made] == ["SUMP-01", "SUMP-02"], [f.code for f in made]
+    assert all(f.discipline_id == plumbing.id for f in made)
+    # A fault on it routes by the trade it was given, like any catalogued type.
+    wo = fixture_service.report_fault(db, fixture=made[0], reported_by_id=user.id,
+                                      description="Not starting on high level")
+    assert wo.discipline_id == plumbing.id
+    db.close()
+    print("ok  an uncatalogued fixture is accepted with a trade and routes by it")
+
+
+def test_custom_values_in_a_catalogued_spec_are_kept():
+    """Choices are suggestions: a NEMA configuration not in the list survives."""
+    db, facility, user, theatre = build()
+    made = fixture_service.bulk_create(
+        db, location=theatre, fixture_type="receptacle", count=1,
+        spec={"nema_config": "L14-30R", "voltage_v": 277, "colour_temperature": "4000 K"},
+    )
+    spec = made[0].spec
+    assert spec["nema_config"] == "L14-30R"
+    assert spec["voltage_v"] == 277
+    assert spec["colour_temperature"] == "4000 K", "an extra detail must be stored"
+    assert spec["hospital_grade"] is True, "defaults still fill what was not given"
+    db.close()
+    print("ok  custom and extra spec values are kept alongside the defaults")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

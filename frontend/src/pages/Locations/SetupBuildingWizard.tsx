@@ -26,187 +26,41 @@ import {
   bulkImportLocations, fetchLocationMeta, type BulkLocationRow,
 } from '@/api/locations'
 import { palette } from '@/theme/palette'
-
-/** A kind of room, with the clinical use and default size the tree needs. */
-interface RoomKind {
-  key: string
-  label: string
-  prefix: string
-  spaceUse: string
-  type?: string
-  beds?: number
-  criticality?: string
-}
-
-/**
- * What a hospital department is made of.
- *
- * The room kinds under each are what that department ordinarily contains, so
- * the third step offers Radiology an X-ray room and a CT suite rather than a
- * list of every space type in the building.
- */
-interface DeptKind {
-  key: string
-  label: string
-  prefix: string
-  rooms: RoomKind[]
-}
-
-const DEPARTMENTS: DeptKind[] = [
-  {
-    key: 'surgery', label: 'Surgery', prefix: 'SUR', rooms: [
-      { key: 'or', label: 'Operating rooms', prefix: 'OR', spaceUse: 'operating_room', criticality: 'critical' },
-      { key: 'proc', label: 'Procedure rooms', prefix: 'PROC', spaceUse: 'procedure_room', criticality: 'high' },
-      { key: 'recovery', label: 'Recovery bays', prefix: 'PACU', spaceUse: 'patient_room', beds: 1, criticality: 'high' },
-      { key: 'sterile', label: 'Sterile store', prefix: 'STS', spaceUse: 'storage' },
-    ],
-  },
-  {
-    key: 'radiology', label: 'Radiology', prefix: 'RAD', rooms: [
-      { key: 'xray', label: 'X-ray rooms', prefix: 'XR', spaceUse: 'imaging', criticality: 'high' },
-      { key: 'ct', label: 'CT suites', prefix: 'CT', spaceUse: 'imaging', criticality: 'high' },
-      { key: 'mri', label: 'MRI suites', prefix: 'MRI', spaceUse: 'imaging', criticality: 'high' },
-      { key: 'us', label: 'Ultrasound rooms', prefix: 'US', spaceUse: 'imaging' },
-      { key: 'reporting', label: 'Reporting rooms', prefix: 'RPT', spaceUse: 'office' },
-    ],
-  },
-  {
-    key: 'critical', label: 'Critical Care', prefix: 'CC', rooms: [
-      { key: 'icu', label: 'ICU bays', prefix: 'ICU', spaceUse: 'icu', beds: 1, criticality: 'critical' },
-      { key: 'nicu', label: 'NICU bays', prefix: 'NICU', spaceUse: 'nicu', beds: 1, criticality: 'critical' },
-      { key: 'aiir', label: 'Isolation rooms', prefix: 'AIIR', spaceUse: 'aiir', beds: 1, criticality: 'critical' },
-    ],
-  },
-  {
-    key: 'emergency', label: 'Emergency', prefix: 'ED', rooms: [
-      { key: 'bay', label: 'Treatment bays', prefix: 'ED', spaceUse: 'emergency', beds: 1, criticality: 'critical' },
-      { key: 'triage', label: 'Triage rooms', prefix: 'TRI', spaceUse: 'emergency', criticality: 'high' },
-      { key: 'resus', label: 'Resuscitation rooms', prefix: 'RES', spaceUse: 'emergency', beds: 1, criticality: 'critical' },
-    ],
-  },
-  {
-    key: 'wards', label: 'Inpatient Wards', prefix: 'WRD', rooms: [
-      { key: 'patient', label: 'Patient rooms', prefix: 'PR', spaceUse: 'patient_room', beds: 2, criticality: 'high' },
-      { key: 'nurse', label: 'Nurse stations', prefix: 'NS', spaceUse: 'office' },
-      { key: 'clean', label: 'Clean utility', prefix: 'CU', spaceUse: 'storage' },
-      { key: 'dirty', label: 'Dirty utility', prefix: 'DU', spaceUse: 'storage' },
-    ],
-  },
-  {
-    key: 'laboratory', label: 'Laboratory', prefix: 'LAB', rooms: [
-      { key: 'lab', label: 'Laboratories', prefix: 'LAB', spaceUse: 'laboratory', criticality: 'high' },
-      { key: 'specimen', label: 'Specimen reception', prefix: 'SPC', spaceUse: 'laboratory' },
-    ],
-  },
-  {
-    key: 'pharmacy', label: 'Pharmacy', prefix: 'PHA', rooms: [
-      { key: 'dispensary', label: 'Dispensary', prefix: 'PH', spaceUse: 'pharmacy', criticality: 'high' },
-      { key: 'cleanroom', label: 'Compounding cleanroom', prefix: 'CR', spaceUse: 'pharmacy', criticality: 'critical' },
-      { key: 'store', label: 'Drug store', prefix: 'DS', spaceUse: 'storage', criticality: 'high' },
-    ],
-  },
-  {
-    key: 'spd', label: 'Sterile Processing', prefix: 'SPD', rooms: [
-      { key: 'decon', label: 'Decontamination', prefix: 'DEC', spaceUse: 'sterile_processing', criticality: 'high' },
-      { key: 'assembly', label: 'Assembly and packing', prefix: 'ASM', spaceUse: 'sterile_processing', criticality: 'high' },
-      { key: 'sterile', label: 'Sterile store', prefix: 'SS', spaceUse: 'storage', criticality: 'high' },
-    ],
-  },
-  {
-    key: 'dialysis', label: 'Dialysis', prefix: 'DIA', rooms: [
-      { key: 'station', label: 'Dialysis stations', prefix: 'DIA', spaceUse: 'dialysis', beds: 1, criticality: 'high' },
-      { key: 'water', label: 'Water treatment', prefix: 'WTR', spaceUse: 'mechanical', criticality: 'high' },
-    ],
-  },
-  {
-    key: 'it', label: 'IT and Communications', prefix: 'IT', rooms: [
-      { key: 'data', label: 'Data centre', prefix: 'DC', spaceUse: 'data', criticality: 'critical' },
-      { key: 'comms', label: 'Comms rooms', prefix: 'COM', spaceUse: 'data', criticality: 'critical' },
-      { key: 'office', label: 'IT offices', prefix: 'ITO', spaceUse: 'office' },
-    ],
-  },
-  {
-    key: 'admin', label: 'Administration', prefix: 'ADM', rooms: [
-      { key: 'office', label: 'Offices', prefix: 'OFF', spaceUse: 'office' },
-      { key: 'meeting', label: 'Meeting rooms', prefix: 'MTG', spaceUse: 'office' },
-      { key: 'records', label: 'Records store', prefix: 'RCD', spaceUse: 'storage' },
-    ],
-  },
-  {
-    key: 'public', label: 'Public Areas', prefix: 'PUB', rooms: [
-      { key: 'reception', label: 'Reception', prefix: 'REC', spaceUse: 'public' },
-      { key: 'waiting', label: 'Waiting areas', prefix: 'WAI', spaceUse: 'public' },
-      { key: 'cafe', label: 'Catering', prefix: 'CAF', spaceUse: 'kitchen' },
-    ],
-  },
-  {
-    key: 'plant', label: 'Plant and Services', prefix: 'PLT', rooms: [
-      { key: 'mech', label: 'Mechanical rooms', prefix: 'MR', spaceUse: 'mechanical', type: 'mech_room', criticality: 'high' },
-      { key: 'elec', label: 'Electrical rooms', prefix: 'ER', spaceUse: 'electrical', criticality: 'critical' },
-      { key: 'store', label: 'Stores and workshop', prefix: 'WKS', spaceUse: 'storage' },
-    ],
-  },
-]
-
-interface FloorSpec {
-  code: string
-  name: string
-  depts: string[]
-  /** Keyed `${deptKey}:${roomKey}` so a count belongs to one floor's department. */
-  counts: Record<string, number>
-}
-
-const pad = (n: number) => String(n).padStart(2, '0')
-
-/** Basement, ground, then levels — how a building is actually numbered. */
-function defaultFloors(buildingCode: string, above: number, below: number): FloorSpec[] {
-  const floors: FloorSpec[] = []
-  for (let i = below; i >= 1; i -= 1) {
-    floors.push({ code: `${buildingCode}-B${i}`, name: i === 1 ? 'Basement' : `Basement ${i}`,
-                  depts: [], counts: {} })
-  }
-  for (let i = 0; i < above; i += 1) {
-    floors.push({
-      code: `${buildingCode}-${pad(i)}`,
-      name: i === 0 ? 'Ground Floor' : `Level ${i}`,
-      depts: [], counts: {},
-    })
-  }
-  return floors
-}
+import {
+  DEPARTMENTS, defaultFloors, generateRows, loadExisting, pad, prefixFrom,
+  type DeptKind, type ExistingNode, type FloorSpec, type RoomKind,
+} from './wizardModel'
 
 const STEPS = ['Floors', 'What is on each floor', 'Rooms', 'Review']
 
-/** A code prefix from a name: first word, letters only, at most four. */
-function prefixFrom(name: string, taken: Set<string>): string {
-  const base = (name.replace(/[^A-Za-z ]/g, '').trim().split(/\s+/)[0] || 'DEP')
-    .slice(0, 4).toUpperCase() || 'DEP'
-  let candidate = base
-  let n = 2
-  while (taken.has(candidate)) { candidate = `${base}${n}`; n += 1 }
-  return candidate
-}
-
 export default function SetupBuildingWizard({
-  open, onClose, facilityId, building, onCreated,
+  open, onClose, facilityId, building, existing = [], onCreated,
 }: {
   open: boolean
   onClose: () => void
   facilityId: number
   building: { id: number; code: string; name?: string | null }
+  /** The building's current children. Non-empty means this run edits. */
+  existing?: ExistingNode[]
   onCreated: () => void
 }) {
   const queryClient = useQueryClient()
+  // Loaded once when the wizard opens. Re-running it against a building that
+  // has already been set up has to start from what is there, not from a blank
+  // "how many floors?" that would describe a second copy of the building.
+  const [loaded] = useState(() => loadExisting(building.code, existing))
+  const editing = loaded.floors.length > 0
+
   const [step, setStep] = useState(0)
-  const [above, setAbove] = useState('4')
-  const [below, setBelow] = useState('1')
-  const [floors, setFloors] = useState<FloorSpec[]>([])
+  const [above, setAbove] = useState(editing ? '0' : '4')
+  const [below, setBelow] = useState(editing ? '0' : '1')
+  const [floors, setFloors] = useState<FloorSpec[]>(loaded.floors)
   const [errors, setErrors] = useState<string[]>([])
   // Departments and room kinds the preset list does not cover. Oncology,
   // maternity, endoscopy, a mortuary — a fixed vocabulary would push those
   // into "Administration" or leave them out of the register entirely.
-  const [customDepts, setCustomDepts] = useState<DeptKind[]>([])
-  const [customRooms, setCustomRooms] = useState<Record<string, RoomKind[]>>({})
+  const [customDepts, setCustomDepts] = useState<DeptKind[]>(loaded.customDepts)
+  const [customRooms, setCustomRooms] = useState<Record<string, RoomKind[]>>(loaded.customRooms)
   const [asking, setAsking] = useState<null | { kind: 'dept' } | { kind: 'room'; deptKey: string }>(null)
 
   const { data: meta } = useQuery({
@@ -239,14 +93,41 @@ export default function SetupBuildingWizard({
   }
 
   const buildFloors = () => {
-    setFloors(defaultFloors(building.code, Math.max(0, Number(above) || 0),
-                            Math.max(0, Number(below) || 0)))
+    const up = Math.max(0, Number(above) || 0)
+    const down = Math.max(0, Number(below) || 0)
+    if (!editing) {
+      setFloors(defaultFloors(building.code, up, down))
+      setStep(1)
+      return
+    }
+    // Continue from the highest level and basement already there, so a second
+    // run adds Level 3 rather than a second Ground Floor.
+    const added: FloorSpec[] = []
+    for (let i = down; i >= 1; i -= 1) {
+      const n = loaded.nextBasement + i - 1
+      added.push({ code: `${building.code}-B${n}`, name: `Basement ${n}`, depts: [], counts: {} })
+    }
+    for (let i = 0; i < up; i += 1) {
+      const n = loaded.nextLevel + i
+      added.push({ code: `${building.code}-${pad(n)}`,
+                   name: n === 0 ? 'Ground Floor' : `Level ${n}`, depts: [], counts: {} })
+    }
+    const known = new Set(loaded.floors.map((f) => f.code))
+    setFloors([
+      ...added.filter((f) => f.code.includes('-B') && !known.has(f.code)),
+      ...loaded.floors,
+      ...added.filter((f) => !f.code.includes('-B') && !known.has(f.code)),
+    ])
     setStep(1)
   }
 
   const toggleDept = (floorCode: string, deptKey: string) =>
     setFloors((rows) => rows.map((f) => {
       if (f.code !== floorCode) return f
+      // The wizard only adds. A department that exists may hold rooms with
+      // fixtures and work orders against them; removing it is a decision made
+      // on the department itself, not a side effect of unticking a chip.
+      if (f.existingDepts?.includes(deptKey)) return f
       const has = f.depts.includes(deptKey)
       return {
         ...f,
@@ -261,54 +142,25 @@ export default function SetupBuildingWizard({
     }))
 
   const setCount = (floorCode: string, key: string, value: number) =>
-    setFloors((rows) => rows.map((f) =>
-      f.code === floorCode ? { ...f, counts: { ...f.counts, [key]: value } } : f))
+    setFloors((rows) => rows.map((f) => {
+      if (f.code !== floorCode) return f
+      const floor = f.existingCounts?.[key] ?? 0
+      return { ...f, counts: { ...f.counts, [key]: Math.max(floor, value) } }
+    }))
 
-  /** The whole structure, as rows the import endpoint understands. */
-  const rows = useMemo<BulkLocationRow[]>(() => {
-    const out: BulkLocationRow[] = []
-    for (const floor of floors) {
-      out.push({
-        parent_code: building.code, location_type: 'floor',
-        code: floor.code, name: floor.name,
-      } as BulkLocationRow)
-
-      for (const deptKey of floor.depts) {
-        const dept = allDepartments.find((d) => d.key === deptKey)
-        if (!dept) continue
-        // The department is a wing so it is a node you can open, not a label.
-        const deptCode = `${floor.code}-${dept.prefix}`
-        out.push({
-          parent_code: floor.code, location_type: 'wing',
-          code: deptCode, name: dept.label,
-        } as BulkLocationRow)
-
-        for (const room of roomsOf(dept)) {
-          const count = floor.counts[`${deptKey}:${room.key}`] ?? 0
-          for (let i = 1; i <= count; i += 1) {
-            const code = `${room.prefix}-${floor.code.split('-').pop()}${pad(i)}`
-            out.push({
-              parent_code: deptCode,
-              location_type: room.type ?? 'room',
-              code,
-              name: `${room.label.replace(/s$/, '')} ${i}`,
-              space_use: room.spaceUse,
-              criticality: room.criticality ?? null,
-              bed_count: room.beds ?? null,
-            } as BulkLocationRow)
-            for (let b = 0; b < (room.beds ?? 0); b += 1) {
-              out.push({
-                parent_code: code, location_type: 'bed',
-                code: `${code}-${String.fromCharCode(65 + b)}`,
-                name: `Bed ${String.fromCharCode(65 + b)}`,
-              } as BulkLocationRow)
-            }
-          }
-        }
-      }
-    }
-    return out
-  }, [floors, building.code, allDepartments, customRooms])
+  /**
+   * What will be sent: only the spaces that do not exist yet.
+   *
+   * Existing floors, departments and rooms are never re-sent. The import would
+   * update them in place, and that would overwrite a room somebody renamed to
+   * "Hybrid OR" back to "Operating room 3". New rooms number on from the
+   * highest already there and skip any code already taken, so they cannot
+   * collide with rooms added by hand under a different scheme.
+   */
+  const rows = useMemo<BulkLocationRow[]>(
+    () => generateRows(floors, building.code, allDepartments, customRooms, loaded.taken),
+    [floors, building.code, allDepartments, customRooms, loaded.taken],
+  )
 
   const create = useMutation({
     mutationFn: async () => {
@@ -348,7 +200,7 @@ export default function SetupBuildingWizard({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
             PaperProps={{ sx: { borderRadius: '18px' } }}>
       <DialogTitle sx={{ fontWeight: 900, color: palette.ink, pb: 1 }}>
-        Set up {building.name || building.code}
+        {editing ? 'Edit' : 'Set up'} {building.name || building.code}
       </DialogTitle>
       <DialogContent dividers>
         <Stepper activeStep={step} sx={{ mb: 3 }}>
@@ -360,21 +212,38 @@ export default function SetupBuildingWizard({
         {step === 0 && (
           <Box>
             <Typography sx={{ mb: 2, fontWeight: 800, color: palette.ink }}>
-              How many floors does this building have?
+              {editing
+                ? `This building has ${loaded.floors.length} ${loaded.floors.length === 1 ? 'floor' : 'floors'}. Add more?`
+                : 'How many floors does this building have?'}
             </Typography>
+            {editing && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
+                {loaded.floors.map((f) => (
+                  <Chip key={f.code} size="small" label={`${f.code} · ${f.name}`}
+                        sx={{ height: 24, fontWeight: 800, fontSize: 11.5,
+                              bgcolor: palette.surfaceMuted, color: palette.textSubtle }} />
+                ))}
+              </Box>
+            )}
             <Stack direction="row" spacing={2}>
               <TextField
-                size="small" type="number" label="Floors above ground" value={above}
+                size="small" type="number" value={above}
+                label={editing ? 'Add floors above' : 'Floors above ground'}
                 onChange={(e) => setAbove(e.target.value)} sx={{ width: 200 }}
-                helperText="Ground counts as one"
+                helperText={editing ? `Starts at level ${loaded.nextLevel}` : 'Ground counts as one'}
               />
               <TextField
-                size="small" type="number" label="Basement levels" value={below}
-                onChange={(e) => setBelow(e.target.value)} sx={{ width: 180 }}
+                size="small" type="number" value={below}
+                label={editing ? 'Add basement levels' : 'Basement levels'}
+                onChange={(e) => setBelow(e.target.value)} sx={{ width: 190 }}
+                helperText={editing ? `Starts at B${loaded.nextBasement}` : ' '}
               />
             </Stack>
             <Typography sx={{ mt: 2, fontSize: 12.5, color: palette.textMuted, fontWeight: 600 }}>
-              You can rename any of them on the next step.
+              {editing
+                ? 'Leave both at zero to add departments or rooms to the floors already there. '
+                  + 'This only adds — rename or remove an existing space from its own Detail tab.'
+                : 'You can rename any of them on the next step.'}
             </Typography>
           </Box>
         )}
@@ -402,15 +271,19 @@ export default function SetupBuildingWizard({
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {allDepartments.map((dept) => {
                       const on = floor.depts.includes(dept.key)
+                      const locked = floor.existingDepts?.includes(dept.key)
                       return (
                         <Chip
-                          key={dept.key} size="small" label={dept.label} clickable
+                          key={dept.key} size="small" clickable={!locked}
+                          label={locked ? `${dept.label} ✓` : dept.label}
+                          title={locked ? 'Already on this floor' : undefined}
                           onClick={() => toggleDept(floor.code, dept.key)}
                           sx={{
                             height: 26, fontWeight: 800, fontSize: 11.5,
-                            bgcolor: on ? palette.brand : palette.surfaceFaint,
+                            bgcolor: locked ? palette.brandDeep : on ? palette.brand : palette.surfaceFaint,
                             color: on ? palette.white : palette.textSubtle,
-                            '&:hover': { bgcolor: on ? palette.brandDeep : palette.brandTint },
+                            '&:hover': { bgcolor: locked ? palette.brandDeep
+                              : on ? palette.brandDeep : palette.brandTint },
                           }}
                         />
                       )
@@ -468,7 +341,12 @@ export default function SetupBuildingWizard({
                                   floor.code, `${deptKey}:${room.key}`,
                                   Math.max(0, Number(e.target.value) || 0),
                                 )}
-                                helperText={room.beds ? `${room.beds} bed${room.beds > 1 ? 's' : ''} each` : ' '}
+                                inputProps={{ min: floor.existingCounts?.[`${deptKey}:${room.key}`] ?? 0 }}
+                                helperText={[
+                                  floor.existingCounts?.[`${deptKey}:${room.key}`]
+                                    ? `${floor.existingCounts[`${deptKey}:${room.key}`]} already` : '',
+                                  room.beds ? `${room.beds} bed${room.beds > 1 ? 's' : ''} each` : '',
+                                ].filter(Boolean).join(' · ') || ' '}
                               />
                             ))}
                           </Box>
@@ -498,7 +376,9 @@ export default function SetupBuildingWizard({
         {step === 3 && (
           <Box>
             <Typography sx={{ mb: 2, fontWeight: 800, color: palette.ink }}>
-              This will create {rows.length} spaces
+              {rows.length === 0
+                ? 'Nothing new to add yet'
+                : `This will ${editing ? 'add' : 'create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}`}
             </Typography>
             <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
               {[
@@ -602,7 +482,7 @@ export default function SetupBuildingWizard({
             sx={{ fontWeight: 900, borderRadius: '10px', bgcolor: palette.brand,
                   '&:hover': { bgcolor: palette.brandDeep } }}
           >
-            {create.isPending ? 'Creating…' : `Create ${rows.length} spaces`}
+            {create.isPending ? 'Saving…' : `${editing ? 'Add' : 'Create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}`}
           </Button>
         )}
       </DialogActions>

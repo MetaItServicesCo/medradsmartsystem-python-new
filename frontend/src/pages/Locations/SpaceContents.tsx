@@ -6,13 +6,14 @@
  * "0 items in this room" against a building was wrong twice over: it is not a
  * room, and it is not empty — it has two floors in it.
  *
- * So a container lists what is beneath it and a room lists its fixtures, and
- * the tab means the same thing in plain English at every level.
+ * So a container lists what is beneath it, and every level — building, floor,
+ * room — lists the fixtures fixed to it directly, so the tab means the same
+ * thing in plain English at every level.
  */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert, Box, Button, Chip, CircularProgress, IconButton, Stack, Tooltip,
+  Alert, Box, Button, Chip, Divider, CircularProgress, IconButton, Stack, Tooltip,
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -26,10 +27,16 @@ import { palette } from '@/theme/palette'
 import AddFixturesDialog from './AddFixturesDialog'
 import ReportFaultDialog from './ReportFaultDialog'
 
-/** Types that hold fixtures rather than other spaces. */
-const HOLDS_FIXTURES = new Set([
-  'room', 'bed', 'mech_room', 'plenum', 'shaft', 'riser', 'roof', 'exterior',
-])
+/**
+ * Which levels can have spaces inside them. A bed is the only leaf.
+ *
+ * There used to be a set of "types that hold fixtures", and floors, wings and
+ * buildings were not in it — so a basement could hold rooms but not the
+ * parking-level lighting, sprinkler heads, drains and extinguishers that are
+ * fixed to the floor itself rather than to any room. Every level holds
+ * fixtures now; the only question is whether it can also hold spaces.
+ */
+const CONTAINERS = new Set(['building', 'floor', 'wing'])
 
 export const TRADE_LABEL: Record<string, string> = {
   electrical: 'Electrical',
@@ -71,7 +78,7 @@ export interface ChildSpace {
 }
 
 export default function SpaceContents({
-  locationId, locationName, locationType, children, canEdit, onSelectChild,
+  locationId, locationName, locationType, children, canEdit, onSelectChild, onAddSpace,
 }: {
   locationId: number
   locationName: string
@@ -79,49 +86,76 @@ export default function SpaceContents({
   children: ChildSpace[]
   canEdit: boolean
   onSelectChild: (id: number) => void
+  onAddSpace: () => void
 }) {
-  const holdsFixtures = HOLDS_FIXTURES.has(locationType)
-  return holdsFixtures ? (
-    <FixtureList
-      locationId={locationId} locationName={locationName} canEdit={canEdit}
-    />
-  ) : (
-    <SpaceList
-      locationName={locationName} locationType={locationType}
-      children={children} onSelectChild={onSelectChild}
-    />
+  const isContainer = CONTAINERS.has(locationType)
+  // A room shows its spaces only when it has some (its beds); an empty "no
+  // spaces inside this room" section would be noise above its fixtures.
+  const showSpaces = isContainer || children.length > 0
+  return (
+    <>
+      {showSpaces && (
+        <SpaceList
+          locationName={locationName} locationType={locationType}
+          children={children} onSelectChild={onSelectChild}
+          canEdit={canEdit} onAddSpace={onAddSpace}
+        />
+      )}
+      {showSpaces && <Divider sx={{ mx: 2.25 }} />}
+      <FixtureList
+        locationId={locationId} locationName={locationName} canEdit={canEdit}
+        onContainer={isContainer}
+      />
+    </>
   )
 }
 
 /** A building or floor: what spaces are beneath it. */
-function SpaceList({ locationName, locationType, children, onSelectChild }: {
+function SpaceList({
+  locationName, locationType, children, onSelectChild, canEdit, onAddSpace,
+}: {
   locationName: string
   locationType: string
   children: ChildSpace[]
   onSelectChild: (id: number) => void
+  canEdit: boolean
+  onAddSpace: () => void
 }) {
   const countBeneath = (nodes: ChildSpace[]): number =>
     nodes.reduce((n, c) => n + 1 + countBeneath(c.children ?? []), 0)
 
   if (!children.length) {
     return (
-      <Box sx={{ p: 5, textAlign: 'center' }}>
+      <Box sx={{ p: 3, textAlign: 'center' }}>
         <Typography sx={{ fontWeight: 800, color: palette.textMuted }}>
-          Nothing inside this {humanise(locationType).toLowerCase()} yet.
+          No spaces inside this {humanise(locationType).toLowerCase()} yet.
         </Typography>
-        <Typography sx={{ mt: 0.5, fontSize: 13, color: palette.textFaint }}>
-          Use Add location to put floors, wings or rooms inside it.
-        </Typography>
+        {canEdit && (
+          <Button
+            size="small" variant="outlined" startIcon={<AddIcon />} onClick={onAddSpace}
+            sx={{ mt: 1.25, fontWeight: 800, borderRadius: '10px' }}
+          >
+            Add a space inside
+          </Button>
+        )}
       </Box>
     )
   }
 
   return (
     <Box sx={{ p: 2.25 }}>
-      <Typography sx={{ fontWeight: 900, color: palette.ink, fontSize: 15, mb: 1.5 }}>
-        {children.length} {children.length === 1 ? 'space' : 'spaces'} directly inside
-        {' '}{locationName}
-      </Typography>
+      <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
+        <Typography sx={{ fontWeight: 900, color: palette.ink, fontSize: 15, flex: 1 }}>
+          {children.length} {children.length === 1 ? 'space' : 'spaces'} directly inside
+          {' '}{locationName}
+        </Typography>
+        {canEdit && (
+          <Button size="small" startIcon={<AddIcon />} onClick={onAddSpace}
+                  sx={{ fontWeight: 800, color: palette.brand }}>
+            Add a space inside
+          </Button>
+        )}
+      </Stack>
 
       <Box sx={{ display: 'grid', gap: 1,
                  gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' } }}>
@@ -165,10 +199,12 @@ function SpaceList({ locationName, locationType, children, onSelectChild }: {
 }
 
 /** A room: the fixtures in it, grouped by trade. */
-function FixtureList({ locationId, locationName, canEdit }: {
+function FixtureList({ locationId, locationName, canEdit, onContainer }: {
   locationId: number
   locationName: string
   canEdit: boolean
+  /** A floor or building: its fixtures are the ones not inside any room. */
+  onContainer: boolean
 }) {
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
@@ -228,7 +264,8 @@ function FixtureList({ locationId, locationName, canEdit }: {
 
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
         <Typography sx={{ fontWeight: 900, color: palette.ink, fontSize: 15 }}>
-          {fixtures.length} {fixtures.length === 1 ? 'item' : 'items'} in {locationName}
+          {onContainer ? 'Fixtures on this level itself' : `Fixtures in ${locationName}`}
+          {' · '}{fixtures.length}
         </Typography>
         {faultCount > 0 && (
           <Chip
@@ -254,13 +291,12 @@ function FixtureList({ locationId, locationName, canEdit }: {
       {!fixtures.length && error == null && (
         <Box sx={{ py: 5, textAlign: 'center' }}>
           <Typography sx={{ fontWeight: 800, color: palette.textMuted }}>
-            Nothing recorded in here yet.
+            {onContainer ? 'Nothing fixed to this level directly.' : 'Nothing recorded in here yet.'}
           </Typography>
           <Typography sx={{ mt: 0.5, fontSize: 13, color: palette.textFaint, maxWidth: 460, mx: 'auto' }}>
-            Add the sockets, lights, gas outlets and data ports that are in this
-            room. Once they are listed, anybody who finds one broken can raise a
-            work order against it in one click, and it reaches the right trade
-            without being asked which.
+            {onContainer
+              ? 'Corridor lighting, sprinkler heads, extinguishers, drains and emergency lights that belong to the level rather than to a room.'
+              : 'Add the sockets, lights, gas outlets and data ports in this room. Anybody who finds one broken can then raise a work order against it in one click, and it reaches the right trade without being asked which.'}
           </Typography>
         </Box>
       )}

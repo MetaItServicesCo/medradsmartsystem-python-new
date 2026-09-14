@@ -35,14 +35,15 @@ def discipline_id_for(db: Session, fixture_type: str) -> int | None:
     return row.id if row else None
 
 
-def next_sequence(db: Session, location_id: int, fixture_type: str) -> int:
+def next_sequence(db: Session, location_id: int, fixture_type: str,
+                  prefix: str | None = None) -> int:
     """The next number for this type in this room.
 
     Counts existing rows rather than tracking a counter: fixtures get removed
     during refits, and a register that skips SKT-04 forever because something
     once occupied it invites people to wonder what happened to it.
     """
-    prefix = fixture_catalog.prefix_for(fixture_type)
+    prefix = prefix or fixture_catalog.prefix_for(fixture_type)
     existing = (
         db.query(Fixture.code)
         .filter(Fixture.location_id == location_id,
@@ -71,16 +72,34 @@ def bulk_create(
     circuit_ref: str | None = None,
     served_by_equipment_id: int | None = None,
     created_by_id: int | None = None,
+    discipline_code: str | None = None,
+    code_prefix: str | None = None,
 ) -> list[Fixture]:
-    """Add `count` fixtures of one type to a room, numbered sequentially."""
-    if fixture_type not in fixture_catalog.BY_TYPE:
-        raise ValueError(f"Unknown fixture type: {fixture_type}")
+    """Add `count` fixtures of one type to a space, numbered sequentially.
 
-    prefix = fixture_catalog.prefix_for(fixture_type)
-    discipline_id = discipline_id_for(db, fixture_type)
+    The catalogue covers the common fixtures, not every one. A type it does not
+    know — a sump pump, a nitrogen dewar, a pneumatic tube station — is
+    accepted as long as the caller says which trade maintains it, because the
+    trade is what routes the fault and there is no way to infer it from a name.
+    """
+    known = fixture_type in fixture_catalog.BY_TYPE
+    if not known and not discipline_code:
+        raise ValueError(
+            f"'{fixture_type}' is not a catalogued fixture, so say which trade "
+            "maintains it."
+        )
+
+    prefix = (code_prefix or "").strip().upper() or fixture_catalog.prefix_for(fixture_type)
+    if discipline_code:
+        row = db.query(Discipline.id).filter(Discipline.code == discipline_code).first()
+        if row is None:
+            raise ValueError(f"Unknown trade: {discipline_code}")
+        discipline_id = row.id
+    else:
+        discipline_id = discipline_id_for(db, fixture_type)
     # The catalogue's defaults, with whatever the form overrode on top.
     merged = {**fixture_catalog.defaults_for(fixture_type), **(spec or {})}
-    start = next_sequence(db, location.id, fixture_type)
+    start = next_sequence(db, location.id, fixture_type, prefix)
 
     created: list[Fixture] = []
     for offset in range(count):

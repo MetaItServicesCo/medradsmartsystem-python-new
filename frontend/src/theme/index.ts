@@ -108,7 +108,10 @@ const theme = createTheme({
           background: palette.gradientBrand,
           boxShadow: '0 10px 24px rgba(4,120,87,0.22)',
           '&:hover': {
-            background: 'linear-gradient(135deg, #34D399 0%, #E14A83 100%)',
+            // Was #34D399 -> #E14A83: the old violet-to-pink hover with only its
+            // first stop greened, so every contained button in the app turned
+            // hot pink under the cursor. A deeper brand instead.
+            background: `linear-gradient(135deg, ${palette.brandDeep} 0%, ${palette.accentDark} 100%)`,
           },
         },
         outlined: {

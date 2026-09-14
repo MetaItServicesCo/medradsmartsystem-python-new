@@ -46,6 +46,10 @@ class FixtureBulkCreate(BaseModel):
     spec: Optional[dict[str, Any]] = None
     circuit_ref: Optional[str] = None
     served_by_equipment_id: Optional[int] = None
+    # Only for a type the catalogue does not know: the trade that maintains it
+    # (which routes its faults) and the code prefix its fixtures are numbered by.
+    discipline_code: Optional[str] = None
+    code_prefix: Optional[str] = None
 
 
 class FixtureUpdate(BaseModel):

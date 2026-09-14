@@ -30,8 +30,14 @@ def _decorate(db: Session, row: Fixture) -> FixtureResponse:
     entry = fixture_catalog.BY_TYPE.get(row.fixture_type, {})
     payload = FixtureResponse.model_validate(row)
     payload.summary = fixture_catalog.describe(row.fixture_type, row.spec)
-    payload.discipline_code = entry.get("discipline")
-    payload.type_label = entry.get("label")
+    discipline_code = entry.get("discipline")
+    if discipline_code is None and row.discipline_id is not None:
+        # A custom type has no catalogue entry, so its trade comes from the
+        # fixture itself — otherwise it lands under "Building" in every list.
+        found = db.query(Discipline.code).filter(Discipline.id == row.discipline_id).first()
+        discipline_code = found[0] if found else None
+    payload.discipline_code = discipline_code
+    payload.type_label = entry.get("label") or row.fixture_type.replace("_", " ").capitalize()
     return payload
 
 
@@ -139,6 +145,8 @@ def bulk_create(
             circuit_ref=payload.circuit_ref,
             served_by_equipment_id=payload.served_by_equipment_id,
             created_by_id=current_user.id,
+            discipline_code=payload.discipline_code,
+            code_prefix=payload.code_prefix,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
