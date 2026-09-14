@@ -3,6 +3,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from pydantic import BaseModel, Field, model_validator
 
+from app.schemas.money import Money
+
 
 class EquipmentBase(BaseModel):
     # Blank on create means "issue the next tag for this site".
@@ -129,7 +131,7 @@ class AssetSelection(BaseModel):
 class AssetBulkChanges(BaseModel):
     """The details to set. Anything left out or blank is left as it is."""
 
-    cost: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999.99"), decimal_places=2)
+    cost: Optional[Money] = None
     installation_date: Optional[date] = None
     make: Optional[str] = Field(default=None, max_length=200)
     model: Optional[str] = Field(default=None, max_length=200)

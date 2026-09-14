@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.money import Money
+
 from app.models.location import LOCATION_TYPES, SPACE_USES, normalise_space_use
 
 
@@ -325,7 +327,7 @@ class BulkAsset(BaseModel):
     # Only for a type the asset catalogue does not know.
     discipline_code: Optional[str] = None
     # Optional, for when the fit-out's costs are already known. Each item.
-    cost: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999.99"), decimal_places=2)
+    cost: Optional[Money] = None
     installation_date: Optional[date] = None
 
 
@@ -344,7 +346,7 @@ class ContentAsset(BaseModel):
     count: int = Field(ge=0, le=200)
     discipline_code: Optional[str] = None
     # Applied to the items a top-up creates, never to ones already in the room.
-    cost: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999.99"), decimal_places=2)
+    cost: Optional[Money] = None
     installation_date: Optional[date] = None
 
 

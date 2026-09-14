@@ -312,9 +312,16 @@ confirms the migration chain reached the end.
 cd /opt/phealth
 git pull
 docker compose build
+docker compose run --rm backend python -c "import app.main; print('backend imports')"
 docker compose run --rm backend alembic upgrade head
 docker compose up -d
 ```
+
+The import check runs the new code on the server's own Python and libraries
+before anything is restarted. If it fails, the running containers are still on
+the old code and nothing is down; send the error rather than running `up -d`.
+It exists because a release once passed every test on a newer Pydantic and
+then refused to start on the pinned one.
 
 Run the migration before `up -d`, not after, so the new code never starts
 against an old schema. If a release changes `VITE_API_URL`, the frontend must
