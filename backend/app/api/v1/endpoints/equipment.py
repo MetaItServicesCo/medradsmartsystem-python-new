@@ -14,8 +14,10 @@ from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.schemas.equipment import (
     EquipmentCreate, EquipmentUpdate,
-    Equipment as EquipmentSchema, EquipmentListResponse, RoomAssetsCreate,
+    Equipment as EquipmentSchema, EquipmentListResponse, RoomAssetsCreate, ServesLink, ServesSpace,
 )
+from app.models.asset_link import SERVICE_TYPES, AssetServesLocation
+from app.services import asset_tags
 from app.models.discipline import Discipline
 from app.models.location import Location
 from app.services import asset_catalog, location_tree, room_assets
@@ -141,6 +143,20 @@ def export_equipment_csv(
     )
 
 
+@router.get("/next-tag")
+def next_tag(
+    facility_id: int = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The tag the next registration at this site will be given, for the form to show."""
+    require_facility_access(db, current_user, facility_id)
+    facility = db.get(Facility, facility_id)
+    if facility is None:
+        raise HTTPException(status_code=404, detail="Facility not found")
+    return {"tag": asset_tags.next_tags(db, facility, 1)[0]}
+
+
 @router.get("/room-item-types")
 def room_item_types(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     """The items a room can hold as assets, and the trade each goes to."""
@@ -164,6 +180,9 @@ def add_room_items(
         created = room_assets.create_in_room(
             db, location=location, asset_type=payload.asset_type,
             count=payload.count, discipline_code=payload.discipline_code,
+            asset_tag=payload.asset_tag, serial_number=payload.serial_number,
+            make=payload.make, model=payload.model, cost=payload.cost,
+            installation_date=payload.installation_date, description=payload.description,
         )
     except ValueError as exc:
         db.rollback()
@@ -189,23 +208,54 @@ def get_equipment(
     return item
 
 
+def _validate_serves(db: Session, facility_id: int, serves: list[ServesSpace]) -> list[ServesSpace]:
+    """Every served space exists, is at this site, and is supplied with something known."""
+    seen: set[tuple[int, str]] = set()
+    kept: list[ServesSpace] = []
+    for item in serves:
+        if item.service_type not in SERVICE_TYPES:
+            raise HTTPException(status_code=422, detail=f"Unknown service type '{item.service_type}'")
+        location = db.get(Location, item.location_id)
+        if location is None:
+            raise HTTPException(status_code=404, detail="A space it serves was not found")
+        if location.facility_id != facility_id:
+            raise HTTPException(status_code=400, detail=f"{location.code} belongs to a different site")
+        key = (item.location_id, item.service_type)
+        if key not in seen:
+            seen.add(key)
+            kept.append(item)
+    return kept
+
+
+def _issue_or_check_tag(db: Session, facility: Facility, tag: str, exclude_id: int | None = None) -> str:
+    tag = (tag or "").strip()
+    if not tag:
+        return asset_tags.next_tags(db, facility, 1)[0]
+    owner = asset_tags.tag_owner(db, facility.id, tag, exclude_id=exclude_id)
+    if owner is not None:
+        raise HTTPException(status_code=409, detail=asset_tags.describe_owner(owner))
+    return tag
+
+
 @router.post("/", response_model=EquipmentSchema, status_code=201)
 def create_equipment(
     equip_in: EquipmentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Create a new equipment/inventory item."""
-    # Validate facility exists
+    """Register an asset: plant, clinical equipment, or anything else with a tag."""
     facility = db.query(Facility).filter(Facility.id == equip_in.facility_id).first()
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, equip_in.facility_id)
-    create_data = equip_in.model_dump()
+    create_data = equip_in.model_dump(exclude={"serves"})
     create_data["next_generated_pm_date"] = next_inspection_date(
         equip_in.last_pm_date,
         equip_in.pm_scheduling,
     )
+    # Blank means issue the next one; typed means keep the sticker, if no other
+    # asset at this site already carries it.
+    create_data["asset_tag"] = _issue_or_check_tag(db, facility, equip_in.asset_tag)
 
     # The MEP foreign keys cross facility boundaries if nothing checks them, and
     # the payload goes through model_dump() wholesale.
@@ -217,10 +267,13 @@ def create_equipment(
         discipline_id=create_data.get("discipline_id"),
         service_vendor_id=create_data.get("service_vendor_id"),
     )
-    # A plant asset in an operating theatre inherits that theatre's criticality
-    # unless it states its own, so nobody has to remember to set it by hand.
+    serves = _validate_serves(db, equip_in.facility_id, equip_in.serves)
+    # Criticality comes from the most critical of where it is and what it
+    # serves, unless given: an air handler in an ordinary plant room serving
+    # the theatres is as critical as the theatres.
     create_data["criticality"] = asset_service.inherit_criticality(
         db, location_id=create_data.get("location_id"), explicit=create_data.get("criticality"),
+        served_location_ids=[s.location_id for s in serves],
     )
     # Seed the book life from the trade — a lift is twenty years, a clinical
     # monitor is seven — so nobody types one four hundred times. Overridable,
@@ -235,7 +288,15 @@ def create_equipment(
         create_data["useful_life_years"] = depreciation_service.default_useful_life(
             row[0] if row else None,
         )
-    return crud.equipment.create(db=db, obj_in=create_data)
+    asset = Equipment(**create_data)
+    db.add(asset)
+    db.flush()
+    for item in serves:
+        db.add(AssetServesLocation(equipment_id=asset.id, location_id=item.location_id,
+                                   service_type=item.service_type))
+    db.commit()
+    db.refresh(asset)
+    return asset
 
 
 @router.put("/{id}", response_model=EquipmentSchema)
@@ -252,6 +313,15 @@ def update_equipment(
     require_facility_access(db, current_user, item.facility_id)
     update_data = equip_in.model_dump(exclude_unset=True)
     target_facility_id = update_data.get("facility_id")
+    if "asset_tag" in update_data:
+        tag = (update_data["asset_tag"] or "").strip()
+        if not tag:
+            raise HTTPException(status_code=422, detail="An asset keeps a tag; it cannot be cleared")
+        facility = db.get(Facility, target_facility_id or item.facility_id)
+        update_data["asset_tag"] = _issue_or_check_tag(db, facility, tag, exclude_id=item.id)
+    for key in ("make", "model", "serial_number"):
+        if key in update_data and update_data[key] is None:
+            update_data[key] = ""
     if target_facility_id is not None and target_facility_id != item.facility_id:
         facility = db.query(Facility.id).filter(Facility.id == target_facility_id).first()
         if not facility:
@@ -275,7 +345,18 @@ def update_equipment(
             service_vendor_id=update_data.get("service_vendor_id", item.service_vendor_id),
             equipment_id=item.id,
         )
-    return crud.equipment.update(db=db, db_obj=item, obj_in=update_data)
+    before_location = item.location_id
+    before_served = asset_service.served_location_ids(db, item.id)
+    updated = crud.equipment.update(db=db, db_obj=item, obj_in=update_data)
+    # A moved asset takes its new room's criticality, unless somebody set it.
+    if "location_id" in update_data and "criticality" not in update_data \
+            and update_data["location_id"] != before_location:
+        asset_service.rederive_if_inherited(
+            db, updated, before_location_id=before_location, before_served=before_served,
+        )
+        db.commit()
+        db.refresh(updated)
+    return updated
 
 
 @router.delete("/{id}")
@@ -291,3 +372,91 @@ def delete_equipment(
     require_facility_access(db, current_user, item.facility_id)
     crud.equipment.remove(db=db, id=id)
     return {"detail": "Equipment deleted"}
+
+
+def _asset_or_404(db: Session, equipment_id: int, user: User) -> Equipment:
+    asset = db.get(Equipment, equipment_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+    require_facility_access(db, user, asset.facility_id)
+    return asset
+
+
+def _serves_rows(db: Session, equipment_id: int) -> list[ServesLink]:
+    rows = (
+        db.query(AssetServesLocation, Location)
+        .join(Location, Location.id == AssetServesLocation.location_id)
+        .filter(AssetServesLocation.equipment_id == equipment_id)
+        .order_by(Location.path)
+        .all()
+    )
+    return [ServesLink(id=link.id, location_id=loc.id, code=loc.code, name=loc.name,
+                       location_type=loc.location_type, criticality=loc.criticality,
+                       service_type=link.service_type) for link, loc in rows]
+
+
+@router.get("/{equipment_id}/serves", response_model=list[ServesLink])
+def list_serves(
+    equipment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The spaces this asset supplies."""
+    _asset_or_404(db, equipment_id, current_user)
+    return _serves_rows(db, equipment_id)
+
+
+@router.post("/{equipment_id}/serves", response_model=list[ServesLink], status_code=201)
+def add_serves(
+    equipment_id: int,
+    payload: ServesSpace,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Record that this asset supplies a space, and raise its criticality to match.
+
+    Open to anyone who can edit assets at the site. The general link endpoint
+    is admin-only, which left a facility manager registering an air handler
+    unable to say what it feeds.
+    """
+    require_module_permission(current_user, "facility-inventory", "edit")
+    asset = _asset_or_404(db, equipment_id, current_user)
+    [item] = _validate_serves(db, asset.facility_id, [payload])
+    exists = db.query(AssetServesLocation.id).filter(
+        AssetServesLocation.equipment_id == asset.id,
+        AssetServesLocation.location_id == item.location_id,
+        AssetServesLocation.service_type == item.service_type,
+    ).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="It already serves that space with that")
+    before_served = asset_service.served_location_ids(db, asset.id)
+    db.add(AssetServesLocation(equipment_id=asset.id, location_id=item.location_id,
+                               service_type=item.service_type))
+    db.flush()
+    asset_service.rederive_if_inherited(db, asset, before_location_id=asset.location_id,
+                                        before_served=before_served)
+    db.commit()
+    return _serves_rows(db, asset.id)
+
+
+@router.delete("/{equipment_id}/serves/{link_id}", response_model=list[ServesLink])
+def remove_serves(
+    equipment_id: int,
+    link_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_module_permission(current_user, "facility-inventory", "edit")
+    asset = _asset_or_404(db, equipment_id, current_user)
+    link = db.query(AssetServesLocation).filter(
+        AssetServesLocation.id == link_id, AssetServesLocation.equipment_id == asset.id,
+    ).first()
+    if link is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    before_served = asset_service.served_location_ids(db, asset.id)
+    db.delete(link)
+    db.flush()
+    asset_service.rederive_if_inherited(db, asset, before_location_id=asset.location_id,
+                                        before_served=before_served)
+    db.commit()
+    return _serves_rows(db, asset.id)

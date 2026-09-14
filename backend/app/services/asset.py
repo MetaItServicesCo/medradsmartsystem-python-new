@@ -12,6 +12,8 @@ receptacle. Conflating them makes both untraversable.
 """
 from __future__ import annotations
 
+from typing import Sequence
+
 from fastapi import HTTPException, status as http_status
 from sqlalchemy.orm import Session
 
@@ -118,15 +120,68 @@ def _assert_no_containment_cycle(db: Session, equipment_id: int, parent_id: int)
     )
 
 
-def inherit_criticality(db: Session, *, location_id: int | None, explicit: str | None) -> str | None:
-    """Take the space's criticality when the asset does not state its own.
+CRITICALITY_RANK = {"low": 0, "standard": 1, "high": 2, "critical": 3}
+
+
+def derived_criticality(
+    db: Session, *, location_id: int | None, served_location_ids: Sequence[int] = (),
+) -> str | None:
+    """The most critical of where an asset sits and everything it serves.
+
+    Served spaces count with everything inside them: an air handler serving a
+    floor that holds four operating rooms is as critical as those rooms, even
+    though the edge is drawn to the floor and the handler sits in a plant room.
+    """
+    found: list[str] = []
+    if location_id is not None:
+        row = db.query(Location.criticality).filter(Location.id == location_id).first()
+        if row and row[0]:
+            found.append(row[0])
+    for served in db.query(Location).filter(Location.id.in_(list(served_location_ids))).all():
+        found.extend(
+            c for (c,) in db.query(Location.criticality)
+            .filter(location_tree.subtree_filter(served), Location.is_active.is_(True))
+            .distinct() if c
+        )
+    ranked = [c for c in found if c in CRITICALITY_RANK]
+    return max(ranked, key=CRITICALITY_RANK.__getitem__) if ranked else None
+
+
+def inherit_criticality(
+    db: Session, *, location_id: int | None, explicit: str | None,
+    served_location_ids: Sequence[int] = (),
+) -> str | None:
+    """Take the criticality of where the asset is and what it serves, unless set.
 
     Overridable on purpose: a standby generator in an unremarkable yard is
-    critical because of what depends on it, not because of where it sits.
+    critical because of what depends on it, not because of where it sits, and
+    somebody may know better than either.
     """
     if explicit:
         return explicit
-    if location_id is None:
-        return None
-    location = db.query(Location).filter(Location.id == location_id).first()
-    return location.criticality if location else None
+    return derived_criticality(db, location_id=location_id, served_location_ids=served_location_ids)
+
+
+def served_location_ids(db: Session, equipment_id: int) -> list[int]:
+    from app.models.asset_link import AssetServesLocation
+    return [lid for (lid,) in db.query(AssetServesLocation.location_id)
+            .filter(AssetServesLocation.equipment_id == equipment_id)]
+
+
+def rederive_if_inherited(
+    db: Session, asset, *, before_location_id: int | None, before_served: Sequence[int],
+) -> None:
+    """Follow a move or a change in what it serves, unless criticality was set by hand.
+
+    There is no flag recording whether a criticality was typed or inherited, so
+    this compares: if the asset still carries exactly what its old placement
+    would have given it, it was inherited, and it follows the new placement. A
+    value somebody chose is left alone.
+    """
+    before = derived_criticality(db, location_id=before_location_id,
+                                 served_location_ids=before_served)
+    if asset.criticality == before:
+        asset.criticality = derived_criticality(
+            db, location_id=asset.location_id,
+            served_location_ids=served_location_ids(db, asset.id),
+        )

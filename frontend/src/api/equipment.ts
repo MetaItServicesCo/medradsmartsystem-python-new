@@ -70,11 +70,18 @@ export interface EquipmentItem {
 }
 
 export interface EquipmentCreate {
-  asset_tag: string
-  make: string
-  model: string
-  serial_number: string
-  modality_id: number
+  /** Blank: the next tag for the site is issued. */
+  asset_tag?: string
+  /** Required for clinical equipment only. */
+  make?: string
+  model?: string
+  serial_number?: string
+  modality_id?: number | null
+  discipline_id?: number | null
+  location_id?: number | null
+  criticality?: string | null
+  asset_type?: string | null
+  serves?: Array<{ location_id: number; service_type: string }>
   facility_id: number
   tier_id?: number | null
   inspection_form_id?: number | null
@@ -197,8 +204,50 @@ export const addRoomItems = async (payload: {
   asset_type: string
   count: number
   discipline_code?: string | null
+  /** Only for a single item. */
+  asset_tag?: string | null
+  serial_number?: string | null
+  make?: string | null
+  model?: string | null
+  cost?: number | null
+  installation_date?: string | null
+  description?: string | null
 }): Promise<{ items: EquipmentItem[]; total: number }> => {
   const res = await apiClient.post('/equipment/room-items', payload)
+  return res.data
+}
+
+/** The tag the next registration at this site will get, for the form to show. */
+export const fetchNextTag = async (facilityId: number): Promise<string> => {
+  const res = await apiClient.get('/equipment/next-tag', { params: { facility_id: facilityId } })
+  return res.data.tag
+}
+
+export interface ServesLink {
+  id: number
+  location_id: number
+  code: string
+  name: string | null
+  location_type: string
+  criticality: string | null
+  service_type: string
+}
+
+/** The spaces an asset supplies — an air handler's theatres, a panel's rooms. */
+export const fetchServes = async (equipmentId: number): Promise<ServesLink[]> => {
+  const res = await apiClient.get(`/equipment/${equipmentId}/serves`)
+  return res.data
+}
+
+export const addServes = async (
+  equipmentId: number, payload: { location_id: number; service_type: string },
+): Promise<ServesLink[]> => {
+  const res = await apiClient.post(`/equipment/${equipmentId}/serves`, payload)
+  return res.data
+}
+
+export const removeServes = async (equipmentId: number, linkId: number): Promise<ServesLink[]> => {
+  const res = await apiClient.delete(`/equipment/${equipmentId}/serves/${linkId}`)
   return res.data
 }
 

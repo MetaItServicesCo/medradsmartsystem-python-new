@@ -13,7 +13,8 @@ filled in when somebody records them.
 """
 from __future__ import annotations
 
-import re
+from datetime import date
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -23,41 +24,12 @@ from app.models.facility import Facility
 from app.models.location import Location
 from app.services import asset as asset_service
 from app.services import asset_catalog, fixture_catalog
+from app.services.asset_tags import describe_owner, next_tags, tag_owner, tag_prefix  # noqa: F401
 from app.services import depreciation as depreciation_service
 
 # Statuses that mean the asset is still in the room. Retired and inactive ones
 # are history: they do not count towards "this room has twelve chairs".
 IN_SERVICE = (EquipmentStatus.ACTIVE, EquipmentStatus.IN_MAINTENANCE, EquipmentStatus.RENTED)
-
-TAG_DIGITS = 6
-
-
-def tag_prefix(facility_name: str) -> str:
-    """Initials of the site: "Lahore Office" -> LO, "Mercy" -> MER."""
-    words = re.findall(r"[A-Za-z]+", facility_name or "")
-    if len(words) >= 2:
-        prefix = "".join(w[0] for w in words[:3])
-    elif words:
-        prefix = words[0][:3]
-    else:
-        prefix = "AST"
-    return prefix.upper()
-
-
-def next_tags(db: Session, facility: Facility, count: int) -> list[str]:
-    """The next `count` tags for a site, continuing the highest already issued.
-
-    The sequence is shared by every site with the same initials, so Hospital A
-    and Hillside Annex cannot both issue HA-000001.
-    """
-    prefix = tag_prefix(facility.name)
-    pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
-    highest = 0
-    for (tag,) in db.query(Equipment.asset_tag).filter(Equipment.asset_tag.like(f"{prefix}-%")):
-        match = pattern.match(tag or "")
-        if match:
-            highest = max(highest, int(match.group(1)))
-    return [f"{prefix}-{n:0{TAG_DIGITS}d}" for n in range(highest + 1, highest + 1 + count)]
 
 
 def _discipline_for(db: Session, asset_type: str, discipline_code: str | None) -> Discipline:
@@ -85,29 +57,54 @@ def create_in_room(
     asset_type: str,
     count: int,
     discipline_code: str | None = None,
+    asset_tag: str | None = None,
+    make: str | None = None,
+    model: str | None = None,
+    serial_number: str | None = None,
+    cost: Decimal | None = None,
+    installation_date: date | None = None,
+    description: str | None = None,
 ) -> list[Equipment]:
-    """Add `count` assets of one type to a room, each with its own tag."""
+    """Add `count` assets of one type to a room, each with its own tag.
+
+    An existing tag, or a serial number, can only be given for a single item:
+    twelve chairs cannot share one sticker. Make, model, cost and date apply to
+    every item, because twelve chairs bought together share those.
+    """
     asset_type = asset_catalog.type_key(asset_type)
     if not asset_type:
         raise ValueError("Say what the asset is.")
     if count <= 0:
         return []
+    tag = (asset_tag or "").strip()
+    if tag and count != 1:
+        raise ValueError("An existing tag belongs to one item. Add them one at a time, or let tags be issued.")
+    if (serial_number or "").strip() and count != 1:
+        raise ValueError("A serial number belongs to one item. Add them one at a time.")
+    if tag:
+        owner = tag_owner(db, location.facility_id, tag)
+        if owner is not None:
+            raise ValueError(describe_owner(owner))
     discipline = _discipline_for(db, asset_type, discipline_code)
     facility = db.get(Facility, location.facility_id)
     criticality = asset_service.inherit_criticality(db, location_id=location.id, explicit=None)
     life = depreciation_service.default_useful_life(discipline.code)
 
     created: list[Equipment] = []
-    for tag in next_tags(db, facility, count):
+    for issued in ([tag] if tag else next_tags(db, facility, count)):
         asset = Equipment(
-            asset_tag=tag,
-            make="", model="", serial_number="",
+            asset_tag=issued,
+            make=(make or "").strip(), model=(model or "").strip(),
+            serial_number=(serial_number or "").strip(),
             facility_id=location.facility_id,
             location_id=location.id,
             discipline_id=discipline.id,
             asset_type=asset_type,
             criticality=criticality,
             useful_life_years=life,
+            cost=cost,
+            installation_date=installation_date,
+            description=description or None,
             status=EquipmentStatus.ACTIVE,
         )
         db.add(asset)

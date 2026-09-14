@@ -17,6 +17,7 @@ import {
 } from '@mui/material'
 import BuildIcon from '@mui/icons-material/Build'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
+import OpenWithIcon from '@mui/icons-material/OpenWith'
 import { toast } from 'react-toastify'
 import { fetchAssetLedger } from '@/api/assetLedger'
 import { fetchTechnicianCandidates } from '@/api/disciplines'
@@ -24,6 +25,7 @@ import { createSchedule, fetchSchedules } from '@/api/maintenance'
 import { createServiceRequest, fetchServiceRequests } from '@/api/serviceRequests'
 import { palette } from '@/theme/palette'
 import { assetTitle } from './assetTitle'
+import { MoveAssetDialog, ServesPanel } from './AssetPlacement'
 
 const humanise = (v?: string | null) =>
   (v || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -40,6 +42,7 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
   const [tab, setTab] = useState(0)
   const [serviceOpen, setServiceOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
 
   const { data: schedules } = useQuery({
     queryKey: ['schedules', 'asset', asset.id],
@@ -100,6 +103,14 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
               >
                 Schedule inspection
               </Button>
+              <Button
+                size="small" variant="outlined" startIcon={<OpenWithIcon />}
+                onClick={() => setMoveOpen(true)}
+                sx={{ fontWeight: 900, borderRadius: '10px', color: palette.brand,
+                      borderColor: palette.brandBorder }}
+              >
+                Move
+              </Button>
             </Stack>
           )}
         </Stack>
@@ -132,7 +143,7 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
           {[
             { label: 'Status', value: humanise(asset.status), hint: 'Whether it is in service.' },
             { label: 'How critical', value: humanise(asset.criticality) || 'Not set',
-              hint: 'Inherited from the room unless set. Drives how fast a fault is answered.' },
+              hint: 'The most critical of where it is and what it serves, unless set. Drives how fast a fault is answered.' },
             { label: 'Installed', value: asset.installation_date || asset.acquisition_date || '—',
               hint: 'When it entered service. Depreciation counts from here.' },
             { label: 'Warranty ends', value: asset.warranty_expiration || '—',
@@ -159,6 +170,8 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
           ))}
         </Box>
       )}
+      {/* Room items sit in a room; plant and clinical equipment also supply spaces. */}
+      {tab === 0 && !asset.asset_type && <ServesPanel asset={asset} canEdit={canEdit} />}
 
       {tab === 1 && (
         <Box sx={{ p: 2.25 }}>
@@ -231,6 +244,7 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
       {planOpen && (
         <SchedulePlanDialog asset={asset} onClose={() => setPlanOpen(false)} />
       )}
+      {moveOpen && <MoveAssetDialog asset={asset} onClose={() => setMoveOpen(false)} />}
     </Box>
   )
 }

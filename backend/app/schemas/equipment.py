@@ -5,10 +5,13 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class EquipmentBase(BaseModel):
-    asset_tag: str
-    make: str
-    model: str
-    serial_number: str
+    # Blank on create means "issue the next tag for this site".
+    asset_tag: str = ""
+    # Required for clinical equipment only (see EquipmentCreate). A chair or a
+    # newly surveyed pump often has none yet; they are stored empty, not invented.
+    make: str = ""
+    model: str = ""
+    serial_number: str = ""
     modality_id: Optional[int] = None
     facility_id: int
     tier_id: Optional[int] = None
@@ -85,9 +88,62 @@ class RoomAssetsCreate(BaseModel):
     count: int = Field(default=1, ge=1, le=200)
     # Only for a type the catalogue does not know: which trade maintains it.
     discipline_code: Optional[str] = None
+    # Only for a single item: the tag already on it, and its serial.
+    asset_tag: Optional[str] = None
+    serial_number: Optional[str] = None
+    # Shared by every item added together.
+    make: Optional[str] = None
+    model: Optional[str] = None
+    cost: Optional[Decimal] = None
+    installation_date: Optional[date] = None
+    description: Optional[str] = None
+
+
+class ServesSpace(BaseModel):
+    """One space an asset supplies, and with what."""
+
+    location_id: int
+    service_type: str
+
+
+class ServesLink(BaseModel):
+    id: int
+    location_id: int
+    code: str
+    name: Optional[str] = None
+    location_type: str
+    criticality: Optional[str] = None
+    service_type: str
 
 
 class EquipmentCreate(EquipmentBase):
+    # The spaces it supplies: an air handler in a roof plant room serving the
+    # theatres. Also decides its criticality when none is given.
+    serves: List[ServesSpace] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def blanks_not_nulls(cls, data):
+        if isinstance(data, dict):
+            for key in ("asset_tag", "make", "model", "serial_number"):
+                if data.get(key) is None:
+                    data[key] = ""
+        return data
+
+    @model_validator(mode="after")
+    def clinical_equipment_is_identified(self):
+        """Make, model and serial are how a recall reaches a device."""
+        if self.modality_id is not None:
+            missing = [label for label, value in (
+                ("make", self.make), ("model", self.model), ("serial number", self.serial_number),
+            ) if not value.strip()]
+            if missing:
+                raise ValueError(
+                    f"Clinical equipment needs its {', '.join(missing)}: recalls and "
+                    "safety notices are tracked by them."
+                )
+        return self
+
     @model_validator(mode="after")
     def needs_a_classification(self):
         """One of modality or discipline, not both and not neither.

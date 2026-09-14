@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Autocomplete, Box, Chip, CircularProgress, InputAdornment, MenuItem, Stack, TextField,
+  Box, Chip, CircularProgress, InputAdornment, MenuItem, Stack, TextField,
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -39,6 +39,7 @@ import { palette } from '@/theme/palette'
 import AssetDetail from './AssetDetail'
 import AddAssetDialog from './AddAssetDialog'
 import { assetTitle } from './assetTitle'
+import { PlacePicker } from './PlacePicker'
 
 const CRITICALITY_STYLE: Record<string, { bg: string; color: string }> = {
   critical: { bg: palette.dangerTint, color: palette.danger },
@@ -201,23 +202,11 @@ export default function AssetsPage() {
                 ),
               }}
             />
-            <Autocomplete
-              size="small" options={places} value={room}
-              getOptionLabel={(p) => p.label}
-              isOptionEqualToValue={(a, b) => a.id === b.id}
-              onChange={(_, p) => setRoomId(p?.id ?? null)}
-              renderOption={(props, p) => (
-                <li {...props} key={p.id}>
-                  <Box sx={{ pl: p.depth * 1.5, fontSize: 13,
-                             fontWeight: p.type === 'room' ? 600 : 800 }}>
-                    {p.label}
-                  </Box>
-                </li>
-              )}
-              renderInput={(params) => (
-                <TextField {...params} label="Room, floor or building"
-                           helperText={room && room.type !== 'room' ? 'Includes everything inside it' : undefined} />
-              )}
+            <PlacePicker
+              facilityId={facilityId as number} value={roomId}
+              onChange={(id) => setRoomId(id)}
+              label="Room, floor or building"
+              helperText={room && room.type !== 'room' ? 'Includes everything inside it' : ' '}
             />
             <Stack direction="row" spacing={1}>
               <TextField
@@ -361,11 +350,11 @@ export default function AssetsPage() {
           open={addOpen}
           onClose={() => setAddOpen(false)}
           facilityId={facilityId}
-          tree={(tree as any)?.items ?? []}
-          disciplines={disciplines?.items ?? []}
-          onCreated={(id) => {
+          initialKind={kind === 'room_items' ? 'room_item' : 'plant'}
+          initialLocationId={roomId}
+          onCreated={(ids) => {
             queryClient.invalidateQueries({ queryKey: ['equipment'] })
-            setSelectedId(id)
+            setSelectedId(ids[0] ?? null)
             setAddOpen(false)
           }}
         />
