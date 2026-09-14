@@ -565,9 +565,14 @@ def bulk_import(
             continue
 
         created += 1
-        if payload.dry_run:
-            continue
-
+        # A dry run does the insert too, and the rollback below undoes it.
+        #
+        # It used to skip here, which meant a row it had just validated was
+        # never registered in by_code — so any row naming it as a parent was
+        # reported as "Parent not found", even though the real import would
+        # have created that parent a moment earlier. Every structure more than
+        # one level deep failed its own dry run. A preview that runs different
+        # code from the thing it previews will eventually disagree with it.
         department = departments.get((row.department_name or "").lower())
         location = Location(
             facility_id=payload.facility_id,

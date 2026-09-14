@@ -129,7 +129,7 @@ const DEPARTMENTS: DeptKind[] = [
     key: 'admin', label: 'Administration', prefix: 'ADM', rooms: [
       { key: 'office', label: 'Offices', prefix: 'OFF', spaceUse: 'office' },
       { key: 'meeting', label: 'Meeting rooms', prefix: 'MTG', spaceUse: 'office' },
-      { key: 'records', label: 'Records store', prefix: 'REC', spaceUse: 'storage' },
+      { key: 'records', label: 'Records store', prefix: 'RCD', spaceUse: 'storage' },
     ],
   },
   {
