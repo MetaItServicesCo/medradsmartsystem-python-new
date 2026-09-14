@@ -17,7 +17,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Alert, Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  Divider, IconButton, MenuItem, Stack, TextField, Typography,
+  Divider, IconButton, InputAdornment, MenuItem, Stack, TextField, Typography,
 } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { fetchDisciplines } from '@/api/disciplines'
@@ -49,12 +49,14 @@ const keyFrom = (label: string) =>
 interface Row {
   item: ItemOption | string | null
   count: string
+  /** Assets only, optional: what one of these cost. */
+  cost: string
   /** Only asked of an item typed in: is it part of the room, or a thing in it. */
   kind: '' | 'asset' | 'fixture'
   trade: string
 }
 
-const emptyRow = (): Row => ({ item: null, count: '1', kind: '', trade: '' })
+const emptyRow = (): Row => ({ item: null, count: '1', cost: '', kind: '', trade: '' })
 
 export default function RoomTypeDialog({
   initial, existingRooms = 0, spaceUses, existingPrefixes, onCancel, onSave,
@@ -112,6 +114,7 @@ export default function RoomTypeDialog({
           ? c.label
           : { value: c.fixtureType, label: c.label, group: '', kind, discipline: '' },
         count: String(c.count),
+        cost: c.costEach != null ? String(c.costEach) : '',
         kind: c.disciplineCode ? kind : '',
         trade: c.disciplineCode ?? '',
       })
@@ -159,12 +162,17 @@ export default function RoomTypeDialog({
       if (!row.item || count === 0) continue
       const known = resolve(row.item)
       if (known?.kind === 'bed') { beds += count; continue }
+      const costEach = row.cost.trim() === '' ? undefined : Math.max(0, Number(row.cost) || 0)
       if (known) {
-        contents.push({ fixtureType: known.value, label: known.label, count, kind: known.kind })
+        contents.push({
+          fixtureType: known.value, label: known.label, count, kind: known.kind,
+          costEach: known.kind === 'asset' ? costEach : undefined,
+        })
       } else if (typeof row.item === 'string' && row.trade && row.kind) {
         const name = row.item.trim()
         contents.push({
           fixtureType: keyFrom(name), label: name, count, kind: row.kind,
+          costEach: row.kind === 'asset' ? costEach : undefined,
           disciplineCode: row.trade,
           prefix: row.kind === 'fixture' ? customPrefix(name) : undefined,
         })
@@ -234,7 +242,8 @@ export default function RoomTypeDialog({
           <Typography sx={{ fontSize: 12, color: palette.textMuted, mt: '-4px !important' }}>
             <b>Assets</b> are things in the room — chairs, tables, screens. Each gets its own
             tag in Assets, labelled with this room. <b>Fixtures</b> are part of the room —
-            sockets, lights, gas outlets.
+            sockets, lights, gas outlets. A cost is optional: add it now if you know it,
+            or later for many assets at once from Assets.
           </Typography>
 
           {existingRooms > 0 && (
@@ -248,6 +257,7 @@ export default function RoomTypeDialog({
           {rows.map((row, i) => {
             const custom = isCustom(row.item)
             const known = resolve(row.item)
+            const asset = known ? known.kind === 'asset' : custom && row.kind === 'asset'
             return (
               <Box key={i}>
                 <Stack direction="row" spacing={1} alignItems="flex-start">
@@ -274,6 +284,16 @@ export default function RoomTypeDialog({
                     helperText="in each room"
                     sx={{ width: 120 }}
                   />
+                  {asset && (
+                    <TextField
+                      size="small" type="number" label="Cost each" value={row.cost}
+                      onChange={(e) => setRow(i, { cost: e.target.value })}
+                      inputProps={{ min: 0, step: '0.01' }}
+                      InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                      helperText="optional"
+                      sx={{ width: 140 }}
+                    />
+                  )}
                   <IconButton size="small" sx={{ mt: 0.5, color: palette.textFaint }}
                               onClick={() => setRows(rows.filter((_, j) => j !== i))}>
                     <DeleteOutlineIcon sx={{ fontSize: 19 }} />

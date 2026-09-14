@@ -14,8 +14,10 @@ from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.schemas.equipment import (
     EquipmentCreate, EquipmentUpdate,
+    AssetBulkResult, AssetBulkUpdate, AssetSelection,
     Equipment as EquipmentSchema, EquipmentListResponse, RoomAssetsCreate, ServesLink, ServesSpace,
 )
+from app.services import asset_bulk
 from app.models.asset_link import SERVICE_TYPES, AssetServesLocation
 from app.services import asset_tags
 from app.models.discipline import Discipline
@@ -31,25 +33,15 @@ from app.utils.read_cache import cached_read
 router = APIRouter(dependencies=[Depends(require_module_access("facility-inventory"))])
 
 
-@router.get("/", response_model=EquipmentListResponse)
-@cached_read("equipment", ttl_seconds=20)
-def list_equipment(
-    db: Session = Depends(get_db),
-    facility_id: Optional[int] = Query(None),
-    search: Optional[str] = Query(None),
-    location_id: Optional[int] = Query(None, description="This space and everything inside it"),
-    kind: Optional[str] = Query(None, pattern="^(room_items|equipment)$"),
-    asset_type: Optional[str] = Query(None),
-    discipline_id: Optional[int] = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-    current_user: User = Depends(get_current_user),
-) -> Any:
-    """List equipment/inventory, optionally filtered by facility_id.
+def _register_query(
+    db: Session, current_user: User, *, facility_id: Optional[int], search: Optional[str],
+    location_id: Optional[int], kind: Optional[str], asset_type: Optional[str],
+    discipline_id: Optional[int],
+):
+    """The register's filters, shared by the list and by bulk changes.
 
-    Filtered on the server: once every chair is an asset a site has thousands,
-    and a register that loads them all into the browser to filter them there
-    stops working at exactly the size it becomes useful.
+    One definition, so "select all 340 matching" in the browser and the 340 a
+    bulk change touches cannot drift apart.
     """
     query = scope_query_to_user_facilities(db.query(Equipment), Equipment.facility_id, db, current_user)
     if facility_id is not None:
@@ -85,6 +77,33 @@ def list_equipment(
                 Equipment.asset_type.ilike(like.replace(" ", "_")),
             )
         )
+    return query
+
+
+@router.get("/", response_model=EquipmentListResponse)
+@cached_read("equipment", ttl_seconds=20)
+def list_equipment(
+    db: Session = Depends(get_db),
+    facility_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
+    location_id: Optional[int] = Query(None, description="This space and everything inside it"),
+    kind: Optional[str] = Query(None, pattern="^(room_items|equipment)$"),
+    asset_type: Optional[str] = Query(None),
+    discipline_id: Optional[int] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """List equipment/inventory, optionally filtered by facility_id.
+
+    Filtered on the server: once every chair is an asset a site has thousands,
+    and a register that loads them all into the browser to filter them there
+    stops working at exactly the size it becomes useful.
+    """
+    query = _register_query(
+        db, current_user, facility_id=facility_id, search=search, location_id=location_id,
+        kind=kind, asset_type=asset_type, discipline_id=discipline_id,
+    )
     total = query.count()
     items = query.order_by(Equipment.created_at.desc(), Equipment.id.desc()).offset(skip).limit(limit).all()
     return {"items": items, "total": total}
@@ -141,6 +160,65 @@ def export_equipment_csv(
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="facility_inventory.csv"'},
     )
+
+
+@router.post("/bulk-update", response_model=AssetBulkResult)
+def bulk_update(
+    payload: AssetBulkUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Set the same details on many assets: preview first, then apply.
+
+    All or nothing within what is allowed: assets skipped for a field (see
+    app/services/asset_bulk.py) are reported, and everything else changes in
+    one transaction.
+    """
+    require_module_permission(current_user, "facility-inventory", "edit")
+    selection: AssetSelection = payload.selection
+
+    if selection.ids is not None:
+        ids = sorted(set(selection.ids))
+        assets = db.query(Equipment).filter(Equipment.id.in_(ids)).all()
+        if len(assets) != len(ids):
+            raise HTTPException(status_code=404, detail="Some of the selected assets no longer exist")
+        sites = {a.facility_id for a in assets}
+        if len(sites) > 1:
+            raise HTTPException(status_code=400, detail="A bulk change applies within one site")
+        require_facility_access(db, current_user, sites.pop())
+    else:
+        query = _register_query(
+            db, current_user, facility_id=selection.facility_id, search=selection.search,
+            location_id=selection.location_id, kind=selection.kind,
+            asset_type=selection.asset_type, discipline_id=selection.discipline_id,
+        )
+        matched = query.count()
+        if matched > asset_bulk.MAX_ASSETS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"That filter matches {matched} assets. Narrow it to {asset_bulk.MAX_ASSETS} or fewer.",
+            )
+        assets = query.order_by(Equipment.id).all()
+
+    if not assets:
+        raise HTTPException(status_code=422, detail="Nothing matches that selection")
+
+    changes = payload.changes.model_dump(exclude_none=True)
+    if "discipline_id" in changes:
+        asset_service.validate_placement(
+            db, facility_id=assets[0].facility_id, location_id=None, parent_equipment_id=None,
+            discipline_id=changes["discipline_id"], service_vendor_id=None,
+        )
+    try:
+        result = asset_bulk.apply(db, assets, changes, dry_run=payload.dry_run)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if payload.dry_run:
+        db.rollback()
+    else:
+        db.commit()
+    return result
 
 
 @router.get("/next-tag")

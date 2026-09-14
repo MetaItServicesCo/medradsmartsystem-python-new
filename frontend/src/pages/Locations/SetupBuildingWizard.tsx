@@ -29,7 +29,7 @@ import {
 import { palette } from '@/theme/palette'
 import {
   DEPARTMENTS, codesIn, defaultFloors, existingRoomsOf, fillPlan, generateRows, loadExisting,
-  mergeRooms, pad, prefixFrom, removalPlan, removedOf, setRoomCount, toggleRemoval,
+  mergeRooms, pad, prefixFrom, removalPlan, removedOf, setRoomCount, setupValue, toggleRemoval,
   type DeptKind, type ExistingNode, type FloorSpec, type RoomKind,
 } from './wizardModel'
 import RoomTypeDialog from './RoomTypeDialog'
@@ -58,6 +58,8 @@ export default function SetupBuildingWizard({
   const [above, setAbove] = useState(editing ? '0' : '4')
   const [below, setBelow] = useState(editing ? '0' : '1')
   const [floors, setFloors] = useState<FloorSpec[]>(loaded.floors)
+  // One date for the whole run: a fit-out usually goes into service together.
+  const [installedOn, setInstalledOn] = useState('')
   const [errors, setErrors] = useState<string[]>([])
   // Departments and room kinds the preset list does not cover. Oncology,
   // maternity, endoscopy, a mortuary — a fixed vocabulary would push those
@@ -184,14 +186,14 @@ export default function SetupBuildingWizard({
    * collide with rooms added by hand under a different scheme.
    */
   const rows = useMemo<BulkLocationRow[]>(
-    () => generateRows(floors, building.code, allDepartments, customRooms, taken),
-    [floors, building.code, allDepartments, customRooms, taken],
+    () => generateRows(floors, building.code, allDepartments, customRooms, taken, { installedOn }),
+    [floors, building.code, allDepartments, customRooms, taken, installedOn],
   )
 
   // Rooms already there whose type now lists contents: topped up, not recreated.
   const fills = useMemo(
-    () => fillPlan(floors, allDepartments, customRooms),
-    [floors, allDepartments, customRooms],
+    () => fillPlan(floors, allDepartments, customRooms, { installedOn }),
+    [floors, allDepartments, customRooms, installedOn],
   )
   const roomsToFill = fills.reduce((n, g) => n + g.location_ids.length, 0)
   const removals = useMemo(() => removalPlan(floors), [floors])
@@ -246,6 +248,7 @@ export default function SetupBuildingWizard({
     },
   })
 
+  const value = setupValue(rows)
   const counts = {
     floors: rows.filter((r) => r.location_type === 'floor').length,
     depts: rows.filter((r) => r.location_type === 'wing').length,
@@ -517,6 +520,25 @@ export default function SetupBuildingWizard({
                 </Typography>
               </Alert>
             )}
+            {(counts.assets > 0 || fills.some((g) => g.assets.length > 0)) && (
+              <Box sx={{ mb: 2, p: 1.5, borderRadius: '12px', border: `1px solid ${palette.borderSoft}` }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+                  <TextField
+                    size="small" type="date" label="In service since" value={installedOn}
+                    onChange={(e) => setInstalledOn(e.target.value)}
+                    InputLabelProps={{ shrink: true }} sx={{ width: 200 }}
+                  />
+                  <Typography sx={{ fontSize: 12.5, color: palette.textMuted }}>
+                    {value.priced > 0
+                      ? <>New assets worth <b>{formatMoney(value.value)}</b>{value.priced < value.total ? ` (${value.priced} of ${value.total} priced)` : ''}. </>
+                      : 'No costs given. '}
+                    Optional: cost and this date are what depreciation needs. They apply to the
+                    assets this creates; anything already in a room keeps its own. Costs can also
+                    be added later for many assets at once from Assets.
+                  </Typography>
+                </Stack>
+              </Box>
+            )}
             <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
               {[
                 ['Floors', counts.floors], ['Departments', counts.depts],
@@ -693,10 +715,16 @@ function AskForCustom({ onCancel, onAddDept, existingPrefixes }: {
   )
 }
 
-/** "12 chairs, 2 tables" — what a room kind puts in each room. */
+const formatMoney = (n: number) =>
+  `$${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+
+/** "12 chairs at $180, 2 tables" — what a room kind puts in each room. */
 function describeContents(room: RoomKind): string {
   const parts: string[] = []
   if (room.beds) parts.push(`${room.beds} bed${room.beds > 1 ? 's' : ''}`)
-  for (const c of room.contents ?? []) parts.push(`${c.count} ${c.label.toLowerCase()}`)
+  for (const c of room.contents ?? []) {
+    const priced = c.kind === 'asset' && c.costEach != null ? ` at ${formatMoney(c.costEach)}` : ''
+    parts.push(`${c.count} ${c.label.toLowerCase()}${priced}`)
+  }
   return parts.length ? `each has ${parts.join(', ')}` : ''
 }

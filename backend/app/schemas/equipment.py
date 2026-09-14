@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Any, Optional, List
 from datetime import date, datetime
 from decimal import Decimal
 from pydantic import BaseModel, Field, model_validator
@@ -97,6 +97,73 @@ class RoomAssetsCreate(BaseModel):
     cost: Optional[Decimal] = None
     installation_date: Optional[date] = None
     description: Optional[str] = None
+
+
+class AssetSelection(BaseModel):
+    """Which assets a bulk change applies to: ticked ones, or everything a filter matches.
+
+    The filter mirrors the register's, so "select all 340 matching" means the
+    same 340 the list said, not just the hundred loaded on screen. A filter
+    must name a site: a bulk change never spans hospitals.
+    """
+
+    ids: Optional[List[int]] = Field(default=None, max_length=5000)
+    facility_id: Optional[int] = None
+    search: Optional[str] = None
+    location_id: Optional[int] = None
+    kind: Optional[str] = Field(default=None, pattern="^(room_items|equipment)$")
+    asset_type: Optional[str] = None
+    discipline_id: Optional[int] = None
+
+    @model_validator(mode="after")
+    def one_way_of_choosing(self):
+        if self.ids is not None and self.facility_id is not None:
+            raise ValueError("Choose assets either by ticking them or by filter, not both")
+        if self.ids is None and self.facility_id is None:
+            raise ValueError("Say which assets: tick them, or filter within a site")
+        if self.ids is not None and not self.ids:
+            raise ValueError("No assets are selected")
+        return self
+
+
+class AssetBulkChanges(BaseModel):
+    """The details to set. Anything left out or blank is left as it is."""
+
+    cost: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999.99"), decimal_places=2)
+    installation_date: Optional[date] = None
+    make: Optional[str] = Field(default=None, max_length=200)
+    model: Optional[str] = Field(default=None, max_length=200)
+    discipline_id: Optional[int] = None
+
+
+class AssetBulkUpdate(BaseModel):
+    selection: AssetSelection
+    changes: AssetBulkChanges
+    # Preview by default: the caller has to ask for the change to happen.
+    dry_run: bool = True
+
+
+class BulkSkipped(BaseModel):
+    id: int
+    asset_tag: str
+    reason: str
+
+
+class BulkFieldOutcome(BaseModel):
+    field: str
+    label: str
+    value: Any
+    will_change: int
+    unchanged: int
+    skipped_count: int
+    skipped: List[BulkSkipped]
+
+
+class AssetBulkResult(BaseModel):
+    dry_run: bool
+    matched: int
+    assets_changed: int
+    fields: List[BulkFieldOutcome]
 
 
 class ServesSpace(BaseModel):

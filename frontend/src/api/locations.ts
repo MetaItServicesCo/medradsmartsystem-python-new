@@ -160,6 +160,9 @@ export interface BulkLocationRow {
     asset_type: string
     count: number
     discipline_code?: string | null
+    /** Each item, when known. */
+    cost?: number | null
+    installation_date?: string | null
   }>
 }
 
@@ -241,7 +244,14 @@ export const fillRoomContents = async (payload: {
     discipline_code?: string | null
     code_prefix?: string | null
   }>
-  assets: Array<{ asset_type: string; count: number; discipline_code?: string | null }>
+  assets: Array<{
+    asset_type: string
+    count: number
+    discipline_code?: string | null
+    /** Applied only to the items a top-up adds. */
+    cost?: number | null
+    installation_date?: string | null
+  }>
 }): Promise<{ fixtures_created: number; assets_created: number; rooms_changed: number }> => {
   const res = await apiClient.post('/locations/fill-contents', payload)
   return res.data

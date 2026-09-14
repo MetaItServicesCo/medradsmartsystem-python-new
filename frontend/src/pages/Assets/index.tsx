@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Box, Chip, CircularProgress, InputAdornment, MenuItem, Stack, TextField,
+  Box, Checkbox, Chip, CircularProgress, InputAdornment, MenuItem, Stack, TextField,
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -38,6 +38,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 import AssetDetail from './AssetDetail'
 import AddAssetDialog from './AddAssetDialog'
+import BulkEditDialog from './BulkEditDialog'
 import { assetTitle } from './assetTitle'
 import { PlacePicker } from './PlacePicker'
 
@@ -81,6 +82,11 @@ export default function AssetsPage() {
   const [roomId, setRoomId] = useState<number | null>(Number(searchParams.get('room')) || null)
   const [selectedId, setSelectedId] = useState<number | null>(Number(searchParams.get('asset')) || null)
   const [addOpen, setAddOpen] = useState(false)
+  // Several assets at once: ticked ones, or everything the filters match —
+  // including the pages not loaded yet.
+  const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [allMatching, setAllMatching] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(search.trim()), 300)
@@ -164,6 +170,34 @@ export default function AssetsPage() {
   const room = places.find((p) => p.id === roomId) ?? null
   const filtering = Boolean(debounced || trade !== '' || kind || roomId)
 
+  // A selection belongs to the filter it was made under; change the filter and
+  // "all matching" would silently mean something else.
+  useEffect(() => {
+    setPicked(new Set())
+    setAllMatching(false)
+  }, [facilityId, debounced, trade, kind, roomId])
+
+  const selectedCount = allMatching ? total : picked.size
+  const allShownPicked = assets.length > 0 && assets.every((a) => picked.has(a.id))
+  const toggle = (id: number) => {
+    setAllMatching(false)
+    setPicked((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const toggleShown = () => {
+    setAllMatching(false)
+    setPicked(allShownPicked ? new Set() : new Set(assets.map((a) => a.id)))
+  }
+  const clearSelection = () => { setPicked(new Set()); setAllMatching(false) }
+  const selection = allMatching
+    ? { facility_id: facilityId as number, search: debounced, location_id: roomId,
+        kind: kind || null, discipline_id: trade === '' ? null : trade }
+    : { ids: [...picked] }
+
   return (
     <Box className="page-enter" sx={{ width: '100%', minWidth: 0 }}>
       <Stack
@@ -229,6 +263,42 @@ export default function AssetsPage() {
             </Stack>
           </Box>
 
+          {canEdit && assets.length > 0 && (
+            <Stack
+              direction="row" alignItems="center" spacing={0.5}
+              sx={{ px: 0.75, py: 0.5, borderTop: `1px solid ${palette.borderSoft}`, flexWrap: 'wrap', rowGap: 0.5,
+                    bgcolor: selectedCount ? palette.brandTint : 'transparent' }}
+            >
+              <Checkbox
+                size="small" checked={allMatching || allShownPicked}
+                indeterminate={!allMatching && picked.size > 0 && !allShownPicked}
+                onChange={toggleShown} inputProps={{ 'aria-label': 'Select the assets shown' }}
+              />
+              <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: selectedCount ? palette.brandDeep : palette.textFaint }}>
+                {allMatching
+                  ? `All ${total} matching selected`
+                  : picked.size ? `${picked.size} selected` : 'Select several to set details at once'}
+              </Typography>
+              {!allMatching && allShownPicked && total > assets.length && (
+                <Button size="small" onClick={() => setAllMatching(true)} sx={{ fontWeight: 800, minWidth: 0 }}>
+                  Select all {total}
+                </Button>
+              )}
+              <Box sx={{ flex: 1 }} />
+              {selectedCount > 0 && (
+                <>
+                  <Button size="small" onClick={clearSelection} sx={{ color: palette.textMuted, minWidth: 0 }}>
+                    Clear
+                  </Button>
+                  <Button size="small" variant="contained" onClick={() => setBulkOpen(true)}
+                          sx={{ fontWeight: 900, borderRadius: '9px', bgcolor: palette.brand,
+                                '&:hover': { bgcolor: palette.brandDeep } }}>
+                    Set details
+                  </Button>
+                </>
+              )}
+            </Stack>
+          )}
           <Box sx={{ maxHeight: 620, overflowY: 'auto', borderTop: `1px solid ${palette.borderSoft}` }}>
             {register.isLoading && (
               <Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress size={24} /></Box>
@@ -271,6 +341,23 @@ export default function AssetsPage() {
                     '&:hover': { bgcolor: active ? palette.brandTint : palette.surfaceFaint },
                   }}
                 >
+                  {canEdit && (
+                    <Checkbox
+                      size="small" sx={{ ml: -1, mr: -0.5 }}
+                      checked={allMatching || picked.has(a.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => {
+                        // Unticking one out of "all matching" turns it into the loaded ids minus that one.
+                        if (allMatching) {
+                          setAllMatching(false)
+                          setPicked(new Set(assets.map((x) => x.id).filter((id) => id !== a.id)))
+                        } else {
+                          toggle(a.id)
+                        }
+                      }}
+                      inputProps={{ 'aria-label': `Select ${a.asset_tag}` }}
+                    />
+                  )}
                   <Box sx={{ minWidth: 0, flex: 1 }}>
                     <Stack direction="row" alignItems="center" spacing={0.75}>
                       <Typography noWrap sx={{ fontWeight: 900, color: palette.ink, fontSize: 13.5 }}>
@@ -344,6 +431,14 @@ export default function AssetsPage() {
           </Box>
         )}
       </Box>
+
+      {bulkOpen && selectedCount > 0 && (
+        <BulkEditDialog
+          selection={selection} count={selectedCount}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => { setBulkOpen(false); clearSelection() }}
+        />
+      )}
 
       {addOpen && facilityId && (
         <AddAssetDialog

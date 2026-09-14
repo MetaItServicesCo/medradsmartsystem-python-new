@@ -321,6 +321,42 @@ def test_listing_a_removed_space_again_restores_it():
     print("ok  re-listing a removed space restores it, and only it")
 
 
+def test_the_setup_can_give_new_assets_their_cost_and_date():
+    """Known costs go in once, at setup, instead of on each chair afterwards."""
+    from datetime import date
+    from decimal import Decimal
+    from app.api.v1.endpoints.locations import fill_contents
+    from app.schemas.location import RoomContentsFill
+
+    db, facility, admin = build()
+    rows = conference_rows()
+    for row in rows:
+        for item in row.get("assets") or []:
+            if item["asset_type"] == "chair":
+                item.update(cost="180.00", installation_date="2026-09-01")
+    check = import_rows(db, facility, admin, rows, dry_run=True)
+    assert not [i for i in check.issues if i.severity == "error"], check.issues
+    import_rows(db, facility, admin, rows, dry_run=False)
+
+    room = db.query(Location).filter_by(code="CONF-0001").one()
+    chairs = db.query(Equipment).filter_by(location_id=room.id, asset_type="chair").all()
+    assert {(c.cost, c.installation_date) for c in chairs} == {(Decimal("180.00"), date(2026, 9, 1))}
+    tables = db.query(Equipment).filter_by(location_id=room.id, asset_type="table").all()
+    assert {t.cost for t in tables} == {None}, "no cost given, none invented"
+
+    # A top-up prices only what it adds; the twelve already there keep theirs.
+    db.query(Equipment).filter_by(location_id=room.id, asset_type="chair").update({"cost": Decimal("150")})
+    db.commit()
+    fill_contents(RoomContentsFill(
+        location_ids=[room.id],
+        assets=[{"asset_type": "chair", "count": 14, "cost": "200", "installation_date": "2026-10-01"}],
+    ), db=db, current_user=admin)
+    costs = sorted(c.cost for c in db.query(Equipment).filter_by(location_id=room.id, asset_type="chair"))
+    assert costs == [Decimal("150")] * 12 + [Decimal("200.00")] * 2, costs
+    db.close()
+    print("ok  the setup prices new assets, and a top-up prices only what it adds")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

@@ -34,6 +34,11 @@ export interface RoomContent {
   count: number
   /** Part of the room (fixture) or a thing in it (asset). Older state means fixture. */
   kind?: 'fixture' | 'asset'
+  /**
+   * What one of these cost, when already known. Assets only: fixtures are part
+   * of the building and are not valued one socket at a time.
+   */
+  costEach?: number
   /** Only for a custom item: the trade that maintains it, which routes faults. */
   disciplineCode?: string
   prefix?: string
@@ -41,8 +46,14 @@ export interface RoomContent {
 
 const isAsset = (c: RoomContent) => c.kind === 'asset'
 
+/** Details applied to every asset a run of the setup creates. */
+export interface SetupOptions {
+  /** When the fit-out went into service, yyyy-mm-dd. Depreciation counts from it. */
+  installedOn?: string
+}
+
 /** The fixtures and assets a room kind puts in each room, in the shape the API takes. */
-export function contentsPayload(contents: RoomContent[] = []) {
+export function contentsPayload(contents: RoomContent[] = [], options: SetupOptions = {}) {
   const wanted = contents.filter((c) => c.count > 0 && c.fixtureType)
   return {
     fixtures: wanted.filter((c) => !isAsset(c)).map((c) => ({
@@ -55,6 +66,8 @@ export function contentsPayload(contents: RoomContent[] = []) {
       asset_type: c.fixtureType,
       count: c.count,
       discipline_code: c.disciplineCode ?? null,
+      cost: c.costEach != null && c.costEach >= 0 ? c.costEach : null,
+      installation_date: options.installedOn || null,
     })),
   }
 }
@@ -349,6 +362,7 @@ export function generateRows(
   departments: DeptKind[],
   customRooms: Record<string, RoomKind[]>,
   taken: Set<string>,
+  options: SetupOptions = {},
 ): BulkLocationRow[] {
     const out: BulkLocationRow[] = []
     const used = new Set(taken)
@@ -396,7 +410,7 @@ export function generateRows(
               space_use: room.spaceUse,
               criticality: room.criticality ?? null,
               bed_count: room.beds ?? null,
-              ...contentsPayload(room.contents),
+              ...contentsPayload(room.contents, options),
             } as BulkLocationRow)
             for (let b = 0; b < (room.beds ?? 0); b += 1) {
               out.push({
@@ -435,6 +449,7 @@ export function fillPlan(
   floors: FloorSpec[],
   departments: DeptKind[],
   customRooms: Record<string, RoomKind[]>,
+  options: SetupOptions = {},
 ): FillGroup[] {
   const groups = new Map<string, FillGroup>()
   for (const floor of floors) {
@@ -446,7 +461,7 @@ export function fillPlan(
         // A room about to be removed is not worth furnishing first.
         const ids = (floor.existingRooms?.[key] ?? [])
           .map((r) => r.id).filter((id) => !floor.removed?.includes(id))
-        const payload = contentsPayload(room.contents)
+        const payload = contentsPayload(room.contents, options)
         if (!ids.length || !(payload.fixtures.length + payload.assets.length)) continue
         const group = groups.get(key) ?? { label: room.label, location_ids: [], ...payload }
         group.location_ids.push(...ids)
@@ -534,4 +549,25 @@ export function removalPlan(floors: FloorSpec[]): Array<ExistingRoom & { floor: 
 /** Every code under a tree, removed spaces included, so none is handed out twice. */
 export function codesIn(nodes: Array<{ code: string; children?: unknown[] }>): string[] {
   return nodes.flatMap((n) => [n.code, ...codesIn((n.children ?? []) as typeof nodes)])
+}
+
+/**
+ * What the new assets in these rows are worth, from the costs given.
+ * `priced` says how many of them had a cost, so the review can say "12 of 40
+ * priced" rather than presenting a partial sum as the value of the setup.
+ */
+export function setupValue(rows: BulkLocationRow[]): { value: number; priced: number; total: number } {
+  let value = 0
+  let priced = 0
+  let total = 0
+  for (const row of rows) {
+    for (const a of row.assets ?? []) {
+      total += a.count
+      if (a.cost != null) {
+        value += a.count * Number(a.cost)
+        priced += a.count
+      }
+    }
+  }
+  return { value, priced, total }
 }

@@ -217,6 +217,51 @@ export const addRoomItems = async (payload: {
   return res.data
 }
 
+/** Which assets a bulk change covers: ticked ones, or everything a register filter matches. */
+export type AssetSelection =
+  | { ids: number[] }
+  | {
+      facility_id: number
+      search?: string
+      location_id?: number | null
+      kind?: 'room_items' | 'equipment' | null
+      discipline_id?: number | null
+    }
+
+/** Details to set in bulk. Leave a field out to leave it as it is. */
+export interface AssetBulkChanges {
+  cost?: number
+  installation_date?: string
+  make?: string
+  model?: string
+  discipline_id?: number
+}
+
+export interface AssetBulkResult {
+  dry_run: boolean
+  matched: number
+  assets_changed: number
+  fields: Array<{
+    field: keyof AssetBulkChanges
+    label: string
+    value: unknown
+    will_change: number
+    unchanged: number
+    skipped_count: number
+    skipped: Array<{ id: number; asset_tag: string; reason: string }>
+  }>
+}
+
+/** Preview (the default) or apply the same details to many assets. */
+export const bulkUpdateAssets = async (payload: {
+  selection: AssetSelection
+  changes: AssetBulkChanges
+  dry_run: boolean
+}): Promise<AssetBulkResult> => {
+  const res = await apiClient.post('/equipment/bulk-update', payload)
+  return res.data
+}
+
 /** The tag the next registration at this site will get, for the form to show. */
 export const fetchNextTag = async (facilityId: number): Promise<string> => {
   const res = await apiClient.get('/equipment/next-tag', { params: { facility_id: facilityId } })

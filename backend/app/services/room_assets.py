@@ -120,8 +120,15 @@ def top_up(
     asset_type: str,
     count: int,
     discipline_code: str | None = None,
+    cost: Decimal | None = None,
+    installation_date: date | None = None,
 ) -> list[Equipment]:
-    """Add whatever a room is short of `count` assets of one type. Never removes."""
+    """Add whatever a room is short of `count` assets of one type. Never removes.
+
+    Cost and date go on the items this adds. Items already in the room keep
+    theirs; changing those is a bulk edit in the asset register, where it is
+    previewed.
+    """
     asset_type = asset_catalog.type_key(asset_type)
     have = (
         db.query(Equipment.id)
@@ -133,7 +140,8 @@ def top_up(
     if count <= have:
         return []
     return create_in_room(db, location=location, asset_type=asset_type,
-                          count=count - have, discipline_code=discipline_code)
+                          count=count - have, discipline_code=discipline_code,
+                          cost=cost, installation_date=installation_date)
 
 
 def take_out_of_rooms(db: Session, location_ids: list[int]) -> int:

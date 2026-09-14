@@ -12,7 +12,7 @@
  */
 import {
   DEPARTMENTS, codesIn, fillPlan, generateRows, loadExisting, mergeRooms, removalPlan,
-  sameItemName, setRoomCount, toggleRemoval, type ExistingNode,
+  sameItemName, setRoomCount, setupValue, toggleRemoval, type ExistingNode,
 } from './wizardModel'
 
 let passed = 0
@@ -307,6 +307,49 @@ check('a code that belonged to a removed room is not handed out again', () => {
   const rows = generateRows(loaded.floors, B, all, loaded.customRooms, taken)
   const room = rows.find((r) => r.location_type === 'room')!
   assert(room.code === 'ED-0004', `reused a removed code: ${room.code}`)
+})
+
+check('costs and the in-service date travel with the assets, never the fixtures', () => {
+  const custom = {
+    admin: [{
+      key: 'custom-conf', label: 'Conference rooms', prefix: 'CONF', spaceUse: 'office',
+      contents: [
+        { fixtureType: 'chair', label: 'Chair', count: 12, kind: 'asset' as const, costEach: 180 },
+        { fixtureType: 'table', label: 'Table', count: 2, kind: 'asset' as const },
+        { fixtureType: 'receptacle', label: 'Receptacle', count: 6, kind: 'fixture' as const, costEach: 25 },
+      ],
+    }],
+  }
+  const floors = [{ code: `${B}-00`, name: 'Ground Floor', depts: ['admin'],
+                    counts: { 'admin:custom-conf': 3 } }]
+  const rows = generateRows(floors, B, DEPARTMENTS, custom, new Set(), { installedOn: '2026-09-01' })
+  const room = rows.find((r) => r.location_type === 'room')!
+  const chair = room.assets!.find((a) => a.asset_type === 'chair')!
+  const table = room.assets!.find((a) => a.asset_type === 'table')!
+  assert(chair.cost === 180 && chair.installation_date === '2026-09-01', 'chairs carry cost and date')
+  assert(table.cost === null && table.installation_date === '2026-09-01', 'no cost given, none invented')
+  assert(!('cost' in room.fixtures![0]), 'a socket is not valued')
+
+  const withoutDate = generateRows(floors, B, DEPARTMENTS, custom, new Set())
+  assert(withoutDate.find((r) => r.location_type === 'room')!.assets![0].installation_date === null,
+    'no date given, none invented')
+
+  // Three rooms of twelve chairs at 180, and six tables with no price.
+  const value = setupValue(rows)
+  assert(value.value === 3 * 12 * 180, `value was ${value.value}`)
+  assert(value.priced === 36 && value.total === 42, `priced ${value.priced} of ${value.total}`)
+})
+
+check('a top-up carries the cost and date for what it adds', () => {
+  const loaded = loadExisting(B, existingBuilding())
+  const all = [...DEPARTMENTS, ...loaded.customDepts]
+  const bay = DEPARTMENTS.find((d) => d.key === 'emergency')!.rooms.find((r) => r.key === 'bay')!
+  const rooms = { emergency: [{ ...bay, contents: [
+    { fixtureType: 'stretcher', label: 'Stretcher', count: 1, kind: 'asset' as const, costEach: 2400 },
+  ] }] }
+  const plan = fillPlan(loaded.floors, all, rooms, { installedOn: '2026-10-01' })
+  assert(plan.length === 1 && plan[0].assets[0].cost === 2400
+    && plan[0].assets[0].installation_date === '2026-10-01', JSON.stringify(plan[0]?.assets))
 })
 
 console.log(`\n${passed} checks passed`)

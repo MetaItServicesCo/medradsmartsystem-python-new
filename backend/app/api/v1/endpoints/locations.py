@@ -525,6 +525,7 @@ def fill_contents(
                 assets_created += len(room_assets.top_up(
                     db, location=location, asset_type=item.asset_type, count=item.count,
                     discipline_code=item.discipline_code,
+                    cost=item.cost, installation_date=item.installation_date,
                 ))
             changed += 1 if fixtures_created + assets_created > before else 0
     except ValueError as exc:
@@ -695,6 +696,7 @@ def bulk_import(
                 room_assets.create_in_room(
                     db, location=location, asset_type=item.asset_type,
                     count=item.count, discipline_code=item.discipline_code,
+                    cost=item.cost, installation_date=item.installation_date,
                 )
             except ValueError as exc:
                 issues.append(BulkImportIssue(
