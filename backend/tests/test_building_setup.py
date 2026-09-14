@@ -236,6 +236,47 @@ def test_a_bad_item_stops_the_whole_structure():
     print("ok  one bad item refuses the whole structure instead of half of it")
 
 
+def test_removing_a_room_takes_its_contents_with_it():
+    from app.api.v1.endpoints.locations import delete_location
+    db, facility, admin = build()
+    import_rows(db, facility, admin, conference_rows(), dry_run=False)
+    room = db.query(Location).filter_by(code="CONF-0002").one()
+    other = db.query(Location).filter_by(code="CONF-0001").one()
+
+    result = delete_location(room.id, db=db, hard=False, current_user=admin)
+    assert result["fixtures_deactivated"] == 19, result
+    assert db.query(Fixture).filter_by(location_id=room.id, is_active=True).count() == 0
+    # The neighbouring room keeps everything it had.
+    assert db.query(Fixture).filter_by(location_id=other.id, is_active=True).count() == 19
+    # Soft: the rows are still there for the history that points at them.
+    assert db.query(Fixture).filter_by(location_id=room.id).count() == 19
+    db.close()
+    print("ok  removing a room takes its fixtures out with it, and only its own")
+
+
+def test_listing_a_removed_space_again_restores_it():
+    """It used to update the hidden row and report success while nothing appeared."""
+    from app.api.v1.endpoints.locations import delete_location
+    db, facility, admin = build()
+    import_rows(db, facility, admin, conference_rows(), dry_run=False)
+    dept = db.query(Location).filter_by(code=f"{BUILDING}-00-ADM").one()
+    delete_location(dept.id, db=db, hard=False, current_user=admin)
+
+    again = [r for r in conference_rows() if r["location_type"] == "wing"]
+    check = import_rows(db, facility, admin, again, dry_run=True)
+    warnings = [i for i in check.issues if i.severity == "warning"]
+    assert any("restored" in w.message for w in warnings), check.issues
+    assert not [i for i in check.issues if i.severity == "error"]
+
+    import_rows(db, facility, admin, again, dry_run=False)
+    db.refresh(dept)
+    assert dept.is_active, "the department should be back"
+    # Its rooms were not listed, so they stay removed.
+    assert db.query(Location).filter_by(code="CONF-0001").one().is_active is False
+    db.close()
+    print("ok  re-listing a removed space restores it, and only it")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

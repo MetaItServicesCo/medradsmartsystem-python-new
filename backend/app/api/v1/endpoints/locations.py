@@ -463,11 +463,23 @@ def delete_location(
         return {"detail": "Location deleted", "descendants_removed": descendant_count}
 
     location.is_active = False
+    beneath = [row.id for row in
+               location_tree.descendants_query(db, location).with_entities(Location.id).all()]
     location_tree.descendants_query(db, location).update(
         {Location.is_active: False}, synchronize_session=False,
     )
+    # What is inside goes with it. A removed room's chairs and sockets would
+    # otherwise stay on every fixture list, faultable, in a room nobody can open.
+    # Their status is left alone so the record of what state they were in stays.
+    from app.models.fixture import Fixture
+    fixtures_off = (
+        db.query(Fixture)
+        .filter(Fixture.location_id.in_([location.id, *beneath]), Fixture.is_active.is_(True))
+        .update({Fixture.is_active: False}, synchronize_session=False)
+    )
     db.commit()
-    return {"detail": "Location deactivated", "descendants_deactivated": descendant_count}
+    return {"detail": "Location deactivated", "descendants_deactivated": descendant_count,
+            "fixtures_deactivated": fixtures_off}
 
 
 # ── Bulk import ──────────────────────────────────────────────────────────────
@@ -544,8 +556,18 @@ def bulk_import(
 
         if found is not None:
             updated += 1
+            # A code that belonged to a removed space used to update that
+            # hidden row and leave it hidden, so the import reported success
+            # and nothing appeared. Listing it again means it is there again.
+            if not found.is_active:
+                issues.append(BulkImportIssue(
+                    row_index=index, code=row.code, severity="warning",
+                    message=(f"'{row.code}' had been removed and is restored. "
+                             "Anything that was inside it stays removed."),
+                ))
             if payload.dry_run:
                 continue
+            found.is_active = True
             found.name = row.name or found.name
             found.space_use = row.space_use or found.space_use
             found.criticality = row.criticality or found.criticality

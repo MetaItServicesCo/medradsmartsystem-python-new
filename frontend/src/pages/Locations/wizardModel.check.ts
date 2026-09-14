@@ -11,8 +11,8 @@
  * already set up with a basement and a ground floor, opened again to add to it.
  */
 import {
-  DEPARTMENTS, fillPlan, generateRows, loadExisting, mergeRooms, sameItemName,
-  type ExistingNode,
+  DEPARTMENTS, codesIn, fillPlan, generateRows, loadExisting, mergeRooms, removalPlan,
+  sameItemName, setRoomCount, toggleRemoval, type ExistingNode,
 } from './wizardModel'
 
 let passed = 0
@@ -206,7 +206,7 @@ check('giving an existing room type contents tops up the rooms already there', (
     'no new spaces were asked for')
   const plan = fillPlan(loaded.floors, all, customRooms)
   assert(plan.length === 1, `expected one group, got ${plan.length}`)
-  const dc1 = ground.existingRoomIds![itKey]
+  const dc1 = ground.existingRooms![itKey].map((r) => r.id)
   assert(plan[0].location_ids.join() === dc1.join() && dc1.length === 1,
     `should target the existing room, got ${plan[0].location_ids}`)
   assert(plan[0].items[0].fixture_type === 'chair' && plan[0].items[0].count === 12, 'twelve chairs')
@@ -227,6 +227,76 @@ check('a typed plural or alternative name finds the catalogue item', () => {
   assert(sameItemName('Beds', 'Beds'), 'beds is still beds')
   assert(!sameItemName('Chair lift', 'Chair'), 'a different thing is not a chair')
   assert(!sameItemName('', 'Chair'), 'blank matches nothing')
+})
+
+check('lowering a count marks the highest-numbered room and creates nothing', () => {
+  const loaded = loadExisting(B, existingBuilding())
+  const all = [...DEPARTMENTS, ...loaded.customDepts]
+  const i = loaded.floors.findIndex((f) => f.code === `${B}-00`)
+  loaded.floors[i] = setRoomCount(loaded.floors[i], 'emergency:bay', 1)
+
+  const going = removalPlan(loaded.floors)
+  assert(going.map((r) => r.code).join() === 'ED-0002', `got ${going.map((r) => r.code)}`)
+  assert(going[0].floor === 'Ground Floor', 'the review says which floor')
+  assert(generateRows(loaded.floors, B, all, loaded.customRooms, loaded.taken).length === 0,
+    'removing must not also create')
+})
+
+check('choosing a different room swaps which one goes and keeps the count', () => {
+  const loaded = loadExisting(B, existingBuilding())
+  const i = loaded.floors.findIndex((f) => f.code === `${B}-00`)
+  let floor = setRoomCount(loaded.floors[i], 'emergency:bay', 1)
+  const [bay1, bay2] = floor.existingRooms!['emergency:bay']
+  floor = toggleRemoval(floor, 'emergency:bay', bay2.id)   // keep bay 2 after all
+  assert(floor.counts['emergency:bay'] === 2, 'un-choosing puts the count back')
+  floor = toggleRemoval(floor, 'emergency:bay', bay1.id)   // remove bay 1 instead
+  assert(floor.counts['emergency:bay'] === 1, `count ${floor.counts['emergency:bay']}`)
+  assert(removalPlan([floor]).map((r) => r.code).join() === 'ED-0001', 'bay 1 goes')
+
+  // Typing a count again keeps the room the person picked.
+  floor = setRoomCount(floor, 'emergency:bay', 1)
+  assert(removalPlan([floor]).map((r) => r.code).join() === 'ED-0001', 'the choice survives')
+})
+
+check('raising the count back cancels the removal', () => {
+  const loaded = loadExisting(B, existingBuilding())
+  const i = loaded.floors.findIndex((f) => f.code === `${B}-00`)
+  let floor = setRoomCount(loaded.floors[i], 'emergency:bay', 0)
+  assert(removalPlan([floor]).length === 2, 'zero removes both')
+  floor = setRoomCount(floor, 'emergency:bay', 2)
+  assert(removalPlan([floor]).length === 0, 'back to two removes nothing')
+  // Removals on another kind are not disturbed by this one.
+  const key = Object.keys(floor.existingCounts!).find((k) => k.startsWith('it:'))!
+  floor = setRoomCount(floor, key, 0)
+  floor = setRoomCount(floor, 'emergency:bay', 2)
+  assert(removalPlan([floor]).map((r) => r.code).join() === 'DC-1', 'the IT removal stays')
+})
+
+check('a room being removed is not topped up first', () => {
+  const loaded = loadExisting(B, existingBuilding())
+  const all = [...DEPARTMENTS, ...loaded.customDepts]
+  const i = loaded.floors.findIndex((f) => f.code === `${B}-00`)
+  loaded.floors[i] = setRoomCount(loaded.floors[i], 'emergency:bay', 1)
+  const bay = DEPARTMENTS.find((d) => d.key === 'emergency')!.rooms.find((r) => r.key === 'bay')!
+  const rooms = { emergency: [{ ...bay, contents: [{ fixtureType: 'chair', label: 'Chair', count: 1 }] }] }
+  const plan = fillPlan(loaded.floors, all, rooms)
+  const ids = plan.flatMap((g) => g.location_ids)
+  const going = removalPlan(loaded.floors)[0].id
+  assert(ids.length === 1 && !ids.includes(going), `fill targeted ${ids}`)
+})
+
+check('a code that belonged to a removed room is not handed out again', () => {
+  const loaded = loadExisting(B, existingBuilding())
+  const all = [...DEPARTMENTS, ...loaded.customDepts]
+  // ED-0003 was added once and removed: the tree the wizard is given omits it,
+  // but the full tree, removed spaces included, still has it.
+  const withRemoved = [...existingBuilding(), { id: 1, code: 'ED-0003', location_type: 'room' }]
+  const taken = new Set([...loaded.taken, ...codesIn(withRemoved)])
+  const ground = loaded.floors.find((f) => f.code === `${B}-00`)!
+  ground.counts['emergency:bay'] = 3
+  const rows = generateRows(loaded.floors, B, all, loaded.customRooms, taken)
+  const room = rows.find((r) => r.location_type === 'room')!
+  assert(room.code === 'ED-0004', `reused a removed code: ${room.code}`)
 })
 
 console.log(`\n${passed} checks passed`)

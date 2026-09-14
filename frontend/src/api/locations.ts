@@ -180,9 +180,10 @@ export const fetchLocations = async (params: {
 export const fetchLocationTree = async (
   facilityId: number,
   rootId?: number,
+  includeInactive = false,
 ): Promise<{ items: LocationNode[]; total: number }> => {
   const res = await apiClient.get('/locations/tree', {
-    params: { facility_id: facilityId, root_id: rootId },
+    params: { facility_id: facilityId, root_id: rootId, include_inactive: includeInactive || undefined },
   })
   return res.data
 }

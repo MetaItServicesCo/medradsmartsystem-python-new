@@ -23,13 +23,14 @@ import {
 } from '@mui/material'
 import { toast } from 'react-toastify'
 import {
-  bulkImportLocations, fetchLocationMeta, type BulkLocationRow,
+  bulkImportLocations, deleteLocation, fetchLocationMeta, fetchLocationTree,
+  type BulkLocationRow,
 } from '@/api/locations'
 import { fillRooms } from '@/api/fixtures'
 import { palette } from '@/theme/palette'
 import {
-  DEPARTMENTS, defaultFloors, existingRoomsOf, fillPlan, generateRows, loadExisting, mergeRooms,
-  pad, prefixFrom,
+  DEPARTMENTS, codesIn, defaultFloors, existingRoomsOf, fillPlan, generateRows, loadExisting,
+  mergeRooms, pad, prefixFrom, removalPlan, removedOf, setRoomCount, toggleRemoval,
   type DeptKind, type ExistingNode, type FloorSpec, type RoomKind,
 } from './wizardModel'
 import RoomTypeDialog from './RoomTypeDialog'
@@ -152,12 +153,27 @@ export default function SetupBuildingWizard({
       }
     }))
 
+  // A count below what is there marks rooms for removal rather than being
+  // refused. It used to snap back to the existing number without saying why.
   const setCount = (floorCode: string, key: string, value: number) =>
-    setFloors((rows) => rows.map((f) => {
-      if (f.code !== floorCode) return f
-      const floor = f.existingCounts?.[key] ?? 0
-      return { ...f, counts: { ...f.counts, [key]: Math.max(floor, value) } }
-    }))
+    setFloors((rows) => rows.map((f) => (f.code === floorCode ? setRoomCount(f, key, value) : f)))
+
+  const toggleRoom = (floorCode: string, key: string, id: number) =>
+    setFloors((rows) => rows.map((f) => (f.code === floorCode ? toggleRemoval(f, key, id) : f)))
+
+  // Codes of spaces removed earlier. The tree the wizard opens with leaves them
+  // out, and a new room given one of them would update the hidden room instead
+  // of appearing.
+  const { data: fullTree } = useQuery({
+    queryKey: ['location-tree', facilityId, building.id, 'with-removed'],
+    queryFn: () => fetchLocationTree(facilityId, building.id, true),
+    enabled: open,
+    staleTime: 0,
+  })
+  const taken = useMemo(
+    () => new Set([...loaded.taken, ...codesIn(fullTree?.items ?? [])]),
+    [loaded.taken, fullTree],
+  )
 
   /**
    * What will be sent: only the spaces that do not exist yet.
@@ -169,8 +185,8 @@ export default function SetupBuildingWizard({
    * collide with rooms added by hand under a different scheme.
    */
   const rows = useMemo<BulkLocationRow[]>(
-    () => generateRows(floors, building.code, allDepartments, customRooms, loaded.taken),
-    [floors, building.code, allDepartments, customRooms, loaded.taken],
+    () => generateRows(floors, building.code, allDepartments, customRooms, taken),
+    [floors, building.code, allDepartments, customRooms, taken],
   )
 
   // Rooms already there whose type now lists contents: topped up, not recreated.
@@ -179,6 +195,8 @@ export default function SetupBuildingWizard({
     [floors, allDepartments, customRooms],
   )
   const roomsToFill = fills.reduce((n, g) => n + g.location_ids.length, 0)
+  const removals = useMemo(() => removalPlan(floors), [floors])
+  const changes = [rows.length > 0, roomsToFill > 0, removals.length > 0].filter(Boolean).length
 
   const create = useMutation({
     mutationFn: async () => {
@@ -200,13 +218,19 @@ export default function SetupBuildingWizard({
       for (const group of fills) {
         items += (await fillRooms({ location_ids: group.location_ids, items: group.items })).created
       }
-      return { created, items }
+      // Soft removal: out of the register and every picker, history kept.
+      for (const room of removals) {
+        await deleteLocation(room.id)
+      }
+      return { created, items, removed: removals.length }
     },
     onSuccess: (res) => {
       toast.success([
         res.created ? `${res.created} spaces created` : '',
         res.items ? `${res.items} items added to existing rooms` : '',
+        res.removed ? `${res.removed} ${res.removed === 1 ? 'room' : 'rooms'} removed` : '',
       ].filter(Boolean).join(' · ') || 'Nothing needed adding')
+      queryClient.invalidateQueries({ queryKey: ['location'] })
       queryClient.invalidateQueries({ queryKey: ['fixtures'] })
       queryClient.invalidateQueries({ queryKey: ['fixture-summary'] })
       queryClient.invalidateQueries({ queryKey: ['location-tree'] })
@@ -364,21 +388,24 @@ export default function SetupBuildingWizard({
                           </Typography>
                           <Box sx={{ display: 'grid', gap: 1,
                                      gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' } }}>
-                            {roomsOf(dept).map((room) => (
+                            {roomsOf(dept).map((room) => {
+                              const key = `${deptKey}:${room.key}`
+                              const have = floor.existingCounts?.[key] ?? 0
+                              const going = removedOf(floor, key)
+                              return (
+                              <Box key={room.key}>
                               <TextField
-                                key={room.key} size="small" type="number"
+                                size="small" type="number" fullWidth
                                 label={room.label}
-                                value={floor.counts[`${deptKey}:${room.key}`] ?? 0}
-                                onChange={(e) => setCount(
-                                  floor.code, `${deptKey}:${room.key}`,
-                                  Math.max(0, Number(e.target.value) || 0),
-                                )}
-                                inputProps={{ min: floor.existingCounts?.[`${deptKey}:${room.key}`] ?? 0 }}
+                                value={floor.counts[key] ?? 0}
+                                onChange={(e) => setCount(floor.code, key, Number(e.target.value))}
+                                inputProps={{ min: 0 }}
+                                error={going.length > 0}
                                 helperText={
                                   <Box component="span">
                                     {[
-                                      floor.existingCounts?.[`${deptKey}:${room.key}`]
-                                        ? `${floor.existingCounts[`${deptKey}:${room.key}`]} already` : '',
+                                      have ? `${have} already` : '',
+                                      going.length ? `${going.length} will be removed` : '',
                                       describeContents(room),
                                     ].filter(Boolean).join(' · ') || 'Nothing inside yet'}
                                     {' '}
@@ -393,7 +420,32 @@ export default function SetupBuildingWizard({
                                   </Box>
                                 }
                               />
-                            ))}
+                              {going.length > 0 && (
+                                <Box sx={{ mt: 0.75 }}>
+                                  <Typography sx={{ fontSize: 11, color: palette.textMuted, mb: 0.5 }}>
+                                    Click a room to choose which {going.length === 1 ? 'one goes' : 'ones go'}:
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {(floor.existingRooms?.[key] ?? []).map((r) => {
+                                      const off = going.some((g) => g.id === r.id)
+                                      return (
+                                        <Chip
+                                          key={r.id} size="small" title={r.name}
+                                          label={off ? `${r.code} · remove` : r.code}
+                                          color={off ? 'error' : 'default'}
+                                          variant={off ? 'filled' : 'outlined'}
+                                          onClick={() => toggleRoom(floor.code, key, r.id)}
+                                          sx={{ fontWeight: 700,
+                                                textDecoration: off ? 'line-through' : 'none' }}
+                                        />
+                                      )
+                                    })}
+                                  </Box>
+                                </Box>
+                              )}
+                              </Box>
+                              )
+                            })}
                           </Box>
                           {!roomsOf(dept).length && (
                             <Typography sx={{ fontSize: 12.5, color: palette.textFaint }}>
@@ -421,13 +473,31 @@ export default function SetupBuildingWizard({
         {step === 3 && (
           <Box>
             <Typography sx={{ mb: 2, fontWeight: 800, color: palette.ink }}>
-              {rows.length === 0 && !roomsToFill
-                ? 'Nothing new to add yet'
+              {changes === 0
+                ? 'Nothing to change yet'
                 : [
                     rows.length ? `This will ${editing ? 'add' : 'create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}` : '',
                     roomsToFill ? `${rows.length ? 'and top up' : 'This will top up'} ${roomsToFill} existing ${roomsToFill === 1 ? 'room' : 'rooms'}` : '',
+                    removals.length ? `${rows.length || roomsToFill ? 'and remove' : 'This will remove'} ${removals.length} ${removals.length === 1 ? 'room' : 'rooms'}` : '',
                   ].filter(Boolean).join(' ')}
             </Typography>
+            {removals.length > 0 && (
+              <Alert severity="warning" sx={{ mb: 2, borderRadius: '12px' }}>
+                <Typography sx={{ fontWeight: 800, fontSize: 13, mb: 0.5 }}>
+                  {removals.length === 1 ? 'This room will be removed' : 'These rooms will be removed'}
+                </Typography>
+                {removals.map((r) => (
+                  <Typography key={r.id} sx={{ fontSize: 12.5 }}>
+                    <b>{r.code}</b> {r.name !== r.code ? `· ${r.name}` : ''} · {r.floor}
+                  </Typography>
+                ))}
+                <Typography sx={{ fontSize: 12, mt: 0.75 }}>
+                  Removed rooms leave the register and every picker, with everything inside
+                  them: beds and fixtures. Their work orders and history stay readable, and
+                  their codes are not given to new rooms.
+                </Typography>
+              </Alert>
+            )}
             {fills.length > 0 && (
               <Alert severity="info" sx={{ mb: 2, borderRadius: '12px' }}>
                 {fills.map((g) => (
@@ -551,14 +621,16 @@ export default function SetupBuildingWizard({
         )}
         {step === 3 && (
           <Button
-            variant="contained" disabled={(!rows.length && !roomsToFill) || create.isPending}
+            variant="contained" disabled={changes === 0 || !fullTree || create.isPending}
             onClick={() => { setErrors([]); create.mutate() }}
             sx={{ fontWeight: 900, borderRadius: '10px', bgcolor: palette.brand,
                   '&:hover': { bgcolor: palette.brandDeep } }}
           >
             {create.isPending ? 'Saving…'
-              : rows.length ? `${editing ? 'Add' : 'Create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}`
-              : `Top up ${roomsToFill} ${roomsToFill === 1 ? 'room' : 'rooms'}`}
+              : changes > 1 ? 'Save changes'
+              : removals.length ? `Remove ${removals.length} ${removals.length === 1 ? 'room' : 'rooms'}`
+              : roomsToFill ? `Top up ${roomsToFill} ${roomsToFill === 1 ? 'room' : 'rooms'}`
+              : `${editing ? 'Add' : 'Create'} ${rows.length} ${rows.length === 1 ? 'space' : 'spaces'}`}
           </Button>
         )}
       </DialogActions>

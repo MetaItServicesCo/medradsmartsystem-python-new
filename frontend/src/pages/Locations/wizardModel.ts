@@ -174,8 +174,16 @@ export interface FloorSpec {
   existingCounts?: Record<string, number>
   /** The real code of each existing department, which need not follow the scheme. */
   deptCodes?: Record<string, string>
-  /** The ids of the rooms already there, per room kind, so their contents can be topped up. */
-  existingRoomIds?: Record<string, number[]>
+  /** The rooms already there, per room kind: topped up, or chosen for removal. */
+  existingRooms?: Record<string, ExistingRoom[]>
+  /** Ids of existing rooms on this floor that saving will remove. */
+  removed?: number[]
+}
+
+export interface ExistingRoom {
+  id: number
+  code: string
+  name: string
 }
 
 /** A node from the location tree, as much of it as the wizard reads. */
@@ -215,7 +223,7 @@ export function loadExisting(buildingCode: string, children: ExistingNode[]) {
       const spec: FloorSpec = {
         code: floor.code, name: floor.name || floor.code, depts: [], counts: {},
         existing: true, existingDepts: [], existingCounts: {}, deptCodes: {},
-        existingRoomIds: {},
+        existingRooms: {},
       }
 
       for (const wing of (floor.children ?? []).filter((c) => c.location_type === 'wing')) {
@@ -251,7 +259,8 @@ export function loadExisting(buildingCode: string, children: ExistingNode[]) {
           }
           const key = `${dept.key}:${kind.key}`
           spec.existingCounts![key] = (spec.existingCounts![key] ?? 0) + 1
-          spec.existingRoomIds![key] = [...(spec.existingRoomIds![key] ?? []), room.id]
+          spec.existingRooms![key] = [...(spec.existingRooms![key] ?? []),
+                                      { id: room.id, code: room.code, name: room.name || room.code }]
           spec.counts[key] = spec.existingCounts![key]
         }
       }
@@ -422,7 +431,9 @@ export function fillPlan(
       if (!dept) continue
       for (const room of mergeRooms(dept.rooms, customRooms[dept.key])) {
         const key = `${deptKey}:${room.key}`
-        const ids = floor.existingRoomIds?.[key] ?? []
+        // A room about to be removed is not worth furnishing first.
+        const ids = (floor.existingRooms?.[key] ?? [])
+          .map((r) => r.id).filter((id) => !floor.removed?.includes(id))
         const items = (room.contents ?? []).filter((c) => c.count > 0 && c.fixtureType)
         if (!ids.length || !items.length) continue
         const group = groups.get(key) ?? {
@@ -466,4 +477,58 @@ function singular(word: string): string {
   if (/(ches|shes|sses|xes)$/.test(word)) return word.slice(0, -2)
   if (/[^s]s$/.test(word)) return word.slice(0, -1)
   return word
+}
+
+/** The existing rooms of one kind on a floor that saving will remove. */
+export function removedOf(floor: FloorSpec, key: string): ExistingRoom[] {
+  const removed = new Set(floor.removed ?? [])
+  return (floor.existingRooms?.[key] ?? []).filter((r) => removed.has(r.id))
+}
+
+/**
+ * Set how many rooms of a kind a floor should have.
+ *
+ * Above what is there, the difference is created. Below it, that many existing
+ * rooms are marked for removal: any the person already picked are kept, and
+ * the rest are taken from the highest-numbered, which is usually the one added
+ * last. Nothing is removed by this alone — the review names each room first.
+ */
+export function setRoomCount(floor: FloorSpec, key: string, value: number): FloorSpec {
+  const rooms = floor.existingRooms?.[key] ?? []
+  const want = Math.max(0, Math.floor(Number(value)) || 0)
+  const need = Math.max(0, rooms.length - want)
+  const mineIds = new Set(rooms.map((r) => r.id))
+  const others = (floor.removed ?? []).filter((id) => !mineIds.has(id))
+
+  const chosen = (floor.removed ?? []).filter((id) => mineIds.has(id)).slice(0, need)
+  const highestFirst = [...rooms].sort(
+    (a, b) => b.code.localeCompare(a.code, undefined, { numeric: true }))
+  for (const room of highestFirst) {
+    if (chosen.length >= need) break
+    if (!chosen.includes(room.id)) chosen.push(room.id)
+  }
+  return { ...floor, counts: { ...floor.counts, [key]: want }, removed: [...others, ...chosen] }
+}
+
+/** Swap whether one existing room goes; the count follows. */
+export function toggleRemoval(floor: FloorSpec, key: string, id: number): FloorSpec {
+  const rooms = floor.existingRooms?.[key] ?? []
+  const removed = new Set(floor.removed ?? [])
+  if (removed.has(id)) removed.delete(id)
+  else removed.add(id)
+  const going = rooms.filter((r) => removed.has(r.id)).length
+  return { ...floor, removed: [...removed], counts: { ...floor.counts, [key]: rooms.length - going } }
+}
+
+/** Every existing room that saving will remove, with the floor it is on. */
+export function removalPlan(floors: FloorSpec[]): Array<ExistingRoom & { floor: string }> {
+  return floors.flatMap((floor) => Object.values(floor.existingRooms ?? {})
+    .flat()
+    .filter((room) => floor.removed?.includes(room.id))
+    .map((room) => ({ ...room, floor: floor.name })))
+}
+
+/** Every code under a tree, removed spaces included, so none is handed out twice. */
+export function codesIn(nodes: Array<{ code: string; children?: unknown[] }>): string[] {
+  return nodes.flatMap((n) => [n.code, ...codesIn((n.children ?? []) as typeof nodes)])
 }
