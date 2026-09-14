@@ -14,8 +14,12 @@ from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.schemas.equipment import (
     EquipmentCreate, EquipmentUpdate,
-    Equipment as EquipmentSchema, EquipmentListResponse
+    Equipment as EquipmentSchema, EquipmentListResponse, RoomAssetsCreate,
 )
+from app.models.discipline import Discipline
+from app.models.location import Location
+from app.services import asset_catalog, location_tree, room_assets
+from app.utils.permissions import require_module_permission
 from app.utils.inspection_schedule import next_inspection_date
 from app.services import asset as asset_service
 from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
@@ -31,14 +35,40 @@ def list_equipment(
     db: Session = Depends(get_db),
     facility_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    location_id: Optional[int] = Query(None, description="This space and everything inside it"),
+    kind: Optional[str] = Query(None, pattern="^(room_items|equipment)$"),
+    asset_type: Optional[str] = Query(None),
+    discipline_id: Optional[int] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """List equipment/inventory, optionally filtered by facility_id."""
+    """List equipment/inventory, optionally filtered by facility_id.
+
+    Filtered on the server: once every chair is an asset a site has thousands,
+    and a register that loads them all into the browser to filter them there
+    stops working at exactly the size it becomes useful.
+    """
     query = scope_query_to_user_facilities(db.query(Equipment), Equipment.facility_id, db, current_user)
     if facility_id is not None:
+        require_facility_access(db, current_user, facility_id)
         query = query.filter(Equipment.facility_id == facility_id)
+    if location_id is not None:
+        anchor = db.get(Location, location_id)
+        if anchor is None:
+            raise HTTPException(status_code=404, detail="Location not found")
+        require_facility_access(db, current_user, anchor.facility_id)
+        inside = db.query(Location.id).filter(location_tree.subtree_filter(anchor))
+        query = query.filter(or_(Equipment.location_id == anchor.id,
+                                 Equipment.location_id.in_(inside)))
+    if kind == "room_items":
+        query = query.filter(Equipment.asset_type.isnot(None))
+    elif kind == "equipment":
+        query = query.filter(Equipment.asset_type.is_(None))
+    if asset_type:
+        query = query.filter(Equipment.asset_type == asset_type)
+    if discipline_id is not None:
+        query = query.filter(Equipment.discipline_id == discipline_id)
     if search and search.strip():
         like = f"%{search.strip()}%"
         query = query.filter(
@@ -50,6 +80,7 @@ def list_equipment(
                 Equipment.description.ilike(like),
                 Equipment.location.ilike(like),
                 Equipment.department.ilike(like),
+                Equipment.asset_type.ilike(like.replace(" ", "_")),
             )
         )
     total = query.count()
@@ -108,6 +139,39 @@ def export_equipment_csv(
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="facility_inventory.csv"'},
     )
+
+
+@router.get("/room-item-types")
+def room_item_types(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """The items a room can hold as assets, and the trade each goes to."""
+    ids = {code: pk for code, pk in db.query(Discipline.code, Discipline.id).all()}
+    return {"types": asset_catalog.catalog_payload(ids)}
+
+
+@router.post("/room-items", response_model=EquipmentListResponse, status_code=201)
+def add_room_items(
+    payload: RoomAssetsCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Put several of one item in a room: twelve chairs, twelve assets, twelve tags."""
+    require_module_permission(current_user, "facility-inventory", "add")
+    location = db.get(Location, payload.location_id)
+    if location is None:
+        raise HTTPException(status_code=404, detail="Location not found")
+    require_facility_access(db, current_user, location.facility_id)
+    try:
+        created = room_assets.create_in_room(
+            db, location=location, asset_type=payload.asset_type,
+            count=payload.count, discipline_code=payload.discipline_code,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.commit()
+    for asset in created:
+        db.refresh(asset)
+    return {"items": created, "total": len(created)}
 
 
 @router.get("/{id}", response_model=EquipmentSchema)

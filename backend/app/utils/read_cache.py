@@ -228,6 +228,8 @@ def mutation_cache_namespaces(path: str) -> tuple[str, ...]:
         ("/modalities", ("modalities", "equipment")),
         ("/tiers", ("tiers", "facilities", "equipment")),
         ("/equipment", ("equipment", "facilities", "dashboard")),
+        # The building setup creates, tops up and retires room assets.
+        ("/locations", ("equipment", "dashboard")),
         ("/inventory", ("dashboard",)),
         ("/service-requests", ("dashboard",)),
         ("/inspections", ("dashboard",)),

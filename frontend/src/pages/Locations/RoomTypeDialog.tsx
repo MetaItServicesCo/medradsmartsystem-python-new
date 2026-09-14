@@ -7,8 +7,11 @@
  * desks; a theatre contains sockets and gas outlets. So the question is now
  * what each room contains, and beds are one possible answer among many.
  *
- * Every choice here accepts something typed. The lists are the common case, not
- * a boundary, and a hospital is not obliged to be common.
+ * What a room contains is one of two different things, and the list says
+ * which. A fixture is part of the room — a socket, a light — and is maintained
+ * where it is. An asset is a thing in the room — a chair, a display — with its
+ * own tag in the asset register, recorded as being in this room. Anything
+ * typed in asks which it is, because the two are looked after differently.
  */
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -18,17 +21,26 @@ import {
 } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { fetchDisciplines } from '@/api/disciplines'
+import { fetchRoomItemTypes } from '@/api/equipment'
 import { fetchFixtureCatalog } from '@/api/fixtures'
 import { palette } from '@/theme/palette'
 import { prefixFrom, sameItemName, type RoomContent, type RoomKind } from './wizardModel'
 
-/** The pseudo-item that means "bed spaces", not a fixture. */
+/** The pseudo-item that means "bed spaces", not a fixture or an asset. */
 const BEDS = '__beds__'
+
+type ItemKind = 'bed' | 'asset' | 'fixture'
 
 interface ItemOption {
   value: string
   label: string
   group: string
+  kind: ItemKind
+  discipline: string
+}
+
+const BED_OPTION: ItemOption = {
+  value: BEDS, label: 'Beds', group: 'Bed spaces', kind: 'bed', discipline: '',
 }
 
 const keyFrom = (label: string) =>
@@ -37,8 +49,12 @@ const keyFrom = (label: string) =>
 interface Row {
   item: ItemOption | string | null
   count: string
+  /** Only asked of an item typed in: is it part of the room, or a thing in it. */
+  kind: '' | 'asset' | 'fixture'
   trade: string
 }
+
+const emptyRow = (): Row => ({ item: null, count: '1', kind: '', trade: '' })
 
 export default function RoomTypeDialog({
   initial, existingRooms = 0, spaceUses, existingPrefixes, onCancel, onSave,
@@ -59,46 +75,60 @@ export default function RoomTypeDialog({
   const { data: catalog } = useQuery({
     queryKey: ['fixture-catalog'], queryFn: fetchFixtureCatalog, staleTime: 30 * 60_000,
   })
+  const { data: assetTypes } = useQuery({
+    queryKey: ['room-item-types'], queryFn: fetchRoomItemTypes, staleTime: 30 * 60_000,
+  })
   const { data: disciplines } = useQuery({
     queryKey: ['disciplines'], queryFn: fetchDisciplines, staleTime: 30 * 60_000,
   })
 
-  const options = useMemo<ItemOption[]>(() => [
-    { value: BEDS, label: 'Beds', group: 'Bed spaces' },
-    ...(catalog?.types ?? []).map((t) => ({
-      value: t.key, label: t.label, group: t.discipline.replace(/_/g, ' '),
-    })),
-  ], [catalog])
-  const tradeName = (value: string) => {
-    const code = catalog?.types.find((t) => t.key === value)?.discipline
-    return disciplines?.items.find((d) => d.code === code)?.name ?? code?.replace(/_/g, ' ') ?? ''
-  }
+  const tradeName = (code: string) =>
+    disciplines?.items.find((d) => d.code === code)?.name ?? code.replace(/_/g, ' ')
 
-  const byValue = useMemo(() => new Map(options.map((o) => [o.value, o])), [options])
+  // Assets first: in most rooms that are not theatres, the furniture is what
+  // people think of when asked what a room contains.
+  const options = useMemo<ItemOption[]>(() => [
+    BED_OPTION,
+    ...(assetTypes?.types ?? []).map((t) => ({
+      value: t.key, label: t.label, group: 'Assets — things in the room',
+      kind: 'asset' as const, discipline: t.discipline,
+    })),
+    ...(catalog?.types ?? []).map((t) => ({
+      value: t.key, label: t.label,
+      group: `Fixtures — part of the room · ${t.discipline.replace(/_/g, ' ')}`,
+      kind: 'fixture' as const, discipline: t.discipline,
+    })),
+  ], [catalog, assetTypes])
 
   // Existing contents come back as rows, beds first since they are the
   // difference between a ward and everything else.
   const [rows, setRows] = useState<Row[]>(() => {
     const seed: Row[] = []
-    if (initial?.beds) seed.push({ item: { value: BEDS, label: 'Beds', group: 'Bed spaces' },
-                                   count: String(initial.beds), trade: '' })
+    if (initial?.beds) seed.push({ ...emptyRow(), item: BED_OPTION, count: String(initial.beds) })
     for (const c of initial?.contents ?? []) {
+      const kind = c.kind ?? 'fixture'
       seed.push({
-        item: c.disciplineCode ? c.label : { value: c.fixtureType, label: c.label, group: '' },
-        count: String(c.count), trade: c.disciplineCode ?? '',
+        item: c.disciplineCode
+          ? c.label
+          : { value: c.fixtureType, label: c.label, group: '', kind, discipline: '' },
+        count: String(c.count),
+        kind: c.disciplineCode ? kind : '',
+        trade: c.disciplineCode ?? '',
       })
     }
-    return seed.length ? seed : [{ item: null, count: '1', trade: '' }]
+    return seed.length ? seed : [emptyRow()]
   })
 
   const setRow = (i: number, patch: Partial<Row>) =>
     setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)))
 
   // The typed-in version of an option counts as that option, so "Chairs" picks
-  // the catalogued Chair rather than creating a second, custom kind of chair.
+  // the catalogued Chair asset rather than creating a second, custom chair.
   const resolve = (item: Row['item']): ItemOption | null => {
     if (!item) return null
-    if (typeof item !== 'string') return item
+    if (typeof item !== 'string') {
+      return options.find((o) => o.value === item.value && o.kind === item.kind) ?? item
+    }
     return options.find((o) => sameItemName(item, o.label, o.value === BEDS ? undefined : o.value))
       ?? null
   }
@@ -111,8 +141,9 @@ export default function RoomTypeDialog({
   const save = () => {
     let beds = 0
     const contents: RoomContent[] = []
-    // Custom items get a prefix of their own, so "Ceiling speaker" and
+    // Custom fixtures get a code prefix of their own, so "Ceiling speaker" and
     // "Ceiling light" are CSPE-01 and CLIG-01 rather than sharing one sequence.
+    // Assets need none: each gets a permanent tag from the register.
     const codesTaken = new Set((catalog?.types ?? []).map((t) => t.prefix))
     const customPrefix = (name: string) => {
       const words = name.replace(/[^A-Za-z ]/g, ' ').trim().split(/\s+/).filter(Boolean)
@@ -127,14 +158,15 @@ export default function RoomTypeDialog({
       const count = Math.max(0, Number(row.count) || 0)
       if (!row.item || count === 0) continue
       const known = resolve(row.item)
-      if (known?.value === BEDS) { beds += count; continue }
+      if (known?.kind === 'bed') { beds += count; continue }
       if (known) {
-        contents.push({ fixtureType: known.value, label: known.label, count })
-      } else if (typeof row.item === 'string' && row.trade) {
+        contents.push({ fixtureType: known.value, label: known.label, count, kind: known.kind })
+      } else if (typeof row.item === 'string' && row.trade && row.kind) {
         const name = row.item.trim()
         contents.push({
-          fixtureType: keyFrom(name), label: name, count,
-          disciplineCode: row.trade, prefix: customPrefix(name),
+          fixtureType: keyFrom(name), label: name, count, kind: row.kind,
+          disciplineCode: row.trade,
+          prefix: row.kind === 'fixture' ? customPrefix(name) : undefined,
         })
       }
     }
@@ -150,9 +182,9 @@ export default function RoomTypeDialog({
     })
   }
 
-  // A custom item without a trade cannot be saved: nothing would know who to
-  // send when it breaks.
-  const missingTrade = rows.some((r) => isCustom(r.item) && !r.trade)
+  // A custom item cannot be saved without both answers: whether it gets a tag
+  // of its own, and who to send when it breaks.
+  const incomplete = rows.some((r) => isCustom(r.item) && (!r.trade || !r.kind))
   const knownUse = spaceUses.some((u) => u.value === spaceUse || u.label === spaceUse)
   const renamed = editing && label.trim() !== initial!.label
 
@@ -199,6 +231,12 @@ export default function RoomTypeDialog({
             </Typography>
           </Divider>
 
+          <Typography sx={{ fontSize: 12, color: palette.textMuted, mt: '-4px !important' }}>
+            <b>Assets</b> are things in the room — chairs, tables, screens. Each gets its own
+            tag in Assets, labelled with this room. <b>Fixtures</b> are part of the room —
+            sockets, lights, gas outlets.
+          </Typography>
+
           {existingRooms > 0 && (
             <Alert severity="info" sx={{ borderRadius: '12px', py: 0.25 }}>
               {existingRooms === 1 ? '1 of these rooms already exists' : `${existingRooms} of these rooms already exist`}.
@@ -220,11 +258,12 @@ export default function RoomTypeDialog({
                     getOptionLabel={(o) => (typeof o === 'string' ? o : o.label)}
                     value={row.item}
                     isOptionEqualToValue={(o, v) =>
-                      typeof o !== 'string' && typeof v !== 'string' && o.value === v.value}
+                      typeof o !== 'string' && typeof v !== 'string'
+                      && o.value === v.value && o.kind === v.kind}
                     onChange={(_, v) => setRow(i, { item: v })}
                     onInputChange={(_, v, reason) => { if (reason === 'input') setRow(i, { item: v }) }}
                     renderInput={(params) => (
-                      <TextField {...params} label="Item" placeholder="Chairs, tables, a display…" />
+                      <TextField {...params} label="Item" placeholder="Chairs, tables, sockets…" />
                     )}
                   />
                   <TextField
@@ -240,25 +279,42 @@ export default function RoomTypeDialog({
                     <DeleteOutlineIcon sx={{ fontSize: 19 }} />
                   </IconButton>
                 </Stack>
+
                 {custom && (
-                  <TextField
-                    select size="small" label="Which trade maintains it" required
-                    value={row.trade} onChange={(e) => setRow(i, { trade: e.target.value })}
-                    sx={{ mt: 1, width: '60%' }}
-                    helperText="Not in the catalogue, so say who gets sent when it breaks"
-                  >
-                    {(disciplines?.items ?? []).map((d) => (
-                      <MenuItem key={d.code} value={d.code}>{d.name}</MenuItem>
-                    ))}
-                  </TextField>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                    <TextField
+                      select size="small" label="Is it" required sx={{ flex: 1 }}
+                      value={row.kind}
+                      onChange={(e) => setRow(i, { kind: e.target.value as Row['kind'] })}
+                    >
+                      <MenuItem value="asset">An asset — a thing in the room, with its own tag</MenuItem>
+                      <MenuItem value="fixture">A fixture — part of the room itself</MenuItem>
+                    </TextField>
+                    <TextField
+                      select size="small" label="Which trade maintains it" required sx={{ flex: 1 }}
+                      value={row.trade} onChange={(e) => setRow(i, { trade: e.target.value })}
+                    >
+                      {(disciplines?.items ?? []).map((d) => (
+                        <MenuItem key={d.code} value={d.code}>{d.name}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Stack>
                 )}
-                {known && known.value !== BEDS && (
+                {custom && (
                   <Typography sx={{ mt: 0.5, fontSize: 11.5, color: palette.textFaint }}>
-                    From the catalogue: {known.label}
-                    {tradeName(known.value) ? ` · faults go to ${tradeName(known.value)}` : ''}
+                    Not in the lists, so say what it is and who gets sent when it breaks.
                   </Typography>
                 )}
-                {known?.value === BEDS && (
+
+                {known && known.kind !== 'bed' && (
+                  <Typography sx={{ mt: 0.5, fontSize: 11.5, color: palette.textFaint }}>
+                    {known.kind === 'asset'
+                      ? `Asset: each ${known.label.split(' / ')[0].toLowerCase()} gets its own tag in Assets`
+                      : 'Fixture: part of the room'}
+                    {known.discipline ? ` · faults go to ${tradeName(known.discipline)}` : ''}
+                  </Typography>
+                )}
+                {known?.kind === 'bed' && (
                   <Typography sx={{ mt: 0.5, fontSize: 11.5, color: palette.textFaint }}>
                     Beds become spaces of their own, with a status of occupied or available.
                     {existingRooms > 0 && ' They are added to new rooms only.'}
@@ -268,7 +324,7 @@ export default function RoomTypeDialog({
             )
           })}
 
-          <Button size="small" onClick={() => setRows([...rows, { item: null, count: '1', trade: '' }])}
+          <Button size="small" onClick={() => setRows([...rows, emptyRow()])}
                   sx={{ alignSelf: 'flex-start', fontWeight: 800 }}>
             + Add an item
           </Button>
@@ -277,7 +333,7 @@ export default function RoomTypeDialog({
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onCancel} sx={{ fontWeight: 800, color: palette.textMuted }}>Cancel</Button>
         <Button
-          variant="contained" disabled={!label.trim() || missingTrade} onClick={save}
+          variant="contained" disabled={!label.trim() || incomplete} onClick={save}
           sx={{ fontWeight: 900, borderRadius: '10px' }}
         >
           {editing ? 'Save' : 'Add'}

@@ -59,6 +59,14 @@ export interface EquipmentItem {
   status: string
   created_at: string
   updated_at: string
+
+  // Facilities placement. A room item (chair, display) has an asset_type and a
+  // type_label; a lift or a ventilator has neither.
+  location_id?: number | null
+  discipline_id?: number | null
+  criticality?: string | null
+  asset_type?: string | null
+  type_label?: string | null
 }
 
 export interface EquipmentCreate {
@@ -133,6 +141,66 @@ export const fetchEquipment = async (facilityId?: number, search?: string): Prom
 }
 
 export interface EquipmentUpdate extends Partial<EquipmentCreate> {}
+
+/**
+ * The asset register for one site, filtered on the server.
+ *
+ * The Assets page used to call fetchEquipment with an object where it takes a
+ * facility id, so the site filter never reached the server and every site's
+ * register listed every site's assets. Named parameters here make that a type
+ * error rather than a silent leak.
+ */
+export const fetchAssetRegister = async (params: {
+  /** Required by the register page; a room's own list is scoped by location_id. */
+  facility_id?: number
+  search?: string
+  location_id?: number | null
+  kind?: 'room_items' | 'equipment' | null
+  discipline_id?: number | null
+  skip?: number
+  limit?: number
+}): Promise<{ items: EquipmentItem[]; total: number }> => {
+  const res = await apiClient.get('/equipment/', {
+    params: {
+      facility_id: params.facility_id,
+      search: params.search || undefined,
+      location_id: params.location_id ?? undefined,
+      kind: params.kind ?? undefined,
+      discipline_id: params.discipline_id ?? undefined,
+      skip: params.skip ?? 0,
+      limit: params.limit ?? 100,
+    },
+  })
+  return res.data
+}
+
+export const fetchEquipmentById = async (id: number): Promise<EquipmentItem> => {
+  const res = await apiClient.get(`/equipment/${id}`)
+  return res.data
+}
+
+export interface RoomItemType {
+  key: string
+  label: string
+  discipline: string
+  discipline_id: number | null
+}
+
+export const fetchRoomItemTypes = async (): Promise<{ types: RoomItemType[] }> => {
+  const res = await apiClient.get('/equipment/room-item-types')
+  return res.data
+}
+
+/** Put several of one item in a room, each its own asset with its own tag. */
+export const addRoomItems = async (payload: {
+  location_id: number
+  asset_type: string
+  count: number
+  discipline_code?: string | null
+}): Promise<{ items: EquipmentItem[]; total: number }> => {
+  const res = await apiClient.post('/equipment/room-items', payload)
+  return res.data
+}
 
 export const createEquipment = async (data: EquipmentCreate): Promise<EquipmentItem> => {
   const res = await apiClient.post('/equipment/', data)

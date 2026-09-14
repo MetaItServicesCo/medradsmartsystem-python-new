@@ -348,67 +348,47 @@ def test_the_fixture_routes_run_end_to_end():
 
 
 def test_topping_up_adds_only_what_a_room_is_missing():
-    """Giving a room type 12 chairs has to reach rooms that already exist."""
+    """Giving a room type twelve sockets has to reach rooms that already exist."""
     db, facility, user, theatre = build()
-    db.add(Discipline(code="building_envelope", name="Building", sort_order=5))
-    db.flush()
-    fixture_service.bulk_create(db, location=theatre, fixture_type="chair", count=5)
+    fixture_service.bulk_create(db, location=theatre, fixture_type="receptacle", count=5)
 
-    added = fixture_service.top_up(db, location=theatre, fixture_type="chair", count=12)
+    added = fixture_service.top_up(db, location=theatre, fixture_type="receptacle", count=12)
     assert len(added) == 7, len(added)
-    assert [f.code for f in added][:1] == ["CHR-06"], "numbering carries on"
+    assert [f.code for f in added][:1] == ["SKT-06"], "numbering carries on"
 
     # Asking again changes nothing, so saving the setup twice is harmless.
-    assert fixture_service.top_up(db, location=theatre, fixture_type="chair", count=12) == []
-    # And a smaller number never takes chairs away.
-    assert fixture_service.top_up(db, location=theatre, fixture_type="chair", count=3) == []
-    assert db.query(Fixture).filter_by(location_id=theatre.id, fixture_type="chair").count() == 12
+    assert fixture_service.top_up(db, location=theatre, fixture_type="receptacle", count=12) == []
+    # And a smaller number never takes sockets away.
+    assert fixture_service.top_up(db, location=theatre, fixture_type="receptacle", count=3) == []
+    assert db.query(Fixture).filter_by(location_id=theatre.id, fixture_type="receptacle").count() == 12
 
-    # A removed chair is not a chair in the room.
-    gone = db.query(Fixture).filter_by(location_id=theatre.id, code="CHR-01").one()
+    # A removed socket is not a socket in the room.
+    gone = db.query(Fixture).filter_by(location_id=theatre.id, code="SKT-01").one()
     gone.is_active = False
     db.flush()
-    again = fixture_service.top_up(db, location=theatre, fixture_type="chair", count=12)
-    assert len(again) == 1 and again[0].code == "CHR-13", [f.code for f in again]
+    again = fixture_service.top_up(db, location=theatre, fixture_type="receptacle", count=12)
+    assert len(again) == 1 and again[0].code == "SKT-13", [f.code for f in again]
     db.close()
     print("ok  topping up adds the shortfall, is repeatable, and never removes")
 
 
-def test_filling_rooms_through_the_route_is_all_or_nothing():
-    from app.api.v1.endpoints import fixtures as routes
-    from app.schemas.fixture import FixtureFill
-
+def test_furniture_is_not_a_fixture():
+    """Chairs and displays are assets now; the fixture catalogue must not offer them."""
+    from app.services import asset_catalog
+    overlap = set(fixture_catalog.BY_TYPE) & set(asset_catalog.BY_TYPE)
+    assert not overlap, f"both a fixture and an asset: {sorted(overlap)}"
+    for gone in ("chair", "table", "display_screen", "projector"):
+        assert gone not in fixture_catalog.BY_TYPE, gone
+    # Nor can one be typed in as a custom fixture: a chair would then have no tag.
     db, facility, user, theatre = build()
-    boss = _admin(db)
-    db.add(Discipline(code="building_envelope", name="Building", sort_order=5))
-    second = Location(facility_id=facility.id, location_type="room", code="CONF-2",
-                      name="Conference 2", path="/9/", depth=0)
-    db.add(second)
-    db.commit()
-
-    result = routes.fill_rooms(FixtureFill(
-        location_ids=[theatre.id, second.id],
-        items=[{"fixture_type": "chair", "count": 12}, {"fixture_type": "table", "count": 2}],
-    ), db=db, current_user=boss)
-    assert result.created == 28 and result.rooms_changed == 2, result
-
-    # One bad item refuses the lot rather than leaving half the rooms filled.
-    third = Location(facility_id=facility.id, location_type="room", code="CONF-3",
-                     name="Conference 3", path="/10/", depth=0)
-    db.add(third)
-    db.commit()
-    from fastapi import HTTPException
     try:
-        routes.fill_rooms(FixtureFill(
-            location_ids=[third.id],
-            items=[{"fixture_type": "chair", "count": 4}, {"fixture_type": "mystery", "count": 1}],
-        ), db=db, current_user=boss)
-        raise AssertionError("an uncatalogued item with no trade was accepted")
-    except HTTPException as exc:
-        assert exc.status_code == 422
-    assert db.query(Fixture).filter_by(location_id=third.id).count() == 0
+        fixture_service.bulk_create(db, location=theatre, fixture_type="chair", count=1,
+                                    discipline_code="electrical")
+        raise AssertionError("a chair was accepted as a fixture")
+    except ValueError as exc:
+        assert "asset" in str(exc)
     db.close()
-    print("ok  filling rooms is all or nothing")
+    print("ok  no type is both a fixture and an asset, even typed in")
 
 
 if __name__ == "__main__":

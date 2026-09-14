@@ -66,6 +66,8 @@ def build():
         "tech_b": user("tech_b", UserRole.TECHNICIAN, b),
         "unassigned": user("stranger", UserRole.TECHNICIAN),
         "admin": user("boss", UserRole.SUPERADMIN),
+        # Allowed to add assets and fixtures, but only at Hospital A.
+        "admin_a": user("admin_a", UserRole.FACILITY_ADMIN, a),
     }
 
     for facility in (a, b):
@@ -240,7 +242,11 @@ def test_a_user_created_in_a_site_belongs_to_it():
 def test_a_fault_cannot_be_raised_on_another_sites_fixture():
     """Report-fault looked the fixture up by id and never asked whose it was."""
     from app.api.v1.endpoints import fixtures as routes
-    from app.schemas.fixture import FixtureFill, FixtureUpdate, ReportFaultRequest
+    from app.api.v1.endpoints import equipment as asset_routes
+    from app.api.v1.endpoints import locations as location_routes
+    from app.schemas.equipment import RoomAssetsCreate
+    from app.schemas.fixture import FixtureUpdate, ReportFaultRequest
+    from app.schemas.location import RoomContentsFill
 
     db, a, b, people = build()
     theirs = db.query(Fixture).filter_by(facility_id=b.id).one()
@@ -251,9 +257,17 @@ def test_a_fault_cannot_be_raised_on_another_sites_fixture():
             db=db, current_user=people["tech_a"]),
         "edit": lambda: routes.update_fixture(
             theirs.id, FixtureUpdate(label="mine now"), db=db, current_user=people["tech_a"]),
-        "fill": lambda: routes.fill_rooms(
-            FixtureFill(location_ids=[their_room.id], items=[{"fixture_type": "chair", "count": 1}]),
-            db=db, current_user=people["tech_a"]),
+        "fill": lambda: location_routes.fill_contents(
+            RoomContentsFill(location_ids=[their_room.id],
+                             fixtures=[{"fixture_type": "receptacle", "count": 3}]),
+            db=db, current_user=people["admin_a"]),
+        "add chairs": lambda: asset_routes.add_room_items(
+            RoomAssetsCreate(location_id=their_room.id, asset_type="chair", count=1),
+            db=db, current_user=people["admin_a"]),
+        "list their assets": lambda: asset_routes.list_equipment.__wrapped__(
+            db=db, facility_id=b.id, search=None, location_id=None, kind=None,
+            asset_type=None, discipline_id=None, skip=0, limit=100,
+            current_user=people["tech_a"]),
     }
     for name, attempt in attempts.items():
         try:
@@ -262,7 +276,7 @@ def test_a_fault_cannot_be_raised_on_another_sites_fixture():
         except HTTPException as exc:
             assert exc.status_code == 403, f"{name}: {exc.status_code} {exc.detail}"
     db.close()
-    print("ok  another site's fixtures cannot be faulted, edited or filled")
+    print("ok  another site's fixtures and assets cannot be touched or listed")
 
 
 if __name__ == "__main__":

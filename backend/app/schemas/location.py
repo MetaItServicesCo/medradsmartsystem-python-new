@@ -305,6 +305,8 @@ class BulkLocationRow(BaseModel):
     # theatre. Beds are not here — a bed is a space with its own status, and
     # arrives as a child row of type "bed".
     fixtures: Optional[List["BulkFixture"]] = None
+    # Chairs, tables, displays: each becomes an asset located in this room.
+    assets: Optional[List["BulkAsset"]] = None
 
 
 class BulkFixture(BaseModel):
@@ -317,7 +319,41 @@ class BulkFixture(BaseModel):
     spec: Optional[dict] = None
 
 
+class BulkAsset(BaseModel):
+    asset_type: str
+    count: int = Field(default=1, ge=1, le=200)
+    # Only for a type the asset catalogue does not know.
+    discipline_code: Optional[str] = None
+
+
 BulkLocationRow.model_rebuild()
+
+
+class ContentFixture(BaseModel):
+    fixture_type: str
+    count: int = Field(ge=0, le=200)
+    discipline_code: Optional[str] = None
+    code_prefix: Optional[str] = None
+
+
+class ContentAsset(BaseModel):
+    asset_type: str
+    count: int = Field(ge=0, le=200)
+    discipline_code: Optional[str] = None
+
+
+class RoomContentsFill(BaseModel):
+    """Top existing rooms up to what their room type contains."""
+
+    location_ids: List[int] = Field(min_length=1, max_length=2000)
+    fixtures: List[ContentFixture] = Field(default_factory=list, max_length=50)
+    assets: List[ContentAsset] = Field(default_factory=list, max_length=50)
+
+
+class RoomContentsFillResult(BaseModel):
+    fixtures_created: int
+    assets_created: int
+    rooms_changed: int
 
 
 class BulkLocationImport(BaseModel):

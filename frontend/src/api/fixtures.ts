@@ -102,20 +102,6 @@ export const bulkCreateFixtures = async (payload: {
   return res.data
 }
 
-/** Top existing rooms up to what their room type contains. Never removes. */
-export const fillRooms = async (payload: {
-  location_ids: number[]
-  items: Array<{
-    fixture_type: string
-    count: number
-    discipline_code?: string | null
-    code_prefix?: string | null
-  }>
-}): Promise<{ created: number; rooms_changed: number }> => {
-  const res = await apiClient.post('/fixtures/fill', payload)
-  return res.data
-}
-
 export const updateFixture = async (
   id: number, payload: Partial<Fixture>,
 ): Promise<Fixture> => {

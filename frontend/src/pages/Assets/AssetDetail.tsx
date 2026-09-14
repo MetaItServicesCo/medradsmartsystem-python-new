@@ -23,6 +23,7 @@ import { fetchTechnicianCandidates } from '@/api/disciplines'
 import { createSchedule, fetchSchedules } from '@/api/maintenance'
 import { createServiceRequest, fetchServiceRequests } from '@/api/serviceRequests'
 import { palette } from '@/theme/palette'
+import { assetTitle } from './assetTitle'
 
 const humanise = (v?: string | null) =>
   (v || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -70,7 +71,7 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
               {asset.asset_tag}
             </Typography>
             <Typography sx={{ color: palette.textMuted, fontWeight: 700, fontSize: 13.5 }}>
-              {[asset.make, asset.model].filter(Boolean).join(' ') || '—'}
+              {assetTitle(asset)}
               {asset.serial_number ? ` · ${asset.serial_number}` : ''}
             </Typography>
             <Typography sx={{ color: palette.textFaint, fontSize: 12.5, fontWeight: 600 }}>

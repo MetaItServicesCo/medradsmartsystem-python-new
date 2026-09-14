@@ -9,6 +9,10 @@
  * So a container lists what is beneath it, and every level — building, floor,
  * room — lists the fixtures fixed to it directly, so the tab means the same
  * thing in plain English at every level.
+ *
+ * Assets come first: the chairs, screens and machinery here, which live in the
+ * asset register with this space as their location. Fixtures follow: the
+ * sockets, lights and outlets that are part of the space itself.
  */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -26,6 +30,7 @@ import {
 import { palette } from '@/theme/palette'
 import AddFixturesDialog from './AddFixturesDialog'
 import ReportFaultDialog from './ReportFaultDialog'
+import RoomAssets from './RoomAssets'
 
 /**
  * Which levels can have spaces inside them. A bed is the only leaf.
@@ -102,6 +107,12 @@ export default function SpaceContents({
         />
       )}
       {showSpaces && <Divider sx={{ mx: 2.25 }} />}
+      {/* Things in the space, from the asset register, then what is part of it. */}
+      <RoomAssets
+        locationId={locationId} locationName={locationName} canEdit={canEdit}
+        onContainer={isContainer}
+      />
+      <Divider sx={{ mx: 2.25 }} />
       <FixtureList
         locationId={locationId} locationName={locationName} canEdit={canEdit}
         onContainer={isContainer}

@@ -26,6 +26,7 @@ import app.models  # noqa: E402,F401
 from app.api.v1.endpoints.locations import bulk_import  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.models.discipline import Discipline  # noqa: E402
+from app.models.equipment import Equipment, EquipmentStatus  # noqa: E402
 from app.models.facility import Facility  # noqa: E402
 from app.models.fixture import Fixture  # noqa: E402
 from app.models.location import Location  # noqa: E402
@@ -51,7 +52,7 @@ def build():
     db.add(Location(facility_id=facility.id, location_type="building",
                     code=BUILDING, name="Surgery Building", path="/1/", depth=0))
     for code, name in (("building_envelope", "Building"), ("it_low_voltage", "IT"),
-                       ("electrical", "Electrical")):
+                       ("electrical", "Electrical"), ("biomedical", "Biomedical")):
         db.add(Discipline(code=code, name=name, sort_order=10))
     admin = User(username="a", email="a@x.c", full_name="A", hashed_password="x",
                  user_type=UserType.EMPLOYEE, role=UserRole.SUPERADMIN)
@@ -160,27 +161,47 @@ def test_a_genuinely_missing_parent_is_still_reported():
     print("ok  a parent that truly does not exist is still refused")
 
 
-def conference_rows(extra_item=None):
-    """A conference room type as the wizard emits it: chairs and tables, no beds."""
-    items = [
-        dict(fixture_type="chair", count=12),
-        dict(fixture_type="table", count=2),
-        dict(fixture_type="display_screen", count=1),
-        # Not in the catalogue, so it has to say which trade maintains it.
+def conference_rows(extra_fixture=None, extra_asset=None):
+    """A conference room type as the wizard emits it.
+
+    Fixtures are part of the room: its sockets, and ceiling speakers the
+    catalogue does not know. Assets are the things in it: chairs, tables, a
+    display, and a podium the catalogue does not know either.
+    """
+    fixtures = [
+        dict(fixture_type="receptacle", count=4),
         dict(fixture_type="ceiling_speaker", count=4,
              discipline_code="it_low_voltage", code_prefix="SPKR"),
     ]
-    if extra_item:
-        items.append(extra_item)
+    assets = [
+        dict(asset_type="chair", count=12),
+        dict(asset_type="table", count=2),
+        dict(asset_type="display_screen", count=1),
+        dict(asset_type="Podium", count=1, discipline_code="building_envelope"),
+    ]
+    if extra_fixture:
+        fixtures.append(extra_fixture)
+    if extra_asset:
+        assets.append(extra_asset)
     g = f"{BUILDING}-00"
     return [
         dict(parent_code=BUILDING, location_type="floor", code=g, name="Ground Floor"),
         dict(parent_code=g, location_type="wing", code=f"{g}-ADM", name="Administration"),
         dict(parent_code=f"{g}-ADM", location_type="room", code="CONF-0001",
-             name="Conference room 1", space_use="Conference Room", fixtures=items),
+             name="Conference room 1", space_use="Conference Room",
+             fixtures=fixtures, assets=assets),
         dict(parent_code=f"{g}-ADM", location_type="room", code="CONF-0002",
-             name="Conference room 2", space_use="Conference Room", fixtures=items),
+             name="Conference room 2", space_use="Conference Room",
+             fixtures=fixtures, assets=assets),
     ]
+
+
+def count_by(rows, attr):
+    out = {}
+    for row in rows:
+        key = getattr(row, attr)
+        out[key] = out.get(key, 0) + 1
+    return out
 
 
 def import_rows(db, facility, admin, rows, dry_run):
@@ -193,22 +214,26 @@ def test_a_room_arrives_with_what_it_contains():
     db, facility, admin = build()
     check = import_rows(db, facility, admin, conference_rows(), dry_run=True)
     assert not [i for i in check.issues if i.severity == "error"], check.issues
-    assert db.query(Fixture).count() == 0, "the dry run must not leave chairs behind"
+    assert db.query(Fixture).count() == 0, "the dry run must not leave sockets behind"
+    assert db.query(Equipment).count() == 0, "the dry run must not leave chairs behind"
 
     import_rows(db, facility, admin, conference_rows(), dry_run=False)
     room = db.query(Location).filter_by(code="CONF-0001").one()
-    inside = db.query(Fixture).filter_by(location_id=room.id).all()
-    by_type = {}
-    for f in inside:
-        by_type[f.fixture_type] = by_type.get(f.fixture_type, 0) + 1
-    assert by_type == {"chair": 12, "table": 2, "display_screen": 1, "ceiling_speaker": 4}, by_type
-    # Codes restart per room, as they would be read out standing in it.
-    assert {f.code for f in inside if f.fixture_type == "chair"} >= {"CHR-01", "CHR-12"}
-    assert {f.code for f in inside if f.fixture_type == "ceiling_speaker"} >= {"SPKR-01"}
+
+    fixtures = db.query(Fixture).filter_by(location_id=room.id).all()
+    assert count_by(fixtures, "fixture_type") == {"receptacle": 4, "ceiling_speaker": 4}
+    assert {f.code for f in fixtures if f.fixture_type == "ceiling_speaker"} >= {"SPKR-01"}
+
+    assets = db.query(Equipment).filter_by(location_id=room.id).all()
+    assert count_by(assets, "asset_type") == {
+        "chair": 12, "table": 2, "display_screen": 1, "podium": 1}, count_by(assets, "asset_type")
+    # One asset per item, each with its own permanent tag.
+    assert len({a.asset_tag for a in db.query(Equipment).all()}) == 32
+    assert all(a.facility_id == facility.id for a in assets)
     # No beds: a conference room is not a ward.
     assert db.query(Location).filter_by(location_type="bed").count() == 0
     db.close()
-    print("ok  a conference room arrives with its chairs, tables and display")
+    print("ok  a conference room arrives with its fixtures, and its chairs as assets")
 
 
 def test_a_use_the_list_does_not_have_is_kept():
@@ -223,15 +248,19 @@ def test_a_use_the_list_does_not_have_is_kept():
 
 def test_a_bad_item_stops_the_whole_structure():
     db, facility, admin = build()
-    broken = dict(fixture_type="mystery_box", count=1)   # uncatalogued, no trade
-    check = import_rows(db, facility, admin, conference_rows(broken), dry_run=True)
-    errors = [i for i in check.issues if i.severity == "error"]
-    assert errors and any("mystery_box" in e.message for e in errors), check.issues
+    for broken in (dict(extra_fixture=dict(fixture_type="mystery_box", count=1)),
+                   dict(extra_asset=dict(asset_type="mystery_box", count=1)),
+                   # A socket is part of the room; it cannot be an asset.
+                   dict(extra_asset=dict(asset_type="receptacle", count=1))):
+        check = import_rows(db, facility, admin, conference_rows(**broken), dry_run=True)
+        errors = [i for i in check.issues if i.severity == "error"]
+        assert errors, f"{broken} was accepted"
 
-    result = import_rows(db, facility, admin, conference_rows(broken), dry_run=False)
-    assert result.dry_run, "errors must turn a commit into a refusal"
-    assert db.query(Location).filter_by(code="CONF-0001").count() == 0
-    assert db.query(Fixture).count() == 0
+        result = import_rows(db, facility, admin, conference_rows(**broken), dry_run=False)
+        assert result.dry_run, "errors must turn a commit into a refusal"
+        assert db.query(Location).filter_by(code="CONF-0001").count() == 0
+        assert db.query(Fixture).count() == 0
+        assert db.query(Equipment).count() == 0
     db.close()
     print("ok  one bad item refuses the whole structure instead of half of it")
 
@@ -243,15 +272,30 @@ def test_removing_a_room_takes_its_contents_with_it():
     room = db.query(Location).filter_by(code="CONF-0002").one()
     other = db.query(Location).filter_by(code="CONF-0001").one()
 
+    # A lift registered against the room is machinery, not a room item.
+    lift = Equipment(asset_tag="LIFT-1", make="Otis", model="Gen2", serial_number="S1",
+                     facility_id=facility.id, location_id=room.id,
+                     status=EquipmentStatus.ACTIVE)
+    db.add(lift)
+    db.commit()
+
     result = delete_location(room.id, db=db, hard=False, current_user=admin)
-    assert result["fixtures_deactivated"] == 19, result
+    assert result["fixtures_deactivated"] == 8, result
+    assert result["assets_deactivated"] == 16, result
     assert db.query(Fixture).filter_by(location_id=room.id, is_active=True).count() == 0
+    in_room = db.query(Equipment).filter(Equipment.location_id == room.id,
+                                         Equipment.asset_type.isnot(None)).all()
+    assert {a.status for a in in_room} == {EquipmentStatus.INACTIVE}
+    db.refresh(lift)
+    assert lift.status == EquipmentStatus.ACTIVE, "machinery is not retired with the room"
     # The neighbouring room keeps everything it had.
-    assert db.query(Fixture).filter_by(location_id=other.id, is_active=True).count() == 19
+    assert db.query(Fixture).filter_by(location_id=other.id, is_active=True).count() == 8
+    assert db.query(Equipment).filter_by(location_id=other.id,
+                                         status=EquipmentStatus.ACTIVE).count() == 16
     # Soft: the rows are still there for the history that points at them.
-    assert db.query(Fixture).filter_by(location_id=room.id).count() == 19
+    assert db.query(Fixture).filter_by(location_id=room.id).count() == 8
     db.close()
-    print("ok  removing a room takes its fixtures out with it, and only its own")
+    print("ok  removing a room retires its fixtures and room items, not its machinery")
 
 
 def test_listing_a_removed_space_again_restores_it():

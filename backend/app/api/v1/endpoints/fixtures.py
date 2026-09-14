@@ -10,8 +10,7 @@ from app.models.fixture import FIXTURE_STATUSES, Fixture, FixtureStatus
 from app.models.location import Location
 from app.models.user import User
 from app.schemas.fixture import (
-    FixtureBulkCreate, FixtureCreate, FixtureFill, FixtureFillResponse,
-    FixtureListResponse, FixtureResponse,
+    FixtureBulkCreate, FixtureCreate, FixtureListResponse, FixtureResponse,
     FixtureTypeSummary, FixtureUpdate, ReportFaultRequest, ReportFaultResponse,
 )
 from app.services import fixture as fixture_service
@@ -158,47 +157,6 @@ def bulk_create(
     for row in created:
         db.refresh(row)
     return FixtureListResponse(items=[_decorate(db, r) for r in created], total=len(created))
-
-
-@router.post("/fill", response_model=FixtureFillResponse)
-def fill_rooms(
-    payload: FixtureFill,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Bring rooms that already exist up to what their room type says they contain.
-
-    The building setup only creates rooms that are not there yet, so giving
-    Conference rooms their twelve chairs would otherwise reach none of the
-    conference rooms already in the register. Each room is topped up, never
-    reduced: a room with fourteen chairs keeps fourteen.
-    """
-    require_module_permission(current_user, MODULE, "add")
-    locations = db.query(Location).filter(Location.id.in_(payload.location_ids)).all()
-    if len(locations) != len(set(payload.location_ids)):
-        raise HTTPException(status_code=404, detail="Location not found")
-    for facility_id in {loc.facility_id for loc in locations}:
-        require_facility_access(db, current_user, facility_id)
-
-    created = 0
-    changed = 0
-    try:
-        for location in locations:
-            added = 0
-            for item in payload.items:
-                added += len(fixture_service.top_up(
-                    db, location=location, fixture_type=item.fixture_type, count=item.count,
-                    discipline_code=item.discipline_code, code_prefix=item.code_prefix,
-                    created_by_id=current_user.id,
-                ))
-            created += added
-            changed += 1 if added else 0
-    except ValueError as exc:
-        db.rollback()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    db.commit()
-    return FixtureFillResponse(created=created, rooms_changed=changed)
 
 
 @router.post("/", response_model=FixtureResponse, status_code=status.HTTP_201_CREATED)

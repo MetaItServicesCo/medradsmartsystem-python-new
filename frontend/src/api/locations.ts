@@ -155,6 +155,12 @@ export interface BulkLocationRow {
     code_prefix?: string | null
     spec?: Record<string, unknown> | null
   }>
+  /** The things in the room, each created as its own asset located here. */
+  assets?: Array<{
+    asset_type: string
+    count: number
+    discipline_code?: string | null
+  }>
 }
 
 export const fetchLocationMeta = async (): Promise<LocationMeta> => {
@@ -220,6 +226,24 @@ export const moveLocation = async (id: number, newParentId: number | null): Prom
 
 export const deleteLocation = async (id: number, hard = false) => {
   const res = await apiClient.delete(`/locations/${id}`, { params: { hard } })
+  return res.data
+}
+
+/**
+ * Top existing rooms up to what their room type contains: fixtures and assets.
+ * Only the shortfall is added and nothing is removed, so repeating it is safe.
+ */
+export const fillRoomContents = async (payload: {
+  location_ids: number[]
+  fixtures: Array<{
+    fixture_type: string
+    count: number
+    discipline_code?: string | null
+    code_prefix?: string | null
+  }>
+  assets: Array<{ asset_type: string; count: number; discipline_code?: string | null }>
+}): Promise<{ fixtures_created: number; assets_created: number; rooms_changed: number }> => {
+  const res = await apiClient.post('/locations/fill-contents', payload)
   return res.data
 }
 

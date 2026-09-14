@@ -24,13 +24,15 @@ from app.models.location import (
 )
 from app.models.space_status import SpaceStatus
 from app.services import fixture as fixture_service
+from app.services import room_assets
+from app.utils.permissions import require_module_permission
 from app.models.user import User
 from app.schemas.location import (
     BulkImportIssue, BulkImportResult, BulkLocationImport, FloorPlan as FloorPlanSchema,
     FloorPlanCalibrate, FloorPlanListResponse, FloorPlanUpdate, Location as LocationSchema,
     LocationBreadcrumb, LocationCreate, LocationDetail, LocationListResponse, LocationMove,
     LocationNode, LocationTreeResponse, LocationUpdate, LocationWithStatus, PinBatch,
-    QuickPin, TraceResult, TraceRoom,
+    QuickPin, RoomContentsFill, RoomContentsFillResult, TraceResult, TraceRoom,
 )
 from app.services import geometry, location_tree
 from app.utils.facility_access import (
@@ -477,9 +479,62 @@ def delete_location(
         .filter(Fixture.location_id.in_([location.id, *beneath]), Fixture.is_active.is_(True))
         .update({Fixture.is_active: False}, synchronize_session=False)
     )
+    assets_off = room_assets.take_out_of_rooms(db, [location.id, *beneath])
     db.commit()
     return {"detail": "Location deactivated", "descendants_deactivated": descendant_count,
-            "fixtures_deactivated": fixtures_off}
+            "fixtures_deactivated": fixtures_off, "assets_deactivated": assets_off}
+
+
+@router.post("/fill-contents", response_model=RoomContentsFillResult)
+def fill_contents(
+    payload: RoomContentsFill,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Bring rooms that already exist up to what their room type contains.
+
+    The building setup only creates rooms that are not there yet, so giving
+    Conference rooms twelve chairs would otherwise reach none of the conference
+    rooms already in the register. Fixtures and assets are topped up, never
+    reduced: a room with fourteen chairs keeps fourteen. All or nothing.
+    """
+    if not payload.fixtures and not payload.assets:
+        raise HTTPException(status_code=422, detail="Say what the rooms should contain")
+    if payload.fixtures:
+        require_module_permission(current_user, "locations", "add")
+    if payload.assets:
+        require_module_permission(current_user, "facility-inventory", "add")
+
+    locations = db.query(Location).filter(Location.id.in_(payload.location_ids)).all()
+    if len(locations) != len(set(payload.location_ids)):
+        raise HTTPException(status_code=404, detail="Location not found")
+    for facility_id in {loc.facility_id for loc in locations}:
+        require_facility_access(db, current_user, facility_id)
+
+    fixtures_created = assets_created = changed = 0
+    try:
+        for location in locations:
+            before = fixtures_created + assets_created
+            for item in payload.fixtures:
+                fixtures_created += len(fixture_service.top_up(
+                    db, location=location, fixture_type=item.fixture_type, count=item.count,
+                    discipline_code=item.discipline_code, code_prefix=item.code_prefix,
+                    created_by_id=current_user.id,
+                ))
+            for item in payload.assets:
+                assets_created += len(room_assets.top_up(
+                    db, location=location, asset_type=item.asset_type, count=item.count,
+                    discipline_code=item.discipline_code,
+                ))
+            changed += 1 if fixtures_created + assets_created > before else 0
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    db.commit()
+    return RoomContentsFillResult(
+        fixtures_created=fixtures_created, assets_created=assets_created, rooms_changed=changed,
+    )
 
 
 # ── Bulk import ──────────────────────────────────────────────────────────────
@@ -632,6 +687,19 @@ def bulk_import(
                 issues.append(BulkImportIssue(
                     row_index=index, code=row.code, severity="error",
                     message=f"{item.fixture_type}: {exc}",
+                ))
+        if row.assets:
+            require_module_permission(current_user, "facility-inventory", "add")
+        for item in row.assets or []:
+            try:
+                room_assets.create_in_room(
+                    db, location=location, asset_type=item.asset_type,
+                    count=item.count, discipline_code=item.discipline_code,
+                )
+            except ValueError as exc:
+                issues.append(BulkImportIssue(
+                    row_index=index, code=row.code, severity="error",
+                    message=f"{item.asset_type}: {exc}",
                 ))
 
     has_errors = any(issue.severity == "error" for issue in issues)

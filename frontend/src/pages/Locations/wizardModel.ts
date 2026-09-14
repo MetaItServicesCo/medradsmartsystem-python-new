@@ -19,9 +19,10 @@ export interface RoomKind {
   beds?: number
   criticality?: string
   /**
-   * Everything else each room contains — chairs and a display in a conference
-   * room, sockets and gas outlets in a theatre. Created as fixtures inside the
-   * room, in the same save as the room itself.
+   * Everything else each room contains. Sockets and gas outlets are fixtures,
+   * part of the room. Chairs and a display are assets, each with its own tag,
+   * recorded in the asset register as being in this room. Both are created in
+   * the same save as the room itself.
    */
   contents?: RoomContent[]
 }
@@ -31,9 +32,31 @@ export interface RoomContent {
   fixtureType: string
   label: string
   count: number
+  /** Part of the room (fixture) or a thing in it (asset). Older state means fixture. */
+  kind?: 'fixture' | 'asset'
   /** Only for a custom item: the trade that maintains it, which routes faults. */
   disciplineCode?: string
   prefix?: string
+}
+
+const isAsset = (c: RoomContent) => c.kind === 'asset'
+
+/** The fixtures and assets a room kind puts in each room, in the shape the API takes. */
+export function contentsPayload(contents: RoomContent[] = []) {
+  const wanted = contents.filter((c) => c.count > 0 && c.fixtureType)
+  return {
+    fixtures: wanted.filter((c) => !isAsset(c)).map((c) => ({
+      fixture_type: c.fixtureType,
+      count: c.count,
+      discipline_code: c.disciplineCode ?? null,
+      code_prefix: c.prefix ?? null,
+    })),
+    assets: wanted.filter(isAsset).map((c) => ({
+      asset_type: c.fixtureType,
+      count: c.count,
+      discipline_code: c.disciplineCode ?? null,
+    })),
+  }
 }
 
 /**
@@ -373,14 +396,7 @@ export function generateRows(
               space_use: room.spaceUse,
               criticality: room.criticality ?? null,
               bed_count: room.beds ?? null,
-              fixtures: (room.contents ?? [])
-                .filter((c) => c.count > 0 && c.fixtureType)
-                .map((c) => ({
-                  fixture_type: c.fixtureType,
-                  count: c.count,
-                  discipline_code: c.disciplineCode ?? null,
-                  code_prefix: c.prefix ?? null,
-                })),
+              ...contentsPayload(room.contents),
             } as BulkLocationRow)
             for (let b = 0; b < (room.beds ?? 0); b += 1) {
               out.push({
@@ -400,12 +416,8 @@ export function generateRows(
 export interface FillGroup {
   label: string
   location_ids: number[]
-  items: Array<{
-    fixture_type: string
-    count: number
-    discipline_code: string | null
-    code_prefix: string | null
-  }>
+  fixtures: ReturnType<typeof contentsPayload>['fixtures']
+  assets: ReturnType<typeof contentsPayload>['assets']
 }
 
 /**
@@ -434,18 +446,9 @@ export function fillPlan(
         // A room about to be removed is not worth furnishing first.
         const ids = (floor.existingRooms?.[key] ?? [])
           .map((r) => r.id).filter((id) => !floor.removed?.includes(id))
-        const items = (room.contents ?? []).filter((c) => c.count > 0 && c.fixtureType)
-        if (!ids.length || !items.length) continue
-        const group = groups.get(key) ?? {
-          label: room.label,
-          location_ids: [],
-          items: items.map((c) => ({
-            fixture_type: c.fixtureType,
-            count: c.count,
-            discipline_code: c.disciplineCode ?? null,
-            code_prefix: c.prefix ?? null,
-          })),
-        }
+        const payload = contentsPayload(room.contents)
+        if (!ids.length || !(payload.fixtures.length + payload.assets.length)) continue
+        const group = groups.get(key) ?? { label: room.label, location_ids: [], ...payload }
         group.location_ids.push(...ids)
         groups.set(key, group)
       }

@@ -53,6 +53,16 @@ class Equipment(Base):
     # receptacle. Conflating the two makes both untraversable.
     parent_equipment_id = Column(Integer, ForeignKey("equipment.id", ondelete="SET NULL"), nullable=True, index=True)
 
+    # What kind of room item this is — chair, table, display — for assets that
+    # belong to a room rather than being plant or clinical equipment. Empty for
+    # a lift or a ventilator. See app/services/asset_catalog.py.
+    asset_type = Column(String(48), nullable=True, index=True)
+
+    @property
+    def type_label(self) -> str | None:
+        from app.services.asset_catalog import label_for
+        return label_for(self.asset_type) or None
+
     # Consequence of failure for this asset specifically. Usually inherited from
     # the space it serves, and overridable: a generator sitting in an unremarkable
     # yard is critical because of what depends on it, not because of where it is.

@@ -1,27 +1,35 @@
 /**
- * Every machine in the hospital, and everything you do to one.
+ * Every asset at this site — machinery, clinical equipment, and the things in
+ * each room — and everything you do to one.
  *
  * This did not exist. `pages/Equipment/index.tsx` was a twelve-line
  * placeholder with no route, and the only way to reach a machine was a modal
  * buried inside Sites — so the obvious question, "add the lift serving the
  * theatres and track its maintenance", had no answer anywhere in the product.
  *
- * The shape follows what somebody actually does: find the machine, then act on
+ * The shape follows what somebody actually does: find the asset, then act on
  * it. Registering it, scheduling its maintenance, raising a job against it and
  * seeing what it cost are all things you do *to an asset*, so they are tabs on
  * the asset rather than four separate destinations that each ask you to find
  * it again.
+ *
+ * Filtering happens on the server. Once every chair is an asset a site has
+ * thousands, and the first version of this page — which loaded the register
+ * into the browser and filtered it there — also never sent the site at all,
+ * so each hospital's register listed every hospital's assets.
  */
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import {
-  Box, Chip, CircularProgress, InputAdornment, MenuItem, Stack, TextField,
+  Autocomplete, Box, Chip, CircularProgress, InputAdornment, MenuItem, Stack, TextField,
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import Button from '@mui/material/Button'
 import SearchIcon from '@mui/icons-material/Search'
-import { fetchEquipment } from '@/api/equipment'
+import MeetingRoomOutlinedIcon from '@mui/icons-material/MeetingRoomOutlined'
+import { fetchAssetRegister, fetchEquipmentById } from '@/api/equipment'
 import { fetchDisciplines } from '@/api/disciplines'
 import { fetchLocationTree } from '@/api/locations'
 import { hasPermission } from '@/config/permissions'
@@ -30,6 +38,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 import AssetDetail from './AssetDetail'
 import AddAssetDialog from './AddAssetDialog'
+import { assetTitle } from './assetTitle'
 
 const CRITICALITY_STYLE: Record<string, { bg: string; color: string }> = {
   critical: { bg: palette.dangerTint, color: palette.danger },
@@ -49,15 +58,42 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 const humanise = (v?: string | null) =>
   (v || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
+const PAGE_SIZE = 100
+
+type Kind = '' | 'room_items' | 'equipment'
+
+interface Place { id: number; label: string; depth: number; type: string }
+
 export default function AssetsPage() {
   const user = useAuthStore((s) => s.user)
   const { facilityId } = useActiveFacility()
   const canEdit = hasPermission(user, 'facility-inventory', 'edit')
+  const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [search, setSearch] = useState('')
+  const [debounced, setDebounced] = useState('')
   const [trade, setTrade] = useState<number | ''>('')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [kind, setKind] = useState<Kind>('')
+  // Arriving from a room ("open in Assets") filters to that room; arriving
+  // from a tag opens that asset.
+  const [roomId, setRoomId] = useState<number | null>(Number(searchParams.get('room')) || null)
+  const [selectedId, setSelectedId] = useState<number | null>(Number(searchParams.get('asset')) || null)
   const [addOpen, setAddOpen] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(search.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  // Keep the address in step, so a filtered register or an open asset can be
+  // linked to and survives a refresh.
+  useEffect(() => {
+    const next = new URLSearchParams()
+    if (roomId) next.set('room', String(roomId))
+    if (selectedId) next.set('asset', String(selectedId))
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true })
+  }, [roomId, selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: disciplines } = useQuery({
     queryKey: ['disciplines'],
@@ -71,13 +107,27 @@ export default function AssetsPage() {
     enabled: !!facilityId,
   })
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['equipment', 'register', facilityId],
-    queryFn: () => fetchEquipment({ facility_id: facilityId, limit: 1000 } as any),
+  const register = useInfiniteQuery({
+    queryKey: ['equipment', 'register', facilityId, debounced, trade, kind, roomId],
+    queryFn: ({ pageParam }) => fetchAssetRegister({
+      facility_id: facilityId as number,
+      search: debounced,
+      discipline_id: trade === '' ? null : trade,
+      kind: kind || null,
+      location_id: roomId,
+      skip: pageParam,
+      limit: PAGE_SIZE,
+    }),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.items.length, 0)
+      return loaded < last.total ? loaded : undefined
+    },
     enabled: !!facilityId,
   })
 
-  const assets = ((data as any)?.items ?? []) as any[]
+  const assets = useMemo(() => register.data?.pages.flatMap((p) => p.items) ?? [], [register.data])
+  const total = register.data?.pages[0]?.total ?? 0
 
   const tradeName = useMemo(() => {
     const out: Record<number, string> = {}
@@ -85,29 +135,33 @@ export default function AssetsPage() {
     return out
   }, [disciplines])
 
-  const placeName = useMemo(() => {
-    const out: Record<number, string> = {}
-    const walk = (nodes: any[]) => {
+  const { placeName, places } = useMemo(() => {
+    const names: Record<number, string> = {}
+    const list: Place[] = []
+    const walk = (nodes: any[], depth: number) => {
       for (const n of nodes) {
-        out[n.id] = n.name ? `${n.code} · ${n.name}` : n.code
-        walk(n.children ?? [])
+        const label = n.name ? `${n.code} · ${n.name}` : n.code
+        names[n.id] = label
+        if (n.location_type !== 'bed') list.push({ id: n.id, label, depth, type: n.location_type })
+        walk(n.children ?? [], depth + 1)
       }
     }
-    walk((tree as any)?.items ?? [])
-    return out
+    walk((tree as any)?.items ?? [], 0)
+    return { placeName: names, places: list }
   }, [tree])
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    return assets.filter((a) => {
-      if (trade !== '' && a.discipline_id !== trade) return false
-      if (!needle) return true
-      return [a.asset_tag, a.make, a.model, a.serial_number, a.description]
-        .some((v) => String(v ?? '').toLowerCase().includes(needle))
-    })
-  }, [assets, search, trade])
+  // An asset opened by link may not be on the first page of the list.
+  const listed = assets.find((a) => a.id === selectedId)
+  const { data: fetched } = useQuery({
+    queryKey: ['equipment', 'one', selectedId],
+    queryFn: () => fetchEquipmentById(selectedId as number),
+    enabled: !!selectedId && !listed,
+  })
+  const selected = listed
+    ?? (fetched && fetched.id === selectedId && fetched.facility_id === facilityId ? fetched : undefined)
 
-  const selected = assets.find((a) => a.id === selectedId)
+  const room = places.find((p) => p.id === roomId) ?? null
+  const filtering = Boolean(debounced || trade !== '' || kind || roomId)
 
   return (
     <Box className="page-enter" sx={{ width: '100%', minWidth: 0 }}>
@@ -118,7 +172,7 @@ export default function AssetsPage() {
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink }}>Assets</Typography>
           <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>
-            Plant and clinical equipment — everything with a maintenance history
+            Machinery, clinical equipment and the things in each room — each with its own tag
           </Typography>
         </Box>
         {canEdit && (
@@ -134,10 +188,10 @@ export default function AssetsPage() {
 
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '380px 1fr' } }}>
         <Box sx={{ border: `1px solid ${palette.borderSoft}`, borderRadius: '18px',
-                   bgcolor: palette.white, overflow: 'hidden', alignSelf: 'start' }}>
+                   bgcolor: palette.white, overflow: 'hidden', alignSelf: 'start', minWidth: 0 }}>
           <Box sx={{ p: 1.5, display: 'grid', gap: 1.25 }}>
             <TextField
-              size="small" placeholder="Find an asset…" value={search}
+              size="small" placeholder="Tag, type, make, serial…" value={search}
               onChange={(e) => setSearch(e.target.value)}
               InputProps={{
                 startAdornment: (
@@ -147,45 +201,82 @@ export default function AssetsPage() {
                 ),
               }}
             />
-            <TextField
-              select size="small" label="Trade" value={trade}
-              onChange={(e) => setTrade(e.target.value === '' ? '' : Number(e.target.value))}
-            >
-              <MenuItem value="">All trades</MenuItem>
-              {(disciplines?.items ?? []).map((d) => (
-                <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
-              ))}
-            </TextField>
+            <Autocomplete
+              size="small" options={places} value={room}
+              getOptionLabel={(p) => p.label}
+              isOptionEqualToValue={(a, b) => a.id === b.id}
+              onChange={(_, p) => setRoomId(p?.id ?? null)}
+              renderOption={(props, p) => (
+                <li {...props} key={p.id}>
+                  <Box sx={{ pl: p.depth * 1.5, fontSize: 13,
+                             fontWeight: p.type === 'room' ? 600 : 800 }}>
+                    {p.label}
+                  </Box>
+                </li>
+              )}
+              renderInput={(params) => (
+                <TextField {...params} label="Room, floor or building"
+                           helperText={room && room.type !== 'room' ? 'Includes everything inside it' : undefined} />
+              )}
+            />
+            <Stack direction="row" spacing={1}>
+              <TextField
+                select size="small" label="Kind" value={kind} sx={{ flex: 1 }}
+                onChange={(e) => setKind(e.target.value as Kind)}
+              >
+                <MenuItem value="">Everything</MenuItem>
+                <MenuItem value="equipment">Machinery & equipment</MenuItem>
+                <MenuItem value="room_items">Room items</MenuItem>
+              </TextField>
+              <TextField
+                select size="small" label="Trade" value={trade} sx={{ flex: 1 }}
+                onChange={(e) => setTrade(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value="">All trades</MenuItem>
+                {(disciplines?.items ?? []).map((d) => (
+                  <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
           </Box>
 
           <Box sx={{ maxHeight: 620, overflowY: 'auto', borderTop: `1px solid ${palette.borderSoft}` }}>
-            {isLoading && (
+            {register.isLoading && (
               <Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress size={24} /></Box>
             )}
-            {!isLoading && !filtered.length && (
+            {register.isError && (
+              <Box sx={{ p: 4, textAlign: 'center' }}>
+                <Typography sx={{ fontWeight: 800, color: palette.danger }}>
+                  Could not load the asset register
+                </Typography>
+              </Box>
+            )}
+            {!register.isLoading && !register.isError && !assets.length && (
               <Box sx={{ p: 4, textAlign: 'center' }}>
                 <Typography sx={{ fontWeight: 800, color: palette.textMuted }}>
-                  {assets.length ? 'Nothing matches' : 'No assets registered yet'}
+                  {filtering ? 'Nothing matches' : 'No assets registered yet'}
                 </Typography>
-                {!assets.length && (
+                {!filtering && (
                   <Typography sx={{ mt: 0.5, fontSize: 13, color: palette.textFaint }}>
-                    Add the chillers, air handlers, lifts, generators and clinical
-                    equipment you maintain. Each one gets its own maintenance plan,
-                    service history and book value.
+                    Add the chillers, lifts, generators and clinical equipment you maintain.
+                    Chairs, tables and screens arrive here when you set up a building's
+                    rooms, or add them from the room itself.
                   </Typography>
                 )}
               </Box>
             )}
-            {filtered.map((a) => {
-              const crit = CRITICALITY_STYLE[a.criticality] || CRITICALITY_STYLE.standard
+            {assets.map((a) => {
+              const crit = CRITICALITY_STYLE[a.criticality ?? ''] || CRITICALITY_STYLE.standard
               const active = a.id === selectedId
+              const where = a.location_id ? placeName[a.location_id] : null
+              const retired = ['inactive', 'retired'].includes(String(a.status))
               return (
                 <Box
                   key={a.id}
                   onClick={() => setSelectedId(a.id)}
                   sx={{
                     px: 1.75, py: 1.25, cursor: 'pointer', display: 'flex',
-                    alignItems: 'center', gap: 1,
+                    alignItems: 'center', gap: 1, opacity: retired ? 0.6 : 1,
                     borderLeft: `3px solid ${active ? palette.brand : 'transparent'}`,
                     bgcolor: active ? palette.brandTint : 'transparent',
                     '&:hover': { bgcolor: active ? palette.brandTint : palette.surfaceFaint },
@@ -196,28 +287,50 @@ export default function AssetsPage() {
                       <Typography noWrap sx={{ fontWeight: 900, color: palette.ink, fontSize: 13.5 }}>
                         {a.asset_tag}
                       </Typography>
-                      {a.criticality && (
+                      {a.criticality && a.criticality !== 'standard' && (
                         <Chip size="small" label={humanise(a.criticality)}
                               sx={{ height: 17, fontSize: 9.5, fontWeight: 800,
                                     bgcolor: crit.bg, color: crit.color }} />
                       )}
+                      {retired && (
+                        <Chip size="small" label={humanise(String(a.status))}
+                              sx={{ height: 17, fontSize: 9.5, fontWeight: 800 }} />
+                      )}
                     </Stack>
                     <Typography noWrap sx={{ fontSize: 12, color: palette.textMuted, fontWeight: 600 }}>
-                      {[a.make, a.model].filter(Boolean).join(' ') || '—'}
+                      {assetTitle(a)}
                     </Typography>
-                    <Typography noWrap sx={{ fontSize: 11, color: palette.textFaint }}>
-                      {tradeName[a.discipline_id] || 'Clinical'}
-                      {a.location_id && placeName[a.location_id] ? ` · ${placeName[a.location_id]}` : ''}
-                    </Typography>
+                    <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.25, minWidth: 0 }}>
+                      <Typography noWrap sx={{ fontSize: 11, color: palette.textFaint, flexShrink: 0 }}>
+                        {(a.discipline_id && tradeName[a.discipline_id]) || 'Clinical'}
+                      </Typography>
+                      {where && (
+                        <Chip
+                          size="small" icon={<MeetingRoomOutlinedIcon sx={{ fontSize: '13px !important' }} />}
+                          label={where}
+                          onClick={(e) => { e.stopPropagation(); setRoomId(a.location_id ?? null) }}
+                          sx={{ height: 19, fontSize: 10.5, fontWeight: 700, maxWidth: 220,
+                                bgcolor: palette.surfaceMuted, color: palette.textSubtle }}
+                        />
+                      )}
+                    </Stack>
                   </Box>
                 </Box>
               )
             })}
+            {register.hasNextPage && (
+              <Box sx={{ p: 1.5, textAlign: 'center' }}>
+                <Button size="small" onClick={() => register.fetchNextPage()}
+                        disabled={register.isFetchingNextPage} sx={{ fontWeight: 800 }}>
+                  {register.isFetchingNextPage ? 'Loading…' : 'Show more'}
+                </Button>
+              </Box>
+            )}
           </Box>
 
           <Box sx={{ px: 1.75, py: 1.25, borderTop: `1px solid ${palette.borderSoft}` }}>
             <Typography sx={{ fontSize: 12, fontWeight: 800, color: palette.textFaint }}>
-              {filtered.length} of {assets.length}
+              {assets.length} of {total}{filtering ? ' matching' : ''}
             </Typography>
           </Box>
         </Box>
@@ -250,7 +363,11 @@ export default function AssetsPage() {
           facilityId={facilityId}
           tree={(tree as any)?.items ?? []}
           disciplines={disciplines?.items ?? []}
-          onCreated={(id) => { setSelectedId(id); setAddOpen(false) }}
+          onCreated={(id) => {
+            queryClient.invalidateQueries({ queryKey: ['equipment'] })
+            setSelectedId(id)
+            setAddOpen(false)
+          }}
         />
       )}
     </Box>

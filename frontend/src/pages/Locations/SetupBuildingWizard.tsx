@@ -23,10 +23,9 @@ import {
 } from '@mui/material'
 import { toast } from 'react-toastify'
 import {
-  bulkImportLocations, deleteLocation, fetchLocationMeta, fetchLocationTree,
+  bulkImportLocations, deleteLocation, fetchLocationMeta, fetchLocationTree, fillRoomContents,
   type BulkLocationRow,
 } from '@/api/locations'
-import { fillRooms } from '@/api/fixtures'
 import { palette } from '@/theme/palette'
 import {
   DEPARTMENTS, codesIn, defaultFloors, existingRoomsOf, fillPlan, generateRows, loadExisting,
@@ -216,7 +215,10 @@ export default function SetupBuildingWizard({
       }
       let items = 0
       for (const group of fills) {
-        items += (await fillRooms({ location_ids: group.location_ids, items: group.items })).created
+        const filled = await fillRoomContents({
+          location_ids: group.location_ids, fixtures: group.fixtures, assets: group.assets,
+        })
+        items += filled.fixtures_created + filled.assets_created
       }
       // Soft removal: out of the register and every picker, history kept.
       for (const room of removals) {
@@ -227,7 +229,7 @@ export default function SetupBuildingWizard({
     onSuccess: (res) => {
       toast.success([
         res.created ? `${res.created} spaces created` : '',
-        res.items ? `${res.items} items added to existing rooms` : '',
+        res.items ? `${res.items} assets and fixtures added to existing rooms` : '',
         res.removed ? `${res.removed} ${res.removed === 1 ? 'room' : 'rooms'} removed` : '',
       ].filter(Boolean).join(' · ') || 'Nothing needed adding')
       queryClient.invalidateQueries({ queryKey: ['location'] })
@@ -250,6 +252,7 @@ export default function SetupBuildingWizard({
     rooms: rows.filter((r) => !['floor', 'wing', 'bed'].includes(r.location_type)).length,
     beds: rows.filter((r) => r.location_type === 'bed').length,
     fixtures: rows.reduce((n, r) => n + (r.fixtures ?? []).reduce((m, f) => m + f.count, 0), 0),
+    assets: rows.reduce((n, r) => n + (r.assets ?? []).reduce((m, a) => m + a.count, 0), 0),
   }
 
   return (
@@ -503,7 +506,10 @@ export default function SetupBuildingWizard({
                 {fills.map((g) => (
                   <Typography key={g.label} sx={{ fontSize: 12.5 }}>
                     <b>{g.label}</b> ({g.location_ids.length} existing):{' '}
-                    up to {g.items.map((i) => `${i.count} ${i.fixture_type.replace(/_/g, ' ')}`).join(', ')} each.
+                    up to {[
+                      ...g.assets.map((a) => `${a.count} ${a.asset_type.replace(/_/g, ' ')}`),
+                      ...g.fixtures.map((f) => `${f.count} ${f.fixture_type.replace(/_/g, ' ')}`),
+                    ].join(', ')} each.
                   </Typography>
                 ))}
                 <Typography sx={{ fontSize: 12, mt: 0.5, color: palette.textMuted }}>
@@ -514,7 +520,7 @@ export default function SetupBuildingWizard({
             <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
               {[
                 ['Floors', counts.floors], ['Departments', counts.depts],
-                ['Rooms', counts.rooms], ['Beds', counts.beds], ['Fixtures', counts.fixtures],
+                ['Rooms', counts.rooms], ['Beds', counts.beds], ['Assets', counts.assets], ['Fixtures', counts.fixtures],
               ].map(([label, value]) => (
                 <Box key={String(label)} sx={{ px: 2, py: 1.25, borderRadius: '12px',
                                                bgcolor: palette.surfaceFaint,

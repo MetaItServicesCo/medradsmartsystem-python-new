@@ -1,7 +1,7 @@
 from typing import Optional, List
 from datetime import date, datetime
 from decimal import Decimal
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class EquipmentBase(BaseModel):
@@ -67,12 +67,24 @@ class EquipmentBase(BaseModel):
     criticality: Optional[str] = None
     electrical_branch: Optional[str] = None
     service_vendor_id: Optional[int] = None
+    # Set for items that belong to a room (chair, display); empty for plant.
+    asset_type: Optional[str] = None
 
     # ── Depreciation ────────────────────────────────────────────────────────
     depreciation_method: Optional[str] = None
     salvage_value: Optional[Decimal] = None
     useful_life_years: Optional[Decimal] = None
     total_expected_units: Optional[Decimal] = None
+
+
+class RoomAssetsCreate(BaseModel):
+    """Add several of one item to a room, each as its own asset."""
+
+    location_id: int
+    asset_type: str
+    count: int = Field(default=1, ge=1, le=200)
+    # Only for a type the catalogue does not know: which trade maintains it.
+    discipline_code: Optional[str] = None
 
 
 class EquipmentCreate(EquipmentBase):
@@ -156,6 +168,7 @@ class EquipmentUpdate(BaseModel):
     criticality: Optional[str] = None
     electrical_branch: Optional[str] = None
     service_vendor_id: Optional[int] = None
+    asset_type: Optional[str] = None
 
     # ── Depreciation ────────────────────────────────────────────────────────
     depreciation_method: Optional[str] = None
@@ -168,6 +181,9 @@ class Equipment(EquipmentBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    # "Chair", "Ceiling speaker": what a room item is, for lists that would
+    # otherwise show an empty make and model.
+    type_label: Optional[str] = None
 
     class Config:
         from_attributes = True

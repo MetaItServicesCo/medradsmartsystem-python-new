@@ -150,11 +150,14 @@ check('a conference room arrives with chairs and tables and no beds', () => {
       key: 'custom-conf', label: 'Conference rooms', prefix: 'CONF', spaceUse: 'Conference Room',
       beds: 0,
       contents: [
-        { fixtureType: 'chair', label: 'Chair', count: 12 },
-        { fixtureType: 'table', label: 'Table', count: 2 },
-        { fixtureType: 'ceiling_speaker', label: 'Ceiling speaker', count: 4,
+        { fixtureType: 'chair', label: 'Chair', count: 12, kind: 'asset' as const },
+        { fixtureType: 'table', label: 'Table', count: 2, kind: 'asset' as const },
+        { fixtureType: 'podium', label: 'Podium', count: 1, kind: 'asset' as const,
+          disciplineCode: 'building_envelope' },
+        { fixtureType: 'receptacle', label: 'Receptacle', count: 6, kind: 'fixture' as const },
+        { fixtureType: 'ceiling_speaker', label: 'Ceiling speaker', count: 4, kind: 'fixture' as const,
           disciplineCode: 'it_low_voltage', prefix: 'CEIL' },
-        { fixtureType: 'whiteboard', label: 'Whiteboard', count: 0 },
+        { fixtureType: 'whiteboard', label: 'Whiteboard', count: 0, kind: 'asset' as const },
       ],
     }],
   }
@@ -165,16 +168,22 @@ check('a conference room arrives with chairs and tables and no beds', () => {
   assert(rooms.length === 2, `expected 2 rooms, got ${rooms.length}`)
   assert(!rows.some((r) => r.location_type === 'bed'), 'a conference room has no beds')
 
-  const items = rooms[0].fixtures ?? []
-  assert(items.map((f) => `${f.fixture_type}x${f.count}`).join() ===
-    'chairx12,tablex2,ceiling_speakerx4', `got ${items.map((f) => f.fixture_type).join(', ')}`)
+  // Chairs, tables and the podium are assets; sockets and speakers are fixtures.
+  const assets = rooms[0].assets ?? []
+  assert(assets.map((a) => `${a.asset_type}x${a.count}`).join() === 'chairx12,tablex2,podiumx1',
+    `assets were ${assets.map((a) => a.asset_type).join(', ')}`)
+  const fixtures = rooms[0].fixtures ?? []
+  assert(fixtures.map((f) => `${f.fixture_type}x${f.count}`).join() ===
+    'receptaclex6,ceiling_speakerx4', `fixtures were ${fixtures.map((f) => f.fixture_type).join(', ')}`)
   // A catalogue item routes by the catalogue; a custom one carries its trade.
-  assert(items[0].discipline_code === null, 'a catalogued chair needs no trade')
-  const speaker = items.find((f) => f.fixture_type === 'ceiling_speaker')!
+  assert(assets[0].discipline_code === null, 'a catalogued chair needs no trade')
+  assert(assets[2].discipline_code === 'building_envelope', 'the podium says who maintains it')
+  const speaker = fixtures.find((f) => f.fixture_type === 'ceiling_speaker')!
   assert(speaker.discipline_code === 'it_low_voltage' && speaker.code_prefix === 'CEIL',
-    'the custom item must say who maintains it')
+    'the custom fixture must say who maintains it')
+  assert(!fixtures.some((f) => f.fixture_type === 'chair'), 'a chair must never be sent as a fixture')
   // Every room of the type gets its own set, not one set shared.
-  assert((rooms[1].fixtures ?? []).length === 3, 'the second room gets its chairs too')
+  assert((rooms[1].assets ?? []).length === 3, 'the second room gets its chairs too')
 })
 
 check('a ward room still gets its beds and nothing else', () => {
@@ -184,7 +193,7 @@ check('a ward room still gets its beds and nothing else', () => {
   const room = rows.find((r) => r.location_type === 'room')!
   assert(room, `no room in ${rows.map((r) => r.location_type).join(', ')}`)
   assert(rows.filter((r) => r.location_type === 'bed').length === 2, 'patient rooms hold two beds')
-  assert((room.fixtures ?? []).length === 0, 'no invented contents')
+  assert((room.fixtures ?? []).length === 0 && (room.assets ?? []).length === 0, 'no invented contents')
 })
 
 check('giving an existing room type contents tops up the rooms already there', () => {
@@ -197,7 +206,7 @@ check('giving an existing room type contents tops up the rooms already there', (
   const customRooms = {
     ...loaded.customRooms,
     [deptKey]: [...(loaded.customRooms[deptKey] ?? []).filter((r) => r.key !== roomKey),
-                { ...kind, contents: [{ fixtureType: 'chair', label: 'Chair', count: 12 }] }],
+                { ...kind, contents: [{ fixtureType: 'chair', label: 'Chair', count: 12, kind: 'asset' as const }] }],
   }
   const all = [...DEPARTMENTS, ...loaded.customDepts]
 
@@ -209,7 +218,8 @@ check('giving an existing room type contents tops up the rooms already there', (
   const dc1 = ground.existingRooms![itKey].map((r) => r.id)
   assert(plan[0].location_ids.join() === dc1.join() && dc1.length === 1,
     `should target the existing room, got ${plan[0].location_ids}`)
-  assert(plan[0].items[0].fixture_type === 'chair' && plan[0].items[0].count === 12, 'twelve chairs')
+  assert(plan[0].assets[0].asset_type === 'chair' && plan[0].assets[0].count === 12, 'twelve chairs')
+  assert(plan[0].fixtures.length === 0, 'chairs are not topped up as fixtures')
 })
 
 check('rooms whose type lists nothing are left alone', () => {

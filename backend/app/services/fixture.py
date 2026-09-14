@@ -82,6 +82,12 @@ def bulk_create(
     accepted as long as the caller says which trade maintains it, because the
     trade is what routes the fault and there is no way to infer it from a name.
     """
+    from app.services import asset_catalog
+    if fixture_type in asset_catalog.BY_TYPE:
+        raise ValueError(
+            f"'{asset_catalog.label_for(fixture_type)}' is an asset, not part of the room. "
+            "Add it under the room's assets so it gets its own tag."
+        )
     known = fixture_type in fixture_catalog.BY_TYPE
     if not known and not discipline_code:
         raise ValueError(
