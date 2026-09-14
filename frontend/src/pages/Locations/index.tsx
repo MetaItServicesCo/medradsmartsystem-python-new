@@ -35,6 +35,7 @@ import { useActiveFacility } from '@/hooks/useActiveFacility'
 import SetupBuildingWizard from './SetupBuildingWizard'
 import SpaceContents from './SpaceContents'
 import SpaceDetail from './SpaceDetail'
+import SpaceUseField from './SpaceUseField'
 import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import FloorPlanEditor from './FloorPlanEditor'
@@ -521,16 +522,12 @@ function AddLocationDialog({ open, onClose, facilityId, parent, meta, onCreated 
             size="small" label="Name" fullWidth value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
-          <TextField
-            select size="small" label="Space use" fullWidth value={form.space_use}
-            onChange={(e) => setForm({ ...form, space_use: e.target.value })}
-            helperText="Sets criticality, which drives the response clock"
-          >
-            <MenuItem value="">—</MenuItem>
-            {(meta?.space_uses || []).map((u: any) => (
-              <MenuItem key={u.value} value={u.value}>{u.label}</MenuItem>
-            ))}
-          </TextField>
+          <SpaceUseField
+            label="Space use"
+            value={form.space_use}
+            onChange={(v) => setForm({ ...form, space_use: v })}
+            uses={meta?.space_uses || []}
+          />
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5 }}>

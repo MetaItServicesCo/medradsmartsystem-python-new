@@ -11,7 +11,7 @@
  * already set up with a basement and a ground floor, opened again to add to it.
  */
 import {
-  DEPARTMENTS, generateRows, loadExisting, type ExistingNode,
+  DEPARTMENTS, generateRows, loadExisting, mergeRooms, type ExistingNode,
 } from './wizardModel'
 
 let passed = 0
@@ -130,6 +130,60 @@ check('a fresh building still produces its whole structure', () => {
   const rows = generateRows(floors, B, DEPARTMENTS, {}, loaded.taken)
   assert(rows.map((r) => r.location_type).join() === 'floor,wing,room,room',
     `got ${rows.map((r) => r.location_type).join(', ')}`)
+})
+
+check('editing a preset room type replaces it rather than adding a second', () => {
+  const admin = DEPARTMENTS.find((d) => d.key === 'admin')!
+  const meeting = admin.rooms.find((r) => r.key === 'meeting')!
+  const edited = { ...meeting, contents: [{ fixtureType: 'chair', label: 'Chair', count: 12 }] }
+  const merged = mergeRooms(admin.rooms, [edited])
+  assert(merged.filter((r) => r.key === 'meeting').length === 1,
+    'two "Meeting rooms" would mean two counts for the same rooms')
+  assert(merged.length === admin.rooms.length, `expected ${admin.rooms.length}, got ${merged.length}`)
+  assert(merged.find((r) => r.key === 'meeting')!.contents?.length === 1, 'the edit must win')
+})
+
+check('a conference room arrives with chairs and tables and no beds', () => {
+  const custom = {
+    admin: [{
+      key: 'custom-conf', label: 'Conference rooms', prefix: 'CONF', spaceUse: 'Conference Room',
+      beds: 0,
+      contents: [
+        { fixtureType: 'chair', label: 'Chair', count: 12 },
+        { fixtureType: 'table', label: 'Table', count: 2 },
+        { fixtureType: 'ceiling_speaker', label: 'Ceiling speaker', count: 4,
+          disciplineCode: 'it_low_voltage', prefix: 'CEIL' },
+        { fixtureType: 'whiteboard', label: 'Whiteboard', count: 0 },
+      ],
+    }],
+  }
+  const floors = [{ code: `${B}-00`, name: 'Ground Floor', depts: ['admin'],
+                    counts: { 'admin:custom-conf': 2 } }]
+  const rows = generateRows(floors, B, DEPARTMENTS, custom, new Set())
+  const rooms = rows.filter((r) => r.location_type === 'room')
+  assert(rooms.length === 2, `expected 2 rooms, got ${rooms.length}`)
+  assert(!rows.some((r) => r.location_type === 'bed'), 'a conference room has no beds')
+
+  const items = rooms[0].fixtures ?? []
+  assert(items.map((f) => `${f.fixture_type}x${f.count}`).join() ===
+    'chairx12,tablex2,ceiling_speakerx4', `got ${items.map((f) => f.fixture_type).join(', ')}`)
+  // A catalogue item routes by the catalogue; a custom one carries its trade.
+  assert(items[0].discipline_code === null, 'a catalogued chair needs no trade')
+  const speaker = items.find((f) => f.fixture_type === 'ceiling_speaker')!
+  assert(speaker.discipline_code === 'it_low_voltage' && speaker.code_prefix === 'CEIL',
+    'the custom item must say who maintains it')
+  // Every room of the type gets its own set, not one set shared.
+  assert((rooms[1].fixtures ?? []).length === 3, 'the second room gets its chairs too')
+})
+
+check('a ward room still gets its beds and nothing else', () => {
+  const floors = [{ code: `${B}-01`, name: 'Level 1', depts: ['wards'],
+                    counts: { 'wards:patient': 1 } }]
+  const rows = generateRows(floors, B, DEPARTMENTS, {}, new Set())
+  const room = rows.find((r) => r.location_type === 'room')!
+  assert(room, `no room in ${rows.map((r) => r.location_type).join(', ')}`)
+  assert(rows.filter((r) => r.location_type === 'bed').length === 2, 'patient rooms hold two beds')
+  assert((room.fixtures ?? []).length === 0, 'no invented contents')
 })
 
 console.log(`\n${passed} checks passed`)

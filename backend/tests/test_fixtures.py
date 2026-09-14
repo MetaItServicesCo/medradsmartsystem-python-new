@@ -287,6 +287,22 @@ def test_custom_values_in_a_catalogued_spec_are_kept():
     print("ok  custom and extra spec values are kept alongside the defaults")
 
 
+def test_no_two_fixture_types_share_a_code_prefix():
+    """A code is how a fault is reported out loud, so it has to name one kind of thing.
+
+    SD was once both a supply diffuser and a smoke detector, and DP both a data
+    outlet and a room pressure monitor. In a room with both, "SD-05 is faulty"
+    could send a mechanic to a life-safety device.
+    """
+    from collections import defaultdict
+    seen = defaultdict(list)
+    for key, entry in fixture_catalog.BY_TYPE.items():
+        seen[entry["prefix"]].append(key)
+    shared = {prefix: keys for prefix, keys in seen.items() if len(keys) > 1}
+    assert not shared, f"prefixes used by more than one type: {shared}"
+    print(f"ok  every fixture type has its own code prefix ({len(seen)} prefixes)")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

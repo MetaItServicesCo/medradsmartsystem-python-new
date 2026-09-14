@@ -19,10 +19,11 @@ from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.department import Department
 from app.models.location import (
-    LOCATION_TYPES, SPACE_USES, Criticality, ElectricalBranch, FloorPlan,
+    LOCATION_TYPES, SPACE_USES, Criticality, normalise_space_use, ElectricalBranch, FloorPlan,
     Location, LocationType, OccupancyStatus, SpaceUse,
 )
 from app.models.space_status import SpaceStatus
+from app.services import fixture as fixture_service
 from app.models.user import User
 from app.schemas.location import (
     BulkImportIssue, BulkImportResult, BulkLocationImport, FloorPlan as FloorPlanSchema,
@@ -514,12 +515,9 @@ def bulk_import(
                 message=f"Unknown location type '{row.location_type}'",
             ))
             continue
-        if row.space_use and row.space_use not in SPACE_USES:
-            issues.append(BulkImportIssue(
-                row_index=index, code=row.code, severity="warning",
-                message=f"Unknown space use '{row.space_use}' — imported without it",
-            ))
-            row.space_use = None
+        # A use the list does not have is kept, not dropped with a warning
+        # nobody reads. It carries no rules; the listed ones do.
+        row.space_use = normalise_space_use(row.space_use)
         pending.append((index, row, None))
 
     for index, row, _ in pending:
@@ -595,6 +593,24 @@ def bulk_import(
         location_tree.assign_path(db, location, parent)
         existing[key] = location
         by_code.setdefault(location.code, location)
+
+        # The room's contents, inside the same transaction as the room, so a
+        # conference room never exists without its chairs or the reverse.
+        # A dry run does this too and rolls it back, which is how a bad
+        # fixture type is reported before anything is written.
+        for item in row.fixtures or []:
+            try:
+                fixture_service.bulk_create(
+                    db, location=location, fixture_type=item.fixture_type,
+                    count=max(1, item.count), label=item.label, spec=item.spec,
+                    discipline_code=item.discipline_code, code_prefix=item.code_prefix,
+                    created_by_id=current_user.id,
+                )
+            except ValueError as exc:
+                issues.append(BulkImportIssue(
+                    row_index=index, code=row.code, severity="error",
+                    message=f"{item.fixture_type}: {exc}",
+                ))
 
     has_errors = any(issue.severity == "error" for issue in issues)
     if payload.dry_run or has_errors:

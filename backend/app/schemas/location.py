@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.location import LOCATION_TYPES, SPACE_USES
+from app.models.location import LOCATION_TYPES, SPACE_USES, normalise_space_use
 
 
 class LocationBase(BaseModel):
@@ -34,9 +34,8 @@ class LocationBase(BaseModel):
     @field_validator("space_use")
     @classmethod
     def _known_use(cls, value: Optional[str]) -> Optional[str]:
-        if value is not None and value not in SPACE_USES:
-            raise ValueError(f"Unknown space use '{value}'. Allowed: {', '.join(SPACE_USES)}")
-        return value
+        # Any use is accepted; the listed ones carry rules. See normalise_space_use.
+        return normalise_space_use(value)
 
     @field_validator("code")
     @classmethod
@@ -78,9 +77,7 @@ class LocationUpdate(BaseModel):
     @field_validator("space_use")
     @classmethod
     def _known_use(cls, value: Optional[str]) -> Optional[str]:
-        if value is not None and value not in SPACE_USES:
-            raise ValueError(f"Unknown space use '{value}'")
-        return value
+        return normalise_space_use(value)
 
 
 class LocationMove(BaseModel):
@@ -303,6 +300,24 @@ class BulkLocationRow(BaseModel):
     ceiling_height_ft: Optional[float] = None
     bed_count: Optional[int] = None
     external_ref: Optional[str] = None
+    # What each room contains, created with it in the same transaction:
+    # chairs and a display in a conference room, sockets and gas outlets in a
+    # theatre. Beds are not here — a bed is a space with its own status, and
+    # arrives as a child row of type "bed".
+    fixtures: Optional[List["BulkFixture"]] = None
+
+
+class BulkFixture(BaseModel):
+    fixture_type: str
+    count: int = 1
+    label: Optional[str] = None
+    # Only for a type the catalogue does not know.
+    discipline_code: Optional[str] = None
+    code_prefix: Optional[str] = None
+    spec: Optional[dict] = None
+
+
+BulkLocationRow.model_rebuild()
 
 
 class BulkLocationImport(BaseModel):

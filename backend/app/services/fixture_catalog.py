@@ -151,7 +151,7 @@ MECHANICAL = [
         ],
     },
     {
-        "key": "pressure_monitor", "label": "Room pressure monitor", "prefix": "DP",
+        "key": "pressure_monitor", "label": "Room pressure monitor", "prefix": "RPM",
         # ASHRAE 170 calls for positive pressure in an OR and negative in an
         # AIIR. The differential in inches of water column is the compliance
         # figure, and 0.01 in. w.c. is the usual minimum.
@@ -276,7 +276,7 @@ FIRE = [
         ],
     },
     {
-        "key": "smoke_detector", "label": "Smoke / heat detector", "prefix": "SD",
+        "key": "smoke_detector", "label": "Smoke / heat detector", "prefix": "SMK",
         "spec": [
             _sel("detector_type", "Type",
                  ["photoelectric", "ionization", "heat", "duct", "aspirating"],
@@ -375,6 +375,94 @@ BUILDING = [
     },
 ]
 
+# ── Furniture and room equipment ────────────────────────────────────────────
+# Not MEP, but what a conference room, an office or a waiting area is actually
+# made of, and it breaks: a chair with a failed gas lift, a table with a loose
+# leg, a dead display. Maintained by the building trade unless a site says
+# otherwise; displays sit with IT.
+FURNITURE = [
+    {
+        "key": "chair", "label": "Chair", "prefix": "CHR",
+        "spec": [
+            _sel("chair_type", "Type",
+                 ["task", "conference", "visitor", "stacking", "recliner", "bariatric"],
+                 default="conference"),
+            _bool("height_adjustable", "Height adjustable", default=False),
+            _bool("wipe_clean", "Wipe-clean upholstery", default=True),
+            _num("weight_rating_lb", "Weight rating", "lb", default=300),
+        ],
+    },
+    {
+        "key": "table", "label": "Table", "prefix": "TBL",
+        "spec": [
+            _sel("table_type", "Type",
+                 ["conference", "meeting", "dining", "overbed", "procedure", "side"],
+                 default="conference"),
+            _num("length_in", "Length", "in", default=96),
+            _num("width_in", "Width", "in", default=42),
+            _num("seats", "Seats", None, default=8),
+        ],
+    },
+    {
+        "key": "desk", "label": "Desk / workstation", "prefix": "DSK",
+        "spec": [
+            _sel("desk_type", "Type", ["fixed", "sit-stand", "reception counter", "nurse station"],
+                 default="fixed"),
+            _num("width_in", "Width", "in", default=60),
+        ],
+    },
+    {
+        "key": "cabinet", "label": "Cabinet / storage", "prefix": "CAB",
+        "spec": [
+            _sel("cabinet_type", "Type",
+                 ["filing", "lockable", "medication", "supply", "shelving", "locker"],
+                 default="supply"),
+            _bool("lockable", "Lockable", default=True),
+        ],
+    },
+    {
+        "key": "whiteboard", "label": "Whiteboard / notice board", "prefix": "WB",
+        "spec": [
+            _num("width_in", "Width", "in", default=72),
+            _num("height_in", "Height", "in", default=48),
+        ],
+    },
+    {
+        "key": "privacy_curtain", "label": "Privacy curtain / screen", "prefix": "CUR",
+        "spec": [
+            _sel("curtain_type", "Type", ["ceiling track", "mobile screen", "disposable"],
+                 default="ceiling track"),
+            _num("track_length_ft", "Track length", "ft"),
+        ],
+    },
+    {
+        "key": "stretcher", "label": "Stretcher / trolley", "prefix": "STR",
+        "spec": [
+            _sel("stretcher_type", "Type", ["transport", "procedure", "bariatric"],
+                 default="transport"),
+            _num("weight_rating_lb", "Weight rating", "lb", default=500),
+        ],
+    },
+]
+
+AV_EQUIPMENT = [
+    {
+        "key": "display_screen", "label": "Display screen / TV", "prefix": "DSP",
+        "spec": [
+            _num("size_in", "Screen size", "in", default=65),
+            _sel("mounting", "Mounting", ["wall", "ceiling", "cart", "desk"], default="wall"),
+            _bool("video_conferencing", "Video conferencing", default=False),
+        ],
+    },
+    {
+        "key": "projector", "label": "Projector", "prefix": "PRJ",
+        "spec": [
+            _num("lumens", "Brightness", "lm", default=4000),
+            _sel("mounting", "Mounting", ["ceiling", "table"], default="ceiling"),
+        ],
+    },
+]
+
 # Discipline code -> the types that trade owns. The key is the `code` on the
 # disciplines table, so re-routing a whole trade is a data change.
 CATALOG: dict[str, list[dict]] = {
@@ -383,8 +471,8 @@ CATALOG: dict[str, list[dict]] = {
     "plumbing": PLUMBING,
     "medical_gas": MEDICAL_GAS,
     "fire_life_safety": FIRE,
-    "it_low_voltage": IT_LOW_VOLTAGE,
-    "building_envelope": BUILDING,
+    "it_low_voltage": IT_LOW_VOLTAGE + AV_EQUIPMENT,
+    "building_envelope": BUILDING + FURNITURE,
 }
 
 # Flat lookup: fixture type -> its definition plus the trade that owns it.

@@ -146,6 +146,15 @@ export interface BulkLocationRow {
   ceiling_height_ft?: number | null
   bed_count?: number | null
   external_ref?: string | null
+  /** What the room contains, created as fixtures with it. */
+  fixtures?: Array<{
+    fixture_type: string
+    count: number
+    label?: string | null
+    discipline_code?: string | null
+    code_prefix?: string | null
+    spec?: Record<string, unknown> | null
+  }>
 }
 
 export const fetchLocationMeta = async (): Promise<LocationMeta> => {

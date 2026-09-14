@@ -20,6 +20,7 @@ import {
 import { toast } from 'react-toastify'
 import { updateLocation } from '@/api/locations'
 import { palette } from '@/theme/palette'
+import SpaceUseField from './SpaceUseField'
 
 const humanise = (v?: string | null) =>
   (v || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -150,15 +151,11 @@ export default function SpaceDetail({ detail, meta, canEdit, onDeactivate }: {
                      onChange={(e) => setForm({ ...form, name: e.target.value })} />
 
           {isRoom && (
-            <TextField select size="small" label="What it is used for" value={form.space_use}
-                       onChange={(e) => setForm({ ...form, space_use: e.target.value })}>
-              <MenuItem value="">Not set</MenuItem>
-              {(meta?.space_uses ?? []).map((u: any) => (
-                <MenuItem key={u.value ?? u} value={u.value ?? u}>
-                  {u.label ?? humanise(u)}
-                </MenuItem>
-              ))}
-            </TextField>
+            <SpaceUseField
+              value={form.space_use}
+              onChange={(v) => setForm({ ...form, space_use: v })}
+              uses={meta?.space_uses ?? []}
+            />
           )}
 
           <TextField select size="small" label="How critical" value={form.criticality}

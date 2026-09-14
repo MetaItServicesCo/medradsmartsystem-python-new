@@ -85,6 +85,25 @@ class SpaceUse(str, enum.Enum):
 
 SPACE_USES: tuple[str, ...] = tuple(u.value for u in SpaceUse)
 
+
+def normalise_space_use(value: str | None) -> str | None:
+    """Store a space use in the same shape as the known ones.
+
+    The listed uses are what carry rules — an operating room's air changes,
+    an isolation room's negative pressure, a theatre's power branch — and every
+    check against them is a membership test. A use the list does not have, a
+    conference room, is still worth recording; it simply matches none of them.
+
+    Normalising means typing a known use in plain words still finds its rules:
+    "Operating Room" becomes operating_room rather than a lookalike that
+    silently gets no air-change requirement.
+    """
+    if value is None:
+        return None
+    cleaned = "".join(c if c.isalnum() else "_" for c in value.strip().lower())
+    cleaned = "_".join(part for part in cleaned.split("_") if part)[:48]
+    return cleaned or None
+
 # Spaces where a facilities failure reaches a patient quickly. Used to seed
 # criticality on create so nobody has to remember to set it by hand, and by the
 # SLA calculator when a location carries no explicit criticality of its own.

@@ -15,8 +15,39 @@ export interface RoomKind {
   prefix: string
   spaceUse: string
   type?: string
+  /** Beds are spaces with their own status, so they arrive as child locations. */
   beds?: number
   criticality?: string
+  /**
+   * Everything else each room contains — chairs and a display in a conference
+   * room, sockets and gas outlets in a theatre. Created as fixtures inside the
+   * room, in the same save as the room itself.
+   */
+  contents?: RoomContent[]
+}
+
+export interface RoomContent {
+  /** A catalogue key, or a custom one for something the catalogue lacks. */
+  fixtureType: string
+  label: string
+  count: number
+  /** Only for a custom item: the trade that maintains it, which routes faults. */
+  disciplineCode?: string
+  prefix?: string
+}
+
+/**
+ * A department's room kinds with any edits applied.
+ *
+ * Editing a preset — giving Meeting rooms their chairs — stores the edited kind
+ * under the same key, so it has to replace the preset rather than appear
+ * beside it as a second "Meeting rooms" with its own count.
+ */
+export function mergeRooms(presets: RoomKind[], custom: RoomKind[] = []): RoomKind[] {
+  const overrides = new Map(custom.map((r) => [r.key, r]))
+  const merged = presets.map((r) => overrides.get(r.key) ?? r)
+  const presetKeys = new Set(presets.map((r) => r.key))
+  return [...merged, ...custom.filter((r) => !presetKeys.has(r.key))]
 }
 
 /**
@@ -202,7 +233,7 @@ export function loadExisting(buildingCode: string, children: ExistingNode[]) {
 
         for (const room of (wing.children ?? []).filter((c) => c.location_type !== 'bed')) {
           const prefix = room.code.split('-')[0]
-          let kind = [...dept.rooms, ...(customRooms[dept.key] ?? [])]
+          let kind = mergeRooms(dept.rooms, customRooms[dept.key])
             .find((r) => r.prefix === prefix)
           if (!kind) {
             kind = {
@@ -309,7 +340,7 @@ export function generateRows(
           used.add(deptCode)
         }
 
-        for (const room of [...dept.rooms, ...(customRooms[dept.key] ?? [])]) {
+        for (const room of mergeRooms(dept.rooms, customRooms[dept.key])) {
           const key = `${deptKey}:${room.key}`
           const have = floor.existingCounts?.[key] ?? 0
           const want = floor.counts[key] ?? 0
@@ -329,6 +360,14 @@ export function generateRows(
               space_use: room.spaceUse,
               criticality: room.criticality ?? null,
               bed_count: room.beds ?? null,
+              fixtures: (room.contents ?? [])
+                .filter((c) => c.count > 0 && c.fixtureType)
+                .map((c) => ({
+                  fixture_type: c.fixtureType,
+                  count: c.count,
+                  discipline_code: c.disciplineCode ?? null,
+                  code_prefix: c.prefix ?? null,
+                })),
             } as BulkLocationRow)
             for (let b = 0; b < (room.beds ?? 0); b += 1) {
               out.push({
