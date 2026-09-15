@@ -55,7 +55,8 @@ TODAY = date.today()
 NOW = datetime.utcnow()
 
 SEED_DISCIPLINES = (
-    ("mechanical", "Mechanical / HVAC", "#0EA5E9", "Air handling, chillers, boilers, exhaust, controls", 10),
+    ("mechanical", "Mechanical", "#0EA5E9", "Lifts, boilers, compressors, vacuum pumps, medical gas, fire pumps", 10),
+    ("hvac", "HVAC", "#14B8A6", "Chillers, air handling, fan coils, AC units, cooling towers, exhaust", 15),
     ("electrical", "Electrical", "#F59E0B", "Distribution, panels, generators, transfer switches, lighting", 20),
     ("plumbing", "Plumbing", "#3B82F6", "Domestic water, sanitary, storm, backflow, water heaters", 30),
     ("vertical_transport", "Vertical Transport", "#8B5CF6", "Elevators, escalators, dumbwaiters, lifts", 40),

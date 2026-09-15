@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Boolean, JSON, Index
+from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Boolean, JSON, Index
 
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -208,6 +208,7 @@ class WorkOrderType(str, enum.Enum):
     PROJECT = "project"              # capital or improvement work
     SAFETY = "safety"                # hazard or life-safety deficiency
     UTILITY_SHUTDOWN = "utility_shutdown"   # planned outage with an impact list
+    INSPECTION = "inspection"        # checking equipment, recorded as pass or fail
 
 
 # Work order types that are internal plant work and are not billed through the
@@ -219,6 +220,7 @@ NON_BILLABLE_TYPES: frozenset[str] = frozenset({
     WorkOrderType.ROUNDS.value,
     WorkOrderType.SAFETY.value,
     WorkOrderType.UTILITY_SHUTDOWN.value,
+    WorkOrderType.INSPECTION.value,
 })
 
 class ServiceRequestStatus(str, enum.Enum):
@@ -324,6 +326,16 @@ class ServiceRequest(Base):
     # of the link lives on SpaceStatus.work_order_id; this side is what lets a
     # technician closing a job be asked whether the space comes back with it.
     takes_space_out_of_service = Column(Boolean, nullable=False, default=False)
+
+    # ── Equipment maintenance ───────────────────────────────────────────────
+    # Service and inspection jobs raised on a category's equipment. They are
+    # planned, so they carry a due date rather than a response clock. Result
+    # and findings are recorded on inspections only. See
+    # app/services/equipment_jobs.py.
+    due_on = Column(Date, nullable=True, index=True)
+    notes = Column(Text, nullable=True)
+    inspection_result = Column(String(8), nullable=True)
+    findings = Column(Text, nullable=True)
 
     # Relationships
     facility = relationship("Facility", back_populates="service_requests")

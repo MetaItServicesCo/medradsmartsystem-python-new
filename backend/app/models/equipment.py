@@ -63,6 +63,19 @@ class Equipment(Base):
         from app.services.asset_catalog import label_for
         return label_for(self.asset_type) or None
 
+    # ── Site categories ─────────────────────────────────────────────────────
+    # The simple register: a site's Electrical, Plumbing, Mechanical and HVAC
+    # equipment, each with where exactly it is. A name is what marks an asset
+    # as entered there; the older registration paths never set one. The exact
+    # spot within the floor goes in the legacy `location` text below. See
+    # app/services/site_categories.py.
+    name = Column(String(160), nullable=True, index=True)
+    equipment_type = Column(String(80), nullable=True)
+    quantity = Column(Integer, nullable=False, default=1, server_default="1")
+    building = Column(String(120), nullable=True)
+    floor = Column(String(80), nullable=True)
+    condition = Column(String(24), nullable=True)
+
     # Consequence of failure for this asset specifically. Usually inherited from
     # the space it serves, and overridable: a generator sitting in an unremarkable
     # yard is critical because of what depends on it, not because of where it is.

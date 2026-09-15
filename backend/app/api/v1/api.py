@@ -39,6 +39,8 @@ from app.api.v1.endpoints import (
     compliance,
     maintenance,
     asset_ledger,
+    site_categories,
+    equipment_maintenance,
 )
 
 api_router = APIRouter()
@@ -91,3 +93,11 @@ api_router.include_router(permits.router, prefix="/permits", tags=["permits"])
 api_router.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
 api_router.include_router(maintenance.router, prefix="/maintenance", tags=["maintenance"])
 api_router.include_router(asset_ledger.router, prefix="/asset-ledger", tags=["asset-ledger"])
+
+# ── Site categories ──────────────────────────────────────────────────────────
+# Electrical, Plumbing, Mechanical and HVAC equipment, and the service and
+# inspection jobs done on it.
+api_router.include_router(site_categories.router, prefix="/site-categories", tags=["site-categories"])
+api_router.include_router(
+    equipment_maintenance.router, prefix="/equipment-maintenance", tags=["equipment-maintenance"],
+)

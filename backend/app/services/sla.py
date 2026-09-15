@@ -77,6 +77,7 @@ _UNCLOCKED_TYPES: frozenset[str] = frozenset({
     WorkOrderType.ROUNDS.value,
     WorkOrderType.PROJECT.value,
     WorkOrderType.UTILITY_SHUTDOWN.value,
+    WorkOrderType.INSPECTION.value,
 })
 
 

@@ -20,7 +20,8 @@ from app.db.base import Base
 # Seeded by the migration. Codes are stable identifiers that routing rules and
 # imports refer to; names are display text an admin may freely rename.
 SEED_DISCIPLINES: tuple[tuple[str, str, str, str], ...] = (
-    ("mechanical",        "Mechanical / HVAC",      "#0EA5E9", "Air handling, chillers, boilers, exhaust, controls"),
+    ("mechanical",        "Mechanical",             "#0EA5E9", "Lifts, boilers, compressors, vacuum pumps, medical gas, fire pumps"),
+    ("hvac",              "HVAC",                   "#14B8A6", "Chillers, air handling, fan coils, AC units, cooling towers, exhaust"),
     ("electrical",        "Electrical",             "#F59E0B", "Distribution, panels, generators, transfer switches, lighting"),
     ("plumbing",          "Plumbing",               "#3B82F6", "Domestic water, sanitary, storm, backflow, water heaters"),
     ("vertical_transport", "Vertical Transport",    "#8B5CF6", "Elevators, escalators, dumbwaiters, lifts"),
