@@ -3,14 +3,10 @@ import { Box, InputBase, Tooltip, Typography } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import BusinessIcon from '@mui/icons-material/Business'
-import BuildIcon from '@mui/icons-material/Build'
-import AssignmentIcon from '@mui/icons-material/Assignment'
 import MapIcon from '@mui/icons-material/Map'
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
 import HandshakeIcon from '@mui/icons-material/Handshake'
-import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
-import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
@@ -34,15 +30,15 @@ import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
-import { CATEGORIES, JOB_KINDS } from '@/config/siteCategories'
+import { CATEGORIES, EQUIPMENT_MAINTENANCE } from '@/config/siteCategories'
 import { palette } from '@/theme/palette'
 
 // Grouped the way somebody running a hospital thinks about it — the
 // building, the work done to it, the things in it — rather than the way a
 // contractor managing many client sites did.
 type ModuleGroup =
-  | 'Overview' | 'Categories' | 'Equipment Maintenance'
-  | 'The Building' | 'Maintenance' | 'Assets'
+  | 'Overview' | 'Facility Categories' | 'Equipment Maintenance'
+  | 'The Building' | 'Assets'
   | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
 
 /**
@@ -67,7 +63,7 @@ interface SidebarItem {
 }
 
 const groupOrder: ModuleGroup[] = [
-  'Overview', 'Categories', 'Equipment Maintenance', 'The Building', 'Maintenance', 'Assets',
+  'Overview', 'Facility Categories', 'Equipment Maintenance', 'The Building', 'Assets',
   'Compliance', 'People', 'Commerce', 'Workspace',
 ]
 
@@ -78,20 +74,18 @@ const allMenuItems: SidebarItem[] = [
   // it is where the work of a site now starts.
   ...CATEGORIES.map((category): SidebarItem => ({
     text: category.name, description: `${category.name} equipment and where it is`,
-    icon: category.icon, path: category.path, module: 'facility-inventory', group: 'Categories',
+    icon: category.icon, path: category.path, module: 'facility-inventory', group: 'Facility Categories',
   })),
-  ...JOB_KINDS.map((kind): SidebarItem => ({
-    text: kind.name, description: kind.kind === 'service' ? 'Service jobs on equipment' : 'Inspections, pass or fail',
-    icon: kind.icon, path: kind.path, module: 'service-requests', group: 'Equipment Maintenance',
+  // Service and Inspection replace Work Orders and the older Inspections
+  // module in the menu; those pages still open from links.
+  ...EQUIPMENT_MAINTENANCE.map((link): SidebarItem => ({
+    text: link.name, description: link.description,
+    icon: link.icon, path: link.path, module: link.module, group: 'Equipment Maintenance',
   })),
-  { text: 'Work Orders', description: 'Service requests and work orders', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests', group: 'Maintenance' },
-  { text: 'Inspections', description: 'Schedules, batches, and reports', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections', group: 'Maintenance' },
   { text: 'Buildings & Rooms', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'The Building' },
   { text: 'Beds & Theatres', description: 'Availability and capacity lost', icon: <MeetingRoomIcon />, path: '/spaces', module: 'spaces', group: 'The Building' },
   { text: 'Contractors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Compliance' },
-  { text: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />, path: '/permits', module: 'permits', group: 'Maintenance' },
   { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
-  { text: 'Maintenance Plans', description: 'Recurring calendar and runtime work', icon: <EventRepeatIcon />, path: '/maintenance', module: 'maintenance', group: 'Maintenance' },
   { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Assets' },
   { text: 'Assets & Value', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Assets' },
   {

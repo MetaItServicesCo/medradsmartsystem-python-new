@@ -1,6 +1,7 @@
 /**
- * One hospital's page: its four categories, the maintenance on their
- * equipment, and compliance.
+ * One hospital's page: its Facility Categories and what their equipment is
+ * worth, Equipment Maintenance (service, inspection, plans, permits), and
+ * compliance.
  *
  * Opening a site sets it as the working context, so every other screen is
  * already scoped by the time you leave this page. Each tile says how much is
@@ -16,9 +17,11 @@ import {
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import { fetchFacility, fetchSiteOverview } from '@/api/facilities'
-import { fetchCategoryOverview, fetchMaintenanceSummary, type CategorySummary } from '@/api/siteCategories'
+import {
+  fetchCategoryOverview, fetchMaintenanceSummary, formatMoney, type CategorySummary, type MaintenanceSummary,
+} from '@/api/siteCategories'
 import { hasPermission } from '@/config/permissions'
-import { CATEGORIES, JOB_KINDS } from '@/config/siteCategories'
+import { CATEGORIES, CATEGORIES_LABEL, EQUIPMENT_MAINTENANCE } from '@/config/siteCategories'
 import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
@@ -40,7 +43,8 @@ export default function SiteDashboard() {
   const [panel, setPanel] = useState<'details' | 'people' | 'departments' | null>(null)
 
   const showCategories = hasPermission(user, 'facility-inventory', 'index')
-  const showMaintenance = hasPermission(user, 'service-requests', 'index')
+  const maintenanceLinks = EQUIPMENT_MAINTENANCE.filter((link) => hasPermission(user, link.module, 'index'))
+  const showMaintenance = maintenanceLinks.length > 0
   const showCompliance = hasPermission(user, 'compliance', 'index')
 
   // Arriving here by link or refresh has to set the context too, not only
@@ -62,7 +66,7 @@ export default function SiteDashboard() {
   const maintenance = useQuery({
     queryKey: ['maintenance-summary', siteId],
     queryFn: () => fetchMaintenanceSummary(siteId),
-    enabled: !!siteId && showMaintenance,
+    enabled: !!siteId && hasPermission(user, 'service-requests', 'index'),
   })
   const overview = useQuery({
     queryKey: ['site-overview', siteId],
@@ -117,7 +121,7 @@ export default function SiteDashboard() {
       </Stack>
 
       {showCategories && (
-        <Section title="Categories">
+        <Section title={CATEGORIES_LABEL}>
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
             {CATEGORIES.map((meta) => (
               <CategoryTile
@@ -132,19 +136,12 @@ export default function SiteDashboard() {
 
       {showMaintenance && (
         <Section title="Equipment Maintenance">
-          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
-            {JOB_KINDS.map((meta) => {
-              const counts = maintenance.data?.[meta.kind]
-              const facts = counts ? [
-                { text: counts.open ? `${plural(counts.open, 'open job')}` : 'Nothing open', tone: 'plain' as const },
-                ...(counts.overdue ? [{ text: `${counts.overdue} overdue`, tone: 'danger' as const }] : []),
-                ...(counts.failed ? [{ text: `${counts.failed} failed`, tone: 'danger' as const }] : []),
-              ] : []
-              return (
-                <Tile key={meta.kind} onClick={() => navigate(meta.path)} loading={maintenance.isLoading}
-                      icon={meta.icon} colour={palette.brand} title={meta.name} facts={facts} />
-              )
-            })}
+          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
+            {maintenanceLinks.map((link) => (
+              <Tile key={link.path} onClick={() => navigate(link.path)} loading={maintenance.isLoading}
+                    icon={link.icon} colour={palette.brand} title={link.name}
+                    facts={maintenanceFacts(link.path, maintenance.data)} />
+            ))}
           </Box>
         </Section>
       )}
@@ -193,6 +190,35 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 type Fact = { text: string; tone: 'plain' | 'good' | 'warning' | 'danger' }
 
+/** The lines on each Equipment Maintenance tile. */
+function maintenanceFacts(path: string, summary?: MaintenanceSummary): Fact[] {
+  if (!summary) return []
+  const jobs = path.endsWith('/service') ? summary.service : path.endsWith('/inspection') ? summary.inspection : null
+  if (jobs) {
+    return [
+      { text: jobs.open ? plural(jobs.open, 'open job') : 'Nothing open', tone: 'plain' },
+      ...(jobs.overdue ? [{ text: `${jobs.overdue} overdue`, tone: 'danger' as const }] : []),
+      ...(jobs.failed ? [{ text: `${jobs.failed} failed`, tone: 'danger' as const }] : []),
+    ]
+  }
+  if (path === '/maintenance' && summary.plans) {
+    const { active, overdue, due_in_30_days: soon } = summary.plans
+    return [
+      { text: active ? plural(active, 'active plan') : 'No plans yet', tone: 'plain' },
+      ...(overdue ? [{ text: `${overdue} overdue`, tone: 'danger' as const }] : []),
+      ...(soon ? [{ text: `${soon} due in 30 days`, tone: 'plain' as const }] : []),
+    ]
+  }
+  if (path === '/permits' && summary.permits) {
+    const { active, awaiting_approval: waiting } = summary.permits
+    return [
+      { text: active ? `${active} in force` : 'None in force', tone: 'plain' },
+      ...(waiting ? [{ text: `${waiting} awaiting approval`, tone: 'warning' as const }] : []),
+    ]
+  }
+  return []
+}
+
 const TONE: Record<Fact['tone'], string> = {
   plain: palette.textMuted,
   good: palette.success,
@@ -228,7 +254,10 @@ function CategoryTile({ name, icon, colour, summary, loading, onClick }: {
   return (
     <Tile
       onClick={onClick} loading={loading} icon={icon} colour={colour} title={name}
-      figure={summary ? plural(summary.equipment, 'item') : undefined} facts={facts}
+      figure={summary
+        ? `${plural(summary.equipment, 'item')}${summary.valued_equipment ? ` · ${formatMoney(summary.book_value)} value` : ''}`
+        : undefined}
+      facts={facts}
     />
   )
 }

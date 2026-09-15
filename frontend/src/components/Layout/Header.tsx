@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
   Box, Avatar, Badge, IconButton, Typography,
-  Menu, MenuItem, ListItemIcon, Divider, Button, CircularProgress
+  Menu, MenuItem, ListItemIcon, Divider, Button, CircularProgress, Tooltip,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded'
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone'
 import LogoutIcon from '@mui/icons-material/Logout'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
@@ -11,7 +12,8 @@ import { useAuthStore } from '@/stores/authStore'
 import { fetchCurrentUser, resolveUploadUrl } from '@/api/users'
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead, type NotificationItem } from '@/api/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useFacilityStore } from '@/hooks/useActiveFacility'
 import RecentActivityMenu from '../RecentActivityMenu'
 import { palette } from '@/theme/palette'
 
@@ -19,11 +21,36 @@ interface HeaderProps {
   title: string
 }
 
+/**
+ * Where Back goes when there is no earlier screen in this tab to return to:
+ * a bookmark, a refresh, a link from a notification. One level up, and a
+ * site's own sections go up to the site's page.
+ */
+function parentPath(pathname: string, siteId: number | null): string {
+  const sitePage = siteId ? `/sites/${siteId}` : '/sites'
+  const parts = pathname.split('/').filter(Boolean)
+  if (parts[0] === 'sites') return parts.length > 1 ? '/sites' : sitePage
+  if (parts.length > 1 && !['categories', 'equipment-maintenance'].includes(parts[0])) {
+    return `/${parts.slice(0, -1).join('/')}`
+  }
+  return sitePage
+}
+
 const Header = ({ title }: HeaderProps) => {
   const user = useAuthStore((s) => s.user)
   const setUser = useAuthStore((s) => s.setUser)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const siteId = useFacilityStore((s) => s.facilityId)
+
+  // React Router numbers the entries it pushes; 0 means this screen is the
+  // first one opened in the tab, so the browser's back would leave the app.
+  const goBack = () => {
+    const index = (window.history.state as { idx?: number } | null)?.idx ?? 0
+    if (index > 0) navigate(-1)
+    else navigate(parentPath(pathname, siteId), { replace: true })
+  }
   const queryClient = useQueryClient()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [notificationAnchorEl, setNotificationAnchorEl] = useState<null | HTMLElement>(null)
@@ -126,6 +153,22 @@ const Header = ({ title }: HeaderProps) => {
         zIndex: 5,
       }}
     >
+      {/* Back to the previous screen, on every screen but the site list. */}
+      {pathname !== '/sites' && (
+        <Tooltip title="Back">
+          <IconButton
+            aria-label="Back" onClick={goBack}
+            sx={{
+              width: { xs: 36, sm: 42 }, height: { xs: 36, sm: 42 }, flexShrink: 0,
+              bgcolor: '#fff', borderRadius: '14px', border: '1px solid #E8ECF4', color: palette.ink,
+              '&:hover': { bgcolor: '#f0fffb' },
+            }}
+          >
+            <ArrowBackRoundedIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
+          </IconButton>
+        </Tooltip>
+      )}
+
       {/* Page title */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography noWrap variant="h5" sx={{ fontWeight: 900, color: palette.ink, lineHeight: 1.2, letterSpacing: '-0.5px', fontSize: { xs: '1rem', sm: '1.5rem' } }}>

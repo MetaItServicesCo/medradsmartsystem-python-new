@@ -18,13 +18,17 @@ import {
 import BuildIcon from '@mui/icons-material/Build'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
 import OpenWithIcon from '@mui/icons-material/OpenWith'
+import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { fetchAssetLedger } from '@/api/assetLedger'
-import { fetchTechnicianCandidates } from '@/api/disciplines'
+import { fetchDisciplines, fetchTechnicianCandidates } from '@/api/disciplines'
+import { CATEGORIES, CATEGORIES_LABEL } from '@/config/siteCategories'
+import AdoptDialog from '../Categories/AdoptDialog'
 import { createSchedule, fetchSchedules } from '@/api/maintenance'
 import { createServiceRequest, fetchServiceRequests } from '@/api/serviceRequests'
 import { palette } from '@/theme/palette'
-import { assetTitle } from './assetTitle'
+import { assetTitle, typedPlace } from './assetTitle'
 import { MoveAssetDialog, ServesPanel } from './AssetPlacement'
 
 const humanise = (v?: string | null) =>
@@ -39,10 +43,18 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
   placeName: Record<number, string>
   canEdit: boolean
 }) {
+  const navigate = useNavigate()
   const [tab, setTab] = useState(0)
   const [serviceOpen, setServiceOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [moveOpen, setMoveOpen] = useState(false)
+  const [adoptOpen, setAdoptOpen] = useState(false)
+
+  const { data: disciplines } = useQuery({
+    queryKey: ['disciplines'], queryFn: fetchDisciplines, staleTime: 30 * 60_000,
+  })
+  const tradeCode = disciplines?.items.find((d) => d.id === asset.discipline_id)?.code
+  const categoryCode = CATEGORIES.find((c) => c.code === tradeCode)?.code
 
   const { data: schedules } = useQuery({
     queryKey: ['schedules', 'asset', asset.id],
@@ -81,8 +93,26 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
               {tradeName[asset.discipline_id] || 'Clinical equipment'}
               {asset.location_id && placeName[asset.location_id]
                 ? ` · ${placeName[asset.location_id]}`
-                : asset.location ? ` · ${asset.location}` : ''}
+                : typedPlace(asset) ? ` · ${typedPlace(asset)}`
+                  : asset.location ? ` · ${asset.location}` : ''}
             </Typography>
+            {/* One record, two views: equipment in a Facility Category opens there,
+                and anything else can be added to one. */}
+            {asset.name && categoryCode ? (
+              <Button
+                size="small" startIcon={<CategoryOutlinedIcon />} onClick={() => navigate(`/categories/${categoryCode}`)}
+                sx={{ mt: 0.5, ml: -0.75, fontWeight: 800, textTransform: 'none', color: palette.brand }}
+              >
+                Open in {CATEGORIES_LABEL}
+              </Button>
+            ) : !asset.name && canEdit ? (
+              <Button
+                size="small" startIcon={<CategoryOutlinedIcon />} onClick={() => setAdoptOpen(true)}
+                sx={{ mt: 0.5, ml: -0.75, fontWeight: 800, textTransform: 'none', color: palette.brand }}
+              >
+                Add to a category
+              </Button>
+            ) : null}
           </Box>
 
           {canEdit && (
@@ -245,6 +275,7 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
         <SchedulePlanDialog asset={asset} onClose={() => setPlanOpen(false)} />
       )}
       {moveOpen && <MoveAssetDialog asset={asset} onClose={() => setMoveOpen(false)} />}
+      {adoptOpen && <AdoptDialog asset={asset} tradeCode={tradeCode} onClose={() => setAdoptOpen(false)} />}
     </Box>
   )
 }

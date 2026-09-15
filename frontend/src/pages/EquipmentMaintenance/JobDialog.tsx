@@ -11,13 +11,13 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField,
-  ToggleButton, ToggleButtonGroup, Typography,
+  Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, InputAdornment,
+  MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material'
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined'
 import { toast } from 'react-toastify'
 import {
-  createEquipmentJob, deleteEquipmentJob, errorMessage, fetchAssignees, fetchCategoryEquipment,
+  createEquipmentJob, deleteEquipmentJob, errorMessage, fetchAssignees, fetchCategoryEquipment, formatMoney,
   updateEquipmentJob, type CategoryCode, type EquipmentJob, type InspectionResult, type JobKind, type JobStatus,
 } from '@/api/siteCategories'
 import { CATEGORIES } from '@/config/siteCategories'
@@ -55,7 +55,13 @@ export default function JobDialog({
   const [notes, setNotes] = useState(job?.notes ?? '')
   const [result, setResult] = useState<InspectionResult | null>(job?.inspection_result ?? null)
   const [findings, setFindings] = useState(job?.findings ?? '')
+  const [labour, setLabour] = useState(job?.labour_cost != null ? String(Number(job.labour_cost)) : '')
+  const [parts, setParts] = useState(job?.parts_cost != null ? String(Number(job.parts_cost)) : '')
+  const [majorWork, setMajorWork] = useState(Boolean(job?.is_major_work))
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const amount = (value: string) => (value === '' ? null : Number(value))
+  const costValid = [labour, parts].every((v) => v === '' || Number(v) >= 0)
+  const jobTotal = labour === '' && parts === '' ? null : (Number(labour) || 0) + (Number(parts) || 0)
 
   const { data: equipment } = useQuery({
     queryKey: ['category-equipment', facilityId, category, 'picker'],
@@ -80,6 +86,9 @@ export default function JobDialog({
     queryClient.invalidateQueries({ queryKey: ['maintenance-summary'] })
     queryClient.invalidateQueries({ queryKey: ['category-equipment'] })
     queryClient.invalidateQueries({ queryKey: ['category-overview'] })
+    // Job costs and major work change the equipment's value.
+    queryClient.invalidateQueries({ queryKey: ['asset-ledger'] })
+    queryClient.invalidateQueries({ queryKey: ['equipment'] })
   }
 
   const save = useMutation({
@@ -89,6 +98,8 @@ export default function JobDialog({
         notes: notes.trim() || null,
         inspection_result: kind === 'inspection' ? result : null,
         findings: kind === 'inspection' ? (findings.trim() || null) : null,
+        labour_cost: amount(labour),
+        parts_cost: amount(parts),
       }
       if (planLocked) return updateEquipmentJob(job!.id, progress)
       const payload = {
@@ -97,6 +108,7 @@ export default function JobDialog({
         title: title.trim(),
         due_on: dueOn || null,
         assigned_to_id: assignee === '' ? null : assignee,
+        is_major_work: kind === 'service' ? majorWork : false,
       }
       return job ? updateEquipmentJob(job.id, payload) : createEquipmentJob(facilityId, kind, payload)
     },
@@ -233,6 +245,51 @@ export default function JobDialog({
           </>
         )}
 
+        <Typography sx={{ mt: 2.25, mb: 1, fontSize: 11, fontWeight: 900, letterSpacing: 0.5,
+                          textTransform: 'uppercase', color: palette.textSubtle }}>
+          Cost
+        </Typography>
+        <Box sx={{ display: 'grid', gap: 1.75, gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, alignItems: 'center' }}>
+          <TextField
+            size="small" type="number" label="Labour" value={labour} disabled={readOnly}
+            onChange={(e) => setLabour(e.target.value)} inputProps={{ min: 0, step: '0.01' }}
+            InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+          />
+          <TextField
+            size="small" type="number" label="Parts" value={parts} disabled={readOnly}
+            onChange={(e) => setParts(e.target.value)} inputProps={{ min: 0, step: '0.01' }}
+            InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+          />
+          <Typography sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' }, fontSize: 13, fontWeight: 700, color: palette.textMuted }}>
+            Total{' '}
+            <Box component="span" sx={{ fontWeight: 900, color: palette.ink }}>{formatMoney(jobTotal)}</Box>
+          </Typography>
+        </Box>
+        {kind === 'service' && (
+          <FormControlLabel
+            sx={{ mt: 1, alignItems: 'flex-start', mr: 0 }}
+            disabled={readOnly || technician}
+            control={<Checkbox size="small" checked={majorWork} onChange={(e) => setMajorWork(e.target.checked)} sx={{ mt: -0.5 }} />}
+            label={
+              <Box>
+                <Typography sx={{ fontSize: 13.5, fontWeight: 800, color: palette.ink }}>
+                  Major work that extends its life
+                </Typography>
+                <Typography sx={{ fontSize: 12, color: palette.textMuted, fontWeight: 600 }}>
+                  {majorWork
+                    ? `When done, adds ${formatMoney(jobTotal)} to the equipment's value, depreciated over its remaining life.`
+                    : 'Leave unticked for routine work: its cost counts as maintenance spend and does not change the value.'}
+                </Typography>
+              </Box>
+            }
+          />
+        )}
+        {kind === 'inspection' && (
+          <Typography sx={{ mt: 0.75, fontSize: 12, color: palette.textMuted, fontWeight: 600 }}>
+            Counted as maintenance spend when the inspection is done.
+          </Typography>
+        )}
+
         <TextField
           sx={{ mt: 1.75 }} fullWidth size="small" multiline minRows={2} disabled={readOnly}
           label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)}
@@ -260,7 +317,7 @@ export default function JobDialog({
         </Button>
         {!readOnly && (
           <Button
-            variant="contained" disabled={(!planLocked && !ready) || save.isPending} onClick={() => save.mutate()}
+            variant="contained" disabled={(!planLocked && !ready) || !costValid || save.isPending} onClick={() => save.mutate()}
             sx={{ fontWeight: 900, borderRadius: '10px', bgcolor: palette.brand, '&:hover': { bgcolor: palette.brandDeep },
                   '&.Mui-disabled': { bgcolor: palette.surfaceMuted, color: palette.textFaint } }}
           >

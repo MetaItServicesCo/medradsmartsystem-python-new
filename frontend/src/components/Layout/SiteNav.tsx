@@ -1,6 +1,7 @@
 /**
- * The site you are in, and its three places to work: Categories, Equipment
- * Maintenance and Compliance.
+ * The site you are in, and its three places to work: Facility Categories,
+ * Equipment Maintenance (Service, Inspection, Maintenance Plans, Permits to
+ * Work) and Compliance.
  *
  * Always under the header once a site is open, so getting from a generator to
  * its service jobs is one click from anywhere rather than a trip through the
@@ -15,7 +16,7 @@ import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import { fetchCategoryOverview } from '@/api/siteCategories'
 import { hasPermission } from '@/config/permissions'
-import { CATEGORIES, JOB_KINDS } from '@/config/siteCategories'
+import { CATEGORIES, CATEGORIES_LABEL, EQUIPMENT_MAINTENANCE } from '@/config/siteCategories'
 import { useActiveFacility, useFacilityStore } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
@@ -31,8 +32,11 @@ export default function SiteNav() {
   const [anchor, setAnchor] = useState<{ name: MenuName; el: HTMLElement } | null>(null)
 
   const showCategories = hasPermission(user, 'facility-inventory', 'index')
-  const showMaintenance = hasPermission(user, 'service-requests', 'index')
+  const maintenanceLinks = EQUIPMENT_MAINTENANCE.filter((link) => hasPermission(user, link.module, 'index'))
+  const showMaintenance = maintenanceLinks.length > 0
   const showCompliance = hasPermission(user, 'compliance', 'index')
+  const inMaintenance = ['/equipment-maintenance', '/maintenance', '/permits']
+    .some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 
   const { data: overview } = useQuery({
     queryKey: ['category-overview', storedSite],
@@ -87,7 +91,7 @@ export default function SiteNav() {
           onClick={(e) => setAnchor({ name: 'categories', el: e.currentTarget })}
           sx={tabSx(pathname.startsWith('/categories'))}
         >
-          Categories
+          {CATEGORIES_LABEL}
         </Button>
       )}
       {showMaintenance && (
@@ -95,7 +99,7 @@ export default function SiteNav() {
           endIcon={<KeyboardArrowDownRoundedIcon />}
           aria-haspopup="menu" aria-expanded={anchor?.name === 'maintenance'}
           onClick={(e) => setAnchor({ name: 'maintenance', el: e.currentTarget })}
-          sx={tabSx(pathname.startsWith('/equipment-maintenance'))}
+          sx={tabSx(inMaintenance)}
         >
           Equipment Maintenance
         </Button>
@@ -138,10 +142,12 @@ export default function SiteNav() {
         anchorEl={anchor?.el} open={anchor?.name === 'maintenance'} onClose={() => setAnchor(null)}
         PaperProps={{ sx: { borderRadius: '14px', minWidth: 220, mt: 0.5 } }}
       >
-        {JOB_KINDS.map((k) => (
-          <MenuItem key={k.kind} selected={pathname === k.path} onClick={() => go(k.path)} sx={{ py: 1 }}>
-            <ListItemIcon sx={{ color: palette.brand }}>{k.icon}</ListItemIcon>
-            <ListItemText primary={k.name} primaryTypographyProps={{ fontWeight: 800, fontSize: 14 }} />
+        {maintenanceLinks.map((link) => (
+          <MenuItem key={link.path} selected={pathname.startsWith(link.path)} onClick={() => go(link.path)} sx={{ py: 1 }}>
+            <ListItemIcon sx={{ color: palette.brand }}>{link.icon}</ListItemIcon>
+            <ListItemText primary={link.name} secondary={link.description}
+                          primaryTypographyProps={{ fontWeight: 800, fontSize: 14 }}
+                          secondaryTypographyProps={{ fontSize: 12 }} />
           </MenuItem>
         ))}
       </Menu>

@@ -67,6 +67,15 @@ export interface EquipmentItem {
   criticality?: string | null
   asset_type?: string | null
   type_label?: string | null
+
+  // Set on equipment in the Facility Categories: known by name, and where
+  // exactly it is. `location` holds the room or exact spot.
+  name?: string | null
+  equipment_type?: string | null
+  quantity?: number | null
+  building?: string | null
+  floor?: string | null
+  condition?: string | null
 }
 
 export interface EquipmentCreate {

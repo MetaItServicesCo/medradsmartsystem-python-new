@@ -11,16 +11,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Box, Button, Chip, CircularProgress, InputAdornment, MenuItem, Stack, TextField, Typography,
+  Box, Button, Chip, CircularProgress, IconButton, InputAdornment, MenuItem, Stack, TextField, Tooltip,
+  Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined'
+import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined'
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
 import {
-  fetchCategoryEquipment, fetchPlaceSuggestions, type CategoryCode, type CategoryEquipment, type Condition,
+  fetchCategoryEquipment, fetchPlaceSuggestions, formatMoney, type CategoryCode, type CategoryEquipment,
+  type Condition,
 } from '@/api/siteCategories'
 import { hasPermission } from '@/config/permissions'
-import { CATEGORY_BY_CODE, CATEGORIES, CONDITION_STYLE } from '@/config/siteCategories'
+import { CATEGORY_BY_CODE, CATEGORIES, CATEGORIES_LABEL, CONDITION_STYLE } from '@/config/siteCategories'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
@@ -90,6 +94,9 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
             {meta.icon}
           </Box>
           <Box sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.5, textTransform: 'uppercase', color: palette.textSubtle }}>
+              {CATEGORIES_LABEL}
+            </Typography>
             <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink, lineHeight: 1.15 }}>{meta.name}</Typography>
             <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>
               {facility?.name ?? 'This site'} · {list.data ? `${list.data.total} item${list.data.total === 1 ? '' : 's'}` : '…'}
@@ -140,7 +147,7 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
         {/* Column headings, on screens wide enough for columns. */}
         <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: COLUMNS, gap: 2, px: 2, py: 1,
                    borderTop: `1px solid ${palette.borderSoft}`, bgcolor: palette.surfaceFaint }}>
-          {['Equipment', 'Where', 'Qty', 'Status', 'Next service'].map((h) => (
+          {['Equipment', 'Where', 'Qty', 'Status', 'Book value', 'Next service', ''].map((h) => (
             <Typography key={h} sx={{ fontSize: 11, fontWeight: 900, letterSpacing: 0.4, textTransform: 'uppercase',
                                       color: palette.textSubtle }}>
               {h}
@@ -175,7 +182,10 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
         )}
 
         {items.map((item) => (
-          <EquipmentRow key={item.id} item={item} onOpen={canEdit ? () => setEditing(item) : undefined} />
+          <EquipmentRow
+            key={item.id} item={item} onOpen={canEdit ? () => setEditing(item) : undefined}
+            onValue={() => navigate(`/assets?asset=${item.id}`)}
+          />
         ))}
       </Box>
 
@@ -193,6 +203,7 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
       {(adding || editing) && facilityId && (
         <EquipmentDialog
           facilityId={facilityId} category={code} types={types} item={editing}
+          defaultLife={list.data?.category.default_useful_life_years ?? 20}
           canDelete={canDelete}
           onClose={() => { setAdding(false); setEditing(null) }}
         />
@@ -201,12 +212,17 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
   )
 }
 
-const COLUMNS = 'minmax(0, 2.2fr) minmax(0, 2fr) 60px 150px 150px'
+const COLUMNS = 'minmax(0, 2.1fr) minmax(0, 2fr) 44px 138px 108px 124px 36px'
 
 /** A filter whose empty choice ("All buildings") shows, rather than a bare label. */
 const SHOW_EMPTY ={ SelectProps: { displayEmpty: true }, InputLabelProps: { shrink: true } }
 
-function EquipmentRow({ item, onOpen }: { item: CategoryEquipment; onOpen?: () => void }) {
+function EquipmentRow({ item, onOpen, onValue }: {
+  item: CategoryEquipment
+  onOpen?: () => void
+  /** Open the same record in the Asset Register, where its value history lives. */
+  onValue: () => void
+}) {
   const status = CONDITION_STYLE[item.condition]
   const overdue = isPast(item.next_service_on)
   return (
@@ -222,7 +238,14 @@ function EquipmentRow({ item, onOpen }: { item: CategoryEquipment; onOpen?: () =
       }}
     >
       <Box sx={{ minWidth: 0 }}>
-        <Typography noWrap sx={{ fontWeight: 900, color: palette.ink, fontSize: 14 }}>{item.name}</Typography>
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+          <Typography noWrap sx={{ fontWeight: 900, color: palette.ink, fontSize: 14 }}>{item.name}</Typography>
+          {item.consider_replacing && (
+            <Tooltip title={`Maintenance spend is ${item.spend_percent_of_cost}% of the purchase cost. Consider replacing.`}>
+              <WarningAmberRoundedIcon sx={{ fontSize: 17, color: palette.warningStrong, flexShrink: 0 }} />
+            </Tooltip>
+          )}
+        </Stack>
         <Typography noWrap sx={{ fontSize: 12, color: palette.textMuted, fontWeight: 600 }}>
           {[item.type, item.asset_tag, [item.make, item.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ')}
         </Typography>
@@ -246,6 +269,17 @@ function EquipmentRow({ item, onOpen }: { item: CategoryEquipment; onOpen?: () =
         <Chip size="small" label={status.label}
               sx={{ height: 22, fontSize: 11, fontWeight: 800, bgcolor: status.bg, color: status.color }} />
       </Box>
+      <Box sx={{ minWidth: 0, gridColumn: { xs: '1 / -1', md: 'auto' } }}>
+        <Typography noWrap sx={{ fontSize: 13, fontWeight: 800, color: item.book_value != null ? palette.textStrong : palette.textFaint }}>
+          <Box component="span" sx={{ display: { md: 'none' }, color: palette.textFaint, fontWeight: 600 }}>Book value </Box>
+          {formatMoney(item.book_value)}
+        </Typography>
+        {item.book_value == null && item.purchase_cost != null && (
+          <Typography noWrap sx={{ fontSize: 11, color: palette.textFaint, fontWeight: 700 }}>
+            Cost {formatMoney(item.purchase_cost)}
+          </Typography>
+        )}
+      </Box>
       <Box sx={{ gridColumn: { xs: '1 / -1', md: 'auto' }, minWidth: 0 }}>
         <Typography noWrap sx={{ fontSize: 13, fontWeight: 700, color: overdue ? palette.danger : palette.textStrong }}>
           <Box component="span" sx={{ display: { md: 'none' }, color: palette.textFaint, fontWeight: 600 }}>Next service </Box>
@@ -258,6 +292,15 @@ function EquipmentRow({ item, onOpen }: { item: CategoryEquipment; onOpen?: () =
           </Typography>
         )}
       </Box>
+      <Tooltip title="Asset & value history">
+        <IconButton
+          size="small" aria-label={`Asset and value history for ${item.name}`}
+          onClick={(e) => { e.stopPropagation(); onValue() }}
+          sx={{ display: { xs: 'none', md: 'inline-flex' }, color: palette.brand }}
+        >
+          <AccountBalanceOutlinedIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
     </Box>
   )
 }

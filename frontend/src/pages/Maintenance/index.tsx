@@ -198,7 +198,9 @@ export default function MaintenancePage() {
                     )}
                   </TableCell>
                   <TableCell sx={{ fontSize: 12, color: palette.slate600, fontWeight: 700 }}>
-                    {schedule.equipment_tag || schedule.location_code || '—'}
+                    {schedule.equipment_name
+                      ? `${schedule.equipment_name} · ${schedule.equipment_tag}`
+                      : schedule.equipment_tag || schedule.location_code || '—'}
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={0.5} alignItems="center">
@@ -329,7 +331,9 @@ function NewPlanDialog({ open, onClose, facilityId, meta, onCreated }: {
             <MenuItem value="">—</MenuItem>
             {((equipment as any)?.items || []).map((item: any) => (
               <MenuItem key={item.id} value={item.id}>
-                {item.asset_tag} — {item.make} {item.model}
+                {item.name
+                  ? `${item.name} · ${item.asset_tag}${item.building ? ` · ${item.building}` : ''}`
+                  : `${item.asset_tag} — ${item.make} ${item.model}`}
               </MenuItem>
             ))}
           </TextField>

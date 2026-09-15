@@ -33,7 +33,7 @@ const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
   cancelled: { color: palette.textMuted, bg: palette.surfaceMuted },
 }
 
-const COLUMNS = 'minmax(0, 2fr) minmax(0, 2.2fr) 120px 140px 150px'
+const COLUMNS = 'minmax(0, 2fr) minmax(0, 2.2fr) 120px 140px 190px'
 
 export default function EquipmentMaintenancePage() {
   const { kind } = useParams()
@@ -253,6 +253,10 @@ function StatusChips({ job, style, sx }: { job: EquipmentJob; style: { color: st
     <Stack direction="row" spacing={0.5} sx={sx}>
       <Chip size="small" label={job.status_label}
             sx={{ height: 22, fontSize: 11, fontWeight: 800, bgcolor: style.bg, color: style.color }} />
+      {job.is_major_work && (
+        <Chip size="small" label="Major work"
+              sx={{ height: 22, fontSize: 11, fontWeight: 800, bgcolor: palette.violetTint, color: palette.violet }} />
+      )}
       {job.inspection_result && (
         <Chip size="small" label={job.inspection_result === 'pass' ? 'Pass' : 'Fail'}
               sx={{ height: 22, fontSize: 11, fontWeight: 800,

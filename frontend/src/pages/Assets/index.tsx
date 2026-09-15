@@ -39,7 +39,7 @@ import { palette } from '@/theme/palette'
 import AssetDetail from './AssetDetail'
 import AddAssetDialog from './AddAssetDialog'
 import BulkEditDialog from './BulkEditDialog'
-import { assetTitle } from './assetTitle'
+import { assetTitle, typedPlace } from './assetTitle'
 import { PlacePicker } from './PlacePicker'
 
 const CRITICALITY_STYLE: Record<string, { bg: string; color: string }> = {
@@ -386,6 +386,14 @@ export default function AssetsPage() {
                           label={where}
                           onClick={(e) => { e.stopPropagation(); setRoomId(a.location_id ?? null) }}
                           sx={{ height: 19, fontSize: 10.5, fontWeight: 700, maxWidth: 220,
+                                bgcolor: palette.surfaceMuted, color: palette.textSubtle }}
+                        />
+                      )}
+                      {!where && typedPlace(a) && (
+                        <Chip
+                          size="small" icon={<MeetingRoomOutlinedIcon sx={{ fontSize: '13px !important' }} />}
+                          label={typedPlace(a)}
+                          sx={{ height: 19, fontSize: 10.5, fontWeight: 700, maxWidth: 240,
                                 bgcolor: palette.surfaceMuted, color: palette.textSubtle }}
                         />
                       )}

@@ -9,7 +9,13 @@ import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturi
 import AcUnitIcon from '@mui/icons-material/AcUnit'
 import HomeRepairServiceIcon from '@mui/icons-material/HomeRepairService'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
+import EventRepeatIcon from '@mui/icons-material/EventRepeat'
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
 import type { CategoryCode, Condition, JobKind } from '@/api/siteCategories'
+import type { Module } from '@/config/permissions'
+
+/** What the four categories are called wherever they appear together. */
+export const CATEGORIES_LABEL = 'Facility Categories'
 
 export interface CategoryMeta {
   code: CategoryCode
@@ -39,6 +45,27 @@ export interface JobKindMeta {
 export const JOB_KINDS: JobKindMeta[] = [
   { kind: 'service', name: 'Service', singular: 'service', icon: <HomeRepairServiceIcon />, path: '/equipment-maintenance/service' },
   { kind: 'inspection', name: 'Inspection', singular: 'inspection', icon: <FactCheckIcon />, path: '/equipment-maintenance/inspection' },
+]
+
+export interface MaintenanceLink {
+  name: string
+  description: string
+  icon: JSX.Element
+  path: string
+  /** Who can open it. */
+  module: Module
+}
+
+/** Everything in Equipment Maintenance, in the order it is shown. */
+export const EQUIPMENT_MAINTENANCE: MaintenanceLink[] = [
+  { name: 'Service', description: 'Service jobs on equipment', icon: <HomeRepairServiceIcon />,
+    path: '/equipment-maintenance/service', module: 'service-requests' },
+  { name: 'Inspection', description: 'Inspections, pass or fail', icon: <FactCheckIcon />,
+    path: '/equipment-maintenance/inspection', module: 'service-requests' },
+  { name: 'Maintenance Plans', description: 'Recurring calendar and runtime work', icon: <EventRepeatIcon />,
+    path: '/maintenance', module: 'maintenance' },
+  { name: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />,
+    path: '/permits', module: 'permits' },
 ]
 
 export const CONDITION_STYLE: Record<Condition, { label: string; color: string; bg: string }> = {

@@ -34,6 +34,8 @@ export interface MaintenanceSchedule {
   next_due_date: string | null
   open_work_order_id: number | null
   equipment_tag: string | null
+  /** Set for equipment in the Facility Categories. */
+  equipment_name?: string | null
   location_code: string | null
   is_due: boolean
   is_overdue: boolean

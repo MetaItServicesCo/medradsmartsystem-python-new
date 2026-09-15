@@ -22,7 +22,13 @@ export interface CategorySummary {
   out_of_service: number
   open_jobs: number
   overdue_jobs: number
+  /** Total book value of the equipment that has a cost and an in-service date. */
+  book_value: string | number
+  valued_equipment: number
 }
+
+/** Money arrives as a decimal string; null when there is nothing to show. */
+export type Amount = string | number | null
 
 export interface CategoryEquipment {
   id: number
@@ -43,6 +49,25 @@ export interface CategoryEquipment {
   notes: string | null
   open_jobs: number
   next_service_on: string | null
+  unit_cost: Amount
+  purchase_cost: Amount
+  in_service_on: string | null
+  useful_life_years: Amount
+  book_value: Amount
+  annual_depreciation: Amount
+  improvements: Amount
+  maintenance_spend: Amount
+  cost_of_ownership: Amount
+  spend_percent_of_cost: number | null
+  consider_replacing: boolean
+  value_message: string | null
+}
+
+export interface ValuePreview {
+  total_cost: Amount
+  book_value: Amount
+  annual_depreciation: Amount
+  message: string | null
 }
 
 export interface CategoryEquipmentInput {
@@ -56,6 +81,9 @@ export interface CategoryEquipmentInput {
   make: string | null
   model: string | null
   notes: string | null
+  unit_cost: number | null
+  in_service_on: string | null
+  useful_life_years: number | null
 }
 
 export interface PlaceSuggestions {
@@ -77,6 +105,10 @@ export interface EquipmentJob {
   notes: string | null
   inspection_result: InspectionResult | null
   findings: string | null
+  labour_cost: Amount
+  parts_cost: Amount
+  total_cost: Amount
+  is_major_work: boolean
   created_at: string
   completed_at: string | null
   equipment: {
@@ -106,6 +138,9 @@ export interface JobInput {
   notes: string | null
   inspection_result: InspectionResult | null
   findings: string | null
+  labour_cost: number | null
+  parts_cost: number | null
+  is_major_work?: boolean
 }
 
 export interface Assignee {
@@ -117,6 +152,10 @@ export interface Assignee {
 export interface MaintenanceSummary {
   service: { open: number; overdue: number; failed: number }
   inspection: { open: number; overdue: number; failed: number }
+  /** Only for people who can open Maintenance Plans. */
+  plans?: { active: number; overdue: number; due_in_30_days: number }
+  /** Only for people who can open Permits to Work. */
+  permits?: { active: number; awaiting_approval: number }
 }
 
 export const fetchCategoryOverview = async (facilityId: number): Promise<{ categories: CategorySummary[] }> => {
@@ -128,7 +167,11 @@ export const fetchCategoryEquipment = async (
   code: CategoryCode,
   facilityId: number,
   filters: { search?: string; building?: string; floor?: string; condition?: string } = {},
-): Promise<{ category: { code: CategoryCode; name: string; types: string[] }; items: CategoryEquipment[]; total: number }> => {
+): Promise<{
+  category: { code: CategoryCode; name: string; types: string[]; default_useful_life_years: number }
+  items: CategoryEquipment[]
+  total: number
+}> => {
   const params: Record<string, string | number> = { facility_id: facilityId }
   Object.entries(filters).forEach(([key, value]) => { if (value) params[key] = value })
   const res = await apiClient.get(`/site-categories/${code}/equipment`, { params })
@@ -156,6 +199,38 @@ export const updateCategoryEquipment = async (
 
 export const deleteCategoryEquipment = async (id: number): Promise<void> => {
   await apiClient.delete(`/site-categories/equipment/${id}`)
+}
+
+/** Total cost, book value today and yearly depreciation for figures not yet saved. */
+export const fetchValuePreview = async (params: {
+  unit_cost: number | null
+  quantity: number
+  in_service_on: string | null
+  useful_life_years: number | null
+  equipment_id?: number | null
+}): Promise<ValuePreview> => {
+  const query: Record<string, string | number> = { quantity: params.quantity }
+  if (params.unit_cost != null) query.unit_cost = params.unit_cost
+  if (params.in_service_on) query.in_service_on = params.in_service_on
+  if (params.useful_life_years != null) query.useful_life_years = params.useful_life_years
+  if (params.equipment_id) query.equipment_id = params.equipment_id
+  const res = await apiClient.get('/site-categories/value-preview', { params: query })
+  return res.data
+}
+
+/** Bring an asset from the register into a category, keeping its tag, cost and history. */
+export const adoptIntoCategory = async (
+  code: CategoryCode, equipmentId: number,
+  payload: { name: string; type: string; building: string; floor: string | null; spot: string | null },
+): Promise<CategoryEquipment> => {
+  const res = await apiClient.post(`/site-categories/${code}/adopt/${equipmentId}`, payload)
+  return res.data
+}
+
+/** $45,000 — whole dollars, the way the rest of the asset screens show money. */
+export function formatMoney(value: Amount | undefined): string {
+  if (value === null || value === undefined || value === '') return '—'
+  return Number(value).toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
 export const fetchEquipmentJobs = async (
