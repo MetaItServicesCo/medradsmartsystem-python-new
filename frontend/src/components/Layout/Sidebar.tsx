@@ -34,13 +34,15 @@ import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
+import { CATEGORIES, JOB_KINDS } from '@/config/siteCategories'
 import { palette } from '@/theme/palette'
 
 // Grouped the way somebody running a hospital thinks about it — the
 // building, the work done to it, the things in it — rather than the way a
 // contractor managing many client sites did.
 type ModuleGroup =
-  | 'Overview' | 'The Building' | 'Maintenance' | 'Assets'
+  | 'Overview' | 'Categories' | 'Equipment Maintenance'
+  | 'The Building' | 'Maintenance' | 'Assets'
   | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
 
 /**
@@ -65,13 +67,23 @@ interface SidebarItem {
 }
 
 const groupOrder: ModuleGroup[] = [
-  'Overview', 'The Building', 'Maintenance', 'Assets', 'Compliance',
-  'People', 'Commerce', 'Workspace',
+  'Overview', 'Categories', 'Equipment Maintenance', 'The Building', 'Maintenance', 'Assets',
+  'Compliance', 'People', 'Commerce', 'Workspace',
 ]
 
 const allMenuItems: SidebarItem[] = [
   { text: 'Sites', description: 'The hospitals you run — open one to work in it', icon: <BusinessIcon />, path: '/sites', module: 'facilities', group: 'Overview', scope: 'org' },
   { text: 'Dashboard', description: 'Your operational overview', icon: <DashboardIcon />, path: '/dashboard', module: 'dashboard', group: 'Overview' },
+  // A site's equipment, by category, and the work done on it. First, because
+  // it is where the work of a site now starts.
+  ...CATEGORIES.map((category): SidebarItem => ({
+    text: category.name, description: `${category.name} equipment and where it is`,
+    icon: category.icon, path: category.path, module: 'facility-inventory', group: 'Categories',
+  })),
+  ...JOB_KINDS.map((kind): SidebarItem => ({
+    text: kind.name, description: kind.kind === 'service' ? 'Service jobs on equipment' : 'Inspections, pass or fail',
+    icon: kind.icon, path: kind.path, module: 'service-requests', group: 'Equipment Maintenance',
+  })),
   { text: 'Work Orders', description: 'Service requests and work orders', icon: <BuildIcon />, path: '/service-requests', module: 'service-requests', group: 'Maintenance' },
   { text: 'Inspections', description: 'Schedules, batches, and reports', icon: <AssignmentIcon />, path: '/inspections', module: 'inspections', group: 'Maintenance' },
   { text: 'Buildings & Rooms', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'The Building' },
@@ -205,7 +217,7 @@ const Sidebar = () => {
                       const active = isActive(item)
                       return (
                         <Box
-                          key={item.module} component="button" type="button" onClick={() => openModule(pathFor(item))}
+                          key={item.path} component="button" type="button" onClick={() => openModule(pathFor(item))}
                           aria-current={active ? 'page' : undefined}
                           sx={{
                             minWidth: 0, minHeight: 72, display: 'flex', alignItems: 'center', gap: 1.25,

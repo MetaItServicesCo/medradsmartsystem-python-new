@@ -1,20 +1,26 @@
 /**
- * One hospital's dashboard — what needs attention here, right now.
+ * One hospital's page: its four categories, the maintenance on their
+ * equipment, and compliance.
  *
  * Opening a site sets it as the working context, so every other screen is
- * already scoped by the time you leave this page. The ordering is deliberate:
- * things that are wrong come first, totals that only go up come last. A count
- * of rooms is context; three overdue compliance tasks is news.
+ * already scoped by the time you leave this page. Each tile says how much is
+ * there and how much is wrong, and opens the list behind it. Everything else
+ * the product does is still in the module launcher.
  */
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Box, Breadcrumbs, Button, CircularProgress, Link, Stack, Typography,
+  Box, Breadcrumbs, Button, Link, Skeleton, Stack, Typography,
 } from '@mui/material'
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
+import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import { fetchFacility, fetchSiteOverview } from '@/api/facilities'
+import { fetchCategoryOverview, fetchMaintenanceSummary, type CategorySummary } from '@/api/siteCategories'
+import { hasPermission } from '@/config/permissions'
+import { CATEGORIES, JOB_KINDS } from '@/config/siteCategories'
 import { useFacilityStore } from '@/hooks/useActiveFacility'
+import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 // The per-site administration that used to live in the facilities module.
 // Same forms, reached from the hospital they belong to instead of from a
@@ -23,12 +29,19 @@ import FacilityFormModal from '@/pages/Facilities/FacilityFormModal'
 import FacilityUsersModal from '@/pages/Facilities/FacilityUsersModal'
 import DepartmentsModal from '@/pages/Facilities/DepartmentsModal'
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
+
 export default function SiteDashboard() {
   const { id } = useParams()
   const siteId = Number(id)
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const setFacilityId = useFacilityStore((s) => s.setFacilityId)
   const [panel, setPanel] = useState<'details' | 'people' | 'departments' | null>(null)
+
+  const showCategories = hasPermission(user, 'facility-inventory', 'index')
+  const showMaintenance = hasPermission(user, 'service-requests', 'index')
+  const showCompliance = hasPermission(user, 'compliance', 'index')
 
   // Arriving here by link or refresh has to set the context too, not only
   // arriving by clicking a card.
@@ -41,54 +54,23 @@ export default function SiteDashboard() {
     queryFn: () => fetchFacility(siteId),
     enabled: !!siteId,
   })
-  const { data: overview, isLoading } = useQuery({
+  const categories = useQuery({
+    queryKey: ['category-overview', siteId],
+    queryFn: () => fetchCategoryOverview(siteId),
+    enabled: !!siteId && showCategories,
+  })
+  const maintenance = useQuery({
+    queryKey: ['maintenance-summary', siteId],
+    queryFn: () => fetchMaintenanceSummary(siteId),
+    enabled: !!siteId && showMaintenance,
+  })
+  const overview = useQuery({
     queryKey: ['site-overview', siteId],
     queryFn: () => fetchSiteOverview(siteId),
-    enabled: !!siteId,
+    enabled: !!siteId && showCompliance,
   })
 
-  if (isLoading || !overview) {
-    return <Box sx={{ p: 8, textAlign: 'center' }}><CircularProgress size={28} /></Box>
-  }
-
-  const attention = [
-    {
-      label: 'Critical jobs open', value: overview.work.critical,
-      hint: 'Raised against a critical space or asset and not yet closed.',
-      to: '/service-requests', tone: 'danger' as const,
-    },
-    {
-      label: 'Compliance overdue', value: overview.compliance.overdue,
-      hint: 'Past its due date and grace period. This is what a surveyor asks for.',
-      to: '/compliance', tone: 'danger' as const,
-    },
-    {
-      label: 'Spaces unavailable', value: overview.spaces.unavailable,
-      hint: 'Beds and theatres out of service or blocked right now.',
-      to: '/spaces', tone: 'warning' as const,
-    },
-    {
-      label: 'Fixtures faulty', value: overview.fixtures.faulty,
-      hint: 'Sockets, lights and outlets reported broken and not yet fixed.',
-      to: '/locations', tone: 'warning' as const,
-    },
-  ]
-
-  const running = [
-    { label: 'Open jobs', value: overview.work.open, to: '/service-requests' },
-    { label: 'Due in 30 days', value: overview.compliance.due_within_30_days, to: '/compliance' },
-    { label: 'Permits active', value: overview.permits.active, to: '/permits' },
-    { label: 'High priority', value: overview.work.high, to: '/service-requests' },
-  ]
-
-  const estate = [
-    { label: 'Buildings', value: overview.estate.buildings, to: '/locations' },
-    { label: 'Floors', value: overview.estate.floors, to: '/locations' },
-    { label: 'Rooms', value: overview.estate.rooms, to: '/locations' },
-    { label: 'Beds', value: overview.estate.beds, to: '/spaces' },
-    { label: 'Assets', value: overview.assets.total, to: '/assets' },
-    { label: 'Fixtures', value: overview.fixtures.total, to: '/locations' },
-  ]
+  const summaries = Object.fromEntries((categories.data?.categories ?? []).map((c) => [c.code, c]))
 
   return (
     <Box className="page-enter" sx={{ width: '100%', minWidth: 0 }}>
@@ -134,50 +116,55 @@ export default function SiteDashboard() {
         </Stack>
       </Stack>
 
-      <Section title="Needs attention">
-        <Box sx={{ display: 'grid', gap: 1.5,
-                   gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' } }}>
-          {attention.map((card) => (
-            <AttentionTile key={card.label} {...card} onClick={() => navigate(card.to)} />
-          ))}
-        </Box>
-      </Section>
+      {showCategories && (
+        <Section title="Categories">
+          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
+            {CATEGORIES.map((meta) => (
+              <CategoryTile
+                key={meta.code} name={meta.name} icon={meta.icon} colour={meta.colour}
+                summary={summaries[meta.code]} loading={categories.isLoading}
+                onClick={() => navigate(meta.path)}
+              />
+            ))}
+          </Box>
+        </Section>
+      )}
 
-      <Section title="In flight">
-        <Box sx={{ display: 'grid', gap: 1.5,
-                   gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' } }}>
-          {running.map((card) => (
-            <PlainTile key={card.label} {...card} onClick={() => navigate(card.to)} />
-          ))}
-        </Box>
-      </Section>
+      {showMaintenance && (
+        <Section title="Equipment Maintenance">
+          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
+            {JOB_KINDS.map((meta) => {
+              const counts = maintenance.data?.[meta.kind]
+              const facts = counts ? [
+                { text: counts.open ? `${plural(counts.open, 'open job')}` : 'Nothing open', tone: 'plain' as const },
+                ...(counts.overdue ? [{ text: `${counts.overdue} overdue`, tone: 'danger' as const }] : []),
+                ...(counts.failed ? [{ text: `${counts.failed} failed`, tone: 'danger' as const }] : []),
+              ] : []
+              return (
+                <Tile key={meta.kind} onClick={() => navigate(meta.path)} loading={maintenance.isLoading}
+                      icon={meta.icon} colour={palette.brand} title={meta.name} facts={facts} />
+              )
+            })}
+          </Box>
+        </Section>
+      )}
 
-      <Section title="The estate">
-        <Box sx={{ display: 'grid', gap: 1.5,
-                   gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(6, 1fr)' } }}>
-          {estate.map((card) => (
-            <PlainTile key={card.label} {...card} onClick={() => navigate(card.to)} />
-          ))}
-        </Box>
-      </Section>
-
-      <Stack direction="row" spacing={1.25} sx={{ mt: 3, flexWrap: 'wrap', gap: 1.25 }}>
-        {[
-          { label: 'Buildings & rooms', to: '/locations' },
-          { label: 'Asset register', to: '/assets' },
-          { label: 'Work orders', to: '/service-requests' },
-          { label: 'Compliance', to: '/compliance' },
-        ].map((link) => (
-          <Button
-            key={link.to} size="small" variant="outlined" endIcon={<ArrowForwardIcon />}
-            onClick={() => navigate(link.to)}
-            sx={{ fontWeight: 800, borderRadius: '10px', color: palette.brand,
-                  borderColor: palette.brandBorder }}
-          >
-            {link.label}
-          </Button>
-        ))}
-      </Stack>
+      {showCompliance && (
+        <Section title="Compliance">
+          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
+            <Tile
+              onClick={() => navigate('/compliance')} loading={overview.isLoading}
+              icon={<FactCheckOutlinedIcon />} colour={palette.accentDark} title="Compliance"
+              facts={overview.data ? [
+                overview.data.compliance.overdue
+                  ? { text: `${overview.data.compliance.overdue} overdue`, tone: 'danger' as const }
+                  : { text: 'Nothing overdue', tone: 'good' as const },
+                { text: `${overview.data.compliance.due_within_30_days} due in 30 days`, tone: 'plain' as const },
+              ] : []}
+            />
+          </Box>
+        </Section>
+      )}
 
       {panel === 'details' && site && (
         <FacilityFormModal open onClose={() => setPanel(null)} facility={site} locateOnSave={false} />
@@ -204,63 +191,92 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function AttentionTile({ label, value, hint, tone, onClick }: {
-  label: string
-  value: number
-  hint: string
-  tone: 'danger' | 'warning'
+type Fact = { text: string; tone: 'plain' | 'good' | 'warning' | 'danger' }
+
+const TONE: Record<Fact['tone'], string> = {
+  plain: palette.textMuted,
+  good: palette.success,
+  warning: palette.warningDeep,
+  danger: palette.danger,
+}
+
+function CategoryTile({ name, icon, colour, summary, loading, onClick }: {
+  name: string
+  icon: JSX.Element
+  colour: string
+  summary?: CategorySummary
+  loading: boolean
   onClick: () => void
 }) {
-  // Zero is the good answer here, so it is shown calmly rather than in red.
-  const quiet = value === 0
-  const colour = tone === 'danger' ? palette.danger : palette.warningDeep
-  const wash = tone === 'danger' ? palette.dangerWash : palette.warningWash
-
+  const facts: Fact[] = []
+  if (summary) {
+    if (!summary.equipment) {
+      facts.push({ text: 'Nothing added yet', tone: 'plain' })
+    } else {
+      const wrong = summary.needs_attention + summary.out_of_service
+      facts.push(wrong
+        ? { text: [summary.needs_attention && `${summary.needs_attention} need attention`,
+                   summary.out_of_service && `${summary.out_of_service} out of service`].filter(Boolean).join(' · '),
+            tone: summary.out_of_service ? 'danger' : 'warning' }
+        : { text: 'All working', tone: 'good' })
+      if (summary.open_jobs) {
+        facts.push({ text: `${plural(summary.open_jobs, 'open job')}${summary.overdue_jobs ? ` · ${summary.overdue_jobs} overdue` : ''}`,
+                     tone: summary.overdue_jobs ? 'danger' : 'plain' })
+      }
+    }
+  }
   return (
-    <Box
-      onClick={onClick}
-      sx={{
-        p: 1.75, borderRadius: '16px', cursor: 'pointer',
-        bgcolor: quiet ? palette.surfaceFaint : wash,
-        border: `1px solid ${quiet ? palette.surfaceMuted : colour}22`,
-        '&:hover': { borderColor: quiet ? palette.borderSoft : colour },
-      }}
-    >
-      <Typography sx={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1,
-                        color: quiet ? palette.textFaint : colour }}>
-        {value}
-      </Typography>
-      <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: palette.ink }}>
-        {label}
-      </Typography>
-      <Typography sx={{ mt: 0.25, fontSize: 11, color: palette.textFaint, lineHeight: 1.35 }}>
-        {hint}
-      </Typography>
-    </Box>
+    <Tile
+      onClick={onClick} loading={loading} icon={icon} colour={colour} title={name}
+      figure={summary ? plural(summary.equipment, 'item') : undefined} facts={facts}
+    />
   )
 }
 
-function PlainTile({ label, value, onClick }: {
-  label: string
-  value: number
+function Tile({ icon, colour, title, figure, facts, loading, onClick }: {
+  icon: JSX.Element
+  colour: string
+  title: string
+  figure?: string
+  facts: Fact[]
+  loading: boolean
   onClick: () => void
 }) {
   return (
     <Box
-      onClick={onClick}
+      component="button" type="button" onClick={onClick}
       sx={{
-        p: 1.5, borderRadius: '14px', cursor: 'pointer', bgcolor: palette.white,
-        border: `1px solid ${palette.borderSoft}`,
-        '&:hover': { borderColor: palette.brandBorder, bgcolor: palette.brandTint },
+        textAlign: 'left', p: 2, borderRadius: '18px', cursor: 'pointer', font: 'inherit',
+        bgcolor: palette.white, border: `1px solid ${palette.borderSoft}`, minWidth: 0,
+        display: 'flex', flexDirection: 'column', gap: 1.25,
+        transition: 'border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
+        '&:hover': { borderColor: palette.brandBorder, boxShadow: '0 12px 28px rgba(4,120,87,0.08)', transform: 'translateY(-1px)' },
+        '&:focus-visible': { outline: `3px solid ${palette.focusRing}`, outlineOffset: 2 },
       }}
     >
-      <Typography sx={{ fontSize: 20, fontWeight: 900, color: palette.ink, lineHeight: 1.2 }}>
-        {value}
-      </Typography>
-      <Typography sx={{ fontSize: 10.5, fontWeight: 800, color: palette.textFaint,
-                        textTransform: 'uppercase', letterSpacing: 0.3 }}>
-        {label}
-      </Typography>
+      <Stack direction="row" alignItems="center" spacing={1.25} sx={{ width: '100%' }}>
+        <Box sx={{ width: 42, height: 42, borderRadius: '13px', display: 'grid', placeItems: 'center', flexShrink: 0,
+                   color: colour, bgcolor: `${colour}14`, '& svg': { fontSize: 23 } }}>
+          {icon}
+        </Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography noWrap sx={{ fontWeight: 900, fontSize: 16, color: palette.ink }}>{title}</Typography>
+          {figure && <Typography noWrap sx={{ fontSize: 13, fontWeight: 700, color: palette.textMuted }}>{figure}</Typography>}
+        </Box>
+        <ArrowForwardRoundedIcon sx={{ fontSize: 18, color: palette.textFaint }} />
+      </Stack>
+      <Box sx={{ minHeight: 40 }}>
+        {loading ? (
+          <>
+            <Skeleton width="70%" height={18} />
+            <Skeleton width="45%" height={18} />
+          </>
+        ) : facts.map((fact) => (
+          <Typography key={fact.text} sx={{ fontSize: 13, fontWeight: 800, color: TONE[fact.tone], lineHeight: 1.55 }}>
+            {fact.text}
+          </Typography>
+        ))}
+      </Box>
     </Box>
   )
 }

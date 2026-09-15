@@ -1,0 +1,150 @@
+/**
+ * The site you are in, and its three places to work: Categories, Equipment
+ * Maintenance and Compliance.
+ *
+ * Always under the header once a site is open, so getting from a generator to
+ * its service jobs is one click from anywhere rather than a trip through the
+ * module launcher. Everything else in the product is still in the launcher.
+ */
+import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { Box, Button, ListItemIcon, ListItemText, Menu, MenuItem, Typography } from '@mui/material'
+import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
+import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined'
+import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
+import { fetchCategoryOverview } from '@/api/siteCategories'
+import { hasPermission } from '@/config/permissions'
+import { CATEGORIES, JOB_KINDS } from '@/config/siteCategories'
+import { useActiveFacility, useFacilityStore } from '@/hooks/useActiveFacility'
+import { useAuthStore } from '@/stores/authStore'
+import { palette } from '@/theme/palette'
+
+type MenuName = 'categories' | 'maintenance'
+
+export default function SiteNav() {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const user = useAuthStore((s) => s.user)
+  const storedSite = useFacilityStore((s) => s.facilityId)
+  const { facility } = useActiveFacility()
+  const [anchor, setAnchor] = useState<{ name: MenuName; el: HTMLElement } | null>(null)
+
+  const showCategories = hasPermission(user, 'facility-inventory', 'index')
+  const showMaintenance = hasPermission(user, 'service-requests', 'index')
+  const showCompliance = hasPermission(user, 'compliance', 'index')
+
+  const { data: overview } = useQuery({
+    queryKey: ['category-overview', storedSite],
+    queryFn: () => fetchCategoryOverview(storedSite as number),
+    enabled: storedSite != null && showCategories,
+    staleTime: 60_000,
+  })
+
+  // Choosing a site is the Sites page's job; there is no site to navigate yet.
+  if (storedSite == null || pathname === '/sites' || !facility) return null
+  if (!showCategories && !showMaintenance && !showCompliance) return null
+
+  const counts = Object.fromEntries((overview?.categories ?? []).map((c) => [c.code, c]))
+  const go = (path: string) => { setAnchor(null); navigate(path) }
+
+  const tabSx = (active: boolean) => ({
+    flexShrink: 0, textTransform: 'none', fontWeight: 900, fontSize: 13.5, borderRadius: '11px',
+    px: 1.5, py: 0.6, color: active ? palette.brandDeep : palette.textStrong,
+    bgcolor: active ? palette.brandTint : 'transparent',
+    border: `1px solid ${active ? palette.brandBorder : 'transparent'}`,
+    '&:hover': { bgcolor: active ? palette.brandTint : palette.surfaceMuted },
+  })
+
+  return (
+    <Box
+      component="nav" aria-label="Site navigation"
+      sx={{
+        display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0,
+        px: { xs: 1.25, sm: 2, md: 3 }, py: 0.9, overflowX: 'auto',
+        borderBottom: `1px solid ${palette.borderSlate}`, bgcolor: 'rgba(255,255,255,0.7)',
+        scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' },
+      }}
+    >
+      <Button
+        onClick={() => go(`/sites/${facility.id}`)}
+        aria-label={facility.name}
+        sx={{ ...tabSx(pathname === `/sites/${facility.id}`), maxWidth: { xs: 44, sm: 300 }, minWidth: 0,
+              color: palette.brand, gap: 0.75 }}
+      >
+        <LocalHospitalOutlinedIcon sx={{ fontSize: 20 }} />
+        {/* On a phone the icon alone: the name would push the menus off screen. */}
+        <Typography noWrap sx={{ display: { xs: 'none', sm: 'block' }, fontWeight: 900, fontSize: 13.5 }}>
+          {facility.name}
+        </Typography>
+      </Button>
+      <Box sx={{ width: '1px', height: 22, bgcolor: palette.borderSlate, flexShrink: 0, mx: 0.25 }} />
+
+      {showCategories && (
+        <Button
+          endIcon={<KeyboardArrowDownRoundedIcon />}
+          aria-haspopup="menu" aria-expanded={anchor?.name === 'categories'}
+          onClick={(e) => setAnchor({ name: 'categories', el: e.currentTarget })}
+          sx={tabSx(pathname.startsWith('/categories'))}
+        >
+          Categories
+        </Button>
+      )}
+      {showMaintenance && (
+        <Button
+          endIcon={<KeyboardArrowDownRoundedIcon />}
+          aria-haspopup="menu" aria-expanded={anchor?.name === 'maintenance'}
+          onClick={(e) => setAnchor({ name: 'maintenance', el: e.currentTarget })}
+          sx={tabSx(pathname.startsWith('/equipment-maintenance'))}
+        >
+          Equipment Maintenance
+        </Button>
+      )}
+      {showCompliance && (
+        <Button
+          startIcon={<FactCheckOutlinedIcon />} onClick={() => go('/compliance')}
+          sx={tabSx(pathname.startsWith('/compliance'))}
+        >
+          Compliance
+        </Button>
+      )}
+
+      <Menu
+        anchorEl={anchor?.el} open={anchor?.name === 'categories'} onClose={() => setAnchor(null)}
+        PaperProps={{ sx: { borderRadius: '14px', minWidth: 240, mt: 0.5 } }}
+      >
+        {CATEGORIES.map((c) => {
+          const summary = counts[c.code]
+          return (
+            <MenuItem key={c.code} selected={pathname === c.path} onClick={() => go(c.path)} sx={{ py: 1 }}>
+              <ListItemIcon sx={{ color: c.colour }}>{c.icon}</ListItemIcon>
+              <ListItemText
+                primary={c.name}
+                secondary={summary ? `${summary.equipment} item${summary.equipment === 1 ? '' : 's'}` : undefined}
+                primaryTypographyProps={{ fontWeight: 800, fontSize: 14 }}
+                secondaryTypographyProps={{ fontSize: 12 }}
+              />
+              {summary && summary.needs_attention + summary.out_of_service > 0 && (
+                <Box sx={{ ml: 2, px: 0.75, borderRadius: '8px', fontSize: 11.5, fontWeight: 900,
+                           bgcolor: palette.warningTint, color: palette.warningDeep }}>
+                  {summary.needs_attention + summary.out_of_service}
+                </Box>
+              )}
+            </MenuItem>
+          )
+        })}
+      </Menu>
+      <Menu
+        anchorEl={anchor?.el} open={anchor?.name === 'maintenance'} onClose={() => setAnchor(null)}
+        PaperProps={{ sx: { borderRadius: '14px', minWidth: 220, mt: 0.5 } }}
+      >
+        {JOB_KINDS.map((k) => (
+          <MenuItem key={k.kind} selected={pathname === k.path} onClick={() => go(k.path)} sx={{ py: 1 }}>
+            <ListItemIcon sx={{ color: palette.brand }}>{k.icon}</ListItemIcon>
+            <ListItemText primary={k.name} primaryTypographyProps={{ fontWeight: 800, fontSize: 14 }} />
+          </MenuItem>
+        ))}
+      </Menu>
+    </Box>
+  )
+}

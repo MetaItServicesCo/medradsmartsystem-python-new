@@ -3,6 +3,7 @@ import { Box } from '@mui/material'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
+import SiteNav from './SiteNav'
 import WorkingContextBar from '../WorkingContextBar'
 import ModuleBackground from '../ModuleBackground'
 import { PageTransition } from '../motion'
@@ -49,6 +50,9 @@ const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/sites': 'Sites',
   '/assets': 'Asset Register',
+  '/categories': 'Categories',
+  '/equipment-maintenance': 'Equipment Maintenance',
+  '/compliance': 'Compliance',
   '/facilities': 'Site administration',
   '/users': 'User Management',
   '/chat': 'Chat',
@@ -110,6 +114,7 @@ const Layout = () => {
 
           <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
             <Header title={title} />
+            <SiteNav />
             <WorkingContextBar />
             <Box
               component="main"

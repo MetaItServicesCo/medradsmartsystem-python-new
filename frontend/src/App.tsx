@@ -42,6 +42,8 @@ const SiteDashboard = lazyWithReload(() => import('./pages/Sites/SiteDashboard')
 const Assets = lazyWithReload(() => import('./pages/Assets'))
 const AssistantDocuments = lazyWithReload(() => import('./pages/AssistantDocuments'))
 const AssetLedger = lazyWithReload(() => import('./pages/AssetLedger'))
+const Categories = lazyWithReload(() => import('./pages/Categories'))
+const EquipmentMaintenance = lazyWithReload(() => import('./pages/EquipmentMaintenance'))
 
 const RouteFallback = () => (
   <div
@@ -173,6 +175,12 @@ function App() {
           <Route path="sites" element={<ProtectedPage module="facilities"><Sites /></ProtectedPage>} />
           <Route path="sites/:id" element={<ProtectedPage module="facilities"><SiteDashboard /></ProtectedPage>} />
           <Route path="assets/*" element={<RequireSite><ProtectedPage module="facility-inventory"><Assets /></ProtectedPage></RequireSite>} />
+          {/* Site categories: Electrical, Plumbing, Mechanical and HVAC equipment,
+              and the service and inspection jobs done on it. */}
+          <Route path="categories" element={<Navigate to="/categories/electrical" replace />} />
+          <Route path="categories/:code" element={<RequireSite><ProtectedPage module="facility-inventory"><Categories /></ProtectedPage></RequireSite>} />
+          <Route path="equipment-maintenance" element={<Navigate to="/equipment-maintenance/service" replace />} />
+          <Route path="equipment-maintenance/:kind" element={<RequireSite><ProtectedPage module="service-requests"><EquipmentMaintenance /></ProtectedPage></RequireSite>} />
           {/* Super Admin only; the page itself refuses anyone else. */}
           <Route path="assistant/documents" element={<AssistantDocuments />} />
           <Route path="asset-ledger/*" element={<RequireSite><ProtectedPage module="facility-inventory"><AssetLedger /></ProtectedPage></RequireSite>} />
