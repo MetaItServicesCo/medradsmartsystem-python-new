@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -38,7 +38,7 @@ from app.schemas.site_categories import CategoryEquipmentCreate, EquipmentJobCre
 
 engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
 Session = sessionmaker(bind=engine)
-TODAY = date.today()
+TODAY = datetime.utcnow().date()  # the server's day: every "today" in the app is UTC
 
 
 def build():
@@ -192,9 +192,12 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
 
     guides = {doc.doc_id: doc for doc in guide_documents()}
     assert set(guides) == {"guide.site_categories", "guide.equipment_maintenance"}
-    for words in ("Add equipment", "Where is it?", "Building", "Room / exact spot", "Out of service"):
+    for words in ("Add equipment", "Where is it?", "Building", "Room / exact spot", "Out of service",
+                  "Facility Categories", "Cost & value", "In service since", "Useful life", "Book value today",
+                  "View asset & value history", "Add to a category", "$38,250"):
         assert words in guides["guide.site_categories"].body, words
-    for words in ("New service", "Raise service", "Pass or Fail", "Overdue"):
+    for words in ("New service", "Raise service", "Pass or Fail", "Overdue", "Labour", "Parts",
+                  "Major work that extends its life", "Maintenance Plans", "Permits to Work"):
         assert words in guides["guide.equipment_maintenance"].body, words
     source = pathlib.Path(generator.__file__).read_text(encoding="utf-8")
     assert "documents.extend(guide_documents())" in source
@@ -205,7 +208,9 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
         screens = "".join(p.read_text(encoding="utf-8") for p in
                           list((pages / "Categories").glob("*.tsx")) + list((pages / "EquipmentMaintenance").glob("*.tsx")))
         for label in ("Add equipment", "Where is it?", "Room / exact spot", "What needs doing", "Assigned to",
-                      "Findings", "Yes, remove it"):
+                      "Findings", "Yes, remove it", "Cost & value", "In service since", "Useful life",
+                      "Book value today", "View asset & value history", "Add to a category", "Labour", "Parts",
+                      "Major work that extends its life"):
             assert label in screens, label
     print("ok  the guides use the screens' own words and are part of the knowledge base")
 

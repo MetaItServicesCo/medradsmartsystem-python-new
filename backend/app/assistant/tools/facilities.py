@@ -559,16 +559,23 @@ def category_equipment(
     total = rows.count()
     found = rows.order_by(Equipment.building, Equipment.floor, Equipment.name).limit(clamp_limit(limit)).all()
     facts = site_categories.job_facts(ctx.db, [a.id for a in found])
+    values = site_categories.value_facts(ctx.db, found)
     items = []
     for asset in found:
         code = code_of[asset.discipline_id]
-        item = site_categories.serialise(asset, site_categories.BY_CODE[code], facts.get(asset.id))
+        item = site_categories.serialise(asset, site_categories.BY_CODE[code], facts.get(asset.id),
+                                         values.get(asset.id))
         items.append({
             "asset_id": item["id"], "asset_tag": item["asset_tag"], "name": item["name"],
             "category": item["category_name"], "type": item["type"], "where": item["location_label"] or None,
             "quantity": item["quantity"], "condition": item["condition_label"],
             "open_jobs": item["open_jobs"],
             "next_service_on": item["next_service_on"].isoformat() if item["next_service_on"] else None,
+            "purchase_cost": money(item["purchase_cost"]) if item["purchase_cost"] is not None else None,
+            "book_value": money(item["book_value"]) if item["book_value"] is not None else None,
+            "maintenance_spend": money(item["maintenance_spend"]),
+            "cost_of_ownership": money(item["cost_of_ownership"]),
+            "consider_replacing": item["consider_replacing"],
             "route": "/categories/{}".format(code),
         })
     return ToolResult(
@@ -576,6 +583,7 @@ def category_equipment(
         aggregates={"by_category": [{
             "category": c["name"], "equipment": c["equipment"], "needs_attention": c["needs_attention"],
             "out_of_service": c["out_of_service"], "open_jobs": c["open_jobs"], "overdue_jobs": c["overdue_jobs"],
+            "book_value": money(c["book_value"]), "equipment_with_book_value": c["valued_equipment"],
         } for c in summary]},
         applied_filters={"facility_id": site, "category": category, "condition": condition,
                          "building": building, "query": query},
@@ -615,6 +623,10 @@ def equipment_jobs(
             "due_on": shown["due_on"].isoformat() if shown["due_on"] else None, "overdue": shown["overdue"],
             "assigned_to": (shown["assigned_to"] or {}).get("name"), "status": shown["status_label"],
             "result": shown["inspection_result"], "findings": shown["findings"],
+            "labour_cost": money(shown["labour_cost"]) if shown["labour_cost"] is not None else None,
+            "parts_cost": money(shown["parts_cost"]) if shown["parts_cost"] is not None else None,
+            "total_cost": money(shown["total_cost"]) if shown["total_cost"] is not None else None,
+            "major_work": shown["is_major_work"],
             "route": "/equipment-maintenance/{}".format(kind),
         })
     return ToolResult(

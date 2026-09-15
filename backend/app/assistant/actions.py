@@ -36,6 +36,7 @@ from app.models.fixture import Fixture
 from app.models.location import Location
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus
 from app.models.user import User, UserRole
+from app.utils.clock import utc_today
 
 PROPOSAL_LIFETIME = timedelta(minutes=10)
 PRIORITIES = [p.value for p in Priority]
@@ -310,7 +311,8 @@ def _prepare_plan(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
         except ValueError:
             raise ToolInputError("first_due_date must be YYYY-MM-DD.")
     else:
-        first_due_date = date.today() + timedelta(days=interval)
+        # The server's day, as everywhere else, not the machine's local one.
+        first_due_date = utc_today() + timedelta(days=interval)
     task = (args.get("task_description") or "").strip()[:2000] or None
     return Prepared(
         payload={"asset_id": asset.id, "name": name[:255], "task_description": task,
