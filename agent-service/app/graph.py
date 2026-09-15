@@ -53,6 +53,20 @@ Intent = Literal["chitchat", "database", "knowledge", "hybrid", "clarify", "refu
 # every question begins by resolving a name to an id.
 ALWAYS_AVAILABLE = {"resolve_entity"}
 
+# Narrowing is by domain, not by module. A question like "open work orders in
+# OR-2" needs the rooms module to find OR-2 and the work-orders module to count,
+# and narrowing to either one alone hides the tool that answers it. Domains are
+# the groups of modules that questions actually cross.
+DOMAIN_MODULES: dict[str, set[str]] = {
+    "operations": {
+        "facilities", "locations", "spaces", "facility-inventory", "maintenance",
+        "compliance", "permits", "vendors", "service-requests", "inspections",
+    },
+    "commerce": {"rentals", "sales", "billing", "inventory"},
+    "people": {"users", "hr", "attendance"},
+    "platform": {"platform", "audit"},
+}
+
 # Only narrow the toolset once there are enough tools for selection accuracy to
 # suffer. Cross-module questions are common ("how many services are assigned to
 # technician X" spans users and service-requests), so narrowing a small set
@@ -277,11 +291,8 @@ _CLASSIFY_TOOL = {
             },
             "module": {
                 "type": ["string", "null"],
-                "enum": [
-                    "facilities", "service-requests", "inspections", "rentals",
-                    "sales", "billing", "inventory", "hr", "users", "audit",
-                    "platform", None,
-                ],
+                "enum": [*DOMAIN_MODULES.keys(), None],
+                "description": "The domain the question belongs to.",
             },
             "clarifying_question": {
                 "type": ["string", "null"],
@@ -393,11 +404,12 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
         # question like "how many services are assigned to technician X" spans
         # users and service-requests, and narrowing to either one hides the
         # tool needed to answer it.
-        if module and len(available) > NARROW_ABOVE_TOOL_COUNT:
+        domain_modules = DOMAIN_MODULES.get(module or "")
+        if domain_modules and len(available) > NARROW_ABOVE_TOOL_COUNT:
             narrowed = [
                 tool for tool in available
                 if tool["name"] in ALWAYS_AVAILABLE
-                or tool_modules.get(tool["name"]) == module
+                or tool_modules.get(tool["name"]) in domain_modules
             ]
             if len(narrowed) > 1:
                 available = narrowed

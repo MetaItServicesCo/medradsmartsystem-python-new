@@ -18,6 +18,7 @@ from app.schemas.equipment import (
     Equipment as EquipmentSchema, EquipmentListResponse, RoomAssetsCreate, ServesLink, ServesSpace,
 )
 from app.services import asset_bulk
+from app.services import asset_register
 from app.models.asset_link import SERVICE_TYPES, AssetServesLocation
 from app.services import asset_tags
 from app.models.discipline import Discipline
@@ -31,53 +32,6 @@ from app.utils.permission_deps import require_module_access
 from app.utils.read_cache import cached_read
 
 router = APIRouter(dependencies=[Depends(require_module_access("facility-inventory"))])
-
-
-def _register_query(
-    db: Session, current_user: User, *, facility_id: Optional[int], search: Optional[str],
-    location_id: Optional[int], kind: Optional[str], asset_type: Optional[str],
-    discipline_id: Optional[int],
-):
-    """The register's filters, shared by the list and by bulk changes.
-
-    One definition, so "select all 340 matching" in the browser and the 340 a
-    bulk change touches cannot drift apart.
-    """
-    query = scope_query_to_user_facilities(db.query(Equipment), Equipment.facility_id, db, current_user)
-    if facility_id is not None:
-        require_facility_access(db, current_user, facility_id)
-        query = query.filter(Equipment.facility_id == facility_id)
-    if location_id is not None:
-        anchor = db.get(Location, location_id)
-        if anchor is None:
-            raise HTTPException(status_code=404, detail="Location not found")
-        require_facility_access(db, current_user, anchor.facility_id)
-        inside = db.query(Location.id).filter(location_tree.subtree_filter(anchor))
-        query = query.filter(or_(Equipment.location_id == anchor.id,
-                                 Equipment.location_id.in_(inside)))
-    if kind == "room_items":
-        query = query.filter(Equipment.asset_type.isnot(None))
-    elif kind == "equipment":
-        query = query.filter(Equipment.asset_type.is_(None))
-    if asset_type:
-        query = query.filter(Equipment.asset_type == asset_type)
-    if discipline_id is not None:
-        query = query.filter(Equipment.discipline_id == discipline_id)
-    if search and search.strip():
-        like = f"%{search.strip()}%"
-        query = query.filter(
-            or_(
-                Equipment.asset_tag.ilike(like),
-                Equipment.make.ilike(like),
-                Equipment.model.ilike(like),
-                Equipment.serial_number.ilike(like),
-                Equipment.description.ilike(like),
-                Equipment.location.ilike(like),
-                Equipment.department.ilike(like),
-                Equipment.asset_type.ilike(like.replace(" ", "_")),
-            )
-        )
-    return query
 
 
 @router.get("/", response_model=EquipmentListResponse)
@@ -100,7 +54,7 @@ def list_equipment(
     and a register that loads them all into the browser to filter them there
     stops working at exactly the size it becomes useful.
     """
-    query = _register_query(
+    query = asset_register.register_query(
         db, current_user, facility_id=facility_id, search=search, location_id=location_id,
         kind=kind, asset_type=asset_type, discipline_id=discipline_id,
     )
@@ -187,7 +141,7 @@ def bulk_update(
             raise HTTPException(status_code=400, detail="A bulk change applies within one site")
         require_facility_access(db, current_user, sites.pop())
     else:
-        query = _register_query(
+        query = asset_register.register_query(
             db, current_user, facility_id=selection.facility_id, search=selection.search,
             location_id=selection.location_id, kind=selection.kind,
             asset_type=selection.asset_type, discipline_id=selection.discipline_id,

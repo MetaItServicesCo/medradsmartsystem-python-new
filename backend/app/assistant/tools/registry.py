@@ -13,12 +13,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.assistant.tools import analytics, attendance, commerce, entities
+from app.assistant.tools import analytics, attendance, commerce, entities, facilities
 from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
 from app.models.rental import RentalStatus
-from app.models.service_request import QuotationStatus, Priority, ServiceRequestStatus
+from app.models.service_request import QuotationStatus, Priority, ServiceRequestStatus, WorkOrderType
 from app.models.user import UserRole
 
 
@@ -27,6 +27,15 @@ def _values(enum_class: Any) -> list[str]:
 
 
 _DATE = {"type": "string", "format": "date", "description": "ISO date, YYYY-MM-DD"}
+
+# The trade that maintains something, which is also who a fault is routed to.
+_TRADE = {
+    "type": "string",
+    "enum": ["mechanical", "electrical", "plumbing", "vertical_transport", "fire_life_safety",
+             "medical_gas", "building_envelope", "it_low_voltage", "biomedical"],
+    "description": "Trade code.",
+}
+_LIMIT = {"type": "integer", "minimum": 1, "maximum": 100, "default": 25}
 
 
 @dataclass(frozen=True)
@@ -51,10 +60,11 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         module="platform",
         description=(
             "Resolve a name, number or phrase typed by a person into concrete "
-            "records. Use this FIRST whenever the question names a facility, "
-            "person, service request, inspection or invoice in words rather than "
-            "by id. If more than one candidate is returned, ask which was meant "
-            "instead of guessing."
+            "records. Use this FIRST whenever the question names a site, a room "
+            "or other space (by door code like OR-2 or by name), an asset (by tag "
+            "like LO-000014, serial, make or type), a person, a work order, an "
+            "inspection or an invoice in words rather than by id. If more than one "
+            "candidate is returned, ask which was meant instead of guessing."
         ),
         parameters={
             "type": "object",
@@ -194,6 +204,11 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
                 "priority": {"type": "string", "enum": _values(Priority)},
                 "date_from": _DATE,
                 "date_to": _DATE,
+                "trade": _TRADE,
+                "location_id": {"type": "integer", "description": "A space; includes everything inside it."},
+                "asset_id": {"type": "integer"},
+                "work_order_type": {"type": "string", "enum": _values(WorkOrderType)},
+                "sla_breached": {"type": "boolean", "description": "True for work past its response deadline."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
             },
         },
@@ -458,6 +473,143 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             },
         },
         handler=analytics.rank_products,
+    ),
+    ToolDefinition(
+        name="site_overview",
+        module="facilities",
+        description=(
+            "One site at a glance: buildings, floors and rooms, beds, spaces out of "
+            "service, open and overdue work orders, and compliance status. Use for "
+            "'how is Lahore Office doing' or 'give me a summary of this site'."
+        ),
+        parameters={"type": "object", "properties": {"facility_id": {"type": "integer"}},
+                    "required": ["facility_id"]},
+        handler=facilities.site_overview,
+    ),
+    ToolDefinition(
+        name="search_spaces",
+        module="locations",
+        description=(
+            "Find buildings, floors, departments (wings) and rooms by code or name, "
+            "clinical use or criticality. Read total_count for 'how many' questions."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer"},
+            "query": {"type": "string", "description": "Part of a code or name."},
+            "location_type": {"type": "string", "enum": ["building", "floor", "wing", "room", "bed",
+                                                         "mech_room", "plenum", "riser", "exterior"]},
+            "space_use": {"type": "string", "description": "e.g. operating_room, icu, office, conference_room"},
+            "criticality": {"type": "string", "enum": ["critical", "high", "standard", "low"]},
+            "limit": _LIMIT,
+        }},
+        handler=facilities.search_spaces,
+    ),
+    ToolDefinition(
+        name="space_contents",
+        module="locations",
+        description=(
+            "Everything in a space and beneath it: the spaces directly inside, "
+            "fixtures by type and which are not working, assets by type, and open "
+            "work orders. Resolve the space with resolve_entity(kind=space) first."
+        ),
+        parameters={"type": "object", "properties": {"location_id": {"type": "integer"}},
+                    "required": ["location_id"]},
+        handler=facilities.space_contents,
+    ),
+    ToolDefinition(
+        name="search_fixtures",
+        module="locations",
+        description=(
+            "Find fixtures - the sockets, lights, gas outlets, diffusers and sinks "
+            "that are part of a room - by space, status, type or trade. Use "
+            "status=faulty for what is broken right now."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer"},
+            "location_id": {"type": "integer", "description": "A space; includes everything inside it."},
+            "status": {"type": "string", "enum": ["working", "faulty", "isolated", "removed"]},
+            "fixture_type": {"type": "string", "description": "Catalogue key, e.g. receptacle, light_fixture, med_gas_outlet."},
+            "trade": _TRADE,
+            "limit": _LIMIT,
+        }},
+        handler=facilities.search_fixtures,
+    ),
+    ToolDefinition(
+        name="search_assets",
+        module="facility-inventory",
+        description=(
+            "Find assets: machinery (chillers, lifts, generators), clinical equipment, "
+            "and room items (chairs, tables, screens). Same filters as the Assets "
+            "page. kind=room_items for furniture and screens, kind=equipment for "
+            "machinery and clinical equipment. Read total_count for 'how many'."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer"},
+            "query": {"type": "string", "description": "Tag, make, model, serial or type."},
+            "location_id": {"type": "integer", "description": "A space; includes everything inside it."},
+            "kind": {"type": "string", "enum": ["room_items", "equipment"]},
+            "asset_type": {"type": "string", "description": "Room item key, e.g. chair, table, display_screen."},
+            "trade": _TRADE,
+            "status": {"type": "string", "enum": ["active", "inactive", "rented", "in_maintenance", "retired"]},
+            "limit": _LIMIT,
+        }},
+        handler=facilities.search_assets,
+    ),
+    ToolDefinition(
+        name="asset_detail",
+        module="facility-inventory",
+        description=(
+            "One asset in full: where it is, what it serves, its open work orders, "
+            "its maintenance plans and next due date, its cost and book value."
+        ),
+        parameters={"type": "object", "properties": {
+            "asset_id": {"type": "integer"},
+            "asset_tag": {"type": "string"},
+        }},
+        handler=facilities.asset_detail,
+    ),
+    ToolDefinition(
+        name="asset_value",
+        module="facility-inventory",
+        description=(
+            "Total cost, accumulated depreciation and net book value of a site's "
+            "assets, with the same split by trade. Only assets with a cost and an "
+            "in-service date carry a book value."
+        ),
+        parameters={"type": "object", "properties": {"facility_id": {"type": "integer"}},
+                    "required": ["facility_id"]},
+        handler=facilities.asset_value,
+    ),
+    ToolDefinition(
+        name="maintenance_due",
+        module="maintenance",
+        description=(
+            "Maintenance plans falling due in the next N days, or already overdue "
+            "with overdue_only=true. aggregates.overdue counts those past due."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer"},
+            "within_days": {"type": "integer", "minimum": 0, "maximum": 366, "default": 30},
+            "overdue_only": {"type": "boolean", "default": False},
+            "trade": _TRADE,
+            "limit": _LIMIT,
+        }},
+        handler=facilities.maintenance_due,
+    ),
+    ToolDefinition(
+        name="compliance_due",
+        module="compliance",
+        description=(
+            "Regulatory compliance tasks (Joint Commission, NFPA, CMS and similar) "
+            "due in the next N days, or overdue and missed with overdue_only=true."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer"},
+            "within_days": {"type": "integer", "minimum": 0, "maximum": 366, "default": 30},
+            "overdue_only": {"type": "boolean", "default": False},
+            "limit": _LIMIT,
+        }},
+        handler=facilities.compliance_due,
     ),
 )
 

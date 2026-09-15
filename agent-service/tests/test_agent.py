@@ -193,6 +193,43 @@ def test_a_site_question_is_answered_for_that_site():
     print("ok  a question asked inside a site is routed, looked up and answered for that site")
 
 
+def test_narrowing_keeps_a_whole_domain_together():
+    """'Open work orders in OR-2' needs rooms and work orders; commerce tools are noise."""
+    names = {
+        "resolve_entity": "platform", "search_spaces": "locations", "search_service_requests": "service-requests",
+        "search_assets": "facility-inventory", "maintenance_due": "maintenance",
+        "search_invoices": "billing", "search_rentals": "rentals", "search_users": "users",
+    }
+    tools = [{"name": n, "description": "", "input_schema": {"type": "object", "properties": {}}}
+             for n in names]
+    # Pad past the narrowing threshold with commerce tools.
+    for i in range(graph.NARROW_ABOVE_TOOL_COUNT):
+        tools.append({"name": f"sales_tool_{i}", "description": "", "input_schema": {"type": "object"}})
+        names[f"sales_tool_{i}"] = "sales"
+
+    offered: list[str] = []
+
+    class Backend(_Backend):
+        async def list_tools(self):
+            return tools, names
+
+    tools_model = _Scripted([AIMessage(content="Nothing to do.")])
+
+    original_role, original_client = providers._for_role, graph.MedRadClient
+    providers._for_role = lambda role, max_tokens, temperature: tools_model
+    graph.MedRadClient = Backend
+    try:
+        asyncio.run(graph.tools_node({"question": "open work orders in OR-2", "user_token": "t" * 20,
+                                      "module": "operations"}))
+    finally:
+        providers._for_role, graph.MedRadClient = original_role, original_client
+    offered = set(tools_model.tools)
+    assert {"resolve_entity", "search_spaces", "search_service_requests",
+            "search_assets", "maintenance_due"} <= offered, offered
+    assert not offered & {"search_invoices", "search_rentals", "search_users", "sales_tool_0"}, offered
+    print("ok  narrowing to a domain keeps rooms, assets and work orders together")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

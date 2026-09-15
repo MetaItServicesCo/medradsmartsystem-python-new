@@ -21,7 +21,9 @@ from app.assistant.tools.base import (
     money,
     validate_date_range,
 )
+from app.models.discipline import Discipline
 from app.models.equipment import Equipment
+from app.models.location import Location
 from app.models.facility import Facility
 from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
@@ -30,7 +32,7 @@ from app.models.user import User, UserRole
 from app.utils.invoice_approval import scope_invoice_approval_visibility
 
 
-RESOLVABLE_KINDS = ("facility", "user", "service_request", "inspection", "invoice")
+RESOLVABLE_KINDS = ("facility", "user", "service_request", "inspection", "invoice", "space", "asset")
 
 # Service-request status groups, mirroring the Service Requests module exactly
 # (see the status_group filter on the list endpoint). These matter because
@@ -166,6 +168,44 @@ def resolve_entity(
                 "inspection_number": inspection.inspection_number,
                 "status": getattr(inspection.status, "value", str(inspection.status)),
                 "route": _deep_link("/inspections", context_search=inspection.inspection_number),
+            })
+
+    elif kind == "space":
+        # Rooms are named by people in two ways - the code on the door and the
+        # name on the plan - so both are searched.
+        ctx.require_module("locations")
+        base = ctx.scope_to_facilities(ctx.db.query(Location), Location.facility_id).filter(
+            Location.is_active.is_(True),
+            or_(Location.code.ilike(pattern, escape="\\"), Location.name.ilike(pattern, escape="\\")),
+        )
+        total = base.count()
+        for loc in base.order_by(func.length(Location.code), Location.code).limit(take).all():
+            items.append({
+                "location_id": loc.id,
+                "code": loc.code,
+                "name": loc.name,
+                "type": loc.location_type,
+                "facility_id": loc.facility_id,
+                "route": "/locations?space={}".format(loc.id),
+            })
+
+    elif kind == "asset":
+        ctx.require_module("facility-inventory")
+        base = ctx.scope_to_facilities(ctx.db.query(Equipment), Equipment.facility_id).filter(or_(
+            Equipment.asset_tag.ilike(pattern, escape="\\"),
+            Equipment.serial_number.ilike(pattern, escape="\\"),
+            (Equipment.make + " " + Equipment.model).ilike(pattern, escape="\\"),
+            Equipment.asset_type.ilike(pattern.replace(" ", "_"), escape="\\"),
+        ))
+        total = base.count()
+        for asset in base.order_by(Equipment.asset_tag).limit(take).all():
+            items.append({
+                "asset_id": asset.id,
+                "asset_tag": asset.asset_tag,
+                "what": asset.type_label or " ".join(p for p in (asset.make, asset.model) if p) or None,
+                "location_id": asset.location_id,
+                "facility_id": asset.facility_id,
+                "route": "/assets?asset={}".format(asset.id),
             })
 
     else:  # invoice
@@ -551,6 +591,11 @@ def search_service_requests(
     priority: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    trade: Optional[str] = None,
+    location_id: Optional[int] = None,
+    asset_id: Optional[int] = None,
+    work_order_type: Optional[str] = None,
+    sla_breached: Optional[bool] = None,
     limit: int = 25,
 ) -> ToolResult:
     """Find service requests by facility, technician, status or priority.
@@ -596,6 +641,26 @@ def search_service_requests(
         query = query.filter(ServiceRequest.status.in_(normalized))
     if priority:
         query = query.filter(ServiceRequest.priority == priority)
+    if trade:
+        trade_row = ctx.db.query(Discipline.id).filter(Discipline.code == trade).first()
+        if trade_row is None:
+            raise ToolInputError("Unknown trade '{}'. Valid values: {}".format(
+                trade, ", ".join(sorted(c for (c,) in ctx.db.query(Discipline.code)))))
+        query = query.filter(ServiceRequest.discipline_id == trade_row[0])
+    if location_id is not None:
+        from app.services import location_tree
+        anchor = ctx.db.get(Location, location_id)
+        if anchor is None:
+            raise ToolInputError("No space with id {}.".format(location_id))
+        inside = ctx.db.query(Location.id).filter(location_tree.subtree_filter(anchor))
+        query = query.filter(or_(ServiceRequest.location_id == anchor.id,
+                                 ServiceRequest.location_id.in_(inside)))
+    if asset_id is not None:
+        query = query.filter(ServiceRequest.equipment_id == asset_id)
+    if work_order_type:
+        query = query.filter(ServiceRequest.work_order_type == work_order_type)
+    if sla_breached is not None:
+        query = query.filter(ServiceRequest.sla_breached.is_(bool(sla_breached)))
 
     start, end = datetime_bounds(date_from, date_to)
     if start is not None:
@@ -607,6 +672,10 @@ def search_service_requests(
     rows = query.order_by(ServiceRequest.created_at.desc()).limit(take).all()
     facility_names = _facility_names(ctx, {r.facility_id for r in rows})
     tech_names = _user_names(ctx, {r.assigned_technician_id for r in rows if r.assigned_technician_id})
+    trade_names = {pk: name for pk, name in ctx.db.query(Discipline.id, Discipline.name)}
+    space_ids = {r.location_id for r in rows if r.location_id}
+    spaces = ({loc.id: loc for loc in ctx.db.query(Location).filter(Location.id.in_(space_ids))}
+              if space_ids else {})
 
     items = [{
         "service_request_id": row.id,
@@ -615,6 +684,12 @@ def search_service_requests(
         "priority": getattr(row.priority, "value", str(row.priority)),
         "facility_name": facility_names.get(row.facility_id),
         "assigned_technician_name": tech_names.get(row.assigned_technician_id),
+        "trade": trade_names.get(row.discipline_id),
+        "space": (lambda loc: "{} · {}".format(loc.code, loc.name) if loc and loc.name
+                  else (loc.code if loc else None))(spaces.get(row.location_id)),
+        "summary": (row.problem_description or "")[:160],
+        "sla_due_at": row.sla_due_at.isoformat() if row.sla_due_at else None,
+        "sla_breached": bool(row.sla_breached),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "route": _deep_link("/service-requests", search=row.request_number),
     } for row in rows]
@@ -655,6 +730,11 @@ def search_service_requests(
             "priority": priority,
             "date_from": date_from.isoformat() if date_from else None,
             "date_to": date_to.isoformat() if date_to else None,
+            "trade": trade,
+            "location_id": location_id,
+            "asset_id": asset_id,
+            "work_order_type": work_order_type,
+            "sla_breached": sla_breached,
         },
         notes=notes,
     )

@@ -7,7 +7,8 @@
  * list is how the data arrives at all. Both write the same rows, so they
  * cannot drift.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions,
@@ -205,6 +206,25 @@ export default function LocationsPage() {
     queryFn: () => fetchLocationTree(effectiveFacilityId as number),
     enabled: !!effectiveFacilityId,
   })
+
+  // Opened from a link - an assistant citation, or a shared URL - with a space
+  // named: select it and open every level above it so it is visible in the tree.
+  const [searchParams] = useSearchParams()
+  const linkedSpace = Number(searchParams.get('space')) || null
+  useEffect(() => {
+    if (!linkedSpace || !tree?.items?.length) return
+    const trail: number[] = []
+    const walk = (nodes: any[], above: number[]): boolean => {
+      for (const node of nodes) {
+        if (node.id === linkedSpace) { trail.push(...above); return true }
+        if (walk(node.children ?? [], [...above, node.id])) return true
+      }
+      return false
+    }
+    if (!walk(tree.items, [])) return
+    setSelectedId(linkedSpace)
+    setExpanded((prev) => new Set([...prev, ...trail]))
+  }, [linkedSpace, tree])
 
   const { data: detail } = useQuery({
     queryKey: ['location', selectedId],
