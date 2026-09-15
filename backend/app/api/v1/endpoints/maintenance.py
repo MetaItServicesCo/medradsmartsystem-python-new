@@ -87,7 +87,7 @@ class Schedule(ScheduleBase):
 
 class ScheduleWithContext(Schedule):
     equipment_tag: Optional[str] = None
-    # Equipment in the Facility Categories is known by its name.
+    # Equipment in Facility is known by its name.
     equipment_name: Optional[str] = None
     location_code: Optional[str] = None
     is_due: bool = False

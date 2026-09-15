@@ -1,7 +1,7 @@
 """Written guides for screens the generated how-to documents cannot describe well.
 
 The how-to extractor reads navigation and button labels out of the frontend
-source. The Facility Categories and Equipment Maintenance screens are reached
+source. The Facility and Equipment Maintenance screens are reached
 from a site bar and built from lists, so the extractor sees little of them;
 these guides say, in the words on the screen, how they are used.
 
@@ -17,14 +17,14 @@ _GUIDES: tuple[tuple[str, str, str, str], ...] = (
     (
         "guide.site_categories",
         "facility-inventory",
-        "How to add equipment to a Facility Category, with where it is and what it cost",
-        """Every site files its equipment under four Facility Categories: Electrical, Plumbing, Mechanical and HVAC.
+        "How to add equipment under Facility, with where it is and what it cost",
+        """Under Facility, every site files its equipment in four categories: Electrical, Plumbing, Mechanical and HVAC.
 
 ## Where to find it
-Open the site from Sites. The bar under the page title shows the site's name, Facility Categories, Equipment Maintenance and Compliance. Open Facility Categories and choose Electrical, Plumbing, Mechanical or HVAC. The site's own page also shows a tile for each category with how many items it has, their total book value and how many need attention. The Back arrow left of the page title returns to the previous screen.
+Open the site from Sites. The bar under the page title shows the site's name, Facility, Equipment Maintenance and Compliance. Open Facility and choose Electrical, Plumbing, Mechanical or HVAC. The site's own page also shows a tile for each category with how many items it has, their total book value and how many need attention. The Back arrow left of the page title returns to the previous screen.
 
 ## Add equipment
-1. Open the category, for example Facility Categories > Electrical.
+1. Open the category, for example Facility > Electrical.
 2. Press Add equipment.
 3. Fill in Name (for example Generator 1) and Type. Type offers a list for the category - Generator, Transformer, Main switchboard, Distribution board, UPS, Transfer switch, Lighting, Earthing for Electrical - and you can type your own.
 4. Under Where is it?, fill in Building (required), Floor and Room / exact spot, for example Main block, Basement, Plant room 2 north wall. Places already used at the site are suggested as you type.
@@ -44,7 +44,7 @@ Click the row to open it, change anything and press Save. When editing, the form
 Each category list can be searched by name, type, tag or place, and filtered by Building, Floor and Status. The list shows where each item is, how many there are, its status, its Book value, when its next service is due and how many jobs are open on it.
 
 ## Assets already in the Asset Register
-Equipment in the Facility Categories is the same record as in the Asset Register, which shows it by name, category and place. An older asset that is not in a category has an Add to a category button in the Asset Register: choose the category, give it a name and type, and say where it is. It keeps its tag, cost and history.
+Equipment under Facility is the same record as in the Asset Register, which shows it by name, category and place. An older asset that is not in a category has an Add to a category button in the Asset Register: choose the category, give it a name and type, and say where it is. It keeps its tag, cost and history.
 
 ## Categories used
 - Electrical: generators, transformers, switchboards, distribution boards, UPS, transfer switches, lighting, earthing.
@@ -56,7 +56,7 @@ Equipment in the Facility Categories is the same record as in the Asset Register
         "guide.equipment_maintenance",
         "service-requests",
         "How to raise and update a service or inspection job on equipment, and record its cost",
-        """Equipment Maintenance holds Service, Inspection, Maintenance Plans and Permits to Work for a site. Service and inspection jobs are work orders on the site's Facility Categories equipment.
+        """Equipment Maintenance holds Service, Inspection, Maintenance Plans and Permits to Work for a site. Service and inspection jobs are work orders on the site's Facility equipment.
 
 ## Where to find it
 Open the site, then Equipment Maintenance in the bar under the page title, and choose Service, Inspection, Maintenance Plans or Permits to Work. The site's page shows how many services and inspections are open, overdue and failed, how many maintenance plans are overdue or due in 30 days, and how many permits are in force or awaiting approval.

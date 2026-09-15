@@ -37,7 +37,7 @@ import { palette } from '@/theme/palette'
 // building, the work done to it, the things in it — rather than the way a
 // contractor managing many client sites did.
 type ModuleGroup =
-  | 'Overview' | 'Facility Categories' | 'Equipment Maintenance'
+  | 'Overview' | 'Facility' | 'Equipment Maintenance'
   | 'The Building' | 'Assets'
   | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
 
@@ -63,7 +63,7 @@ interface SidebarItem {
 }
 
 const groupOrder: ModuleGroup[] = [
-  'Overview', 'Facility Categories', 'Equipment Maintenance', 'The Building', 'Assets',
+  'Overview', 'Facility', 'Equipment Maintenance', 'The Building', 'Assets',
   'Compliance', 'People', 'Commerce', 'Workspace',
 ]
 
@@ -74,7 +74,7 @@ const allMenuItems: SidebarItem[] = [
   // it is where the work of a site now starts.
   ...CATEGORIES.map((category): SidebarItem => ({
     text: category.name, description: `${category.name} equipment and where it is`,
-    icon: category.icon, path: category.path, module: 'facility-inventory', group: 'Facility Categories',
+    icon: category.icon, path: category.path, module: 'facility-inventory', group: 'Facility',
   })),
   // Service and Inspection replace Work Orders and the older Inspections
   // module in the menu; those pages still open from links.

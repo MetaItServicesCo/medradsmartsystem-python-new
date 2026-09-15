@@ -7,7 +7,7 @@ import type { EquipmentItem } from '@/api/equipment'
  */
 export function assetTitle(a: Partial<EquipmentItem>): string {
   const makeModel = [a.make, a.model].filter(Boolean).join(' ')
-  // Equipment in the Facility Categories has a name people gave it.
+  // Equipment in Facility has a name people gave it.
   if (a.name) return [a.name, a.equipment_type, makeModel].filter(Boolean).join(' · ')
   return [a.type_label, makeModel].filter(Boolean).join(' · ') || '—'
 }

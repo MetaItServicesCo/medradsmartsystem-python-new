@@ -193,7 +193,7 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
     guides = {doc.doc_id: doc for doc in guide_documents()}
     assert set(guides) == {"guide.site_categories", "guide.equipment_maintenance"}
     for words in ("Add equipment", "Where is it?", "Building", "Room / exact spot", "Out of service",
-                  "Facility Categories", "Cost & value", "In service since", "Useful life", "Book value today",
+                  "Open Facility and choose", "Cost & value", "In service since", "Useful life", "Book value today",
                   "View asset & value history", "Add to a category", "$38,250"):
         assert words in guides["guide.site_categories"].body, words
     for words in ("New service", "Raise service", "Pass or Fail", "Overdue", "Labour", "Parts",

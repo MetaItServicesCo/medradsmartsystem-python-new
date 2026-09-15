@@ -15,7 +15,7 @@ import type { CategoryCode, Condition, JobKind } from '@/api/siteCategories'
 import type { Module } from '@/config/permissions'
 
 /** What the four categories are called wherever they appear together. */
-export const CATEGORIES_LABEL = 'Facility Categories'
+export const CATEGORIES_LABEL = 'Facility'
 
 export interface CategoryMeta {
   code: CategoryCode

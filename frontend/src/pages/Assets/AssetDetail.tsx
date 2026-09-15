@@ -103,7 +103,7 @@ export default function AssetDetail({ asset, tradeName, placeName, canEdit }: {
                 size="small" startIcon={<CategoryOutlinedIcon />} onClick={() => navigate(`/categories/${categoryCode}`)}
                 sx={{ mt: 0.5, ml: -0.75, fontWeight: 800, textTransform: 'none', color: palette.brand }}
               >
-                Open in {CATEGORIES_LABEL}
+                Open in {CATEGORIES_LABEL} · {CATEGORIES.find((c) => c.code === categoryCode)?.name}
               </Button>
             ) : !asset.name && canEdit ? (
               <Button

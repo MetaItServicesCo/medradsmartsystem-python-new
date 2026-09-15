@@ -1,5 +1,5 @@
 /**
- * The site you are in, and its three places to work: Facility Categories,
+ * The site you are in, and its three places to work: Facility,
  * Equipment Maintenance (Service, Inspection, Maintenance Plans, Permits to
  * Work) and Compliance.
  *

@@ -50,7 +50,7 @@ const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/sites': 'Sites',
   '/assets': 'Asset Register',
-  '/categories': 'Facility Categories',
+  '/categories': 'Facility',
   '/equipment-maintenance': 'Equipment Maintenance',
   '/maintenance': 'Maintenance Plans',
   '/permits': 'Permits to Work',

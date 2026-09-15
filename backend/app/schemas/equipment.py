@@ -309,7 +309,7 @@ class Equipment(EquipmentBase):
     # "Chair", "Ceiling speaker": what a room item is, for lists that would
     # otherwise show an empty make and model.
     type_label: Optional[str] = None
-    # Set on equipment in the Facility Categories (see app/services/site_categories.py),
+    # Set on equipment in Facility (see app/services/site_categories.py),
     # so the register can show it by name and where exactly it is.
     name: Optional[str] = None
     equipment_type: Optional[str] = None

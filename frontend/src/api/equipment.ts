@@ -68,7 +68,7 @@ export interface EquipmentItem {
   asset_type?: string | null
   type_label?: string | null
 
-  // Set on equipment in the Facility Categories: known by name, and where
+  // Set on equipment in Facility: known by name, and where
   // exactly it is. `location` holds the room or exact spot.
   name?: string | null
   equipment_type?: string | null

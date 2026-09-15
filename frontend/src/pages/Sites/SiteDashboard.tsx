@@ -1,5 +1,5 @@
 /**
- * One hospital's page: its Facility Categories and what their equipment is
+ * One hospital's page: its Facility categories and what their equipment is
  * worth, Equipment Maintenance (service, inspection, plans, permits), and
  * compliance.
  *
