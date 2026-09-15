@@ -31,9 +31,15 @@ _DATE = {"type": "string", "format": "date", "description": "ISO date, YYYY-MM-D
 # The trade that maintains something, which is also who a fault is routed to.
 _TRADE = {
     "type": "string",
-    "enum": ["mechanical", "electrical", "plumbing", "vertical_transport", "fire_life_safety",
+    "enum": ["mechanical", "hvac", "electrical", "plumbing", "vertical_transport", "fire_life_safety",
              "medical_gas", "building_envelope", "it_low_voltage", "biomedical"],
     "description": "Trade code.",
+}
+# The four categories a site's equipment is filed under.
+_CATEGORY = {
+    "type": "string",
+    "enum": ["electrical", "plumbing", "mechanical", "hvac"],
+    "description": "Equipment category.",
 }
 _LIMIT = {"type": "integer", "minimum": 1, "maximum": 100, "default": 25}
 
@@ -554,6 +560,45 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "limit": _LIMIT,
         }},
         handler=facilities.search_assets,
+    ),
+    ToolDefinition(
+        name="category_equipment",
+        module="facility-inventory",
+        description=(
+            "A site's equipment under its categories - Electrical, Plumbing, Mechanical, "
+            "HVAC - with where exactly each is (building, floor, spot), its condition "
+            "(Working, Needs attention, Out of service), open jobs and next service date. "
+            "aggregates.by_category counts every category. Use this for 'what HVAC "
+            "equipment do we have', 'what needs attention', 'where is the generator'."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer"},
+            "category": _CATEGORY,
+            "condition": {"type": "string", "enum": ["working", "needs_attention", "out_of_service"]},
+            "building": {"type": "string"},
+            "query": {"type": "string", "description": "Name, type, tag, floor or spot."},
+            "limit": _LIMIT,
+        }, "required": ["facility_id"]},
+        handler=facilities.category_equipment,
+    ),
+    ToolDefinition(
+        name="equipment_jobs",
+        module="service-requests",
+        description=(
+            "Service or inspection jobs on a site's category equipment (Equipment "
+            "Maintenance). kind=service or kind=inspection. status: open, in_progress, "
+            "done or overdue. Each job has the equipment, where it is, due date, who it "
+            "is assigned to and, for inspections, pass or fail. aggregates.by_status counts them."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer"},
+            "kind": {"type": "string", "enum": ["service", "inspection"]},
+            "status": {"type": "string", "enum": ["open", "in_progress", "done", "overdue"]},
+            "category": _CATEGORY,
+            "query": {"type": "string", "description": "Job, equipment name, tag or place."},
+            "limit": _LIMIT,
+        }, "required": ["facility_id", "kind"]},
+        handler=facilities.equipment_jobs,
     ),
     ToolDefinition(
         name="asset_detail",

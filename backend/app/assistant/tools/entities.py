@@ -196,13 +196,19 @@ def resolve_entity(
             Equipment.serial_number.ilike(pattern, escape="\\"),
             (Equipment.make + " " + Equipment.model).ilike(pattern, escape="\\"),
             Equipment.asset_type.ilike(pattern.replace(" ", "_"), escape="\\"),
+            # Equipment in the site categories is known by its name ("Generator 1").
+            Equipment.name.ilike(pattern, escape="\\"),
+            Equipment.equipment_type.ilike(pattern, escape="\\"),
         ))
         total = base.count()
         for asset in base.order_by(Equipment.asset_tag).limit(take).all():
             items.append({
                 "asset_id": asset.id,
                 "asset_tag": asset.asset_tag,
-                "what": asset.type_label or " ".join(p for p in (asset.make, asset.model) if p) or None,
+                "name": asset.name,
+                "what": asset.equipment_type or asset.type_label
+                or " ".join(p for p in (asset.make, asset.model) if p) or None,
+                "where": " · ".join(p for p in (asset.building, asset.floor, asset.location) if p) or None,
                 "location_id": asset.location_id,
                 "facility_id": asset.facility_id,
                 "route": "/assets?asset={}".format(asset.id),

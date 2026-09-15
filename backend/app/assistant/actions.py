@@ -1,7 +1,8 @@
 """Actions the assistant can prepare for a person to confirm.
 
-Four, deliberately: report a fault, book an asset for service, schedule an
-inspection, and update a work order. Each is reversible in the product and
+Five, deliberately: report a fault, book an asset for service, schedule an
+inspection, update a work order, and raise a service or inspection job on a
+category's equipment. Each is reversible in the product and
 touches one record. Deleting, bulk changes, anything financial and anything
 about users or permissions stay on their own screens, with their own previews.
 
@@ -405,9 +406,66 @@ def _execute_update(db: Session, user: User, payload: dict[str, Any]) -> dict[st
     return _work_order_result(order_id, number, "updated")
 
 
+# ── raise a service or inspection job ────────────────────────────────────────
+
+def _prepare_equipment_job(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.services import equipment_jobs, site_categories
+
+    asset = _asset(ctx, args.get("asset_id"))
+    if asset.name is None:
+        raise ToolInputError("That asset is not in a site category. Find it with category_equipment.")
+    kind = args.get("kind")
+    if kind not in equipment_jobs.KINDS:
+        raise ToolInputError("kind is service or inspection.")
+    title = _description(args.get("what_needs_doing"))[:500]
+    due_on = None
+    if args.get("due_on"):
+        try:
+            due_on = date.fromisoformat(str(args["due_on"]))
+        except ValueError:
+            raise ToolInputError("due_on must be YYYY-MM-DD.")
+    person = None
+    if args.get("assigned_to_id"):
+        person = next((u for u in equipment_jobs.assignable_users(ctx.db, asset.facility_id)
+                       if u.id == args["assigned_to_id"]), None)
+        if person is None:
+            raise ToolInputError("That person cannot be given jobs at this site. Find someone with search_users.")
+    code = next((c for c, pk in site_categories.ensure_disciplines(ctx.db).items() if pk == asset.discipline_id), None)
+    warnings = [] if person else ["Nobody is assigned: it will show as open until someone takes it."]
+    return Prepared(
+        payload={"asset_id": asset.id, "kind": kind, "title": title,
+                 "due_on": due_on.isoformat() if due_on else None,
+                 "assigned_to_id": person.id if person else None},
+        title="Raise a {} on {}".format(kind, asset.name),
+        lines=[("Equipment", "{} · {}".format(asset.name, asset.asset_tag)),
+               ("Category", site_categories.BY_CODE[code].name if code else "Not set"),
+               ("Where", site_categories.location_label(asset) or "Not recorded"),
+               ("What needs doing", title),
+               ("Due", due_on.isoformat() if due_on else "No date"),
+               ("Assigned to", person.full_name if person else "Nobody yet")],
+        facility_id=asset.facility_id,
+        warnings=warnings,
+    )
+
+
+def _execute_equipment_job(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.equipment_maintenance import create_job
+    from app.schemas.site_categories import EquipmentJobCreate
+
+    asset = db.get(Equipment, payload["asset_id"])
+    job = create_job(EquipmentJobCreate(
+        facility_id=asset.facility_id, kind=payload["kind"], equipment_id=asset.id, title=payload["title"],
+        due_on=date.fromisoformat(payload["due_on"]) if payload.get("due_on") else None,
+        assigned_to_id=payload.get("assigned_to_id"),
+    ), db=db, current_user=user)
+    return {"message": "{} {} raised on {}.".format(payload["kind"].capitalize(), job["number"], asset.name),
+            "record": job["number"], "route": "/equipment-maintenance/{}".format(payload["kind"]),
+            "work_order_id": job["id"]}
+
+
 # ── registry ─────────────────────────────────────────────────────────────────
 
-_TRADE_CODES = ["mechanical", "electrical", "plumbing", "vertical_transport", "fire_life_safety",
+_TRADE_CODES = ["mechanical", "hvac", "electrical", "plumbing", "vertical_transport", "fire_life_safety",
                 "medical_gas", "building_envelope", "it_low_voltage", "biomedical"]
 
 ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
@@ -480,6 +538,24 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
             "note": {"type": "string"},
         }, "required": ["work_order_id"]},
         prepare=_prepare_update, execute=_execute_update,
+    ),
+    ActionDefinition(
+        name="prepare_equipment_job",
+        module="service-requests", permission="add",
+        description=(
+            "Prepare a service or inspection job on a piece of category equipment "
+            "(Electrical, Plumbing, Mechanical, HVAC), for Equipment Maintenance. Find the "
+            "equipment with category_equipment or resolve_entity kind=asset. Optionally a due "
+            "date and a person to assign (search_users). Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "asset_id": {"type": "integer"},
+            "kind": {"type": "string", "enum": ["service", "inspection"]},
+            "what_needs_doing": {"type": "string"},
+            "due_on": {"type": "string", "format": "date"},
+            "assigned_to_id": {"type": "integer"},
+        }, "required": ["asset_id", "kind", "what_needs_doing"]},
+        prepare=_prepare_equipment_job, execute=_execute_equipment_job,
     ),
 )
 

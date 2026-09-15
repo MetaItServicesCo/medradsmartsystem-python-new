@@ -493,3 +493,131 @@ def compliance_due(
 
 def describe_valid(values: Any) -> str:
     return ", ".join(sorted(values))
+
+
+# ── site categories ──────────────────────────────────────────────────────────
+# Electrical, Plumbing, Mechanical and HVAC equipment, and the service and
+# inspection jobs on it: the same queries the Categories and Equipment
+# Maintenance screens use.
+
+def _site_or_error(ctx: ToolContext, facility_id: Optional[int]) -> int:
+    if facility_id is None:
+        raise ToolInputError("Say which site: pass facility_id.")
+    allowed = ctx.facility_ids()
+    if ctx.db.get(Facility, facility_id) is None or (allowed is not None and facility_id not in allowed):
+        raise ToolInputError("No site with id {}.".format(facility_id))
+    return facility_id
+
+
+def _category_or_error(category: Optional[str]):
+    from app.services import site_categories
+
+    if not category:
+        return None
+    found = site_categories.BY_CODE.get(category)
+    if found is None:
+        raise ToolInputError("Unknown category '{}'. Valid values: {}".format(
+            category, ", ".join(site_categories.BY_CODE)))
+    return found
+
+
+def category_equipment(
+    ctx: ToolContext,
+    facility_id: Optional[int] = None,
+    category: Optional[str] = None,
+    condition: Optional[str] = None,
+    building: Optional[str] = None,
+    query: Optional[str] = None,
+    limit: int = 25,
+) -> ToolResult:
+    """A site's equipment under its categories, with counts per category."""
+    from app.services import site_categories
+
+    ctx.require_module("facility-inventory")
+    ctx.apply_statement_timeout()
+    site = _site_or_error(ctx, facility_id)
+    chosen = _category_or_error(category)
+    if condition and condition not in site_categories.CONDITIONS:
+        raise ToolInputError("Unknown condition '{}'. Valid values: {}".format(
+            condition, ", ".join(site_categories.CONDITIONS)))
+
+    summary = site_categories.overview(ctx.db, site)
+    ids = site_categories.ensure_disciplines(ctx.db)
+    code_of = {pk: code for code, pk in ids.items()}
+    rows = site_categories.items_query(ctx.db, site).filter(Equipment.discipline_id.in_(list(code_of)))
+    if chosen is not None:
+        rows = rows.filter(Equipment.discipline_id == ids[chosen.code])
+    if condition:
+        rows = rows.filter(Equipment.condition == condition)
+    if building:
+        rows = rows.filter(func.lower(Equipment.building) == building.strip().lower())
+    if query and query.strip():
+        like = _escape_like(query)
+        rows = rows.filter(or_(Equipment.name.ilike(like), Equipment.equipment_type.ilike(like),
+                               Equipment.asset_tag.ilike(like), Equipment.location.ilike(like),
+                               Equipment.floor.ilike(like), Equipment.building.ilike(like)))
+    total = rows.count()
+    found = rows.order_by(Equipment.building, Equipment.floor, Equipment.name).limit(clamp_limit(limit)).all()
+    facts = site_categories.job_facts(ctx.db, [a.id for a in found])
+    items = []
+    for asset in found:
+        code = code_of[asset.discipline_id]
+        item = site_categories.serialise(asset, site_categories.BY_CODE[code], facts.get(asset.id))
+        items.append({
+            "asset_id": item["id"], "asset_tag": item["asset_tag"], "name": item["name"],
+            "category": item["category_name"], "type": item["type"], "where": item["location_label"] or None,
+            "quantity": item["quantity"], "condition": item["condition_label"],
+            "open_jobs": item["open_jobs"],
+            "next_service_on": item["next_service_on"].isoformat() if item["next_service_on"] else None,
+            "route": "/categories/{}".format(code),
+        })
+    return ToolResult(
+        tool="category_equipment", total_count=total, items=items,
+        aggregates={"by_category": [{
+            "category": c["name"], "equipment": c["equipment"], "needs_attention": c["needs_attention"],
+            "out_of_service": c["out_of_service"], "open_jobs": c["open_jobs"], "overdue_jobs": c["overdue_jobs"],
+        } for c in summary]},
+        applied_filters={"facility_id": site, "category": category, "condition": condition,
+                         "building": building, "query": query},
+    )
+
+
+def equipment_jobs(
+    ctx: ToolContext,
+    facility_id: Optional[int] = None,
+    kind: str = "service",
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    query: Optional[str] = None,
+    limit: int = 25,
+) -> ToolResult:
+    """Service or inspection jobs on a site's category equipment."""
+    from app.services import equipment_jobs as jobs_service
+    from app.services import site_categories
+
+    ctx.require_module("service-requests")
+    ctx.apply_statement_timeout()
+    site = _site_or_error(ctx, facility_id)
+    _category_or_error(category)
+    if kind not in jobs_service.KINDS:
+        raise ToolInputError("kind is service or inspection.")
+    rows, counts = jobs_service.list_query(ctx.db, site, kind, status=status, category=category, search=query)
+    total = rows.order_by(None).count()
+    codes = {pk: code for code, pk in site_categories.ensure_disciplines(ctx.db).items()}
+    items = []
+    for job in rows.limit(clamp_limit(limit)).all():
+        shown = jobs_service.serialise(job, codes)
+        equipment = shown["equipment"] or {}
+        items.append({
+            "job_id": shown["id"], "number": shown["number"], "what_needs_doing": shown["title"],
+            "equipment": equipment.get("name"), "asset_tag": equipment.get("asset_tag"),
+            "category": equipment.get("category_name"), "where": equipment.get("location_label") or None,
+            "due_on": shown["due_on"].isoformat() if shown["due_on"] else None, "overdue": shown["overdue"],
+            "assigned_to": (shown["assigned_to"] or {}).get("name"), "status": shown["status_label"],
+            "result": shown["inspection_result"], "findings": shown["findings"],
+            "route": "/equipment-maintenance/{}".format(kind),
+        })
+    return ToolResult(
+        tool="equipment_jobs", total_count=total, items=items, aggregates={"by_status": counts},
+        applied_filters={"facility_id": site, "kind": kind, "status": status, "category": category, "query": query},
+    )

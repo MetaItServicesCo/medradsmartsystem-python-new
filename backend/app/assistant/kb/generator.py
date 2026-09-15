@@ -10,6 +10,7 @@ from typing import Any
 
 from app.assistant.kb.api_extractors import operation_documents, permission_documents
 from app.assistant.kb.documents import KBChunk, KBDocument, chunk_document
+from app.assistant.kb.guides import guide_documents
 from app.assistant.kb.rule_extractors import rule_documents
 from app.assistant.kb.ui_extractors import howto_documents, resolve_frontend_src
 from app.assistant.kb.extractors import (
@@ -94,6 +95,9 @@ def generate_all(
     resolved = resolve_frontend_src(frontend_src)
     if resolved is not None:
         documents.extend(howto_documents(resolved))
+    # Written, not extracted: the screens a site's work now starts from, which
+    # the extractor cannot read well. Independent of the frontend being present.
+    documents.extend(guide_documents())
 
     documents.extend(_module_overview_documents(mappers, operations))
     return documents

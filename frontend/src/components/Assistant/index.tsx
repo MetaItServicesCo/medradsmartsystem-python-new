@@ -87,10 +87,10 @@ const ripple = keyframes`
 `
 
 const SUGGESTIONS = [
-  'How many open work orders are there, by trade?',
-  'Which assets are due for maintenance this month?',
-  'Report a fault on a socket in OR-2',
-  'How do I set up a building?',
+  'Which HVAC equipment needs attention?',
+  'What services are overdue?',
+  'Raise a service on Generator 1 for next Monday',
+  'How do I add equipment to a category?',
 ]
 
 // Node names map to what the user should understand is happening.
