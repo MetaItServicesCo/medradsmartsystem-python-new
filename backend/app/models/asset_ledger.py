@@ -92,7 +92,8 @@ DEPRECIATION_METHODS: tuple[str, ...] = tuple(m.value for m in DepreciationMetho
 # overridable, and finance will have opinions about some of them.
 DEFAULT_USEFUL_LIFE_YEARS: dict[str, int] = {
     "vertical_transport": 20,     # elevators, escalators
-    "mechanical": 20,             # air handlers, chillers, boilers
+    "mechanical": 20,             # boilers, compressors, pumps
+    "hvac": 15,                   # chillers, air handlers, AC units
     "electrical": 20,             # switchgear, generators, transfer switches
     "plumbing": 20,
     "fire_life_safety": 15,

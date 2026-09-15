@@ -4,9 +4,15 @@ Kept deliberately small: every field here is one a person sees on the form.
 Written for Pydantic 2.5, which the server pins.
 """
 from datetime import date
-from typing import Literal, Optional
+from decimal import Decimal
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+from app.schemas.money import Money
+
+# Years, as the asset table stores a useful life: Numeric(5, 2).
+UsefulLife = Annotated[Decimal, Field(gt=0, le=Decimal("100"), decimal_places=2)]
 
 Condition = Literal["working", "needs_attention", "out_of_service"]
 CategoryCode = Literal["electrical", "plumbing", "mechanical", "hvac"]
@@ -27,6 +33,11 @@ class CategoryEquipmentCreate(BaseModel):
     make: Optional[str] = Field(None, max_length=120)
     model: Optional[str] = Field(None, max_length=120)
     notes: Optional[str] = Field(None, max_length=4000)
+    # The price of one item; the total is this times the quantity.
+    unit_cost: Optional[Money] = None
+    in_service_on: Optional[date] = None
+    # Left out, it defaults from the category.
+    useful_life_years: Optional[UsefulLife] = None
 
 
 class CategoryEquipmentUpdate(BaseModel):
@@ -41,6 +52,19 @@ class CategoryEquipmentUpdate(BaseModel):
     make: Optional[str] = Field(None, max_length=120)
     model: Optional[str] = Field(None, max_length=120)
     notes: Optional[str] = Field(None, max_length=4000)
+    unit_cost: Optional[Money] = None
+    in_service_on: Optional[date] = None
+    useful_life_years: Optional[UsefulLife] = None
+
+
+class CategoryAdopt(BaseModel):
+    """An older asset joining a category: what it is called and where it is.
+    Its tag, cost and history stay as they are."""
+    name: str = Field(..., min_length=1, max_length=160)
+    type: str = Field(..., min_length=1, max_length=80)
+    building: str = Field(..., min_length=1, max_length=120)
+    floor: Optional[str] = Field(None, max_length=80)
+    spot: Optional[str] = Field(None, max_length=255)
 
 
 class EquipmentJobCreate(BaseModel):
@@ -54,6 +78,9 @@ class EquipmentJobCreate(BaseModel):
     notes: Optional[str] = Field(None, max_length=4000)
     inspection_result: Optional[InspectionResult] = None
     findings: Optional[str] = Field(None, max_length=4000)
+    labour_cost: Optional[Money] = None
+    parts_cost: Optional[Money] = None
+    is_major_work: bool = False
 
 
 class EquipmentJobUpdate(BaseModel):
@@ -65,3 +92,6 @@ class EquipmentJobUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=4000)
     inspection_result: Optional[InspectionResult] = None
     findings: Optional[str] = Field(None, max_length=4000)
+    labour_cost: Optional[Money] = None
+    parts_cost: Optional[Money] = None
+    is_major_work: Optional[bool] = None

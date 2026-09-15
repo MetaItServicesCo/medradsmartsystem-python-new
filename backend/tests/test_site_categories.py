@@ -14,7 +14,7 @@ import ast
 import os
 import pathlib
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -43,7 +43,7 @@ from app.services import sla  # noqa: E402
 
 engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
 Session = sessionmaker(bind=engine)
-TODAY = date.today()
+TODAY = datetime.utcnow().date()  # the server's day: every "today" in the app is UTC
 
 
 def build():

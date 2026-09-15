@@ -87,6 +87,8 @@ class Schedule(ScheduleBase):
 
 class ScheduleWithContext(Schedule):
     equipment_tag: Optional[str] = None
+    # Equipment in the Facility Categories is known by its name.
+    equipment_name: Optional[str] = None
     location_code: Optional[str] = None
     is_due: bool = False
     is_overdue: bool = False
@@ -127,8 +129,9 @@ def _context(db: Session, rows: List[MaintenanceSchedule]) -> List[ScheduleWithC
     for schedule in rows:
         payload = ScheduleWithContext.model_validate(schedule)
         if schedule.equipment_id:
-            row = db.query(Equipment.asset_tag).filter(Equipment.id == schedule.equipment_id).first()
+            row = db.query(Equipment.asset_tag, Equipment.name).filter(Equipment.id == schedule.equipment_id).first()
             payload.equipment_tag = row[0] if row else None
+            payload.equipment_name = row[1] if row else None
         if schedule.location_id:
             row = db.query(Location.code).filter(Location.id == schedule.location_id).first()
             payload.location_code = row[0] if row else None

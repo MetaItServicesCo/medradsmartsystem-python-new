@@ -2,7 +2,7 @@
 
 See app/services/equipment_jobs.py for how these map onto work orders.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +13,8 @@ from app.core.deps import get_current_user
 from app.db.base import get_db
 from app.models.equipment import Equipment
 from app.models.facility import Facility
+from app.models.maintenance_schedule import MaintenanceSchedule, ScheduleStatus
+from app.models.permit import PERMITS_WORK, PermitStatus, WorkPermit
 from app.models.service_request import ServiceRequest, ServiceRequestStatus
 from app.models.user import User
 from app.schemas.site_categories import EquipmentJobCreate, EquipmentJobUpdate
@@ -20,7 +22,7 @@ from app.services import equipment_jobs, site_categories
 from app.utils.facility_access import require_facility_access
 from app.utils.notifications import create_notification
 from app.utils.permission_deps import require_module_access
-from app.utils.permissions import require_module_permission
+from app.utils.permissions import has_module_permission, require_module_permission
 
 router = APIRouter(dependencies=[Depends(require_module_access("service-requests"))])
 
@@ -107,10 +109,29 @@ def summary(
         .group_by(ServiceRequest.work_order_type)
         .all()
     )
-    result = {kind: {"open": 0, "overdue": 0, "failed": 0} for kind in equipment_jobs.KINDS}
+    result: dict[str, Any] = {kind: {"open": 0, "overdue": 0, "failed": 0} for kind in equipment_jobs.KINDS}
     for work_order_type, open_count, overdue, failed in rows:
         kind = equipment_jobs.KIND_OF_TYPE[work_order_type]
         result[kind] = {"open": int(open_count or 0), "overdue": int(overdue or 0), "failed": int(failed or 0)}
+
+    # Maintenance Plans and Permits to Work sit in the same section; each count
+    # is given only to people who can open that screen.
+    if has_module_permission(current_user, "maintenance", "index"):
+        active = [ScheduleStatus.ACTIVE.value]
+        plans = db.query(
+            func.count(MaintenanceSchedule.id),
+            func.sum(case((MaintenanceSchedule.next_due_date < today, 1), else_=0)),
+            func.sum(case((MaintenanceSchedule.next_due_date.between(today, today + timedelta(days=30)), 1),
+                          else_=0)),
+        ).filter(MaintenanceSchedule.facility_id == facility_id, MaintenanceSchedule.status.in_(active)).one()
+        result["plans"] = {"active": int(plans[0] or 0), "overdue": int(plans[1] or 0),
+                           "due_in_30_days": int(plans[2] or 0)}
+    if has_module_permission(current_user, "permits", "index"):
+        permits = db.query(
+            func.sum(case((WorkPermit.status.in_(list(PERMITS_WORK)), 1), else_=0)),
+            func.sum(case((WorkPermit.status == PermitStatus.PENDING_APPROVAL.value, 1), else_=0)),
+        ).filter(WorkPermit.facility_id == facility_id).one()
+        result["permits"] = {"active": int(permits[0] or 0), "awaiting_approval": int(permits[1] or 0)}
     return result
 
 
@@ -141,6 +162,7 @@ def create_job(
         equipment_id=payload.equipment_id, title=payload.title, due_on=payload.due_on,
         assigned_to_id=payload.assigned_to_id, status=payload.status, notes=payload.notes,
         inspection_result=payload.inspection_result, findings=payload.findings,
+        labour_cost=payload.labour_cost, parts_cost=payload.parts_cost, is_major_work=payload.is_major_work,
     )
     db.commit()
     db.refresh(job)

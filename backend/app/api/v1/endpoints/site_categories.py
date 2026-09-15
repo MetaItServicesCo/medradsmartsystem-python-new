@@ -3,6 +3,8 @@
 See app/services/site_categories.py for why these are equipment rows and what
 marks one as entered here.
 """
+from datetime import date
+from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,7 +18,7 @@ from app.models.facility import Facility
 from app.models.inspection import Inspection
 from app.models.service_request import ServiceRequest
 from app.models.user import User
-from app.schemas.site_categories import CategoryEquipmentCreate, CategoryEquipmentUpdate
+from app.schemas.site_categories import CategoryAdopt, CategoryEquipmentCreate, CategoryEquipmentUpdate
 from app.services import asset_tags, site_categories
 from app.utils.facility_access import require_facility_access
 from app.utils.permission_deps import require_module_access
@@ -50,7 +52,53 @@ def _category_of(db: Session, asset: Equipment) -> site_categories.Category:
 
 
 def _response(db: Session, asset: Equipment, category: site_categories.Category) -> dict:
-    return site_categories.serialise(asset, category, site_categories.job_facts(db, [asset.id]).get(asset.id))
+    return site_categories.serialise(asset, category, site_categories.job_facts(db, [asset.id]).get(asset.id),
+                                     site_categories.value_facts(db, [asset]).get(asset.id))
+
+
+# The asset table's cost column is Numeric(10, 2).
+MAX_TOTAL_COST = Decimal("99999999.99")
+
+
+def _set_cost(asset: Equipment, unit: Optional[Decimal], quantity: int) -> None:
+    total = site_categories.total_cost(unit, quantity)
+    if total is not None and total > MAX_TOTAL_COST:
+        raise HTTPException(status_code=422, detail="The total cost is too large to record")
+    asset.cost = total
+
+
+@router.get("/value-preview")
+def value_preview(
+    unit_cost: Optional[Decimal] = Query(None, ge=0),
+    quantity: int = Query(1, ge=1),
+    in_service_on: Optional[date] = Query(None),
+    useful_life_years: Optional[Decimal] = Query(None, gt=0, le=100),
+    equipment_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """What the form's figures come to, before saving: total cost, book value today
+    and yearly depreciation, including major work already posted when editing."""
+    from app.models.asset_ledger import AssetLedgerEntry
+    from app.services import asset_ledger, depreciation
+
+    entries = []
+    if equipment_id is not None:
+        asset = _item_or_404(db, current_user, equipment_id)
+        entries = (db.query(AssetLedgerEntry).filter(AssetLedgerEntry.equipment_id == asset.id)
+                   .order_by(AssetLedgerEntry.effective_date.asc()).all())
+    total = site_categories.total_cost(unit_cost, quantity)
+    result = depreciation.compute(
+        cost=total, useful_life_years=useful_life_years, in_service_date=in_service_on,
+        basis_changes=asset_ledger.basis_changes(entries), disposed_on=asset_ledger.disposal_date(entries),
+    )
+    valued = result.message is None
+    return {
+        "total_cost": total,
+        "book_value": result.net_book_value if valued else None,
+        "annual_depreciation": result.annual_depreciation.quantize(Decimal("0.01")) if valued else None,
+        "message": result.message,
+    }
 
 
 @router.get("/overview")
@@ -117,10 +165,12 @@ def list_category_equipment(
         func.lower(Equipment.building), func.lower(Equipment.floor), func.lower(Equipment.name), Equipment.id,
     ).all()
     facts = site_categories.job_facts(db, [row.id for row in rows])
+    values = site_categories.value_facts(db, rows)
     return {
         "category": {"code": category.code, "name": category.name, "colour": category.colour,
-                     "types": list(category.types)},
-        "items": [site_categories.serialise(row, category, facts.get(row.id)) for row in rows],
+                     "types": list(category.types),
+                     "default_useful_life_years": site_categories.default_useful_life(category.code)},
+        "items": [site_categories.serialise(row, category, facts.get(row.id), values.get(row.id)) for row in rows],
         "total": len(rows),
     }
 
@@ -158,7 +208,12 @@ def add_category_equipment(
         model=site_categories.tidy(payload.model) or "",
         serial_number="",
         description=site_categories.tidy(payload.notes),
+        installation_date=payload.in_service_on,
+        # A life is seeded from the category, as the asset register does, so a
+        # cost and a date are all that is needed for a book value.
+        useful_life_years=payload.useful_life_years or site_categories.default_useful_life(category.code),
     )
+    _set_cost(asset, payload.unit_cost, payload.quantity)
     db.add(asset)
     db.commit()
     db.refresh(asset)
@@ -195,8 +250,17 @@ def update_category_equipment(
         asset.floor = site_categories.match_existing_spelling(db, asset.facility_id, "floor", changes["floor"])
     if "spot" in changes:
         asset.location = site_categories.tidy(changes["spot"])
-    if changes.get("quantity") is not None:
-        asset.quantity = changes["quantity"]
+    # The total follows the quantity: one item's price is kept unless a new one
+    # is given, and the stored total is recomputed from it.
+    if "unit_cost" in changes or changes.get("quantity") is not None:
+        unit = changes["unit_cost"] if "unit_cost" in changes else site_categories.unit_cost(asset)
+        quantity = changes.get("quantity") or asset.quantity or 1
+        asset.quantity = quantity
+        _set_cost(asset, unit, quantity)
+    if "in_service_on" in changes:
+        asset.installation_date = changes["in_service_on"]
+    if "useful_life_years" in changes:
+        asset.useful_life_years = changes["useful_life_years"] or site_categories.default_useful_life(category.code)
     if changes.get("condition") is not None:
         asset.condition = changes["condition"]
     for field in ("make", "model"):
@@ -205,6 +269,46 @@ def update_category_equipment(
     if "notes" in changes:
         asset.description = site_categories.tidy(changes["notes"])
 
+    db.commit()
+    db.refresh(asset)
+    return _response(db, asset, category)
+
+
+@router.post("/{code}/adopt/{equipment_id}")
+def adopt_into_category(
+    code: str,
+    equipment_id: int,
+    payload: CategoryAdopt,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Bring an asset from the register into a category without retyping it.
+
+    It keeps its tag, cost, dates and history; it gains a name, a category and
+    where exactly it is. Useful life is seeded from the category if it has none.
+    """
+    require_module_permission(current_user, "facility-inventory", "edit")
+    category = site_categories.category_or_404(code)
+    asset = db.get(Equipment, equipment_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    require_facility_access(db, current_user, asset.facility_id)
+    if asset.name is not None:
+        raise HTTPException(status_code=409, detail=f"{asset.asset_tag} is already in a category as {asset.name}")
+
+    name, kind = site_categories.tidy(payload.name), site_categories.tidy(payload.type)
+    building = site_categories.match_existing_spelling(db, asset.facility_id, "building", payload.building)
+    if not (name and kind and building):
+        raise HTTPException(status_code=422, detail="Name, type and building are required")
+    asset.discipline_id = site_categories.ensure_disciplines(db)[category.code]
+    asset.name, asset.equipment_type, asset.building = name, kind, building
+    asset.floor = site_categories.match_existing_spelling(db, asset.facility_id, "floor", payload.floor)
+    if payload.spot is not None:
+        asset.location = site_categories.tidy(payload.spot)
+    asset.quantity = asset.quantity or 1
+    asset.condition = asset.condition or "working"
+    if not asset.useful_life_years:
+        asset.useful_life_years = site_categories.default_useful_life(category.code)
     db.commit()
     db.refresh(asset)
     return _response(db, asset, category)

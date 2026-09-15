@@ -15,14 +15,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from app.models.asset_ledger import AssetLedgerEntry, DepreciationMethod
 from app.models.discipline import Discipline
 from app.models.equipment import Equipment
 from app.models.service_request import ServiceRequest, ServiceRequestStatus, WorkOrderType
+from app.services import asset_ledger
+from app.services import depreciation as depreciation_service
 
 
 @dataclass(frozen=True)
@@ -172,8 +176,94 @@ def job_facts(db: Session, equipment_ids: list[int]) -> dict[int, dict]:
             for equipment_id, count, due in rows}
 
 
-def serialise(asset: Equipment, category: Category, facts: dict | None = None) -> dict:
+# ── what it cost and what it is worth ────────────────────────────────────────
+
+# Maintenance spend at or above this share of the purchase cost is the point at
+# which pricing a replacement is worth the time: a common rule of thumb for plant.
+REPLACE_AT_PERCENT = 50
+
+_CENTS = Decimal("0.01")
+
+
+def _money(value) -> Decimal | None:
+    return None if value is None else Decimal(str(value)).quantize(_CENTS, rounding=ROUND_HALF_UP)
+
+
+def unit_cost(asset: Equipment) -> Decimal | None:
+    """The price of one item. The total is what is stored, because the total is
+    what depreciates; one item's price is derived from it."""
+    if asset.cost is None:
+        return None
+    return _money(Decimal(str(asset.cost)) / (asset.quantity or 1))
+
+
+def total_cost(unit: Decimal | None, quantity: int) -> Decimal | None:
+    return None if unit is None else _money(Decimal(str(unit)) * quantity)
+
+
+def default_useful_life(code: str) -> int:
+    return depreciation_service.default_useful_life(code)
+
+
+def value_facts(db: Session, assets: list[Equipment], *, as_of: date | None = None) -> dict[int, dict]:
+    """Book value, maintenance spend and cost of ownership for many assets at once.
+
+    The same engine and inputs as Assets & Value, so the two never disagree:
+    one query for every ledger entry and one for every completed job's cost.
+    """
+    if not assets:
+        return {}
+    ids = [asset.id for asset in assets]
+    entries: dict[int, list[AssetLedgerEntry]] = {}
+    for entry in (db.query(AssetLedgerEntry).filter(AssetLedgerEntry.equipment_id.in_(ids))
+                  .order_by(AssetLedgerEntry.effective_date.asc(), AssetLedgerEntry.id.asc())):
+        entries.setdefault(entry.equipment_id, []).append(entry)
+    spend = dict(
+        db.query(ServiceRequest.equipment_id, func.sum(ServiceRequest.total_cost))
+        .filter(ServiceRequest.equipment_id.in_(ids),
+                ServiceRequest.status == ServiceRequestStatus.COMPLETED,
+                ServiceRequest.is_major_work.is_(False))
+        .group_by(ServiceRequest.equipment_id)
+        .all()
+    )
+
+    facts: dict[int, dict] = {}
+    for asset in assets:
+        own = entries.get(asset.id, [])
+        changes = asset_ledger.basis_changes(own)
+        started = asset_ledger.in_service_date(asset, own)
+        result = depreciation_service.compute(
+            cost=asset.cost, salvage_value=asset.salvage_value, useful_life_years=asset.useful_life_years,
+            method=asset.depreciation_method or DepreciationMethod.STRAIGHT_LINE.value,
+            in_service_date=started, as_of=as_of, basis_changes=changes,
+            disposed_on=asset_ledger.disposal_date(own),
+        )
+        valued = result.message is None
+        purchase = _money(asset.cost)
+        improvements = _money(sum((change.amount for change in changes), Decimal("0")))
+        maintenance = _money(spend.get(asset.id) or 0)
+        percent = float(maintenance / purchase * 100) if purchase else None
+        facts[asset.id] = {
+            "unit_cost": unit_cost(asset),
+            "purchase_cost": purchase,
+            "in_service_on": started,
+            "useful_life_years": _money(asset.useful_life_years),
+            "book_value": result.net_book_value if valued else None,
+            "annual_depreciation": _money(result.annual_depreciation) if valued else None,
+            "improvements": improvements,
+            "maintenance_spend": maintenance,
+            "cost_of_ownership": (purchase or Decimal("0")) + improvements + maintenance,
+            "spend_percent_of_cost": round(percent, 1) if percent is not None else None,
+            "consider_replacing": percent is not None and percent >= REPLACE_AT_PERCENT,
+            "value_message": None if valued else result.message,
+        }
+    return facts
+
+
+def serialise(asset: Equipment, category: Category, facts: dict | None = None,
+              value: dict | None = None) -> dict:
     facts = facts or {}
+    value = value or {}
     return {
         "id": asset.id,
         "asset_tag": asset.asset_tag,
@@ -193,6 +283,18 @@ def serialise(asset: Equipment, category: Category, facts: dict | None = None) -
         "notes": asset.description,
         "open_jobs": facts.get("open_jobs", 0),
         "next_service_on": facts.get("next_service_on"),
+        "unit_cost": value.get("unit_cost"),
+        "purchase_cost": value.get("purchase_cost"),
+        "in_service_on": value.get("in_service_on"),
+        "useful_life_years": value.get("useful_life_years"),
+        "book_value": value.get("book_value"),
+        "annual_depreciation": value.get("annual_depreciation"),
+        "improvements": value.get("improvements"),
+        "maintenance_spend": value.get("maintenance_spend"),
+        "cost_of_ownership": value.get("cost_of_ownership"),
+        "spend_percent_of_cost": value.get("spend_percent_of_cost"),
+        "consider_replacing": bool(value.get("consider_replacing")),
+        "value_message": value.get("value_message"),
         "created_at": asset.created_at,
         "updated_at": asset.updated_at,
     }
@@ -233,7 +335,8 @@ def overview(db: Session, facility_id: int, *, today: date | None = None) -> lis
     )
 
     counts = {code: {"equipment": 0, "needs_attention": 0, "out_of_service": 0,
-                     "open_jobs": 0, "overdue_jobs": 0} for code in BY_CODE}
+                     "open_jobs": 0, "overdue_jobs": 0, "book_value": Decimal("0"),
+                     "valued_equipment": 0} for code in BY_CODE}
     for discipline_id, total, attention, down in equipment_counts:
         code = by_discipline[discipline_id]
         counts[code].update(equipment=total, needs_attention=int(attention or 0),
@@ -241,6 +344,16 @@ def overview(db: Session, facility_id: int, *, today: date | None = None) -> lis
     for discipline_id, open_jobs, overdue in job_counts:
         code = by_discipline[discipline_id]
         counts[code].update(open_jobs=open_jobs, overdue_jobs=int(overdue or 0))
+
+    # What each category is worth: only equipment with a cost and an in-service
+    # date has a book value, and the count says how much of the category that is.
+    assets = items_query(db, facility_id).filter(Equipment.discipline_id.in_(list(by_discipline))).all()
+    category_of = {asset.id: by_discipline[asset.discipline_id] for asset in assets}
+    for asset_id, value in value_facts(db, assets).items():
+        if value["book_value"] is None:
+            continue
+        counts[category_of[asset_id]]["book_value"] += value["book_value"]
+        counts[category_of[asset_id]]["valued_equipment"] += 1
 
     return [{"code": category.code, "name": category.name, "colour": category.colour,
              "description": category.description, "types": list(category.types),

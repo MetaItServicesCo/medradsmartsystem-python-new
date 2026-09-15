@@ -61,6 +61,9 @@ def register_query(
                 Equipment.location.ilike(like),
                 Equipment.department.ilike(like),
                 Equipment.asset_type.ilike(like.replace(" ", "_")),
+                Equipment.name.ilike(like),
+                Equipment.equipment_type.ilike(like),
+                Equipment.building.ilike(like),
             )
         )
     return query

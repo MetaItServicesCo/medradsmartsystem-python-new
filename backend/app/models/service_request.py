@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey, Enum as SQLEnum, Numeric, Boolean, JSON, Index
+from sqlalchemy import false as sa_false
 
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -336,6 +337,13 @@ class ServiceRequest(Base):
     notes = Column(Text, nullable=True)
     inspection_result = Column(String(8), nullable=True)
     findings = Column(Text, nullable=True)
+    # What the job cost, split so labour and parts can be compared later.
+    # `total_cost` above holds their sum, which is what spend reporting reads.
+    # Major work is capital: its cost is posted to the asset ledger as an
+    # improvement and depreciated, and is not counted as maintenance spend.
+    labour_cost = Column(Numeric(12, 2), nullable=True)
+    parts_cost = Column(Numeric(12, 2), nullable=True)
+    is_major_work = Column(Boolean, nullable=False, default=False, server_default=sa_false())
 
     # Relationships
     facility = relationship("Facility", back_populates="service_requests")

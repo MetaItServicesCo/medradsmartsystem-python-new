@@ -14,11 +14,13 @@ invoice rules that constrain those transitions apply to it.
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.asset_ledger import AssetLedgerEntry, LedgerEntryType
 from app.models.equipment import Equipment
 from app.models.service_request import (
     Priority, ServiceRequest, ServiceRequestStatus, WorkOrderType,
@@ -42,9 +44,59 @@ RESULTS = {"pass": "Pass", "fail": "Fail"}
 ASSIGNABLE_SITE_ROLES = (UserRole.TECHNICIAN, UserRole.FACILITY_MANAGER, UserRole.FACILITY_ADMIN)
 ASSIGNABLE_ANYWHERE_ROLES = (UserRole.SUPERADMIN, UserRole.ADMIN)
 
-# What a technician may change on a job assigned to them: the progress, not
-# the plan.
-TECHNICIAN_FIELDS = {"status", "notes", "inspection_result", "findings"}
+# What a technician may change on a job assigned to them: the progress and what
+# it cost, not the plan. Whether it was capital work is a finance decision.
+TECHNICIAN_FIELDS = {"status", "notes", "inspection_result", "findings", "labour_cost", "parts_cost"}
+
+
+def _job_total(labour: Decimal | None, parts: Decimal | None) -> Decimal | None:
+    if labour is None and parts is None:
+        return None
+    return (labour or Decimal("0")) + (parts or Decimal("0"))
+
+
+def sync_major_work(db: Session, user: User, job: ServiceRequest) -> None:
+    """Keep the asset ledger in step with a job's major work. Flushes.
+
+    A finished service marked major work, with a cost, adds that cost to the
+    equipment's depreciable basis as an improvement dated the day it was done.
+    Anything that changes that - unticked, reopened, a different cost - reverses
+    the posted improvement and, where it still applies, posts the right one. The
+    ledger is corrected by reversal, never edited, as everywhere else.
+    """
+    posted = (
+        db.query(AssetLedgerEntry)
+        .filter(AssetLedgerEntry.work_order_id == job.id,
+                AssetLedgerEntry.entry_type == LedgerEntryType.IMPROVEMENT.value,
+                AssetLedgerEntry.is_reversed.is_(False))
+        .first()
+    )
+    total = _job_total(job.labour_cost, job.parts_cost)
+    done_on = job.completed_at.date() if job.completed_at else None
+    wanted = (
+        job.is_major_work and job.work_order_type == WorkOrderType.PREVENTIVE.value
+        and job.status == ServiceRequestStatus.COMPLETED and total is not None and total > 0
+        and job.equipment_id is not None
+    )
+    if posted is not None and wanted and Decimal(str(posted.amount)) == total and posted.effective_date == done_on:
+        return
+    if posted is not None:
+        posted.is_reversed = True
+        db.add(AssetLedgerEntry(
+            facility_id=posted.facility_id, equipment_id=posted.equipment_id,
+            entry_type=LedgerEntryType.REVERSAL.value, effective_date=datetime.utcnow().date(),
+            description="Reversal of {}".format(posted.description)[:255],
+            amount=-posted.amount, reverses_entry_id=posted.id, work_order_id=job.id,
+            notes="Changed on {}".format(job.request_number), created_by_id=user.id,
+        ))
+    if wanted:
+        db.add(AssetLedgerEntry(
+            facility_id=job.facility_id, equipment_id=job.equipment_id,
+            entry_type=LedgerEntryType.IMPROVEMENT.value, effective_date=done_on,
+            description="Major work: {}".format(job.problem_description)[:255],
+            amount=total, reference=job.request_number, work_order_id=job.id, created_by_id=user.id,
+        ))
+    db.flush()
 
 
 def kind_or_422(kind: str) -> str:
@@ -129,9 +181,14 @@ def _stamp_status(job: ServiceRequest, status: ServiceRequestStatus, now: dateti
 
 def create(db: Session, user: User, *, facility_id: int, kind: str, equipment_id: int, title: str,
            due_on: date | None, assigned_to_id: int | None, status: str, notes: str | None,
-           inspection_result: str | None, findings: str | None) -> ServiceRequest:
+           inspection_result: str | None, findings: str | None,
+           labour_cost: Decimal | None = None, parts_cost: Decimal | None = None,
+           is_major_work: bool = False) -> ServiceRequest:
     """Raise a job. Flushes; the caller commits."""
     work_order_type = kind_or_422(kind)
+    if is_major_work and (kind != "service" or user.role == UserRole.TECHNICIAN):
+        raise HTTPException(status_code=422 if kind != "service" else 403,
+                            detail="Only a service can be major work, and only a manager can mark it")
     asset = equipment_or_422(db, facility_id, equipment_id)
     assignee = _assignee_or_422(db, facility_id, assigned_to_id)
     title = site_categories.tidy(title)
@@ -158,11 +215,16 @@ def create(db: Session, user: User, *, facility_id: int, kind: str, equipment_id
         notes=site_categories.tidy(notes),
         inspection_result=inspection_result,
         findings=site_categories.tidy(findings),
+        labour_cost=labour_cost,
+        parts_cost=parts_cost,
+        total_cost=_job_total(labour_cost, parts_cost),
+        is_major_work=is_major_work,
         history=[_history("created", user, {"kind": kind, "equipment": asset.name})],
     )
     _stamp_status(job, _full_status(status, assignee is not None), now)
     db.add(job)
     db.flush()
+    sync_major_work(db, user, job)
     return job
 
 
@@ -211,6 +273,16 @@ def update(db: Session, user: User, job: ServiceRequest, changes: dict) -> dict:
     if "inspection_result" in changes:
         note("inspection_result", job.inspection_result, changes["inspection_result"])
         job.inspection_result = changes["inspection_result"]
+    for field in ("labour_cost", "parts_cost"):
+        if field in changes:
+            note(field, getattr(job, field), changes[field])
+            setattr(job, field, changes[field])
+    job.total_cost = _job_total(job.labour_cost, job.parts_cost)
+    if changes.get("is_major_work") is not None:
+        if changes["is_major_work"] and KIND_OF_TYPE[job.work_order_type] != "service":
+            raise HTTPException(status_code=422, detail="Only a service can be major work")
+        note("is_major_work", job.is_major_work, changes["is_major_work"])
+        job.is_major_work = changes["is_major_work"]
 
     target = changes.get("status") or simple_status(job.status)
     before = job.status
@@ -224,6 +296,7 @@ def update(db: Session, user: User, job: ServiceRequest, changes: dict) -> dict:
     if recorded:
         job.history = [*(job.history or []), _history("updated", user, recorded)]
     db.flush()
+    sync_major_work(db, user, job)
     return recorded
 
 
@@ -312,6 +385,10 @@ def serialise(job: ServiceRequest, category_codes: dict[int, str], *, today: dat
         "notes": job.notes,
         "inspection_result": job.inspection_result,
         "findings": job.findings,
+        "labour_cost": job.labour_cost,
+        "parts_cost": job.parts_cost,
+        "total_cost": _job_total(job.labour_cost, job.parts_cost),
+        "is_major_work": bool(job.is_major_work),
         "created_at": job.created_at,
         "completed_at": job.completed_at,
         "equipment": {
