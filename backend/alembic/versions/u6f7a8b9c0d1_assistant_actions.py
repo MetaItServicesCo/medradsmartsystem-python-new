@@ -21,6 +21,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Safe to re-run: a database built with create_all() after this model
+    # existed already has the table.
+    if "assistant_actions" in sa.inspect(op.get_bind()).get_table_names():
+        return
     op.create_table(
         "assistant_actions",
         sa.Column("id", sa.String(length=36), nullable=False),

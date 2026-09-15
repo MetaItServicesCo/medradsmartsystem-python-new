@@ -161,6 +161,7 @@ archaeology, not an asset.
 ```bash
 docker compose run --rm backend python -c "
 import app.models
+import app.assistant.kb.store  # the assistant's knowledge base tables live outside app.models
 from app.db.base import Base, engine
 Base.metadata.create_all(bind=engine)
 print('tables created:', len(Base.metadata.tables))
