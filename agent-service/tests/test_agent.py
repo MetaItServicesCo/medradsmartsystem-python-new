@@ -285,6 +285,32 @@ def test_an_action_is_prepared_as_a_card_and_never_called_done():
     print("ok  an action becomes a card before the answer, and the model is told it is not done")
 
 
+def test_knowledge_search_is_standalone_site_aware_and_unfiltered_by_domain():
+    searched: list = []
+
+    class Backend(_Backend):
+        async def search_knowledge(self, query, module=None, limit=6, facility_id=None):
+            searched.append((query, module, facility_id))
+            return {"results": [{"citation": "Fire Evacuation Plan - Page 3", "kind": "hospital_document",
+                                 "module": "documents", "text": "Close fire doors."}]}
+
+    router = _Scripted([AIMessage(content="fire door procedure during evacuation")])
+    original_role, original_client = providers._for_role, graph.MedRadClient
+    providers._for_role = lambda role, max_tokens, temperature: router
+    graph.MedRadClient = Backend
+    try:
+        result = asyncio.run(graph.retrieve_node({
+            "question": "and for the fire doors?", "user_token": "t" * 20, "module": "operations",
+            "facility_id": 7, "history": [{"role": "user", "text": "what is our evacuation procedure?"},
+                                          {"role": "assistant", "text": "Staff move patients horizontally first."}],
+        }))
+    finally:
+        providers._for_role, graph.MedRadClient = original_role, original_client
+    assert searched == [("fire door procedure during evacuation", None, 7)], searched
+    assert result["citations"][0]["type"] == "document"
+    print("ok  knowledge search rewrites follow-ups, stays in the site, and ignores the routed domain")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

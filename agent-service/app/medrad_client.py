@@ -81,11 +81,14 @@ class MedRadClient:
         return response.json()
 
     async def search_knowledge(
-        self, query: str, *, module: Optional[str] = None, limit: int = 6
+        self, query: str, *, module: Optional[str] = None, limit: int = 6,
+        facility_id: Optional[int] = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"query": query, "limit": limit}
         if module:
             payload["module"] = module
+        if facility_id:
+            payload["facility_id"] = facility_id
         response = await self._client.post("/knowledge/search", json=payload)
         self._raise_for_status(response, "search knowledge")
         return response.json()

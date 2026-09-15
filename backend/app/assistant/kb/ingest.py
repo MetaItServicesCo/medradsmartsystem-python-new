@@ -55,6 +55,7 @@ def ingest_documents(
         current.source = document.source
         current.source_hash = fingerprint
         current.doc_metadata = document.metadata
+        current.facility_id = (document.metadata or {}).get("facility_id")
 
         # Chunks are derived data: replace wholesale rather than diffing.
         db.query(KBChunkRow).filter(KBChunkRow.doc_id == document.doc_id).delete(
@@ -70,13 +71,20 @@ def ingest_documents(
                 heading=chunk.heading,
                 text=chunk.text,
                 ordinal=chunk.ordinal,
+                facility_id=(document.metadata or {}).get("facility_id"),
                 search_vector=search_vector_expression(chunk.title, chunk.heading, chunk.text),
             ))
             chunks_written += 1
 
     removed = 0
     if prune:
-        stale = [doc_id for doc_id in existing if doc_id not in seen]
+        # Only documents this ingest owns can go stale. The startup refresh
+        # regenerates the software's documents; uploaded hospital documents are
+        # not in that set, and pruning them made every restart delete them.
+        stale = [
+            doc_id for doc_id, row in existing.items()
+            if doc_id not in seen and row.source != "upload"
+        ]
         if stale:
             db.query(KBChunkRow).filter(KBChunkRow.doc_id.in_(stale)).delete(
                 synchronize_session=False

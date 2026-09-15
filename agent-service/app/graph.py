@@ -367,20 +367,53 @@ async def classify_node(state: AgentState) -> dict[str, Any]:
     return {"intent": "hybrid", "module": None}
 
 
+_STANDALONE_PROMPT = """Rewrite the person's latest message as one standalone search query \
+for a knowledge base of how-to guides and hospital documents (policies, procedures, manuals). \
+Resolve pronouns and follow-ups from the earlier turns. Reply with the query only, no quotes, \
+at most 20 words."""
+
+
+async def _standalone_query(state: AgentState) -> str:
+    """The question as a search query, with "and for fire doors?" resolved from context.
+
+    Knowledge search is lexical first: a follow-up that leans on the previous
+    turn has no words to match. Spoken turns skip this - it is a round trip -
+    and so does a first question, which is already standalone.
+    """
+    question = state["question"]
+    if state.get("voice") or not state.get("history"):
+        return question
+    try:
+        reply = await complete(
+            system=_STANDALONE_PROMPT,
+            messages=[*_history_messages(state), {"role": "user", "content": question}],
+            max_tokens=60,
+            role="router",
+        )
+        rewritten = (reply.text or "").strip().strip('"').strip()
+        return rewritten if 2 <= len(rewritten) <= 300 else question
+    except Exception:
+        logger.exception("Standalone rewrite failed; searching the question as asked")
+        return question
+
+
 async def retrieve_node(state: AgentState) -> dict[str, Any]:
-    """Fetch supporting passages from the generated knowledge base."""
+    """Fetch supporting passages: how-to guides and this site's hospital documents."""
     _emit_phase("retrieve")
+    query = await _standalone_query(state)
     async with MedRadClient(state["user_token"]) as client:
         try:
+            # The routed domain is not a knowledge-base module, so it is not
+            # passed as one: filtering by "operations" matched no passage at all.
             payload = await client.search_knowledge(
-                state["question"], module=state.get("module"), limit=6
+                query, limit=6, facility_id=state.get("facility_id"),
             )
         except MedRadError as exc:
             return {"knowledge": [], "errors": [str(exc)]}
 
     results = payload.get("results", [])
     citations = [{
-        "type": "knowledge",
+        "type": "document" if item.get("kind") == "hospital_document" else "knowledge",
         "label": item.get("citation"),
         "module": item.get("module"),
     } for item in results]

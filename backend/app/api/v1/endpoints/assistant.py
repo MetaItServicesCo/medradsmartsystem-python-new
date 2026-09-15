@@ -200,6 +200,55 @@ async def ask(
     )
 
 
+@router.get("/knowledge/documents")
+def list_knowledge_documents(
+    facility_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+) -> Any:
+    """Hospital documents the assistant can quote: this site's and the shared ones."""
+    from app.assistant.kb import uploads
+
+    return {"items": uploads.list_uploads(db, facility_id)}
+
+
+@router.post("/knowledge/documents", status_code=status.HTTP_201_CREATED)
+async def upload_knowledge_document(
+    file: UploadFile = File(...),
+    title: Optional[str] = None,
+    facility_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+) -> Any:
+    """Add a policy, procedure or manual. Only its text is kept, indexed by page or heading."""
+    from app.assistant.kb import uploads
+
+    data = await file.read(uploads.MAX_BYTES + 1)
+    row = await run_in_threadpool(
+        uploads.ingest_upload, db, current_user,
+        filename=file.filename or "document", data=data, title=title, facility_id=facility_id,
+    )
+    log_activity(db, "assistant_document_uploaded", 0, "ASSISTANT_KNOWLEDGE", current_user, {
+        "doc_id": row.doc_id, "title": row.title, "facility_id": row.facility_id,
+    })
+    db.commit()
+    return uploads.describe(db, row)
+
+
+@router.delete("/knowledge/documents/{doc_id}")
+def delete_knowledge_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+) -> Any:
+    from app.assistant.kb import uploads
+
+    uploads.delete_upload(db, doc_id)
+    log_activity(db, "assistant_document_deleted", 0, "ASSISTANT_KNOWLEDGE", current_user, {"doc_id": doc_id})
+    db.commit()
+    return {"detail": "Removed"}
+
+
 @router.get("/actions/{action_id}")
 def get_action(
     action_id: str,

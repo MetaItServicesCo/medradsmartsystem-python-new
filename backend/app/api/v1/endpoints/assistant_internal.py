@@ -75,6 +75,8 @@ class KnowledgeSearchRequest(BaseModel):
     query: str = Field(min_length=2, max_length=500)
     module: Optional[str] = Field(default=None, max_length=40)
     limit: int = Field(default=6, ge=1, le=12)
+    # The site the question is asked from: its documents and shared ones only.
+    facility_id: Optional[int] = None
 
 
 def _coerce_dates(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -215,7 +217,8 @@ def knowledge_search(
     knowledge.
     """
     started = time.perf_counter()
-    hits = search_knowledge(db, payload.query, module=payload.module, limit=payload.limit)
+    hits = search_knowledge(db, payload.query, module=payload.module, limit=payload.limit,
+                            facility_id=payload.facility_id)
     return {
         "query": payload.query,
         "count": len(hits),

@@ -40,6 +40,7 @@ const Maintenance = lazyWithReload(() => import('./pages/Maintenance'))
 const Sites = lazyWithReload(() => import('./pages/Sites'))
 const SiteDashboard = lazyWithReload(() => import('./pages/Sites/SiteDashboard'))
 const Assets = lazyWithReload(() => import('./pages/Assets'))
+const AssistantDocuments = lazyWithReload(() => import('./pages/AssistantDocuments'))
 const AssetLedger = lazyWithReload(() => import('./pages/AssetLedger'))
 
 const RouteFallback = () => (
@@ -172,6 +173,8 @@ function App() {
           <Route path="sites" element={<ProtectedPage module="facilities"><Sites /></ProtectedPage>} />
           <Route path="sites/:id" element={<ProtectedPage module="facilities"><SiteDashboard /></ProtectedPage>} />
           <Route path="assets/*" element={<RequireSite><ProtectedPage module="facility-inventory"><Assets /></ProtectedPage></RequireSite>} />
+          {/* Super Admin only; the page itself refuses anyone else. */}
+          <Route path="assistant/documents" element={<AssistantDocuments />} />
           <Route path="asset-ledger/*" element={<RequireSite><ProtectedPage module="facility-inventory"><AssetLedger /></ProtectedPage></RequireSite>} />
         </Route>
       </Routes>

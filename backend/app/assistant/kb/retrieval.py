@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.assistant.kb.store import KBChunkRow
@@ -129,6 +129,13 @@ def _query_terms(query: str) -> list[str]:
 # matrix, which legitimately contains both "add" and "facilities"; knowing the
 # asker wants a procedure is what breaks the tie.
 _INTENT_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # The hospital's own documents answer questions about its own rules. Ranked
+    # first, so "what is our procedure for a code red" quotes the plan the
+    # hospital uploaded rather than a screen that happens to say "procedure".
+    (r"\b(our|policy|policies|protocol|protocols|sop|guideline|guidelines|manual|"
+     r"handbook|plan|evacuat\w*|code (red|blue|pink|orange)|emergency|hazard|"
+     r"regulation|requirement|according to|document)\b",
+     ("hospital_document",)),
     # "howto" ranks first: someone asking how to do something wants the screen
     # and the click-path, not the HTTP endpoint.
     (r"\b(how (do|to|can)|steps?|procedure|process|where|screen|page|button|"
@@ -190,6 +197,7 @@ def _lexical_leg(
     *,
     module: Optional[str],
     limit: int,
+    facility_id: Optional[int] = None,
 ) -> list[tuple[KBChunkRow, float]]:
     terms = _query_terms(query)
     if not terms:
@@ -210,6 +218,10 @@ def _lexical_leg(
     )
     if module:
         statement = statement.where(KBChunkRow.module == module)
+    if facility_id is not None:
+        # This site's documents and the ones shared by every site; never another site's.
+        statement = statement.where(or_(KBChunkRow.facility_id.is_(None),
+                                        KBChunkRow.facility_id == facility_id))
     return [(row[0], float(row[1] or 0.0)) for row in db.execute(statement).all()]
 
 
@@ -293,6 +305,7 @@ def search_knowledge(
     limit: int = 6,
     embedding: Optional[Sequence[float]] = None,
     preferred_kinds: Optional[tuple[str, ...]] = None,
+    facility_id: Optional[int] = None,
 ) -> list[RetrievedChunk]:
     """Retrieve supporting passages for a knowledge question.
 
@@ -303,10 +316,12 @@ def search_knowledge(
     # Over-fetch per leg so fusion has room to reorder, then trim to `limit`.
     per_leg = max(limit * 3, 12)
     legs: dict[str, list[tuple[KBChunkRow, float]]] = {
-        "lexical": _lexical_leg(db, query, module=module, limit=per_leg),
+        "lexical": _lexical_leg(db, query, module=module, limit=per_leg, facility_id=facility_id),
     }
 
-    if embedding is not None and pgvector_available(db):
+    # The semantic leg has no site filter, so it only runs for questions not tied
+    # to a site; a site question must never surface another site's document.
+    if embedding is not None and facility_id is None and pgvector_available(db):
         try:
             legs["semantic"] = _semantic_leg(db, embedding, module=module, limit=per_leg)
         except Exception:

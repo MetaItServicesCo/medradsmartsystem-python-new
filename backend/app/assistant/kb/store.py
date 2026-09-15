@@ -16,6 +16,7 @@ from datetime import datetime
 from sqlalchemy import (
     Column,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -47,6 +48,9 @@ class KBDocumentRow(Base):
     # changed, so an unchanged deploy does no write work and invalidates nothing.
     source_hash = Column(String, nullable=False, index=True)
     doc_metadata = Column(JSONB, nullable=False, default=dict)
+    # An uploaded hospital document may belong to one site. Empty for generated
+    # documents and for documents that apply to every site.
+    facility_id = Column(Integer, ForeignKey("facilities.id", ondelete="CASCADE"), nullable=True, index=True)
     generated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -72,6 +76,8 @@ class KBChunkRow(Base):
     heading = Column(String, nullable=False, default="")
     text = Column(Text, nullable=False)
     ordinal = Column(Integer, nullable=False, default=0)
+    # Copied from the document, so retrieval filters by site without a join.
+    facility_id = Column(Integer, ForeignKey("facilities.id", ondelete="CASCADE"), nullable=True, index=True)
     search_vector = Column(TSVECTOR, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 

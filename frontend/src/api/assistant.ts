@@ -2,7 +2,7 @@ import apiClient from './client'
 import { useAuthStore } from '@/stores/authStore'
 
 export interface AssistantCitation {
-  type: 'record' | 'knowledge'
+  type: 'record' | 'knowledge' | 'document'
   label: string
   route?: string
   module?: string
@@ -19,6 +19,49 @@ export interface AssistantActionCard {
   expires_at: string
   result?: { message: string; record?: string; route?: string } | null
   error?: string | null
+}
+
+/** A hospital document the assistant can quote. */
+export interface KnowledgeDocument {
+  doc_id: string
+  title: string
+  filename?: string | null
+  facility_id: number | null
+  site: string
+  sections?: number | null
+  passages: number
+  uploaded_by?: string | null
+  uploaded_at?: string | null
+}
+
+export const fetchKnowledgeDocuments = async (
+  facilityId?: number | null,
+): Promise<{ items: KnowledgeDocument[] }> => {
+  const res = await apiClient.get('/assistant/knowledge/documents', {
+    params: facilityId ? { facility_id: facilityId } : {},
+  })
+  return res.data
+}
+
+export const uploadKnowledgeDocument = async (
+  file: File,
+  options: { title?: string; facilityId?: number | null },
+): Promise<KnowledgeDocument> => {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  const params: Record<string, string | number> = {}
+  if (options.title) params.title = options.title
+  if (options.facilityId) params.facility_id = options.facilityId
+  // The shared client defaults to JSON, which stops axios writing the
+  // multipart boundary; every upload in this codebase overrides it.
+  const res = await apiClient.post('/assistant/knowledge/documents', form, {
+    params, headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export const deleteKnowledgeDocument = async (docId: string): Promise<void> => {
+  await apiClient.delete(`/assistant/knowledge/documents/${docId}`)
 }
 
 export const confirmAssistantAction = async (id: string): Promise<AssistantActionCard> => {

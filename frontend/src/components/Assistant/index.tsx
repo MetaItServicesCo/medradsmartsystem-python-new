@@ -306,9 +306,18 @@ const AssistantWidget = () => {
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontWeight: 900, fontSize: 16 }}>Ask {AGENT_NAME}</Typography>
             <Typography sx={{ fontSize: 11.5, fontWeight: 700, opacity: 0.82 }}>
-              Read-only · answers cite live data and documentation
+              Cites live data and documents · changes only when you confirm
             </Typography>
           </Box>
+          <Tooltip title="Documents the assistant can quote">
+            <IconButton
+              size="small"
+              onClick={() => { navigate('/assistant/documents'); setOpen(false) }}
+              sx={{ color: '#fff' }}
+            >
+              <MenuBookIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           {voice.supported && status?.voice_enabled && (
             <Tooltip title={voiceMode ? 'Switch to typing' : 'Switch to voice'}>
               <IconButton
@@ -412,7 +421,7 @@ const AssistantWidget = () => {
                       <Chip
                         key={`${citation.label}-${position}`}
                         size="small"
-                        icon={citation.type === 'knowledge'
+                        icon={citation.type !== 'record'
                           ? <MenuBookIcon sx={{ fontSize: 15 }} />
                           : <OpenInNewIcon sx={{ fontSize: 15 }} />}
                         label={citation.label?.slice(0, 44)}
