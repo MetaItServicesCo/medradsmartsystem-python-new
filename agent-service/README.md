@@ -1,172 +1,172 @@
-# MedRad Super Admin Assistant
+# Phia, the phealth assistant
 
-A read-only agent that answers operational questions from live data and from a
-knowledge base generated out of the codebase.
+A Super Admin assistant that answers questions from live data and from a
+knowledge base, and prepares a small set of changes for the person to confirm.
 
 ## Architecture
 
 ```
-Browser (Super Admin only)
-  │  POST /api/v1/assistant/ask        (SSE)
+Browser (Super Admin, inside a site)
+  │  POST /api/v1/assistant/ask   { question, history, facility_id }   (SSE)
   ▼
-MedRad backend
-  ├─ authenticates, confirms Super Admin, rate limits, audits the question
+phealth backend
+  ├─ authenticates, confirms Super Admin, checks access to the site, rate limits, audits
   └─ relays to the agent over the private Docker network
         │
         ▼
    Agent service  (no database credentials, no published port)
-   ├─ LangGraph: classify → tools / knowledge / both → synthesize
-   └─ Claude (Haiku 4.5) for routing, tool selection and wording
+   LangGraph:  classify ─┬─ database  ─┐
+                         ├─ knowledge ─┼─ synthesize
+                         ├─ hybrid ────┘
+                         └─ chitchat / clarify / refuse
+   Models per role (router · tools · synthesis), Groq primary, OpenRouter fallback
         │  X-Internal-Key + the user's own bearer token
         ▼
-MedRad backend  /internal/v1/tools/*  ·  /internal/v1/knowledge/search
+phealth backend  /internal/v1/tools/* · /internal/v1/actions/* · /internal/v1/knowledge/search
    └─ PostgreSQL     ← only the backend ever touches the database
+
+Browser  POST /api/v1/assistant/actions/{id}/confirm | cancel   ← only a person runs a change
 ```
 
-The agent has no identity of its own. It forwards the end user's bearer token,
-so every tool runs under that user through the existing `get_current_user`,
-`has_module_permission` and facility-scoping helpers. Authorization is never
-reimplemented across the service boundary.
+The agent has no identity of its own. It forwards the user's bearer token, so
+every lookup and every proposal runs under that user through the backend's own
+permission and site-scoping helpers.
+
+## What it can do
+
+**Look things up** (read-only tools): sites, buildings, floors and rooms; the
+fixtures in them and which are broken; assets - machinery, clinical equipment
+and room items; work orders by trade, room, asset or missed deadline;
+maintenance plans and compliance tasks due or overdue; book value; plus the
+inherited commerce data (sales, rentals, billing), users and attendance.
+
+**Explain** from the knowledge base: how to use phealth (generated from the
+code at every backend start) and the hospital's own documents - policies,
+procedures, manuals - uploaded per site from *Assistant documents*. Answers
+name the document and page.
+
+**Prepare, for confirmation**: a work order for a fault on a fixture, an asset
+or a room; a service booking with a technician; a recurring inspection plan; a
+work order update (status, technician, priority, note).
 
 ## Guarantees
 
-- **Read-only.** No tool writes. The agent cannot create, edit, approve or delete.
-- **No invented numbers.** Counts and sums are computed by PostgreSQL. Tools
-  return `total_count` from a SQL `COUNT` independent of the rows returned, so
-  the model reports totals it was given rather than rows it can see.
-- **No invented statuses.** Enum values are inlined into the tool JSON Schema;
-  an invalid value is rejected with the valid set so the model self-corrects.
-- **No invented policy.** Every procedural claim must come from a retrieved
-  passage. With no supporting passage the assistant says so.
-- **Prompt-injection resistant.** Tool output is wrapped in `<tool_result_data>`
-  and the system prompt states that user-authored text inside records is data,
-  never instructions.
-- **Auditable.** The question and every tool call are written to `audit_logs`.
-- **Secrets unreachable.** Columns matching credential patterns are excluded
-  from the knowledge base and from every tool response.
-- **Private messaging excluded.** Chat and workspace tables are out of scope.
+- **Nothing changes without a person.** Preparing stores a proposal with the
+  exact details, a SHA-256 fingerprint of them and a 10-minute expiry. Confirm
+  runs it only for the person it was prepared for, only once, only before it
+  expires, only if unchanged - through the same endpoint functions the screens
+  use. The model is told a prepared action has not happened and may not say it
+  has.
+- **Out of reach entirely:** deleting records, costs and the ledger, users and
+  permissions.
+- **No invented numbers.** Totals come from SQL `COUNT` and aggregates, never
+  from the model counting rows.
+- **Site isolation.** A question inside a site defaults to that site; a site's
+  documents are never searched for another site.
+- **Prompt-injection resistant.** Tool output and documents are wrapped as
+  data. The worst injected text can do is produce a card a person declines.
+- **Auditable.** Questions, tool calls, proposals, confirmations and document
+  uploads are written to `audit_logs`.
 
 ## Deploying
 
-1. **Generate a strong internal key** (32+ characters; production enforces this):
-
-   ```bash
-   openssl rand -hex 32
-   ```
-
-2. **Add to the project `.env`:**
+1. **Keys in the project `.env`:**
 
    ```ini
    ASSISTANT_ENABLED=true
-   ASSISTANT_INTERNAL_KEY=<the generated key>
-   ANTHROPIC_API_KEY=<your key>
-   AGENT_MODEL=claude-haiku-4-5
+   # 32+ characters: openssl rand -hex 32
+   ASSISTANT_INTERNAL_KEY=<generated>
+
+   AGENT_PROVIDER=groq
+   GROQ_API_KEY=<from console.groq.com>
+   AGENT_FALLBACK_PROVIDER=openrouter
+   OPENROUTER_API_KEY=<from openrouter.ai>
    ```
 
-3. **Create the knowledge-base tables:**
+   Models default per role (see *Configuration*). Override any of them without
+   a code change.
+
+2. **Migrate** (adds `assistant_actions`, and the site on knowledge documents):
 
    ```bash
-   docker compose exec backend alembic upgrade head
+   docker compose run --rm backend python -c "import app.main; print('backend imports')"
+   docker compose run --rm backend alembic upgrade head
    ```
 
-4. **Populate the knowledge base** (safe to re-run; unchanged documents write
-   nothing):
+3. **Build and start:**
 
    ```bash
-   docker compose exec backend python -m scripts.generate_kb --write
+   docker compose build backend agent frontend
+   docker compose up -d
+   docker compose exec agent python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8100/health').read().decode())"
    ```
 
-5. **Start the agent:**
+   `configured` must be `true`, with the provider and models you expect.
 
-   ```bash
-   docker compose build agent && docker compose up -d agent
-   docker compose exec agent python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8100/health').read())"
-   ```
-
-6. **Ensure the edge proxy does not expose `/internal`.** It is authenticated,
-   but it should never be reachable from the internet. For nginx:
+4. **Keep `/internal` off the internet** at the edge proxy:
 
    ```nginx
    location /internal/ { deny all; }
    ```
 
-Re-run step 4 on every deploy that changes models, schemas or routes — that is
-what keeps the knowledge base and the code from disagreeing.
+## Checking it after a change
 
-## Choosing a model
-
-The agent needs three things from a model: choose one of 13 tools with valid
-typed arguments, follow a structured schema, and write prose from supplied
-evidence. Tool calling is the demanding one — chat quality is not the
-constraint, and models below roughly 7B are unreliable at it whoever hosts them.
-
-| Option | Cost | Notes |
-|---|---|---|
-| Groq | free tier | Fast, generous limits for one user |
-| DeepSeek via OpenRouter | free tier | Rate limited, can be busy at peak |
-| DeepSeek direct | ~4x cheaper than Haiku | Paid, but steadier than a free tier |
-| Claude Haiku | ~$0.01 a question | Best tool selection |
-| Local Ollama | none | 30-90s an answer on CPU, and no third party |
-
-Every hosted option sends question text and tool results to a third party. Only
-the local option avoids that.
-
-### Running the model locally
-
-Ollama ships as an opt-in compose profile, so ordinary deploys are unaffected:
+The evaluation set is twenty real questions with what a correct turn looks
+like: routing, tools used, the action prepared, and phrases an answer must not
+contain ("has been raised"). Run it against the deployment after changing a
+model or a prompt:
 
 ```bash
-docker compose --profile local-llm up -d ollama
-bash agent-service/scripts/benchmark_local_llm.sh qwen2.5:7b-instruct
+docker compose exec agent python scripts/run_evals.py --token <super admin access token> --site <facility id>
 ```
 
-Then, if the benchmark is acceptable:
+It prints one line per case and exits non-zero on any failure. Unit tests run
+without network or keys:
 
-```ini
-AGENT_PROVIDER=openai
-AGENT_BASE_URL=http://ollama:11434/v1
-AGENT_MODEL=qwen2.5:7b-instruct
-AGENT_API_KEY=
+```bash
+docker compose exec agent python tests/test_agent.py
 ```
 
-Memory is not the obstacle on this host — a 7B model at Q4 needs about 5GB and
-there is room. CPU is. One question costs roughly three model calls (classify,
-choose a tool, write the answer), so generation speed multiplies by three before
-anyone sees an answer. Benchmark before committing: the script prints an
-estimated time per question and a verdict.
+## Choosing models
 
-Two things to weigh against the saving. The four cores are shared with the other
-projects on this machine, so inference competes with them. And tool calling is
-the demanding part of this agent — models small enough to be quick on CPU choose
-the wrong tool, or malformed arguments, often enough to be unreliable.
+Three roles, because they are different jobs:
 
-Switching back is one environment variable, so this is worth measuring rather
-than arguing about.
+| Role | Job | Default on Groq | Default on OpenRouter |
+|---|---|---|---|
+| router | one structured word per question | `llama-3.1-8b-instant` | `meta-llama/llama-3.3-70b-instruct` |
+| tools | pick tools and arguments | `llama-3.3-70b-versatile` | `meta-llama/llama-3.3-70b-instruct` |
+| synthesis | write the answer from evidence | `llama-3.3-70b-versatile` | `meta-llama/llama-3.3-70b-instruct` |
 
-## Retrieval
+Tool selection is the demanding role; if evaluations show wrong tools or
+malformed arguments, give `AGENT_TOOLS_MODEL` a stronger model first. Provider
+model catalogues change - check the current IDs on Groq and OpenRouter before
+overriding.
 
-Two legs fused with Reciprocal Rank Fusion:
-
-- **Lexical** — PostgreSQL full-text search over a GIN-indexed weighted
-  tsvector. Finds exact identifiers (`INV-SERVICE-004560`) reliably. ~8ms.
-- **Semantic** — optional pgvector cosine search, skipped automatically when the
-  extension is absent.
-
-Lexical alone has a known ceiling: it cannot match a question against wording
-that does not appear in the corpus (asking "who can *approve* billing" when the
-permission matrix only lists `add`/`edit`/`delete`). Installing pgvector
-(`pgvector/pgvector:pg15`) and enabling the semantic leg is the fix.
+Every hosted option sends questions and tool results to that provider. A local
+OpenAI-compatible endpoint (`AGENT_PROVIDER=openai`, `AGENT_BASE_URL=...`) keeps
+data on the server; see `scripts/benchmark_local_llm.sh` before relying on CPU
+inference.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MEDRAD_INTERNAL_URL` | `http://backend:8000/internal/v1` | Tool API |
-| `MEDRAD_INTERNAL_KEY` | — | Shared key, must match the backend |
-| `AGENT_PROVIDER` | `anthropic` | `anthropic`, or `openai` for any compatible endpoint |
-| `AGENT_BASE_URL` | — | Endpoint when provider is `openai` |
-| `AGENT_API_KEY` | — | Falls back to `ANTHROPIC_API_KEY`; blank is fine for a local endpoint |
-| `ANTHROPIC_API_KEY` | — | Required when provider is `anthropic` |
-| `AGENT_MODEL` | `claude-haiku-4-5` | Swap without code changes |
-| `MAX_TOOL_ITERATIONS` | `5` | Tool-loop rounds per question |
-| `MAX_TOOL_CALLS` | `8` | Total tool calls per question |
+| `AGENT_PROVIDER` | `groq` | `groq`, `openrouter`, `anthropic`, or `openai` (any compatible endpoint) |
+| `AGENT_FALLBACK_PROVIDER` | `openrouter` | Used when the primary fails; empty disables |
+| `GROQ_API_KEY` / `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` | - | Keys; a hosted provider without its key counts as unconfigured |
+| `AGENT_BASE_URL` / `AGENT_API_KEY` | - | For `openai` |
+| `AGENT_ROUTER_MODEL` / `AGENT_TOOLS_MODEL` / `AGENT_SYNTHESIS_MODEL` | provider default | Model per role |
+| `AGENT_FALLBACK_*_MODEL` | provider default | Model per role on the fallback |
+| `AGENT_MODEL` | - | One model for every primary role, unless a role is set |
+| `AGENT_NAME` | `Phia` | Change the widget header alongside |
+| `MEDRAD_INTERNAL_URL` / `MEDRAD_INTERNAL_KEY` | - | Backend tool API and its shared key |
+| `MAX_TOOL_ITERATIONS` / `MAX_TOOL_CALLS` | `5` / `8` | Per-question limits |
+
+## Retrieval
+
+Two legs fused with Reciprocal Rank Fusion: PostgreSQL full-text search over a
+weighted tsvector (exact identifiers, ~8 ms), and optional pgvector similarity,
+skipped when the extension is absent and never used for a site-scoped question
+(it has no site filter). Follow-up questions are rewritten into standalone
+queries before searching, and questions about "our policy" or "the plan" prefer
+the hospital's documents.

@@ -9,6 +9,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+# The evaluation questions and their runner, so a model or prompt change can be
+# checked inside the running container: python scripts/run_evals.py --token ...
+COPY evals ./evals
+COPY scripts ./scripts
 
 # Never exposed publicly: only the MedRad backend reaches this on the private
 # Docker network.
