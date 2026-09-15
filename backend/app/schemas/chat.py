@@ -64,6 +64,8 @@ class DirectMessageResponse(BaseModel):
 class DirectMessageListResponse(BaseModel):
     items: List[DirectMessageResponse]
     total: int
+    # Whether there are older messages than the first one returned.
+    has_more: bool = False
 
 
 # ─── Workspaces ──────────────────────────────────────────────────────
@@ -144,3 +146,4 @@ class WorkspaceMessageResponse(BaseModel):
 class WorkspaceMessageListResponse(BaseModel):
     items: List[WorkspaceMessageResponse]
     total: int
+    has_more: bool = False

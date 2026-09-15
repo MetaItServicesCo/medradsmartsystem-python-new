@@ -28,8 +28,8 @@ import Picker from '@emoji-mart/react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 import {
-  downloadChatFile, fetchWorkspaceMessages, addWorkspaceMember, removeWorkspaceMember, uploadChatFile,
-  type WorkspaceMessageData, type WorkspaceData,
+  downloadChatFile, fetchWorkspaceMessages, addWorkspaceMember, removeWorkspaceMember, sendWorkspaceMessage,
+  uploadChatFile, type OutgoingMessage, type WorkspaceMessageData, type WorkspaceData,
 } from '@/api/chat'
 import { searchUsers } from '@/api/users'
 import { useAuthStore } from '@/stores/authStore'
@@ -37,6 +37,8 @@ import { useChatStore } from '@/stores/chatStore'
 import { createEvent } from '@/api/calendar'
 import CallPanel from './CallPanel'
 import ProtectedChatImage from './ProtectedChatImage'
+import { PendingMessages } from './MessagePanel'
+import { describeSendError, useThread } from './useThread'
 import { palette } from '@/theme/palette'
 
 // Helper: get icon for file type
@@ -70,11 +72,10 @@ interface Props {
 const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
   const currentUser = useAuthStore((s) => s.user)
   const navigate = useNavigate()
-  const { sendWsMessage, addMessageListener, removeMessageListener, onlineUsers } = useChatStore()
+  const { onlineUsers } = useChatStore()
   const queryClient = useQueryClient()
 
   const [message, setMessage] = useState('')
-  const [messages, setMessages] = useState<WorkspaceMessageData[]>([])
   const [showEmoji, setShowEmoji] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [showAddMember, setShowAddMember] = useState(false)
@@ -94,35 +95,30 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Load history
-  const { data: historyData, isLoading } = useQuery({
+  const fetchPage = useCallback(
+    (beforeId?: number) => fetchWorkspaceMessages(workspace.id, { beforeId }), [workspace.id])
+  const thread = useThread<WorkspaceMessageData>({
     queryKey: ['ws-messages', workspace.id],
-    queryFn: () => fetchWorkspaceMessages(workspace.id, 0, 100),
+    fetchPage,
+    belongs: (event) => event.type === 'workspace_message' && event.workspace_id === workspace.id,
   })
+  const { messages, pending } = thread
 
-  useEffect(() => {
-    if (historyData) setMessages(historyData.items)
-  }, [historyData])
-
-  // Listen for real-time workspace messages
-  const handleIncoming = useCallback((data: any) => {
-    if (data.type === 'workspace_message' && data.workspace_id === workspace.id) {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === data.id)) return prev
-        return [...prev, data]
-      })
-    }
-  }, [workspace.id])
-
-  useEffect(() => {
-    addMessageListener(handleIncoming)
-    return () => removeMessageListener(handleIncoming)
-  }, [handleIncoming, addMessageListener, removeMessageListener])
-
-  // Auto-scroll
+  // Follow new messages, not earlier pages loading above.
+  const lastKey = `${messages[messages.length - 1]?.id ?? ''}:${pending.length}`
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [lastKey])
+
+  /** Send through REST, showing it as sending until it is saved or fails. */
+  const post = (outgoing: OutgoingMessage) => {
+    const draft = {
+      id: -Date.now(), workspace_id: workspace.id, sender_id: currentUser?.id ?? 0,
+      sender_name: currentUser?.full_name ?? '', sender_avatar: null, created_at: new Date().toISOString(),
+      file_url: null, file_name: null, file_size: null, file_type: null, ...outgoing,
+    } as WorkspaceMessageData
+    thread.send(draft, () => sendWorkspaceMessage(workspace.id, outgoing), describeSendError)
+  }
 
   // Search users for adding
   useEffect(() => {
@@ -159,27 +155,10 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
 
   const handleSend = () => {
     if (!message.trim() && !pendingFile) return
-
-    if (pendingFile) {
-      sendWsMessage({
-        type: 'workspace_message',
-        workspace_id: workspace.id,
-        content: message.trim() || `📎 ${pendingFile.file_name}`,
-        message_type: 'file',
-        file_url: pendingFile.file_url,
-        file_name: pendingFile.file_name,
-        file_size: pendingFile.file_size,
-        file_type: pendingFile.file_type,
-      })
-      setPendingFile(null)
-    } else {
-      sendWsMessage({
-        type: 'workspace_message',
-        workspace_id: workspace.id,
-        content: message.trim(),
-        message_type: 'text',
-      })
-    }
+    post(pendingFile
+      ? { content: message.trim() || `📎 ${pendingFile.file_name}`, message_type: 'file', ...pendingFile }
+      : { content: message.trim(), message_type: 'text' })
+    setPendingFile(null)
     setMessage('')
     setShowEmoji(false)
   }
@@ -209,12 +188,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
   const handleStartMeeting = () => {
     const now = new Date().toISOString()
     setActiveCall({ active: true, type: 'video', targetUserId: currentUser?.id, isHost: true })
-    sendWsMessage({
-      type: 'workspace_message',
-      workspace_id: workspace.id,
-      content: `[[MEETING_LINK:${currentUser?.id}:${now}]]`,
-      message_type: 'text',
-    })
+    post({ content: `[[MEETING_LINK:${currentUser?.id}:${now}]]`, message_type: 'text' })
     setMeetingMenuAnchor(null)
   }
 
@@ -232,9 +206,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
         workspace_id: workspace.id
       })
 
-      sendWsMessage({
-        type: 'workspace_message',
-        workspace_id: workspace.id,
+      post({
         content: `[[MEETING_SCHEDULED:${currentUser?.id}:${scheduleData.title}:${start.toISOString()}]]`,
         message_type: 'text',
       })
@@ -427,11 +399,19 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
 
       {/* Messages */}
       <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2 }}>
-        {isLoading ? (
+        {thread.hasMore && (
+          <Box sx={{ textAlign: 'center', mb: 1.5 }}>
+            <Button size="small" onClick={thread.loadEarlier} disabled={thread.loadingEarlier}
+                    sx={{ textTransform: 'none', fontWeight: 700, color: palette.brand }}>
+              {thread.loadingEarlier ? 'Loading…' : 'Load earlier messages'}
+            </Button>
+          </Box>
+        )}
+        {thread.isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress size={28} sx={{ color: palette.brand }} />
           </Box>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && pending.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 6 }}>
             <Typography variant="body2" sx={{ color: palette.textDisabled }}>
               No messages in this workspace yet
@@ -606,6 +586,7 @@ const WorkspacePanel = ({ workspace, onRefresh }: Props) => {
             )
           })
         )}
+        <PendingMessages pending={pending} onDiscard={thread.discard} />
         <div ref={messagesEndRef} />
       </Box>
 

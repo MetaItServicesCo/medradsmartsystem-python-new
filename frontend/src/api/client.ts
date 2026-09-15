@@ -31,6 +31,20 @@ const resolveRestApiBase = (): string => {
   return configuredApiBase
 }
 
+/**
+ * The address for a realtime socket under the API, e.g. `/ws/<token>`.
+ *
+ * Uses the configured API origin, like uploads. A relative base ("/api/v1")
+ * is resolved against this page, with wss on https pages: a relative path
+ * handed to `new WebSocket` is not a valid socket address in every browser.
+ */
+export const realtimeUrl = (path: string): string => {
+  const base = configuredApiBase.replace(/\/$/, '')
+  if (/^https?:\/\//i.test(base)) return `${base.replace(/^http/i, 'ws')}${path}`
+  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${scheme}://${window.location.host}${base.startsWith('/') ? base : `/${base}`}${path}`
+}
+
 const apiClient = axios.create({
   baseURL: resolveRestApiBase(),
   headers: {

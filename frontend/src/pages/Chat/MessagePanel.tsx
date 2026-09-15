@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  Box, Typography, TextField, IconButton, Avatar, Tooltip,
-  CircularProgress, InputAdornment, LinearProgress,
+  Box, Button, Typography, TextField, IconButton, Avatar, Tooltip,
+  CircularProgress, LinearProgress,
 } from '@mui/material'
 import SendIcon from '@mui/icons-material/Send'
 import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions'
@@ -16,13 +16,16 @@ import DownloadIcon from '@mui/icons-material/Download'
 import CloseIcon from '@mui/icons-material/Close'
 import data from '@emoji-mart/data'
 import Picker from '@emoji-mart/react'
-import { useQuery } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
-import { downloadChatFile, fetchDirectMessages, uploadChatFile, type DirectMessageData } from '@/api/chat'
+import {
+  downloadChatFile, fetchDirectMessages, markConversationRead, sendDirectMessage, uploadChatFile,
+  type DirectMessageData, type OutgoingMessage,
+} from '@/api/chat'
 import { useAuthStore } from '@/stores/authStore'
 import { useChatStore } from '@/stores/chatStore'
 import CallPanel from './CallPanel'
 import ProtectedChatImage from './ProtectedChatImage'
+import { describeSendError, useThread, type Pending } from './useThread'
 import { palette } from '@/theme/palette'
 
 // Helper: get icon for file type
@@ -77,82 +80,70 @@ const initialsFor = (value: unknown) => {
 
 const MessagePanel = ({ user }: Props) => {
   const currentUser = useAuthStore((s) => s.user)
-  const { sendWsMessage, addMessageListener, removeMessageListener, typingUsers, onlineUsers } = useChatStore()
+  const {
+    sendWsMessage, typingUsers, onlineUsers, isConnected, status, setActiveConversation,
+  } = useChatStore()
 
   const [message, setMessage] = useState('')
-  const [messages, setMessages] = useState<DirectMessageData[]>([])
   const [showEmoji, setShowEmoji] = useState(false)
   const [callState, setCallState] = useState<{ active: boolean; type: 'voice' | 'video' } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [pendingFile, setPendingFile] = useState<{ file_url: string; file_name: string; file_size: number; file_type: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const lastTypingSent = useRef(0)
   const typingTimeoutRef = useRef<any>(null)
+  const readTimer = useRef<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isOnline = onlineUsers.includes(user.id)
   const isTyping = typingUsers[String(user.id)]
 
-  // Load message history
-  const { data: historyData, isLoading } = useQuery({
+  const fetchPage = useCallback((beforeId?: number) => fetchDirectMessages(user.id, { beforeId }), [user.id])
+  const thread = useThread<DirectMessageData>({
     queryKey: ['dm-messages', user.id],
-    queryFn: () => fetchDirectMessages(user.id, 0, 100),
+    fetchPage,
+    belongs: (event) => event.type === 'chat_message' && (
+      (event.sender_id === user.id && event.receiver_id === currentUser?.id)
+      || (event.sender_id === currentUser?.id && event.receiver_id === user.id)),
   })
+  const { messages, pending } = thread
 
+  // This conversation is on screen: its messages are read as they arrive.
   useEffect(() => {
-    if (historyData) setMessages(historyData.items)
-  }, [historyData])
+    setActiveConversation(user.id)
+    return () => setActiveConversation(null)
+  }, [user.id, setActiveConversation])
 
-  // Listen for real-time messages
-  const handleIncoming = useCallback((data: any) => {
-    if (data.type === 'chat_message') {
-      if (
-        (data.sender_id === user.id && data.receiver_id === currentUser?.id) ||
-        (data.sender_id === currentUser?.id && data.receiver_id === user.id)
-      ) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === data.id)) return prev
-          return [...prev, data]
-        })
-      }
-    }
-  }, [user.id, currentUser?.id])
-
+  const newestUnreadFromThem = [...messages].reverse().find((m) => m.sender_id === user.id && !m.read_at)?.id
   useEffect(() => {
-    addMessageListener(handleIncoming)
-    return () => removeMessageListener(handleIncoming)
-  }, [handleIncoming, addMessageListener, removeMessageListener])
+    if (!newestUnreadFromThem) return
+    window.clearTimeout(readTimer.current)
+    readTimer.current = window.setTimeout(() => { markConversationRead(user.id).catch(() => undefined) }, 600)
+    return () => window.clearTimeout(readTimer.current)
+  }, [newestUnreadFromThem, user.id])
 
-  // Auto-scroll
+  // Follow new messages, not earlier pages loading above.
+  const lastKey = `${messages[messages.length - 1]?.id ?? ''}:${pending.length}`
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [lastKey])
 
   const handleSend = () => {
     if (!message.trim() && !pendingFile) return
-
-    if (pendingFile) {
-      // Send file message
-      sendWsMessage({
-        type: 'chat_message',
-        receiver_id: user.id,
-        content: message.trim() || `📎 ${pendingFile.file_name}`,
-        message_type: 'file',
-        file_url: pendingFile.file_url,
-        file_name: pendingFile.file_name,
-        file_size: pendingFile.file_size,
-        file_type: pendingFile.file_type,
-      })
-      setPendingFile(null)
-    } else {
-      sendWsMessage({
-        type: 'chat_message',
-        receiver_id: user.id,
-        content: message.trim(),
-        message_type: 'text',
-      })
-    }
+    const outgoing: OutgoingMessage = pendingFile
+      ? { content: message.trim() || `📎 ${pendingFile.file_name}`, message_type: 'file', ...pendingFile }
+      : { content: message.trim(), message_type: 'text' }
+    const draft = {
+      id: -Date.now(), sender_id: currentUser?.id ?? 0, receiver_id: user.id, read_at: null,
+      created_at: new Date().toISOString(), file_url: null, file_name: null, file_size: null, file_type: null,
+      ...outgoing,
+    } as DirectMessageData
+    thread.send(draft, () => sendDirectMessage(user.id, outgoing), describeSendError)
+    setPendingFile(null)
     setMessage('')
     setShowEmoji(false)
+    window.clearTimeout(typingTimeoutRef.current)
+    sendWsMessage({ type: 'typing', receiver_id: user.id, is_typing: false })
   }
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -176,17 +167,25 @@ const MessagePanel = ({ user }: Props) => {
     }
   }
 
+  const handleChange = (value: string) => {
+    setMessage(value)
+    // Say "typing" at most every two seconds, and stop two seconds after the last key.
+    const now = Date.now()
+    if (value && now - lastTypingSent.current > 2000) {
+      lastTypingSent.current = now
+      sendWsMessage({ type: 'typing', receiver_id: user.id, is_typing: true })
+    }
+    window.clearTimeout(typingTimeoutRef.current)
+    typingTimeoutRef.current = window.setTimeout(() => {
+      sendWsMessage({ type: 'typing', receiver_id: user.id, is_typing: false })
+    }, 2000)
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
-    // Send typing indicator
-    sendWsMessage({ type: 'typing', receiver_id: user.id, is_typing: true })
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-    typingTimeoutRef.current = setTimeout(() => {
-      sendWsMessage({ type: 'typing', receiver_id: user.id, is_typing: false })
-    }, 2000)
   }
 
   const handleEmojiSelect = (emoji: any) => {
@@ -295,7 +294,9 @@ const MessagePanel = ({ user }: Props) => {
             {displayName}
           </Typography>
           <Typography variant="caption" sx={{ color: isOnline ? palette.brandMid : palette.textDisabled }}>
-            {isTyping ? 'Typing...' : isOnline ? 'Online' : 'Offline'}
+            {isTyping ? 'Typing...' : !isConnected && status !== 'idle'
+              ? 'Reconnecting… messages still send'
+              : isOnline ? 'Online' : 'Offline'}
           </Typography>
         </Box>
         <Tooltip title="Voice Call">
@@ -314,11 +315,19 @@ const MessagePanel = ({ user }: Props) => {
 
       {/* Messages area */}
       <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2 }}>
-        {isLoading ? (
+        {thread.hasMore && (
+          <Box sx={{ textAlign: 'center', mb: 1.5 }}>
+            <Button size="small" onClick={thread.loadEarlier} disabled={thread.loadingEarlier}
+                    sx={{ textTransform: 'none', fontWeight: 700, color: palette.brand }}>
+              {thread.loadingEarlier ? 'Loading…' : 'Load earlier messages'}
+            </Button>
+          </Box>
+        )}
+        {thread.isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress size={28} sx={{ color: palette.brand }} />
           </Box>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && pending.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 6 }}>
             <Typography variant="body2" sx={{ color: palette.textDisabled }}>
               No messages yet. Say hello! 👋
@@ -387,6 +396,7 @@ const MessagePanel = ({ user }: Props) => {
             )
           })
         )}
+        <PendingMessages pending={pending} onDiscard={thread.discard} />
         <div ref={messagesEndRef} />
       </Box>
 
@@ -469,7 +479,7 @@ const MessagePanel = ({ user }: Props) => {
         </Tooltip>
         <TextField
           fullWidth size="small" placeholder={pendingFile ? "Add a message or press send..." : "Type a message..."}
-          value={message} onChange={(e) => setMessage(e.target.value)}
+          value={message} onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           multiline maxRows={3}
           sx={{
@@ -506,3 +516,49 @@ const MessagePanel = ({ user }: Props) => {
 }
 
 export default MessagePanel
+
+/** Messages still being sent, or that failed, with the reason and a way to retry. */
+export function PendingMessages({ pending, onDiscard }: {
+  pending: Pending<{ content: string }>[]
+  onDiscard: (localId: string) => void
+}) {
+  return (
+    <>
+      {pending.map((item) => {
+        const failed = item.status === 'failed'
+        return (
+          <Box key={item.localId} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', mb: 0.8 }}>
+            <Box sx={{
+              maxWidth: '75%', px: 2.2, py: 1.2, borderRadius: '20px 20px 4px 20px',
+              background: failed ? palette.dangerWash : `linear-gradient(135deg, ${palette.brand} 0%, ${palette.accentLight} 100%)`,
+              color: failed ? palette.danger : palette.white,
+              border: failed ? `1px solid ${palette.dangerTint}` : 'none',
+              opacity: failed ? 1 : 0.7,
+            }}>
+              <Typography sx={{ fontSize: '0.9rem', lineHeight: 1.6, wordBreak: 'break-word', color: 'inherit' }}>
+                {item.message.content}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.3 }}>
+              <Typography sx={{ fontSize: '0.7rem', color: failed ? palette.danger : palette.textDisabled, fontWeight: 700 }}>
+                {failed ? item.error : 'Sending…'}
+              </Typography>
+              {failed && (
+                <>
+                  <Button size="small" onClick={item.retry}
+                          sx={{ minWidth: 0, p: 0, textTransform: 'none', fontWeight: 800, fontSize: '0.72rem' }}>
+                    Retry
+                  </Button>
+                  <Button size="small" onClick={() => onDiscard(item.localId)}
+                          sx={{ minWidth: 0, p: 0, textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', color: palette.textMuted }}>
+                    Discard
+                  </Button>
+                </>
+              )}
+            </Box>
+          </Box>
+        )
+      })}
+    </>
+  )
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Box, Typography, Tabs, Tab, TextField, InputAdornment,
   List, ListItemButton, ListItemAvatar, ListItemText, Avatar,
@@ -45,7 +46,11 @@ const initialsFor = (value: unknown) => {
 }
 
 const Chat = () => {
-  const { connect, isConnected, onlineUsers, unreadCounts, incomingCall, clearIncomingCall, sendWsMessage } = useChatStore()
+  const {
+    connect, isConnected, onlineUsers, unreadCounts, incomingCall, clearIncomingCall, sendWsMessage,
+    updateUnreadCounts, addMessageListener, removeMessageListener,
+  } = useChatStore()
+  const [searchParams] = useSearchParams()
 
   const [tab, setTab] = useState(0) // 0=DMs, 1=Workspaces
   const [selectedUser, setSelectedUser] = useState<any>(null)
@@ -79,20 +84,58 @@ const Chat = () => {
   })
   const workspaces = Array.isArray(workspacesData?.items) ? workspacesData.items : []
 
-  // Fetch unread counts
-  useQuery({
+  // Unread counts come from the server; live messages add to them in between.
+  // They used to be fetched and thrown away, so badges only ever went up.
+  const { data: serverUnread, refetch: refetchUnread } = useQuery({
     queryKey: ['unread-counts'],
     queryFn: fetchUnreadCounts,
     refetchInterval: 15000,
   })
-  
+  useEffect(() => {
+    if (serverUnread) updateUnreadCounts(serverUnread)
+  }, [serverUnread, updateUnreadCounts])
+
   // Fetch pending requests count
-  const { data: pendingRequests } = useQuery({
+  const { data: pendingRequests, refetch: refetchRequests } = useQuery({
     queryKey: ['friend-requests', 'received'],
     queryFn: () => fetchFriendRequests('received', 'pending'),
     refetchInterval: 30000,
   })
   const pendingCount = pendingRequests?.total || 0
+
+  // A request sent, accepted or rejected elsewhere shows here at once, and a
+  // reconnect catches up on anything missed while the socket was down.
+  useEffect(() => {
+    const listener = (event: any) => {
+      if (event.type === 'friends_changed') {
+        refetchFriends()
+        refetchRequests()
+      } else if (event.type === 'reconnected') {
+        refetchFriends()
+        refetchRequests()
+        refetchWorkspaces()
+        refetchUnread()
+      }
+    }
+    addMessageListener(listener)
+    return () => removeMessageListener(listener)
+  }, [addMessageListener, removeMessageListener, refetchFriends, refetchRequests, refetchWorkspaces, refetchUnread])
+
+  // Opened from a notification: /chat?user=12 or /chat?workspace=3.
+  const linkedUser = Number(searchParams.get('user')) || null
+  const linkedWorkspace = Number(searchParams.get('workspace')) || null
+  useEffect(() => {
+    if (linkedUser) {
+      const friend = (Array.isArray(friends) ? friends : []).find((f: any) => f.id === linkedUser)
+      if (friend) { setTab(0); setSelectedUser(friend); setSelectedWorkspace(null) }
+    }
+  }, [linkedUser, friends])
+  useEffect(() => {
+    if (linkedWorkspace) {
+      const ws = (workspacesData?.items ?? []).find((w: any) => w.id === linkedWorkspace)
+      if (ws) { setTab(1); setSelectedWorkspace(ws); setSelectedUser(null) }
+    }
+  }, [linkedWorkspace, workspacesData])
 
   const incomingCaller = incomingCall
     ? friendsList.find((f: any) => f.id === incomingCall.senderId) || {
@@ -174,7 +217,7 @@ const Chat = () => {
               backgroundColor: isConnected ? palette.brandMid : palette.dangerBright,
             }} />
             <Typography variant="caption" sx={{ color: palette.textDisabled }}>
-              {isConnected ? 'Connected' : 'Reconnecting...'}
+              {isConnected ? 'Connected' : 'Reconnecting… messages still send'}
             </Typography>
           </Box>
 
@@ -331,10 +374,11 @@ const Chat = () => {
 
       {/* Main content — Message panel or empty state */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* Keyed, so switching conversations never shows the previous one's messages. */}
         {selectedUser ? (
-          <MessagePanel user={selectedUser} />
+          <MessagePanel key={`user-${selectedUser.id}`} user={selectedUser} />
         ) : selectedWorkspace ? (
-          <WorkspacePanel workspace={selectedWorkspace} onRefresh={refetchWorkspaces} />
+          <WorkspacePanel key={`workspace-${selectedWorkspace.id}`} workspace={selectedWorkspace} onRefresh={refetchWorkspaces} />
         ) : (
           <Box sx={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',

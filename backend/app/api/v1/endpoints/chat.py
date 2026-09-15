@@ -12,6 +12,8 @@ from app.utils.logging import log_activity
 from app.utils.notifications import create_notification, create_notifications
 from app.utils.upload_security import protected_upload_path
 from app.db.base import get_db
+from app.services import chat_messages, realtime
+from app.services.chat_messages import Attachment, ChatError
 from app.models.user import User
 from app.models.chat import (
     FriendRequest, FriendRequestStatus,
@@ -91,6 +93,7 @@ def send_friend_request(
     )
     db.commit()
     db.refresh(fr)
+    realtime.notify_users([fr.receiver_id, fr.sender_id], {"type": "friends_changed"})
     return _build_friend_request_response(fr, db)
 
 
@@ -160,6 +163,7 @@ def accept_friend_request(
     )
     db.commit()
     db.refresh(fr)
+    realtime.notify_users([fr.sender_id, fr.receiver_id], {"type": "friends_changed"})
     return _build_friend_request_response(fr, db)
 
 
@@ -191,7 +195,7 @@ def reject_friend_request(
     )
     db.commit()
     db.refresh(fr)
-    
+    realtime.notify_users([fr.sender_id, fr.receiver_id], {"type": "friends_changed"})
     return _build_friend_request_response(fr, db)
 
 
@@ -238,47 +242,24 @@ def get_direct_messages(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0, description="Ignored; page back with before_id"),
     limit: int = Query(50, ge=1, le=200),
+    before_id: Optional[int] = Query(None, description="Only messages older than this one"),
 ) -> Any:
-    """Get direct message history with a specific user."""
-    # Verify they are friends
+    """The newest messages with a friend, oldest first; page back with before_id.
+
+    Opening the conversation marks what they sent as read and tells them.
+    """
     _check_friendship(db, current_user.id, user_id)
-
-    messages = (
-        db.query(DirectMessage)
-        .filter(
-            or_(
-                and_(DirectMessage.sender_id == current_user.id, DirectMessage.receiver_id == user_id),
-                and_(DirectMessage.sender_id == user_id, DirectMessage.receiver_id == current_user.id),
-            )
-        )
-        .order_by(DirectMessage.created_at.asc())
-        .offset(skip)
-        .limit(limit)
-        .all()
+    messages, has_more, total = chat_messages.conversation(
+        db, current_user.id, user_id, limit=limit, before_id=before_id,
     )
-
-    # Mark unread messages as read
-    unread = (
-        db.query(DirectMessage)
-        .filter(
-            DirectMessage.sender_id == user_id,
-            DirectMessage.receiver_id == current_user.id,
-            DirectMessage.read_at.is_(None),
-        )
-        .all()
-    )
-    from datetime import datetime
-    for msg in unread:
-        msg.read_at = datetime.utcnow()
-    if unread:
-        db.commit()
-
-    return {
-        "items": [_build_dm_response(m) for m in messages],
-        "total": len(messages),
-    }
+    if before_id is None:
+        read_ids = chat_messages.mark_read(db, current_user.id, user_id)
+        if read_ids:
+            realtime.notify_users([user_id], {"type": "read_receipt", "reader_id": current_user.id,
+                                              "message_ids": read_ids})
+    return {"items": [_build_dm_response(m) for m in messages], "total": total, "has_more": has_more}
 
 
 @router.post("/messages/{user_id}", response_model=DirectMessageResponse, status_code=201)
@@ -288,31 +269,36 @@ def send_direct_message(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Send a direct message to a friend."""
-    _check_friendship(db, current_user.id, user_id)
+    """Send a direct message to a friend, and deliver it to both of you at once.
 
-    msg = DirectMessage(
-        sender_id=current_user.id,
-        receiver_id=user_id,
-        content=msg_in.content,
-        message_type=MessageType(msg_in.message_type) if msg_in.message_type else MessageType.TEXT,
-    )
-    db.add(msg)
-    db.flush()
-    
-    log_activity(db, "direct_messages", msg.id, "DM_SENT", current_user, {"receiver_id": user_id})
-    create_notification(
-        db,
-        user_id=user_id,
-        title="New direct message",
-        message=f"{current_user.full_name or current_user.username} sent you a message.",
-        notification_type="chat",
-        link_url="/chat",
-        actor_id=current_user.id,
-    )
+    The dependable way to send: it answers whether the message was saved, where
+    a message written to a closed socket used to disappear without a word.
+    """
+    try:
+        message = chat_messages.send_direct(
+            db, current_user, user_id, content=msg_in.content, message_type=msg_in.message_type,
+            attachment=Attachment(msg_in.file_url, msg_in.file_name, msg_in.file_size, msg_in.file_type),
+        )
+    except ChatError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+    log_activity(db, "direct_messages", message.id, "DM_SENT", current_user, {"receiver_id": user_id})
     db.commit()
-    db.refresh(msg)
-    return _build_dm_response(msg)
+    realtime.notify_users([user_id, current_user.id], chat_messages.direct_payload(message))
+    return _build_dm_response(message)
+
+
+@router.post("/messages/{user_id}/read")
+def mark_conversation_read(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Mark everything a friend sent as read, for messages that arrive while the conversation is open."""
+    read_ids = chat_messages.mark_read(db, current_user.id, user_id)
+    if read_ids:
+        realtime.notify_users([user_id], {"type": "read_receipt", "reader_id": current_user.id,
+                                          "message_ids": read_ids})
+    return {"marked": len(read_ids)}
 
 
 @router.get("/unread-counts")
@@ -525,24 +511,14 @@ def get_workspace_messages(
     workspace_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0, description="Ignored; page back with before_id"),
     limit: int = Query(50, ge=1, le=200),
+    before_id: Optional[int] = Query(None, description="Only messages older than this one"),
 ) -> Any:
-    """Get messages in a workspace."""
+    """The newest messages in a workspace, oldest first; page back with before_id."""
     _check_workspace_member(db, workspace_id, current_user.id)
-
-    messages = (
-        db.query(WorkspaceMessage)
-        .filter(WorkspaceMessage.workspace_id == workspace_id)
-        .order_by(WorkspaceMessage.created_at.asc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
-    return {
-        "items": [_build_ws_message_response(m, db) for m in messages],
-        "total": len(messages),
-    }
+    messages, has_more, total = chat_messages.workspace_history(db, workspace_id, limit=limit, before_id=before_id)
+    return {"items": [_build_ws_message_response(m, db) for m in messages], "total": total, "has_more": has_more}
 
 
 @router.post("/workspaces/{workspace_id}/messages", response_model=WorkspaceMessageResponse, status_code=201)
@@ -552,36 +528,20 @@ def send_workspace_message(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Send a message to a workspace."""
-    _check_workspace_member(db, workspace_id, current_user.id)
-
-    msg = WorkspaceMessage(
-        workspace_id=workspace_id,
-        sender_id=current_user.id,
-        content=msg_in.content,
-        message_type=MessageType(msg_in.message_type) if msg_in.message_type else MessageType.TEXT,
-    )
-    db.add(msg)
-    db.flush()
-    
-    log_activity(db, "workspace_messages", msg.id, "WORKSPACE_MESSAGE_SENT", current_user, {"workspace_id": workspace_id})
-    member_ids = [
-        m.user_id
-        for m in db.query(WorkspaceMember).filter(WorkspaceMember.workspace_id == workspace_id).all()
-        if m.user_id != current_user.id
-    ]
-    create_notifications(
-        db,
-        user_ids=member_ids,
-        title="New workspace message",
-        message=f"{current_user.full_name or current_user.username} posted in a workspace.",
-        notification_type="chat",
-        link_url="/chat",
-        actor_id=current_user.id,
-    )
+    """Send a message to a workspace and deliver it to every member at once."""
+    try:
+        message = chat_messages.send_to_workspace(
+            db, current_user, workspace_id, content=msg_in.content, message_type=msg_in.message_type,
+            attachment=Attachment(msg_in.file_url, msg_in.file_name, msg_in.file_size, msg_in.file_type),
+        )
+    except ChatError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+    log_activity(db, "workspace_messages", message.id, "WORKSPACE_MESSAGE_SENT", current_user,
+                 {"workspace_id": workspace_id})
     db.commit()
-    db.refresh(msg)
-    return _build_ws_message_response(msg, db)
+    realtime.notify_users(chat_messages.member_ids(db, workspace_id),
+                          chat_messages.workspace_payload(message, current_user))
+    return _build_ws_message_response(message, db)
 
 
 # ─── File Upload ─────────────────────────────────────────────────────

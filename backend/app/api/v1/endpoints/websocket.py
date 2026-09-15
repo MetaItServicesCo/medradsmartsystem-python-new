@@ -18,9 +18,11 @@ from app.core.config import settings
 from app.core.security import decode_token, password_token_version
 from app.db.base import SessionLocal
 from app.models.user import User
-from app.models.chat import DirectMessage, WorkspaceMessage, MessageType, WorkspaceMember
+from app.models.chat import DirectMessage, WorkspaceMember
+from app.services import chat_messages
+from app.services.chat_messages import Attachment, ChatError
 from app.utils.token_revocation import access_token_is_revoked
-from app.utils.notifications import create_notification, create_notifications
+from app.utils.notifications import create_notification
 
 router = APIRouter()
 logger = logging.getLogger("medrad.realtime")
@@ -142,6 +144,10 @@ class ConnectionManager:
                 logger.warning("Could not refresh realtime presence", exc_info=True)
 
     async def _listen(self) -> None:
+        # This task is the only way messages published by another worker reach
+        # people connected to this one. It used to stop on any error it did not
+        # expect, after which this worker's users silently received nothing, so
+        # it now logs, pauses and carries on until it is cancelled.
         while True:
             try:
                 event = await self._pubsub.get_message(timeout=1.0)
@@ -157,6 +163,9 @@ class ConnectionManager:
             except (RedisError, json.JSONDecodeError, TypeError):
                 logger.warning("Invalid or unavailable realtime event", exc_info=True)
                 await asyncio.sleep(0.25)
+            except Exception:
+                logger.exception("Realtime listener error; continuing")
+                await asyncio.sleep(1)
 
     async def _publish(
         self,
@@ -258,6 +267,9 @@ class ConnectionManager:
     async def send_to_user(self, user_id: int, message: dict):
         await self._publish(message, target_user_ids=[user_id])
 
+    async def send_to_users(self, user_ids: list[int], message: dict):
+        await self._publish(message, target_user_ids=list(user_ids))
+
     async def broadcast_to_workspace(self, workspace_id: int, message: dict, db: Session):
         members = db.query(WorkspaceMember).filter(
             WorkspaceMember.workspace_id == workspace_id
@@ -328,25 +340,53 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
     """Main WebSocket endpoint for real-time communication."""
     user_id = await run_in_threadpool(get_user_from_token, token)
     if user_id is None:
+        # Accept before closing: a socket closed during the handshake reaches the
+        # browser as a generic failure, and it would retry the same dead token
+        # forever. Code 4001 tells it to stop until the user signs in again.
+        await websocket.accept()
         await websocket.close(code=4001, reason="Invalid token")
         return
 
     await manager.connect(user_id, websocket)
 
     try:
-        # Send initial online users list
         await websocket.send_json({
             "type": "online_users",
             "users": await manager.get_online_users(),
         })
 
         while True:
-            data = await websocket.receive_json()
-            await handle_message(user_id, data)
+            raw = await websocket.receive_text()
+            await _handle_frame(user_id, websocket, raw)
     except WebSocketDisconnect:
         await manager.disconnect(user_id, websocket)
     except Exception:
+        logger.warning("Realtime connection for user %s ended unexpectedly", user_id, exc_info=True)
         await manager.disconnect(user_id, websocket)
+
+
+async def _handle_frame(user_id: int, websocket: WebSocket, raw: str) -> None:
+    """One frame from the browser. A bad or failing frame is answered with an
+    error on this socket; it no longer takes the whole connection down."""
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("expected an object")
+    except ValueError:
+        await websocket.send_json({"type": "error", "detail": "Unreadable message"})
+        return
+    if data.get("type") == "ping":
+        # The heartbeat that keeps proxies and CDNs from closing an idle socket.
+        await websocket.send_json({"type": "pong"})
+        return
+    try:
+        await handle_message(user_id, data)
+    except ChatError as exc:
+        await websocket.send_json({"type": "error", "detail": exc.detail, "client_id": data.get("client_id")})
+    except Exception:
+        logger.exception("Realtime message of type %s from user %s failed", data.get("type"), user_id)
+        await websocket.send_json({"type": "error", "detail": "That could not be delivered",
+                                   "client_id": data.get("client_id")})
 
 
 async def handle_message(sender_id: int, data: dict):
@@ -361,15 +401,7 @@ async def handle_message(sender_id: int, data: dict):
         await handle_typing(sender_id, data)
     elif msg_type == "read_receipt":
         await handle_read_receipt(sender_id, data)
-    elif msg_type == "call_offer":
-        await handle_call_signal(sender_id, data)
-    elif msg_type == "call_answer":
-        await handle_call_signal(sender_id, data)
-    elif msg_type == "ice_candidate":
-        await handle_call_signal(sender_id, data)
-    elif msg_type == "call_end":
-        await handle_call_signal(sender_id, data)
-    elif msg_type == "call_reject":
+    elif msg_type in ("call_offer", "call_answer", "ice_candidate", "call_end", "call_reject"):
         await handle_call_signal(sender_id, data)
     elif msg_type == "get_online_users":
         await manager.send_to_user(sender_id, {
@@ -378,177 +410,62 @@ async def handle_message(sender_id: int, data: dict):
         })
 
 
+def _as_id(value) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 async def handle_chat_message(sender_id: int, data: dict):
-    """Persist a direct message and relay to recipient."""
-    receiver_id = data.get("receiver_id")
-    content = data.get("content", "")
-    message_type = data.get("message_type", "text")
-    file_url = data.get("file_url")
-    file_name = data.get("file_name")
-    file_size = data.get("file_size")
-    file_type = data.get("file_type")
+    """Save a direct message sent over the socket and deliver it to both people.
 
-    if not receiver_id or not content:
-        return
-
-    outgoing = await run_in_threadpool(
-        _persist_direct_message,
-        sender_id,
-        receiver_id,
-        content,
-        message_type,
-        file_url,
-        file_name,
-        file_size,
-        file_type,
-    )
-
-    await manager.send_to_user(receiver_id, outgoing)
-    # Echo back to sender for confirmation
-    await manager.send_to_user(sender_id, outgoing)
+    The browser now sends through the REST endpoint, which reports success;
+    this stays for pages still open from before, and applies the same checks.
+    """
+    receiver_id = _as_id(data.get("receiver_id"))
+    if receiver_id is None:
+        raise ChatError(422, "Choose who to send it to")
+    outgoing = await run_in_threadpool(_persist_direct_message, sender_id, receiver_id, data)
+    await manager.send_to_users([receiver_id, sender_id], outgoing)
 
 
-def _persist_direct_message(
-    sender_id: int,
-    receiver_id: int,
-    content: str,
-    message_type: str,
-    file_url,
-    file_name,
-    file_size,
-    file_type,
-) -> dict:
+def _persist_direct_message(sender_id: int, receiver_id: int, data: dict) -> dict:
     """Persist a direct message off the async WebSocket event loop."""
     db = SessionLocal()
     try:
-        msg = DirectMessage(
-            sender_id=sender_id,
-            receiver_id=receiver_id,
-            content=content,
-            message_type=MessageType(message_type),
-            file_url=file_url,
-            file_name=file_name,
-            file_size=file_size,
-            file_type=file_type,
+        sender = db.get(User, sender_id)
+        message = chat_messages.send_direct(
+            db, sender, receiver_id, content=data.get("content"), message_type=data.get("message_type"),
+            attachment=Attachment(data.get("file_url"), data.get("file_name"), data.get("file_size"),
+                                  data.get("file_type")),
         )
-        db.add(msg)
-        db.commit()
-        db.refresh(msg)
-        sender = db.query(User).filter(User.id == sender_id).first()
-        create_notification(
-            db,
-            user_id=receiver_id,
-            title="New direct message",
-            message=f"{sender.full_name if sender else 'Someone'} sent you a message.",
-            notification_type="chat",
-            link_url="/chat",
-            actor_id=sender_id,
-        )
-        db.commit()
-        return {
-            "type": "chat_message",
-            "id": msg.id,
-            "sender_id": sender_id,
-            "receiver_id": receiver_id,
-            "content": content,
-            "message_type": message_type,
-            "file_url": file_url,
-            "file_name": file_name,
-            "file_size": file_size,
-            "file_type": file_type,
-            "created_at": msg.created_at.isoformat() if msg.created_at else datetime.utcnow().isoformat(),
-        }
+        return chat_messages.direct_payload(message)
     finally:
         db.close()
 
 
 async def handle_workspace_message(sender_id: int, data: dict):
-    """Persist a workspace message and broadcast to members."""
-    workspace_id = data.get("workspace_id")
-    content = data.get("content", "")
-    message_type = data.get("message_type", "text")
-    file_url = data.get("file_url")
-    file_name = data.get("file_name")
-    file_size = data.get("file_size")
-    file_type = data.get("file_type")
-
-    if not workspace_id or not content:
-        return
-
-    outgoing, member_ids = await run_in_threadpool(
-        _persist_workspace_message,
-        sender_id,
-        workspace_id,
-        content,
-        message_type,
-        file_url,
-        file_name,
-        file_size,
-        file_type,
-    )
-    await manager._publish(outgoing, target_user_ids=member_ids)
+    """Save a workspace message sent over the socket and deliver it to the members."""
+    workspace_id = _as_id(data.get("workspace_id"))
+    if workspace_id is None:
+        raise ChatError(422, "Choose a workspace")
+    outgoing, member_ids = await run_in_threadpool(_persist_workspace_message, sender_id, workspace_id, data)
+    await manager.send_to_users(member_ids, outgoing)
 
 
-def _persist_workspace_message(
-    sender_id: int,
-    workspace_id: int,
-    content: str,
-    message_type: str,
-    file_url,
-    file_name,
-    file_size,
-    file_type,
-) -> tuple[dict, list[int]]:
+def _persist_workspace_message(sender_id: int, workspace_id: int, data: dict) -> tuple[dict, list[int]]:
     """Persist a workspace message and resolve recipients off-loop."""
     db = SessionLocal()
     try:
-        msg = WorkspaceMessage(
-            workspace_id=workspace_id,
-            sender_id=sender_id,
-            content=content,
-            message_type=MessageType(message_type),
-            file_url=file_url,
-            file_name=file_name,
-            file_size=file_size,
-            file_type=file_type,
+        sender = db.get(User, sender_id)
+        message = chat_messages.send_to_workspace(
+            db, sender, workspace_id, content=data.get("content"), message_type=data.get("message_type"),
+            attachment=Attachment(data.get("file_url"), data.get("file_name"), data.get("file_size"),
+                                  data.get("file_type")),
         )
-        db.add(msg)
-        db.commit()
-        db.refresh(msg)
-
-        sender = db.query(User).filter(User.id == sender_id).first()
-
-        outgoing = {
-            "type": "workspace_message",
-            "id": msg.id,
-            "workspace_id": workspace_id,
-            "sender_id": sender_id,
-            "sender_name": sender.full_name if sender else "",
-            "sender_avatar": sender.avatar_url if sender else None,
-            "content": content,
-            "message_type": message_type,
-            "file_url": file_url,
-            "file_name": file_name,
-            "file_size": file_size,
-            "file_type": file_type,
-            "created_at": msg.created_at.isoformat() if msg.created_at else datetime.utcnow().isoformat(),
-        }
-        all_member_ids = list({
-            m.user_id
-            for m in db.query(WorkspaceMember).filter(WorkspaceMember.workspace_id == workspace_id).all()
-        })
-        notification_member_ids = [user_id for user_id in all_member_ids if user_id != sender_id]
-        create_notifications(
-            db,
-            user_ids=notification_member_ids,
-            title="New workspace message",
-            message=f"{sender.full_name if sender else 'Someone'} posted in a workspace.",
-            notification_type="chat",
-            link_url="/chat",
-            actor_id=sender_id,
-        )
-        db.commit()
-        return outgoing, all_member_ids
+        return chat_messages.workspace_payload(message, sender), chat_messages.member_ids(db, workspace_id)
     finally:
         db.close()
 
@@ -569,8 +486,8 @@ def _workspace_member_ids(workspace_id: int, *, exclude_user_id: int | None = No
 
 async def handle_typing(sender_id: int, data: dict):
     """Relay typing indicator to the other user."""
-    receiver_id = data.get("receiver_id")
-    workspace_id = data.get("workspace_id")
+    receiver_id = _as_id(data.get("receiver_id"))
+    workspace_id = _as_id(data.get("workspace_id"))
 
     indicator = {
         "type": "typing",
@@ -590,8 +507,8 @@ async def handle_typing(sender_id: int, data: dict):
 
 async def handle_read_receipt(sender_id: int, data: dict):
     """Mark messages as read and notify sender."""
-    message_ids = data.get("message_ids", [])
-    from_user_id = data.get("from_user_id")
+    message_ids = [i for i in (_as_id(v) for v in data.get("message_ids") or []) if i]
+    from_user_id = _as_id(data.get("from_user_id"))
 
     if not message_ids:
         return
@@ -621,8 +538,8 @@ def _mark_messages_read(sender_id: int, message_ids: list[int]) -> None:
 
 async def handle_call_signal(sender_id: int, data: dict):
     """Relay WebRTC signaling messages (offer, answer, ICE candidates, end)."""
-    target_id = data.get("target_id")
-    if not target_id:
+    target_id = _as_id(data.get("target_id"))
+    if target_id is None:
         return
 
     data["sender_id"] = sender_id

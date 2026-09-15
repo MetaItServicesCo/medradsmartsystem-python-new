@@ -63,22 +63,42 @@ export interface DirectMessageData {
   read_at: string | null
 }
 
+export interface MessagePage<T> {
+  items: T[]
+  total: number
+  /** Whether there are older messages than the first one returned. */
+  has_more: boolean
+}
+
+/** The newest messages with a friend, oldest first. Pass beforeId to page back. */
 export const fetchDirectMessages = async (
   userId: number,
-  skip = 0,
-  limit = 50
-): Promise<{ items: DirectMessageData[]; total: number }> => {
-  const res = await apiClient.get(`/chat/messages/${userId}`, { params: { skip, limit } })
+  { limit = 50, beforeId }: { limit?: number; beforeId?: number } = {},
+): Promise<MessagePage<DirectMessageData>> => {
+  const params: Record<string, number> = { limit }
+  if (beforeId) params.before_id = beforeId
+  const res = await apiClient.get(`/chat/messages/${userId}`, { params })
   return res.data
 }
 
-export const sendDirectMessage = async (
-  userId: number,
-  content: string,
-  messageType = 'text'
-): Promise<DirectMessageData> => {
-  const res = await apiClient.post(`/chat/messages/${userId}`, { content, message_type: messageType })
+export interface OutgoingMessage {
+  content: string
+  message_type: 'text' | 'file'
+  file_url?: string | null
+  file_name?: string | null
+  file_size?: number | null
+  file_type?: string | null
+}
+
+/** Send a direct message. Resolves with the saved message, or rejects with why it was not sent. */
+export const sendDirectMessage = async (userId: number, message: OutgoingMessage): Promise<DirectMessageData> => {
+  const res = await apiClient.post(`/chat/messages/${userId}`, message)
   return res.data
+}
+
+/** Mark what a friend sent as read, for messages that arrive while the conversation is open. */
+export const markConversationRead = async (userId: number): Promise<void> => {
+  await apiClient.post(`/chat/messages/${userId}/read`)
 }
 
 export const fetchUnreadCounts = async (): Promise<Record<string, number>> => {
@@ -204,23 +224,20 @@ export interface WorkspaceMessageData {
   created_at: string
 }
 
+/** The newest messages in a workspace, oldest first. Pass beforeId to page back. */
 export const fetchWorkspaceMessages = async (
   workspaceId: number,
-  skip = 0,
-  limit = 50
-): Promise<{ items: WorkspaceMessageData[]; total: number }> => {
-  const res = await apiClient.get(`/chat/workspaces/${workspaceId}/messages`, { params: { skip, limit } })
+  { limit = 50, beforeId }: { limit?: number; beforeId?: number } = {},
+): Promise<MessagePage<WorkspaceMessageData>> => {
+  const params: Record<string, number> = { limit }
+  if (beforeId) params.before_id = beforeId
+  const res = await apiClient.get(`/chat/workspaces/${workspaceId}/messages`, { params })
   return res.data
 }
 
 export const sendWorkspaceMessage = async (
-  workspaceId: number,
-  content: string,
-  messageType = 'text'
+  workspaceId: number, message: OutgoingMessage,
 ): Promise<WorkspaceMessageData> => {
-  const res = await apiClient.post(`/chat/workspaces/${workspaceId}/messages`, {
-    content,
-    message_type: messageType,
-  })
+  const res = await apiClient.post(`/chat/workspaces/${workspaceId}/messages`, message)
   return res.data
 }
