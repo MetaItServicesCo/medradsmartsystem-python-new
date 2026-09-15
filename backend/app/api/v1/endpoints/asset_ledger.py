@@ -9,6 +9,7 @@ records. Those are append-only in practice — a posted entry is corrected by
 posting a reversal, never by editing it, because a financial row an auditor can
 see was rewritten is a row they cannot rely on.
 """
+from dataclasses import asdict
 from typing import Any, List, Optional
 from datetime import date
 
@@ -50,6 +51,16 @@ def _label(value: str) -> str:
     return value.replace("_", " ").title()
 
 
+def _depreciation(result: depreciation_service.DepreciationResult) -> Depreciation:
+    """The engine's result as the response model.
+
+    The schedule rows are dataclasses. Pydantic 2.5, which the server runs,
+    refuses a dataclass where a model is declared, so every asset with a
+    computed schedule answered 500; they are handed over as plain dicts.
+    """
+    return Depreciation(**{**result.__dict__, "schedule": [asdict(row) for row in result.schedule]})
+
+
 @router.get("/meta", response_model=LedgerMeta)
 def ledger_metadata(current_user: User = Depends(get_current_user)) -> Any:
     return LedgerMeta(
@@ -84,7 +95,7 @@ def asset_ledger(
 
     return AssetLedger(
         summary=AssetLedgerSummary(
-            **{**summary, "depreciation": Depreciation(**summary["depreciation"].__dict__)},
+            **{**summary, "depreciation": _depreciation(summary["depreciation"])},
         ),
         timeline=[TimelineEvent(**event) for event in events],
         entries=[LedgerEntry.model_validate(entry) for entry in entries],
@@ -132,7 +143,7 @@ def asset_depreciation(
         total_expected_units=equipment.total_expected_units,
         disposed_on=ledger_service.disposal_date(entries),
     )
-    return Depreciation(**result.__dict__)
+    return _depreciation(result)
 
 
 @router.get("/valuation", response_model=FleetValuation)

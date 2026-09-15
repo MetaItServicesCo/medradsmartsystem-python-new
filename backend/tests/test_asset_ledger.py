@@ -320,7 +320,17 @@ def test_a_reversed_entry_stops_counting():
     # A reversed disposal must not keep the asset retired, or the register shows
     # kit as gone that is demonstrably still there.
     assert ledger_service.disposal_date([disposal]) is None
-    print("ok  a reversed entry stops counting")
+
+    # Together with the reversal row the endpoint posts, the pair cancels out:
+    # the negative row must not be subtracted on top of the original dropping out.
+    reversal = AssetLedgerEntry(
+        facility_id=f.id, equipment_id=asset.id,
+        entry_type=LedgerEntryType.REVERSAL.value,
+        effective_date=date(2023, 2, 1), description="Reversal of Entered twice by mistake",
+        amount=Decimal("-20000"),
+    )
+    assert ledger_service.basis_changes([improvement, reversal]) == []
+    print("ok  a reversed entry stops counting, and its reversal does not count against it")
 
 
 def test_timeline_is_assembled_from_the_existing_tables():

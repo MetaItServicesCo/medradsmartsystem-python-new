@@ -73,6 +73,12 @@ def basis_changes(entries: list[AssetLedgerEntry]) -> list[depreciation_service.
     for entry in entries:
         if entry.entry_type == LedgerEntryType.ACQUISITION.value:
             continue
+        # A reversal is recorded as its own negative row, and the entry it
+        # reverses is marked reversed and drops out below. Counting the
+        # negative row as well would take the amount off twice: reversing a
+        # $20,000 improvement would leave the asset $20,000 below where it began.
+        if entry.entry_type == LedgerEntryType.REVERSAL.value:
+            continue
         if entry.entry_type not in BASIS_AFFECTING or entry.is_reversed:
             continue
         if entry.amount is None:
@@ -119,6 +125,9 @@ def spend_to_date(db: Session, equipment_id: int) -> dict:
         .filter(
             ServiceRequest.equipment_id == equipment_id,
             ServiceRequest.status == ServiceRequestStatus.COMPLETED,
+            # Major work is capital: it is in the depreciable basis through its
+            # improvement entry, and counting it here as well would add it twice.
+            ServiceRequest.is_major_work.is_(False),
         )
         .all()
     )
