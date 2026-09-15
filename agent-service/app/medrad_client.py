@@ -45,12 +45,27 @@ class MedRadClient:
     async def __aexit__(self, *exc_info: Any) -> None:
         await self._client.aclose()
 
-    async def list_tools(self) -> tuple[list[dict[str, Any]], dict[str, str]]:
-        """Return the tool schemas and the module each one belongs to."""
+    async def list_tools(self) -> tuple[list[dict[str, Any]], dict[str, str], list[dict[str, Any]]]:
+        """Return the lookup tools, the module each belongs to, and the actions this user may prepare."""
         response = await self._client.get("/tools")
         self._raise_for_status(response, "list tools")
         payload = response.json()
-        return payload.get("tools", []), payload.get("tool_modules", {})
+        return payload.get("tools", []), payload.get("tool_modules", {}), payload.get("action_tools", [])
+
+    async def prepare_action(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Store a proposal for the person to confirm, and return its card.
+
+        Writes nothing but the proposal. A 422 is the model building a bad
+        proposal - an unknown room, a missing trade - and is handed back so it
+        can correct itself or ask.
+        """
+        response = await self._client.post("/actions/{}".format(name), json={"arguments": arguments or {}})
+        if response.status_code == 422:
+            raise MedRadError(self._detail(response), recoverable=True)
+        if response.status_code == 403:
+            raise MedRadError(self._detail(response), recoverable=False)
+        self._raise_for_status(response, "prepare {}".format(name))
+        return response.json()
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         response = await self._client.post(

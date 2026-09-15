@@ -181,6 +181,8 @@ class AgentState(TypedDict, total=False):
     refusal_reason: str
 
     tool_results: list[dict[str, Any]]
+    # Proposals prepared this turn, each waiting for the person to confirm.
+    actions: list[dict[str, Any]]
     knowledge: list[dict[str, Any]]
     citations: list[dict[str, Any]]
     answer: str
@@ -391,12 +393,14 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
     collected: list[dict[str, Any]] = []
     citations: list[dict[str, Any]] = []
     errors: list[str] = []
+    prepared: list[dict[str, Any]] = []
 
     async with MedRadClient(state["user_token"]) as client:
         try:
-            available, tool_modules = await client.list_tools()
+            available, tool_modules, action_tools = await client.list_tools()
         except MedRadError as exc:
             return {"tool_results": [], "errors": [str(exc)]}
+        action_names = {tool["name"] for tool in action_tools}
 
         module = state.get("module")
         # Narrowing exists because selection accuracy degrades once a model is
@@ -413,6 +417,10 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
             ]
             if len(narrowed) > 1:
                 available = narrowed
+        # Actions are never narrowed away: "report a fault on the socket in
+        # OR-2" is classified as operations like any lookup, and hiding the
+        # action would leave the model describing a button it cannot press.
+        available = [*available, *action_tools]
 
         conversation: list[dict[str, Any]] = [{
             "role": "user",
@@ -466,7 +474,9 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
             # they do not depend on each other. Running them one after another
             # added up every round trip for no reason.
             outcomes = await asyncio.gather(*(
-                client.call_tool(block["name"], block["input"]) for block in runnable
+                (client.prepare_action(block["name"], block["input"]) if block["name"] in action_names
+                 else client.call_tool(block["name"], block["input"]))
+                for block in runnable
             ), return_exceptions=True)
             by_id = {
                 block["id"]: outcome
@@ -496,6 +506,23 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                         "is_error": True,
                     })
                     continue
+                if block["name"] in action_names:
+                    prepared.append(outcome)
+                    _emit_action(outcome)
+                    tool_results_content.append({
+                        "type": "tool_result",
+                        "tool_use_id": block["id"],
+                        # Said to the model in so many words, because the
+                        # failure this prevents is an answer that says "done".
+                        "content": (
+                            "PREPARED, NOT DONE. A confirmation card titled '{}' is now shown to the "
+                            "person. Nothing has changed yet: it happens only if they press Confirm, "
+                            "within 10 minutes. Details: {}. Warnings: {}."
+                        ).format(outcome.get("title"),
+                                 json.dumps(outcome.get("lines"), default=str)[:1500],
+                                 json.dumps(outcome.get("warnings") or [])),
+                    })
+                    continue
                 collected.append({"tool": block["name"], "result": outcome})
                 citations.extend(_citations_from(outcome))
                 tool_results_content.append({
@@ -509,9 +536,16 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                 })
             conversation.append({"role": "user", "content": tool_results_content})
 
-    return {"tool_results": collected, "citations": citations, "errors": errors}
+    return {"tool_results": collected, "citations": citations, "errors": errors, "actions": prepared}
 
 
+def _emit_action(card: dict[str, Any]) -> None:
+    """Send a prepared action to the browser as soon as it exists, not with the answer."""
+    try:
+        writer = get_stream_writer()
+    except Exception:
+        return
+    writer({"type": "action", "card": card})
 
 
 def _citations_from(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -549,6 +583,10 @@ def _evidence_payload(state: AgentState) -> str:
                 for entry in state.get("tool_results", [])
             ],
             "knowledge_base": state.get("knowledge", []),
+            "prepared_actions_awaiting_confirmation": [
+                {"title": card.get("title"), "details": card.get("lines"), "warnings": card.get("warnings")}
+                for card in state.get("actions", [])
+            ],
             "errors": state.get("errors", []),
         },
         default=str,
@@ -557,7 +595,7 @@ def _evidence_payload(state: AgentState) -> str:
 
 async def synthesize_node(state: AgentState) -> dict[str, Any]:
     """Compose the final answer from gathered evidence only."""
-    has_live = bool(state.get("tool_results"))
+    has_live = bool(state.get("tool_results")) or bool(state.get("actions"))
     has_knowledge = bool(state.get("knowledge"))
     if not has_live and not has_knowledge:
         spoken = bool(state.get("voice"))
@@ -631,6 +669,7 @@ async def gather_node(state: AgentState) -> dict[str, Any]:
     tools, knowledge = await asyncio.gather(tools_node(state), retrieve_node(state))
     return {
         "tool_results": tools.get("tool_results", []),
+        "actions": tools.get("actions", []),
         "knowledge": knowledge.get("knowledge", []),
         "citations": (tools.get("citations") or []) + (knowledge.get("citations") or []),
         "errors": (tools.get("errors") or []) + (knowledge.get("errors") or []),
@@ -702,6 +741,7 @@ async def run_agent(
         "facility_id": facility_id,
         "facility_name": facility_name or "",
         "tool_results": [],
+        "actions": [],
         "knowledge": [],
         "citations": [],
         "errors": [],
@@ -721,6 +761,9 @@ async def run_agent(
             if isinstance(chunk, dict):
                 if chunk.get("type") == "token":
                     yield {"event": "token", "text": chunk.get("text", "")}
+                elif chunk.get("type") == "action":
+                    # The card reaches the widget while the answer is still being written.
+                    yield {"event": "action", "card": chunk.get("card", {})}
                 elif chunk.get("type") == "phase":
                     # Reaches the browser while the node is still running, which
                     # is the only kind of progress worth speaking over.
@@ -746,6 +789,7 @@ async def run_agent(
         "intent": final.get("intent"),
         "module": final.get("module"),
         "tools_used": [entry["tool"] for entry in final.get("tool_results") or []],
+        "actions": final.get("actions") or [],
         "errors": final.get("errors") or [],
     }
 

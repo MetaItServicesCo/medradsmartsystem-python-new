@@ -200,6 +200,61 @@ async def ask(
     )
 
 
+@router.get("/actions/{action_id}")
+def get_action(
+    action_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+) -> Any:
+    """A prepared action's card and where it stands, for the person it was prepared for."""
+    from app.assistant import actions
+    from app.models.assistant_action import ActionStatus, AssistantAction
+    from datetime import datetime
+
+    action = db.get(AssistantAction, action_id)
+    if action is None or action.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such action.")
+    if action.status == ActionStatus.PROPOSED.value and datetime.utcnow() > action.expires_at:
+        action.status = ActionStatus.EXPIRED.value
+        action.decided_at = datetime.utcnow()
+        db.commit()
+    return actions.card_of(action)
+
+
+@router.post("/actions/{action_id}/confirm")
+def confirm_action(
+    action_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+) -> Any:
+    """Run a prepared action. Only its owner, only once, only before it expires."""
+    from app.assistant import actions
+
+    action = actions.confirm(db, current_user, action_id)
+    log_activity(db, "assistant_action_confirmed", 0, "ASSISTANT_ACTION", current_user, {
+        "action_id": action.id, "action_type": action.action_type, "status": action.status,
+        "result": (action.result or {}).get("record"), "error": (action.error or "")[:300],
+    })
+    db.commit()
+    return actions.card_of(action)
+
+
+@router.post("/actions/{action_id}/cancel")
+def cancel_action(
+    action_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+) -> Any:
+    from app.assistant import actions
+
+    action = actions.cancel(db, current_user, action_id)
+    log_activity(db, "assistant_action_cancelled", 0, "ASSISTANT_ACTION", current_user, {
+        "action_id": action.id, "action_type": action.action_type, "status": action.status,
+    })
+    db.commit()
+    return actions.card_of(action)
+
+
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 

@@ -102,3 +102,5 @@ from app.models.asset_ledger import (
     LEDGER_ENTRY_TYPES, DEPRECIATION_METHODS,
 )
 from app.models.fixture import Fixture, FixtureStatus, FIXTURE_STATUSES
+
+from app.models.assistant_action import AssistantAction, ActionStatus

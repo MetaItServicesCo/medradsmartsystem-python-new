@@ -112,10 +112,43 @@ def list_tools(
     # narrow by module without maintaining its own copy of the mapping, which
     # would silently drift as tools are added.
     modules = {name: definition.module for name, definition in TOOLS_BY_NAME.items()}
+    # Actions are offered separately so the agent can tell a lookup from a
+    # proposal, and only the ones this user may actually perform.
+    from app.assistant.actions import ACTION_DEFINITIONS
+
+    action_tools = [
+        action.tool_schema() for action in ACTION_DEFINITIONS
+        if has_module_permission(current_user, action.module, action.permission)
+    ]
     return {
         "tools": schemas,
         "tool_modules": {schema["name"]: modules[schema["name"]] for schema in schemas},
+        "action_tools": action_tools,
     }
+
+
+@router.post("/actions/{action_name}", dependencies=[Depends(require_internal_caller)])
+def propose_action(
+    action_name: str,
+    payload: ToolCallRequest = Body(default_factory=ToolCallRequest),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+) -> Any:
+    """Prepare an action for the person to confirm. Writes only the proposal."""
+    from app.assistant import actions
+
+    try:
+        action = actions.propose(db, current_user, action_name, _coerce_dates(payload.arguments))
+    except HTTPException:
+        raise
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    log_activity(db, "assistant_action_proposed", 0, "ASSISTANT_ACTION", current_user, {
+        "action_id": action.id, "action_type": action.action_type,
+        "facility_id": action.facility_id,
+    })
+    db.commit()
+    return actions.card_of(action)
 
 
 @router.post("/tools/{tool_name}", dependencies=[Depends(require_internal_caller)])

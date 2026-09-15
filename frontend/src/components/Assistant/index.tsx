@@ -30,6 +30,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   askAssistant,
   fetchAssistantStatus,
+  type AssistantActionCard,
   type AssistantCitation,
 } from '@/api/assistant'
 import { useAuthStore } from '@/stores/authStore'
@@ -38,11 +39,13 @@ import { useVoice } from '@/hooks/useVoice'
 import useVoicePipeline from '@/hooks/useVoicePipeline'
 import { keyframes } from '@emotion/react'
 import { palette } from '@/theme/palette'
+import ActionCard from './ActionCard'
 
 interface Turn {
   role: 'user' | 'assistant'
   text: string
   citations?: AssistantCitation[]
+  actions?: AssistantActionCard[]
   toolsUsed?: string[]
   isError?: boolean
 }
@@ -189,7 +192,13 @@ const AssistantWidget = () => {
       text: turn.text,
     }))
 
+    // Cards can arrive before the answer; they join the answer's turn when it lands.
+    const preparedCards: AssistantActionCard[] = []
+
     cancelRef.current = askAssistant(trimmed, {
+      onAction: (card) => {
+        if (!preparedCards.some((c) => c.action_id === card.action_id)) preparedCards.push(card)
+      },
       onProgress: (node) => {
         // Standing in silence while it reads the database is the most
         // machine-like moment in a spoken exchange.
@@ -209,6 +218,10 @@ const AssistantWidget = () => {
           text: answer.answer,
           citations: answer.citations,
           toolsUsed: answer.tools_used,
+          actions: [
+            ...preparedCards,
+            ...(answer.actions ?? []).filter((c) => !preparedCards.some((p) => p.action_id === c.action_id)),
+          ],
         }])
         setBusy(false)
         setProgress('')
@@ -382,6 +395,16 @@ const AssistantWidget = () => {
                 }}>
                   {turn.text}
                 </Typography>
+
+                {turn.actions?.map((card) => (
+                  <ActionCard
+                    key={card.action_id} card={card}
+                    onNavigate={() => setOpen(false)}
+                    onChange={(next) => setTurns((prev) => prev.map((t, i) => (i !== index ? t : {
+                      ...t, actions: (t.actions ?? []).map((c) => (c.action_id === next.action_id ? next : c)),
+                    })))}
+                  />
+                ))}
 
                 {!!turn.citations?.length && (
                   <Stack direction="row" sx={{ mt: 1.2, flexWrap: 'wrap', gap: 0.7 }}>

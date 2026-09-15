@@ -146,7 +146,7 @@ class _Backend:
     async def list_tools(self):
         tool = {"name": "search_work_orders", "description": "Work orders.",
                 "input_schema": {"type": "object", "properties": {"facility_id": {"type": "integer"}}}}
-        return [tool], {"search_work_orders": "service-requests"}
+        return [tool], {"search_work_orders": "service-requests"}, []
 
     async def call_tool(self, name, arguments):
         _Backend.calls.append((name, arguments))
@@ -211,7 +211,7 @@ def test_narrowing_keeps_a_whole_domain_together():
 
     class Backend(_Backend):
         async def list_tools(self):
-            return tools, names
+            return tools, names, []
 
     tools_model = _Scripted([AIMessage(content="Nothing to do.")])
 
@@ -228,6 +228,61 @@ def test_narrowing_keeps_a_whole_domain_together():
             "search_assets", "maintenance_due"} <= offered, offered
     assert not offered & {"search_invoices", "search_rentals", "search_users", "sales_tool_0"}, offered
     print("ok  narrowing to a domain keeps rooms, assets and work orders together")
+
+
+def test_an_action_is_prepared_as_a_card_and_never_called_done():
+    card = {"action_id": "a-1", "title": "Raise a work order", "status": "proposed",
+            "lines": [{"label": "What", "value": "SKT-01 · Duplex receptacle"}], "warnings": []}
+    prepared_calls: list = []
+    looked_up: list = []
+
+    class Backend(_Backend):
+        async def list_tools(self):
+            lookup = {"name": "search_fixtures", "description": "", "input_schema": {"type": "object", "properties": {}}}
+            action = {"name": "prepare_fault_report", "description": "",
+                      "input_schema": {"type": "object", "properties": {"fixture_id": {"type": "integer"}}}}
+            return [lookup], {"search_fixtures": "locations"}, [action]
+
+        async def call_tool(self, name, arguments):
+            looked_up.append(name)
+            return {"tool": name, "total_count": 0, "items": []}
+
+        async def prepare_action(self, name, arguments):
+            prepared_calls.append((name, arguments))
+            return card
+
+    router = _Scripted([AIMessage(content="", tool_calls=[{
+        "name": "route_question", "args": {"intent": "database", "module": "operations"}, "id": "r1"}])])
+    tools = _Scripted([
+        AIMessage(content="", tool_calls=[{"name": "prepare_fault_report",
+                                           "args": {"fixture_id": 11, "description": "Dead"}, "id": "t1"}]),
+        AIMessage(content="Prepared."),
+    ])
+    writer = _Scripted([AIMessage(content="A work order for SKT-01 is ready: press Confirm below to raise it.")])
+    by_role = {"router": router, "tools": tools, "synthesis": writer}
+
+    original_role, original_client = providers._for_role, graph.MedRadClient
+    providers._for_role = lambda role, max_tokens, temperature: by_role[role]
+    graph.MedRadClient = Backend
+
+    async def run():
+        return [e async for e in graph.run_agent("report the dead socket SKT-01 in OR-2", "t" * 20)]
+
+    try:
+        events = asyncio.run(run())
+    finally:
+        providers._for_role, graph.MedRadClient = original_role, original_client
+
+    assert prepared_calls == [("prepare_fault_report", {"fixture_id": 11, "description": "Dead"})]
+    assert looked_up == [], "an action must never go through the lookup path"
+    assert "prepare_fault_report" in tools.tools, "actions are offered alongside lookups"
+    kinds = [e["event"] for e in events]
+    assert "action" in kinds and kinds.index("action") < kinds.index("answer"), kinds
+    told = tools.seen[1][-1].content
+    assert "PREPARED, NOT DONE" in told, told
+    answer = events[-1]
+    assert answer["actions"] == [card], answer["actions"]
+    print("ok  an action becomes a card before the answer, and the model is told it is not done")
 
 
 if __name__ == "__main__":

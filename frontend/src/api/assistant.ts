@@ -8,9 +8,34 @@ export interface AssistantCitation {
   module?: string
 }
 
+/** A change the assistant prepared, waiting for the person to confirm. */
+export interface AssistantActionCard {
+  action_id: string
+  action_type: string
+  status: 'proposed' | 'executed' | 'cancelled' | 'expired' | 'failed'
+  title: string
+  lines: Array<{ label: string; value: string }>
+  warnings?: string[]
+  expires_at: string
+  result?: { message: string; record?: string; route?: string } | null
+  error?: string | null
+}
+
+export const confirmAssistantAction = async (id: string): Promise<AssistantActionCard> => {
+  const res = await apiClient.post(`/assistant/actions/${id}/confirm`)
+  return res.data
+}
+
+export const cancelAssistantAction = async (id: string): Promise<AssistantActionCard> => {
+  const res = await apiClient.post(`/assistant/actions/${id}/cancel`)
+  return res.data
+}
+
 export interface AssistantAnswer {
   answer: string
   citations: AssistantCitation[]
+  /** Prepared this turn; each needs the person to press Confirm. */
+  actions?: AssistantActionCard[]
   intent?: string
   module?: string
   tools_used?: string[]
@@ -87,6 +112,8 @@ type StreamHandlers = {
   onProgress?: (node: string) => void
   /** Fired for each token as the model produces it. */
   onToken?: (text: string) => void
+  /** A prepared action, sent as soon as it exists rather than with the answer. */
+  onAction?: (card: AssistantActionCard) => void
   onAnswer: (answer: AssistantAnswer) => void
   onError: (message: string) => void
 }
@@ -183,5 +210,6 @@ const handleFrame = (frame: string, handlers: StreamHandlers) => {
   if (event === 'error') handlers.onError(payload.error || 'The assistant failed.')
   else if (event === 'progress') handlers.onProgress?.(payload.node)
   else if (event === 'token') handlers.onToken?.(payload.text || '')
+  else if (event === 'action') handlers.onAction?.(payload.card as AssistantActionCard)
   else if (event === 'answer') handlers.onAnswer(payload as AssistantAnswer)
 }
