@@ -66,6 +66,24 @@ class AskRequest(BaseModel):
     # The answer will be read aloud, so it is composed for the ear: short,
     # spoken numbers, no lists or field names.
     voice: bool = False
+    # The site the person is working in. Checked against their access and
+    # resolved to a name here, so the agent never takes the browser's word for
+    # which hospital a question is about.
+    facility_id: Optional[int] = None
+
+
+def _site_for(db: Session, user: User, facility_id: Optional[int]) -> tuple[Optional[int], str]:
+    """The active site as (id, name), or (None, "") when none was given."""
+    if not facility_id:
+        return None, ""
+    from app.models.facility import Facility
+    from app.utils.facility_access import require_facility_access
+
+    require_facility_access(db, user, facility_id)
+    facility = db.get(Facility, facility_id)
+    if facility is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found.")
+    return facility.id, facility.name
 
 
 def require_superadmin(current_user: User = Depends(get_current_user)) -> User:
@@ -134,6 +152,7 @@ async def ask(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token."
         )
+    site_id, site_name = _site_for(db, current_user, payload.facility_id)
 
     # The question itself is auditable; the answer is reconstructible from the
     # tool-call audit rows the agent generates.
@@ -151,6 +170,8 @@ async def ask(
             "user_token": token,
             "history": [turn.model_dump() for turn in payload.history],
             "voice": payload.voice,
+            "facility_id": site_id,
+            "facility_name": site_name,
         }
         try:
             async with httpx.AsyncClient(timeout=settings.ASSISTANT_TIMEOUT_SECONDS) as client:

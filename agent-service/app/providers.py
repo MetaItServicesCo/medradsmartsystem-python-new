@@ -1,31 +1,44 @@
-"""Model provider abstraction.
+"""Model access for the agent, on LangChain chat models.
 
 The agent's real dependency is not a vendor but three capabilities: pick a tool
 with valid arguments, follow a structured schema, and write prose from supplied
-evidence. Anything exposing those can drive it.
+evidence. Three roles use them differently, so each resolves to its own model:
 
-Two backends are implemented:
+* ``router``    - one structured word in front of every question. Small and fast.
+* ``tools``     - chooses tools and arguments. Accuracy matters most here.
+* ``synthesis`` - writes the answer from evidence. Fluency matters most here.
 
-* ``anthropic``  - the Claude SDK, using native tool_use.
-* ``openai``     - any OpenAI-compatible ``/chat/completions`` endpoint. That one
-                   name covers Groq, OpenRouter, Together, vLLM and a local
-                   Ollama, so self-hosting and hosted inference are the same
-                   code path with a different base URL.
+Every role has a primary and a fallback model, normally on different providers.
+A rate limit, a timeout or an outage on the primary continues the same turn on
+the fallback instead of ending the conversation. Groq is the default primary
+because it is fast; OpenRouter is the default fallback because it reaches
+almost everything else.
 
-Tool schemas are written once in Anthropic's shape and converted here, because
-that is the shape the backend's tool registry already emits.
+Conversation shape: the graph stores turns in Anthropic's block shape, because
+that is the shape the backend's tool registry already emits. Both directions
+are translated here, so the graph carries one format and knows nothing about
+any provider.
 """
 from __future__ import annotations
 
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Optional
+from typing import Any, AsyncIterator, Literal, Optional
+
+from langchain_core.messages import (
+    AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage,
+)
 
 from app.config import settings
 
-
 logger = logging.getLogger("agent.providers")
+
+Role = Literal["router", "tools", "synthesis"]
+
+# Tool results can be long. This is the most any single one may contribute to
+# the context, applied on the way into the model rather than after.
+MAX_TOOL_RESULT_CHARS = 12000
 
 
 @dataclass
@@ -43,27 +56,98 @@ class ModelReply:
 
     text: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
-    # Provider-native assistant turn, replayed verbatim when continuing a tool
-    # conversation. Each provider expects its own shape here.
+    # The assistant turn in the shape the graph stores, replayed verbatim when
+    # continuing a tool conversation.
     raw_assistant: Any = None
 
 
-def provider_name() -> str:
-    return (settings.AGENT_PROVIDER or "anthropic").strip().lower()
-
-
 def is_configured() -> bool:
-    if provider_name() == "openai":
-        # A local endpoint legitimately needs no key, so only the URL is required.
-        return bool(settings.agent_base_url())
-    return bool(settings.agent_api_key())
+    """Whether the primary provider has something to call."""
+    return settings.provider_ready(settings.AGENT_PROVIDER)
+
+
+def describe() -> dict[str, Any]:
+    """What the health endpoint reports: who answers, and with what."""
+    roles = ("router", "tools", "synthesis")
+    return {
+        "provider": settings.AGENT_PROVIDER,
+        "fallback_provider": settings.AGENT_FALLBACK_PROVIDER or None,
+        "models": {role: settings.model_for(role) for role in roles},
+        "fallback_models": (
+            {role: settings.model_for(role, fallback=True) for role in roles}
+            if settings.fallback_configured() else {}
+        ),
+        "configured": is_configured(),
+    }
 
 
 # --------------------------------------------------------------------------
-# Schema conversion
+# Building chat models
+# --------------------------------------------------------------------------
+
+# One question costs three or more model calls, and a chat model owns its HTTP
+# client. Building one per call throws away the connection pool and pays a
+# fresh TLS handshake every time, so they are cached by what makes them differ.
+_models: dict[tuple, Any] = {}
+
+
+def _build(provider: str, model: str, max_tokens: int, temperature: float):
+    key = (provider, model, max_tokens, temperature)
+    if key in _models:
+        return _models[key]
+
+    api_key, base_url = settings.provider_credentials(provider)
+    if provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+
+        chat = ChatAnthropic(
+            model=model,
+            api_key=api_key,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout=settings.AGENT_TIMEOUT_SECONDS,
+            max_retries=1,
+        )
+    else:
+        # Groq, OpenRouter, Together, vLLM and a local Ollama are all an
+        # OpenAI-compatible /chat/completions endpoint with a different URL.
+        from langchain_openai import ChatOpenAI
+
+        chat = ChatOpenAI(
+            model=model,
+            api_key=api_key or "not-required",   # a local endpoint needs none
+            base_url=base_url or None,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout=settings.AGENT_TIMEOUT_SECONDS,
+            max_retries=1,
+        )
+    _models[key] = chat
+    return chat
+
+
+def _for_role(role: Role, max_tokens: int, temperature: float):
+    """The model for a role, with its fallback attached when one is configured."""
+    primary = _build(settings.AGENT_PROVIDER, settings.model_for(role), max_tokens, temperature)
+    if not settings.fallback_configured():
+        return primary
+    secondary = _build(
+        settings.AGENT_FALLBACK_PROVIDER,
+        settings.model_for(role, fallback=True),
+        max_tokens,
+        temperature,
+    )
+    # Anything the primary raises - rate limit, timeout, 5xx - continues on the
+    # fallback rather than failing the turn.
+    return primary.with_fallbacks([secondary])
+
+
+# --------------------------------------------------------------------------
+# Shape conversion
 # --------------------------------------------------------------------------
 
 def _to_openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Anthropic-shaped tool definitions in the shape bind_tools expects."""
     return [{
         "type": "function",
         "function": {
@@ -74,216 +158,131 @@ def _to_openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     } for tool in tools]
 
 
-def _to_openai_messages(
-    system: str, messages: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """Translate the Anthropic-shaped conversation into OpenAI's shape.
-
-    Anthropic carries tool results as user-turn content blocks; OpenAI uses
-    dedicated ``tool`` role messages. Flattening that difference here keeps the
-    graph free of provider conditionals.
-    """
-    converted: list[dict[str, Any]] = [{"role": "system", "content": system}]
+def _to_messages(system: str, messages: list[dict[str, Any]]) -> list[BaseMessage]:
+    """The graph's stored turns as LangChain messages."""
+    out: list[BaseMessage] = [SystemMessage(content=system)]
     for message in messages:
         role = message.get("role")
         content = message.get("content")
 
         if isinstance(content, str):
-            converted.append({"role": role, "content": content})
+            out.append(HumanMessage(content=content) if role == "user"
+                       else AIMessage(content=content))
             continue
 
+        blocks = content or []
         if role == "assistant":
-            text_parts: list[str] = []
-            calls: list[dict[str, Any]] = []
-            for block in content or []:
-                if block.get("type") == "text":
-                    text_parts.append(block.get("text", ""))
-                elif block.get("type") == "tool_use":
-                    calls.append({
-                        "id": block["id"],
-                        "type": "function",
-                        "function": {
-                            "name": block["name"],
-                            "arguments": json.dumps(block.get("input") or {}),
-                        },
-                    })
-            entry: dict[str, Any] = {"role": "assistant", "content": " ".join(text_parts).strip() or None}
-            if calls:
-                entry["tool_calls"] = calls
-            converted.append(entry)
+            text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+            calls = [{
+                "name": b["name"], "args": dict(b.get("input") or {}), "id": b["id"],
+            } for b in blocks if b.get("type") == "tool_use"]
+            out.append(AIMessage(content=text, tool_calls=calls))
             continue
 
-        # A user turn carrying tool results becomes one tool message per result.
-        results = [b for b in (content or []) if b.get("type") == "tool_result"]
+        # A user turn carrying tool results becomes one tool message each.
+        results = [b for b in blocks if b.get("type") == "tool_result"]
         if results:
             for block in results:
-                converted.append({
-                    "role": "tool",
-                    "tool_call_id": block.get("tool_use_id"),
-                    "content": str(block.get("content", ""))[:12000],
-                })
+                out.append(ToolMessage(
+                    content=str(block.get("content", ""))[:MAX_TOOL_RESULT_CHARS],
+                    tool_call_id=block.get("tool_use_id") or "",
+                ))
             continue
+        out.append(HumanMessage(content="".join(
+            b.get("text", "") for b in blocks if b.get("type") == "text")))
+    return out
 
-        text_parts = [b.get("text", "") for b in (content or []) if b.get("type") == "text"]
-        converted.append({"role": "user", "content": " ".join(text_parts).strip()})
-    return converted
+
+def _text_of(message: Any, *, strip: bool = True) -> str:
+    """Prose from a reply, whether the provider returned a string or blocks.
+
+    Streamed fragments must not be stripped: the space between two words
+    arrives at the start of the next fragment, and trimming each one ran every
+    word of a streamed answer together.
+    """
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content.strip() if strip else content
+    parts: list[str] = []
+    for block in content or []:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+    joined = "".join(parts)
+    return joined.strip() if strip else joined
+
+
+def _assistant_blocks(text: str, calls: list[ToolCall]) -> list[dict[str, Any]]:
+    """The assistant turn in the one shape the graph stores."""
+    blocks: list[dict[str, Any]] = []
+    if text:
+        blocks.append({"type": "text", "text": text})
+    for call in calls:
+        blocks.append({
+            "type": "tool_use", "id": call.id, "name": call.name, "input": call.arguments,
+        })
+    return blocks
 
 
 # --------------------------------------------------------------------------
-# Clients
+# Calling
 # --------------------------------------------------------------------------
 
-# One question costs three or more model calls. Building a client per call
-# threw away the connection pool each time, so every one of them paid a fresh
-# TCP and TLS handshake to a remote endpoint -- pure latency, repeated. The
-# clients are safe to share and configuration is fixed at startup, so they are
-# built once and reused for the life of the process.
-_clients: dict[str, Any] = {}
-
-
-def _anthropic_client():
-    if "anthropic" not in _clients:
-        import anthropic
-
-        _clients["anthropic"] = anthropic.AsyncAnthropic(
-            api_key=settings.agent_api_key(),
-            timeout=settings.AGENT_TIMEOUT_SECONDS,
-            max_retries=1,
-        )
-    return _clients["anthropic"]
-
-
-def _openai_client():
-    if "openai" not in _clients:
-        from openai import AsyncOpenAI
-
-        _clients["openai"] = AsyncOpenAI(
-            api_key=settings.agent_api_key() or "not-required",
-            base_url=settings.agent_base_url(),
-            timeout=settings.AGENT_TIMEOUT_SECONDS,
-            max_retries=1,
-        )
-    return _clients["openai"]
-
-
-def _cached_system(text: str) -> list[dict[str, Any]]:
-    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
-
-
-async def complete(  # noqa: PLR0913 - one call shape for two backends
+async def complete(
     *,
     system: str,
     messages: list[dict[str, Any]],
     max_tokens: int,
     tools: Optional[list[dict[str, Any]]] = None,
     force_tool: Optional[str] = None,
-    model: Optional[str] = None,
+    role: Role = "tools",
+    temperature: float = 0.0,
 ) -> ModelReply:
     """One completion, optionally with tools. ``force_tool`` requires that tool."""
-    if provider_name() == "openai":
-        client = _openai_client()
-        request: dict[str, Any] = {
-            "model": model or settings.AGENT_MODEL,
-            "max_tokens": max_tokens,
-            "messages": _to_openai_messages(system, messages),
-        }
-        if tools:
-            request["tools"] = _to_openai_tools(tools)
-            request["tool_choice"] = (
-                {"type": "function", "function": {"name": force_tool}}
-                if force_tool else "auto"
-            )
-        response = await client.chat.completions.create(**request)
-        choice = response.choices[0].message
-        calls: list[ToolCall] = []
-        for call in (choice.tool_calls or []):
-            try:
-                arguments = json.loads(call.function.arguments or "{}")
-            except (TypeError, ValueError):
-                # A malformed argument blob is the model's error to correct, not
-                # a reason to abandon the run.
-                logger.warning("Discarding unparsable arguments for %s", call.function.name)
-                arguments = {}
-            calls.append(ToolCall(id=call.id, name=call.function.name, arguments=arguments))
-        return ModelReply(
-            text=(choice.content or "").strip(),
-            tool_calls=calls,
-            raw_assistant=_assistant_blocks(choice.content, calls),
-        )
-
-    client = _anthropic_client()
-    request = {
-        "model": model or settings.AGENT_MODEL,
-        "max_tokens": max_tokens,
-        "system": _cached_system(system),
-        "messages": messages,
-    }
+    model = _for_role(role, max_tokens, temperature)
     if tools:
-        request["tools"] = tools
+        kwargs: dict[str, Any] = {}
         if force_tool:
-            request["tool_choice"] = {"type": "tool", "name": force_tool}
-    message = await client.messages.create(**request)
+            kwargs["tool_choice"] = (
+                {"type": "tool", "name": force_tool}
+                if settings.AGENT_PROVIDER == "anthropic"
+                else {"type": "function", "function": {"name": force_tool}}
+            )
+        model = model.bind_tools(_to_openai_tools(tools), **kwargs)
 
-    text_parts: list[str] = []
-    calls = []
-    blocks: list[dict[str, Any]] = []
-    for block in message.content:
-        kind = getattr(block, "type", None)
-        if kind == "text":
-            text_parts.append(block.text)
-            blocks.append({"type": "text", "text": block.text})
-        elif kind == "tool_use":
-            arguments = dict(block.input or {})
-            calls.append(ToolCall(id=block.id, name=block.name, arguments=arguments))
-            blocks.append({
-                "type": "tool_use", "id": block.id,
-                "name": block.name, "input": arguments,
-            })
-    return ModelReply(
-        text="".join(text_parts).strip(), tool_calls=calls, raw_assistant=blocks
-    )
-
-
-def _assistant_blocks(content: Optional[str], calls: list[ToolCall]) -> list[dict[str, Any]]:
-    """Anthropic-shaped assistant turn, so the graph stores one format only."""
-    blocks: list[dict[str, Any]] = []
-    if content:
-        blocks.append({"type": "text", "text": content})
-    for call in calls:
-        blocks.append({
-            "type": "tool_use", "id": call.id,
-            "name": call.name, "input": call.arguments,
-        })
-    return blocks
+    reply = await model.ainvoke(_to_messages(system, messages))
+    calls: list[ToolCall] = []
+    for call in getattr(reply, "tool_calls", None) or []:
+        arguments = call.get("args")
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments or "{}")
+            except ValueError:
+                # A malformed argument blob is the model to correct, not a
+                # reason to abandon the run.
+                logger.warning("Discarding unparsable arguments for %s", call.get("name"))
+                arguments = {}
+        calls.append(ToolCall(
+            id=call.get("id") or "",
+            name=call.get("name") or "",
+            arguments=dict(arguments or {}),
+        ))
+    text = _text_of(reply)
+    return ModelReply(text=text, tool_calls=calls, raw_assistant=_assistant_blocks(text, calls))
 
 
 async def stream_text(
-    *, system: str, messages: list[dict[str, Any]], max_tokens: int
+    *,
+    system: str,
+    messages: list[dict[str, Any]],
+    max_tokens: int,
+    role: Role = "synthesis",
+    temperature: float = 0.3,
 ) -> AsyncIterator[str]:
     """Stream a prose completion, yielding text deltas as they arrive."""
-    if provider_name() == "openai":
-        client = _openai_client()
-        stream = await client.chat.completions.create(
-            model=settings.AGENT_MODEL,
-            max_tokens=max_tokens,
-            messages=_to_openai_messages(system, messages),
-            stream=True,
-        )
-        async for chunk in stream:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                yield delta.content
-        return
-
-    client = _anthropic_client()
-    async with client.messages.stream(
-        model=settings.AGENT_MODEL,
-        max_tokens=max_tokens,
-        system=_cached_system(system),
-        messages=messages,
-    ) as stream:
-        async for delta in stream.text_stream:
-            if delta:
-                yield delta
+    model = _for_role(role, max_tokens, temperature)
+    async for chunk in model.astream(_to_messages(system, messages)):
+        piece = _text_of(chunk, strip=False)
+        if piece:
+            yield piece

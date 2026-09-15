@@ -33,6 +33,7 @@ import {
   type AssistantCitation,
 } from '@/api/assistant'
 import { useAuthStore } from '@/stores/authStore'
+import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { useVoice } from '@/hooks/useVoice'
 import useVoicePipeline from '@/hooks/useVoicePipeline'
 import { keyframes } from '@emotion/react'
@@ -48,7 +49,7 @@ interface Turn {
 
 // Kept in sync with AGENT_NAME in the agent service. The agent introduces
 // itself by this name, so the header must not disagree with what it says.
-const AGENT_NAME = 'Mr. Medrad'
+const AGENT_NAME = 'Phia'
 
 // Motion is deliberately restrained: it signals progress, it does not decorate.
 const fadeUp = keyframes`
@@ -83,10 +84,10 @@ const ripple = keyframes`
 `
 
 const SUGGESTIONS = [
-  'Who has been our busiest technician?',
-  'Which facility do we earn the most revenue from?',
-  'Which product sells the most?',
-  'How do I create a sales invoice?',
+  'How many open work orders are there, by trade?',
+  'Which assets are due for maintenance this month?',
+  'Report a fault on a socket in OR-2',
+  'How do I set up a building?',
 ]
 
 // Node names map to what the user should understand is happening.
@@ -219,7 +220,7 @@ const AssistantWidget = () => {
         setBusy(false)
         setProgress('')
       },
-    }, history, spoken)
+    }, history, spoken, useFacilityStore.getState().facilityId)
   }
 
   // Kept current without a dependency array so the voice callback always

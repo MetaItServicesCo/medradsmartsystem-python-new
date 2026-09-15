@@ -309,16 +309,28 @@ services:
       # other service on deployments that do not run the assistant. The
       # agent refuses all requests when it is empty.
       - MEDRAD_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
+      # Primary and fallback providers: groq | openrouter | anthropic | openai
+      # (any OpenAI-compatible endpoint, with AGENT_BASE_URL). A rate limit or
+      # outage on the primary continues the turn on the fallback.
+      - AGENT_PROVIDER=${AGENT_PROVIDER:-groq}
+      - AGENT_FALLBACK_PROVIDER=${AGENT_FALLBACK_PROVIDER:-openrouter}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # anthropic | openai. "openai" targets any OpenAI-compatible endpoint,
-      # so Groq, OpenRouter, vLLM and a local Ollama are all the same setting.
-      - AGENT_PROVIDER=${AGENT_PROVIDER:-anthropic}
       - AGENT_BASE_URL=${AGENT_BASE_URL:-}
       - AGENT_API_KEY=${AGENT_API_KEY:-}
-      - AGENT_MODEL=${AGENT_MODEL:-claude-haiku-4-5}
+      # One model per role. Empty uses the provider default (see
+      # agent-service/app/config.py); AGENT_MODEL sets every role at once.
+      - AGENT_MODEL=${AGENT_MODEL:-}
+      - AGENT_ROUTER_MODEL=${AGENT_ROUTER_MODEL:-}
+      - AGENT_TOOLS_MODEL=${AGENT_TOOLS_MODEL:-}
+      - AGENT_SYNTHESIS_MODEL=${AGENT_SYNTHESIS_MODEL:-}
+      - AGENT_FALLBACK_ROUTER_MODEL=${AGENT_FALLBACK_ROUTER_MODEL:-}
+      - AGENT_FALLBACK_TOOLS_MODEL=${AGENT_FALLBACK_TOOLS_MODEL:-}
+      - AGENT_FALLBACK_SYNTHESIS_MODEL=${AGENT_FALLBACK_SYNTHESIS_MODEL:-}
       # The assistant introduces itself by this name. The widget header
       # is set in the frontend, so change both together.
-      - AGENT_NAME=${AGENT_NAME:-Mr. Medrad}
+      - AGENT_NAME=${AGENT_NAME:-Phia}
       - LOG_LEVEL=${AGENT_LOG_LEVEL:-INFO}
     depends_on:
       backend:

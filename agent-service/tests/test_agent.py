@@ -1,0 +1,200 @@
+"""Prove the agent routes, uses tools for the right site, and survives a provider failure.
+
+No network: models are scripted and the backend is a fake, so this runs anywhere
+and exercises the real graph, the real provider layer and the real prompts.
+
+    python tests/test_agent.py
+"""
+from __future__ import annotations
+
+import asyncio
+import os
+import pathlib
+import sys
+from typing import Any
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+os.environ.setdefault("MEDRAD_INTERNAL_KEY", "k" * 40)
+
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel  # noqa: E402
+from langchain_core.messages import AIMessage  # noqa: E402
+
+from app import graph, providers  # noqa: E402
+from app.config import Settings, settings  # noqa: E402
+
+
+# ── configuration ────────────────────────────────────────────────────────────
+
+def test_hosted_providers_need_a_key():
+    bare = Settings(GROQ_API_KEY="", OPENROUTER_API_KEY="")
+    assert not bare.provider_ready("groq"), "an address is not a configuration"
+    assert not bare.fallback_configured()
+    keyed = Settings(GROQ_API_KEY="gsk", OPENROUTER_API_KEY="sk-or")
+    assert keyed.provider_ready("groq") and keyed.fallback_configured()
+    local = Settings(AGENT_PROVIDER="openai", AGENT_BASE_URL="http://ollama:11434/v1")
+    assert local.provider_ready("openai"), "a self-hosted endpoint needs no key"
+    print("ok  hosted providers need a key; a self-hosted endpoint needs an address")
+
+
+def test_each_role_has_its_own_model():
+    s = Settings(GROQ_API_KEY="gsk", OPENROUTER_API_KEY="sk-or")
+    assert s.model_for("router") == "llama-3.1-8b-instant"
+    assert s.model_for("tools") == "llama-3.3-70b-versatile"
+    assert s.model_for("tools", fallback=True).startswith("meta-llama/")
+    one = Settings(AGENT_MODEL="qwen/qwen3-32b", AGENT_SYNTHESIS_MODEL="openai/gpt-oss-120b")
+    assert one.model_for("router") == "qwen/qwen3-32b", "one model for every role"
+    assert one.model_for("synthesis") == "openai/gpt-oss-120b", "unless a role says otherwise"
+    print("ok  routing, tools and writing resolve to their own models")
+
+
+# ── provider layer ───────────────────────────────────────────────────────────
+
+def test_a_tool_conversation_survives_translation():
+    messages = providers._to_messages("sys", [
+        {"role": "user", "content": "how many?"},
+        {"role": "assistant", "content": [
+            {"type": "text", "text": "Checking."},
+            {"type": "tool_use", "id": "c1", "name": "search_work_orders", "input": {"facility_id": 7}},
+        ]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "c1", "content": "x" * 20000}]},
+    ])
+    kinds = [type(m).__name__ for m in messages]
+    assert kinds == ["SystemMessage", "HumanMessage", "AIMessage", "ToolMessage"], kinds
+    assert messages[2].tool_calls[0]["args"] == {"facility_id": 7}
+    assert len(messages[3].content) == providers.MAX_TOOL_RESULT_CHARS, "results are capped"
+    print("ok  tool calls and results translate to LangChain messages, capped")
+
+
+class _Down(GenericFakeChatModel):
+    """A primary provider that is rate limited."""
+
+    def _generate(self, *args, **kwargs):  # noqa: D401
+        raise RuntimeError("429 rate limited")
+
+    async def _agenerate(self, *args, **kwargs):
+        raise RuntimeError("429 rate limited")
+
+    def _stream(self, *args, **kwargs):
+        raise RuntimeError("429 rate limited")
+
+    async def _astream(self, *args, **kwargs):
+        raise RuntimeError("429 rate limited")
+        yield  # pragma: no cover
+
+
+def test_a_rate_limited_primary_falls_back():
+    original = providers._build
+    configured = (settings.GROQ_API_KEY, settings.OPENROUTER_API_KEY)
+    settings.GROQ_API_KEY, settings.OPENROUTER_API_KEY = "gsk", "sk-or"
+    providers._models.clear()
+
+    def fake_build(provider, model, max_tokens, temperature):
+        if provider == settings.AGENT_PROVIDER:
+            return _Down(messages=iter([]))
+        return GenericFakeChatModel(messages=iter([AIMessage(content="From the fallback.")]))
+
+    providers._build = fake_build
+    try:
+        reply = asyncio.run(providers.complete(system="s", messages=[{"role": "user", "content": "hi"}],
+                                               max_tokens=50, role="synthesis"))
+        assert reply.text == "From the fallback.", reply
+    finally:
+        providers._build = original
+        settings.GROQ_API_KEY, settings.OPENROUTER_API_KEY = configured
+    print("ok  a rate-limited primary continues the turn on the fallback")
+
+
+# ── the graph, end to end ────────────────────────────────────────────────────
+
+class _Scripted:
+    """A chat model that returns the next scripted reply and records what it saw."""
+
+    def __init__(self, replies: list[AIMessage]):
+        self.replies = list(replies)
+        self.seen: list[list[Any]] = []
+        self.tools: list[str] = []
+
+    def bind_tools(self, tools, **kwargs):
+        self.tools = [t["function"]["name"] for t in tools]
+        return self
+
+    async def ainvoke(self, messages):
+        self.seen.append(messages)
+        return self.replies.pop(0)
+
+    async def astream(self, messages):
+        self.seen.append(messages)
+        reply = self.replies.pop(0)
+        for word in reply.content.split(" "):
+            yield AIMessage(content=word + " ")
+
+
+class _Backend:
+    """The phealth internal API, as far as the agent can tell."""
+
+    calls: list[tuple[str, dict]] = []
+
+    def __init__(self, token):
+        self.token = token
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def list_tools(self):
+        tool = {"name": "search_work_orders", "description": "Work orders.",
+                "input_schema": {"type": "object", "properties": {"facility_id": {"type": "integer"}}}}
+        return [tool], {"search_work_orders": "service-requests"}
+
+    async def call_tool(self, name, arguments):
+        _Backend.calls.append((name, arguments))
+        return {"tool": name, "total_count": 3, "items": [], "applied_filters": arguments}
+
+    async def search_knowledge(self, query, module=None, limit=6):
+        return {"results": []}
+
+
+def test_a_site_question_is_answered_for_that_site():
+    router = _Scripted([AIMessage(content="", tool_calls=[{
+        "name": "route_question", "args": {"intent": "database", "module": "service-requests"}, "id": "r1"}])])
+    tools = _Scripted([
+        AIMessage(content="", tool_calls=[{"name": "search_work_orders", "args": {"facility_id": 7}, "id": "t1"}]),
+        AIMessage(content="Done."),
+    ])
+    writer = _Scripted([AIMessage(content="There are 3 open work orders at Lahore Office.")])
+    by_role = {"router": router, "tools": tools, "synthesis": writer}
+
+    original_role, original_client = providers._for_role, graph.MedRadClient
+    providers._for_role = lambda role, max_tokens, temperature: by_role[role]
+    graph.MedRadClient = _Backend
+    _Backend.calls = []
+
+    async def run():
+        events = []
+        async for event in graph.run_agent("how many open work orders?", "t" * 20,
+                                           facility_id=7, facility_name="Lahore Office"):
+            events.append(event)
+        return events
+
+    try:
+        events = asyncio.run(run())
+    finally:
+        providers._for_role, graph.MedRadClient = original_role, original_client
+
+    answer = events[-1]
+    assert answer["event"] == "answer" and answer["intent"] == "database", answer
+    assert answer["answer"] == "There are 3 open work orders at Lahore Office.", answer["answer"]
+    assert _Backend.calls == [("search_work_orders", {"facility_id": 7})], _Backend.calls
+    first_tool_prompt = tools.seen[0][-1].content
+    assert "Lahore Office (facility_id=7)" in first_tool_prompt, first_tool_prompt
+    assert any(e.get("event") == "token" for e in events), "the answer streams"
+    print("ok  a question asked inside a site is routed, looked up and answered for that site")
+
+
+if __name__ == "__main__":
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    for t in tests:
+        t()
+    print(f"\n{len(tests)} checks passed")

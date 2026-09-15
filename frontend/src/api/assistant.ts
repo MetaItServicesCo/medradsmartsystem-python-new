@@ -108,6 +108,8 @@ export const askAssistant = (
   history: ConversationTurn[] = [],
   /** Answer will be spoken, so the agent writes it to be heard, not read. */
   voice = false,
+  /** The site the question is asked from; answers default to it. */
+  facilityId?: number | null,
 ): (() => void) => {
   const controller = new AbortController()
   const token = useAuthStore.getState().token
@@ -121,7 +123,7 @@ export const askAssistant = (
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question, history, voice }),
+        body: JSON.stringify({ question, history, voice, facility_id: facilityId ?? null }),
         signal: controller.signal,
       })
 
