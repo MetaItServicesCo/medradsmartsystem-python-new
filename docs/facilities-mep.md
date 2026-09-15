@@ -72,7 +72,8 @@ which requires equipment **or** location and refuses neither.
 cd backend
 alembic upgrade head
 
-# 2. Nothing else. Nine disciplines are seeded by the migration, the frontend
+# 2. Nothing else. Nine disciplines are seeded by the migration (ten once the
+#    site categories migration adds HVAC), the frontend
 #    routes and nav entries are already wired, and the permission matrix is
 #    updated on both sides.
 ```

@@ -184,8 +184,8 @@ have a starting point. Without it, the next `upgrade` tries all 56 from scratch.
 
 ### Seed the demonstration data
 
-`create_all` gives you tables, not rows — including the nine disciplines that
-the facilities migration would have inserted. The seed script puts those back
+`create_all` gives you tables, not rows — including the ten disciplines that
+the migrations would have inserted. The seed script puts those back
 along with a worked hospital:
 
 ```bash
@@ -300,8 +300,11 @@ docker compose exec postgres psql -U phealth -d phealth_db -c \
   "select code, name from disciplines order by sort_order;"
 ```
 
-Nine disciplines are seeded by the facilities migration. Their presence
-confirms the migration chain reached the end.
+Ten disciplines are seeded by the migrations: the facilities migration's nine,
+with "Mechanical / HVAC" renamed to "Mechanical", plus HVAC from the site
+categories migration. Their presence confirms the migration chain reached the
+end. The Categories screens also create the four category disciplines on first
+use if a database has none.
 
 ---
 
