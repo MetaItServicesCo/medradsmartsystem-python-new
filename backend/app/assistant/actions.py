@@ -1,10 +1,13 @@
 """Actions the assistant can prepare for a person to confirm.
 
-Five, deliberately: report a fault, book an asset for service, schedule an
-inspection, update a work order, and raise a service or inspection job on a
-category's equipment. Each is reversible in the product and
-touches one record. Deleting, bulk changes, anything financial and anything
-about users or permissions stay on their own screens, with their own previews.
+The changes a person makes on the everyday screens: add equipment to a
+category or change its details (including what one item cost), raise a service
+or inspection job or update one (status, result, labour and parts cost), report
+a fault, book an asset for service, schedule an inspection plan, and update a
+work order. Each touches one record, which the product can change back.
+Deleting, bulk changes, ledger entries and anything about users or permissions
+stay on their own screens, with their own previews; so does marking a job as
+major work, which posts to the ledger.
 
 Every action has two halves:
 
@@ -20,12 +23,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
+from pydantic import ValidationError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.assistant.tools.base import ToolContext, ToolInputError
@@ -347,11 +354,18 @@ def _execute_plan(db: Session, user: User, payload: dict[str, Any]) -> dict[str,
 
 def _prepare_update(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
     from app.api.v1.endpoints.service_requests import VALID_TRANSITIONS
+    from app.services import equipment_jobs
 
     order = ctx.db.get(ServiceRequest, args.get("work_order_id")) if args.get("work_order_id") else None
     if order is None:
         raise ToolInputError("No work order with that id. Resolve it with resolve_entity(kind=service_request).")
     _within_sites(ctx, order.facility_id, "work order")
+    # A service or inspection has its own statuses, costs and result; moving it
+    # through the general workflow would skip them.
+    if order.work_order_type in equipment_jobs.KIND_OF_TYPE and order.equipment and order.equipment.name:
+        raise ToolInputError("{} is a {} under Equipment Maintenance: change it with "
+                             "prepare_equipment_job_update (job_id={}).".format(
+                                 order.request_number, equipment_jobs.KIND_OF_TYPE[order.work_order_type], order.id))
 
     payload: dict[str, Any] = {"work_order_id": order.id}
     lines: list[tuple[str, str]] = [("Work order", "{} · {}".format(order.request_number,
@@ -462,7 +476,374 @@ def _execute_equipment_job(db: Session, user: User, payload: dict[str, Any]) -> 
     ), db=db, current_user=user)
     return {"message": "{} {} raised on {}.".format(payload["kind"].capitalize(), job["number"], asset.name),
             "record": job["number"], "route": "/equipment-maintenance/{}".format(payload["kind"]),
-            "work_order_id": job["id"]}
+            "work_order_id": job["id"], "facility_id": asset.facility_id}
+
+
+# ── equipment under Facility ─────────────────────────────────────────────────
+
+def _money_arg(value: Any, what: str) -> Decimal:
+    """An amount as a model sends it: 45000, "45000", "45,000" or "$45,000"."""
+    text = re.sub(r"[^\d.\-]", "", str(value))
+    try:
+        amount = Decimal(text).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        raise ToolInputError("{} must be an amount, e.g. 45000.".format(what))
+    if amount < 0:
+        raise ToolInputError("{} cannot be negative.".format(what))
+    return amount
+
+
+def _date_arg(value: Any, what: str) -> date:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        raise ToolInputError("{} must be YYYY-MM-DD.".format(what))
+
+
+def _dollars(value: Any) -> str:
+    if value is None:
+        return "Not recorded"
+    text = "${:,.2f}".format(Decimal(str(value)))
+    return text[:-3] if text.endswith(".00") else text
+
+
+def _checked(schema: type, fields: dict[str, Any]) -> None:
+    """Refuse what the screen's own form would refuse, while it can still be corrected."""
+    try:
+        schema(**fields)
+    except ValidationError as exc:
+        problems = ["{}: {}".format(".".join(str(p) for p in error["loc"]), error["msg"]) for error in exc.errors()]
+        raise ToolInputError("Not accepted - " + "; ".join(problems))
+
+
+def _category_code(ctx: ToolContext, asset: Equipment) -> Optional[str]:
+    from app.services import site_categories
+
+    return next((c for c, pk in site_categories.ensure_disciplines(ctx.db).items() if pk == asset.discipline_id), None)
+
+
+def _category_item(ctx: ToolContext, asset_id: Any) -> Equipment:
+    asset = _asset(ctx, asset_id)
+    if asset.name is None:
+        raise ToolInputError("{} is not under Facility yet. It is added to a category from the Asset Register "
+                             "with Add to a category.".format(asset.asset_tag))
+    return asset
+
+
+def _site(ctx: ToolContext, facility_id: Any):
+    from app.models.facility import Facility
+
+    if not facility_id:
+        allowed = ctx.facility_ids()
+        if allowed is not None and len(allowed) == 1:
+            facility_id = next(iter(allowed))
+        else:
+            raise ToolInputError("Say which site: pass facility_id (the site the person is working in).")
+    site = ctx.db.get(Facility, facility_id)
+    if site is None:
+        raise ToolInputError("No site with that id.")
+    _within_sites(ctx, site.id, "site")
+    return site
+
+
+_EQUIPMENT_TEXT = {"name": 160, "type": 80, "building": 120, "floor": 80, "spot": 255,
+                   "make": 120, "model": 120, "notes": 4000}
+
+
+def _equipment_fields(ctx: ToolContext, args: dict[str, Any], facility_id: int) -> dict[str, Any]:
+    """The form's fields from a model's arguments, tidied the way the form tidies them."""
+    from app.services import site_categories
+
+    fields: dict[str, Any] = {}
+    for key in _EQUIPMENT_TEXT:
+        if key in args:
+            value = site_categories.tidy(str(args[key]))
+            if value is not None:
+                if key in ("building", "floor"):
+                    value = site_categories.match_existing_spelling(ctx.db, facility_id, key, value)
+                fields[key] = value
+    if "category" in args:
+        if args["category"] not in site_categories.BY_CODE:
+            raise ToolInputError("category is one of: {}.".format(", ".join(site_categories.BY_CODE)))
+        fields["category"] = args["category"]
+    if "status" in args:
+        if args["status"] not in site_categories.CONDITIONS:
+            raise ToolInputError("status is one of: {}.".format(", ".join(site_categories.CONDITIONS)))
+        fields["condition"] = args["status"]
+    if "quantity" in args:
+        if not isinstance(args["quantity"], int) or not 1 <= args["quantity"] <= 100000:
+            raise ToolInputError("quantity must be a whole number from 1.")
+        fields["quantity"] = args["quantity"]
+    if "unit_cost" in args:
+        fields["unit_cost"] = str(_money_arg(args["unit_cost"], "unit_cost"))
+    if "in_service_on" in args:
+        fields["in_service_on"] = _date_arg(args["in_service_on"], "in_service_on").isoformat()
+    if "useful_life_years" in args:
+        try:
+            life = Decimal(str(args["useful_life_years"])).quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError):
+            raise ToolInputError("useful_life_years must be a number of years.")
+        fields["useful_life_years"] = str(life)
+    return fields
+
+
+def _place(building: Optional[str], floor: Optional[str], spot: Optional[str]) -> str:
+    return " · ".join(part for part in (building, floor, spot) if part) or "Not recorded"
+
+
+def _prepare_add_equipment(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.api.v1.endpoints.site_categories import MAX_TOTAL_COST
+    from app.schemas.site_categories import CategoryEquipmentCreate
+    from app.services import site_categories
+
+    site = _site(ctx, args.get("facility_id"))
+    fields = _equipment_fields(ctx, args, site.id)
+    missing = [label for key, label in (("category", "category"), ("name", "name"), ("type", "type"),
+                                        ("building", "building")) if not fields.get(key)]
+    if missing:
+        raise ToolInputError("New equipment needs its {}. Ask the person for it.".format(", ".join(missing)))
+    category = site_categories.BY_CODE[fields.pop("category")]
+    fields.setdefault("quantity", 1)
+    fields.setdefault("condition", "working")
+    _checked(CategoryEquipmentCreate, {"facility_id": site.id, **fields})
+    total = site_categories.total_cost(Decimal(fields["unit_cost"]), fields["quantity"]) \
+        if "unit_cost" in fields else None
+    if total is not None and total > MAX_TOTAL_COST:
+        raise ToolInputError("The total cost is too large to record.")
+
+    warnings: list[str] = []
+    ids = site_categories.ensure_disciplines(ctx.db)
+    same_name = (
+        site_categories.items_query(ctx.db, site.id, ids[category.code])
+        .filter(func.lower(Equipment.name) == fields["name"].lower())
+        .first()
+    )
+    if same_name is not None:
+        warnings.append("{} already has a {} ({}, {}).".format(
+            category.name, same_name.name, same_name.asset_tag, site_categories.location_label(same_name) or "no place"))
+    if total is None:
+        warnings.append("No purchase cost given, so it will show no book value until one is added.")
+
+    quantity = fields["quantity"]
+    life = fields.get("useful_life_years")
+    lines = [
+        ("Site", site.name), ("Category", category.name), ("Name", fields["name"]), ("Type", fields["type"]),
+        ("Where", _place(fields.get("building"), fields.get("floor"), fields.get("spot"))),
+        ("Quantity", str(quantity)), ("Status", site_categories.CONDITIONS[fields["condition"]]),
+    ]
+    if fields.get("make") or fields.get("model"):
+        lines.append(("Make and model", " ".join(p for p in (fields.get("make"), fields.get("model")) if p)))
+    if total is not None:
+        lines.append(("Purchase cost", _dollars(total) if quantity == 1 else "{} each, {} in all".format(
+            _dollars(fields["unit_cost"]), _dollars(total))))
+    if fields.get("in_service_on"):
+        lines.append(("In service since", fields["in_service_on"]))
+    lines.append(("Useful life", "{} years".format(Decimal(life).normalize()) if life else
+                  "{} years ({} default)".format(site_categories.default_useful_life(category.code), category.name)))
+    if fields.get("notes"):
+        lines.append(("Notes", fields["notes"]))
+    return Prepared(
+        payload={"facility_id": site.id, "category": category.code, **fields},
+        title="Add {} to {}".format(fields["name"], category.name),
+        lines=lines, facility_id=site.id, warnings=warnings,
+    )
+
+
+def _execute_add_equipment(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.site_categories import add_category_equipment
+    from app.schemas.site_categories import CategoryEquipmentCreate
+
+    fields = dict(payload)
+    code = fields.pop("category")
+    created = add_category_equipment(code, CategoryEquipmentCreate(**fields), db=db, current_user=user)
+    return {"message": "{} added to {} as {}.".format(created["name"], created["category_name"], created["asset_tag"]),
+            "record": created["asset_tag"], "route": "/categories/{}".format(code),
+            "equipment_id": created["id"], "facility_id": payload["facility_id"]}
+
+
+def _prepare_equipment_update(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.api.v1.endpoints.site_categories import MAX_TOTAL_COST
+    from app.schemas.site_categories import CategoryEquipmentUpdate
+    from app.services import site_categories
+
+    asset = _category_item(ctx, args.get("asset_id"))
+    code = _category_code(ctx, asset)
+    wanted = _equipment_fields(ctx, {k: v for k, v in args.items() if k != "asset_id"}, asset.facility_id)
+    value = site_categories.value_facts(ctx.db, [asset]).get(asset.id) or {}
+    current: dict[str, Any] = {
+        "category": code, "name": asset.name, "type": asset.equipment_type, "building": asset.building,
+        "floor": asset.floor, "spot": asset.location, "quantity": asset.quantity or 1,
+        "condition": asset.condition or "working", "make": asset.make or None, "model": asset.model or None,
+        "notes": asset.description,
+        "unit_cost": str(site_categories.unit_cost(asset)) if asset.cost is not None else None,
+        "in_service_on": value.get("in_service_on").isoformat() if value.get("in_service_on") else None,
+        "useful_life_years": str(Decimal(str(asset.useful_life_years)).quantize(Decimal("0.01")))
+        if asset.useful_life_years is not None else None,
+    }
+    changes = {k: v for k, v in wanted.items() if str(v) != str(current.get(k))}
+    if not changes:
+        raise ToolInputError("Nothing to change: {} already has those details. Say what should change.".format(asset.name))
+    _checked(CategoryEquipmentUpdate, changes)
+    quantity = changes.get("quantity", current["quantity"])
+    unit = changes.get("unit_cost", current["unit_cost"])
+    if unit is not None and site_categories.total_cost(Decimal(unit), quantity) > MAX_TOTAL_COST:
+        raise ToolInputError("The total cost is too large to record.")
+
+    labels = {"category": "Category", "name": "Name", "type": "Type", "building": "Building", "floor": "Floor",
+              "spot": "Room / exact spot", "quantity": "Quantity", "condition": "Status", "make": "Make",
+              "model": "Model", "notes": "Notes", "unit_cost": "Cost of one item",
+              "in_service_on": "In service since", "useful_life_years": "Useful life (years)"}
+
+    def shown(key: str, raw: Any) -> str:
+        if raw in (None, ""):
+            return "Not recorded"
+        if key == "category":
+            return site_categories.BY_CODE[raw].name
+        if key == "condition":
+            return site_categories.CONDITIONS[raw]
+        if key == "unit_cost":
+            return _dollars(raw)
+        if key == "useful_life_years":
+            return str(Decimal(str(raw)).normalize())
+        return str(raw)
+
+    lines = [("Equipment", "{} · {}".format(asset.name, asset.asset_tag)),
+             ("Where", site_categories.location_label(asset) or "Not recorded")]
+    lines += [(labels[k], "{} → {}".format(shown(k, current.get(k)), shown(k, v))) for k, v in changes.items()]
+    warnings: list[str] = []
+    if "unit_cost" in changes or "quantity" in changes:
+        if unit is not None:
+            lines.append(("Purchase cost in all", _dollars(site_categories.total_cost(Decimal(unit), quantity))))
+    if {"unit_cost", "in_service_on", "useful_life_years", "quantity"} & set(changes):
+        warnings.append("Its book value is worked out again from the new figures.")
+    if changes.get("condition") == "out_of_service":
+        from app.services.site_categories import job_facts
+        open_jobs = (job_facts(ctx.db, [asset.id]).get(asset.id) or {}).get("open_jobs", 0)
+        if open_jobs:
+            warnings.append("It has {} open job{}.".format(open_jobs, "s" if open_jobs != 1 else ""))
+    return Prepared(
+        payload={"asset_id": asset.id, "changes": changes},
+        title="Change {}".format(asset.name), lines=lines, facility_id=asset.facility_id, warnings=warnings,
+    )
+
+
+def _execute_equipment_update(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.site_categories import update_category_equipment
+    from app.schemas.site_categories import CategoryEquipmentUpdate
+
+    updated = update_category_equipment(payload["asset_id"], CategoryEquipmentUpdate(**payload["changes"]),
+                                        db=db, current_user=user)
+    return {"message": "{} updated.".format(updated["name"]), "record": updated["asset_tag"],
+            "route": "/categories/{}".format(updated["category"]), "equipment_id": updated["id"],
+            "facility_id": db.get(Equipment, payload["asset_id"]).facility_id}
+
+
+# ── update a service or inspection job ───────────────────────────────────────
+
+def _prepare_job_update(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.schemas.site_categories import EquipmentJobUpdate
+    from app.services import equipment_jobs, site_categories
+
+    job = ctx.db.get(ServiceRequest, args.get("job_id")) if args.get("job_id") else None
+    if job is None or job.work_order_type not in equipment_jobs.KIND_OF_TYPE:
+        raise ToolInputError("No service or inspection job with that id. Find it with equipment_jobs (job_id).")
+    _within_sites(ctx, job.facility_id, "job")
+    kind = equipment_jobs.KIND_OF_TYPE[job.work_order_type]
+
+    wanted: dict[str, Any] = {}
+    if "status" in args:
+        if args["status"] not in ("open", "in_progress", "done"):
+            raise ToolInputError("status is open, in_progress or done.")
+        wanted["status"] = args["status"]
+    if "due_on" in args:
+        wanted["due_on"] = _date_arg(args["due_on"], "due_on").isoformat()
+    if "assigned_to_id" in args:
+        person = next((u for u in equipment_jobs.assignable_users(ctx.db, job.facility_id)
+                       if u.id == args["assigned_to_id"]), None)
+        if person is None:
+            raise ToolInputError("That person cannot be given jobs at this site. Find someone with search_users.")
+        wanted["assigned_to_id"] = person.id
+    for source, target in (("what_needs_doing", "title"), ("notes", "notes"), ("findings", "findings")):
+        if source in args:
+            text = site_categories.tidy(str(args[source]))
+            if text:
+                wanted[target] = text
+    if "inspection_result" in args:
+        if args["inspection_result"] not in ("pass", "fail"):
+            raise ToolInputError("inspection_result is pass or fail.")
+        wanted["inspection_result"] = args["inspection_result"]
+    if kind != "inspection" and ({"inspection_result", "findings"} & set(wanted)):
+        raise ToolInputError("Only an inspection has a result and findings; {} is a service.".format(job.request_number))
+    for field in ("labour_cost", "parts_cost"):
+        if field in args:
+            wanted[field] = str(_money_arg(args[field], field))
+
+    person = job.assigned_technician
+    current = {
+        "status": equipment_jobs.simple_status(job.status),
+        "due_on": job.due_on.isoformat() if job.due_on else None,
+        "assigned_to_id": job.assigned_technician_id, "title": job.problem_description, "notes": job.notes,
+        "findings": job.findings, "inspection_result": job.inspection_result,
+        "labour_cost": str(Decimal(str(job.labour_cost)).quantize(Decimal("0.01"))) if job.labour_cost is not None else None,
+        "parts_cost": str(Decimal(str(job.parts_cost)).quantize(Decimal("0.01"))) if job.parts_cost is not None else None,
+    }
+    changes = {k: v for k, v in wanted.items() if str(v) != str(current.get(k))}
+    if not changes:
+        raise ToolInputError("Nothing to change: {} already has those details. Say what should change.".format(
+            job.request_number))
+    _checked(EquipmentJobUpdate, changes)
+
+    def shown(key: str, raw: Any) -> str:
+        if raw in (None, ""):
+            return "Nobody" if key == "assigned_to_id" else "Not recorded"
+        if key == "status":
+            return equipment_jobs.STATUS_LABELS.get(raw, raw)
+        if key == "inspection_result":
+            return equipment_jobs.RESULTS.get(raw, raw)
+        if key in ("labour_cost", "parts_cost"):
+            return _dollars(raw)
+        if key == "assigned_to_id":
+            found = ctx.db.get(User, raw)
+            return found.full_name if found else "Nobody"
+        return str(raw)
+
+    labels = {"status": "Status", "due_on": "Due", "assigned_to_id": "Assigned to", "title": "What needs doing",
+              "notes": "Notes", "findings": "Findings", "inspection_result": "Result",
+              "labour_cost": "Labour", "parts_cost": "Parts"}
+    asset = job.equipment
+    lines = [("Job", "{} · {}".format(job.request_number, (job.problem_description or "")[:80])),
+             ("Equipment", "{} · {}".format(asset.name or asset.asset_tag, site_categories.location_label(asset))
+              if asset else "Not recorded")]
+    lines += [(labels[k], "{} → {}".format(shown(k, current.get(k)), shown(k, v))) for k, v in changes.items()]
+    if {"labour_cost", "parts_cost"} & set(changes):
+        labour = Decimal(changes.get("labour_cost", current["labour_cost"]) or 0)
+        parts = Decimal(changes.get("parts_cost", current["parts_cost"]) or 0)
+        lines.append(("Job cost", _dollars(labour + parts)))
+
+    warnings: list[str] = []
+    if job.is_major_work and ({"labour_cost", "parts_cost", "status"} & set(changes)):
+        warnings.append("This is major work: the equipment's value in the asset ledger is corrected to match.")
+    if changes.get("status") == "done" and current["labour_cost"] is None and current["parts_cost"] is None \
+            and not ({"labour_cost", "parts_cost"} & set(changes)):
+        warnings.append("No labour or parts cost is recorded for it.")
+    if kind == "inspection" and changes.get("status") == "done" and not (current["inspection_result"] or
+                                                                        changes.get("inspection_result")):
+        warnings.append("No Pass or Fail result is recorded.")
+    return Prepared(
+        payload={"job_id": job.id, "changes": changes},
+        title="Update {} {}".format(kind, job.request_number), lines=lines,
+        facility_id=job.facility_id, warnings=warnings,
+    )
+
+
+def _execute_job_update(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.equipment_maintenance import update_job
+    from app.schemas.site_categories import EquipmentJobUpdate
+
+    job = update_job(payload["job_id"], EquipmentJobUpdate(**payload["changes"]), db=db, current_user=user)
+    return {"message": "{} {} updated.".format(job["kind"].capitalize(), job["number"]), "record": job["number"],
+            "route": "/equipment-maintenance/{}".format(job["kind"]), "work_order_id": job["id"],
+            "facility_id": db.get(ServiceRequest, payload["job_id"]).facility_id}
 
 
 # ── registry ─────────────────────────────────────────────────────────────────
@@ -559,6 +940,86 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         }, "required": ["asset_id", "kind", "what_needs_doing"]},
         prepare=_prepare_equipment_job, execute=_execute_equipment_job,
     ),
+    ActionDefinition(
+        name="prepare_equipment_job_update",
+        module="service-requests", permission="edit",
+        description=(
+            "Prepare a change to a service or inspection job under Equipment Maintenance: its status "
+            "(open, in_progress, done), due date, who it is assigned to (search_users), what needs doing, "
+            "notes, labour and parts cost, and for an inspection the pass/fail result and findings. Find the "
+            "job with equipment_jobs (job_id). Pass only what changes. Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "job_id": {"type": "integer"},
+            "status": {"type": "string", "enum": ["open", "in_progress", "done"]},
+            "due_on": {"type": "string", "format": "date"},
+            "assigned_to_id": {"type": "integer"},
+            "what_needs_doing": {"type": "string"},
+            "notes": {"type": "string"},
+            "inspection_result": {"type": "string", "enum": ["pass", "fail"]},
+            "findings": {"type": "string"},
+            "labour_cost": {"type": "number", "minimum": 0},
+            "parts_cost": {"type": "number", "minimum": 0},
+        }, "required": ["job_id"]},
+        prepare=_prepare_job_update, execute=_execute_job_update,
+    ),
+    ActionDefinition(
+        name="prepare_add_equipment",
+        module="facility-inventory", permission="add",
+        description=(
+            "Prepare adding equipment to a site's Electrical, Plumbing, Mechanical or HVAC category. Needs the "
+            "category, a name (e.g. 'Generator 2'), its type (e.g. Generator, Chiller) and the building it is in; "
+            "ask for any of these that the person did not give. Floor, room or exact spot, quantity, status, make, "
+            "model, the purchase cost of one item, the in-service date, useful life and notes are optional. "
+            "Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer", "description": "The site. Defaults to the one the person is in."},
+            "category": {"type": "string", "enum": ["electrical", "plumbing", "mechanical", "hvac"]},
+            "name": {"type": "string"},
+            "type": {"type": "string"},
+            "building": {"type": "string"},
+            "floor": {"type": "string"},
+            "spot": {"type": "string", "description": "Room or exact spot."},
+            "quantity": {"type": "integer", "minimum": 1},
+            "status": {"type": "string", "enum": ["working", "needs_attention", "out_of_service"]},
+            "make": {"type": "string"},
+            "model": {"type": "string"},
+            "unit_cost": {"type": "number", "minimum": 0, "description": "Purchase cost of one item."},
+            "in_service_on": {"type": "string", "format": "date"},
+            "useful_life_years": {"type": "number", "exclusiveMinimum": 0, "maximum": 100},
+            "notes": {"type": "string"},
+        }, "required": ["category", "name", "type", "building"]},
+        prepare=_prepare_add_equipment, execute=_execute_add_equipment,
+    ),
+    ActionDefinition(
+        name="prepare_equipment_update",
+        module="facility-inventory", permission="edit",
+        description=(
+            "Prepare a change to equipment under Facility: its status (working, needs_attention, "
+            "out_of_service), name, type, category, building, floor, room or exact spot, quantity, make, model, "
+            "purchase cost of one item, in-service date, useful life or notes. Find it with category_equipment "
+            "or resolve_entity kind=asset. Pass only what changes. Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "asset_id": {"type": "integer"},
+            "status": {"type": "string", "enum": ["working", "needs_attention", "out_of_service"]},
+            "name": {"type": "string"},
+            "type": {"type": "string"},
+            "category": {"type": "string", "enum": ["electrical", "plumbing", "mechanical", "hvac"]},
+            "building": {"type": "string"},
+            "floor": {"type": "string"},
+            "spot": {"type": "string"},
+            "quantity": {"type": "integer", "minimum": 1},
+            "make": {"type": "string"},
+            "model": {"type": "string"},
+            "unit_cost": {"type": "number", "minimum": 0},
+            "in_service_on": {"type": "string", "format": "date"},
+            "useful_life_years": {"type": "number", "exclusiveMinimum": 0, "maximum": 100},
+            "notes": {"type": "string"},
+        }, "required": ["asset_id"]},
+        prepare=_prepare_equipment_update, execute=_execute_equipment_update,
+    ),
 )
 
 ACTIONS_BY_NAME: dict[str, ActionDefinition] = {a.name: a for a in ACTION_DEFINITIONS}
@@ -577,10 +1038,43 @@ def card_of(action: AssistantAction) -> dict[str, Any]:
         "action_type": action.action_type,
         "status": action.status,
         "expires_at": action.expires_at.isoformat() + "Z",
+        # The browser opens the record inside this site.
+        "facility_id": action.facility_id,
         **(action.card or {}),
         "result": action.result,
         "error": action.error,
     }
+
+
+def _as_schema_types(parameters: dict[str, Any], arguments: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Arguments as the schema declares them, whatever the model sent.
+
+    Open models call tools with {"assigned_to_id": "12"} or {"due_on": null}.
+    Taken literally, "12" matched nobody and the change was refused as "that
+    person cannot be given jobs"; an empty optional argument is "not given".
+    """
+    properties = parameters.get("properties", {})
+    out: dict[str, Any] = {}
+    for key, value in (arguments or {}).items():
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        kind = properties.get(key, {}).get("type")
+        if kind == "integer":
+            if isinstance(value, str) and re.fullmatch(r"\s*\d+\s*", value):
+                value = int(value)
+            elif isinstance(value, float) and value.is_integer():
+                value = int(value)
+        elif kind == "boolean" and isinstance(value, str) and value.strip().lower() in ("true", "false"):
+            value = value.strip().lower() == "true"
+        elif kind == "string" and isinstance(value, str):
+            value = value.strip()
+            # "Needs attention", "HVAC", "In progress": the label, where the code was meant.
+            choices = properties[key].get("enum")
+            if choices and value not in choices:
+                code = re.sub(r"[\s\-]+", "_", value.lower())
+                value = code if code in choices else value
+        out[key] = value
+    return out
 
 
 def propose(db: Session, user: User, name: str, arguments: dict[str, Any]) -> AssistantAction:
@@ -588,6 +1082,7 @@ def propose(db: Session, user: User, name: str, arguments: dict[str, Any]) -> As
     definition = ACTIONS_BY_NAME.get(name)
     if definition is None:
         raise ToolInputError("Unknown action: {}".format(name))
+    arguments = _as_schema_types(definition.parameters, arguments)
     allowed = set(definition.parameters.get("properties", {}))
     unexpected = set(arguments or {}) - allowed
     if unexpected:

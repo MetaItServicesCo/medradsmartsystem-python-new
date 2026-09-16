@@ -8,14 +8,52 @@
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { cancelAssistantAction, confirmAssistantAction, type AssistantActionCard } from '@/api/assistant'
+import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { palette } from '@/theme/palette'
 
 const STATUS_LABEL: Record<AssistantActionCard['status'], string> = {
   proposed: 'Waiting', executed: 'Done', failed: 'Not done', cancelled: 'Cancelled', expired: 'Expired',
+}
+
+/** Confirm or cancel a card, from its buttons or from "yes" said in the conversation. */
+export function useDecideAction() {
+  const queryClient = useQueryClient()
+  return async (card: AssistantActionCard, choice: 'confirm' | 'cancel') => {
+    try {
+      const next = choice === 'confirm'
+        ? await confirmAssistantAction(card.action_id)
+        : await cancelAssistantAction(card.action_id)
+      if (next.status === 'executed') {
+        // The screen behind the panel was loaded before the change and kept
+        // showing it from cache, so a change that had been made looked as if
+        // it never happened.
+        void queryClient.invalidateQueries()
+      }
+      return { card: next, problem: '' }
+    } catch (error: any) {
+      const status = error?.response?.status
+      const detail = error?.response?.data?.detail
+      return {
+        card: status === 410 ? { ...card, status: 'expired' as const } : card,
+        problem: typeof detail === 'string' ? detail : 'That did not go through. Try again.',
+      }
+    }
+  }
+}
+
+/** What the conversation says once a card has been decided. */
+export function outcomeText(card: AssistantActionCard, problem: string): string {
+  if (problem) return problem
+  if (card.status === 'executed') return card.result?.message || 'Done.'
+  if (card.status === 'failed') return `It was not done: ${card.error || 'something went wrong.'}`
+  if (card.status === 'cancelled') return 'Cancelled. Nothing was changed.'
+  if (card.status === 'expired') return 'That expired before it was confirmed. Ask again to prepare it afresh.'
+  return ''
 }
 
 export default function ActionCard({ card, onChange, onNavigate }: {
@@ -24,25 +62,25 @@ export default function ActionCard({ card, onChange, onNavigate }: {
   onNavigate?: () => void
 }) {
   const navigate = useNavigate()
+  const decideAction = useDecideAction()
   const [busy, setBusy] = useState<'confirm' | 'cancel' | null>(null)
   const [problem, setProblem] = useState('')
 
   const decide = async (choice: 'confirm' | 'cancel') => {
     setBusy(choice)
     setProblem('')
-    try {
-      const next = choice === 'confirm'
-        ? await confirmAssistantAction(card.action_id)
-        : await cancelAssistantAction(card.action_id)
-      onChange(next)
-    } catch (error: any) {
-      const status = error?.response?.status
-      const detail = error?.response?.data?.detail
-      if (status === 410) onChange({ ...card, status: 'expired' })
-      setProblem(typeof detail === 'string' ? detail : 'That did not go through. Try again.')
-    } finally {
-      setBusy(null)
-    }
+    const outcome = await decideAction(card, choice)
+    if (outcome.card !== card) onChange(outcome.card)
+    setProblem(outcome.problem)
+    setBusy(null)
+  }
+
+  const open = (route: string) => {
+    // Equipment and job lists show one site: open the one the change was made in.
+    const site = card.result?.facility_id ?? card.facility_id
+    if (site) useFacilityStore.getState().setFacilityId(site)
+    navigate(route)
+    onNavigate?.()
   }
 
   const pending = card.status === 'proposed'
@@ -102,7 +140,7 @@ export default function ActionCard({ card, onChange, onNavigate }: {
             </Button>
           </Stack>
           <Typography sx={{ mt: 0.6, fontSize: 11, color: palette.textFaint }}>
-            Nothing happens until you confirm. This expires in 10 minutes.
+            Nothing happens until you confirm, or say yes. This expires in 10 minutes.
           </Typography>
         </>
       )}
@@ -114,7 +152,7 @@ export default function ActionCard({ card, onChange, onNavigate }: {
             {card.result.message}
           </Typography>
           {card.result.route && (
-            <Button size="small" onClick={() => { navigate(card.result!.route!); onNavigate?.() }}
+            <Button size="small" onClick={() => open(card.result!.route!)}
                     sx={{ fontWeight: 900, minWidth: 0 }}>
               Open
             </Button>

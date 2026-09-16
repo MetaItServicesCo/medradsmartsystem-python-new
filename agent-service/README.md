@@ -45,9 +45,21 @@ code at every backend start) and the hospital's own documents - policies,
 procedures, manuals - uploaded per site from *Assistant documents*. Answers
 name the document and page.
 
-**Prepare, for confirmation**: a work order for a fault on a fixture, an asset
-or a room; a service booking with a technician; a recurring inspection plan; a
-work order update (status, technician, priority, note).
+**Prepare, for confirmation**: equipment added to Electrical, Plumbing,
+Mechanical or HVAC, or changed (status, name, type, category, place, quantity,
+make, model, purchase cost, in-service date, useful life, notes); a service or
+inspection job raised on it, or updated (status, due date, assignee, notes,
+pass/fail and findings, labour and parts cost); a work order for a fault on a
+fixture, an asset or a room; a service booking with a technician; a recurring
+inspection plan; an update to any other work order (status, technician,
+priority, note).
+
+Instructions are acted on, not explained: "add a chiller to HVAC" prepares the
+change even when the router files it as a how-to question or a refusal. When a
+required detail is missing the assistant asks for it, the tool step sees the
+earlier turns so "Main block" or "yes, go ahead" completes the request, and
+"yes" typed or spoken to a waiting card confirms it. Screens behind the panel
+refresh once a change is made.
 
 ## Guarantees
 
@@ -57,7 +69,8 @@ work order update (status, technician, priority, note).
   expires, only if unchanged - through the same endpoint functions the screens
   use. The model is told a prepared action has not happened and may not say it
   has.
-- **Out of reach entirely:** deleting records, costs and the ledger, users and
+- **Out of reach entirely:** deleting records, ledger entries (including marking
+  a job as major work, which posts one), users and
   permissions.
 - **No invented numbers.** Totals come from SQL `COUNT` and aggregates, never
   from the model counting rows.
@@ -160,7 +173,7 @@ inference.
 | `AGENT_MODEL` | - | One model for every primary role, unless a role is set |
 | `AGENT_NAME` | `Phia` | Change the widget header alongside |
 | `MEDRAD_INTERNAL_URL` / `MEDRAD_INTERNAL_KEY` | - | Backend tool API and its shared key |
-| `MAX_TOOL_ITERATIONS` / `MAX_TOOL_CALLS` | `5` / `8` | Per-question limits |
+| `MAX_TOOL_ITERATIONS` / `MAX_TOOL_CALLS` | `6` / `10` | Per-question limits (a change needs room to find the record, find a person and prepare) |
 
 ## Retrieval
 

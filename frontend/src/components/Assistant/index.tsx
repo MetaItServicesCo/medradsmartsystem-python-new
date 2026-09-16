@@ -29,6 +29,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   askAssistant,
+  decisionOf,
   fetchAssistantStatus,
   type AssistantActionCard,
   type AssistantCitation,
@@ -39,7 +40,7 @@ import { useVoice } from '@/hooks/useVoice'
 import useVoicePipeline from '@/hooks/useVoicePipeline'
 import { keyframes } from '@emotion/react'
 import { palette } from '@/theme/palette'
-import ActionCard from './ActionCard'
+import ActionCard, { outcomeText, useDecideAction } from './ActionCard'
 
 interface Turn {
   role: 'user' | 'assistant'
@@ -90,7 +91,7 @@ const SUGGESTIONS = [
   'Which HVAC equipment needs attention?',
   'What services are overdue?',
   'Raise a service on Generator 1 for next Monday',
-  'How do I add equipment to a category?',
+  'Mark Chiller 1 as needing attention',
 ]
 
 // Node names map to what the user should understand is happening.
@@ -108,6 +109,7 @@ const WORKING_NODES = new Set(['use_tools', 'retrieve', 'gather'])
 
 const AssistantWidget = () => {
   const navigate = useNavigate()
+  const decideAction = useDecideAction()
   const currentUser = useAuthStore((state) => state.user)
   const isSuperAdmin = currentUser?.role === 'superadmin'
 
@@ -172,6 +174,32 @@ const AssistantWidget = () => {
       cancelRef.current?.()
       voice.stopSpeaking()
     }
+    // "Yes" to a change that is waiting makes it, as the Confirm button does.
+    // Sent to the agent instead, it could only prepare the same card again.
+    const decision = decisionOf(trimmed)
+    const waiting = turns.filter((turn) => turn.role === 'assistant')
+      .slice(-1).flatMap((turn) => turn.actions ?? []).filter((card) => card.status === 'proposed')
+    if (decision && waiting.length) {
+      const spokenReply = voiceMode && speakReplies
+      const say = (text: string) => {
+        setTurns((prev) => [...prev, { role: 'assistant', text }])
+        if (spokenReply) void voice.speak(text)
+      }
+      setTurns((prev) => [...prev, { role: 'user', text: trimmed }])
+      setQuestion('')
+      if (waiting.length > 1) {
+        say(`There are ${waiting.length} changes waiting. Press Confirm or Cancel on the one you mean.`)
+        return
+      }
+      void decideAction(waiting[0], decision).then(({ card, problem }) => {
+        setTurns((prev) => prev.map((turn) => (!turn.actions ? turn : {
+          ...turn, actions: turn.actions.map((c) => (c.action_id === card.action_id ? card : c)),
+        })))
+        say(outcomeText(card, problem))
+      })
+      return
+    }
+
     setTurns((prev) => [...prev, { role: 'user', text: trimmed }])
     setQuestion('')
     setBusy(true)
@@ -363,7 +391,7 @@ const AssistantWidget = () => {
                 Hi, I'm {AGENT_NAME}.
               </Typography>
               <Typography sx={{ color: palette.textSubtle, fontSize: 13, fontWeight: 700, mb: 1.4 }}>
-                Ask me about facilities, service requests, inspections, rentals, sales, billing or HR — or how to do something in the app.
+                Ask me about your equipment, services and inspections, or tell me what to add or change — nothing changes until you confirm.
               </Typography>
               <Stack spacing={1}>
                 {SUGGESTIONS.map((suggestion) => (

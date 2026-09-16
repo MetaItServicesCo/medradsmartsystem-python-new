@@ -139,6 +139,74 @@ how-many count total number active open closed pending approved
 """.split())
 
 
+# Verbs that make a message an instruction to change something. The router is
+# the smallest model configured, and it filed "add a chiller to HVAC" as a
+# how-to question and "set the labour cost to 500" as something to refuse, so
+# the person got steps or a refusal where they had asked for the change itself.
+# An instruction goes where the prepare_* actions are; whether one fits is then
+# the tool model's decision, with the full toolset in front of it.
+_CHANGE_VERBS = frozenset("""
+add create raise book schedule report log
+mark set change update edit rename move assign reassign unassign
+close complete finish reopen record enter register put
+""".split())
+
+# Never overridden: removing things stays on its own screen.
+_DESTRUCTIVE_VERBS = frozenset({"delete", "remove", "erase", "purge", "wipe", "drop", "destroy"})
+
+_POLITE_PREFIXES = (
+    "please", "kindly", "can you", "could you", "would you", "will you", "can u", "phia",
+    "i want to", "i need to", "i would like to", "id like to", "i'd like to", "lets", "let's",
+    "go ahead and", "ok", "okay", "now", "also", "and", "then", "just",
+)
+
+# Said after the assistant offered something. With the earlier turns in front
+# of it the tool step knows what "go ahead" refers to; answered as small talk,
+# nothing happens and the person is told "you're welcome".
+_YES_WORDS = frozenset({"yes", "yeah", "yep", "yup", "sure"})
+_GO_AHEAD = frozenset({
+    "please", "go ahead", "do it", "please do", "proceed", "go for it", "confirm", "confirm it",
+    "sounds good", "thats right", "correct", "that one", "please go ahead",
+})
+
+
+def _normalised(question: str) -> str:
+    return " ".join(question.lower().translate(_SMALL_TALK_PUNCTUATION).split())
+
+
+def instruction_verb(question: str) -> Optional[str]:
+    """The verb of an instruction to change something ("add ...", "please mark ..."), else None."""
+    text = _normalised(question)
+    stripped = True
+    while stripped and text:
+        stripped = False
+        for prefix in _POLITE_PREFIXES:
+            cleaned = prefix.replace("'", "")
+            if text == cleaned or text.startswith(cleaned + " "):
+                text = text[len(cleaned):].strip()
+                stripped = True
+    first = text.split(" ", 1)[0] if text else ""
+    if first in _CHANGE_VERBS or first in _DESTRUCTIVE_VERBS:
+        return first
+    return None
+
+
+def is_go_ahead(question: str) -> bool:
+    """'yes', 'ok go ahead', 'yes, raise it' - agreement to something just offered."""
+    text = _normalised(question)
+    if not text:
+        return False
+    if text in _GO_AHEAD:
+        return True
+    words = text.split()
+    first, rest = words[0], " ".join(words[1:])
+    if first in _YES_WORDS and not rest:
+        return True
+    if first in _YES_WORDS | {"ok", "okay"} and rest:
+        return rest in _GO_AHEAD or instruction_verb(rest) in _CHANGE_VERBS
+    return False
+
+
 def local_intent(question: str) -> Optional[Intent]:
     """Route without a model where it is unambiguous, else return None."""
     normalised = " ".join(
@@ -183,6 +251,9 @@ class AgentState(TypedDict, total=False):
     tool_results: list[dict[str, Any]]
     # Proposals prepared this turn, each waiting for the person to confirm.
     actions: list[dict[str, Any]]
+    # What the tool model said when it stopped calling tools: usually a
+    # question back ("which building is it in?") before it can prepare a change.
+    tool_reply: str
     knowledge: list[dict[str, Any]]
     citations: list[dict[str, Any]]
     answer: str
@@ -312,9 +383,14 @@ _CLASSIFY_TOOL = {
 
 async def classify_node(state: AgentState) -> dict[str, Any]:
     """Decide intent and module. Falls back to hybrid, which is always safe."""
+    # Agreement to what was just offered is acted on, not answered as small talk.
+    if state.get("history") and is_go_ahead(state["question"]):
+        return {"intent": "database", "module": None}
+
     # A greeting does not need a model to recognise, and this is the only place
     # in a turn where a whole round trip can be removed rather than shortened.
-    if (shortcut := local_intent(state["question"])) is not None:
+    # "ok add a generator" looks like small talk by shape and is not.
+    if instruction_verb(state["question"]) is None and (shortcut := local_intent(state["question"])) is not None:
         return {"intent": shortcut, "module": None}
 
     # Spoken turns skip routing entirely. It measured three to five seconds --
@@ -354,17 +430,35 @@ async def classify_node(state: AgentState) -> dict[str, Any]:
         for call in reply.tool_calls:
             if call.name == "route_question":
                 data = dict(call.arguments or {})
-                return {
+                return _acting_on_instructions(state, {
                     "intent": data.get("intent") or "hybrid",
                     "module": data.get("module"),
                     "refusal_reason": data.get("refusal_reason") or "",
                     "answer": data.get("clarifying_question") or "",
-                }
+                })
     except Exception:
         logger.exception("Classification failed; defaulting to hybrid")
     # Hybrid gathers both kinds of evidence, so a routing failure degrades to
     # doing more work rather than to answering the wrong way.
     return {"intent": "hybrid", "module": None}
+
+
+def _acting_on_instructions(state: AgentState, routed: dict[str, Any]) -> dict[str, Any]:
+    """Send an instruction to change something where the actions are.
+
+    Routed as knowledge it was answered with steps; routed as a refusal it was
+    turned down, although the change is one the assistant can prepare. Hybrid
+    offers both: a card when an action fits, and the screen's steps when none
+    does. Requests for secrets and requests to delete are left as they were.
+    """
+    verb = instruction_verb(state["question"])
+    if verb is None or verb in _DESTRUCTIVE_VERBS:
+        return routed
+    intent = routed.get("intent")
+    if intent == "knowledge" or (intent == "refuse" and routed.get("refusal_reason") != "secrets") \
+            or intent == "chitchat":
+        return {**routed, "intent": "hybrid", "refusal_reason": "", "answer": ""}
+    return routed
 
 
 _STANDALONE_PROMPT = """Rewrite the person's latest message as one standalone search query \
@@ -455,7 +549,10 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
         # action would leave the model describing a button it cannot press.
         available = [*available, *action_tools]
 
-        conversation: list[dict[str, Any]] = [{
+        # The earlier turns come first. Without them "the one in the Annex",
+        # "assign it to Ali" or "yes, go ahead" reached the tool step as a
+        # message about nothing, and nothing was prepared.
+        conversation: list[dict[str, Any]] = [*_history_messages(state), {
             "role": "user",
             "content": "Today is {}.\n\n{}Question: {}".format(
                 state.get("today", date.today().isoformat()),
@@ -465,6 +562,7 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
         }]
 
         calls_made = 0
+        final_text = ""
         for _iteration in range(settings.MAX_TOOL_ITERATIONS):
             try:
                 reply = await complete(
@@ -490,6 +588,7 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                 "content": reply.raw_assistant or [{"type": "text", "text": reply.text}],
             })
             if not blocks:
+                final_text = (reply.text or "").strip()
                 break
 
             # Budget is spent in block order so the same blocks are refused
@@ -569,7 +668,8 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                 })
             conversation.append({"role": "user", "content": tool_results_content})
 
-    return {"tool_results": collected, "citations": citations, "errors": errors, "actions": prepared}
+    return {"tool_results": collected, "citations": citations, "errors": errors, "actions": prepared,
+            "tool_reply": final_text}
 
 
 def _emit_action(card: dict[str, Any]) -> None:
@@ -591,6 +691,7 @@ def _citations_from(result: dict[str, Any]) -> list[dict[str, Any]]:
             item.get("name")
             or item.get("invoice_number")
             or item.get("request_number")
+            or item.get("number")
             or item.get("inspection_number")
             or item.get("full_name")
             or route
@@ -620,10 +721,34 @@ def _evidence_payload(state: AgentState) -> str:
                 {"title": card.get("title"), "details": card.get("lines"), "warnings": card.get("warnings")}
                 for card in state.get("actions", [])
             ],
+            "question_for_the_person": _question_back(state),
             "errors": state.get("errors", []),
         },
         default=str,
     )[:limit]
+
+
+def _question_back(state: AgentState) -> Optional[str]:
+    """What the tool step still needs to know from the person, if it asked."""
+    reply = (state.get("tool_reply") or "").strip()
+    return reply[:600] if "?" in reply else None
+
+
+def _reply_without_evidence(state: AgentState) -> Optional[str]:
+    """The tool step's own words, when nothing was looked up or prepared.
+
+    Typically a question back before a change can be prepared, or a plain "that
+    is done on the Users screen". Replacing either with "I could not find
+    anything" read as the assistant being unable to change anything at all. A
+    reply with figures in it but no question is not used: every figure has to
+    come from a tool result, and this one had none.
+    """
+    reply = (state.get("tool_reply") or "").strip()
+    if not reply:
+        return None
+    if "?" in reply or not re.search(r"\d", reply):
+        return reply[:1500]
+    return None
 
 
 async def synthesize_node(state: AgentState) -> dict[str, Any]:
@@ -632,6 +757,8 @@ async def synthesize_node(state: AgentState) -> dict[str, Any]:
     has_knowledge = bool(state.get("knowledge"))
     if not has_live and not has_knowledge:
         spoken = bool(state.get("voice"))
+        if (own_words := _reply_without_evidence(state)) is not None:
+            return {"answer": own_words}
         errors = state.get("errors") or []
         if errors:
             return {"answer": lookup_failed_message(errors[0], spoken)}
@@ -703,6 +830,7 @@ async def gather_node(state: AgentState) -> dict[str, Any]:
     return {
         "tool_results": tools.get("tool_results", []),
         "actions": tools.get("actions", []),
+        "tool_reply": tools.get("tool_reply", ""),
         "knowledge": knowledge.get("knowledge", []),
         "citations": (tools.get("citations") or []) + (knowledge.get("citations") or []),
         "errors": (tools.get("errors") or []) + (knowledge.get("errors") or []),

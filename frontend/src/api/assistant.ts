@@ -17,8 +17,33 @@ export interface AssistantActionCard {
   lines: Array<{ label: string; value: string }>
   warnings?: string[]
   expires_at: string
-  result?: { message: string; record?: string; route?: string } | null
+  /** The site the change is in; its record opens inside that site. */
+  facility_id?: number | null
+  result?: { message: string; record?: string; route?: string; facility_id?: number } | null
   error?: string | null
+}
+
+const CONFIRM_WORDS = new Set([
+  'yes', 'yes please', 'yeah', 'yep', 'yup', 'sure', 'confirm', 'confirm it', 'yes confirm', 'go ahead',
+  'yes go ahead', 'ok go ahead', 'okay go ahead', 'do it', 'yes do it', 'ok do it', 'okay do it', 'please do',
+  'proceed', 'go for it', 'ok confirm', 'okay confirm',
+])
+const CANCEL_WORDS = new Set([
+  'no', 'nope', 'cancel', 'cancel it', 'no cancel', 'no thanks', 'dont', 'do not', 'never mind', 'nevermind',
+  'dont do it', 'do not do it',
+])
+
+/**
+ * "Yes" or "cancel" said to a change that is waiting, typed or spoken.
+ *
+ * Bare "ok" is deliberately not agreement: it is as often an acknowledgement,
+ * and a change should never be made on one.
+ */
+export const decisionOf = (text: string): 'confirm' | 'cancel' | null => {
+  const said = text.toLowerCase().replace(/[.,!?;:'"]/g, '').replace(/\s+/g, ' ').trim()
+  if (CONFIRM_WORDS.has(said)) return 'confirm'
+  if (CANCEL_WORDS.has(said)) return 'cancel'
+  return null
 }
 
 /** A hospital document the assistant can quote. */

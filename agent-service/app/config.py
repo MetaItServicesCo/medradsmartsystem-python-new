@@ -89,8 +89,8 @@ class Settings(BaseSettings):
     AGENT_TIMEOUT_SECONDS: float = 45.0
 
     # A single question must never loop indefinitely through tools.
-    MAX_TOOL_ITERATIONS: int = 5
-    MAX_TOOL_CALLS: int = 8
+    MAX_TOOL_ITERATIONS: int = 6
+    MAX_TOOL_CALLS: int = 10
 
     # ── Helpers ─────────────────────────────────────────────────────────────
     def provider_credentials(self, provider: str) -> tuple[str, str]:

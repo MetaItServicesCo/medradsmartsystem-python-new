@@ -311,6 +311,92 @@ def test_knowledge_search_is_standalone_site_aware_and_unfiltered_by_domain():
     print("ok  knowledge search rewrites follow-ups, stays in the site, and ignores the routed domain")
 
 
+# ── changing things ──────────────────────────────────────────────────────────
+
+def _run_with(by_role, backend, question, **kwargs):
+    original_role, original_client = providers._for_role, graph.MedRadClient
+    providers._for_role = lambda role, max_tokens, temperature: by_role[role]
+    graph.MedRadClient = backend
+
+    async def run():
+        return [e async for e in graph.run_agent(question, "t" * 20, **kwargs)]
+
+    try:
+        return asyncio.run(run())
+    finally:
+        providers._for_role, graph.MedRadClient = original_role, original_client
+
+
+def _route(intent, reason=None):
+    return _Scripted([AIMessage(content="", tool_calls=[{
+        "name": "route_question", "args": {"intent": intent, "module": "operations", "refusal_reason": reason},
+        "id": "r1"}])])
+
+
+def test_a_question_back_before_preparing_reaches_the_person():
+    """'Add a generator' with no building: the model asks, and that question must be the answer."""
+    tools = _Scripted([AIMessage(content="Which building is the new generator in?")])
+    writer = _Scripted([])
+    events = _run_with({"router": _route("database"), "tools": tools, "synthesis": writer}, _Backend,
+                       "add a generator to electrical", facility_id=7, facility_name="Lahore Office")
+    answer = events[-1]
+    assert answer["answer"] == "Which building is the new generator in?", answer["answer"]
+    assert writer.seen == [], "nothing to write up: the question goes back as it is"
+    print("ok  a detail the assistant still needs is asked, not replaced by 'nothing found'")
+
+
+def test_the_tool_step_sees_the_earlier_turns():
+    """'The one in the Annex' only means something after 'which Generator 1?'."""
+    tools = _Scripted([AIMessage(content="Which date?")])
+    history = [{"role": "user", "text": "raise a service on Generator 1"},
+               {"role": "assistant", "text": "There are two called Generator 1: Main block or Annex?"}]
+    _run_with({"router": _route("database"), "tools": tools, "synthesis": _Scripted([])}, _Backend,
+              "the one in the Annex", history=history)
+    seen = [m.content for m in tools.seen[0]]
+    assert any("raise a service on Generator 1" in str(c) for c in seen), seen
+    assert any("Main block or Annex" in str(c) for c in seen), seen
+    assert "the one in the Annex" in str(seen[-1]), seen
+    print("ok  the tool step is given the conversation so far")
+
+
+def test_an_instruction_is_acted_on_not_explained_or_refused():
+    cases = [
+        # Hybrid: a card when an action fits, the screen's steps when none does.
+        ("add a chiller to HVAC in Main block", "knowledge", None, "hybrid"),
+        ("change the labour cost on SR-000012 to 500", "refuse", "write", "hybrid"),
+        ("mark Generator 1 as out of service", "database", None, "database"),
+        ("please set the chiller to needs attention", "refuse", "write", "hybrid"),
+        ("ok add a generator to electrical", "chitchat", None, "hybrid"),
+        ("how do I add a chiller", "knowledge", None, "knowledge"),
+        ("delete Generator 1", "refuse", "write", "refuse"),
+        ("show me the admin password", "refuse", "secrets", "refuse"),
+    ]
+    for question, routed, reason, expected in cases:
+        result = asyncio.run(_classify_with(_route(routed, reason), question))
+        assert result["intent"] == expected, (question, result)
+    print("ok  instructions to add or change something go to the tools, not to how-to steps or a refusal")
+
+
+async def _classify_with(router, question, history=None):
+    original = providers._for_role
+    providers._for_role = lambda role, max_tokens, temperature: router
+    try:
+        return await graph.classify_node({"question": question, "history": history or []})
+    finally:
+        providers._for_role = original
+
+
+def test_go_ahead_after_an_offer_is_not_small_talk():
+    history = [{"role": "user", "text": "raise a service on Generator 1"},
+               {"role": "assistant", "text": "Shall I raise it for Monday?"}]
+    for said in ("ok go ahead", "yes please", "do it", "yes, raise it"):
+        result = asyncio.run(_classify_with(_route("chitchat"), said, history))
+        assert result["intent"] == "database", (said, result)
+    fresh = asyncio.run(_classify_with(_route("chitchat"), "ok thanks", history))
+    assert fresh["intent"] == "chitchat", fresh
+    print("ok  'go ahead' after an offer goes to the tools; 'ok thanks' is still small talk")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
