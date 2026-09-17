@@ -3,8 +3,6 @@ import { Box, InputBase, Tooltip, Typography } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import BusinessIcon from '@mui/icons-material/Business'
-import MapIcon from '@mui/icons-material/Map'
-import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
 import HandshakeIcon from '@mui/icons-material/Handshake'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
@@ -76,8 +74,6 @@ const allMenuItems: SidebarItem[] = [
     text: category.name, description: `${category.name} equipment and where it is`,
     icon: category.icon, path: category.path, module: 'facility-inventory', group: 'Facility',
   })),
-  { text: 'Buildings & Rooms', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'Facility' },
-  { text: 'Beds & Theatres', description: 'Availability and capacity lost', icon: <MeetingRoomIcon />, path: '/spaces', module: 'spaces', group: 'Facility' },
   // Service and Inspection replace Work Orders and the older Inspections
   // module in the menu; those pages still open from links.
   ...EQUIPMENT_MAINTENANCE.map((link): SidebarItem => ({
