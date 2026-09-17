@@ -249,16 +249,9 @@ function SiteCard({ site, onOpen }: { site: Facility; onOpen: () => void }) {
             {[site.city, site.state].filter(Boolean).join(', ') || site.address}
           </Typography>
         </Box>
-        <Stack direction="row" alignItems="center" spacing={0.75}>
+        <Box>
           <InspectionBadge status={inspectionStatus} />
-          {attention > 0 && (
-            <Chip
-              size="small" label={attention}
-              sx={{ height: 22, minWidth: 22, fontWeight: 900, fontSize: 11,
-                    bgcolor: palette.dangerTint, color: palette.danger }}
-            />
-          )}
-        </Stack>
+        </Box>
       </Stack>
 
       <Box sx={{ mt: 2, display: 'grid', gap: 1, gridTemplateColumns: 'repeat(4, 1fr)' }}>
