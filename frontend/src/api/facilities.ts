@@ -300,6 +300,12 @@ export interface SiteOverview {
   permits: { active: number }
   assets: { total: number }
   fixtures: { total: number; faulty: number }
+  inspections?: {
+    failed: number
+    open: number
+    passed: number
+    status: 'pass' | 'sealed' | 'under_review'
+  }
 }
 
 /** Everything one site's dashboard opens on, in a single request. */

@@ -18,7 +18,10 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import SearchIcon from '@mui/icons-material/Search'
-import { fetchFacilities, type Facility } from '@/api/facilities'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import LockIcon from '@mui/icons-material/Lock'
+import PendingActionsIcon from '@mui/icons-material/PendingActions'
+import { fetchFacilities, type Facility, type SiteOverview } from '@/api/facilities'
 import { hasPermission } from '@/config/permissions'
 import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
@@ -138,6 +141,69 @@ export default function SitesPage() {
   )
 }
 
+function InspectionBadge({ status }: { status: 'pass' | 'sealed' | 'under_review' }) {
+  if (status === 'sealed') {
+    return (
+      <Chip
+        size="small"
+        icon={<LockIcon sx={{ fontSize: '13px !important', color: '#B91C1C !important' }} />}
+        label="Sealed"
+        sx={{
+          height: 23,
+          fontWeight: 900,
+          fontSize: 11,
+          letterSpacing: 0.3,
+          bgcolor: '#FEE2E2',
+          color: '#991B1B',
+          border: '1px solid #FCA5A5',
+          boxShadow: '0 2px 5px rgba(185,28,28,0.12)',
+          '& .MuiChip-icon': { ml: 0.8 },
+        }}
+      />
+    )
+  }
+
+  if (status === 'under_review') {
+    return (
+      <Chip
+        size="small"
+        icon={<PendingActionsIcon sx={{ fontSize: '13px !important', color: '#B45309 !important' }} />}
+        label="Under Review"
+        sx={{
+          height: 23,
+          fontWeight: 900,
+          fontSize: 11,
+          letterSpacing: 0.3,
+          bgcolor: '#FEF3C7',
+          color: '#92400E',
+          border: '1px solid #FCD34D',
+          boxShadow: '0 2px 5px rgba(180,83,9,0.12)',
+          '& .MuiChip-icon': { ml: 0.8 },
+        }}
+      />
+    )
+  }
+
+  return (
+    <Chip
+      size="small"
+      icon={<CheckCircleIcon sx={{ fontSize: '13px !important', color: '#047857 !important' }} />}
+      label="Pass"
+      sx={{
+        height: 23,
+        fontWeight: 900,
+        fontSize: 11,
+        letterSpacing: 0.3,
+        bgcolor: '#ECFDF5',
+        color: '#065F46',
+        border: '1px solid #6EE7B7',
+        boxShadow: '0 2px 5px rgba(4,120,87,0.12)',
+        '& .MuiChip-icon': { ml: 0.8 },
+      }}
+    />
+  )
+}
+
 function SiteCard({ site, onOpen }: { site: Facility; onOpen: () => void }) {
   // Each card asks for its own numbers. A handful of small parallel requests
   // beats one endpoint that has to aggregate every site whether or not the
@@ -152,21 +218,27 @@ function SiteCard({ site, onOpen }: { site: Facility; onOpen: () => void }) {
   })
 
   const attention = (overview?.work.critical ?? 0) + (overview?.compliance.overdue ?? 0)
+  const inspectionStatus = overview?.inspections?.status ?? 'pass'
+  const isSealed = inspectionStatus === 'sealed'
 
   return (
     <Box
       onClick={onOpen}
       sx={{
         p: 2.25, borderRadius: '18px', cursor: 'pointer', bgcolor: palette.white,
-        border: `1px solid ${palette.borderSoft}`, transition: 'all .16s ease',
-        '&:hover': { borderColor: palette.brandBorder, transform: 'translateY(-2px)',
-                     boxShadow: palette.shadowCard },
+        border: isSealed ? '1.5px solid #FCA5A5' : `1px solid ${palette.borderSoft}`,
+        boxShadow: isSealed ? '0 4px 16px rgba(220,38,38,0.08)' : 'none',
+        transition: 'all .16s ease', position: 'relative', overflow: 'hidden',
+        '&:hover': { borderColor: isSealed ? '#EF4444' : palette.brandBorder,
+                     transform: 'translateY(-2px)',
+                     boxShadow: isSealed ? '0 10px 24px rgba(220,38,38,0.14)' : palette.shadowCard },
       }}
     >
       <Stack direction="row" alignItems="flex-start" spacing={1.25}>
         <Box sx={{ width: 42, height: 42, borderRadius: '13px', flexShrink: 0,
                    display: 'grid', placeItems: 'center',
-                   bgcolor: palette.brandTint, color: palette.brand }}>
+                   bgcolor: isSealed ? '#FEE2E2' : palette.brandTint,
+                   color: isSealed ? '#DC2626' : palette.brand }}>
           <ApartmentIcon />
         </Box>
         <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -177,13 +249,16 @@ function SiteCard({ site, onOpen }: { site: Facility; onOpen: () => void }) {
             {[site.city, site.state].filter(Boolean).join(', ') || site.address}
           </Typography>
         </Box>
-        {attention > 0 && (
-          <Chip
-            size="small" label={attention}
-            sx={{ height: 22, minWidth: 22, fontWeight: 900, fontSize: 11,
-                  bgcolor: palette.dangerTint, color: palette.danger }}
-          />
-        )}
+        <Stack direction="row" alignItems="center" spacing={0.75}>
+          <InspectionBadge status={inspectionStatus} />
+          {attention > 0 && (
+            <Chip
+              size="small" label={attention}
+              sx={{ height: 22, minWidth: 22, fontWeight: 900, fontSize: 11,
+                    bgcolor: palette.dangerTint, color: palette.danger }}
+            />
+          )}
+        </Stack>
       </Stack>
 
       <Box sx={{ mt: 2, display: 'grid', gap: 1, gridTemplateColumns: 'repeat(4, 1fr)' }}>

@@ -93,6 +93,63 @@ def build(db: Session, facility_id: int) -> dict:
         Fixture.status == "faulty",
     ).scalar() or 0
 
+    # Equipment category inspection metrics
+    sr_failed = db.query(func.count(ServiceRequest.id)).join(
+        Equipment, Equipment.id == ServiceRequest.equipment_id
+    ).filter(
+        ServiceRequest.facility_id == facility_id,
+        Equipment.name.isnot(None),
+        ServiceRequest.work_order_type == "inspection",
+        ServiceRequest.inspection_result == "fail",
+        ServiceRequest.status != "cancelled",
+    ).scalar() or 0
+
+    sr_open = db.query(func.count(ServiceRequest.id)).join(
+        Equipment, Equipment.id == ServiceRequest.equipment_id
+    ).filter(
+        ServiceRequest.facility_id == facility_id,
+        Equipment.name.isnot(None),
+        ServiceRequest.work_order_type == "inspection",
+        ServiceRequest.status.in_(["new", "assigned", "in_progress", "waiting_on_parts", "waiting_for_approval", "waiting_for_depot_repair", "waiting_for_vendor_repair"]),
+    ).scalar() or 0
+
+    sr_passed = db.query(func.count(ServiceRequest.id)).join(
+        Equipment, Equipment.id == ServiceRequest.equipment_id
+    ).filter(
+        ServiceRequest.facility_id == facility_id,
+        Equipment.name.isnot(None),
+        ServiceRequest.work_order_type == "inspection",
+        ServiceRequest.inspection_result == "pass",
+    ).scalar() or 0
+
+    from app.models.inspection import Inspection, InspectionResult, InspectionStatus
+    insp_failed = db.query(func.count(Inspection.id)).filter(
+        Inspection.facility_id == facility_id,
+        Inspection.result == InspectionResult.FAIL,
+    ).scalar() or 0
+
+    insp_open = db.query(func.count(Inspection.id)).filter(
+        Inspection.facility_id == facility_id,
+        (Inspection.result == InspectionResult.PENDING) | (Inspection.status.in_([InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS, InspectionStatus.OVERDUE])),
+    ).scalar() or 0
+
+    insp_passed = db.query(func.count(Inspection.id)).filter(
+        Inspection.facility_id == facility_id,
+        Inspection.result == InspectionResult.PASS,
+        Inspection.status == InspectionStatus.COMPLETED,
+    ).scalar() or 0
+
+    total_failed = int(sr_failed + insp_failed)
+    total_open = int(sr_open + insp_open)
+    total_passed = int(sr_passed + insp_passed)
+
+    if total_failed > 0:
+        inspection_status = "sealed"
+    elif total_open > 0:
+        inspection_status = "under_review"
+    else:
+        inspection_status = "pass"
+
     return {
         "facility_id": facility_id,
         "estate": {
@@ -119,4 +176,10 @@ def build(db: Session, facility_id: int) -> dict:
         "permits": {"active": int(permits_active)},
         "assets": {"total": int(assets_total)},
         "fixtures": {"total": int(fixtures_total), "faulty": int(fixtures_faulty)},
+        "inspections": {
+            "failed": total_failed,
+            "open": total_open,
+            "passed": total_passed,
+            "status": inspection_status,
+        },
     }
