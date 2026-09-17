@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Box, InputBase, Tooltip, Typography } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
 import DashboardIcon from '@mui/icons-material/Dashboard'
-import BusinessIcon from '@mui/icons-material/Business'
 import HandshakeIcon from '@mui/icons-material/Handshake'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
@@ -66,7 +65,6 @@ const groupOrder: ModuleGroup[] = [
 ]
 
 const allMenuItems: SidebarItem[] = [
-  { text: 'Sites', description: 'The hospitals you run — open one to work in it', icon: <BusinessIcon />, path: '/sites', module: 'facilities', group: 'Overview', scope: 'org' },
   { text: 'Dashboard', description: 'Your operational overview', icon: <DashboardIcon />, path: '/dashboard', module: 'dashboard', group: 'Overview' },
   // A site's equipment, by category, and the work done on it. First, because
   // it is where the work of a site now starts.
