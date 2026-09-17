@@ -27,6 +27,7 @@ import AppsRoundedIcon from '@mui/icons-material/AppsRounded'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
+import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
@@ -126,6 +127,7 @@ const Sidebar = () => {
   const user = useAuthStore((state) => state.user)
   const [launcherOpen, setLauncherOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [expandedGroups, setExpandedGroups] = useState<Set<ModuleGroup>>(new Set())
 
   const { facility } = useActiveFacility()
   const visibleModules = getVisibleModules(user)
@@ -171,6 +173,16 @@ const Sidebar = () => {
   const closeLauncher = () => {
     setLauncherOpen(false)
     setSearch('')
+    setExpandedGroups(new Set())
+  }
+
+  const toggleGroup = (group: ModuleGroup) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(group)) next.delete(group)
+      else next.add(group)
+      return next
+    })
   }
 
   const openModule = (path: string) => {
@@ -199,16 +211,121 @@ const Sidebar = () => {
   const pathFor = (item: SidebarItem) =>
     item.module === 'dashboard' && facility ? `/sites/${facility.id}` : item.path
 
+  /** Groups whose items should collapse under a dropdown toggle. */
+  const COLLAPSIBLE_GROUPS: ModuleGroup[] = ['Facility']
+
   /** One section of the launcher. Shared so the two cannot drift apart. */
   const renderGroups = (groups: Array<{ group: ModuleGroup; items: SidebarItem[] }>) =>
-    groups.map(({ group, items }) => (
+    groups.map(({ group, items }) => {
+      const collapsible = COLLAPSIBLE_GROUPS.includes(group)
+      const expanded = expandedGroups.has(group)
+      const anyActive = items.some(isActive)
+
+      return (
                 <Box key={group} sx={{ mb: 1.75 }}>
-                  <Typography sx={{ px: 0.75, mb: 0.7, color: '#8992A4', fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
-                    {group}
-                  </Typography>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 0.75 }}>
+                  {collapsible ? (
+                    /* ── Collapsible group header ─────────────────────── */
+                    <Box
+                      component="button" type="button"
+                      onClick={() => toggleGroup(group)}
+                      aria-expanded={expanded}
+                      sx={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 0.5,
+                        px: 0.75, py: 0.5, mb: 0.5, border: 0, borderRadius: '10px',
+                        cursor: 'pointer', bgcolor: 'transparent',
+                        transition: 'background-color 140ms ease',
+                        '&:hover': { bgcolor: '#f1faf6' },
+                        '&:focus-visible': { outline: '3px solid rgba(4,120,87,0.2)', outlineOffset: 1 },
+                      }}
+                    >
+                      <KeyboardArrowDownRoundedIcon
+                        sx={{
+                          fontSize: 18, color: anyActive ? palette.brand : '#8992A4',
+                          transition: 'transform 200ms ease',
+                          transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                        }}
+                      />
+                      <Typography
+                        sx={{
+                          color: anyActive ? palette.brand : '#8992A4',
+                          fontSize: '0.67rem', fontWeight: 900,
+                          letterSpacing: '0.11em', textTransform: 'uppercase',
+                        }}
+                      >
+                        {group}
+                      </Typography>
+                      {!expanded && anyActive && (
+                        <Box sx={{ ml: 'auto', width: 7, height: 7, borderRadius: '50%', bgcolor: palette.brand }} />
+                      )}
+                    </Box>
+                  ) : (
+                    /* ── Normal static group header ───────────────────── */
+                    <Typography sx={{ px: 0.75, mb: 0.7, color: '#8992A4', fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
+                      {group}
+                    </Typography>
+                  )}
+
+                  {/* ── Items: grid for normal groups, vertical list for collapsible ── */}
+                  <Box
+                    sx={collapsible ? {
+                      display: 'flex', flexDirection: 'column', gap: 0.25,
+                      maxHeight: expanded ? `${items.length * 56}px` : '0px',
+                      overflow: 'hidden',
+                      transition: 'max-height 260ms cubic-bezier(0.4, 0, 0.2, 1)',
+                    } : {
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+                      gap: 0.75,
+                    }}
+                  >
                     {items.map((item) => {
                       const active = isActive(item)
+
+                      if (collapsible) {
+                        /* ── Compact dropdown row for collapsible groups ── */
+                        return (
+                          <Box
+                            key={item.path} component="button" type="button" onClick={() => openModule(pathFor(item))}
+                            aria-current={active ? 'page' : undefined}
+                            sx={{
+                              minWidth: 0, display: 'flex', alignItems: 'center', gap: 1,
+                              px: 1.25, py: 0.85, textAlign: 'left', borderRadius: '12px',
+                              border: active ? '1px solid rgba(4,120,87,0.28)' : '1px solid transparent',
+                              background: active ? 'linear-gradient(135deg, #effffb 0%, #f6fff9 100%)' : 'transparent',
+                              cursor: 'pointer', color: palette.ink,
+                              transition: 'transform 140ms ease, background-color 140ms ease, border-color 140ms ease',
+                              '&:hover': {
+                                bgcolor: active ? undefined : '#f7fcfb',
+                                borderColor: active ? undefined : palette.brandBorder,
+                              },
+                              '&:focus-visible': { outline: '3px solid rgba(4,120,87,0.2)', outlineOffset: 1 },
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: 32, height: 32, borderRadius: '10px', flexShrink: 0,
+                                display: 'grid', placeItems: 'center',
+                                color: active ? '#fff' : palette.brandLight,
+                                background: active
+                                  ? `linear-gradient(135deg, ${palette.brand}, ${palette.accent})`
+                                  : palette.brandTint,
+                                boxShadow: active ? '0 6px 14px rgba(4,120,87,0.18)' : 'none',
+                                '& svg': { fontSize: 17 },
+                              }}
+                            >
+                              {item.icon}
+                            </Box>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                              <Typography noWrap sx={{ fontSize: '0.8rem', fontWeight: 850, color: palette.brandDeep, lineHeight: 1.25 }}>
+                                {item.text}
+                              </Typography>
+                            </Box>
+                            <ArrowForwardRoundedIcon sx={{ fontSize: 15, color: active ? palette.brandPale : '#C0C5D0', flexShrink: 0 }} />
+                          </Box>
+                        )
+                      }
+
+                      /* ── Standard tile for normal groups ── */
                       return (
                         <Box
                           key={item.path} component="button" type="button" onClick={() => openModule(pathFor(item))}
@@ -251,7 +368,8 @@ const Sidebar = () => {
                     })}
                   </Box>
                 </Box>
-    ))
+      )
+    })
 
   return (
     <Box

@@ -1,5 +1,5 @@
 /**
- * The four categories and two kinds of maintenance job, as navigation knows
+ * The seven categories and two kinds of maintenance job, as navigation knows
  * them. Names and counts come from the server; this is only what a menu needs
  * before any data has loaded.
  */
@@ -7,6 +7,9 @@ import ElectricBoltIcon from '@mui/icons-material/ElectricBolt'
 import PlumbingIcon from '@mui/icons-material/Plumbing'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
 import AcUnitIcon from '@mui/icons-material/AcUnit'
+import ApartmentIcon from '@mui/icons-material/Apartment'
+import YardIcon from '@mui/icons-material/Yard'
+import LocalParkingIcon from '@mui/icons-material/LocalParking'
 import HomeRepairServiceIcon from '@mui/icons-material/HomeRepairService'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
 import EventRepeatIcon from '@mui/icons-material/EventRepeat'
@@ -14,7 +17,7 @@ import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
 import type { CategoryCode, Condition, JobKind } from '@/api/siteCategories'
 import type { Module } from '@/config/permissions'
 
-/** What the four categories are called wherever they appear together. */
+/** What the categories are called wherever they appear together. */
 export const CATEGORIES_LABEL = 'Facility'
 
 export interface CategoryMeta {
@@ -30,6 +33,9 @@ export const CATEGORIES: CategoryMeta[] = [
   { code: 'plumbing', name: 'Plumbing', colour: '#2563EB', icon: <PlumbingIcon />, path: '/categories/plumbing' },
   { code: 'mechanical', name: 'Mechanical', colour: '#0369A1', icon: <PrecisionManufacturingIcon />, path: '/categories/mechanical' },
   { code: 'hvac', name: 'HVAC', colour: '#0F766E', icon: <AcUnitIcon />, path: '/categories/hvac' },
+  { code: 'building', name: 'Building', colour: '#7C3AED', icon: <ApartmentIcon />, path: '/categories/building' },
+  { code: 'landscaping', name: 'Landscaping', colour: '#16A34A', icon: <YardIcon />, path: '/categories/landscaping' },
+  { code: 'parking', name: 'Parking', colour: '#6366F1', icon: <LocalParkingIcon />, path: '/categories/parking' },
 ]
 
 export const CATEGORY_BY_CODE = Object.fromEntries(CATEGORIES.map((c) => [c.code, c])) as Record<CategoryCode, CategoryMeta>

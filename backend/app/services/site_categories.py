@@ -65,6 +65,21 @@ CATEGORIES: tuple[Category, ...] = (
         ("Chiller", "Air handling unit", "Fan coil unit", "Split / package AC", "Cooling tower",
          "Exhaust fan"),
     ),
+    Category(
+        "building", "Building", "#8B5CF6",
+        "Structural elements, roofing, facade, doors, windows, interior finishes", 40,
+        ("Roofing", "Facade", "Doors & Locks", "Windows & Glazing", "Walls & Ceiling", "Flooring & Tiles"),
+    ),
+    Category(
+        "landscaping", "Landscaping", "#10B981",
+        "Lawns, trees, irrigation systems, garden features, hardscaping", 50,
+        ("Lawn & Grass", "Irrigation System", "Trees & Shrubs", "Garden Lighting", "Fences & Gates", "Paved Paths"),
+    ),
+    Category(
+        "parking", "Parking", "#6366F1",
+        "Parking lots, boom barriers, striping, signage, EV chargers", 60,
+        ("Boom Barrier", "Parking Meters", "EV Charging Station", "Signage & Markings", "Lighting Poles", "Security Cameras"),
+    ),
 )
 BY_CODE = {category.code: category for category in CATEGORIES}
 

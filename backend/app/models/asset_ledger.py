@@ -99,6 +99,9 @@ DEFAULT_USEFUL_LIFE_YEARS: dict[str, int] = {
     "fire_life_safety": 15,
     "medical_gas": 20,
     "building_envelope": 25,
+    "building": 25,
+    "landscaping": 15,
+    "parking": 15,
     "it_low_voltage": 7,
     "biomedical": 7,              # clinical equipment turns over faster
 }

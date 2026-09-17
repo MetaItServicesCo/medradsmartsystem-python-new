@@ -4,7 +4,7 @@
  */
 import apiClient from './client'
 
-export type CategoryCode = 'electrical' | 'plumbing' | 'mechanical' | 'hvac'
+export type CategoryCode = 'electrical' | 'plumbing' | 'mechanical' | 'hvac' | 'building' | 'landscaping' | 'parking'
 export type Condition = 'working' | 'needs_attention' | 'out_of_service'
 export type JobKind = 'service' | 'inspection'
 export type JobStatus = 'open' | 'in_progress' | 'done'

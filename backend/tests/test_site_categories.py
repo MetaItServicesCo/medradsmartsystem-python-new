@@ -129,14 +129,14 @@ def test_the_four_categories_exist_even_on_a_database_without_disciplines():
     db, site, _, people = build()
     assert db.query(Discipline).count() == 0
     result = overview(db, people["manager"], site)
-    assert [c["name"] for c in result["categories"]] == ["Electrical", "Plumbing", "Mechanical", "HVAC"]
+    assert [c["name"] for c in result["categories"]] == ["Electrical", "Plumbing", "Mechanical", "HVAC", "Building", "Landscaping", "Parking"]
     assert all(c["equipment"] == 0 and c["open_jobs"] == 0 for c in result["categories"])
     assert "Generator" in result["categories"][0]["types"] and "Chiller" in result["categories"][3]["types"]
-    assert {d.code for d in db.query(Discipline).all()} == {"electrical", "plumbing", "mechanical", "hvac"}
+    assert {d.code for d in db.query(Discipline).all()} == {"electrical", "plumbing", "mechanical", "hvac", "building", "landscaping", "parking"}
     overview(db, people["manager"], site)
-    assert db.query(Discipline).count() == 4, "asking twice creates nothing twice"
+    assert db.query(Discipline).count() == 7, "asking twice creates nothing twice"
     db.close()
-    print("ok  the four categories are there on a fresh database, created once")
+    print("ok  the categories are there on a fresh database, created once")
 
 
 def test_equipment_is_added_with_a_tag_and_where_exactly_it_is():
@@ -177,7 +177,7 @@ def test_the_lists_start_empty_and_only_show_their_own_category():
     assert [i["name"] for i in listing(db, people["tech"], site, "electrical")["items"]] == ["Generator 1"]
     assert [i["name"] for i in listing(db, people["tech"], site, "hvac")["items"]] == ["Chiller 1"]
     counts = {c["code"]: c["equipment"] for c in overview(db, people["tech"], site)["categories"]}
-    assert counts == {"electrical": 1, "plumbing": 0, "mechanical": 0, "hvac": 1}
+    assert counts == {"electrical": 1, "plumbing": 0, "mechanical": 0, "hvac": 1, "building": 0, "landscaping": 0, "parking": 0}
     db.close()
     print("ok  older assets stay out; each category lists only its own equipment")
 

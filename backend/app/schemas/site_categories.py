@@ -15,7 +15,7 @@ from app.schemas.money import Money
 UsefulLife = Annotated[Decimal, Field(gt=0, le=Decimal("100"), decimal_places=2)]
 
 Condition = Literal["working", "needs_attention", "out_of_service"]
-CategoryCode = Literal["electrical", "plumbing", "mechanical", "hvac"]
+CategoryCode = Literal["electrical", "plumbing", "mechanical", "hvac", "building", "landscaping", "parking"]
 JobKind = Literal["service", "inspection"]
 JobStatus = Literal["open", "in_progress", "done"]
 InspectionResult = Literal["pass", "fail"]

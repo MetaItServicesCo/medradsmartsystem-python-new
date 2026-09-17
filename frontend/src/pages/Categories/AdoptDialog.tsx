@@ -22,6 +22,7 @@ import { Section, Suggesting } from './EquipmentDialog'
 
 const TRADE_TO_CATEGORY: Record<string, CategoryCode> = {
   electrical: 'electrical', plumbing: 'plumbing', mechanical: 'mechanical', hvac: 'hvac',
+  building: 'building', building_envelope: 'building', landscaping: 'landscaping', parking: 'parking',
   vertical_transport: 'mechanical', medical_gas: 'mechanical', fire_life_safety: 'mechanical',
 }
 
