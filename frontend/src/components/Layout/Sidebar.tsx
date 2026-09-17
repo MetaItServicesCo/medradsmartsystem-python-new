@@ -39,8 +39,7 @@ import { palette } from '@/theme/palette'
 // contractor managing many client sites did.
 type ModuleGroup =
   | 'Overview' | 'Facility' | 'Equipment Maintenance'
-  | 'The Building' | 'Assets'
-  | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
+  | 'Assets' | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
 
 /**
  * Whether a module belongs to one hospital or to the organisation above them.
@@ -64,7 +63,7 @@ interface SidebarItem {
 }
 
 const groupOrder: ModuleGroup[] = [
-  'Overview', 'Facility', 'Equipment Maintenance', 'The Building', 'Assets',
+  'Overview', 'Facility', 'Equipment Maintenance', 'Assets',
   'Compliance', 'People', 'Commerce', 'Workspace',
 ]
 
@@ -77,14 +76,14 @@ const allMenuItems: SidebarItem[] = [
     text: category.name, description: `${category.name} equipment and where it is`,
     icon: category.icon, path: category.path, module: 'facility-inventory', group: 'Facility',
   })),
+  { text: 'Buildings & Rooms', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'Facility' },
+  { text: 'Beds & Theatres', description: 'Availability and capacity lost', icon: <MeetingRoomIcon />, path: '/spaces', module: 'spaces', group: 'Facility' },
   // Service and Inspection replace Work Orders and the older Inspections
   // module in the menu; those pages still open from links.
   ...EQUIPMENT_MAINTENANCE.map((link): SidebarItem => ({
     text: link.name, description: link.description,
     icon: link.icon, path: link.path, module: link.module, group: 'Equipment Maintenance',
   })),
-  { text: 'Buildings & Rooms', description: 'Buildings, floors, rooms, and beds', icon: <MapIcon />, path: '/locations', module: 'locations', group: 'The Building' },
-  { text: 'Beds & Theatres', description: 'Availability and capacity lost', icon: <MeetingRoomIcon />, path: '/spaces', module: 'spaces', group: 'The Building' },
   { text: 'Contractors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Compliance' },
   { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
   { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Assets' },
@@ -212,7 +211,16 @@ const Sidebar = () => {
     item.module === 'dashboard' && facility ? `/sites/${facility.id}` : item.path
 
   /** Groups whose items should collapse under a dropdown toggle. */
-  const COLLAPSIBLE_GROUPS: ModuleGroup[] = ['Facility']
+  const COLLAPSIBLE_GROUPS: ModuleGroup[] = [
+    'Facility', 'Equipment Maintenance', 'Assets',
+    'Compliance', 'People', 'Commerce', 'Workspace',
+  ]
+
+  useEffect(() => {
+    if (launcherOpen && currentItem && COLLAPSIBLE_GROUPS.includes(currentItem.group)) {
+      setExpandedGroups((prev) => new Set([...prev, currentItem.group]))
+    }
+  }, [launcherOpen, currentItem])
 
   /** One section of the launcher. Shared so the two cannot drift apart. */
   const renderGroups = (groups: Array<{ group: ModuleGroup; items: SidebarItem[] }>) =>
@@ -269,7 +277,7 @@ const Sidebar = () => {
                   <Box
                     sx={collapsible ? {
                       display: 'flex', flexDirection: 'column', gap: 0.25,
-                      maxHeight: expanded ? `${items.length * 56}px` : '0px',
+                      maxHeight: expanded ? `${items.length * 64}px` : '0px',
                       overflow: 'hidden',
                       transition: 'max-height 260ms cubic-bezier(0.4, 0, 0.2, 1)',
                     } : {
