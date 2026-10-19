@@ -57,12 +57,19 @@ def require_internal_caller(
         )
 
 
-def require_superadmin(current_user: User = Depends(get_current_user)) -> User:
-    """The assistant is a Super Admin capability in this release."""
-    if current_user.role != UserRole.SUPERADMIN:
+def require_assistant_user(current_user: User = Depends(get_current_user)) -> User:
+    """Anyone signed in may run tools -- as themselves.
+
+    This endpoint never widens what the caller can do. Every tool checks
+    the module permission it needs against this user, rows are scoped to
+    the facilities they may see, and the tool list they are offered is
+    filtered to what they could actually run. The role gate that used to
+    sit here was a blunt second copy of all that.
+    """
+    if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="The assistant is available to Super Admin accounts only.",
+            detail="This account is not active.",
         )
     return current_user
 
@@ -96,7 +103,7 @@ def _coerce_dates(arguments: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/tools", dependencies=[Depends(require_internal_caller)])
 def list_tools(
-    current_user: User = Depends(require_superadmin),
+    current_user: User = Depends(require_assistant_user),
 ) -> Any:
     """Tool schemas the agent may offer, filtered to what this user can use.
 
@@ -134,7 +141,7 @@ def execute_tool(
     tool_name: str,
     payload: ToolCallRequest = Body(default_factory=ToolCallRequest),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_superadmin),
+    current_user: User = Depends(require_assistant_user),
 ) -> Any:
     """Run one tool as the requesting user.
 
@@ -199,7 +206,7 @@ def execute_tool(
 def knowledge_search(
     payload: KnowledgeSearchRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_superadmin),
+    current_user: User = Depends(require_assistant_user),
 ) -> Any:
     """Retrieve supporting passages this user is allowed to read.
 

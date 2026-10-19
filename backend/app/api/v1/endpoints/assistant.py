@@ -47,8 +47,10 @@ router = APIRouter()
 # saying why.
 voice_router = APIRouter()
 
-# A Super Admin asking questions is low-volume by nature. This ceiling exists to
-# bound model spend if the UI misbehaves, not to police normal use.
+# Per user, per five minutes. It bounds model spend if the UI misbehaves
+# rather than policing normal use -- but it matters more than it did, now
+# that the ceiling applies to everybody with an account rather than to the
+# handful of people who held the Super Admin role.
 ASK_LIMIT_PER_WINDOW = 40
 ASK_WINDOW_SECONDS = 300
 
@@ -68,11 +70,24 @@ class AskRequest(BaseModel):
     voice: bool = False
 
 
-def require_superadmin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != UserRole.SUPERADMIN:
+def require_assistant_user(current_user: User = Depends(get_current_user)) -> User:
+    """Anyone signed in may talk to the assistant.
+
+    It was Super Admin only, and that was the right call while it was the
+    only thing standing between a question and the whole business: the
+    tools were scoped to the asker but the knowledge base was not, so a
+    technician would have been handed a full walkthrough of Billing.
+
+    Both paths are filtered on the same permission check now, and the write
+    tools ask for add or edit per module on top of that. With that in place
+    the role gate was no longer protecting anything -- it was only refusing
+    a technician the one question that is most worth asking, which is where
+    their next call is.
+    """
+    if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="The assistant is available to Super Admin accounts only.",
+            detail="This account is not active.",
         )
     return current_user
 
@@ -103,13 +118,14 @@ def assistant_status(current_user: User = Depends(get_current_user)) -> Any:
 
     payload = {
         "enabled": bool(settings.ASSISTANT_ENABLED and settings.ASSISTANT_INTERNAL_KEY.strip()),
-        "available_to_user": current_user.role == UserRole.SUPERADMIN,
+        "available_to_user": bool(current_user.is_active),
+        "voice_enabled": bool((settings.SPEECH_SERVICE_URL or "").strip()),
     }
     # Super Admins can confirm the knowledge base tracks the deployed code
-    # without reading container logs.
+    # without reading container logs. Nobody else has a use for it, and it
+    # names every module in the system.
     if current_user.role == UserRole.SUPERADMIN:
         payload["knowledge_base"] = last_refresh()
-        payload["voice_enabled"] = bool((settings.SPEECH_SERVICE_URL or "").strip())
     return payload
 
 
@@ -118,7 +134,7 @@ async def ask(
     payload: AskRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_superadmin),
+    current_user: User = Depends(require_assistant_user),
     authorization: Optional[str] = Header(None),
 ) -> StreamingResponse:
     """Ask the assistant a question; responses stream back as SSE."""
@@ -217,8 +233,6 @@ def _voice_stream_user(token: str) -> Optional[User]:
         if not user or not user.is_active:
             return None
         if payload.get("ver") != password_token_version(user.hashed_password):
-            return None
-        if user.role != UserRole.SUPERADMIN:
             return None
         # Detached from the session it was loaded in, so only the values read
         # here remain valid.
@@ -388,7 +402,7 @@ async def speech_stream(websocket: WebSocket, token: str) -> None:
 @router.post("/speech/tts")
 async def text_to_speech(
     payload: SpeakRequest,
-    current_user: User = Depends(require_superadmin),
+    current_user: User = Depends(require_assistant_user),
 ) -> Response:
     """Speak an answer. Returns WAV audio produced by the speech service."""
     _enforce_rate_limit(current_user.id)
@@ -420,7 +434,7 @@ async def text_to_speech(
 @router.post("/speech/stt")
 async def speech_to_text(
     audio: UploadFile = File(...),
-    current_user: User = Depends(require_superadmin),
+    current_user: User = Depends(require_assistant_user),
 ) -> Any:
     """Transcribe a spoken question. The recording is never stored."""
     _enforce_rate_limit(current_user.id)

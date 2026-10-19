@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from app.assistant import actions
-from app.assistant.tools import analytics, attendance, commerce, entities
+from app.assistant.tools import analytics, attendance, commerce, entities, me
 from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
@@ -94,6 +94,47 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "required": ["kind", "query"],
         },
         handler=entities.resolve_entity,
+    ),
+
+    # ---- The asker's own day ---------------------------------------------
+    #
+    # module="platform" so these are offered to everybody. The permission
+    # work happens inside: each source of a day is included only if the
+    # person may see that module, and the asker is never a parameter, so
+    # these cannot be aimed at somebody else.
+    ToolDefinition(
+        name="my_schedule",
+        module="platform",
+        description=(
+            "What the person asking has on, in a date window. Use this for "
+            "ANY question in the first person about their own time: \"what is my schedule tomorrow\", \"what have I got on Friday\", \"am I busy next week\", \"when am I off\". Covers their assigned service requests, "
+            "inspections they are inspecting, their calendar and meetings, "
+            "and their approved leave -- whichever of those they have "
+            "access to. Never use a general search tool to answer a "
+            "question about the asker: this one knows who they are and "
+            "cannot be pointed at anybody else."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100,
+                          "default": 25},
+            },
+        },
+        handler=me.my_schedule,
+    ),
+    ToolDefinition(
+        name="my_next_commitment",
+        module="platform",
+        description=(
+            "The next single thing on the asker's own schedule, with where "
+            "it is. Use for \"where is my next call\", \"what is next for me\", \"what am I doing next\". Returns the facility name and address "
+            "when the job is at a site."
+        ),
+        parameters={"type": "object", "properties": {}},
+        handler=me.my_next_commitment,
     ),
     ToolDefinition(
         name="facility_detail",

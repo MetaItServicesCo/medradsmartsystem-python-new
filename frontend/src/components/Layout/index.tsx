@@ -126,7 +126,7 @@ const Layout = () => {
             </Box>
           </Box>
         </Box>
-        {/* Renders only for Super Admins, and only when the backend reports
+        {/* Renders for anyone signed in, and only when the backend reports
             the assistant is configured. */}
         <AssistantWidget />
       </Box>

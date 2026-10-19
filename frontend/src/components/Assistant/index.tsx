@@ -104,7 +104,7 @@ const WORKING_NODES = new Set(['use_tools', 'retrieve', 'gather'])
 const AssistantWidget = () => {
   const navigate = useNavigate()
   const currentUser = useAuthStore((state) => state.user)
-  const isSuperAdmin = currentUser?.role === 'superadmin'
+  const signedIn = Boolean(currentUser?.id)
 
   const [open, setOpen] = useState(false)
   const [question, setQuestion] = useState('')
@@ -145,7 +145,7 @@ const AssistantWidget = () => {
   const { data: status } = useQuery({
     queryKey: ['assistant-status', currentUser?.id],
     queryFn: fetchAssistantStatus,
-    enabled: Boolean(isSuperAdmin),
+    enabled: signedIn,
     staleTime: 5 * 60_000,
   })
 
@@ -228,7 +228,10 @@ const AssistantWidget = () => {
   // Every hook above runs unconditionally. Returning earlier changed the
   // hook count once the status query resolved, which React rejects
   // (error #310) and which took the whole page down with it.
-  if (!isSuperAdmin || !status?.enabled || !status?.available_to_user) return null
+  // The backend decides who may use it, and scopes every answer to that
+  // person. This only avoids offering a launcher to somebody the API
+  // would refuse; it is not itself the control.
+  if (!signedIn || !status?.enabled || !status?.available_to_user) return null
 
   const stop = () => {
     cancelRef.current?.()
