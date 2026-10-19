@@ -275,6 +275,9 @@ services:
       - AGENT_PROVIDER=${AGENT_PROVIDER:-anthropic}
       - AGENT_BASE_URL=${AGENT_BASE_URL:-}
       - AGENT_API_KEY=${AGENT_API_KEY:-}
+      # Used when AGENT_PROVIDER=groq, so the key already present for the
+      # voice service is not duplicated under another name.
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - AGENT_MODEL=${AGENT_MODEL:-claude-haiku-4-5}
       # Routing is one structured word in front of every question. A
       # smaller model there shortens every turn. Empty uses AGENT_MODEL.

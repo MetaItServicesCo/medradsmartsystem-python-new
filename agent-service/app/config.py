@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # talking to Groq is a question every reader has to stop and answer.
     AGENT_PROVIDER: str = "anthropic"
     ANTHROPIC_API_KEY: str = ""
+    # Read directly, so a deployment already carrying this for the voice
+    # service does not have to write the same secret twice under a second
+    # name -- and so the wrong key is never sent to Groq.
+    GROQ_API_KEY: str = ""
     # Used when AGENT_PROVIDER=openai. A local endpoint needs no key.
     AGENT_BASE_URL: str = ""
     AGENT_API_KEY: str = ""
@@ -61,7 +65,20 @@ class Settings(BaseSettings):
         return (self.AGENT_CLASSIFIER_MODEL or "").strip() or self.AGENT_MODEL
 
     def agent_api_key(self) -> str:
-        """Key for the active provider, falling back to the Anthropic one."""
+        """The key for whichever provider is active.
+
+        Matched to the provider rather than taken in a fixed order. A host
+        legitimately holds several keys at once -- Anthropic, Groq, an
+        OpenRouter key for something else -- and the previous rule took
+        AGENT_API_KEY first whatever it was for, so configuring Groq on a
+        box with an OpenRouter key sent that key to Groq and got a 401
+        that looked like a bad Groq key.
+        """
+        provider = self.agent_provider()
+        if provider == "groq":
+            return (self.GROQ_API_KEY or self.AGENT_API_KEY).strip()
+        if provider == "anthropic":
+            return (self.ANTHROPIC_API_KEY or self.AGENT_API_KEY).strip()
         return (self.AGENT_API_KEY or self.ANTHROPIC_API_KEY).strip()
 
     def agent_provider(self) -> str:

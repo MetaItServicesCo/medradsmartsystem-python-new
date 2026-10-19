@@ -31,7 +31,9 @@ import sys
 import time
 import wave
 
-BASE = os.environ.get("AGENT_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+# `or`, not a get() default: compose always sets AGENT_BASE_URL and leaves
+# it empty when unconfigured, so the default would never be reached.
+BASE = (os.environ.get("AGENT_BASE_URL") or "https://api.groq.com/openai/v1").rstrip("/")
 KEY = (os.environ.get("GROQ_API_KEY") or os.environ.get("AGENT_API_KEY") or "").strip()
 
 # Families that are not conversational models, however they are named. Keeping
