@@ -18,7 +18,7 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.assistant.kb.retrieval import search_knowledge
+from app.assistant.kb.retrieval import search_knowledge_for_user
 from app.assistant.tools.base import ToolContext
 from app.assistant.tools.registry import (
     TOOLS_BY_NAME,
@@ -201,18 +201,34 @@ def knowledge_search(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_superadmin),
 ) -> Any:
-    """Retrieve supporting passages from the generated knowledge base.
+    """Retrieve supporting passages this user is allowed to read.
 
-    Returns an empty list when nothing matches. The agent must treat that as
-    "no evidence" and say so rather than answering from the model's own prior
-    knowledge.
+    Returns an empty list when nothing matches. The agent must treat that
+    as "no evidence" and say so rather than answering from the model's own
+    prior knowledge.
+
+    Empty with a non-empty ``withheld_modules`` means something different,
+    and the two must not be confused: documentation exists, and this person
+    may not read it. Saying "I have no documentation on that" there would be
+    a lie that sends somebody hunting for a gap which does not exist.
     """
     started = time.perf_counter()
-    hits = search_knowledge(db, payload.query, module=payload.module, limit=payload.limit)
+    found = search_knowledge_for_user(
+        db, payload.query, current_user,
+        module=payload.module, limit=payload.limit,
+    )
+    if found.withheld_modules:
+        # Worth an audit line: it is the only record that somebody asked
+        # about a part of the system they cannot see.
+        logger.info(
+            "Knowledge withheld from %s: %s",
+            current_user.username, ", ".join(found.withheld_modules),
+        )
     return {
         "query": payload.query,
-        "count": len(hits),
-        "results": [hit.as_evidence() for hit in hits],
+        "count": len(found.hits),
+        "results": [hit.as_evidence() for hit in found.hits],
+        "withheld_modules": list(found.withheld_modules),
         "elapsed_ms": int((time.perf_counter() - started) * 1000),
         "generated_at": datetime.utcnow().isoformat() + "Z",
     }

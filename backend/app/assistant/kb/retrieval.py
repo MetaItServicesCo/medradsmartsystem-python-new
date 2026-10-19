@@ -314,3 +314,80 @@ def search_knowledge(
 
     kinds = infer_preferred_kinds(query) if preferred_kinds is None else preferred_kinds
     return _fuse(legs, limit, kinds)
+
+# ---------------------------------------------------------------------------
+# Retrieval, scoped to what the asker may see
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ScopedKnowledge:
+    """Passages this person may read, and which modules were held back."""
+
+    hits: list[RetrievedChunk]
+    withheld_modules: tuple[str, ...]
+
+
+def _may_read(user: Any, module: str) -> bool:
+    """Whether this person may see documentation for one module.
+
+    Modules outside the permission matrix -- "platform" and anything else
+    describing the application as a whole rather than a screen somebody is
+    granted -- are readable by everyone. Gating those would hide how to log
+    in from people who are logged in.
+    """
+    from app.utils.permissions import ALL_MODULES, has_module_permission
+
+    if module not in ALL_MODULES:
+        return True
+    return has_module_permission(user, module, "view")
+
+
+def search_knowledge_for_user(
+    db: Session,
+    query: str,
+    user: Any,
+    *,
+    module: Optional[str] = None,
+    limit: int = 6,
+    embedding: Optional[Sequence[float]] = None,
+) -> ScopedKnowledge:
+    """Retrieve passages, excluding modules this person cannot see.
+
+    The live-data tools have always been filtered by the asker's
+    permissions; the knowledge base was not. That produced an assistant that
+    would refuse to tell you how many sales invoices were overdue and then
+    explain, in detail, how to raise one -- teaching a procedure for a screen
+    the person cannot open.
+
+    What was withheld is reported rather than silently dropped. On an
+    internal tool, "you do not have access to Sales" is a more useful and
+    more honest answer than "I have no documentation on that", which is
+    false and sends people looking for a gap that is not there.
+    """
+    if module and not _may_read(user, module):
+        # Named a module they cannot see: answer without searching at all.
+        # This also reports the module when the knowledge base happens to
+        # hold nothing matching, which a filter-after-search cannot do.
+        return ScopedKnowledge(hits=[], withheld_modules=(module,))
+
+    # Over-fetch, because the top results may all be from a module that is
+    # about to be removed, and the person should still get what they can see.
+    candidates = search_knowledge(
+        db, query, module=module, limit=max(limit * 4, 24), embedding=embedding,
+    )
+
+    allowed: list[RetrievedChunk] = []
+    withheld: list[str] = []
+    decided: dict[str, bool] = {}
+    for hit in candidates:
+        if hit.module not in decided:
+            decided[hit.module] = _may_read(user, hit.module)
+        if decided[hit.module]:
+            allowed.append(hit)
+        elif hit.module not in withheld:
+            withheld.append(hit.module)
+
+    return ScopedKnowledge(
+        hits=allowed[:limit],
+        withheld_modules=tuple(withheld),
+    )

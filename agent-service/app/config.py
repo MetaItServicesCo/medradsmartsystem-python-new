@@ -1,7 +1,7 @@
 """Agent service configuration."""
 from __future__ import annotations
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -93,9 +93,14 @@ class Settings(BaseSettings):
             return "https://api.groq.com/openai/v1"
         return ""
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # extra="ignore" is load-bearing, not tidiness. One .env feeds eleven
+    # services, so this one is handed keys meant for the others as a matter
+    # of course. Without it, pydantic-settings refuses to start on the first
+    # unrecognised line in that file -- which is how a backend went down for
+    # an afternoon over variables it was never supposed to read.
+    model_config = SettingsConfigDict(
+        env_file=".env", case_sensitive=True, extra="ignore",
+    )
 
 
 settings = Settings()

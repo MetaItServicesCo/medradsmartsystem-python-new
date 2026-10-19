@@ -38,6 +38,7 @@ from app.prompts import (
     classifier_prompt,
     greeting_fallback,
     lookup_failed_message,
+    no_access_message,
     nothing_found_message,
     refusal_message,
     synthesis_prompt,
@@ -165,6 +166,10 @@ class AgentState(TypedDict, total=False):
 
     tool_results: list[dict[str, Any]]
     knowledge: list[dict[str, Any]]
+    # Modules the knowledge base holds documentation for and this person
+    # may not read. Empty results plus a non-empty list here is a very
+    # different answer from empty results alone.
+    withheld_modules: list[str]
     citations: list[dict[str, Any]]
     answer: str
     errors: list[str]
@@ -345,7 +350,8 @@ async def retrieve_node(state: AgentState) -> dict[str, Any]:
                 state["question"], module=state.get("module"), limit=6
             )
         except MedRadError as exc:
-            return {"knowledge": [], "errors": [str(exc)]}
+            return {"knowledge": [], "withheld_modules": [],
+                    "errors": [str(exc)]}
 
     results = payload.get("results", [])
     citations = [{
@@ -353,7 +359,11 @@ async def retrieve_node(state: AgentState) -> dict[str, Any]:
         "label": item.get("citation"),
         "module": item.get("module"),
     } for item in results]
-    return {"knowledge": results, "citations": citations}
+    return {
+        "knowledge": results,
+        "citations": citations,
+        "withheld_modules": payload.get("withheld_modules") or [],
+    }
 
 
 async def tools_node(state: AgentState) -> dict[str, Any]:
@@ -516,6 +526,9 @@ def _evidence_payload(state: AgentState) -> str:
                 for entry in state.get("tool_results", [])
             ],
             "knowledge_base": state.get("knowledge", []),
+            # Named so the model cannot read it as "no such feature".
+            "modules_this_person_cannot_access": state.get(
+                "withheld_modules", []),
             "errors": state.get("errors", []),
         },
         default=str,
@@ -526,8 +539,14 @@ async def synthesize_node(state: AgentState) -> dict[str, Any]:
     """Compose the final answer from gathered evidence only."""
     has_live = bool(state.get("tool_results"))
     has_knowledge = bool(state.get("knowledge"))
+    withheld = state.get("withheld_modules") or []
     if not has_live and not has_knowledge:
         spoken = bool(state.get("voice"))
+        # Checked before errors and before "nothing found", because it is
+        # the only one of the three that is actually true here: the
+        # documentation exists and this person may not read it.
+        if withheld:
+            return {"answer": no_access_message(withheld, spoken)}
         errors = state.get("errors") or []
         if errors:
             return {"answer": lookup_failed_message(errors[0], spoken)}
@@ -598,6 +617,7 @@ async def gather_node(state: AgentState) -> dict[str, Any]:
     return {
         "tool_results": tools.get("tool_results", []),
         "knowledge": knowledge.get("knowledge", []),
+        "withheld_modules": knowledge.get("withheld_modules") or [],
         "citations": (tools.get("citations") or []) + (knowledge.get("citations") or []),
         "errors": (tools.get("errors") or []) + (knowledge.get("errors") or []),
     }
@@ -665,6 +685,7 @@ async def run_agent(
         "voice": bool(voice),
         "tool_results": [],
         "knowledge": [],
+        "withheld_modules": [],
         "citations": [],
         "errors": [],
     }

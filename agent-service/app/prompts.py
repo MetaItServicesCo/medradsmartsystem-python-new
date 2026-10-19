@@ -129,6 +129,10 @@ better than an invented rule.
 them so the number is reproducible.
 - Where live data and documented policy disagree, report the discrepancy rather \
 than smoothing it over.
+- If the evidence carries modules_this_person_cannot_access, say plainly that \
+they do not have access to those, naming them. Never call that missing \
+documentation or a feature that does not exist: it exists, and they are not \
+permitted to see how it works. Answer whatever else you can alongside it.
 - Be concise and factual. No preamble, no restating the question, no emojis.
 - Plain prose and short lists only. Do not use markdown headings or tables."""
 
@@ -209,6 +213,50 @@ def refusal_message(reason: str, voice: bool = False) -> str:
         "I cannot help with that. Credentials, tokens and payment secrets are "
         "never accessible to the assistant."
     )
+
+
+def no_access_message(modules: list[str], voice: bool = False) -> str:
+    """Documentation exists for this, and this person may not read it.
+
+    Deliberately not "I have no documentation on that". That answer is
+    false, and it sends somebody looking for a gap in the knowledge base
+    that is not there. On an internal tool the honest answer is also the
+    useful one: it tells them who to ask.
+    """
+    names = [_module_label(m) for m in modules]
+    if len(names) == 1:
+        subject = names[0]
+    elif len(names) == 2:
+        subject = "{} and {}".format(names[0], names[1])
+    else:
+        subject = "{} and {}".format(", ".join(names[:-1]), names[-1])
+
+    if voice:
+        return "You do not have access to {}, so I cannot help with that one."\
+            .format(subject)
+    return (
+        "You do not have access to {}, so I cannot answer that. Ask an "
+        "administrator to grant it if you need it.".format(subject)
+    )
+
+
+# Module keys as people see them on screen. Anything not listed is title
+# cased, which is right for the simple ones and harmless for the rest.
+_MODULE_LABELS = {
+    "service-requests": "Service Requests",
+    "facility-inventory": "Facility Inventory",
+    "test-equipment": "Test Equipment",
+    "my-timesheets": "My Timesheets",
+    "my-leave": "My Leave",
+    "hr": "HR",
+}
+
+
+def _module_label(module: str) -> str:
+    key = (module or "").strip().lower()
+    if key in _MODULE_LABELS:
+        return _MODULE_LABELS[key]
+    return key.replace("-", " ").replace("_", " ").title()
 
 
 def clarify_fallback(voice: bool = False) -> str:
