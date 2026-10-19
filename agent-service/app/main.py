@@ -15,6 +15,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.config import settings
 from app.graph import run_agent
+from app.providers import is_configured, provider_name
 
 
 logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
@@ -49,8 +50,13 @@ async def health() -> dict[str, object]:
     return {
         "status": "ok",
         "service": settings.SERVICE_NAME,
+        # Which backend is actually driving the agent, and whether it can
+        # run. Reporting the Anthropic key alone made a correctly
+        # configured Groq deployment report itself as unconfigured, which
+        # is a slow way to find a problem that is not there.
+        "provider": provider_name(),
         "model": settings.AGENT_MODEL,
-        "model_configured": bool(settings.ANTHROPIC_API_KEY.strip()),
+        "model_configured": is_configured(),
         "backend_configured": bool(settings.MEDRAD_INTERNAL_KEY.strip()),
     }
 

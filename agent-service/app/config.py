@@ -20,9 +20,17 @@ class Settings(BaseSettings):
     MEDRAD_INTERNAL_KEY: str = ""
     MEDRAD_TIMEOUT_SECONDS: float = 20.0
 
-    # Which backend drives the agent. "anthropic" uses the Claude SDK;
-    # "openai" targets any OpenAI-compatible /chat/completions endpoint, which
-    # covers Groq, OpenRouter, Together, vLLM and a local Ollama alike.
+    # Which backend drives the agent.
+    #
+    #   anthropic  - the Claude SDK.
+    #   groq       - Groq, which knows its own base URL.
+    #   openai     - any other OpenAI-compatible /chat/completions endpoint:
+    #                OpenRouter, Together, vLLM, a local Ollama. Needs
+    #                AGENT_BASE_URL set explicitly.
+    #
+    # Groq is named rather than folded into "openai" because the two are not
+    # the same operational thing. A deployment reporting "openai" while
+    # talking to Groq is a question every reader has to stop and answer.
     AGENT_PROVIDER: str = "anthropic"
     ANTHROPIC_API_KEY: str = ""
     # Used when AGENT_PROVIDER=openai. A local endpoint needs no key.
@@ -56,8 +64,17 @@ class Settings(BaseSettings):
         """Key for the active provider, falling back to the Anthropic one."""
         return (self.AGENT_API_KEY or self.ANTHROPIC_API_KEY).strip()
 
+    def agent_provider(self) -> str:
+        return (self.AGENT_PROVIDER or "anthropic").strip().lower()
+
     def agent_base_url(self) -> str:
-        return self.AGENT_BASE_URL.strip()
+        """Where completions are sent. Groq supplies its own."""
+        explicit = self.AGENT_BASE_URL.strip()
+        if explicit:
+            return explicit
+        if self.agent_provider() == "groq":
+            return "https://api.groq.com/openai/v1"
+        return ""
 
     class Config:
         env_file = ".env"

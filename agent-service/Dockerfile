@@ -9,6 +9,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+# Diagnostics, not runtime. groq_doctor measures which models this account
+# can actually drive the agent with, rather than trusting a model's name.
+COPY scripts ./scripts
 
 # Never exposed publicly: only the MedRad backend reaches this on the private
 # Docker network.

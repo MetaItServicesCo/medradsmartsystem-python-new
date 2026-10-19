@@ -49,13 +49,34 @@ class ModelReply:
 
 
 def provider_name() -> str:
-    return (settings.AGENT_PROVIDER or "anthropic").strip().lower()
+    """The vendor, as configured: anthropic, groq, openai, ollama..."""
+    return settings.agent_provider()
+
+
+def api_style() -> str:
+    """The wire protocol, which is a different question from the vendor.
+
+    Everything that is not the Claude SDK speaks OpenAI's
+    ``/chat/completions``. Separating the two means the health page and the
+    logs can say "groq" -- which is what an operator needs to read -- while
+    the code below still branches on the only thing it cares about.
+    """
+    return "anthropic" if provider_name() == "anthropic" else "openai"
+
+
+# Hosted endpoints that will not answer without a key. A local Ollama or
+# vLLM will, so requiring one of them to carry a key would be wrong.
+_KEYED_PROVIDERS = frozenset({"groq", "openrouter", "together", "deepseek", "openai"})
 
 
 def is_configured() -> bool:
-    if provider_name() == "openai":
-        # A local endpoint legitimately needs no key, so only the URL is required.
-        return bool(settings.agent_base_url())
+    if api_style() == "openai":
+        if not settings.agent_base_url():
+            return False
+        if provider_name() in _KEYED_PROVIDERS:
+            return bool(settings.agent_api_key())
+        # A local endpoint legitimately needs no key.
+        return True
     return bool(settings.agent_api_key())
 
 
@@ -180,7 +201,7 @@ async def complete(  # noqa: PLR0913 - one call shape for two backends
     model: Optional[str] = None,
 ) -> ModelReply:
     """One completion, optionally with tools. ``force_tool`` requires that tool."""
-    if provider_name() == "openai":
+    if api_style() == "openai":
         client = _openai_client()
         request: dict[str, Any] = {
             "model": model or settings.AGENT_MODEL,
@@ -261,7 +282,7 @@ async def stream_text(
     *, system: str, messages: list[dict[str, Any]], max_tokens: int
 ) -> AsyncIterator[str]:
     """Stream a prose completion, yielding text deltas as they arrive."""
-    if provider_name() == "openai":
+    if api_style() == "openai":
         client = _openai_client()
         stream = await client.chat.completions.create(
             model=settings.AGENT_MODEL,
