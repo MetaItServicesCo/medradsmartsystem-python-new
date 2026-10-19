@@ -411,6 +411,45 @@ async def retrieve_node(state: AgentState) -> dict[str, Any]:
     }
 
 
+def _narrow_tools(
+    available: list[dict[str, Any]],
+    tool_modules: dict[str, str],
+    module: Optional[str],
+) -> list[dict[str, Any]]:
+    """Offer the model the tools a question could plausibly need.
+
+    Narrowing exists because selection accuracy degrades once a model is
+    offered many tools. Below the threshold it only causes harm: "how many
+    services are assigned to technician X" spans users and service-requests,
+    and narrowing to either hides the tool needed to answer it.
+
+    Two kinds of tool survive narrowing whatever the module. resolve_entity,
+    because turning a name into an id is the first step of half the
+    questions there are. And everything in "platform", which is the tools
+    about the asker themselves -- those belong to no module and can be asked
+    alongside any other question, so narrowing to a module used to delete
+    them. That cost anybody holding more than the threshold "what is my
+    schedule tomorrow", silently, because the question always classifies to
+    some module.
+    """
+    if not module or len(available) <= NARROW_ABOVE_TOOL_COUNT:
+        return available
+    matched = [t for t in available if tool_modules.get(t["name"]) == module]
+    # Nothing in that module: the classifier picked one this person has no
+    # tools for, and trimming to the always-available set would leave the
+    # model unable to answer at all. Counting the survivors instead of the
+    # matches hid this the moment the platform tools started surviving --
+    # five of them look like a healthy narrowing and answer nothing.
+    if not matched:
+        return available
+    return [
+        tool for tool in available
+        if tool["name"] in ALWAYS_AVAILABLE
+        or tool_modules.get(tool["name"]) == "platform"
+        or tool_modules.get(tool["name"]) == module
+    ]
+
+
 async def tools_node(state: AgentState) -> dict[str, Any]:
     """Run Claude's tool-use loop against the read-only MedRad tool API."""
     _emit_phase("use_tools")
@@ -424,21 +463,7 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
         except MedRadError as exc:
             return {"tool_results": [], "errors": [str(exc)]}
 
-        module = state.get("module")
-        # Narrowing exists because selection accuracy degrades once a model is
-        # offered many tools. Below that threshold it only causes harm: a
-        # question like "how many services are assigned to technician X" spans
-        # users and service-requests, and narrowing to either one hides the
-        # tool needed to answer it.
-        if module and len(available) > NARROW_ABOVE_TOOL_COUNT:
-            narrowed = [
-                tool for tool in available
-                if tool["name"] in ALWAYS_AVAILABLE
-                or tool_modules.get(tool["name"]) == module
-            ]
-            if len(narrowed) > 1:
-                available = narrowed
-
+        available = _narrow_tools(available, tool_modules, state.get("module"))
         conversation: list[dict[str, Any]] = [{
             "role": "user",
             "content": "{}\n\nQuestion: {}".format(
