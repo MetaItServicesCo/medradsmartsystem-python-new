@@ -5,6 +5,8 @@ questions do not re-pay for them. The assistant's name is configurable, so it is
 injected through persona() rather than written into each prompt.
 """
 
+from typing import Optional
+
 from app.config import settings
 
 
@@ -230,6 +232,60 @@ def refusal_message(reason: str, voice: bool = False) -> str:
         "I cannot help with that. Credentials, tokens and payment secrets are "
         "never accessible to the assistant."
     )
+
+
+def asker_context(asker: Optional[dict]) -> str:
+    """Who the assistant is speaking with, as a line it can act on.
+
+    Carried in the message rather than the system prompt on purpose. The
+    system prompt is sent with cache_control and is identical for
+    everybody; folding one person's name and permissions into it would
+    give every user their own cache entry and pay for the whole prompt
+    again on each first question.
+
+    This changes how the assistant thinks, never what it may reach. The
+    tools it is offered were already filtered, and every one of them
+    re-checks permission server-side, so a model that ignored all of this
+    could not read a row it should not.
+    """
+    if not asker:
+        return ""
+    name = asker.get("name") or "the person asking"
+    role = asker.get("role_label") or "member of staff"
+    modules = asker.get("modules") or {}
+
+    readable = sorted(modules)
+    writable = sorted(m for m, a in modules.items() if "edit" in a or "add" in a)
+
+    lines = [
+        # No article: "a HR Manager" is wrong and "an Administrator" needs
+        # a rule about vowel sounds that acronyms break anyway.
+        "You are speaking with {} ({}).".format(name, role),
+        "Their access: {}.".format(", ".join(readable) if readable else "none"),
+    ]
+    if writable:
+        lines.append("They can change: {}.".format(", ".join(writable)))
+
+    scope = asker.get("facility_scope")
+    if isinstance(scope, dict):
+        sites = scope.get("facilities") or []
+        lines.append(
+            "They work at: {}. Everything they ask about is one of those "
+            "sites unless they name another.".format(
+                ", ".join(sites) if sites else "no site yet")
+        )
+
+    lines.append(
+        "Answer as this person's assistant. A question in the first "
+        "person is about them. Anything outside their access is not "
+        "missing -- they are not permitted to see it, and you should say "
+        "so plainly."
+    )
+    return nl_join(lines)
+
+
+def nl_join(lines: list[str]) -> str:
+    return "\n".join(lines)
 
 
 def no_access_message(modules: list[str], voice: bool = False) -> str:

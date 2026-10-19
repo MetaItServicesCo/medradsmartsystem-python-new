@@ -14,13 +14,18 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from app.assistant import actions
-from app.assistant.tools import analytics, attendance, commerce, entities, me
+from app.assistant.tools import (
+    analytics, attendance, commerce, entities, me, people,
+)
 from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
 from app.models.rental import RentalStatus
 from app.models.service_request import QuotationStatus, Priority, ServiceRequestStatus
 from app.models.user import UserRole
+from app.assistant.tools.people import (
+    LEAVE_STATUSES, PAYROLL_STATUSES, TIMESHEET_STATUSES,
+)
 
 
 def _values(enum_class: Any) -> list[str]:
@@ -135,6 +140,137 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         ),
         parameters={"type": "object", "properties": {}},
         handler=me.my_next_commitment,
+    ),
+    ToolDefinition(
+        name="my_leave",
+        module="platform",
+        description=(
+            "The asker's own leave: what they have booked and how many "
+            "days they have left this year. Use for \"how much leave have I got left\", \"when am I off\", \"has my leave been approved\". About the asker only."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100,
+                          "default": 25},
+            },
+        },
+        handler=me.my_leave,
+    ),
+    ToolDefinition(
+        name="my_timesheet",
+        module="platform",
+        description=(
+            "The asker's own recorded hours over a period, defaulting to "
+            "the last fortnight. Use for \"how many hours have I done\", \"was I late this week\". About the asker only."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100,
+                          "default": 25},
+            },
+        },
+        handler=me.my_timesheet,
+    ),
+    ToolDefinition(
+        name="my_requests",
+        module="platform",
+        description=(
+            "Service requests the asker raised or is working on, newest "
+            "first, each marked with which it is. Use for \"what happened to the request I raised\", \"what have I got open\". About the asker only."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100,
+                          "default": 25},
+            },
+        },
+        handler=me.my_requests,
+    ),
+
+    # ---- People: the HR manager's half of the business -------------------
+    ToolDefinition(
+        name="search_leave_requests",
+        module="hr",
+        permission="view",
+        description=(
+            "Leave across the organisation: who is off, who has asked, and "
+            "who is still waiting for a decision. Use for \"how many leave requests are pending\", \"who is on leave next week\", \"how many days has X taken\". Dates match any leave overlapping the window, so a week "
+            "off that starts earlier still counts. Read total_count for "
+            "\"how many\" questions."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {"type": "array",
+                           "items": {"type": "string",
+                                     "enum": list(LEAVE_STATUSES)}},
+                "person": {"type": "string",
+                           "description": "Employee name, partial match."},
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100,
+                          "default": 25},
+            },
+        },
+        handler=people.search_leave_requests,
+    ),
+    ToolDefinition(
+        name="search_timesheets",
+        module="hr",
+        permission="view",
+        description=(
+            "Recorded hours, lateness and deductions across the "
+            "organisation. Use for \"how many hours did X work last month\", \"who was late this week\", \"how many timesheets are waiting for approval\". Totals come from the database, not from the rows shown."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "person": {"type": "string",
+                           "description": "Employee name, partial match."},
+                "status": {"type": "array",
+                           "items": {"type": "string",
+                                     "enum": list(TIMESHEET_STATUSES)}},
+                "late_only": {"type": "boolean", "default": False},
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100,
+                          "default": 25},
+            },
+        },
+        handler=people.search_timesheets,
+    ),
+    ToolDefinition(
+        name="search_payroll",
+        module="hr",
+        permission="view",
+        description=(
+            "Payroll runs and what they came to. Without a person it "
+            "reports run totals -- gross, tax and net -- which answers "
+            "what payroll cost without naming anybody. With a person it "
+            "reports that individual's payslips. These are pay figures: "
+            "report them as asked and do not volunteer an individual's pay "
+            "when the question was about a total."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {"type": "array",
+                           "items": {"type": "string",
+                                     "enum": list(PAYROLL_STATUSES)}},
+                "person": {"type": "string",
+                           "description": "Employee name, partial match."},
+                "date_from": _DATE,
+                "date_to": _DATE,
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100,
+                          "default": 25},
+            },
+        },
+        handler=people.search_payroll,
     ),
     ToolDefinition(
         name="facility_detail",

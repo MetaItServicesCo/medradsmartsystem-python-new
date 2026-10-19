@@ -412,8 +412,14 @@ ok("four tools declare that they write", len(write_tools) == 4,
    ", ".join(sorted(t.name for t in write_tools)))
 ok("every write tool asks for add or edit",
    all(t.permission in ("add", "edit") for t in write_tools))
-ok("every read tool still asks only for index",
-   all(t.permission == "index" for t in TOOLS_BY_NAME.values() if not t.writes))
+# "index" or "view": both are read levels in the matrix, and which one a
+# tool asks for depends on its module. What must never happen is a tool
+# that only reads demanding a permission that implies changing things.
+ok("no read tool asks for a write permission",
+   all(t.permission in ("index", "view")
+       for t in TOOLS_BY_NAME.values() if not t.writes),
+   ", ".join(sorted(t.name for t in TOOLS_BY_NAME.values()
+                    if not t.writes and t.permission not in ("index", "view"))))
 ok("every write tool offers confirm_token",
    all("confirm_token" in t.parameters["properties"] for t in write_tools))
 ok("no write tool requires confirm_token",

@@ -43,7 +43,7 @@ from app.assistant.tools.base import (
 )
 from app.models.calendar import CalendarEvent
 from app.models.facility import Facility
-from app.models.hr import LeaveRequest, LeaveRequestStatus
+from app.models.hr import LeaveRequest, LeaveRequestStatus, LeaveType, Timesheet
 from app.models.inspection import Inspection, InspectionStatus
 from app.models.service_request import ServiceRequest, ServiceRequestStatus
 
@@ -366,4 +366,170 @@ def my_next_commitment(ctx: ToolContext) -> ToolResult:
         items=items,
         applied_filters={"person": ctx.user.full_name or ctx.user.username},
         notes=notes,
+    )
+
+# ---------------------------------------------------------------------------
+# Their own records, for the roles whose day is not service calls
+# ---------------------------------------------------------------------------
+
+def my_leave(ctx: ToolContext, limit: Optional[int] = None) -> ToolResult:
+    """The asker's own leave: what they have booked and what is left.
+
+    Separate from the HR tools on purpose. "How many days have I got left"
+    is a question every employee has and nobody should need the HR module
+    to ask -- it is about themselves. The HR module is what lets somebody
+    ask it about other people.
+    """
+    ctx.require_module("my-leave", "view")
+    ctx.apply_statement_timeout()
+
+    mine = ctx.db.query(LeaveRequest).filter(LeaveRequest.user_id == ctx.user.id)
+    total = mine.count()
+    rows = mine.order_by(LeaveRequest.start_date.desc()).limit(
+        clamp_limit(limit)).all()
+    kinds = dict(ctx.db.query(LeaveType.id, LeaveType.name).all())
+
+    # Entitlement is per calendar year, so taken days are counted the same
+    # way. A request spanning the new year is counted where it starts,
+    # which matches how the allowance itself is granted.
+    year_start = date(date.today().year, 1, 1)
+    taken: dict[str, float] = {}
+    for row in mine.filter(
+        LeaveRequest.status == LeaveRequestStatus.APPROVED,
+        LeaveRequest.start_date >= year_start,
+    ).all():
+        name = kinds.get(row.leave_type_id) or "Leave"
+        taken[name] = taken.get(name, 0.0) + float(row.total_days or 0)
+
+    allowance = {
+        name: days for name, days in ctx.db.query(
+            LeaveType.name, LeaveType.max_days_per_year
+        ).filter(LeaveType.is_active.is_(True)).all()
+    }
+    balance = {
+        name: {
+            "allowance": days,
+            "taken": round(taken.get(name, 0.0), 2),
+            "remaining": round((days or 0) - taken.get(name, 0.0), 2),
+        }
+        for name, days in allowance.items()
+    }
+
+    return ToolResult(
+        tool="my_leave",
+        total_count=total,
+        items=[{
+            "id": row.id,
+            "leave_type": kinds.get(row.leave_type_id),
+            "start_date": row.start_date.isoformat() if row.start_date else None,
+            "end_date": row.end_date.isoformat() if row.end_date else None,
+            "days": row.total_days,
+            "status": row.status.value if row.status else None,
+        } for row in rows],
+        aggregates={"balance_this_year": balance},
+        applied_filters={"person": ctx.user.full_name or ctx.user.username,
+                         "year": date.today().year},
+        notes=["Remaining days assume the standard yearly allowance and do "
+               "not account for carry-over or unapproved requests."],
+    )
+
+
+def my_timesheet(
+    ctx: ToolContext,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: Optional[int] = None,
+) -> ToolResult:
+    """The asker's own hours over a period."""
+    ctx.require_module("my-timesheets", "view")
+    ctx.apply_statement_timeout()
+
+    if date_from is None and date_to is None:
+        date_to = date.today()
+        date_from = date_to - timedelta(days=13)
+    elif date_from is None:
+        date_from = date_to
+    elif date_to is None:
+        date_to = date_from
+    validate_date_range(date_from, date_to)
+
+    mine = (
+        ctx.db.query(Timesheet)
+        .filter(Timesheet.user_id == ctx.user.id)
+        .filter(Timesheet.work_date >= date_from,
+                Timesheet.work_date <= date_to)
+    )
+    total = mine.count()
+    hours = sum(float(r.hours or 0) for r in mine.all())
+    late = sum(1 for r in mine.all() if r.is_late)
+    rows = mine.order_by(Timesheet.work_date.desc()).limit(
+        clamp_limit(limit)).all()
+
+    return ToolResult(
+        tool="my_timesheet",
+        total_count=total,
+        items=[{
+            "work_date": r.work_date.isoformat() if r.work_date else None,
+            "hours": r.hours,
+            "day_status": r.day_status.value if r.day_status else None,
+            "status": r.status.value if r.status else None,
+            "is_late": bool(r.is_late),
+            "project": r.project,
+        } for r in rows],
+        aggregates={"total_hours": round(hours, 2), "late_days": late},
+        applied_filters={
+            "person": ctx.user.full_name or ctx.user.username,
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+        },
+    )
+
+
+def my_requests(ctx: ToolContext, limit: Optional[int] = None) -> ToolResult:
+    """Service requests the asker raised or is working on.
+
+    Both, because which one matters depends on who is asking and they will
+    not say. An employee who reported a broken pump means the one they
+    raised; a technician means the one they were given. Returning both with
+    the relationship named lets the answer be specific without the model
+    having to guess the asker's role.
+    """
+    ctx.require_module("service-requests", "view")
+    ctx.apply_statement_timeout()
+
+    mine = ctx.db.query(ServiceRequest).filter(
+        (ServiceRequest.requester_id == ctx.user.id)
+        | (ServiceRequest.assigned_technician_id == ctx.user.id)
+    )
+    mine = ctx.scope_to_facilities(mine, ServiceRequest.facility_id)
+
+    total = mine.count()
+    rows = mine.order_by(ServiceRequest.created_at.desc()).limit(
+        clamp_limit(limit)).all()
+
+    items = []
+    for sr in rows:
+        item = _request_item(sr)
+        item["relationship"] = (
+            "raised_and_assigned"
+            if sr.requester_id == ctx.user.id
+            and sr.assigned_technician_id == ctx.user.id
+            else "raised" if sr.requester_id == ctx.user.id
+            else "assigned"
+        )
+        item["created_at"] = _iso(sr.created_at)
+        items.append(item)
+    _attach_places(ctx.db, items)
+
+    open_count = sum(
+        1 for sr in rows
+        if sr.status not in (ServiceRequestStatus.COMPLETED,
+                             ServiceRequestStatus.CANCELLED)
+    )
+    return ToolResult(
+        tool="my_requests",
+        total_count=total,
+        items=items,
+        aggregates={"open_in_this_page": open_count},
+        applied_filters={"person": ctx.user.full_name or ctx.user.username},
     )

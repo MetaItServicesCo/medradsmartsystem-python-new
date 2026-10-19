@@ -65,6 +65,18 @@ class MedRadClient:
         self._raise_for_status(response, "call tool {}".format(name))
         return response.json()
 
+    async def whoami(self) -> dict[str, Any]:
+        """Who this token belongs to, and what they may see.
+
+        Asked for rather than accepted from the caller. The agent holds
+        the user's token and nothing else, so this is the only identity
+        it can obtain, and it is the one the backend derived from that
+        token itself.
+        """
+        response = await self._client.get("/whoami")
+        self._raise_for_status(response, "identify the user")
+        return response.json()
+
     async def search_knowledge(
         self, query: str, *, module: Optional[str] = None, limit: int = 6
     ) -> dict[str, Any]:

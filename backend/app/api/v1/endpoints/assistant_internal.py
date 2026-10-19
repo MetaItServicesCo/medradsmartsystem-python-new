@@ -28,6 +28,7 @@ from app.assistant.tools.registry import (
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.base import get_db
+from app.models.facility import Facility
 from app.models.user import User, UserRole
 from app.utils.logging import log_activity
 
@@ -100,6 +101,74 @@ def _coerce_dates(arguments: dict[str, Any]) -> dict[str, Any]:
             coerced.pop(key, None)
     return coerced
 
+
+# How each role reads in a sentence. The enum value is a database key and
+# saying "hr_manager" out loud is nobody's idea of a conversation.
+_ROLE_LABELS = {
+    "superadmin": "Super Admin",
+    "admin": "Administrator",
+    "facility_admin": "Facility Administrator",
+    "facility_manager": "Facility Manager",
+    "technician": "Technician",
+    "hr_manager": "HR Manager",
+    "employee": "Employee",
+    "client": "Client",
+}
+
+
+@router.get("/whoami", dependencies=[Depends(require_internal_caller)])
+def whoami(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_assistant_user),
+) -> Any:
+    """Who the agent is talking to, derived from their own token.
+
+    The agent asks for this rather than being told it by the caller. There
+    are two paths into a conversation -- the streaming text endpoint and the
+    voice socket -- and threading an identity through both would be two
+    copies of the same thing, free to drift. More importantly it would be an
+    identity the agent was handed, where this one it has to present the
+    user's token to obtain.
+
+    This exists to shape behaviour, not to grant anything. Every tool still
+    checks its own permission against this user, and the tool list is
+    filtered before the model ever sees it, so an agent that ignored all of
+    this entirely could not reach a single row it should not.
+    """
+    from app.utils.facility_access import (
+        get_user_facility_ids, is_facility_scoped_user,
+    )
+    from app.utils.permissions import ALL_MODULES, has_module_permission
+
+    role = getattr(current_user.role, "value", str(current_user.role))
+
+    # Only the actions they actually hold, so the agent can tell "you can
+    # read this but not change it" from "you cannot see this at all".
+    modules: dict[str, list[str]] = {}
+    for module in ALL_MODULES:
+        actions = [
+            action for action in ("view", "add", "edit", "delete")
+            if has_module_permission(current_user, module, action)
+        ]
+        if actions:
+            modules[module] = actions
+
+    scope: Any = "all"
+    if is_facility_scoped_user(current_user):
+        ids = sorted(get_user_facility_ids(db, current_user))
+        names = [
+            name for (name,) in db.query(Facility.name)
+            .filter(Facility.id.in_(ids)).all()
+        ] if ids else []
+        scope = {"facility_ids": ids, "facilities": sorted(names)}
+
+    return {
+        "name": current_user.full_name or current_user.username,
+        "role": role,
+        "role_label": _ROLE_LABELS.get(role, role.replace("_", " ").title()),
+        "facility_scope": scope,
+        "modules": modules,
+    }
 
 @router.get("/tools", dependencies=[Depends(require_internal_caller)])
 def list_tools(
