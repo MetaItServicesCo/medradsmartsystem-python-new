@@ -39,6 +39,7 @@ from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus
 from app.models.user import User
+from app.utils.service_access import can_work_on_service_request
 
 
 # Long enough to read a sentence back and answer it, short enough that a token
@@ -214,7 +215,11 @@ def _run(ctx: ToolContext, tool: str, change: _Change,
 # Loading, scoped to what this user may touch
 # ---------------------------------------------------------------------------
 
-def _load_request(ctx: ToolContext, service_request_id: int) -> ServiceRequest:
+def _load_request(
+    ctx: ToolContext,
+    service_request_id: int,
+    to_change: bool = True,
+) -> ServiceRequest:
     sr = (
         ctx.db.query(ServiceRequest)
         .filter(ServiceRequest.id == int(service_request_id))
@@ -228,6 +233,17 @@ def _load_request(ctx: ToolContext, service_request_id: int) -> ServiceRequest:
         # Same wording as "not found": telling a scoped user that a record
         # exists at a site they cannot see is itself a disclosure.
         raise ToolInputError(missing)
+    if to_change and not can_work_on_service_request(ctx.user, sr):
+        # Holding "edit" on the module is not the same as being allowed
+        # to change this particular request. Employees and clients hold
+        # edit so they can raise and track their own work; the module
+        # itself only lets the assigned technician or a service operator
+        # act on one, and the assistant must not be a way round that.
+        raise ToolInputError(
+            "{} is not assigned to you, so you cannot change it. Ask the "
+            "technician it is assigned to, or an administrator."
+            .format(sr.request_number)
+        )
     return sr
 
 

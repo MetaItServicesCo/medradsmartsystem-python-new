@@ -116,6 +116,11 @@ db.add(ultrasound)
 db.flush()
 
 boss = make_user("boss", UserRole.SUPERADMIN)
+# A second operator, for the tests about whose token is whose. It has to
+# be somebody who would otherwise be allowed to make the change, or the
+# per-record rule refuses first and the token is never examined.
+boss2 = make_user("boss2", UserRole.SUPERADMIN)
+staff = make_user("staff", UserRole.EMPLOYEE)
 tech = make_user("tech", UserRole.TECHNICIAN)
 other_tech = make_user("other_tech", UserRole.TECHNICIAN)
 hr = make_user("hr_person", UserRole.HR_MANAGER)
@@ -149,6 +154,8 @@ def make_request(facility, status=ServiceRequestStatus.NEW,
 
 
 admin_ctx = ToolContext(db=db, user=boss)
+boss2_ctx = ToolContext(db=db, user=boss2)
+staff_ctx = ToolContext(db=db, user=staff)
 hr_ctx = ToolContext(db=db, user=hr)
 local_ctx = ToolContext(db=db, user=local)
 
@@ -238,7 +245,7 @@ sr3 = make_request(site_a)
 p3 = (actions.set_service_request_priority(admin_ctx, sr3.id, "high").action or {})
 refused("another user's token is refused",
         lambda: actions.set_service_request_priority(
-            local_ctx, sr3.id, "high", confirm_token=p3["confirmation_token"]),
+            boss2_ctx, sr3.id, "high", confirm_token=p3["confirmation_token"]),
         "not recognised")
 
 # Expiry.
@@ -300,11 +307,56 @@ refused("a scoped user cannot touch another site's request",
 ok("and is not told it exists",
    "Site B" not in str(sr_elsewhere.facility_id))
 
-sr_here = make_request(site_a, priority=Priority.LOW)
+# Assigned to them, because holding edit on the module is no longer
+# enough on its own -- see the per-record section below.
+sr_here = make_request(site_a, priority=Priority.LOW, technician=local)
 proposal_local = actions.set_service_request_priority(
     local_ctx, sr_here.id, "high").action or {}
-ok("a scoped user can act within their own site",
+ok("a scoped user can act on their own work at their own site",
    proposal_local.get("status") == "proposed")
+
+print()
+print("Holding edit on the module is not holding this record")
+print("-" * 72)
+
+# Employees and clients hold add and edit on service-requests so they can
+# raise and track their own. The module only lets the assigned technician
+# or a service operator act on one, and the assistant must not be a way
+# round that -- it would let somebody cancel another person's job by
+# asking politely.
+someone_elses = make_request(site_a, technician=tech)
+
+refused("an employee cannot re-prioritise work assigned to somebody else",
+        lambda: actions.set_service_request_priority(
+            staff_ctx, someone_elses.id, "critical"),
+        "not assigned to you")
+refused("an employee cannot cancel somebody else's job",
+        lambda: actions.set_service_request_status(
+            staff_ctx, someone_elses.id, "cancelled"),
+        "not assigned to you")
+refused("an employee cannot reassign somebody else's job",
+        lambda: actions.assign_service_request(
+            staff_ctx, someone_elses.id, other_tech.id),
+        "not assigned to you")
+
+tech_ctx = ToolContext(db=db, user=tech)
+own = actions.set_service_request_priority(
+    tech_ctx, someone_elses.id, "critical").action or {}
+ok("the technician it is assigned to can",
+   own.get("status") == "proposed", str(own.get("status")))
+
+boss_can = actions.set_service_request_priority(
+    admin_ctx, someone_elses.id, "medium").action or {}
+ok("a service operator can, whoever it is assigned to",
+   boss_can.get("status") == "proposed")
+
+# Creation is unaffected: there is no record yet to be assigned to
+# anybody, so module permission and facility access are the whole test.
+raised = actions.create_service_request(
+    staff_ctx, site_a.id, pump.id, "The pump is leaking again", "low"
+).action or {}
+ok("an employee can still raise a request",
+   raised.get("status") == "proposed", str(raised.get("status")))
 
 # ---------------------------------------------------------------------------
 # 6. The rules each tool enforces

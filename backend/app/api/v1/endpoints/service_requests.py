@@ -186,13 +186,12 @@ CUSTOMER_EDITABLE_REQUEST_FIELDS = {
 CUSTOMER_PAYMENT_FIELDS = {"amount_paid", "status", "payment_method", "notes"}
 
 
-def _is_internal_service_user(user: User) -> bool:
-    if user.role == UserRole.SUPERADMIN:
-        return True
-    # Migrated installations can contain legacy `admin` records that are
-    # explicitly facility-bound. Those accounts are facility portal users;
-    # only an unscoped admin is a global service operator.
-    return user.role == UserRole.ADMIN and user.facility_id is None
+# Shared with the assistant's write tools, which are a second way into the
+# same records. Two copies of an authorization rule eventually disagree.
+from app.utils.service_access import (  # noqa: E402
+    can_work_on_service_request as _can_work_on_service,
+    is_internal_service_user as _is_internal_service_user,
+)
 
 
 def _is_service_customer_user(user: User) -> bool:
@@ -437,12 +436,6 @@ def _history_entry(action: str, user: User, changes: Optional[dict] = None) -> d
         "user": user.full_name or user.username,
         "changes": changes or {},
     }
-
-
-def _can_work_on_service(user: User, sr: ServiceRequest) -> bool:
-    if _is_internal_service_user(user):
-        return True
-    return sr.assigned_technician_id == user.id
 
 
 def _active_clock_session(sr: ServiceRequest) -> Optional[dict]:
