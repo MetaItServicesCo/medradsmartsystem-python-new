@@ -62,17 +62,45 @@ logger.add(sys.stderr, level=settings.LOG_LEVEL)
 _models: dict[str, Any] = {}
 
 
-def _load_models() -> None:
-    if "stt" in _models:
-        return
+def _build_stt():
+    """The recogniser: hosted when a Groq key is set, on-box otherwise.
+
+    Hosted is both faster and markedly more accurate here. base.en is the
+    smallest English Whisper there is, and on a shared four-core host it
+    produced the mishearings this agent was judged on. large-v3-turbo
+    answers in about 200ms from this network.
+
+    Falling back to the local model is deliberate rather than tidy: a
+    technician on a bad connection in a plant room should still be able
+    to talk to it.
+    """
+    if settings.stt_provider() == "groq" and settings.groq_key():
+        from pipecat.services.groq.stt import GroqSTTService
+
+        logger.info("Listening with Groq {}", settings.GROQ_STT_MODEL)
+        return GroqSTTService(
+            api_key=settings.groq_key(),
+            base_url=settings.GROQ_BASE_URL,
+            # Through Settings, like the local recogniser below: model= as an
+            # argument is deprecated and goes away in pipecat 2.0. It warned
+            # on every start until this matched.
+            settings=GroqSTTService.Settings(model=settings.GROQ_STT_MODEL),
+        )
+
     logger.info("Loading recogniser {}", settings.WHISPER_MODEL)
-    _models["stt"] = WhisperSTTService(
+    return WhisperSTTService(
         # Through Settings rather than the model= argument, which is
         # deprecated and goes away in pipecat 2.0.
         settings=WhisperSTTService.Settings(model=settings.WHISPER_MODEL),
         device="cpu",
         compute_type=settings.WHISPER_COMPUTE,
     )
+
+
+def _load_models() -> None:
+    if "stt" in _models:
+        return
+    _models["stt"] = _build_stt()
     logger.info("Loading turn detector")
     _models["vad"] = SileroVADAnalyzer(
         sample_rate=settings.SAMPLE_RATE,
@@ -95,7 +123,27 @@ async def lifespan(_: FastAPI):
         # can be told to the person trying to talk.
         logger.exception("Model loading failed at startup")
 
-    if settings.tts_provider() == "elevenlabs":
+    if settings.tts_provider() == "groq":
+        reason = await _verify_groq_voice()
+        if reason is None:
+            _models["tts_provider"] = "groq"
+            _models.pop("tts_blocked", None)
+            logger.info("Groq voice {} verified", settings.GROQ_TTS_MODEL)
+        else:
+            # Kept for /health as well as the log. A startup line scrolls away;
+            # the reason the good voice is not in use should be answerable
+            # without going to find it.
+            _models["tts_blocked"] = reason
+            # Orpheus needs its terms accepted once in the Groq console,
+            # and until somebody does that it answers 400. Saying so is
+            # the difference between a one-click fix and an afternoon.
+            _models["tts_provider"] = "piper"
+            logger.error(
+                "Groq cannot synthesise ({}); speaking with Piper instead. "
+                "If this mentions terms, accept them once at console.groq.com.",
+                reason,
+            )
+    elif settings.tts_provider() == "elevenlabs":
         reason = await _verify_elevenlabs()
         if reason is None:
             _models["tts_provider"] = "elevenlabs"
@@ -123,12 +171,52 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "ready": "stt" in _models,
-        "recognizer": settings.WHISPER_MODEL,
+        "listening": settings.stt_provider(),
+        "recognizer": (
+            settings.GROQ_STT_MODEL if settings.stt_provider() == "groq"
+            else settings.WHISPER_MODEL
+        ),
         "voice": _models.get("tts_provider") or settings.tts_provider(),
         "voice_configured": settings.tts_provider(),
+        # Present only when the configured voice refused at startup, so a
+        # health check says why it is speaking with something else.
+        **({"voice_unavailable": _models["tts_blocked"]} if _models.get("tts_blocked") else {}),
         "sample_rate": settings.SAMPLE_RATE,
         "user_speech_timeout": settings.USER_SPEECH_TIMEOUT,
     }
+
+
+async def _verify_groq_voice() -> Optional[str]:
+    """Speak one word at startup. None when it worked, else why not.
+
+    Worth the round trip: the usual failure is not a bad key but a model
+    whose terms nobody has accepted yet, and that is invisible until the
+    first caller gets silence.
+    """
+    if not settings.groq_key():
+        return "no GROQ_API_KEY is set"
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                settings.GROQ_BASE_URL.rstrip("/") + "/audio/speech",
+                headers={"Authorization": "Bearer " + settings.groq_key()},
+                json={
+                    "model": settings.GROQ_TTS_MODEL,
+                    "voice": settings.GROQ_TTS_VOICE,
+                    "input": "Ready.",
+                    "response_format": "wav",
+                },
+            )
+    except Exception as exc:  # noqa: BLE001
+        return "{}: {}".format(type(exc).__name__, exc)
+    if response.status_code == 200:
+        return None if response.content else "returned no audio"
+    try:
+        return str(response.json().get("error", {}).get("message"))[:200]
+    except Exception:  # noqa: BLE001
+        return "HTTP {}".format(response.status_code)
 
 
 async def _verify_elevenlabs() -> Optional[str]:
@@ -175,6 +263,22 @@ def _build_tts() -> Any:
     property worth having by default rather than by choice.
     """
     provider = _models.get("tts_provider") or settings.tts_provider()
+    if provider == "groq":
+        if not settings.groq_key():
+            logger.warning("Groq voice selected but no key configured; using Piper")
+        else:
+            from pipecat.services.groq.tts import GroqTTSService
+
+            logger.info("Speaking with Groq {} ({})",
+                        settings.GROQ_TTS_MODEL, settings.GROQ_TTS_VOICE)
+            return GroqTTSService(
+                api_key=settings.groq_key(),
+                model_name=settings.GROQ_TTS_MODEL,
+                voice_id=settings.GROQ_TTS_VOICE,
+                # Asked for at the transport's own rate, so nothing has to
+                # resample on the way to the speaker.
+                sample_rate=settings.SAMPLE_RATE,
+            )
     if provider == "elevenlabs":
         if not settings.ELEVENLABS_API_KEY.strip():
             logger.warning("ElevenLabs selected but no key configured; using Piper")

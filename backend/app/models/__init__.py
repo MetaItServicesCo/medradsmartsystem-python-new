@@ -72,3 +72,5 @@ from app.models.hr import (
     EmployeeDocument, EmployeeContract, ContractStatus, EmployeeAcknowledgment,
     Timesheet, TimesheetStatus, DayStatus,
 )
+
+from app.models.assistant_action import ActionStatus, AssistantAction

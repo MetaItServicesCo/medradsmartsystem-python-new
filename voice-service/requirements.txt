@@ -12,7 +12,10 @@
 # product raises the GPL's source-disclosure question for the whole
 # application. Speech is streamed from the speech service instead, which runs
 # piper-tts 1.2 under MIT.
-pipecat-ai[whisper,websocket]==1.8.1
+# groq -> hosted Whisper for listening and a hosted voice for speaking,
+# both from the same key the assistant already uses. The local whisper
+# extra stays: a voice call must still work without the internet.
+pipecat-ai[whisper,websocket,groq]==1.8.1
 
 uvicorn[standard]==0.52.4
 

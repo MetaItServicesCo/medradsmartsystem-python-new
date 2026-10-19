@@ -63,6 +63,11 @@ class ToolResult:
     aggregates: dict[str, Any] = field(default_factory=dict)
     applied_filters: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    # Set only by write tools. Carries the proposal or the applied change, so
+    # a reader can tell at a glance whether anything was altered -- an empty
+    # items list means "nothing found" for a search and nothing at all for a
+    # write, and those must not look alike.
+    action: Optional[dict[str, Any]] = None
     generated_at: datetime = field(default_factory=datetime.utcnow)
 
     @property
@@ -70,7 +75,7 @@ class ToolResult:
         return self.total_count > len(self.items)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "tool": self.tool,
             "total_count": self.total_count,
             "returned_count": len(self.items),
@@ -81,6 +86,9 @@ class ToolResult:
             "notes": self.notes,
             "generated_at": self.generated_at.isoformat() + "Z",
         }
+        if self.action is not None:
+            payload["action"] = self.action
+        return payload
 
 
 @dataclass

@@ -98,16 +98,27 @@ def _coerce_dates(arguments: dict[str, Any]) -> dict[str, Any]:
 def list_tools(
     current_user: User = Depends(require_superadmin),
 ) -> Any:
-    """Tool schemas the agent may offer the model, filtered to what this user can use."""
+    """Tool schemas the agent may offer, filtered to what this user can use.
+
+    Filtered per tool rather than per module. A write tool asks for "add"
+    or "edit" where a search in the same module asks for "index", so
+    somebody who may read service requests but not change them is offered
+    the searches and not the actions -- and the model never sees a tool it
+    would only be refused for calling.
+    """
     from app.utils.permissions import has_module_permission
 
-    allowed = tuple(
-        definition.module
+    usable = frozenset(
+        definition.name
         for definition in TOOLS_BY_NAME.values()
         if definition.module == "platform"
-        or has_module_permission(current_user, definition.module, "index")
+        or has_module_permission(
+            current_user, definition.module, definition.permission)
     )
-    schemas = anthropic_tool_schemas(allowed)
+    allowed = tuple(
+        TOOLS_BY_NAME[name].module for name in usable
+    )
+    schemas = anthropic_tool_schemas(allowed, names=usable)
     # The module each tool belongs to travels with the schema so the agent can
     # narrow by module without maintaining its own copy of the mapping, which
     # would silently drift as tools are added.
@@ -125,7 +136,13 @@ def execute_tool(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_superadmin),
 ) -> Any:
-    """Run one read-only tool as the requesting user."""
+    """Run one tool as the requesting user.
+
+    Most tools only read. The write tools are two-phase and enforce their
+    own confirmation; this endpoint does not need to know which is which
+    beyond recording it, because the permission each one requires is
+    declared on its definition and checked inside the tool.
+    """
     if tool_name not in TOOLS_BY_NAME:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -156,9 +173,18 @@ def execute_tool(
         current_user,
         {
             "tool": tool_name,
-            "arguments": {k: str(v)[:120] for k, v in arguments.items()},
+            # The confirmation token is the thing that authorises a
+            # change, so it is never written to the audit log -- a log
+            # reader must not be able to replay an action from it.
+            "arguments": {
+                k: ("<redacted>" if k == "confirm_token" else str(v)[:120])
+                for k, v in arguments.items()
+            },
             "total_count": result.total_count,
             "returned": len(result.items),
+            "writes": TOOLS_BY_NAME[tool_name].writes,
+            "action": (result.action or {}).get("status"),
+            "entity_id": (result.action or {}).get("entity_id"),
             "elapsed_ms": elapsed_ms,
         },
     )

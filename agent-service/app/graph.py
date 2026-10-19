@@ -265,6 +265,8 @@ _CLASSIFY_TOOL = {
             },
             "refusal_reason": {
                 "type": ["string", "null"],
+                # "write" no longer means the assistant cannot change
+                # anything. It is reached only for changes no tool covers.
                 "enum": ["write", "secrets", None],
             },
         },
@@ -286,11 +288,15 @@ async def classify_node(state: AgentState) -> dict[str, Any]:
     # hybrid path gathers both, in parallel, so the answer is the same and the
     # round trip is gone.
     #
-    # Nothing is weakened by losing the refusal branch here: the tools are
-    # read-only by construction and sensitive columns are never returned, so
-    # refusal was a courtesy message rather than the control. Typed questions
-    # still route properly, where a few seconds costs far less than it does
-    # mid-conversation.
+    # Losing the refusal branch here still costs nothing, but the reason
+    # has changed and is worth stating plainly: the tools are no longer
+    # all read-only. Four of them change service requests. What stops a
+    # misheard sentence from changing a record is not this router -- it is
+    # that every write tool is two-phase, so a first call only ever
+    # describes what it would do, and the person has to agree to that
+    # description out loud before anything happens. Sensitive columns are
+    # still never returned. Typed questions route properly, where a few
+    # seconds costs far less than it does mid-conversation.
     if state.get("voice"):
         return {"intent": "hybrid", "module": None}
 

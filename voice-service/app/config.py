@@ -21,6 +21,29 @@ class Settings(BaseSettings):
     # sends, so nothing resamples in the common path.
     SAMPLE_RATE: int = 16000
 
+    # Groq serves both ends of the conversation from one key: hosted
+    # Whisper for what was said, and a hosted voice for the reply. It is
+    # the same account the assistant already thinks with.
+    #
+    # This matters most for listening. The local recogniser below runs
+    # base.en on a shared four-core host -- the smallest English Whisper
+    # there is -- and it misheard badly enough that "Hey, how are you"
+    # came back as "I know you". Hosted large-v3-turbo answers in about
+    # 200ms from here and is a different class of accurate.
+    GROQ_API_KEY: str = ""
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_STT_MODEL: str = "whisper-large-v3-turbo"
+    GROQ_TTS_MODEL: str = "canopylabs/orpheus-v1-english"
+    # The six Orpheus ships, read off a rejection rather than guessed:
+    # autumn, diana, hannah, austin, daniel, troy. "tara" was here first
+    # and is not one of them -- the service would have fallen back to
+    # Piper forever while reporting that Groq was configured.
+    GROQ_TTS_VOICE: str = "hannah"
+
+    # The local recogniser, used when Groq is not configured or is
+    # unreachable. Nothing here is removed: a voice call that cannot
+    # reach the internet should still work on the equipment in front of
+    # the person using it.
     WHISPER_MODEL: str = "base.en"
     WHISPER_COMPUTE: str = "int8"
     WHISPER_LANGUAGE: str = "en"
@@ -39,9 +62,17 @@ class Settings(BaseSettings):
     # here, but it is billed per character and the answers -- which carry
     # facility names, people and figures -- are sent to a third party.
     #
-    # Left empty it picks itself: ElevenLabs when a key is configured,
-    # Piper otherwise, so a missing key degrades instead of failing.
+    # "groq" is hosted, costs nothing on the free tier, and comes from
+    # the same account and key as the assistant itself.
+    #
+    # Left empty it picks itself, best available first: Groq when a key
+    # is configured, then ElevenLabs, then Piper. A missing key degrades
+    # instead of failing, and so does a provider that will not answer --
+    # startup verifies the choice and falls back rather than leaving a
+    # caller listening to silence.
     VOICE_TTS_PROVIDER: str = ""
+    # "groq" or "local". Empty picks Groq when a key is configured.
+    VOICE_STT_PROVIDER: str = ""
     ELEVENLABS_API_KEY: str = ""
     # Rachel, one of the stock voices. Any voice id from the account works.
     ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
@@ -49,11 +80,23 @@ class Settings(BaseSettings):
     # this is a conversation, not an audiobook.
     ELEVENLABS_MODEL: str = "eleven_flash_v2_5"
 
+    def groq_key(self) -> str:
+        return self.GROQ_API_KEY.strip()
+
     def tts_provider(self) -> str:
         chosen = (self.VOICE_TTS_PROVIDER or "").strip().lower()
         if chosen:
             return chosen
+        if self.groq_key():
+            return "groq"
         return "elevenlabs" if self.ELEVENLABS_API_KEY.strip() else "piper"
+
+    def stt_provider(self) -> str:
+        """Who transcribes. "groq" when there is a key, else on-box."""
+        chosen = (self.VOICE_STT_PROVIDER or "").strip().lower()
+        if chosen:
+            return chosen
+        return "groq" if self.groq_key() else "local"
 
     # Turn taking. Silence that ends a turn has to outlast a natural pause
     # mid-sentence, or half a question reaches the recogniser; it is otherwise

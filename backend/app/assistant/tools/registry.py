@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from app.assistant import actions
 from app.assistant.tools import analytics, attendance, commerce, entities
 from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
@@ -28,6 +29,18 @@ def _values(enum_class: Any) -> list[str]:
 
 _DATE = {"type": "string", "format": "date", "description": "ISO date, YYYY-MM-DD"}
 
+# Shared by every write tool so the two-phase contract reads identically
+# wherever the model meets it.
+_CONFIRM = {
+    "type": "string",
+    "description": (
+        "Leave this out on the first call: nothing will be changed and you "
+        "will get back a plain-English summary and a token. Send that token "
+        "back, with every other argument identical, only after the person "
+        "has agreed to the summary."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class ToolDefinition:
@@ -36,6 +49,14 @@ class ToolDefinition:
     parameters: dict[str, Any]
     handler: Callable[..., ToolResult]
     module: str
+    # A tool that can change data. A flag rather than something inferred
+    # from the name, so adding one is a deliberate act visible in review,
+    # and so the agent can be told plainly which of its tools have
+    # consequences.
+    writes: bool = False
+    # The module permission a caller needs. Reads need "index"; writes
+    # need "add" or "edit", matching the public API.
+    permission: str = "index"
 
     def anthropic_schema(self) -> dict[str, Any]:
         return {
@@ -459,19 +480,138 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         },
         handler=analytics.rank_products,
     ),
+
+    # ---- Tools that change data ------------------------------------------
+    #
+    # Each is two-phase. Called without confirm_token a tool only describes
+    # what it would do; the token it returns is what authorises the change.
+    # The descriptions say so explicitly, because the model is what decides
+    # to ask -- the backend can only refuse.
+    ToolDefinition(
+        name="create_service_request",
+        module="service-requests",
+        permission="add",
+        writes=True,
+        description=(
+            "Raise a new service request against one piece of equipment. "
+            "Call this WITHOUT confirm_token first: nothing is created, and "
+            "it returns a summary and a token. Read the summary to the "
+            "person, and only if they agree call it again with the token. "
+            "Use resolve_entity first to turn names into facility and "
+            "equipment ids."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "facility_id": {"type": "integer"},
+                "equipment_id": {"type": "integer"},
+                "problem_description": {
+                    "type": "string",
+                    "description": "What is actually wrong, in plain words.",
+                },
+                "priority": {"type": "string", "enum": list(actions.PRIORITIES)},
+                "service_required": {"type": "string"},
+                "assigned_technician_id": {"type": "integer"},
+                "confirm_token": _CONFIRM,
+            },
+            "required": ["facility_id", "equipment_id", "problem_description",
+                         "priority"],
+        },
+        handler=actions.create_service_request,
+    ),
+    ToolDefinition(
+        name="assign_service_request",
+        module="service-requests",
+        permission="edit",
+        writes=True,
+        description=(
+            "Put a service request on a named technician. Call without "
+            "confirm_token first to see and read back what would change."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "service_request_id": {"type": "integer"},
+                "technician_id": {"type": "integer"},
+                "confirm_token": _CONFIRM,
+            },
+            "required": ["service_request_id", "technician_id"],
+        },
+        handler=actions.assign_service_request,
+    ),
+    ToolDefinition(
+        name="set_service_request_status",
+        module="service-requests",
+        permission="edit",
+        writes=True,
+        description=(
+            "Move a service request to a new status, including completing "
+            "or cancelling it. Completing one requires "
+            "resolution_description. Call without confirm_token first to "
+            "see and read back what would change."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "service_request_id": {"type": "integer"},
+                "status": {
+                    "type": "string",
+                    "enum": list(actions.SETTABLE_STATUSES),
+                },
+                "resolution_description": {
+                    "type": "string",
+                    "description": "What was done. Required when completing.",
+                },
+                "confirm_token": _CONFIRM,
+            },
+            "required": ["service_request_id", "status"],
+        },
+        handler=actions.set_service_request_status,
+    ),
+    ToolDefinition(
+        name="set_service_request_priority",
+        module="service-requests",
+        permission="edit",
+        writes=True,
+        description=(
+            "Raise or lower the priority of a service request. Call "
+            "without confirm_token first to see and read back what would "
+            "change."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "service_request_id": {"type": "integer"},
+                "priority": {"type": "string", "enum": list(actions.PRIORITIES)},
+                "confirm_token": _CONFIRM,
+            },
+            "required": ["service_request_id", "priority"],
+        },
+        handler=actions.set_service_request_priority,
+    ),
 )
 
 TOOLS_BY_NAME: dict[str, ToolDefinition] = {tool.name: tool for tool in TOOL_DEFINITIONS}
 
 
-def anthropic_tool_schemas(modules: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
-    """Tool schemas for the model, optionally narrowed to one module's tools.
+def anthropic_tool_schemas(
+    modules: tuple[str, ...] | None = None,
+    names: frozenset[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Tool schemas for the model, narrowed by module and by name.
 
-    Narrowing matters: binding every tool at once measurably degrades selection
-    accuracy, so the graph exposes only the tools relevant to the classified
-    intent.
+    Narrowing by module matters for accuracy: binding every tool at once
+    measurably degrades selection, so the graph exposes only the tools
+    relevant to the classified intent.
+
+    Narrowing by name matters for safety. Since write tools arrived, two
+    tools in the same module can need different permissions -- a person
+    may read service requests and not edit them -- so the module alone no
+    longer says what somebody may be offered.
     """
     tools = TOOL_DEFINITIONS
+    if names is not None:
+        tools = tuple(t for t in tools if t.name in names)
     if modules:
         allowed = set(modules) | {"platform"}
         tools = tuple(t for t in tools if t.module in allowed)
