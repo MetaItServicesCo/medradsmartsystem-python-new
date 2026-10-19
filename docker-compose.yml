@@ -369,6 +369,18 @@ services:
       - ASSISTANT_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
       - SPEECH_SERVICE_URL=http://speech:8200
       - SPEECH_INTERNAL_KEY=${ASSISTANT_INTERNAL_KEY:-}
+      # Hosted speech, from the same key the assistant thinks with.
+      # Setting GROQ_API_KEY is enough: listening and speaking both move
+      # to Groq, and each falls back on its own if Groq cannot answer.
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_STT_MODEL=${GROQ_STT_MODEL:-whisper-large-v3-turbo}
+      - GROQ_TTS_MODEL=${GROQ_TTS_MODEL:-canopylabs/orpheus-v1-english}
+      # Orpheus English voices: autumn, diana, hannah, austin, daniel, troy.
+      - GROQ_TTS_VOICE=${GROQ_TTS_VOICE:-hannah}
+      # "groq" or "local". Empty picks Groq when a key is configured. The
+      # local recogniser stays in the image either way, so a voice call in
+      # a plant room with no internet still works.
+      - VOICE_STT_PROVIDER=${VOICE_STT_PROVIDER:-}
       - WHISPER_MODEL=${VOICE_WHISPER_MODEL:-base.en}
       # Empty picks itself: ElevenLabs when a key is set, Piper otherwise.
       # ElevenLabs sounds better and is billed per character; Piper keeps
