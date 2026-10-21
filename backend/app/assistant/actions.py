@@ -39,6 +39,7 @@ from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus
 from app.models.user import User
+from app.utils.numbering import assign_unique_number
 from app.utils.service_access import can_work_on_service_request
 
 
@@ -360,12 +361,8 @@ def create_service_request(
     )
 
     def apply() -> int:
-        # Matches the module's own scheme, so numbers stay in one sequence.
-        last = ctx.db.query(ServiceRequest).order_by(ServiceRequest.id.desc()).first()
-        next_num = (last.id + 1) if last else 1
         now = datetime.utcnow()
         sr = ServiceRequest(
-            request_number="SR-{:06d}".format(next_num),
             facility_id=facility.id,
             equipment_id=equipment.id,
             requester_id=ctx.user.id,
@@ -380,8 +377,10 @@ def create_service_request(
             assigned_at=now if technician else None,
             history=[],
         )
-        ctx.db.add(sr)
-        ctx.db.flush()
+        # The same allocator the module uses, so numbers stay in one
+        # sequence and a request raised by voice cannot collide with one
+        # being filed on screen at the same moment.
+        assign_unique_number(ctx.db, sr, "request_number", prefix="SR-")
         _record_history(sr, "created_by_assistant", ctx.user, {
             "priority": chosen_priority,
             "assigned_technician_id": technician.id if technician else None,

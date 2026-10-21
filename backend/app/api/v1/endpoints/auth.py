@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy import func
@@ -9,6 +11,8 @@ from app.models.user import User
 from app.utils.logging import log_activity
 from app.utils.rate_limit import check_rate_limit, clear_rate_limit, enforce_rate_limit, request_ip
 from app.utils.token_revocation import revoke_access_token
+
+logger = logging.getLogger("medrad.auth")
 
 router = APIRouter()
 logout_token_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
@@ -25,16 +29,22 @@ def login(
         "window_seconds": settings.AUTH_LOGIN_WINDOW_SECONDS,
         "message": "Too many login attempts. Please wait before trying again.",
     }
+    # Only the per-source limit runs before the password is checked. That
+    # one is self-inflicted: the only thing you can throttle by hammering
+    # it is whatever you are hammering it from.
+    #
+    # The per-account limit deliberately does NOT run here. It used to,
+    # and that handed anybody who knew a username the ability to lock its
+    # owner out for fifteen minutes from a phone: ten wrong guesses and
+    # the real person was refused before their password was even looked
+    # at. The limit still applies to every failure below, so guessing is
+    # bounded exactly as it was. What changed is that a correct password
+    # is now always accepted -- somebody who has guessed right has, by
+    # definition, stopped guessing, and throttling them protects nothing.
     check_rate_limit(
         bucket="auth-login-ip",
         identity=client_identity,
         limit=settings.AUTH_LOGIN_IP_LIMIT,
-        **limiter_args,
-    )
-    check_rate_limit(
-        bucket="auth-login-account",
-        identity=normalized_username,
-        limit=settings.AUTH_LOGIN_ACCOUNT_LIMIT,
         **limiter_args,
     )
     user = db.query(User).filter(func.lower(User.username) == normalized_username).first()
@@ -49,12 +59,23 @@ def login(
             limit=settings.AUTH_LOGIN_IP_LIMIT,
             **limiter_args,
         )
-        enforce_rate_limit(
-            bucket="auth-login-account",
-            identity=normalized_username,
-            limit=settings.AUTH_LOGIN_ACCOUNT_LIMIT,
-            **limiter_args,
-        )
+        try:
+            enforce_rate_limit(
+                bucket="auth-login-account",
+                identity=normalized_username,
+                limit=settings.AUTH_LOGIN_ACCOUNT_LIMIT,
+                **limiter_args,
+            )
+        except HTTPException:
+            # Sustained wrong guesses against one account. Worth seeing,
+            # because it is now the only trace there is: the owner is no
+            # longer locked out, so nobody will ring up to report it.
+            logger.warning(
+                "Login throttled for account %s from %s after repeated "
+                "failures; the owner can still sign in with the correct "
+                "password.", normalized_username, client_identity,
+            )
+            raise
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password"

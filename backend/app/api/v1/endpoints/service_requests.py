@@ -188,6 +188,7 @@ CUSTOMER_PAYMENT_FIELDS = {"amount_paid", "status", "payment_method", "notes"}
 
 # Shared with the assistant's write tools, which are a second way into the
 # same records. Two copies of an authorization rule eventually disagree.
+from app.utils.numbering import assign_unique_number  # noqa: E402
 from app.utils.service_access import (  # noqa: E402
     can_work_on_service_request as _can_work_on_service,
     is_internal_service_user as _is_internal_service_user,
@@ -569,10 +570,7 @@ def _consume_service_parts(
     return snapshots
 
 
-def _next_service_invoice_number(db: Session) -> str:
-    last = db.query(Invoice).order_by(Invoice.id.desc()).first()
-    next_num = (last.id + 1) if last else 1
-    return f"INV-SERVICE-{next_num:06d}"
+SERVICE_INVOICE_PREFIX = "INV-SERVICE-"
 
 
 def _facility_billing_address(facility: Optional[Facility]) -> Optional[str]:
@@ -1319,13 +1317,10 @@ def create_service_request(
     if equipment.facility_id != sr_in.facility_id:
         raise HTTPException(status_code=400, detail="Equipment does not belong to the selected facility")
 
-    # Generate unique request number
-    last = db.query(ServiceRequest).order_by(ServiceRequest.id.desc()).first()
-    next_num = (last.id + 1) if last else 1
-    request_number = f"SR-{next_num:06d}"
-
+    # The number is assigned at insert time, not guessed beforehand: two
+    # people filing at the same moment used to compute the same one and
+    # the second got a 500 from the unique constraint.
     db_sr = ServiceRequest(
-        request_number=request_number,
         facility_id=sr_in.facility_id,
         equipment_id=sr_in.equipment_id,
         problem_description=sr_in.problem_description,
@@ -1346,7 +1341,8 @@ def create_service_request(
             "reference_number": sr_in.reference_number,
         })],
     )
-    db.add(db_sr)
+    request_number = assign_unique_number(
+        db, db_sr, "request_number", prefix="SR-")
     db.commit()
     db.refresh(db_sr)
     notify_admins(
@@ -1607,7 +1603,7 @@ def generate_service_invoice(
 
     facility = db_sr.facility
     invoice = Invoice(
-        invoice_number=_next_service_invoice_number(db),
+
         invoice_type=InvoiceType.SERVICE,
         customer_name=(facility.billing_name or facility.name) if facility else (db_sr.requested_by_name or "Service Customer"),
         customer_email=(facility.billing_email or facility.email) if facility else "billing@example.com",
@@ -1628,8 +1624,8 @@ def generate_service_invoice(
         payment_method=payload.payment_method,
         notes=f"__FEES__:labor={service_amount},travel={travel_charges}::{payload.notes or f'Service invoice for {db_sr.request_number}.'}",
     )
-    db.add(invoice)
-    db.flush()
+    assign_unique_number(
+        db, invoice, "invoice_number", prefix=SERVICE_INVOICE_PREFIX)
     record_invoice_created(db, invoice, current_user, f"Service invoice created for {db_sr.request_number}")
 
     for quotation in selected_quotations:
