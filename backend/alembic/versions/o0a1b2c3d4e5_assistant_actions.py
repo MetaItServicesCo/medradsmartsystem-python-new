@@ -1,13 +1,25 @@
 """Record what the assistant changes, before it changes it
 
 Revision ID: o0a1b2c3d4e5
-Revises: n9e0f1a2b3c4
+Revises: x9c0d1e2f3a4
 Create Date: 2026-10-19
 
-Created idempotently on purpose. This deployment's database has at times been
-built with create_all() and stamped rather than migrated through, so a table
-can already exist at a revision that claims to create it. Checking first means
-the end state is the same either way, and a second run is not an error.
+Created idempotently on purpose. This deployment's database has at times
+been built with create_all() and stamped rather than migrated through, so
+a table can already exist at a revision that claims to create it.
+
+There is also an older assistant_actions, created by u6f7a8b9c0d1 for a
+design that no longer exists in this codebase: a uuid primary key, an
+action_type and a card, and none of the columns the current write tools
+read. On a database migrated straight through, that revision runs first
+and this one would find a table present, skip, and leave the assistant
+pointed at something it cannot use.
+
+So the shape is checked, not just the name. A table without a token
+column is the old one and is replaced. That discards its rows, which is
+the right call for this table and only this table: it holds proposed and
+applied changes written by code that is no longer here, nothing reads
+them, and a proposal is worthless once the session that made it is gone.
 """
 from typing import Sequence, Union
 
@@ -16,7 +28,7 @@ import sqlalchemy as sa
 
 
 revision: str = "o0a1b2c3d4e5"
-down_revision: Union[str, Sequence[str], None] = "n9e0f1a2b3c4"
+down_revision: Union[str, Sequence[str], None] = "x9c0d1e2f3a4"
 branch_labels = None
 depends_on = None
 
@@ -27,9 +39,18 @@ def _exists() -> bool:
     return TABLE in sa.inspect(op.get_bind()).get_table_names()
 
 
+def _has_token_column() -> bool:
+    inspector = sa.inspect(op.get_bind())
+    return "token" in {c["name"] for c in inspector.get_columns(TABLE)}
+
+
 def upgrade() -> None:
     if _exists():
-        return
+        if _has_token_column():
+            return
+        # The older design, from u6f7a8b9c0d1. See the note at the top.
+        op.drop_table(TABLE)
+        sa.Enum(name="actionstatus").drop(op.get_bind(), checkfirst=True)
     op.create_table(
         TABLE,
         sa.Column("id", sa.Integer(), nullable=False),
