@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -49,10 +48,10 @@ from app.db.base import SessionLocal, engine  # noqa: E402
 from app.models.facility import Facility  # noqa: E402
 from app.models.inspection_form import InspectionForm  # noqa: E402
 from app.models.modality import Modality  # noqa: E402
-from app.models.user import User, UserRole  # noqa: E402
+from app.models.user import User  # noqa: E402
 
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 # ---------------------------------------------------------------------------
@@ -90,45 +89,35 @@ def _mapped_ids(db: Session, *entities: str) -> set[int]:
     return {int(r[0]) for r in rows}
 
 
-def _matrices(db: Session) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Every saved matrix, as a per-role default plus the exceptions.
+def _saved_matrices(db: Session) -> list[dict[str, Any]]:
+    """Every user who has one, saved individually.
 
-    The migration writes ``permissions: None``, so a re-import leaves the
-    whole estate with no saved matrix at all and everybody falls back to
-    the role table. That is only harmless if the generated matrices say
-    the same thing the role table says, and nothing has ever checked.
+    An earlier version grouped these by role and treated the commonest
+    matrix in each as that role's default, to be replayed to everybody.
+    That was built on a miscount: a query had reported that all 6,767
+    users carried a matrix, when in fact three do. SQLAlchemy writes a
+    Python None into a JSON column as the JSON literal null, so testing
+    "IS NOT NULL" counted everybody who has no matrix at all.
 
-    Rather than find out the hard way, both halves are captured: the
-    commonest matrix for each role, which is what the bulk generation
-    produced, and the individuals who differ from it. Replaying both
-    reproduces the estate exactly, whatever the role table happens to say.
+    With the real number known there is no role default to find -- every
+    holder is an individual exception, and replaying one of them onto a
+    whole role would have changed access for about forty people. So each
+    is carried on its own and applied by username. This also behaves
+    correctly if a future database does have matrices everywhere: the
+    file is simply longer.
     """
     holders = [
         user for user in db.query(User).all()
         if user.permissions not in (None, {}, "")
     ]
-    by_role: dict[str, list[User]] = defaultdict(list)
-    for user in holders:
-        by_role[str(getattr(user.role, "value", user.role))].append(user)
 
-    per_role: dict[str, Any] = {}
-    tuned: list[dict[str, Any]] = []
-    for role, users in by_role.items():
-        shapes = Counter(json.dumps(u.permissions, sort_keys=True) for u in users)
-        usual, usual_count = shapes.most_common(1)[0]
-        per_role[role] = {
-            "permissions": json.loads(usual),
-            "users_on_it": usual_count,
-            "users_in_role": len(users),
-        }
-        for user in users:
-            if json.dumps(user.permissions, sort_keys=True) != usual:
-                tuned.append({
-                    "username": user.username,
-                    "role": role,
-                    "permissions": user.permissions,
-                })
-    return per_role, sorted(tuned, key=lambda r: (r["role"], r["username"]))
+    return sorted(
+        ({"username": u.username,
+          "role": str(getattr(u.role, "value", u.role)),
+          "permissions": u.permissions}
+         for u in holders),
+        key=lambda r: (r["role"], r["username"]),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -174,14 +163,12 @@ def export(output: Path) -> int:
         } for user in db.query(User).all()
             if user.id not in imported_users]
 
-        role_matrices, tuned = _matrices(db)
         payload = {
             "format_version": FORMAT_VERSION,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "source_database": engine.url.database,
             "inspection_forms": forms,
-            "role_permissions": role_matrices,
-            "tuned_permissions": tuned,
+            "saved_permissions": _saved_matrices(db),
             "native_users": natives,
         }
     finally:
@@ -192,13 +179,10 @@ def export(output: Path) -> int:
 
     print("Wrote {}".format(output))
     print("  inspection forms built in Medrad : {}".format(len(payload["inspection_forms"])))
-    print("  per-role permission matrices     : {}".format(len(payload["role_permissions"])))
-    for role, info in sorted(payload["role_permissions"].items()):
-        print("      {:<18} {} of {} users".format(
-            role, info["users_on_it"], info["users_in_role"]))
-    print("  hand-tuned permission matrices   : {}".format(len(payload["tuned_permissions"])))
-    for row in payload["tuned_permissions"]:
-        print("      {:<16} {}".format(row["role"], row["username"]))
+    print("  users with a saved matrix        : {}".format(
+        len(payload["saved_permissions"])))
+    for row in payload["saved_permissions"]:
+        print("      {:<18} {}".format(row["role"], row["username"]))
     print("  users created in Medrad          : {}".format(len(payload["native_users"])))
     print()
     print("This file contains production data, including password hashes.")
@@ -224,7 +208,6 @@ def restore(source: Path, confirm_target: str) -> int:
 
     db = SessionLocal()
     notes: list[str] = []
-    by_role_applied: dict[str, int] = {}
     added_forms = added_users = applied = 0
     try:
         modalities = {name: mid for mid, name in db.query(Modality.id, Modality.name).all()}
@@ -264,32 +247,7 @@ def restore(source: Path, confirm_target: str) -> int:
         # on the row it just made.
         db.flush()
 
-        # Role defaults first, then the exceptions on top. The re-import
-        # leaves every matrix null, so without this the whole estate falls
-        # back to the role table -- which may or may not say the same
-        # thing, and finding out in production is not a plan.
-        for role, info in (payload.get("role_permissions") or {}).items():
-            try:
-                role_enum = UserRole(role)
-            except ValueError:
-                notes.append("unknown role {!r} in the saved file; its "
-                             "matrix was NOT applied".format(role))
-                by_role_applied[role] = 0
-                continue
-            # Compared in Python rather than SQL on purpose. The column
-            # stores the enum NAME while the file carries its VALUE, and
-            # SQLAlchemy writes a Python None into a JSON column as the
-            # JSON literal null -- so neither "role = :role" nor
-            # "permissions IS NULL" matches what is actually in the
-            # table. Both silently matched zero rows, which would have
-            # left every user without a matrix and said nothing.
-            touched = 0
-            for user in db.query(User).filter(User.role == role_enum).all():
-                if not user.permissions:
-                    user.permissions = info["permissions"]
-                    touched += 1
-            by_role_applied[role] = touched
-        for row in payload["tuned_permissions"]:
+        for row in payload["saved_permissions"]:
             user = db.query(User).filter(User.username == row["username"]).first()
             if user is None:
                 notes.append("no account named {!r}; its tuned matrix was NOT "
@@ -305,14 +263,12 @@ def restore(source: Path, confirm_target: str) -> int:
     print("Restored into {}".format(target))
     print("  inspection forms created   : {}".format(added_forms))
     print("  users created              : {}".format(added_users))
-    for role, count in sorted(by_role_applied.items()):
-        print("  role matrix {:<16} applied to {} users".format(role, count))
     print("  permission matrices applied: {}".format(applied))
     for note in notes:
         print("  ! {}".format(note))
-    if applied != len(payload["tuned_permissions"]):
+    if applied != len(payload["saved_permissions"]):
         print()
-        print("Not every tuned matrix was applied. Those people will be on their")
+        print("Not every saved matrix was applied. Those people will be on their")
         print("role's default access until it is sorted out -- see the notes above.")
         return 1
     return 0

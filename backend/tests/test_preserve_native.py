@@ -165,26 +165,16 @@ ok("a form's modality travels by name, not id",
    saved["inspection_forms"][0]["modality"] == "Imaging"
    or saved["inspection_forms"][1]["modality"] == "Imaging")
 
-tuned = sorted(r["username"] for r in saved["tuned_permissions"])
-ok("exactly the hand-tuned matrices are found",
-   tuned == ["Rooshan Mirza", "a_rehman"], str(tuned))
-ok("the 40 people on a generated matrix are not",
-   len(saved["tuned_permissions"]) == 2,
-   "{} found".format(len(saved["tuned_permissions"])))
-
-# The import nulls every matrix, so the per-role ones have to be saved
-# too or the whole estate silently falls back to the role table.
-roles = saved["role_permissions"]
-ok("a matrix is saved for every role in use",
-   sorted(roles) == ["employee", "facility_manager", "technician"],
-   str(sorted(roles)))
-ok("the employee default is the one 30 people share",
-   roles["employee"]["permissions"] == STANDARD_EMPLOYEE
-   and roles["employee"]["users_on_it"] == 30,
-   str(roles["employee"]["users_on_it"]))
-ok("the manager default is the one 9 people share",
-   roles["facility_manager"]["permissions"] == STANDARD_MANAGER
-   and roles["facility_manager"]["users_on_it"] == 9)
+held = {r["username"]: r["permissions"] for r in saved["saved_permissions"]}
+ok("every user who has a matrix is saved, individually",
+   len(held) == 42, "{} saved".format(len(held)))
+ok("including the ones who share a shape with others",
+   held.get("emp_7") == STANDARD_EMPLOYEE and held.get("mgr_3") == STANDARD_MANAGER)
+ok("and the two who differ from everyone else",
+   held.get("a_rehman") == TUNED_EMPLOYEE
+   and held.get("Rooshan Mirza") == TUNED_MANAGER)
+ok("a user with no matrix is not in the file",
+   "contact_person" not in held)
 ok("a native user keeps their own matrix in their record",
    saved["native_users"][0]["permissions"] == STANDARD_EMPLOYEE)
 
@@ -220,6 +210,12 @@ make_user(new, "a_rehman", UserRole.EMPLOYEE, None)
 for i in range(9):
     make_user(new, "mgr_{}".format(i), UserRole.FACILITY_MANAGER, None)
 make_user(new, "Rooshan Mirza", UserRole.FACILITY_MANAGER, None)
+# Nobody saved a matrix for this one, and the restore must not invent
+# one. An earlier design derived a "role default" from whoever happened
+# to hold a matrix and applied it to the whole role -- which, with only
+# three holders in production, would have handed one person's access to
+# about forty others.
+make_user(new, "no_matrix_emp", UserRole.EMPLOYEE, None)
 new.add(InspectionForm(name="Legacy Annual", schema={"legacy": True}))
 new.commit()
 
@@ -254,18 +250,21 @@ ok("Rooshan's tuned matrix is back", rooshan.permissions == TUNED_MANAGER,
    str(rooshan.permissions))
 ok("a_rehman's tuned matrix is back", rehman.permissions == TUNED_EMPLOYEE)
 
-ok("the role default is replayed onto everyone who had none",
+ok("everyone who had a matrix gets theirs back",
    check.query(User).filter(User.username == "mgr_0").one().permissions
-   == STANDARD_MANAGER)
-ok("and onto the employees",
-   check.query(User).filter(User.username == "emp_17").one().permissions
+   == STANDARD_MANAGER
+   and check.query(User).filter(User.username == "emp_17").one().permissions
    == STANDARD_EMPLOYEE)
-# Counted in Python: a JSON column holds Python None as the JSON literal
-# null, so "IS NULL" matches nothing and an assertion built on it passes
-# whatever the data says. That false pass hid the bug this test found.
-still_null = [u.username for u in check.query(User).all() if not u.permissions]
-ok("nobody is left with no matrix at all", not still_null,
-   "{} left without one: {}".format(len(still_null), still_null[:5]))
+# The inverse, and the one that matters: nobody acquires access that was
+# never saved for them. Counted in Python because a JSON column holds
+# Python None as the JSON literal null, so "IS NULL" matches nothing and
+# an assertion built on it passes whatever the data says.
+invented = check.query(User).filter(User.username == "no_matrix_emp").one()
+ok("a user nobody saved a matrix for still has none",
+   not invented.permissions, str(invented.permissions))
+held_after = {u.username for u in check.query(User).all() if u.permissions}
+ok("exactly the saved people hold a matrix afterwards",
+   held_after == set(held), str(sorted(held_after - set(held))))
 
 native = check.query(User).filter(User.username == "built_here").one_or_none()
 ok("the user built in Medrad is recreated", native is not None)
@@ -311,7 +310,7 @@ print("A matrix with nobody to apply it to is reported, not dropped")
 print("-" * 72)
 
 orphan = json.loads(out.read_text(encoding="utf-8"))
-orphan["tuned_permissions"].append(
+orphan["saved_permissions"].append(
     {"username": "left_the_company", "role": "EMPLOYEE",
      "permissions": TUNED_EMPLOYEE})
 orphan_file = out.parent / "orphan.json"
