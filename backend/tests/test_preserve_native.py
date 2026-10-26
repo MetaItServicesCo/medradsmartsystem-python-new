@@ -129,6 +129,12 @@ mark_imported(prod, "user", make_user(prod, "Rooshan Mirza",
 # Created in Medrad, so no id_map row.
 make_user(prod, "built_here", UserRole.TECHNICIAN, STANDARD_EMPLOYEE,
           facility_id=site.id)
+# Created by the import from a facility contact. It lives in the users
+# table but is recorded under its own entity, and reporting it as native
+# would have had the restore recreate 613 accounts that already exist.
+mark_imported(prod, "facility_contact",
+              make_user(prod, "contact_person", UserRole.CLIENT, None,
+                        facility_id=site.id).id)
 
 imported_form = InspectionForm(name="Legacy Annual", schema={"legacy": True},
                                modality_id=imaging.id)
@@ -184,6 +190,8 @@ ok("a native user keeps their own matrix in their record",
 
 natives = [u["username"] for u in saved["native_users"]]
 ok("users created in Medrad are saved", natives == ["built_here"], str(natives))
+ok("a user the import made from a facility contact is not called native",
+   "contact_person" not in natives, str(natives))
 ok("their password hash travels so they can still sign in",
    saved["native_users"][0]["hashed_password"] == "hash-of-built_here")
 ok("their site travels by name",

@@ -40,7 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -59,8 +59,15 @@ FORMAT_VERSION = 1
 # Working out what is native
 # ---------------------------------------------------------------------------
 
-def _mapped_ids(db: Session, entity: str) -> set[int]:
-    """Target ids the legacy import created for one entity.
+# Both of these write into the users table. The import creates an account
+# for every facility contact as well as for every legacy user, and records
+# it under its own entity name -- so asking only about "user" reports 613
+# imported contacts as though somebody had typed them into Medrad by hand.
+USER_ENTITIES = ("user", "facility_contact")
+
+
+def _mapped_ids(db: Session, *entities: str) -> set[int]:
+    """Target ids the legacy import created, across one or more entities.
 
     Anything not in here was made in Medrad. If the map is missing entirely
     the caller is told, rather than quietly concluding that every row is
@@ -68,8 +75,10 @@ def _mapped_ids(db: Session, entity: str) -> set[int]:
     """
     try:
         rows = db.execute(
-            text("SELECT target_id FROM legacy_migration.id_map WHERE entity = :e"),
-            {"e": entity},
+            text("SELECT target_id FROM legacy_migration.id_map "
+                 "WHERE entity IN :entities").bindparams(
+                     bindparam("entities", expanding=True)),
+            {"entities": list(entities)},
         ).all()
     except Exception as exc:  # noqa: BLE001
         raise SystemExit(
@@ -130,7 +139,7 @@ def export(output: Path) -> int:
     db = SessionLocal()
     try:
         imported_forms = _mapped_ids(db, "inspection_form")
-        imported_users = _mapped_ids(db, "user")
+        imported_users = _mapped_ids(db, *USER_ENTITIES)
 
         modality_names = dict(db.query(Modality.id, Modality.name).all())
         facility_names = dict(db.query(Facility.id, Facility.name).all())
