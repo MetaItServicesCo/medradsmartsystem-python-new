@@ -10,6 +10,7 @@ from .audit import build_audit_report
 from .config import MigrationConfig
 from .foundation import build_foundation_plan
 from .operational import OperationalWriter
+from .foundation_validation import build_foundation_validation
 from .validation import build_operational_validation
 from .writer import FoundationWriter
 
@@ -49,6 +50,12 @@ def _parser() -> argparse.ArgumentParser:
     apply_enrichment.add_argument("--output", type=Path, required=True)
     apply_enrichment.add_argument("--apply", action="store_true", required=True)
     apply_enrichment.add_argument("--confirm-target", required=True)
+    validate_foundation = subparsers.add_parser(
+        "validate-foundation",
+        help="Reconcile facilities, users, equipment, parts and modalities "
+        "-- the phase validate-operational does not cover",
+    )
+    validate_foundation.add_argument("--output", type=Path, required=True)
     validate_operational = subparsers.add_parser(
         "validate-operational",
         help="Reconcile migrated operational and financial records",
@@ -80,6 +87,8 @@ def main() -> None:
                     "Target confirmation does not match TARGET_DATABASE_URL"
                 )
             report = OperationalWriter(legacy, target).apply_enrichment()
+        elif args.command == "validate-foundation":
+            report = build_foundation_validation(legacy, target)
         elif args.command == "validate-operational":
             report = build_operational_validation(legacy, target)
         else:
@@ -91,6 +100,7 @@ def main() -> None:
             "migrate-foundation",
             "migrate-operational",
             "apply-enrichment",
+            "validate-foundation",
             "validate-operational",
         }:
             args.output.parent.mkdir(parents=True, exist_ok=True)
