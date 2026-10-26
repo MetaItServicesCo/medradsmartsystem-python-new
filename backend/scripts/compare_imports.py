@@ -68,7 +68,7 @@ SUBJECTS: tuple[Subject, ...] = (
     Subject("user", "users", ("username", "email"), ("role", "is_active")),
     Subject("equipment", "equipment",
             ("asset_tag", "serial_number"), ("make", "model", "facility_id")),
-    Subject("part", "inventory_parts", ("part_number",), ("name",)),
+    Subject("part", "inventory_parts", ("part_number",), ("description",)),
     Subject("service_request", "service_requests",
             ("request_number",), ("status", "priority")),
     Subject("inspection", "inspections",
