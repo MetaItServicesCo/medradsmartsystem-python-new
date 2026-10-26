@@ -41,18 +41,38 @@ def build_operational_validation(legacy: Engine, target: Engine) -> dict[str, An
         "services": _count(legacy, "services"),
         "service_reports": _count(legacy, "service_reports"),
         "service_quotation_items": _count(legacy, "service_quotations"),
+        # Upcoming inspections are deliberately not migrated: the app
+        # regenerates them from each asset's PM schedule, and importing
+        # them would carry stale dates and block that generation. The
+        # writer filters them out, so the expectation has to as well --
+        # counting every row meant this check reported 8,796 of 11,086
+        # and failed every run, including the one that went live.
+        #
+        # UPCOMING is "created", "hold", and anything unrecognised, so
+        # the migrated set is exactly the two statuses named here.
         "inspection_batches": int(
             _scalar(
                 legacy,
                 """
-                SELECT COUNT(DISTINCT NULLIF(TRIM(work_order),''))
-                     + SUM(work_order IS NULL OR TRIM(work_order)='')
-                FROM inspections
+                SELECT COUNT(*) FROM (
+                    SELECT COALESCE(NULLIF(TRIM(work_order),''),
+                                    CONCAT('LEGACY-INSP-', id)) AS grp
+                    FROM inspections
+                    WHERE LOWER(TRIM(status)) IN ('in progress','completed')
+                    GROUP BY grp
+                ) batches
                 """,
             )
             or 0
         ),
-        "inspections": _count(legacy, "inspections"),
+        "inspections": int(
+            _scalar(
+                legacy,
+                "SELECT COUNT(*) FROM inspections "
+                "WHERE LOWER(TRIM(status)) IN ('in progress','completed')",
+            )
+            or 0
+        ),
         "inspection_reports": _count(legacy, "inspection_reports"),
         "sales_quotations": int(
             _scalar(legacy, "SELECT COUNT(*) FROM sale_and_rentals WHERE type='sale'")
