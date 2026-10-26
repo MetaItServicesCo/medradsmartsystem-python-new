@@ -212,21 +212,49 @@ def restore(source: Path, confirm_target: str) -> int:
     try:
         modalities = {name: mid for mid, name in db.query(Modality.id, Modality.name).all()}
         facilities = {name: fid for fid, name in db.query(Facility.id, Facility.name).all()}
-        existing_forms = {f.name for f in db.query(InspectionForm).all()}
+        existing_forms = {
+            f.name: json.dumps(f.schema, sort_keys=True)
+            for f in db.query(InspectionForm).all()
+        }
 
         for form in payload["inspection_forms"]:
-            if form["name"] in existing_forms:
-                notes.append("form already present, left alone: {}".format(form["name"]))
+            name = form["name"]
+            wanted = json.dumps(form["schema"], sort_keys=True)
+            # Content first, name second. A previous run may already have
+            # restored this form under a suffixed name, and matching on the
+            # name alone would suffix it again on every run.
+            if wanted in existing_forms.values():
+                notes.append(
+                    "form already present with identical content, left alone: "
+                    "{}".format(name))
                 continue
+            if name in existing_forms:
+                # A name can collide for two very different reasons. The
+                # import may produce a form the same in every respect, in
+                # which case there is nothing to restore. Or somebody may
+                # have built a different form here under a name the import
+                # also uses -- and skipping that one loses their work
+                # silently, which is exactly what happened to a "C Arm"
+                # form on the first real cutover. So compare, and keep
+                # both when they differ.
+                name = "{} (built in Medrad)".format(name)
+                suffix = 2
+                while name in existing_forms:
+                    name = "{} (built in Medrad {})".format(form["name"], suffix)
+                    suffix += 1
+                notes.append(
+                    "a different form already uses the name {!r}; yours was "
+                    "restored as {!r}".format(form["name"], name))
             modality_id = modalities.get(form["modality"])
             if form["modality"] and modality_id is None:
                 notes.append("form {!r}: modality {!r} no longer exists, left unset"
                              .format(form["name"], form["modality"]))
             db.add(InspectionForm(
-                name=form["name"], description=form["description"],
+                name=name, description=form["description"],
                 modality_id=modality_id, schema=form["schema"],
                 archived_at=datetime.utcnow() if form.get("archived") else None,
             ))
+            existing_forms[name] = wanted
             added_forms += 1
 
         for person in payload["native_users"]:

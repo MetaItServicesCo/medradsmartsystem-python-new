@@ -145,6 +145,11 @@ prod.add(InspectionForm(name="Pump Safety Check", description="Built on site",
                         schema={"sections": [{"title": "Electrical"}]},
                         modality_id=imaging.id))
 prod.add(InspectionForm(name="Ward Round", schema={"sections": []}))
+# Same name as a form the import produces, different content. Skipping
+# this is how a 'C Arm' form was lost on the first real cutover.
+prod.add(InspectionForm(name="Legacy Annual", schema={"built": "here"}))
+# Same name, same content: nothing to restore, and saying so is right.
+prod.add(InspectionForm(name="Shared Checklist", schema={"same": 1}))
 prod.commit()
 
 point_at(prod_engine, ProdSession)
@@ -158,9 +163,10 @@ print("-" * 72)
 
 form_names = sorted(f["name"] for f in saved["inspection_forms"])
 ok("only forms built in Medrad are saved",
-   form_names == ["Pump Safety Check", "Ward Round"], str(form_names))
-ok("the imported form is left behind",
-   "Legacy Annual" not in form_names)
+   form_names == ["Legacy Annual", "Pump Safety Check", "Shared Checklist",
+                  "Ward Round"], str(form_names))
+ok("the imported copy of a reused name is not itself exported",
+   sum(1 for n in form_names if n == "Legacy Annual") == 1)
 ok("a form's modality travels by name, not id",
    saved["inspection_forms"][0]["modality"] == "Imaging"
    or saved["inspection_forms"][1]["modality"] == "Imaging")
@@ -217,6 +223,7 @@ make_user(new, "Rooshan Mirza", UserRole.FACILITY_MANAGER, None)
 # about forty others.
 make_user(new, "no_matrix_emp", UserRole.EMPLOYEE, None)
 new.add(InspectionForm(name="Legacy Annual", schema={"legacy": True}))
+new.add(InspectionForm(name="Shared Checklist", schema={"same": 1}))
 new.commit()
 
 point_at(new_engine, NewSession)
@@ -231,9 +238,17 @@ ok("it reported success", code == 0, "exit {}".format(code))
 ok("both built forms are recreated",
    check.query(InspectionForm).filter(
        InspectionForm.name.in_(["Pump Safety Check", "Ward Round"])).count() == 2)
-ok("the imported form was not duplicated",
+ok("the imported form was not overwritten",
    check.query(InspectionForm).filter(
-       InspectionForm.name == "Legacy Annual").count() == 1)
+       InspectionForm.name == "Legacy Annual").one().schema
+   == {"legacy": True})
+ok("a clashing form with different content is kept under a new name",
+   check.query(InspectionForm).filter(
+       InspectionForm.name == "Legacy Annual (built in Medrad)").one()
+   .schema == {"built": "here"})
+ok("a clashing form with identical content is not duplicated",
+   check.query(InspectionForm).filter(
+       InspectionForm.name.like("Shared Checklist%")).count() == 1)
 
 rebuilt_imaging = check.query(Modality).filter(Modality.name == "Imaging").one()
 pump = check.query(InspectionForm).filter(
