@@ -30,6 +30,10 @@ from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from scripts.compare_imports import compare  # noqa: E402
+# The same constant the writer stamps rows with. Spelling it out here
+# instead is how the real tools came to filter on a value nothing had
+# ever written, and report every entity as zero.
+from scripts.legacy_migration.writer import SOURCE_SYSTEM  # noqa: E402
 from scripts.legacy_migration.foundation_validation import (  # noqa: E402
     build_foundation_validation,
 )
@@ -127,8 +131,9 @@ def target_db(equipment_placement):
     with eng.begin() as conn:
         def record(entity, legacy_id, target_id):
             conn.execute(text(
-                "INSERT INTO legacy_migration.id_map VALUES ('legacy',:e,:l,:t)"),
-                {"e": entity, "l": legacy_id, "t": target_id})
+                "INSERT INTO legacy_migration.id_map VALUES (:s,:e,:l,:t)"),
+                {"s": SOURCE_SYSTEM, "e": entity, "l": legacy_id,
+                 "t": target_id})
 
         # Target ids deliberately offset, so anything keyed on them breaks.
         for legacy_fid, target_fid in ((1, 501), (2, 502)):
@@ -253,7 +258,7 @@ with doubled.begin() as conn:
         " VALUES (703, 'dupe', 'd@x.test', 'CLIENT', 1)"))
     conn.execute(text(
         "INSERT INTO legacy_migration.id_map"
-        " VALUES ('legacy','facility_contact',2,703)"))
+        " VALUES (:s,'facility_contact',2,703)"), {"s": SOURCE_SYSTEM})
 too_many = build_foundation_validation(legacy_db({1: 3, 2: 2}), doubled)
 ok("more contacts than the source does fail",
    too_many["checks"]["facility_contact_within_bound"] is False)

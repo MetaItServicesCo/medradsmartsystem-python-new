@@ -32,7 +32,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 
-SOURCE_SYSTEM = "legacy"
+# Imported, never redefined. A second copy of this string is exactly how
+# this module first reported every foundation entity as zero rows migrated:
+# it filtered on "legacy" while the writer records "admin_medrad".
+from .writer import SOURCE_SYSTEM  # noqa: E402
 
 # Legacy table -> the entity the migration records it under. Taken from the
 # writer rather than guessed: each of these is the table a _migrate_* method
