@@ -37,21 +37,38 @@ SOURCE_SYSTEM = "legacy"
 # Legacy table -> the entity the migration records it under. Taken from the
 # writer rather than guessed: each of these is the table a _migrate_* method
 # selects from, paired with the name it passes to _record_map.
-FOUNDATION_PAIRS: tuple[tuple[str, str, str], ...] = (
-    ("facilities", "facility", "SELECT COUNT(*) FROM facilities"),
-    ("facility_tiers", "tier", "SELECT COUNT(*) FROM facility_tiers"),
-    ("modalities", "modality", "SELECT COUNT(*) FROM modalities"),
-    ("sub_modalities", "sub_modality", "SELECT COUNT(*) FROM sub_modalities"),
+# (legacy table, entity, how to count the source, how to compare)
+#
+# "equal" means every source row must become a mapped row. "at_most" means
+# the source figure is an upper bound and the migration may legitimately
+# drop some -- used only where the reason for dropping cannot be expressed
+# in SQL, so a shortfall is reported for a human to judge rather than
+# failed automatically.
+FOUNDATION_PAIRS: tuple[tuple[str, str, str, str], ...] = (
+    ("facilities", "facility", "SELECT COUNT(*) FROM facilities", "equal"),
+    ("facility_tiers", "tier", "SELECT COUNT(*) FROM facility_tiers", "equal"),
+    ("modalities", "modality", "SELECT COUNT(*) FROM modalities", "equal"),
+    ("sub_modalities", "sub_modality",
+     "SELECT COUNT(*) FROM sub_modalities", "equal"),
     # DISTINCT because the source join against model_has_roles returns a row
     # per role, and a user with two roles would otherwise inflate the target.
-    ("users", "user", "SELECT COUNT(DISTINCT id) FROM users"),
-    ("facility_users", "facility_contact", "SELECT COUNT(*) FROM facility_users"),
-    ("parts", "part", "SELECT COUNT(*) FROM parts"),
-    # The migration drops any inventory whose facility did not migrate, and
-    # records nothing when it does, so the expectation has to carry the same
-    # join or this reports a failure for an import that behaved correctly.
+    ("users", "user", "SELECT COUNT(DISTINCT id) FROM users", "equal"),
+    # A contact is skipped when its facility did not map OR when no user
+    # could be resolved or created for it -- and the second depends on
+    # duplicate-email handling, which no query here can predict. The join
+    # bounds it; the shortfall is reported.
+    ("facility_users", "facility_contact",
+     "SELECT COUNT(*) FROM facility_users fu"
+     " JOIN facilities f ON f.id = fu.facility_id", "at_most"),
+    ("parts", "part", "SELECT COUNT(*) FROM parts", "equal"),
+    # The migration drops any inventory whose facility did not migrate and
+    # records nothing when it does, so the expectation carries the same
+    # join. Kept strict: with every facility accounted for this is exact,
+    # and if a facility ever fails to migrate the facility check above
+    # fails first and says why.
     ("inventories", "equipment",
-     "SELECT COUNT(*) FROM inventories i JOIN facilities f ON f.id = i.facility_id"),
+     "SELECT COUNT(*) FROM inventories i JOIN facilities f ON f.id = i.facility_id",
+     "equal"),
 )
 
 
@@ -114,10 +131,20 @@ def build_foundation_validation(legacy: Engine, target: Engine) -> dict[str, Any
     target_counts: dict[str, int] = {}
     checks: dict[str, bool] = {}
 
-    for table, entity, sql in FOUNDATION_PAIRS:
-        source_counts[table] = _scalar(legacy, sql)
-        target_counts[entity] = _mapped_count(target, entity)
-        checks["{}_count".format(entity)] = source_counts[table] == target_counts[entity]
+    shortfalls: dict[str, int] = {}
+    for table, entity, sql, mode in FOUNDATION_PAIRS:
+        expected = _scalar(legacy, sql)
+        actual = _mapped_count(target, entity)
+        source_counts[table] = expected
+        target_counts[entity] = actual
+        if mode == "equal":
+            checks["{}_count".format(entity)] = expected == actual
+        else:
+            # More than the bound means something was counted twice,
+            # which is a fault however permissive the rule.
+            checks["{}_within_bound".format(entity)] = actual <= expected
+            if actual < expected:
+                shortfalls[entity] = expected - actual
 
     # Reported, never failed: inventories at a facility that never migrated
     # are a known and intended loss, and the number is what somebody needs in
@@ -191,7 +218,13 @@ def build_foundation_validation(legacy: Engine, target: Engine) -> dict[str, Any
             # nobody can read, and the first twenty say the same thing.
             "examples": dict(list(misplaced.items())[:20]),
         },
-        "known_losses": {"inventories_at_an_unmigrated_facility": orphaned_inventories},
+        "known_losses": {
+            "inventories_at_an_unmigrated_facility": orphaned_inventories,
+            # Reported, not failed. Worth a look if it grows sharply
+            # between runs: the commonest cause is duplicate emails in
+            # the source, which the audit counts separately.
+            "bounded_entities_short_of_their_source": shortfalls,
+        },
         "invariant_counts": invariants,
         "quarantine": quarantine,
     }

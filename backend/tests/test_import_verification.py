@@ -68,15 +68,19 @@ def legacy_db(inventory_rows, orphan_rows=0):
         "CREATE TABLE modalities (id INTEGER PRIMARY KEY)",
         "CREATE TABLE sub_modalities (id INTEGER PRIMARY KEY)",
         "CREATE TABLE users (id INTEGER PRIMARY KEY)",
-        "CREATE TABLE facility_users (id INTEGER PRIMARY KEY)",
+        "CREATE TABLE facility_users (id INTEGER PRIMARY KEY, facility_id INTEGER)",
         "CREATE TABLE parts (id INTEGER PRIMARY KEY)",
         "CREATE TABLE inventories (id INTEGER PRIMARY KEY, facility_id INTEGER)")
     with eng.begin() as conn:
         for fid in (1, 2):
             conn.execute(text("INSERT INTO facilities (id) VALUES (:i)"), {"i": fid})
         for table in ("facility_tiers", "modalities", "sub_modalities",
-                      "users", "facility_users", "parts"):
+                      "users", "parts"):
             conn.execute(text("INSERT INTO {} (id) VALUES (1)".format(table)))
+        # A contact at a real facility: bounded, not required, because the
+        # migration also drops contacts whose user cannot be resolved.
+        conn.execute(text(
+            "INSERT INTO facility_users (id, facility_id) VALUES (1, 1)"))
         inv = 0
         for facility_id, count in inventory_rows.items():
             for _ in range(count):
@@ -214,6 +218,46 @@ ok("the run still passes", orphans["status"] == "passed",
    str([k for k, v in orphans["checks"].items() if not v]))
 ok("and the loss is counted for somebody to judge",
    orphans["known_losses"]["inventories_at_an_unmigrated_facility"] == 4)
+
+print()
+print("Contacts are bounded, not required")
+print("-" * 72)
+
+# The migration drops a facility contact whose user cannot be resolved, and
+# that depends on duplicate-email handling no query here can predict. So the
+# source is an upper bound: fewer is reported, more is a fault.
+def legacy_with_contacts(count):
+    eng = legacy_db({1: 3, 2: 2})
+    with eng.begin() as conn:
+        for extra in range(2, count + 1):
+            conn.execute(text(
+                "INSERT INTO facility_users (id, facility_id) VALUES (:i, 1)"),
+                {"i": extra})
+    return eng
+
+
+short_contacts = build_foundation_validation(
+    legacy_with_contacts(3), target_db(placement))
+ok("fewer contacts than the source does not fail",
+   short_contacts["status"] == "passed",
+   str([k for k, v in short_contacts["checks"].items() if not v]))
+ok("and the shortfall is reported",
+   short_contacts["known_losses"]["bounded_entities_short_of_their_source"]
+   == {"facility_contact": 2},
+   str(short_contacts["known_losses"]["bounded_entities_short_of_their_source"]))
+
+doubled = target_db(placement)
+with doubled.begin() as conn:
+    conn.execute(text(
+        "INSERT INTO users (id, username, email, role, is_active)"
+        " VALUES (703, 'dupe', 'd@x.test', 'CLIENT', 1)"))
+    conn.execute(text(
+        "INSERT INTO legacy_migration.id_map"
+        " VALUES ('legacy','facility_contact',2,703)"))
+too_many = build_foundation_validation(legacy_db({1: 3, 2: 2}), doubled)
+ok("more contacts than the source does fail",
+   too_many["checks"]["facility_contact_within_bound"] is False)
+
 
 # ---------------------------------------------------------------------------
 # Production vs a rebuild
