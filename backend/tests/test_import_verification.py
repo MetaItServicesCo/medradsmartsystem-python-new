@@ -119,8 +119,9 @@ def target_db(equipment_placement):
         # The comparison covers every entity, so a table it expects and cannot
         # find is a genuine error -- which means the fixture has to provide
         # them all, even empty.
+        # Mirrors the real table: part_number and description, no "name".
         "CREATE TABLE inventory_parts (id INTEGER PRIMARY KEY, part_number TEXT,"
-        " name TEXT)",
+        " description TEXT)",
         "CREATE TABLE service_requests (id INTEGER PRIMARY KEY,"
         " request_number TEXT, status TEXT, priority TEXT)",
         "CREATE TABLE inspections (id INTEGER PRIMARY KEY,"
