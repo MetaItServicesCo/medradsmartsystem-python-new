@@ -70,7 +70,11 @@ import {
   fetchEmployeeSubmissions, reviewEmployeeSubmission,
   fetchEmployeePolicyAssignments, createEmployeePolicyAssignment, deleteEmployeePolicyAssignment,
 } from '@/api/hr'
-import { fetchAllAttendanceEvents } from '@/api/attendance'
+import {
+  ATTENDANCE_PROFILES_PAGE_LIMIT, fetchAllAttendanceEvents,
+  fetchAllAttendanceProfiles, fetchAttendanceProfiles,
+} from '@/api/attendance'
+import { buildPolicyResolver } from '@/utils/attendancePolicy'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import { datesBetween, dayOfWeek, paddedUtcRange, todayInZone } from '@/utils/attendanceTime'
 import {
@@ -825,13 +829,12 @@ function AttendanceRecordsTab() {
   const lastDay = new Date(selYear, selMonth + 1, 0).getDate()
   const lastDate = `${selYear}-${String(selMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-  // The key carries the limit. Four places on this page fetch employees with
-  // different limits, and they all used the bare key 'hr-employees': whichever
-  // mounted first won and the rest silently read its result, so the Employee
-  // Sheet could be handed the 50 rows fetched by Policy Assignments next door.
-  const { data: empData } = useQuery({
-    queryKey: ['hr-employees', 'list', EMPLOYEE_PICKER_LIMIT],
-    queryFn: () => fetchHREmployees({ limit: EMPLOYEE_PICKER_LIMIT }),
+  // The register lists people the system can actually record: enrolled for
+  // face attendance, and active. Everyone else produced a row of empty
+  // circles every day with no way to ever fill them in.
+  const { data: profileData, isLoading: profilesLoading } = useQuery({
+    queryKey: ['attendance-profiles', 'enrolled'],
+    queryFn: () => fetchAllAttendanceProfiles({ enrolled_only: true }),
   })
   // Padded, because the API filters on the stored UTC instant while the grid
   // buckets by the employee's local day: 01:00 on the 1st in Karachi is 20:00
@@ -844,9 +847,12 @@ function AttendanceRecordsTab() {
   })
   const { data: holidaysData = [] } = useQuery({ queryKey: ['hr-holidays', selYear], queryFn: () => fetchHolidays(selYear) })
   const { data: leavesData, isLoading: leavesLoading } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved', limit: 1000 }), staleTime: 0 })
+  const { data: policyData = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
+  const { data: assignmentData = [] } = useQuery({ queryKey: ['hr-employee-policy-assignments'], queryFn: fetchEmployeePolicyAssignments })
 
-  const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
-  const employeeTotal: number = (empData as any)?.total ?? employees.length
+  const profiles: any[] = (profileData as any)?.items ?? []
+  const employees: any[] = profiles.map((p: any) => ({ ...p.user, enrolled_at: p.created_at }))
+  const employeeTotal: number = (profileData as any)?.total ?? employees.length
   const events: any[] = (eventsData as any)?.items ?? []
   const holidays: any[] = holidaysData as any[]
   const leaves: any[] = (leavesData as any)?.items ?? (Array.isArray(leavesData) ? leavesData : [])
@@ -858,11 +864,39 @@ function AttendanceRecordsTab() {
 
   const days = datesBetween(firstDate, lastDate)
 
-  const ctx: AttendanceDayContext = { events, leaves, holidayDates, today }
-  const getStatus = (userId: number, dateStr: string) => attendanceDayStatus(ctx, userId, dateStr)
+  // One pass per employee over the whole month, through the same builder the
+  // Employee Sheet uses, so a cell here and a row there cannot disagree.
+  const { rowsByUser, ctx } = useMemo(() => {
+    const policyFor = buildPolicyResolver(
+      Array.isArray(policyData) ? policyData : (policyData as any)?.items ?? [],
+      Array.isArray(assignmentData) ? assignmentData : (assignmentData as any)?.items ?? [],
+    )
+    const roleOf = new Map<number, string>(employees.map((e: any) => [e.id, e.role]))
+    const enrolledOn = new Map<number, string>(
+      employees.map((e: any) => [e.id, String(e.enrolled_at ?? '').slice(0, 10)])
+    )
+    const context: AttendanceDayContext = {
+      events, leaves, holidayDates, today,
+      policyFor: (userId: number) => policyFor(userId, roleOf.get(userId)),
+      enrolledFrom: (userId: number) => enrolledOn.get(userId) || null,
+    }
+    const built = new Map<number, SheetRow[]>()
+    for (const employee of employees) {
+      built.set(employee.id, buildSheetRows(context, employee.id, days))
+    }
+    return { rowsByUser: built, ctx: context }
+  }, [events, leaves, holidaysData, policyData, assignmentData, profileData, firstDate, lastDate, today])
 
-  const countPresent = (userId: number) =>
-    days.filter(d => getStatus(userId, d) === 'present').length
+  const statusOf = (userId: number, dateStr: string) =>
+    rowsByUser.get(userId)?.find(r => r.date === dateStr)?.status ?? 'not_added'
+
+  const countPresent = (userId: number) => {
+    const rows = rowsByUser.get(userId) ?? []
+    // A half day counts as half a day present, which is the whole point of
+    // recording it separately from a full one.
+    return rows.reduce((sum, r) =>
+      sum + (r.status === 'present' ? 1 : r.status === 'half_day' ? 0.5 : 0), 0)
+  }
 
   const prevMonth = () => { if (selMonth === 0) { setSelMonth(11); setSelYear(y => y - 1) } else setSelMonth(m => m - 1) }
   const nextMonth = () => { if (selMonth === 11) { setSelMonth(0); setSelYear(y => y + 1) } else setSelMonth(m => m + 1) }
@@ -956,7 +990,7 @@ function AttendanceRecordsTab() {
                     </Box>
                   </TableCell>
                   {days.map(d => {
-                    const status = getStatus(emp.id, d)
+                    const status = statusOf(emp.id, d)
                     const si = STATUS_ICONS[status] ?? STATUS_ICONS.not_added
                     return (
                       <TableCell key={d} align="center" sx={{ px: 0.25, py: 0.5 }}>
@@ -967,7 +1001,7 @@ function AttendanceRecordsTab() {
                     )
                   })}
                   <TableCell>
-                    <Typography variant="body2" fontWeight={700}>{present}/{days.filter(d => isWorkingDay(ctx, d)).length}</Typography>
+                    <Typography variant="body2" fontWeight={700}>{Number.isInteger(present) ? present : present.toFixed(1)}/{days.filter(d => isWorkingDay(ctx, d)).length}</Typography>
                   </TableCell>
                 </TableRow>
               )
@@ -996,26 +1030,29 @@ function EmployeeAttendanceSheetTab() {
   const [empSearch, setEmpSearch] = useState('')
   const [from, setFrom] = useState(monthStart)
   const [to, setTo] = useState(today)
-  const userId: number | '' = selected?.id ?? ''
+  const userId: number | '' = selected?.user_id ?? ''
 
   useEffect(() => {
     const timer = window.setTimeout(() => setEmpSearch(searchInput.trim()), 300)
     return () => window.clearTimeout(timer)
   }, [searchInput])
 
-  // Searched on the server. A page of the employee table cannot hold this
-  // company -- there are thousands -- so a picker that lists the first N
-  // alphabetically simply does not contain most people.
+  // Searched on the server, against the same enrolled-and-active register the
+  // month grid shows. A page of the user table cannot hold this company, so a
+  // picker listing the first N alphabetically does not contain most people.
+  // Each result is an attendance profile, which also carries the enrolment
+  // date the classifier needs.
   const { data: empData, isLoading: empLoading } = useQuery({
-    queryKey: ['hr-employees', 'search', empSearch, EMPLOYEE_SEARCH_LIMIT],
-    queryFn: () => fetchHREmployees({
+    queryKey: ['attendance-profiles', 'search', empSearch, EMPLOYEE_SEARCH_LIMIT],
+    queryFn: () => fetchAttendanceProfiles({
       search: empSearch || undefined,
+      enrolled_only: true,
       limit: EMPLOYEE_SEARCH_LIMIT,
     }),
   })
-  const found: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
+  const found: any[] = (empData as any)?.items ?? []
   const foundTotal: number = (empData as any)?.total ?? found.length
-  const employees: any[] = selected && !found.some((e: any) => e.id === selected.id)
+  const profiles: any[] = selected && !found.some((p: any) => p.user_id === selected.user_id)
     ? [selected, ...found]
     : found
 
@@ -1049,8 +1086,9 @@ function EmployeeAttendanceSheetTab() {
     queryFn: () => fetchLeaveRequests({ status: 'approved', limit: 1000 }),
     staleTime: 0,
   })
+  const { data: policyData = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
+  const { data: assignmentData = [] } = useQuery({ queryKey: ['hr-employee-policy-assignments'], queryFn: fetchEmployeePolicyAssignments })
 
-  const employee = employees.find((e: any) => e.id === userId)
 
   const { rows, ctx } = useMemo(() => {
     const holidayDates = new Set(
@@ -1058,25 +1096,34 @@ function EmployeeAttendanceSheetTab() {
     )
     const leaves: any[] = (leavesData as any)?.items
       ?? (Array.isArray(leavesData) ? leavesData : [])
+    const policyFor = buildPolicyResolver(
+      Array.isArray(policyData) ? policyData : (policyData as any)?.items ?? [],
+      Array.isArray(assignmentData) ? assignmentData : (assignmentData as any)?.items ?? [],
+    )
     const context: AttendanceDayContext = {
       events: (eventsData as any)?.items ?? [],
       leaves,
       holidayDates,
       today,
+      policyFor: () => policyFor(userId as number, selected?.user?.role),
+      enrolledFrom: () => String(selected?.created_at ?? '').slice(0, 10) || null,
     }
     if (!userId || !rangeValid) return { rows: [] as SheetRow[], ctx: context }
     return {
       rows: buildSheetRows(context, userId as number, datesBetween(from, to)),
       ctx: context,
     }
-  }, [eventsData, holidaysFrom, holidaysTo, leavesData, userId, from, to, rangeValid, today])
+  }, [eventsData, holidaysFrom, holidaysTo, leavesData, policyData, assignmentData,
+      userId, selected, from, to, rangeValid, today])
 
   const eventCount = rows.reduce((sum, r) => sum + r.eventCount, 0)
 
   const totals = useMemo(() => ({
     present: rows.filter(r => r.status === 'present').length,
     expected: rows.filter(r => isWorkingDay(ctx, r.date)).length,
-    absent: rows.filter(r => r.status === 'not_added' && isWorkingDay(ctx, r.date)).length,
+    absent: rows.filter(r => r.status === 'absent').length,
+    halfDays: rows.filter(r => r.status === 'half_day').length,
+    late: rows.filter(r => r.late).length,
     onLeave: rows.filter(r => r.status === 'on_leave').length,
     workedMs: rows.reduce((sum, r) => sum + r.workedMs, 0),
     breakMs: rows.reduce((sum, r) => sum + r.breakMs, 0),
@@ -1101,7 +1148,7 @@ function EmployeeAttendanceSheetTab() {
     const url = window.URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = `attendance-${String(employee?.full_name ?? 'employee').replace(/\s+/g, '-')}-${from}-to-${to}.csv`
+    link.download = `attendance-${String(selected?.user?.full_name ?? 'employee').replace(/\s+/g, '-')}-${from}-to-${to}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -1110,8 +1157,10 @@ function EmployeeAttendanceSheetTab() {
 
   const summaryCards = [
     { label: 'Present', value: `${totals.present}/${totals.expected}`, color: '#2e7d32' },
+    { label: 'Half days', value: String(totals.halfDays), color: '#ed6c02' },
     { label: 'Absent', value: String(totals.absent), color: '#ef5350' },
     { label: 'On leave', value: String(totals.onLeave), color: '#ed6c02' },
+    { label: 'Late arrivals', value: String(totals.late), color: totals.late ? '#ed6c02' : '#9e9e9e' },
     { label: 'Hours worked', value: hoursLabel(totals.workedMs), color: '#1E1B4B' },
     { label: 'Break time', value: hoursLabel(totals.breakMs), color: '#6B7280' },
     { label: 'Needs review', value: String(totals.flagged), color: totals.flagged ? '#ed6c02' : '#9e9e9e' },
@@ -1128,18 +1177,18 @@ function EmployeeAttendanceSheetTab() {
               loading={empLoading}
               serverFiltered
               onInputChange={setSearchInput}
-              options={employees.map((e: any) => ({
-                value: e.id as number,
-                label: e.full_name || e.email || `User ${e.id}`,
+              options={profiles.map((p: any) => ({
+                value: p.user_id as number,
+                label: p.user?.full_name || p.user?.email || `User ${p.user_id}`,
                 // Email and role, because duplicate names are the norm in a
                 // migrated directory and a name alone cannot be picked from.
-                secondary: [e.email, e.role].filter(Boolean).join('  ·  '),
+                secondary: [p.user?.email, p.user?.role].filter(Boolean).join('  ·  '),
               }))}
               onChange={value => setSelected(
-                value === '' ? null : employees.find((e: any) => e.id === Number(value)) ?? null
+                value === '' ? null : profiles.find((p: any) => p.user_id === Number(value)) ?? null
               )}
               placeholder="Type a name or email"
-              noOptionsText={empSearch ? 'No employee matches that' : 'Type to search'}
+              noOptionsText={empSearch ? 'No enrolled employee matches that' : 'Type to search'}
               helperText={foundTotal > found.length
                 ? `Showing ${found.length} of ${foundTotal} matches — keep typing to narrow`
                 : ' '}
@@ -1204,7 +1253,7 @@ function EmployeeAttendanceSheetTab() {
           {eventCount === 0 && (
             <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: '#F59E0B', bgcolor: '#FFFBEB' }}>
               <Typography sx={{ fontWeight: 700, color: '#92400E' }}>
-                No attendance was recorded for {selected?.full_name || 'this employee'} between {from} and {to}.
+                No attendance was recorded for {selected?.user?.full_name || 'this employee'} between {from} and {to}.
               </Typography>
               <Typography variant="body2" sx={{ color: '#92400E', mt: 0.5 }}>
                 The days below read Not Added because nothing was captured, which is not

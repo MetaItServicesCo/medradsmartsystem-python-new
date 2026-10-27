@@ -123,15 +123,33 @@ export const fetchAttendanceSummary = async (targetDate?: string): Promise<Atten
   return res.data
 }
 
-export const fetchAttendanceProfiles = async (params?: {
+export interface AttendanceProfileQuery {
   search?: string
   facility_id?: number
+  /** Only users who are enrolled for face attendance. Active-only always. */
+  enrolled_only?: boolean
   skip?: number
   limit?: number
-}): Promise<AttendanceProfileListResponse> => {
+}
+
+export const ATTENDANCE_PROFILES_PAGE_LIMIT = 500
+
+export const fetchAttendanceProfiles = async (
+  params?: AttendanceProfileQuery,
+): Promise<AttendanceProfileListResponse> => {
   const res = await apiClient.get('/attendance/profiles', { params })
   return res.data
 }
+
+/** Every matching profile, a page at a time. See utils/paging. */
+export const fetchAllAttendanceProfiles = async (
+  params: Omit<AttendanceProfileQuery, 'skip' | 'limit'> = {},
+  maxProfiles = 10000,
+): Promise<AttendanceProfileListResponse> => pageThrough<AttendanceProfile>(
+  (skip, limit) => fetchAttendanceProfiles({ ...params, skip, limit }),
+  ATTENDANCE_PROFILES_PAGE_LIMIT,
+  maxProfiles,
+)
 
 export const createAttendanceProfile = async (payload: {
   user_id: number

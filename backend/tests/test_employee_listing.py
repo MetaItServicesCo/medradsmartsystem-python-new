@@ -28,6 +28,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from app.api.v1.endpoints.attendance import read_profiles  # noqa: E402
 from app.api.v1.endpoints.hr import list_employees  # noqa: E402
 
 
@@ -95,7 +96,7 @@ ok("no bare 'hr-employees' key remains", len(bare) == 0,
    "{} found".format(len(bare)))
 
 keys = re.findall(r"queryKey:\s*\['hr-employees'([^\]]*)\]", hr_page)
-ok("the page still fetches employees in several places", len(keys) >= 4,
+ok("the page still fetches employees in several places", len(keys) >= 3,
    "{} query keys".format(len(keys)))
 ok("  and every one of them is parameterised",
    all(k.strip().startswith(",") for k in keys))
@@ -112,6 +113,27 @@ ok("and none is called with no arguments, which silently meant 50",
    "fetchHREmployees()" not in hr_page)
 
 print()
+print("The register holds only people the system can record")
+print("-" * 72)
+
+attendance_src = (ROOT / "backend" / "app" / "api" / "v1" / "endpoints"
+                  / "attendance.py").read_text(encoding="utf-8", errors="replace")
+profiles = inspect.signature(read_profiles).parameters
+
+ok("profiles can be narrowed to the enrolled", "enrolled_only" in profiles)
+ok("  and it is off unless asked for",
+   getattr(profiles["enrolled_only"].default, "default", None) is False)
+ok("  filtering on a real enrolment, not a placeholder",
+   "AttendanceProfile.face_status != AttendanceFaceStatus.NOT_ENROLLED" in attendance_src)
+ok("the user scope is already active-only",
+   "db.query(User).filter(User.is_active == True)" in attendance_src)
+
+ok("the month grid lists enrolled people", "enrolled_only: true" in hr_page)
+ok("  and pages through them", "fetchAllAttendanceProfiles" in hr_page)
+ok("the sheet picker searches the same register",
+   "queryKey: ['attendance-profiles', 'search', empSearch, EMPLOYEE_SEARCH_LIMIT]" in hr_page)
+
+print()
 print("The sheet reaches employees the first page cannot hold")
 print("-" * 72)
 
@@ -124,7 +146,7 @@ ok("the selected employee is kept while the search moves on",
 ok("typing is debounced rather than firing a request per keystroke",
    "setTimeout(() => setEmpSearch(searchInput.trim()), 300)" in hr_page)
 ok("options show more than a name, so duplicates can be told apart",
-   "[e.email, e.role].filter(Boolean)" in hr_page)
+   "[p.user?.email, p.user?.role].filter(Boolean)" in hr_page)
 
 print()
 print("Missing data is not reported as absence")

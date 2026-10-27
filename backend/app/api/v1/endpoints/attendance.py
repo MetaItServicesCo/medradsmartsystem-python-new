@@ -335,10 +335,20 @@ def read_profiles(
     current_user: User = Depends(get_attendance_manager),
     search: Optional[str] = Query(None),
     facility_id: Optional[int] = Query(None),
+    # Only people who can actually be marked by the system. The attendance
+    # grid is a register, and listing someone who has no way to be recorded
+    # puts an unexplainable empty row next to their name every single day.
+    enrolled_only: bool = Query(False),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
 ) -> Any:
+    # _scope_user_query already restricts this to active users.
     user_query = _scope_user_query(db, current_user)
+    if enrolled_only:
+        enrolled_user_ids = db.query(AttendanceProfile.user_id).filter(
+            AttendanceProfile.face_status != AttendanceFaceStatus.NOT_ENROLLED
+        )
+        user_query = user_query.filter(User.id.in_(enrolled_user_ids))
     if search:
         like = f"%{search}%"
         user_query = user_query.filter(or_(User.full_name.ilike(like), User.email.ilike(like), User.username.ilike(like)))
