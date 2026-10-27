@@ -335,8 +335,11 @@ def _lr_query(db: Session):
 
 @router.get("/leave-requests", response_model=dict)
 def list_leave_requests(
-    skip: int = 0,
-    limit: int = 50,
+    # Bounded for the same reason /employees is: an unbounded limit is a
+    # whole-table read for anyone with a token. 1000 is what the attendance
+    # views already ask for.
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=1000),
     status: Optional[str] = None,
     user_id: Optional[int] = None,
     db: Session = Depends(get_db),

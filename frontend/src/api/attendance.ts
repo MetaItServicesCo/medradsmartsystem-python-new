@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { pageThrough } from '@/utils/paging'
 
 export interface AttendanceUserBrief {
   id: number
@@ -196,7 +197,7 @@ export const recognizeAttendanceFace = async (
   return res.data
 }
 
-export const fetchAttendanceEvents = async (params?: {
+export interface AttendanceEventQuery {
   date_from?: string
   date_to?: string
   user_id?: number
@@ -204,10 +205,36 @@ export const fetchAttendanceEvents = async (params?: {
   verification_status?: string
   skip?: number
   limit?: number
-}): Promise<AttendanceEventListResponse> => {
+}
+
+/**
+ * The server's hard cap on this endpoint. Asking for more is not clamped --
+ * it is a 422 before the handler runs, so the whole request fails. Both the
+ * HR month grid and the employee sheet asked for 5000 and silently got
+ * nothing back, which the pages then drew as a month of absences.
+ */
+export const ATTENDANCE_EVENTS_PAGE_LIMIT = 500
+
+export const fetchAttendanceEvents = async (
+  params?: AttendanceEventQuery,
+): Promise<AttendanceEventListResponse> => {
   const res = await apiClient.get('/attendance/events', { params })
   return res.data
 }
+
+/**
+ * Every event matching the query, fetched a page at a time.
+ *
+ * The loop itself is utils/paging, which is where it can be tested.
+ */
+export const fetchAllAttendanceEvents = async (
+  params: Omit<AttendanceEventQuery, 'skip' | 'limit'> = {},
+  maxEvents = 20000,
+): Promise<AttendanceEventListResponse> => pageThrough<AttendanceEvent>(
+  (skip, limit) => fetchAttendanceEvents({ ...params, skip, limit }),
+  ATTENDANCE_EVENTS_PAGE_LIMIT,
+  maxEvents,
+)
 
 export const reviewAttendanceEvent = async (
   eventId: number,

@@ -70,7 +70,7 @@ import {
   fetchEmployeeSubmissions, reviewEmployeeSubmission,
   fetchEmployeePolicyAssignments, createEmployeePolicyAssignment, deleteEmployeePolicyAssignment,
 } from '@/api/hr'
-import { fetchAttendanceEvents } from '@/api/attendance'
+import { fetchAllAttendanceEvents } from '@/api/attendance'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import { datesBetween, dayOfWeek, paddedUtcRange, todayInZone } from '@/utils/attendanceTime'
 import {
@@ -836,9 +836,11 @@ function AttendanceRecordsTab() {
   // Padded, because the API filters on the stored UTC instant while the grid
   // buckets by the employee's local day: 01:00 on the 1st in Karachi is 20:00
   // UTC on the last day of the previous month, and an exact range drops it.
-  const { data: eventsData } = useQuery({
+  const {
+    data: eventsData, isLoading: eventsLoading, isError: eventsFailed, error: eventsError,
+  } = useQuery({
     queryKey: ['attendance-events-month', firstDate, lastDate],
-    queryFn: () => fetchAttendanceEvents({ ...paddedUtcRange(firstDate, lastDate), limit: 5000 }),
+    queryFn: () => fetchAllAttendanceEvents(paddedUtcRange(firstDate, lastDate)),
   })
   const { data: holidaysData = [] } = useQuery({ queryKey: ['hr-holidays', selYear], queryFn: () => fetchHolidays(selYear) })
   const { data: leavesData, isLoading: leavesLoading } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved', limit: 1000 }), staleTime: 0 })
@@ -891,6 +893,23 @@ function AttendanceRecordsTab() {
       )}
       {/* A grid that quietly holds a fraction of the company reads as a
           complete record of it. Say how much of it this is. */}
+      {/* A request that failed must never be drawn as a month of absences.
+          That is how a 422 on every page load passed for real attendance. */}
+      {eventsFailed && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: '#DC2626', bgcolor: '#FEF2F2' }}>
+          <Typography sx={{ fontWeight: 800, color: '#991B1B' }}>
+            Attendance could not be loaded, so this grid is not a record of anything.
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#991B1B', mt: 0.5 }}>
+            {(eventsError as any)?.message || 'The request to the attendance service failed.'}
+          </Typography>
+        </Paper>
+      )}
+      {eventsLoading && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          Loading attendance…
+        </Typography>
+      )}
       {employeeTotal > employees.length && (
         <Typography variant="caption" sx={{ display: 'block', mb: 1, color: '#92400E', fontWeight: 700 }}>
           Showing {employees.length} of {employeeTotal} employees. Use the Employee Sheet tab
@@ -1002,12 +1021,13 @@ function EmployeeAttendanceSheetTab() {
 
   const rangeValid = Boolean(from && to && from <= to)
 
-  const { data: eventsData, isLoading: eventsLoading } = useQuery({
+  const {
+    data: eventsData, isLoading: eventsLoading, isError: eventsFailed, error: eventsError,
+  } = useQuery({
     queryKey: ['attendance-events-employee', userId, from, to],
-    queryFn: () => fetchAttendanceEvents({
+    queryFn: () => fetchAllAttendanceEvents({
       user_id: userId as number,
       ...paddedUtcRange(from, to),
-      limit: 5000,
     }),
     enabled: Boolean(userId) && rangeValid,
   })
@@ -1165,7 +1185,19 @@ function EmployeeAttendanceSheetTab() {
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>
       )}
 
-      {Boolean(userId) && !eventsLoading && (
+      {Boolean(userId) && eventsFailed && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: '#DC2626', bgcolor: '#FEF2F2' }}>
+          <Typography sx={{ fontWeight: 800, color: '#991B1B' }}>
+            Attendance could not be loaded for this employee.
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#991B1B', mt: 0.5 }}>
+            {(eventsError as any)?.message || 'The request to the attendance service failed.'}
+            {' '}Nothing below should be read as attendance.
+          </Typography>
+        </Paper>
+      )}
+
+      {Boolean(userId) && !eventsLoading && !eventsFailed && (
         <>
           {/* Absent and "we hold no record" are different claims, and only one
               of them is safe to put in front of a payroll decision. */}
