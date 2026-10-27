@@ -179,8 +179,11 @@ def hr_dashboard(
 
 @router.get("/employees", response_model=dict)
 def list_employees(
-    skip: int = 0,
-    limit: int = 50,
+    # Bounded. An unbounded limit lets any HR account ask for every user row
+    # in one request, and this table holds thousands. 1000 is kept valid
+    # because the pickers that page through this already ask for it.
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=1000),
     search: Optional[str] = None,
     role: Optional[str] = None,
     is_active: Optional[bool] = None,

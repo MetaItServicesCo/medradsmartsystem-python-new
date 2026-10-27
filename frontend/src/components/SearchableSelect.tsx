@@ -24,6 +24,17 @@ interface SearchableSelectProps<T extends SearchableSelectValue = SearchableSele
   allowClear?: boolean
   size?: 'small' | 'medium'
   sx?: SxProps<Theme>
+  /**
+   * Report what the user is typing, for callers that fetch their options
+   * from the server. Leave unset for the ordinary local-filtering case.
+   */
+  onInputChange?: (text: string) => void
+  /**
+   * Show the given options as they are. Set this when the server has
+   * already done the searching, otherwise the local filter runs on top of
+   * the results and hides matches the server deliberately returned.
+   */
+  serverFiltered?: boolean
 }
 
 const normalize = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase()
@@ -42,6 +53,8 @@ const SearchableSelect = <T extends SearchableSelectValue = SearchableSelectValu
   allowClear = true,
   size = 'small',
   sx,
+  onInputChange,
+  serverFiltered = false,
 }: SearchableSelectProps<T>) => {
   const selected = options.find(option => String(option.value) === String(value)) || null
 
@@ -64,6 +77,7 @@ const SearchableSelect = <T extends SearchableSelectValue = SearchableSelectValu
       getOptionDisabled={option => Boolean(option.disabled)}
       getOptionLabel={option => option.label}
       filterOptions={(available, state) => {
+        if (serverFiltered) return available
         const query = normalize(state.inputValue)
         if (!query) return available
         return available.filter(option => normalize(
@@ -71,6 +85,9 @@ const SearchableSelect = <T extends SearchableSelectValue = SearchableSelectValu
         ).includes(query))
       }}
       onChange={(_, option) => onChange(option?.value ?? '')}
+      onInputChange={onInputChange
+        ? (_, text, reason) => { if (reason === 'input') onInputChange(text) }
+        : undefined}
       ListboxProps={{ style: { maxHeight: 320, overflow: 'auto' } }}
       renderOption={(props, option) => (
         <Box component="li" {...props} key={String(option.value)} sx={{ display: 'grid', gap: 0.15 }}>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatedNumber } from '@/components/motion'
 import {
@@ -78,6 +78,12 @@ import {
   type AttendanceDayContext, type SheetRow,
 } from '@/utils/attendanceSheet'
 import SearchableSelect from '@/components/SearchableSelect'
+
+// /hr/employees caps a page at 1000, and this install has over six thousand
+// employees, so anything that must reach all of them searches rather than
+// pages. Every query key below carries the limit it asked for.
+const EMPLOYEE_PICKER_LIMIT = 1000
+const EMPLOYEE_SEARCH_LIMIT = 50
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
 
@@ -449,8 +455,8 @@ function EmployeesSection() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const { data: employees = [], isLoading } = useQuery({
-    queryKey: ['hr-employees', search],
-    queryFn: () => fetchHREmployees(search ? { search } : undefined),
+    queryKey: ['hr-employees', 'search', search, EMPLOYEE_SEARCH_LIMIT],
+    queryFn: () => fetchHREmployees({ search: search || undefined, limit: EMPLOYEE_SEARCH_LIMIT }),
   })
   const list: any[] = Array.isArray(employees) ? employees : (employees as any).items ?? []
 
@@ -819,7 +825,14 @@ function AttendanceRecordsTab() {
   const lastDay = new Date(selYear, selMonth + 1, 0).getDate()
   const lastDate = `${selYear}-${String(selMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees({ limit: 1000 }) })
+  // The key carries the limit. Four places on this page fetch employees with
+  // different limits, and they all used the bare key 'hr-employees': whichever
+  // mounted first won and the rest silently read its result, so the Employee
+  // Sheet could be handed the 50 rows fetched by Policy Assignments next door.
+  const { data: empData } = useQuery({
+    queryKey: ['hr-employees', 'list', EMPLOYEE_PICKER_LIMIT],
+    queryFn: () => fetchHREmployees({ limit: EMPLOYEE_PICKER_LIMIT }),
+  })
   // Padded, because the API filters on the stored UTC instant while the grid
   // buckets by the employee's local day: 01:00 on the 1st in Karachi is 20:00
   // UTC on the last day of the previous month, and an exact range drops it.
@@ -831,6 +844,7 @@ function AttendanceRecordsTab() {
   const { data: leavesData, isLoading: leavesLoading } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved', limit: 1000 }), staleTime: 0 })
 
   const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
+  const employeeTotal: number = (empData as any)?.total ?? employees.length
   const events: any[] = (eventsData as any)?.items ?? []
   const holidays: any[] = holidaysData as any[]
   const leaves: any[] = (leavesData as any)?.items ?? (Array.isArray(leavesData) ? leavesData : [])
@@ -873,6 +887,14 @@ function AttendanceRecordsTab() {
       {leavesLoading && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
           Refreshing leave data…
+        </Typography>
+      )}
+      {/* A grid that quietly holds a fraction of the company reads as a
+          complete record of it. Say how much of it this is. */}
+      {employeeTotal > employees.length && (
+        <Typography variant="caption" sx={{ display: 'block', mb: 1, color: '#92400E', fontWeight: 700 }}>
+          Showing {employees.length} of {employeeTotal} employees. Use the Employee Sheet tab
+          to look up anyone not listed here.
         </Typography>
       )}
       <TableContainer component={Paper} sx={{ maxHeight: 520, overflow: 'auto' }}>
@@ -948,15 +970,35 @@ function EmployeeAttendanceSheetTab() {
   const today = todayInZone()
   const monthStart = `${today.slice(0, 7)}-01`
 
-  const [userId, setUserId] = useState<number | ''>('')
+  // The selected employee is held whole, not as a bare id, so the field keeps
+  // showing who is chosen while the search box is listing other people.
+  const [selected, setSelected] = useState<any | null>(null)
+  const [searchInput, setSearchInput] = useState('')
+  const [empSearch, setEmpSearch] = useState('')
   const [from, setFrom] = useState(monthStart)
   const [to, setTo] = useState(today)
+  const userId: number | '' = selected?.id ?? ''
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setEmpSearch(searchInput.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [searchInput])
+
+  // Searched on the server. A page of the employee table cannot hold this
+  // company -- there are thousands -- so a picker that lists the first N
+  // alphabetically simply does not contain most people.
   const { data: empData, isLoading: empLoading } = useQuery({
-    queryKey: ['hr-employees'],
-    queryFn: () => fetchHREmployees({ limit: 1000 }),
+    queryKey: ['hr-employees', 'search', empSearch, EMPLOYEE_SEARCH_LIMIT],
+    queryFn: () => fetchHREmployees({
+      search: empSearch || undefined,
+      limit: EMPLOYEE_SEARCH_LIMIT,
+    }),
   })
-  const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
+  const found: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
+  const foundTotal: number = (empData as any)?.total ?? found.length
+  const employees: any[] = selected && !found.some((e: any) => e.id === selected.id)
+    ? [selected, ...found]
+    : found
 
   const rangeValid = Boolean(from && to && from <= to)
 
@@ -1008,6 +1050,8 @@ function EmployeeAttendanceSheetTab() {
       ctx: context,
     }
   }, [eventsData, holidaysFrom, holidaysTo, leavesData, userId, from, to, rangeValid, today])
+
+  const eventCount = rows.reduce((sum, r) => sum + r.eventCount, 0)
 
   const totals = useMemo(() => ({
     present: rows.filter(r => r.status === 'present').length,
@@ -1062,14 +1106,23 @@ function EmployeeAttendanceSheetTab() {
               label="Employee"
               value={userId}
               loading={empLoading}
+              serverFiltered
+              onInputChange={setSearchInput}
               options={employees.map((e: any) => ({
                 value: e.id as number,
-                label: e.full_name ?? e.email,
-                secondary: e.role,
-                keywords: `${e.email ?? ''} ${e.username ?? ''}`,
+                label: e.full_name || e.email || `User ${e.id}`,
+                // Email and role, because duplicate names are the norm in a
+                // migrated directory and a name alone cannot be picked from.
+                secondary: [e.email, e.role].filter(Boolean).join('  ·  '),
               }))}
-              onChange={value => setUserId(value === '' ? '' : Number(value))}
-              placeholder="Search by name, email or username"
+              onChange={value => setSelected(
+                value === '' ? null : employees.find((e: any) => e.id === Number(value)) ?? null
+              )}
+              placeholder="Type a name or email"
+              noOptionsText={empSearch ? 'No employee matches that' : 'Type to search'}
+              helperText={foundTotal > found.length
+                ? `Showing ${found.length} of ${foundTotal} matches — keep typing to narrow`
+                : ' '}
             />
           </Grid>
           <Grid item xs={6} md={2.5}>
@@ -1114,6 +1167,20 @@ function EmployeeAttendanceSheetTab() {
 
       {Boolean(userId) && !eventsLoading && (
         <>
+          {/* Absent and "we hold no record" are different claims, and only one
+              of them is safe to put in front of a payroll decision. */}
+          {eventCount === 0 && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: '#F59E0B', bgcolor: '#FFFBEB' }}>
+              <Typography sx={{ fontWeight: 700, color: '#92400E' }}>
+                No attendance was recorded for {selected?.full_name || 'this employee'} between {from} and {to}.
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#92400E', mt: 0.5 }}>
+                The days below read Not Added because nothing was captured, which is not
+                the same as having been marked absent. Check that this is the right person
+                and that they are enrolled for face attendance.
+              </Typography>
+            </Paper>
+          )}
           <Grid container spacing={2} sx={{ mb: 2 }}>
             {summaryCards.map(card => (
               <Grid item xs={6} sm={4} md={2} key={card.label}>
@@ -1414,7 +1481,10 @@ function AttendancePoliciesTab() {
 function PolicyAssignmentsTab() {
   const qc = useQueryClient()
   const { data: assignments = [] } = useQuery({ queryKey: ['hr-employee-policy-assignments'], queryFn: fetchEmployeePolicyAssignments })
-  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees() })
+  const { data: empData } = useQuery({
+    queryKey: ['hr-employees', 'list', EMPLOYEE_PICKER_LIMIT],
+    queryFn: () => fetchHREmployees({ limit: EMPLOYEE_PICKER_LIMIT }),
+  })
   const { data: policyData = [] } = useQuery({ queryKey: ['hr-attendance-policies'], queryFn: fetchAttendancePolicies })
   const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
   const policies: any[] = Array.isArray(policyData) ? policyData : (policyData as any)?.items ?? []
@@ -2794,7 +2864,10 @@ function DocumentsSection() {
   const { data: acksData } = useQuery({ queryKey: ['hr-acknowledgments'], queryFn: () => fetchAcknowledgments() })
   const { data: catsData = [] } = useQuery({ queryKey: ['hr-doc-categories'], queryFn: fetchDocumentCategories })
   const { data: ctypesData = [] } = useQuery({ queryKey: ['hr-contract-types'], queryFn: fetchContractTypes })
-  const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees({ limit: 1000 }) })
+  const { data: empData } = useQuery({
+    queryKey: ['hr-employees', 'list', EMPLOYEE_PICKER_LIMIT],
+    queryFn: () => fetchHREmployees({ limit: EMPLOYEE_PICKER_LIMIT }),
+  })
 
   const docs: any[] = (docsData as any)?.items ?? []
   const kpi: any = (docsData as any)?.kpi ?? { total: 0, published: 0, expiring_soon: 0, needs_acknowledgment: 0 }
