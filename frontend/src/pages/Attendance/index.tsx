@@ -103,7 +103,15 @@ const FACE_STATUS: Record<string, { label: string; bg: string; color: string }> 
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
-const formatDateTime = (value: string) => new Date(value).toLocaleString('en-US', {
+// Timestamps arrive as naive UTC -- the API serialises datetime.utcnow()
+// with no zone designator, and JavaScript reads a bare ISO string as LOCAL
+// time. A check-in at 18:46 in Karachi was stored as 13:46 UTC and then
+// shown as 13:46, five hours adrift. Marking it UTC lets the browser put
+// it back into whatever zone the person reading it is in.
+const asUtc = (value: string) =>
+  /[zZ]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}Z`
+
+const formatDateTime = (value: string) => new Date(asUtc(value)).toLocaleString('en-US', {
   month: 'short',
   day: 'numeric',
   hour: '2-digit',
@@ -556,6 +564,7 @@ const Attendance = () => {
       const result = await recognizeAttendanceFace(file, {
         event_type: attendanceEventType,
         device_label: 'Smart Attendance Camera',
+        device_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       })
       setRecognitionResult(result)
       setDetectedFaces(result.faces || [])
@@ -900,18 +909,35 @@ const Attendance = () => {
                 </Box>
               )
             })}
-          </Box>
-
-          <Card sx={{ p: 2, borderRadius: '16px', border: '1px solid #E9E5FF', bgcolor: '#F8FAFF' }}>
-            <Typography sx={{ fontWeight: 900, color: '#1E1B4B' }}>
-              {recognitionResult?.message || (detectedFaces.length ? 'Face detected. Scan to mark attendance.' : 'Waiting for a face...')}
-            </Typography>
-            {recognitionResult && (
-              <Typography sx={{ color: '#6B7280', fontWeight: 800, mt: 0.5 }}>
-                {recognitionResult.profile?.full_name || recognitionResult.candidate?.full_name || 'Unknown'} · Confidence {Math.round(Number(recognitionResult.confidence || 0) * 100)}% · {recognitionResult.verification_status.replace('_', ' ')}
+            {/* On the video rather than under it. As a card below the
+                preview this was a full-width block two lines tall: it
+                pushed the buttons off a laptop screen and read as an
+                error rather than a prompt. Here it costs no layout
+                height, is only as wide as its text, and hugs the bottom
+                edge clear of the face. */}
+            <Box
+              sx={{
+                position: 'absolute',
+                left: 12,
+                bottom: 12,
+                maxWidth: 'calc(100% - 24px)',
+                px: 1.25,
+                py: 0.6,
+                borderRadius: '10px',
+                bgcolor: 'rgba(15,23,42,0.78)',
+                pointerEvents: 'none',
+              }}
+            >
+              <Typography sx={{ fontWeight: 800, fontSize: 13, color: '#fff', lineHeight: 1.35 }}>
+                {recognitionResult?.message || (detectedFaces.length ? 'Face detected - press Scan & Mark' : 'Waiting for a face...')}
               </Typography>
-            )}
-          </Card>
+              {recognitionResult && (
+                <Typography sx={{ color: 'rgba(255,255,255,0.78)', fontWeight: 700, fontSize: 12, mt: 0.25 }}>
+                  {recognitionResult.profile?.full_name || recognitionResult.candidate?.full_name || 'Unknown'} · Confidence {Math.round(Number(recognitionResult.confidence || 0) * 100)}% · {recognitionResult.verification_status.replace('_', ' ')}
+                </Typography>
+              )}
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={closeFaceAttendance} sx={{ fontWeight: 900 }}>Close</Button>

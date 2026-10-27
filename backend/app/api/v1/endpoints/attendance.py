@@ -546,12 +546,28 @@ def detect_face(
     }
 
 
+# Falls back to the previous hardcoded value so behaviour is unchanged
+# for any caller that does not send one. Length-capped and trimmed
+# rather than validated against the zone database: this is a label
+# stored beside the event, and rejecting a zone the server has no tzdata
+# for would lose information that is still useful to a person reading it.
+DEFAULT_DEVICE_TIMEZONE = "Asia/Karachi"
+
+
+def _device_timezone(reported: Optional[str]) -> str:
+    cleaned = (reported or "").strip()
+    return cleaned[:64] if cleaned else DEFAULT_DEVICE_TIMEZONE
+
+
 @router.post("/face/recognize")
 def recognize_face_attendance(
     file: UploadFile = File(...),
     event_type: str = Form(AttendanceEventType.CHECK_IN.value),
     facility_id: Optional[int] = Form(None),
     device_label: Optional[str] = Form("Smart Attendance Camera"),
+    # IANA name from the browser that took the photo. Optional, so an
+    # older client that does not send one keeps working exactly as before.
+    device_timezone: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_attendance_manager),
 ) -> Any:
@@ -655,8 +671,12 @@ def recognize_face_attendance(
         profile_id=best_profile.id,
         facility_id=best_profile.facility_id,
         event_type=event_enum,
+        # Stored in UTC, as every other timestamp here is. What was wrong
+        # was the zone recorded beside it: hardcoded to Asia/Karachi
+        # whatever the device said, so a reader had no way to turn the
+        # instant back into the wall-clock time somebody checked in at.
         event_time=datetime.utcnow(),
-        timezone="Asia/Karachi",
+        timezone=_device_timezone(device_timezone),
         source=AttendanceSource.FACE,
         verification_status=verification_status,
         confidence=round(score, 3),

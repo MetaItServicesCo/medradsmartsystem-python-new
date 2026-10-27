@@ -177,13 +177,19 @@ export const detectAttendanceFace = async (file: File): Promise<AttendanceFaceDe
 
 export const recognizeAttendanceFace = async (
   file: File,
-  payload: { event_type: AttendanceEventPayload['event_type']; facility_id?: number | null; device_label?: string } = { event_type: 'check_in' }
+  payload: {
+    event_type: AttendanceEventPayload['event_type']
+    facility_id?: number | null
+    device_label?: string
+    device_timezone?: string
+  } = { event_type: 'check_in' }
 ): Promise<AttendanceFaceRecognitionResponse> => {
   const form = new FormData()
   form.append('file', file)
   form.append('event_type', payload.event_type)
   if (payload.facility_id) form.append('facility_id', String(payload.facility_id))
   if (payload.device_label) form.append('device_label', payload.device_label)
+  if (payload.device_timezone) form.append('device_timezone', payload.device_timezone)
   const res = await apiClient.post('/attendance/face/recognize', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
