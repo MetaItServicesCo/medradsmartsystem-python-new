@@ -72,4 +72,7 @@ def test_ai_fallback_uses_only_supplied_aggregate_dashboard_data() -> None:
     assert result["source"] == "calculated_fallback"
     assert result["headline"] == "Business trajectory is upward"
     assert any("Completed Inspections" in item for item in result["positives"])
-    assert any("Overdue inspections" in item for item in result["actions"])
+    # The action quotes the supplied alert, lowercased so it reads as a
+    # sentence ("Review overdue inspections and assign an owner."). What
+    # matters here is that it came from the data, not its capitalisation.
+    assert any("overdue inspections" in item.lower() for item in result["actions"])

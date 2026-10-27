@@ -489,9 +489,22 @@ def test_send_validation_does_not_count_its_own_active_reservation() -> None:
             reorder_level=0,
             status="active",
         )
+        # created_by_id is NOT NULL on this table, so the quotation needs an
+        # author the same way every other test in this file gives it one.
+        admin = User(
+            username="direct-resend-admin",
+            email="direct-resend-admin@example.com",
+            full_name="Direct Resend Admin",
+            hashed_password="test",
+            user_type=UserType.EMPLOYEE,
+            role=UserRole.ADMIN,
+        )
+        db.add(admin)
+        db.flush()
         quotation = SalesQuotation(
             quotation_number="SQ-DIRECT-RESEND-001",
             work_order="SO-DIRECT-RESEND-001",
+            created_by_id=admin.id,
             customer_name="Direct Customer",
             customer_email="direct@example.com",
             quotation_type="standard",
