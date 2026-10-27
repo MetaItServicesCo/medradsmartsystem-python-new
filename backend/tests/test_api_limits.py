@@ -128,9 +128,12 @@ hr_page = (FRONTEND_SRC / "pages" / "HR" / "index.tsx").read_text(
     encoding="utf-8", errors="replace")
 attendance_api = (API_DIR / "attendance.ts").read_text(encoding="utf-8", errors="replace")
 
-ok("the HR page uses the paging helper", "fetchAllAttendanceEvents" in hr_page)
-ok("  and no longer calls the single-page helper directly",
+ok("the HR page pages the register rather than asking for it all at once",
+   "fetchAllAttendanceRegister" in hr_page)
+ok("  and never calls the raw events endpoint, which it would have to classify itself",
    "fetchAttendanceEvents(" not in hr_page)
+ok("  because classification happens once, on the server",
+   "attendance_rules" in (ENDPOINTS / "attendance.py").read_text(encoding="utf-8", errors="replace"))
 ok("the page size is the server's cap, named once",
    "export const ATTENDANCE_EVENTS_PAGE_LIMIT = 500" in attendance_api)
 ok("the paging loop is bounded", "maxEvents = 20000" in attendance_api)
@@ -142,7 +145,7 @@ print("-" * 72)
 ok("the grid reports a failed load", "Attendance could not be loaded, so this grid" in hr_page)
 ok("the sheet reports a failed load", "Attendance could not be loaded for this employee" in hr_page)
 ok("the sheet refuses to render rows on failure",
-   "!eventsLoading && !eventsFailed" in hr_page)
+   "!registerLoading && !registerFailed" in hr_page)
 
 print()
 print("Unbounded list endpoints")

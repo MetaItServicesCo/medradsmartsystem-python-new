@@ -61,6 +61,12 @@ export const deleteHoliday = (id: number) =>
   apiClient.delete(`${BASE}/holidays/${id}`)
 
 // ── Announcements ──────────────────────────────────────────────────────────
+/** Notices as an employee sees them: published, unexpired, aimed at them.
+ *  Gated on the company-policies module, not on hr. */
+export const fetchCompanyNotices = (includeExpired = false) =>
+  apiClient.get(`${BASE}/company/notices`, { params: { include_expired: includeExpired } })
+    .then(r => r.data)
+
 export const fetchAnnouncements = (includeExpired = false) =>
   apiClient.get(`${BASE}/announcements`, { params: { include_expired: includeExpired } }).then(r => r.data)
 export const createAnnouncement = (data: any) =>

@@ -129,7 +129,9 @@ ok("the user scope is already active-only",
    "db.query(User).filter(User.is_active == True)" in attendance_src)
 
 ok("the month grid lists enrolled people", "enrolled_only: true" in hr_page)
-ok("  and pages through them", "fetchAllAttendanceProfiles" in hr_page)
+ok("  and pages through them", "fetchAllAttendanceRegister" in hr_page)
+ok("  telling the caller when it is showing only part of the company",
+   "of {entryTotal} enrolled employees" in hr_page)
 ok("the sheet picker searches the same register",
    "queryKey: ['attendance-profiles', 'search', empSearch, EMPLOYEE_SEARCH_LIMIT]" in hr_page)
 
@@ -152,12 +154,12 @@ print()
 print("Missing data is not reported as absence")
 print("-" * 72)
 
-ok("the sheet counts the events it actually received",
-   "const eventCount = rows.reduce((sum, r) => sum + r.eventCount, 0)" in hr_page)
-ok("  and says so plainly when there are none",
+ok("the sheet says so plainly when nothing was recorded",
    "No attendance was recorded for" in hr_page)
-ok("the grid admits when it is showing only part of the company",
-   "Showing {employees.length} of {employeeTotal} employees" in hr_page)
+ok("  and distinguishes that from having been marked absent",
+   "not the same as having been marked absent" in hr_page)
+ok("  naming the reasons a day is simply not listed",
+   "shifts still in progress" in hr_page)
 
 print()
 print("=" * 72)

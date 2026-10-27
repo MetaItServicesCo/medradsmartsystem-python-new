@@ -25,6 +25,8 @@ const Profile = lazyWithReload(() => import('./pages/Profile'))
 const Attendance = lazyWithReload(() => import('./pages/Attendance'))
 const Billing = lazyWithReload(() => import('./pages/Sales/Billing'))
 const MyTimesheets = lazyWithReload(() => import('./pages/MyTimesheets'))
+const MyAttendance = lazyWithReload(() => import('./pages/MyAttendance'))
+const CompanyNotices = lazyWithReload(() => import('./pages/CompanyNotices'))
 const MyLeave = lazyWithReload(() => import('./pages/MyLeave'))
 const ClientQuotation = lazyWithReload(() => import('./pages/Sales/ClientQuotation'))
 const PublicSalesPayment = lazyWithReload(() => import('./pages/Sales/PublicSalesPayment'))
@@ -70,6 +72,8 @@ const modulePath: Record<Module, string> = {
   attendance: '/attendance',
   billing: '/billing',
   hr: '/hr',
+  'my-attendance': '/my-attendance',
+  'company-policies': '/policies',
   'my-timesheets': '/my-timesheets',
   'my-leave': '/my-leave',
   chat: '/chat',
@@ -128,6 +132,8 @@ function App() {
           <Route path="hr/*" element={<ProtectedPage module="hr"><HR /></ProtectedPage>} />
           <Route path="reports/*" element={<ProtectedPage module="reports"><Reports /></ProtectedPage>} />
           <Route path="attendance/*" element={<ProtectedPage module="attendance"><Attendance /></ProtectedPage>} />
+          <Route path="my-attendance" element={<ProtectedPage module="my-attendance"><MyAttendance /></ProtectedPage>} />
+          <Route path="policies" element={<ProtectedPage module="company-policies"><CompanyNotices /></ProtectedPage>} />
           <Route path="my-timesheets" element={<ProtectedPage module="my-timesheets"><MyTimesheets /></ProtectedPage>} />
           <Route path="my-leave" element={<ProtectedPage module="my-leave"><MyLeave /></ProtectedPage>} />
           <Route path="billing/*" element={<ProtectedPage module="billing"><Billing /></ProtectedPage>} />

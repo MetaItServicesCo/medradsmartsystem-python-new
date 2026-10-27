@@ -35,6 +35,11 @@ ALL_MODULES: list[str] = [
     "dashboard", "facilities", "users", "service-requests", "inspections",
     "sales", "rentals", "facility-inventory", "inventory", "test-equipment", "reports", "billing", "hr",
     "my-timesheets", "my-leave", "chat", "attendance", "calendar",
+    # Self-service and company-wide surfaces. Narrow on purpose: they exist
+    # so an employee can be given their own record and the staff handbook
+    # without being given the HR module, which also holds payroll,
+    # terminations and everybody else's contracts.
+    "my-attendance", "company-policies",
 ]
 
 # ── Action sets ───────────────────────────────────────────────────────────────
@@ -73,6 +78,8 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "my-leave":         _W,
         "chat":             _W,
         "calendar":         _W,
+        "my-attendance":    _V,   # their own record, never anyone else's
+        "company-policies": _V,   # the handbook and notices; publishing stays in hr
     },
 
     # ── HR manager ─────────────────────────────────────────────────────────
@@ -86,6 +93,8 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "my-leave":         _W,
         "chat":             _W,
         "calendar":         _W,
+        "my-attendance":    _V,   # their own record, never anyone else's
+        "company-policies": _V,   # the handbook and notices; publishing stays in hr
     },
 
     # ── Facility roles ──────────────────────────────────────────────────────
@@ -104,6 +113,8 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "my-leave":         _W,
         "chat":             _W,
         "calendar":         _W,
+        "my-attendance":    _V,   # their own record, never anyone else's
+        "company-policies": _V,   # the handbook and notices; publishing stays in hr
     },
 
     "facility_manager": {
@@ -121,6 +132,8 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "my-leave":         _W,
         "chat":             _W,
         "calendar":         _W,
+        "my-attendance":    _V,   # their own record, never anyone else's
+        "company-policies": _V,   # the handbook and notices; publishing stays in hr
     },
 
     # ── Operational roles ───────────────────────────────────────────────────
@@ -136,6 +149,8 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "my-leave":         _W,
         "chat":             _W,
         "calendar":         _W,
+        "my-attendance":    _V,   # their own record, never anyone else's
+        "company-policies": _V,   # the handbook and notices; publishing stays in hr
     },
 
     "employee": {
@@ -147,6 +162,8 @@ _ROLE_PERMISSIONS: dict[str, dict[str, FrozenSet[str]]] = {
         "my-leave":         _W,
         "chat":             _W,
         "calendar":         _W,
+        "my-attendance":    _V,   # their own record, never anyone else's
+        "company-policies": _V,   # the handbook and notices; publishing stays in hr
     },
 
     "client": {

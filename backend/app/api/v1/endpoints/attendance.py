@@ -5,7 +5,7 @@ from math import sqrt
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -836,6 +836,261 @@ def review_attendance_event(
     })
     db.commit()
     return _event_query(db).filter(AttendanceEvent.id == event.id).first()
+
+
+# ── The attendance register ──────────────────────────────────────────────────
+# One computation, two audiences. These endpoints return the same verdicts the
+# timesheet generator writes to payroll, from the same rules module, so a
+# screen and a payslip cannot disagree about whether somebody turned up.
+
+
+def _register_payload(
+    db: Session,
+    users: list[User],
+    date_from: date,
+    date_to: date,
+) -> list[dict[str, Any]]:
+    from app.models.hr import (
+        AttendancePolicy, EmployeePolicyAssignment, Holiday, LeaveRequest,
+        LeaveRequestStatus,
+    )
+    from app.utils.attendance_rules import (
+        ATTENDED_STATUSES, FULL_DAY, EARLY_LEAVE, HALF_DAY, classify_range,
+        resolve_policy,
+    )
+
+    user_ids = [u.id for u in users] or [0]
+    span = [date_from + timedelta(days=offset)
+            for offset in range((date_to - date_from).days + 1)]
+
+    holidays = {h.date for h in db.query(Holiday).filter(
+        Holiday.date >= date_from, Holiday.date <= date_to).all()}
+
+    leave_days: dict[int, set] = {}
+    for request in db.query(LeaveRequest).filter(
+        LeaveRequest.status == LeaveRequestStatus.APPROVED,
+        LeaveRequest.user_id.in_(user_ids),
+        LeaveRequest.start_date <= date_to,
+        LeaveRequest.end_date >= date_from,
+    ).all():
+        bucket = leave_days.setdefault(request.user_id, set())
+        day = max(request.start_date, date_from)
+        while day <= min(request.end_date, date_to):
+            bucket.add(day)
+            day += timedelta(days=1)
+
+    policies = db.query(AttendancePolicy).all()
+    assignments = {
+        a.user_id: a.policy_id
+        for a in db.query(EmployeePolicyAssignment).filter(
+            EmployeePolicyAssignment.user_id.in_(user_ids)).all()
+    }
+    enrolled = {
+        p.user_id: (p.created_at.date() if p.created_at else None)
+        for p in db.query(AttendanceProfile).filter(
+            AttendanceProfile.user_id.in_(user_ids)).all()
+    }
+
+    # Padded a day either side: the API filters on the stored UTC instant while
+    # a day belongs to the employee's own zone, so an exact range clips the
+    # edges of an overnight shift.
+    events = db.query(AttendanceEvent).filter(
+        AttendanceEvent.user_id.in_(user_ids),
+        AttendanceEvent.event_time >= datetime.combine(
+            date_from - timedelta(days=1), time.min),
+        AttendanceEvent.event_time <= datetime.combine(
+            date_to + timedelta(days=1), time.max),
+    ).all()
+    events_by_user: dict[int, list] = {}
+    for event in events:
+        events_by_user.setdefault(event.user_id, []).append(event)
+
+    today = date.today()
+    items: list[dict[str, Any]] = []
+
+    for user in users:
+        policy = resolve_policy(policies, assignments.get(user.id),
+                                user.role.value if user.role else None)
+        verdicts = classify_range(
+            span,
+            events_by_user.get(user.id, []),
+            policy,
+            holidays=holidays,
+            leave_days=leave_days.get(user.id, set()),
+            today=today,
+            enrolled_from=enrolled.get(user.id),
+        )
+
+        days = [{
+            "date": v.day.isoformat(),
+            "status": v.status,
+            "hours_worked": v.hours_worked,
+            "check_in": v.check_in_local,
+            "check_out": v.check_out_local,
+            "check_out_next_day": v.check_out_next_day,
+            "open_shift": v.open_shift,
+            "is_late": v.is_late,
+            "late_minutes": v.late_minutes,
+            "is_early_departure": v.is_early_departure,
+            "early_departure_minutes": v.early_departure_minutes,
+            "late_strike": v.late_strike,
+            "needs_review": v.needs_review,
+            "note": v.note,
+            "event_count": v.event_count,
+        } for v in verdicts]
+
+        # A half day is half a day present. Counting it as a whole one is how
+        # an attendance report starts disagreeing with the payroll it feeds.
+        present = sum(
+            1.0 if v.status in (FULL_DAY, EARLY_LEAVE) else 0.5
+            for v in verdicts if v.status in ATTENDED_STATUSES
+        )
+        items.append({
+            "user": {
+                "id": user.id,
+                "full_name": user.full_name,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role.value if user.role else "",
+                "avatar_url": user.avatar_url,
+            },
+            "enrolled_from": enrolled.get(user.id).isoformat() if enrolled.get(user.id) else None,
+            "policy": {
+                "id": policy.id,
+                "name": policy.name,
+                "work_hours_per_day": policy.work_hours_per_day,
+                "shift_start": policy.shift_start,
+                "shift_end": policy.shift_end,
+                "timezone": policy.timezone,
+                "late_grace_minutes": policy.late_grace_minutes,
+                "early_departure_grace_minutes": policy.early_departure_grace_minutes,
+            },
+            "days": days,
+            "totals": {
+                "present": round(present, 1),
+                "expected": sum(1 for v in verdicts if v.status != "holiday" and v.status != "on_leave"),
+                "full_days": sum(1 for v in verdicts if v.status == FULL_DAY),
+                "early_leave": sum(1 for v in verdicts if v.status == EARLY_LEAVE),
+                "half_days": sum(1 for v in verdicts if v.status == HALF_DAY),
+                "absent": sum(1 for v in verdicts if v.status == "absent"),
+                "on_leave": sum(1 for v in verdicts if v.status == "on_leave"),
+                "holiday": sum(1 for v in verdicts if v.status == "holiday"),
+                "late": sum(1 for v in verdicts if v.is_late),
+                "hours_worked": round(sum(v.hours_worked for v in verdicts), 2),
+                "needs_review": sum(1 for v in verdicts if v.needs_review),
+            },
+        })
+
+    return items
+
+
+def _validated_span(date_from: date, date_to: date, max_days: int = 400) -> None:
+    if date_to < date_from:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="date_to is before date_from",
+        )
+    if (date_to - date_from).days + 1 > max_days:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Range is longer than {} days".format(max_days),
+        )
+
+
+@router.get("/register")
+def read_register(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    user_id: Optional[int] = Query(None),
+    enrolled_only: bool = Query(True),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_attendance_manager),
+) -> Any:
+    """Classified attendance for a range, for everyone the caller may see."""
+    _validated_span(date_from, date_to)
+
+    user_query = _scope_user_query(db, current_user)
+    if enrolled_only:
+        enrolled_ids = db.query(AttendanceProfile.user_id).filter(
+            AttendanceProfile.face_status != AttendanceFaceStatus.NOT_ENROLLED
+        )
+        user_query = user_query.filter(User.id.in_(enrolled_ids))
+    if user_id:
+        user_query = user_query.filter(User.id == user_id)
+
+    total = user_query.count()
+    users = user_query.order_by(User.full_name.asc()).offset(skip).limit(limit).all()
+    return {
+        "items": _register_payload(db, users, date_from, date_to),
+        "total": total,
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+    }
+
+
+@router.get("/me/register")
+def read_my_register(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """The caller's own attendance, and nobody else's.
+
+    Scoped on the authenticated user rather than on their role, so no
+    permission change can ever widen it. Open to any signed-in account for the
+    same reason /hr/my-timesheets is: it is their own record.
+    """
+    _validated_span(date_from, date_to)
+    items = _register_payload(db, [current_user], date_from, date_to)
+    return {
+        "items": items,
+        "total": len(items),
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+    }
+
+
+class AttendanceDispute(BaseModel):
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+@router.post("/me/events/{event_id}/dispute")
+def dispute_my_attendance_event(
+    event_id: int,
+    payload: AttendanceDispute,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Flag one of your own scans as wrong.
+
+    Scoped on the authenticated user, so it can only ever touch your own
+    record. It sets needs_review, which is the status HR already works
+    through, rather than adding a second queue nobody watches. The reason is
+    kept on the event and written to the activity log, because a person
+    contesting what they were paid needs to outlive the conversation.
+    """
+    event = db.query(AttendanceEvent).filter(
+        AttendanceEvent.id == event_id,
+        AttendanceEvent.user_id == current_user.id,
+    ).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Attendance event not found")
+    if event.verification_status == AttendanceVerificationStatus.NEEDS_REVIEW:
+        raise HTTPException(status_code=400, detail="This record is already under review")
+
+    reason = payload.reason.strip()
+    stamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    note = "Disputed by {} on {}: {}".format(
+        current_user.full_name or current_user.username, stamp, reason)
+    event.remark = chr(10).join([event.remark, note]) if event.remark else note
+    event.verification_status = AttendanceVerificationStatus.NEEDS_REVIEW
+    log_activity(db, "attendance_events", event.id, "ATTENDANCE_EVENT_DISPUTED",
+                 current_user, {"reason": reason[:500]})
+    db.commit()
+    return _event_payload(_event_query(db).filter(AttendanceEvent.id == event.id).first())
 
 
 @router.get("/summary/today", response_model=AttendanceSummaryResponse)

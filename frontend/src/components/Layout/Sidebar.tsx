@@ -14,6 +14,7 @@ import PeopleIcon from '@mui/icons-material/People'
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import CampaignIcon from '@mui/icons-material/Campaign'
 import TimerIcon from '@mui/icons-material/Timer'
 import BeachAccessIcon from '@mui/icons-material/BeachAccess'
 import PaymentIcon from '@mui/icons-material/Payment'
@@ -69,6 +70,8 @@ const allMenuItems: SidebarItem[] = [
   { text: 'Users', description: 'Users, roles, and permissions', icon: <PeopleIcon />, path: '/users', module: 'users', group: 'People' },
   { text: 'HR', description: 'Human resources management', icon: <GroupsIcon />, path: '/hr', module: 'hr', group: 'People' },
   { text: 'Attendance', description: 'Attendance and working hours', icon: <AccessTimeIcon />, path: '/attendance', module: 'attendance', group: 'People' },
+  { text: 'My Attendance', description: 'Your own check-ins and hours', icon: <AccessTimeIcon />, path: '/my-attendance', module: 'my-attendance', group: 'People' },
+  { text: 'Policies & Notices', description: 'Published by HR', icon: <CampaignIcon />, path: '/policies', module: 'company-policies', group: 'People' },
   { text: 'My Timesheets', description: 'Personal time records', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets', group: 'People' },
   { text: 'My Leave', description: 'Personal leave requests', icon: <BeachAccessIcon />, path: '/my-leave', module: 'my-leave', group: 'People' },
   { text: 'Reports', description: 'Service and inspection reporting', icon: <AssessmentIcon />, path: '/reports', module: 'reports', group: 'Workspace' },

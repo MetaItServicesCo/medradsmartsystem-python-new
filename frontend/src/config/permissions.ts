@@ -26,6 +26,8 @@ export type Module =
   | 'attendance'
   | 'billing'
   | 'hr'
+  | 'my-attendance'
+  | 'company-policies'
   | 'my-timesheets'
   | 'my-leave'
   | 'chat'
@@ -64,6 +66,8 @@ export const MODULES: Array<{ key: Module; label: string }> = [
   { key: 'billing', label: 'Billing' },
   { key: 'hr', label: 'HR' },
   { key: 'attendance', label: 'Smart Attendance' },
+  { key: 'my-attendance', label: 'My Attendance' },
+  { key: 'company-policies', label: 'Policies & Notices' },
   { key: 'my-timesheets', label: 'My Timesheets' },
   { key: 'my-leave', label: 'My Leave' },
   { key: 'chat', label: 'Chat' },
@@ -104,6 +108,8 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'my-leave':         _W,
     chat:               _W,
     calendar:           _W,
+    'my-attendance':    _V,
+    'company-policies': _V,
   },
 
   hr_manager: {
@@ -116,6 +122,8 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'my-leave':      _W,
     chat:            _W,
     calendar:        _W,
+    'my-attendance':    _V,
+    'company-policies': _V,
   },
 
   facility_admin: {
@@ -133,6 +141,8 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'my-leave':         _W,
     chat:               _W,
     calendar:           _W,
+    'my-attendance':    _V,
+    'company-policies': _V,
   },
 
   facility_manager: {
@@ -150,6 +160,8 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'my-leave':         _W,
     chat:               _W,
     calendar:           _W,
+    'my-attendance':    _V,
+    'company-policies': _V,
   },
 
   technician: {
@@ -164,6 +176,8 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'my-leave':         _W,
     chat:               _W,
     calendar:           _W,
+    'my-attendance':    _V,
+    'company-policies': _V,
   },
 
   employee: {
@@ -175,6 +189,8 @@ const _ROLE_PERMISSIONS: Record<string, Partial<Record<Module, ActionFlags>>> = 
     'my-leave':         _W,
     chat:               _W,
     calendar:           _W,
+    'my-attendance':    _V,
+    'company-policies': _V,
   },
 
   client: {

@@ -266,3 +266,111 @@ export const createAttendanceEvent = async (payload: AttendanceEventPayload): Pr
   const res = await apiClient.post('/attendance/events', payload)
   return res.data
 }
+
+// ── The register ─────────────────────────────────────────────────────────────
+// Classified days, computed by the same server-side rules engine that writes
+// the timesheets payroll is paid from. The UI renders these verdicts; it does
+// not derive its own, because two engines is how a screen and a payslip end
+// up disagreeing about whether somebody turned up.
+
+export type AttendanceDayStatus =
+  | 'full_day' | 'early_leave' | 'half_day' | 'absent'
+  | 'on_leave' | 'holiday'
+
+export interface RegisterDay {
+  date: string
+  status: AttendanceDayStatus
+  hours_worked: number
+  check_in: string | null
+  check_out: string | null
+  check_out_next_day: boolean
+  open_shift: boolean
+  is_late: boolean
+  late_minutes: number
+  is_early_departure: boolean
+  early_departure_minutes: number
+  late_strike: boolean
+  needs_review: boolean
+  note: string | null
+  event_count: number
+}
+
+export interface RegisterTotals {
+  present: number
+  expected: number
+  full_days: number
+  early_leave: number
+  half_days: number
+  absent: number
+  on_leave: number
+  holiday: number
+  late: number
+  hours_worked: number
+  needs_review: number
+}
+
+export interface RegisterEntry {
+  user: AttendanceUserBrief
+  enrolled_from: string | null
+  policy: {
+    id: number | null
+    name: string
+    work_hours_per_day: number
+    shift_start: string | null
+    shift_end: string | null
+    timezone: string
+    late_grace_minutes: number
+    early_departure_grace_minutes: number
+  }
+  days: RegisterDay[]
+  totals: RegisterTotals
+}
+
+export interface RegisterResponse {
+  items: RegisterEntry[]
+  total: number
+  date_from: string
+  date_to: string
+}
+
+export const ATTENDANCE_REGISTER_PAGE_LIMIT = 500
+
+export interface RegisterQuery {
+  date_from: string
+  date_to: string
+  user_id?: number
+  enrolled_only?: boolean
+  skip?: number
+  limit?: number
+}
+
+export const fetchAttendanceRegister = async (
+  params: RegisterQuery,
+): Promise<RegisterResponse> => {
+  const res = await apiClient.get('/attendance/register', { params })
+  return res.data
+}
+
+/** Every employee in the register for a range, a page at a time. */
+export const fetchAllAttendanceRegister = async (
+  params: Omit<RegisterQuery, 'skip' | 'limit'>,
+  maxEntries = 5000,
+): Promise<RegisterResponse> => {
+  const page = await pageThrough<RegisterEntry>(
+    (skip, limit) => fetchAttendanceRegister({ ...params, skip, limit }),
+    ATTENDANCE_REGISTER_PAGE_LIMIT,
+    maxEntries,
+  )
+  return { ...page, date_from: params.date_from, date_to: params.date_to }
+}
+
+/** The signed-in user's own register. Self-scoped on the server. */
+export const fetchMyAttendanceRegister = async (
+  date_from: string,
+  date_to: string,
+): Promise<RegisterResponse> => {
+  const res = await apiClient.get('/attendance/me/register', {
+    params: { date_from, date_to },
+  })
+  return res.data
+}
