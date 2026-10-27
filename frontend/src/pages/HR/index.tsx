@@ -72,6 +72,11 @@ import {
 } from '@/api/hr'
 import { fetchAttendanceEvents } from '@/api/attendance'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
+import { datesBetween, dayOfWeek, paddedUtcRange, todayInZone } from '@/utils/attendanceTime'
+import {
+  attendanceDayStatus, buildSheetRows, hoursLabel, isWorkingDay,
+  type AttendanceDayContext, type SheetRow,
+} from '@/utils/attendanceSheet'
 import SearchableSelect from '@/components/SearchableSelect'
 
 // ── Nav ──────────────────────────────────────────────────────────────────────
@@ -815,9 +820,12 @@ function AttendanceRecordsTab() {
   const lastDate = `${selYear}-${String(selMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
   const { data: empData } = useQuery({ queryKey: ['hr-employees'], queryFn: () => fetchHREmployees({ limit: 1000 }) })
+  // Padded, because the API filters on the stored UTC instant while the grid
+  // buckets by the employee's local day: 01:00 on the 1st in Karachi is 20:00
+  // UTC on the last day of the previous month, and an exact range drops it.
   const { data: eventsData } = useQuery({
     queryKey: ['attendance-events-month', firstDate, lastDate],
-    queryFn: () => fetchAttendanceEvents({ date_from: firstDate, date_to: lastDate, limit: 5000 }),
+    queryFn: () => fetchAttendanceEvents({ ...paddedUtcRange(firstDate, lastDate), limit: 5000 }),
   })
   const { data: holidaysData = [] } = useQuery({ queryKey: ['hr-holidays', selYear], queryFn: () => fetchHolidays(selYear) })
   const { data: leavesData, isLoading: leavesLoading } = useQuery({ queryKey: ['hr-leave-requests', 'approved'], queryFn: () => fetchLeaveRequests({ status: 'approved', limit: 1000 }), staleTime: 0 })
@@ -832,27 +840,10 @@ function AttendanceRecordsTab() {
   const _now = new Date()
   const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
 
-  const days = Array.from({ length: lastDay }, (_, i) => {
-    const d = i + 1
-    return `${selYear}-${String(selMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-  })
+  const days = datesBetween(firstDate, lastDate)
 
-  const getStatus = (userId: number, dateStr: string): string => {
-    const dt = new Date(dateStr)
-    const dow = dt.getDay()
-    if (dow === 0 || dow === 6) return 'day_off'
-    if (holidayDates.has(dateStr)) return 'holiday'
-    const onLeave = leaves.some((l: any) =>
-      l.user_id === userId && dateStr >= l.start_date && dateStr <= l.end_date
-    )
-    if (onLeave) return 'on_leave'
-    if (dateStr > today) return 'future'
-    const dayEvents = events.filter((e: any) => e.user_id === userId && e.event_time?.slice(0, 10) === dateStr)
-    if (dayEvents.length === 0) return 'not_added'
-    const hasCheckin = dayEvents.some((e: any) => e.event_type === 'check_in')
-    if (hasCheckin) return 'present'
-    return 'not_added'
-  }
+  const ctx: AttendanceDayContext = { events, leaves, holidayDates, today }
+  const getStatus = (userId: number, dateStr: string) => attendanceDayStatus(ctx, userId, dateStr)
 
   const countPresent = (userId: number) =>
     days.filter(d => getStatus(userId, d) === 'present').length
@@ -892,15 +883,14 @@ function AttendanceRecordsTab() {
                 Employee
               </TableCell>
               {days.map(d => {
-                const dt = new Date(d)
-                const dow = dt.getDay()
+                const dow = dayOfWeek(d)
                 const isWeekend = dow === 0 || dow === 6
                 return (
                   <TableCell key={d} align="center" sx={{
                     bgcolor: isWeekend ? 'grey.100' : 'background.paper',
                     fontWeight: 600, minWidth: 36, px: 0.5,
                   }}>
-                    <Typography variant="caption" display="block" sx={{ fontWeight: 700 }}>{dt.getDate()}</Typography>
+                    <Typography variant="caption" display="block" sx={{ fontWeight: 700 }}>{Number(d.slice(8, 10))}</Typography>
                     <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: 9 }}>{DAYS[dow].slice(0, 3)}</Typography>
                   </TableCell>
                 )
@@ -936,7 +926,7 @@ function AttendanceRecordsTab() {
                     )
                   })}
                   <TableCell>
-                    <Typography variant="body2" fontWeight={700}>{present}/{days.filter(d => { const dow = new Date(d).getDay(); return dow !== 0 && dow !== 6 && !holidayDates.has(d) && d <= today }).length}</Typography>
+                    <Typography variant="body2" fontWeight={700}>{present}/{days.filter(d => isWorkingDay(ctx, d)).length}</Typography>
                   </TableCell>
                 </TableRow>
               )
@@ -947,6 +937,269 @@ function AttendanceRecordsTab() {
     </Box>
   )
 }
+
+// ── One employee, one date range ──────────────────────────────────────────────
+// The month grid answers "who was in"; this answers "what this person actually
+// did". Same events underneath and the same day rules, from utils/attendanceSheet.
+
+function EmployeeAttendanceSheetTab() {
+  // Today where the workforce is, not where the viewer is, so an HR user
+  // abroad sees the same default range and the same absent/future cutoff.
+  const today = todayInZone()
+  const monthStart = `${today.slice(0, 7)}-01`
+
+  const [userId, setUserId] = useState<number | ''>('')
+  const [from, setFrom] = useState(monthStart)
+  const [to, setTo] = useState(today)
+
+  const { data: empData, isLoading: empLoading } = useQuery({
+    queryKey: ['hr-employees'],
+    queryFn: () => fetchHREmployees({ limit: 1000 }),
+  })
+  const employees: any[] = Array.isArray(empData) ? empData : (empData as any)?.items ?? []
+
+  const rangeValid = Boolean(from && to && from <= to)
+
+  const { data: eventsData, isLoading: eventsLoading } = useQuery({
+    queryKey: ['attendance-events-employee', userId, from, to],
+    queryFn: () => fetchAttendanceEvents({
+      user_id: userId as number,
+      ...paddedUtcRange(from, to),
+      limit: 5000,
+    }),
+    enabled: Boolean(userId) && rangeValid,
+  })
+
+  const fromYear = Number(from.slice(0, 4))
+  const toYear = Number(to.slice(0, 4))
+  const { data: holidaysFrom = [] } = useQuery({
+    queryKey: ['hr-holidays', fromYear],
+    queryFn: () => fetchHolidays(fromYear),
+    enabled: rangeValid,
+  })
+  const { data: holidaysTo = [] } = useQuery({
+    queryKey: ['hr-holidays', toYear],
+    queryFn: () => fetchHolidays(toYear),
+    enabled: rangeValid && toYear !== fromYear,
+  })
+  const { data: leavesData } = useQuery({
+    queryKey: ['hr-leave-requests', 'approved'],
+    queryFn: () => fetchLeaveRequests({ status: 'approved', limit: 1000 }),
+    staleTime: 0,
+  })
+
+  const employee = employees.find((e: any) => e.id === userId)
+
+  const { rows, ctx } = useMemo(() => {
+    const holidayDates = new Set(
+      [...(holidaysFrom as any[]), ...(holidaysTo as any[])].map((h: any) => h.date)
+    )
+    const leaves: any[] = (leavesData as any)?.items
+      ?? (Array.isArray(leavesData) ? leavesData : [])
+    const context: AttendanceDayContext = {
+      events: (eventsData as any)?.items ?? [],
+      leaves,
+      holidayDates,
+      today,
+    }
+    if (!userId || !rangeValid) return { rows: [] as SheetRow[], ctx: context }
+    return {
+      rows: buildSheetRows(context, userId as number, datesBetween(from, to)),
+      ctx: context,
+    }
+  }, [eventsData, holidaysFrom, holidaysTo, leavesData, userId, from, to, rangeValid, today])
+
+  const totals = useMemo(() => ({
+    present: rows.filter(r => r.status === 'present').length,
+    expected: rows.filter(r => isWorkingDay(ctx, r.date)).length,
+    absent: rows.filter(r => r.status === 'not_added' && isWorkingDay(ctx, r.date)).length,
+    onLeave: rows.filter(r => r.status === 'on_leave').length,
+    workedMs: rows.reduce((sum, r) => sum + r.workedMs, 0),
+    breakMs: rows.reduce((sum, r) => sum + r.breakMs, 0),
+    flagged: rows.filter(r => r.needsReview).length,
+  }), [rows, ctx])
+
+  const exportCsv = () => {
+    const header = ['Date', 'Day', 'Status', 'Check in', 'Check out', 'Break', 'Worked', 'Events']
+    const body = rows.map(r => [
+      r.date,
+      DAYS[dayOfWeek(r.date)],
+      (STATUS_ICONS[r.status] ?? STATUS_ICONS.not_added).title,
+      r.checkIn,
+      r.checkOut ? `${r.checkOut}${r.checkOutNextDay ? ' (+1d)' : ''}` : '',
+      r.breakMs ? hoursLabel(r.breakMs) : '',
+      r.workedMs ? hoursLabel(r.workedMs) : '',
+      String(r.eventCount),
+    ])
+    const csv = [header, ...body]
+      .map(cells => cells.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n')
+    const url = window.URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `attendance-${String(employee?.full_name ?? 'employee').replace(/\s+/g, '-')}-${from}-to-${to}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }
+
+  const summaryCards = [
+    { label: 'Present', value: `${totals.present}/${totals.expected}`, color: '#2e7d32' },
+    { label: 'Absent', value: String(totals.absent), color: '#ef5350' },
+    { label: 'On leave', value: String(totals.onLeave), color: '#ed6c02' },
+    { label: 'Hours worked', value: hoursLabel(totals.workedMs), color: '#1E1B4B' },
+    { label: 'Break time', value: hoursLabel(totals.breakMs), color: '#6B7280' },
+    { label: 'Needs review', value: String(totals.flagged), color: totals.flagged ? '#ed6c02' : '#9e9e9e' },
+  ]
+
+  return (
+    <Box>
+      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2} alignItems="flex-start">
+          <Grid item xs={12} md={5}>
+            <SearchableSelect
+              label="Employee"
+              value={userId}
+              loading={empLoading}
+              options={employees.map((e: any) => ({
+                value: e.id as number,
+                label: e.full_name ?? e.email,
+                secondary: e.role,
+                keywords: `${e.email ?? ''} ${e.username ?? ''}`,
+              }))}
+              onChange={value => setUserId(value === '' ? '' : Number(value))}
+              placeholder="Search by name, email or username"
+            />
+          </Grid>
+          <Grid item xs={6} md={2.5}>
+            <TextField
+              label="From" type="date" size="small" fullWidth
+              value={from} onChange={e => setFrom(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={6} md={2.5}>
+            <TextField
+              label="To" type="date" size="small" fullWidth
+              value={to} onChange={e => setTo(e.target.value)}
+              error={Boolean(from && to && from > to)}
+              helperText={from && to && from > to ? 'Ends before it starts' : ' '}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Button
+              fullWidth variant="outlined" startIcon={<DownloadIcon />}
+              disabled={!rows.length} onClick={exportCsv}
+            >
+              Export
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {!userId && (
+        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
+          <PeopleIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+          <Typography color="text.secondary" sx={{ mt: 1 }}>
+            Pick an employee to see their attendance sheet.
+          </Typography>
+        </Paper>
+      )}
+
+      {Boolean(userId) && eventsLoading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>
+      )}
+
+      {Boolean(userId) && !eventsLoading && (
+        <>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            {summaryCards.map(card => (
+              <Grid item xs={6} sm={4} md={2} key={card.label}>
+                <Card variant="outlined">
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Typography variant="caption" color="text.secondary">{card.label}</Typography>
+                    <Typography variant="h6" fontWeight={800} sx={{ color: card.color }}>
+                      {card.value}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          <TableContainer component={Paper} sx={{ maxHeight: 520 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Day</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Check in</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Check out</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Break</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Worked</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map(row => {
+                  const si = STATUS_ICONS[row.status] ?? STATUS_ICONS.not_added
+                  const dow = dayOfWeek(row.date)
+                  const isWeekend = dow === 0 || dow === 6
+                  return (
+                    <TableRow key={row.date} hover sx={isWeekend ? { bgcolor: 'grey.50' } : undefined}>
+                      <TableCell>{row.date}</TableCell>
+                      <TableCell sx={{ color: 'text.secondary' }}>{DAYS[dow].slice(0, 3)}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <Typography sx={{ color: si.color, fontWeight: 700, fontSize: 14, lineHeight: 1 }}>
+                            {si.icon}
+                          </Typography>
+                          <Typography variant="body2">{si.title}</Typography>
+                          {row.needsReview && (
+                            <Tooltip title="At least one scan on this day needs review">
+                              <Chip label="review" size="small" color="warning" variant="outlined" />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell>{row.checkIn || '—'}</TableCell>
+                      <TableCell>
+                        {row.checkOut || '—'}
+                        {row.checkOutNextDay && (
+                          <Tooltip title="Shift ran past midnight, so this check-out is on the next calendar day">
+                            <Typography component="span" variant="caption" sx={{ ml: 0.5, color: 'text.secondary' }}>
+                              +1d
+                            </Typography>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                      <TableCell sx={{ color: 'text.secondary' }}>{hoursLabel(row.breakMs)}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{hoursLabel(row.workedMs)}</TableCell>
+                    </TableRow>
+                  )
+                })}
+                {!rows.length && (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                      No days in this range.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Times are shown where they were recorded, using the zone reported by the device that captured each scan.
+          </Typography>
+        </>
+      )}
+    </Box>
+  )
+}
+
 
 const SHIFT_PRESETS = [
   { label: 'Pakistan (6PM–3AM PKT)', start: '18:00', end: '03:00', tz: 'Asia/Karachi' },
@@ -1292,11 +1545,15 @@ function AttendanceSection() {
     <Box>
       <Typography variant="h6" fontWeight={700} gutterBottom>Attendance</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Attendance Records" /><Tab label="Policies" /><Tab label="Policy Assignments" />
+        <Tab label="Attendance Records" />
+        <Tab label="Employee Sheet" />
+        <Tab label="Policies" />
+        <Tab label="Policy Assignments" />
       </Tabs>
       {tab === 0 && <AttendanceRecordsTab />}
-      {tab === 1 && <AttendancePoliciesTab />}
-      {tab === 2 && <PolicyAssignmentsTab />}
+      {tab === 1 && <EmployeeAttendanceSheetTab />}
+      {tab === 2 && <AttendancePoliciesTab />}
+      {tab === 3 && <PolicyAssignmentsTab />}
     </Box>
   )
 }

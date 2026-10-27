@@ -59,6 +59,7 @@ import {
   type AttendanceProfile,
 } from '@/api/attendance'
 import { resolveUploadUrl } from '@/api/users'
+import { asUtc } from '@/utils/attendanceTime'
 import { useAuthStore } from '@/stores/authStore'
 
 const EVENT_LABELS: Record<string, string> = {
@@ -103,14 +104,9 @@ const FACE_STATUS: Record<string, { label: string; bg: string; color: string }> 
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
-// Timestamps arrive as naive UTC -- the API serialises datetime.utcnow()
-// with no zone designator, and JavaScript reads a bare ISO string as LOCAL
-// time. A check-in at 18:46 in Karachi was stored as 13:46 UTC and then
-// shown as 13:46, five hours adrift. Marking it UTC lets the browser put
-// it back into whatever zone the person reading it is in.
-const asUtc = (value: string) =>
-  /[zZ]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}Z`
-
+// asUtc lives in utils/attendanceTime: this page and the HR sheet both read
+// the same naive-UTC timestamps, and a second copy of that rule is exactly
+// how the HR grid ended up still bucketing events by the wrong day.
 const formatDateTime = (value: string) => new Date(asUtc(value)).toLocaleString('en-US', {
   month: 'short',
   day: 'numeric',
