@@ -73,6 +73,7 @@ import {
 import { useListContext } from '@/contexts/ListContext'
 import { useAuthStore } from '@/stores/authStore'
 import { isSameBillingAccount } from '@/utils/billingAccountIdentity'
+import { copyText } from '@/utils/clipboard'
 import { formatUSPhone, formatUSPhoneInput } from '@/utils/formatters'
 import {
   calculateSalesPricing,
@@ -833,8 +834,9 @@ const Sales = () => {
       if (result.authorization.status === 'submitted') {
         toast.success(`Authorization ${result.authorization.authorization_reference || ''} recorded for ${money(result.amount)}`)
       } else {
-        navigator.clipboard?.writeText(result.payment_url).catch(() => undefined)
-        toast.success(`Secure authorization link created for ${money(result.amount)} and copied`)
+        void copyText(result.payment_url).then(copied => toast.success(copied
+          ? `Secure authorization link created for ${money(result.amount)} and copied`
+          : `Secure authorization link created for ${money(result.amount)}`))
       }
       setCardAuthDialog(null)
       closeActions()

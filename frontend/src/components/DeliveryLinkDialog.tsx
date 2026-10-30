@@ -1,5 +1,7 @@
+import { useRef } from 'react'
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography } from '@mui/material'
 import { toast } from 'react-toastify'
+import { copyText } from '@/utils/clipboard'
 
 export interface DeliveryLink {
   url: string
@@ -23,6 +25,7 @@ interface Props {
  */
 export default function DeliveryLinkDialog({ link, documentLabel, note, onClose }: Props) {
   const lower = documentLabel.toLowerCase()
+  const fieldRef = useRef<HTMLInputElement>(null)
   return (
     <Dialog open={Boolean(link)} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
       <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>
@@ -38,6 +41,7 @@ export default function DeliveryLinkDialog({ link, documentLabel, note, onClose 
         <TextField
           fullWidth
           value={link?.url ?? ''}
+          inputRef={fieldRef}
           InputProps={{ readOnly: true }}
           onFocus={event => event.target.select()}
         />
@@ -48,9 +52,16 @@ export default function DeliveryLinkDialog({ link, documentLabel, note, onClose 
           variant="contained"
           onClick={() => {
             if (!link) return
-            navigator.clipboard.writeText(link.url)
-              .then(() => toast.success(`${documentLabel} link copied`))
-              .catch(() => toast.error('Copy the link from the field'))
+            void copyText(link.url, fieldRef.current).then(copied => {
+              if (copied) {
+                toast.success(`${documentLabel} link copied`)
+              } else {
+                // Leave it selected so Ctrl+C / long-press copies it.
+                fieldRef.current?.focus()
+                fieldRef.current?.select()
+                toast.error('Your browser blocked copying. The link is selected; press Ctrl+C to copy it.')
+              }
+            })
           }}
           sx={{ fontWeight: 900 }}
         >
