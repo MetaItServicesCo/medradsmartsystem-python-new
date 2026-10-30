@@ -31,6 +31,7 @@ from app.models.user_facility import UserFacility
 from app.models.equipment_facility import EquipmentFacility
 from app.models.facility_tier import FacilityTier
 from app.models.inventory import InventoryPart, InventoryTransaction
+from app.models.lease import LeaseAgreement, LeaseInstallment, LeasePaymentAuthorization
 from app.models.inventory_capture import InventoryCapture
 from app.models.part_definition import PartDefinition
 from app.models.test_equipment import TestEquipment
