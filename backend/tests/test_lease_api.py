@@ -222,6 +222,18 @@ r = client.post("/api/v1/leases/{}/send".format(LID))
 svc.issue_portal_token = real_issue
 ok("sending works", r.status_code == 200 and r.json()["stage"] == "awaiting_signature", r.text[:120])
 TOKEN = captured["token"]
+ok("sending returns the customer link, so staff can copy and share it",
+   r.json().get("share_url", "").endswith("/lease/" + TOKEN), str(r.json().get("share_url")))
+ok("  and the agreement itself never carries it afterwards",
+   "share_url" not in client.get("/api/v1/leases/{}".format(LID)).json())
+
+svc.issue_portal_token = capture
+r = client.post("/api/v1/leases/{}/send".format(LID))
+svc.issue_portal_token = real_issue
+ok("resending returns a fresh link", r.status_code == 200
+   and r.json().get("share_url", "").endswith("/lease/" + captured["token"]) and captured["token"] != TOKEN)
+ok("  and the link it replaced stops working", client.get("/api/v1/lease-portal/{}".format(TOKEN)).status_code == 404)
+TOKEN = captured["token"]
 
 r = client.get("/api/v1/lease-portal/{}".format(TOKEN))
 view = r.json()

@@ -218,7 +218,9 @@ export const createLease = async (payload: LeaseInput): Promise<LeaseDetail> =>
 export const updateLease = async (id: number, payload: LeaseInput): Promise<LeaseDetail> =>
   (await apiClient.put(`/leases/${id}`, payload)).data
 
-export const sendLease = async (id: number): Promise<LeaseDetail> =>
+// share_url is the customer's link, returned only here: it is never stored
+// readable, and sending again replaces it.
+export const sendLease = async (id: number): Promise<LeaseDetail & { share_url?: string }> =>
   (await apiClient.post(`/leases/${id}/send`)).data
 
 export const startLeaseBuyout = async (id: number): Promise<LeaseDetail> =>
