@@ -1777,7 +1777,7 @@ const Sales = () => {
             <Typography variant="h4" sx={{ color: '#1E1B4B', fontWeight: 900 }}>Sales Module</Typography>
             <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Create quotations from inventory parts marked for Sales, convert them to invoices, and track progress through completion.</Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: 'flex-end', ml: 'auto' }}>
             <Button startIcon={<AddIcon />} variant="contained" onClick={() => openCreate(tab === 1 ? 'invoice' : 'quotation')} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
               {tab === 1 ? 'New Invoice' : 'New Quotation'}
             </Button>
