@@ -19,6 +19,7 @@ from app.models.rental import Rental, RentalStatus
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
+from app.schemas.audit_log import AuditLogItem, DashboardActivityResponse
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user
 from app.utils.invoice_approval import scope_invoice_approval_visibility
 from app.utils.permissions import has_module_permission
@@ -596,7 +597,7 @@ def read_dashboard_intelligence(
     )
 
 
-@router.get("/activity")
+@router.get("/activity", response_model=DashboardActivityResponse)
 @cached_read("dashboard", ttl_seconds=60)
 def read_dashboard_activity(
     db: Session = Depends(get_db),
@@ -635,8 +636,15 @@ def read_dashboard_activity(
         query = query.filter(AuditLog.timestamp < datetime.combine(to_date + timedelta(days=1), time.min))
 
     total = query.count()
+    rows = query.order_by(desc(AuditLog.timestamp)).offset(skip).limit(limit).all()
+    # Serialised here, not left to FastAPI. This returned raw AuditLog rows,
+    # which FastAPI cannot serialise without a response model, so every
+    # uncached request was a 500. The read cache could never paper over it
+    # either: it stores the return value before FastAPI sees it, and storing
+    # ORM rows failed too, quietly, as a store_errors metric. Plain JSON-mode
+    # data makes the cached and uncached responses identical.
     return {
-        "items": query.order_by(desc(AuditLog.timestamp)).offset(skip).limit(limit).all(),
+        "items": [AuditLogItem.model_validate(row).model_dump(mode="json") for row in rows],
         "total": total,
         "scope": "global" if current_user.role == UserRole.SUPERADMIN else "own",
     }

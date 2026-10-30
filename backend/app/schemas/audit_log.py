@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel
 
 class AuditLogItem(BaseModel):
@@ -18,3 +18,10 @@ class AuditLogItem(BaseModel):
 class AuditLogListResponse(BaseModel):
     items: List[AuditLogItem]
     total: int
+
+class DashboardActivityResponse(BaseModel):
+    """Recent activity for the dashboard: the caller's own, or everyone's
+    for a super admin, which `scope` says."""
+    items: List[AuditLogItem]
+    total: int
+    scope: Literal["own", "global"]
