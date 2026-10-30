@@ -12,7 +12,7 @@ import { useContentReveal } from '@/hooks/useContentReveal'
 import AssistantWidget from '@/components/Assistant'
 
 // Sign the user out after this much inactivity.
-const SESSION_IDLE_TIMEOUT_MS = 180_000 // 180 seconds
+const SESSION_IDLE_TIMEOUT_MS = 420_000 // 7 minutes
 
 // Safety net for a known class of MUI bug: a Menu/Select/Popover whose anchor or
 // parent re-renders while it is open can be left "orphaned" — its component still
