@@ -202,6 +202,53 @@ services:
     networks:
       - medrad_network
 
+  # Lease-to-own collection. Its own worker and its own advisory lock, so a
+  # lease run can never delay rental billing or change how it charges.
+  lease_scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medrad_lease_scheduler
+    restart: unless-stopped
+    init: true
+    command: python -m app.jobs.lease_billing_scheduler
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-medrad}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be configured}@postgres:5432/${POSTGRES_DB:-medrad_db}
+      - REDIS_URL=redis://redis:6379/0
+      # Keep every backend process on the same deployment secret. Requiring the
+      # value here prevents the scheduler from booting with a divergent default.
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be configured}
+      - APP_ENV=${APP_ENV:-production}
+      - ENABLE_API_DOCS=false
+      - RUN_STARTUP_MIGRATIONS=false
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["https://medcodesolution.com","https://www.medcodesolution.com"]}
+      - TRUSTED_HOSTS=${TRUSTED_HOSTS:-["medcodesolution.com","www.medcodesolution.com","api.medcodesolution.com","localhost","127.0.0.1"]}
+      - DATABASE_POOL_SIZE=${SCHEDULER_DATABASE_POOL_SIZE:-3}
+      - DATABASE_MAX_OVERFLOW=${SCHEDULER_DATABASE_MAX_OVERFLOW:-2}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL:-https://medcodesolution.com}
+      - SQUARE_ENVIRONMENT=${SQUARE_ENVIRONMENT:-sandbox}
+      - SQUARE_APPLICATION_ID=${SQUARE_APPLICATION_ID:-}
+      - SQUARE_ACCESS_TOKEN=${SQUARE_ACCESS_TOKEN:-}
+      - SQUARE_LOCATION_ID=${SQUARE_LOCATION_ID:-}
+      - SQUARE_CURRENCY=${SQUARE_CURRENCY:-USD}
+      - SQUARE_API_VERSION=${SQUARE_API_VERSION:-2026-07-15}
+      - PAYMENT_DATA_ENCRYPTION_KEYS=${PAYMENT_DATA_ENCRYPTION_KEYS:-}
+      - RENTAL_BILLING_INTERVAL_SECONDS=${RENTAL_BILLING_INTERVAL_SECONDS:-900}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - medrad_network
+
   payment_proof_ocr_worker:
     build:
       context: ./backend
