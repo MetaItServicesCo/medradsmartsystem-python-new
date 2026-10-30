@@ -53,6 +53,7 @@ const allMenuItems: SidebarItem[] = [
       { text: 'Invoice', path: '/sales/invoices' },
       { text: 'In Progress', path: '/sales/in-progress' },
       { text: 'Completed', path: '/sales/completed' },
+      { text: 'Lease to Own', path: '/sales/lease-to-own' },
     ],
   },
   {

@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal as D
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")

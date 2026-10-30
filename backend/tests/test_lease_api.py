@@ -33,7 +33,6 @@ from app.core.deps import get_current_user  # noqa: E402
 from app.db.base import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.inventory import InventoryPart  # noqa: E402
-from app.models.lease import LeaseAgreement  # noqa: E402
 from app.models.user import User, UserRole, UserType  # noqa: E402
 from app.utils import lease_service as svc  # noqa: E402
 from app.utils import read_cache  # noqa: E402

@@ -1790,6 +1790,16 @@ const Sales = () => {
         {renderKpi('History', stats.history, <HistoryIcon />, '#7C3AED', 3)}
       </Box>
 
+      {/* Lease to Own is its own page; the tabs below are unchanged. Shown to
+          the same roles that may create Sales quotations, which are the only
+          ones its API accepts. */}
+      {canConfigureDefaults && (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+          <Button variant="outlined" onClick={() => navigate('/sales/lease-to-own')} sx={{ fontWeight: 800, borderRadius: '12px' }}>
+            Lease to Own
+          </Button>
+        </Box>
+      )}
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
         <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Quotations" />

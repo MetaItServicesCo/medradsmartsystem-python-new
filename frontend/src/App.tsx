@@ -31,6 +31,8 @@ const MyLeave = lazyWithReload(() => import('./pages/MyLeave'))
 const ClientQuotation = lazyWithReload(() => import('./pages/Sales/ClientQuotation'))
 const PublicSalesPayment = lazyWithReload(() => import('./pages/Sales/PublicSalesPayment'))
 const ClientRental = lazyWithReload(() => import('./pages/Rentals/ClientRental'))
+const LeaseToOwn = lazyWithReload(() => import('./pages/Sales/LeaseToOwn'))
+const ClientLease = lazyWithReload(() => import('./pages/Sales/ClientLease'))
 
 const RouteFallback = () => (
   <div
@@ -105,6 +107,7 @@ function App() {
         <Route path="/quotation/account/:quotationId" element={isAuthenticated ? <ClientQuotation /> : <Navigate to="/login" replace />} />
         <Route path="/payment/sales/:token" element={<PublicSalesPayment />} />
         <Route path="/rental/:token" element={<ClientRental />} />
+        <Route path="/lease/:token" element={<ClientLease />} />
         <Route path="/rental-extension/:extensionToken" element={<ClientRental />} />
         <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
 
@@ -122,6 +125,8 @@ function App() {
           <Route path="profile" element={<Profile />} />
           <Route path="service-requests/*" element={<ProtectedPage module="service-requests"><ServiceRequests /></ProtectedPage>} />
           <Route path="inspections/*" element={<ProtectedPage module="inspections"><Inspections /></ProtectedPage>} />
+          {/* More specific than sales/*, so it is matched first; the Sales page itself is untouched. */}
+          <Route path="sales/lease-to-own" element={<ProtectedPage module="sales"><LeaseToOwn /></ProtectedPage>} />
           <Route path="sales/*" element={<ProtectedPage module="sales"><Sales /></ProtectedPage>} />
           <Route path="rentals/account/:rentalId" element={<ProtectedPage module="rentals"><ClientRental /></ProtectedPage>} />
           <Route path="rentals/*" element={<ProtectedPage module="rentals"><Rentals /></ProtectedPage>} />

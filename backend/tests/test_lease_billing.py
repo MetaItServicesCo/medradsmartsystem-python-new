@@ -31,7 +31,7 @@ import app.models  # noqa: E402,F401
 from app.core.config import settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.models.inventory import InventoryPart  # noqa: E402
-from app.models.invoice import Invoice, InvoiceStatus, InvoiceTransaction, PaymentReceiptDelivery  # noqa: E402
+from app.models.invoice import InvoiceStatus, InvoiceTransaction, PaymentReceiptDelivery  # noqa: E402
 from app.models.lease import LeaseAgreement  # noqa: E402
 from app.models.payment_operation import PaymentOperation  # noqa: E402
 from app.models.user import User, UserRole, UserType  # noqa: E402
