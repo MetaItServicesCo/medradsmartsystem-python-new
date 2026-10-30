@@ -1,6 +1,6 @@
 import apiClient from './client'
 
-export type RentalStatus = 'active' | 'completed' | 'cancelled'
+export type RentalStatus = 'draft' | 'active' | 'completed' | 'cancelled'
 export type BillingFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'custom'
 export type RentalItemStatus = 'out' | 'returned'
 export type RentalDiscountType = 'flat' | 'percent'
@@ -411,8 +411,15 @@ export const fetchRentalDetail = async (id: number): Promise<Rental> => {
   return res.data
 }
 
-export const createRental = async (data: RentalPayload): Promise<Rental> => {
+// save_as_draft stores the agreement without reserving stock, raising an
+// invoice or billing it; activateRental later makes it live.
+export const createRental = async (data: RentalPayload & { save_as_draft?: boolean }): Promise<Rental> => {
   const res = await apiClient.post('/rentals', data)
+  return res.data
+}
+
+export const activateRental = async (id: number): Promise<Rental> => {
+  const res = await apiClient.post(`/rentals/${id}/activate`)
   return res.data
 }
 

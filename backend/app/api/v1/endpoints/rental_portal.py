@@ -130,7 +130,7 @@ def _find_rental_for_account(
             for item in (rental.items or [])
         )
     )
-    if not rental or (
+    if not rental or rental.status == RentalStatus.DRAFT or (
         rental.facility_id not in accessible_facilities
         and not legacy_item_access
     ):

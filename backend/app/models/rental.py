@@ -6,6 +6,8 @@ from app.db.base import Base
 from app.utils.payment_data_security import EncryptedPaymentReference
 
 class RentalStatus(str, enum.Enum):
+    # Saved but not live: no stock reserved, no invoice, never billed.
+    DRAFT = "draft"
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"

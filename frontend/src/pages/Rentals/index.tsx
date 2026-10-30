@@ -49,6 +49,7 @@ import {
   createRentalDiscountPackage,
   updateRentalDiscountPackage,
   deleteRentalDiscountPackage,
+  activateRental,
   createRental,
   updateRental,
   deleteRental,
@@ -200,6 +201,7 @@ const RENTAL_ACTION_BUTTON_SX = {
 
 const statusChip = (value: string) => {
   const map: Record<string, { bg: string; color: string }> = {
+    draft: { bg: '#F3F4F6', color: '#4B5563' },
     active: { bg: '#E0F2FE', color: '#0369A1' },
     completed: { bg: '#D1FAE5', color: '#047857' },
     cancelled: { bg: '#F3F4F6', color: '#6B7280' },
@@ -651,6 +653,8 @@ const Rentals = () => {
 
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
+  // A draft is not live yet: sending, billing and returns wait for activation.
+  const isDraftAction = actionAgreement?.status === 'draft'
   const [deliveryLink, setDeliveryLink] = useState<DeliveryLink | null>(null)
   const [deliveryLinkKind, setDeliveryLinkKind] = useState<'agreement' | 'extension'>('agreement')
   const [extensionOfferEnd, setExtensionOfferEnd] = useState('')
@@ -1018,26 +1022,49 @@ const Rentals = () => {
     onError: (error: any) => toast.error(apiErrorMessage(error, 'Could not remove discount package')),
   })
 
+  // 'draft' saves without going live; 'live' creates, updates, or activates a draft.
   const saveAgreementMut = useMutation({
-    mutationFn: () => (
-      editingAgreement
-        ? updateRental(editingAgreement.id, buildAgreementUpdatePayload())
-        : createRental(buildAgreementCreatePayload())
-    ),
-    onSuccess: (rental) => {
-      toast.success(editingAgreement ? 'Rental agreement updated' : 'Rental agreement created')
+    mutationFn: async (mode: 'draft' | 'live') => {
+      if (!editingAgreement) return createRental({ ...buildAgreementCreatePayload(), save_as_draft: mode === 'draft' })
+      const updated = await updateRental(editingAgreement.id, buildAgreementUpdatePayload())
+      return editingAgreement.status === 'draft' && mode === 'live' ? activateRental(updated.id) : updated
+    },
+    onSuccess: (rental, mode) => {
+      const wasDraft = editingAgreement?.status === 'draft'
+      const message = mode === 'draft'
+        ? (editingAgreement ? 'Rental agreement draft updated' : 'Rental agreement saved as draft')
+        : wasDraft
+          ? 'Rental agreement activated'
+          : editingAgreement ? 'Rental agreement updated' : 'Rental agreement created'
+      toast.success(message)
       setAgreementDialog(false)
       setEditingAgreement(null)
       setAgreementForm(emptyAgreement())
       invalidateRentals()
       focusRecord(`rental-agreement-${rental.id}`, rental.rental_number, {
-        message: editingAgreement ? 'Rental agreement updated.' : 'Rental agreement created.',
+        message: `${message}.`,
         announce: true,
         pathname: '/rentals/agreements',
         query: { search: rental.rental_number },
       })
     },
     onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not save rental agreement')),
+  })
+
+  const activateAgreementMut = useMutation({
+    mutationFn: (id: number) => activateRental(id),
+    onSuccess: (rental) => {
+      toast.success('Rental agreement activated')
+      closeActions()
+      invalidateRentals()
+      focusRecord(`rental-agreement-${rental.id}`, rental.rental_number, {
+        message: 'Rental agreement activated.',
+        announce: true,
+        pathname: '/rentals/agreements',
+        query: { search: rental.rental_number },
+      })
+    },
+    onError: (e: any) => toast.error(apiErrorMessage(e, 'Could not activate the rental agreement')),
   })
 
   const deleteAgreementMut = useMutation({
@@ -1386,7 +1413,7 @@ const Rentals = () => {
     setAgreementForm(prev => ({ ...prev, items: prev.items.filter(item => item.key !== key) }))
   }
 
-  const submitAgreement = () => {
+  const submitAgreement = (mode: 'draft' | 'live' = 'live') => {
     if (agreementForm.facility_id && !agreementForm.customer_user_id) {
       return toast.error('Select an attached facility admin, manager, or client')
     }
@@ -1406,7 +1433,7 @@ const Rentals = () => {
     if (agreementForm.discount_type && (agreementForm.discount_invoice_number === '' || Number(agreementForm.discount_invoice_number) < 1)) {
       return toast.error('Select the invoice number where the discount applies')
     }
-    saveAgreementMut.mutate()
+    saveAgreementMut.mutate(mode)
   }
 
   const openRateCard = async (part: RentalPart) => {
@@ -2438,11 +2465,17 @@ const Rentals = () => {
 
       <Menu anchorEl={actionAnchor} open={Boolean(actionAnchor)} onClose={closeActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
         {isInternalRentalOperator ? (<>
-        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || actionAgreement.status === 'completed'} onClick={() => actionAgreement && openReturnDialog(actionAgreement)}>
+        {actionAgreement?.status === 'draft' && (
+          <MenuItem sx={{ ...ACTION_MENU_ITEM, bgcolor: '#F5F3FF', color: '#7C3AED' }} disabled={activateAgreementMut.isPending} onClick={() => activateAgreementMut.mutate(actionAgreement.id)}>
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CheckCircleIcon fontSize="small" /></ListItemIcon>
+            Activate Agreement
+          </MenuItem>
+        )}
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || isDraftAction || actionAgreement.status === 'completed'} onClick={() => actionAgreement && openReturnDialog(actionAgreement)}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CheckCircleIcon fontSize="small" /></ListItemIcon>
           Return Equipment
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || Boolean(actionAgreement.converted_invoice_id)} onClick={() => actionAgreement && openConvertDialog(actionAgreement)}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || isDraftAction || Boolean(actionAgreement.converted_invoice_id)} onClick={() => actionAgreement && openConvertDialog(actionAgreement)}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><ReceiptLongIcon fontSize="small" /></ListItemIcon>
           Convert to Invoice
         </MenuItem>
@@ -2460,11 +2493,11 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View Details
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || sendMut.isPending} onClick={() => actionAgreement && sendMut.mutate({ id: actionAgreement.id, email: true })}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || isDraftAction || sendMut.isPending} onClick={() => actionAgreement && sendMut.mutate({ id: actionAgreement.id, email: true })}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
           Send Link to Customer
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || sendMut.isPending} onClick={() => actionAgreement && sendMut.mutate({ id: actionAgreement.id, email: false })}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || isDraftAction || sendMut.isPending} onClick={() => actionAgreement && sendMut.mutate({ id: actionAgreement.id, email: false })}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><LinkIcon fontSize="small" /></ListItemIcon>
           Share Link Only
         </MenuItem>
@@ -2472,7 +2505,7 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>
           Print Documents
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} onClick={() => actionAgreement && openCardAuthorization({ rental: actionAgreement })}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={isDraftAction} onClick={() => actionAgreement && openCardAuthorization({ rental: actionAgreement })}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
           Request Credit Card Authorization
         </MenuItem>
@@ -3172,8 +3205,18 @@ const Rentals = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setAgreementDialog(false)} sx={{ fontWeight: 900 }}>Cancel</Button>
-          <Button startIcon={saveAgreementMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={submitAgreement} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}>
-            {editingAgreement ? 'Update Agreement' : 'Create Agreement'}
+          {(!editingAgreement || editingAgreement.status === 'draft') && (
+            <Button
+              disabled={saveAgreementMut.isPending}
+              onClick={() => submitAgreement('draft')}
+              variant="outlined"
+              sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+            >
+              Save as Draft
+            </Button>
+          )}
+          <Button disabled={saveAgreementMut.isPending} startIcon={saveAgreementMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />} onClick={() => submitAgreement('live')} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none', background: SYSTEM_GRADIENT }}>
+            {!editingAgreement ? 'Create Agreement' : editingAgreement.status === 'draft' ? 'Activate Agreement' : 'Update Agreement'}
           </Button>
         </DialogActions>
       </Dialog>

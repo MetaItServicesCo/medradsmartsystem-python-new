@@ -206,6 +206,8 @@ class RentalCreate(BaseModel):
     discount_invoice_number: Optional[int] = None
     discount_continue: bool = False
     discount_requires_card: bool = True
+    # Save without going live: no stock reserved, no invoice, not billed.
+    save_as_draft: bool = False
 
 
 class RentalUpdate(BaseModel):
@@ -956,9 +958,21 @@ def _stock_delta(old: dict[int, int], new: dict[int, int]) -> dict[int, int]:
     return delta
 
 
+def _require_not_draft(rental: Rental, action: str) -> None:
+    """A draft is not live: activate it before it can be sent, billed or worked."""
+    if rental.status == RentalStatus.DRAFT:
+        raise HTTPException(
+            status_code=409,
+            detail="This rental agreement is a draft. Activate it before you {}.".format(action),
+        )
+
+
 def _require_rental_facility_access(db: Session, current_user: User, rental: Rental) -> None:
     if not _is_rental_customer_user(current_user):
         return
+    # A draft is staff work in progress, like an unsent sales quotation.
+    if rental.status == RentalStatus.DRAFT:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
     accessible = get_user_facility_ids(db, current_user)
     if rental.facility_id is not None:
         if rental.facility_id not in accessible:
@@ -1363,6 +1377,7 @@ def save_rental_card(
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
     _require_rental_facility_access(db, current_user, rental)
+    _require_not_draft(rental, "save a card")
     previous_card_id = rental.square_card_id
     if payload.authorize_auto_charge and (
         not payload.customer_authorization_confirmed or not payload.authorization_method
@@ -1452,6 +1467,7 @@ def remove_rental_saved_card(
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
     _require_rental_facility_access(db, current_user, rental)
+    _require_not_draft(rental, "manage its card")
     old_card_id = rental.square_card_id
     if not old_card_id:
         revoke_auto_charge(rental)
@@ -1512,6 +1528,7 @@ def send_rental_portal_link(
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
     _require_rental_facility_access(db, current_user, rental)
+    _require_not_draft(rental, "send it to the customer")
     if not rental.customer_email:
         raise HTTPException(status_code=400, detail="A customer email is required to send the portal link")
     if rental.facility_id is not None and rental.customer_user_id is None:
@@ -1725,6 +1742,7 @@ def create_rental_extension(
     if not rental:
         raise HTTPException(status_code=404, detail="Rental agreement not found")
     _require_rental_facility_access(db, current_user, rental)
+    _require_not_draft(rental, "extend it")
     if rental.status != RentalStatus.ACTIVE:
         raise HTTPException(status_code=409, detail="Only an active rental agreement can be extended")
     if any(item.status in {RentalExtensionStatus.REQUESTED.value, RentalExtensionStatus.OFFERED.value} for item in (rental.extensions or [])):
@@ -1926,6 +1944,7 @@ def list_rentals(
             Rental.facility_id.in_(accessible),
             and_(Rental.facility_id.is_(None), Rental.id.in_(legacy_scope)),
         ))
+        query = query.filter(Rental.status != RentalStatus.DRAFT)
 
     if date_from:
         query = query.filter(Rental.start_date >= date_from)
@@ -2115,7 +2134,7 @@ def create_rental(
         security_deposit=deposit,
         start_date=payload.start_date,
         end_date=payload.end_date,
-        status=RentalStatus.ACTIVE,
+        status=RentalStatus.DRAFT if payload.save_as_draft else RentalStatus.ACTIVE,
         terms_and_conditions=payload.terms_and_conditions,
         auto_charge=bool(payload.auto_charge),
         committed_periods=payload.committed_periods,
@@ -2132,6 +2151,20 @@ def create_rental(
         history=[],
     )
     rental.items = item_rows
+
+    if payload.save_as_draft:
+        rental.next_bill_date = None
+        _append_history(rental, "draft_saved", current_user, {
+            "items": len(item_rows),
+            "facility_id": rental.facility_id,
+            "customer_user_id": rental.customer_user_id,
+        })
+        db.add(rental)
+        db.flush()
+        log_activity(db, "rentals", rental.id, "CREATE_DRAFT", current_user, {"rental_number": rental.rental_number})
+        db.commit()
+        db.refresh(rental)
+        return _rental_response(rental)
 
     # Reserve stock across all items.
     _apply_stock_delta(db, _required_stock(items_in))
@@ -2157,6 +2190,56 @@ def create_rental(
     )
 
     log_activity(db, "rentals", rental.id, "CREATE", current_user, {"rental_number": rental.rental_number})
+    db.commit()
+    db.refresh(rental)
+    return _rental_response(rental)
+
+
+@router.post("/{rental_id}/activate")
+def activate_rental(
+    rental_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Turn a draft into a live agreement, exactly as creating one does.
+
+    Stock is reserved and the first invoice raised now, against today's stock
+    and the draft's current terms, never when the draft was saved.
+    """
+    _require_internal_rental_operator(current_user)
+    rental = (
+        db.query(Rental)
+        .options(selectinload(Rental.items).joinedload(RentalItem.part), joinedload(Rental.part))
+        .filter(Rental.id == rental_id)
+        .with_for_update(of=Rental)
+        .first()
+    )
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental agreement not found")
+    _require_rental_facility_access(db, current_user, rental)
+    if rental.status != RentalStatus.DRAFT:
+        raise HTTPException(status_code=409, detail="Only a draft rental agreement can be activated")
+    if not rental.items:
+        raise HTTPException(status_code=400, detail="At least one rental item is required")
+    _validate_billing_term(rental.start_date, rental.end_date, rental.billing_frequency, rental.committed_periods)
+
+    _apply_stock_delta(db, _required_stock_from_rows(rental.items))
+    rental.status = RentalStatus.ACTIVE
+    rental.periods_billed = 0
+    rental.next_bill_date = rental.start_date
+    db.flush()
+
+    initial_invoice = generate_deposit_invoice(db, rental)
+    if initial_invoice is not None:
+        rental.periods_billed = 1
+    rental.next_bill_date = (
+        billing_period_date(rental, 2)
+        if effective_period_count(rental) >= 2
+        else None
+    )
+    rental.updated_at = datetime.utcnow()
+    _append_history(rental, "activated", current_user, {"items": len(rental.items)})
+    log_activity(db, "rentals", rental.id, "ACTIVATE", current_user, {"rental_number": rental.rental_number})
     db.commit()
     db.refresh(rental)
     return _rental_response(rental)
@@ -2215,6 +2298,15 @@ def update_rental(
     )
 
     update_data = payload.model_dump(exclude_unset=True, exclude={"items", "secondary_recipients"})
+
+    # Going live reserves stock and raises the first invoice, so it has its own
+    # action; a status edit must never skip that or turn live work into a draft.
+    requested_status = update_data.get("status")
+    if requested_status is not None and requested_status != rental.status:
+        if rental.status == RentalStatus.DRAFT:
+            raise HTTPException(status_code=409, detail="Activate the draft to make it live")
+        if requested_status == RentalStatus.DRAFT:
+            raise HTTPException(status_code=409, detail="A live rental agreement cannot be turned back into a draft")
 
     # A signed contract must remain identical to the snapshot accepted by the
     # customer. Operational status can still be managed through the normal
@@ -2410,6 +2502,7 @@ def return_rental(
         raise HTTPException(status_code=404, detail="Rental agreement not found")
 
     _require_rental_facility_access(db, current_user, rental)
+    _require_not_draft(rental, "return equipment")
 
     if rental.status == RentalStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Rental is already completed/returned")
@@ -2581,6 +2674,7 @@ def convert_to_invoice(
         raise HTTPException(status_code=404, detail="Rental agreement not found")
 
     _require_rental_facility_access(db, current_user, rental)
+    _require_not_draft(rental, "convert it to an invoice")
 
     action = (payload.action or "convert_to_invoice").lower()
     if action in {"approve", "approved"}:
