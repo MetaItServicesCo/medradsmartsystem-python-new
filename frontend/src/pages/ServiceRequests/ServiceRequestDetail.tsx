@@ -13,6 +13,8 @@ import BuildIcon from '@mui/icons-material/Build'
 import BusinessIcon from '@mui/icons-material/Business'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
 import LocalOfferIcon from '@mui/icons-material/LocalOffer'
+import NumbersIcon from '@mui/icons-material/Numbers'
+import NotesIcon from '@mui/icons-material/Notes'
 import PersonIcon from '@mui/icons-material/Person'
 import EngineeringIcon from '@mui/icons-material/Engineering'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
@@ -983,6 +985,36 @@ const ServiceRequestDetail = () => {
                   </Typography>
                   <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
                     {sr.equipment_asset_tag || '—'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Serial # -- entered as "Serial" when the equipment is added in Facilities */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#EEF2FF' }}>
+                <Avatar sx={{ backgroundColor: '#E0E7FF', color: '#4338CA', width: 36, height: 36 }}>
+                  <NumbersIcon sx={{ fontSize: '1.1rem' }} />
+                </Avatar>
+                <Box>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                    Serial #
+                  </Typography>
+                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                    {sr.equipment_serial_number || '—'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Description of the asset, as entered in Facilities. Can be long, so it wraps. */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#F0F9FF' }}>
+                <Avatar sx={{ backgroundColor: '#E0F2FE', color: '#0369A1', width: 36, height: 36 }}>
+                  <NotesIcon sx={{ fontSize: '1.1rem' }} />
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                    Description
+                  </Typography>
+                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                    {sr.equipment_description || '—'}
                   </Typography>
                 </Box>
               </Box>

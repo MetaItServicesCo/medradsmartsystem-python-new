@@ -404,6 +404,8 @@ def _enrich(
     data["facility_name"] = sr.facility.name if sr.facility else None
     data["equipment_name"] = f"{sr.equipment.make} {sr.equipment.model}" if sr.equipment else None
     data["equipment_asset_tag"] = sr.equipment.asset_tag if sr.equipment else None
+    data["equipment_serial_number"] = sr.equipment.serial_number if sr.equipment else None
+    data["equipment_description"] = sr.equipment.description if sr.equipment else None
     tier = sr.equipment.tier if sr.equipment and sr.equipment.tier else None
     data["tier_id"] = tier.id if tier else None
     data["tier_name"] = tier.name if tier else None

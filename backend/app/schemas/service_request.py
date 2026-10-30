@@ -257,6 +257,8 @@ class ServiceRequestResponse(BaseModel):
     facility_name: Optional[str] = None
     equipment_name: Optional[str] = None
     equipment_asset_tag: Optional[str] = None
+    equipment_serial_number: Optional[str] = None
+    equipment_description: Optional[str] = None
     tier_id: Optional[int] = None
     tier_name: Optional[str] = None
     tier_labor_rate_per_hour: Optional[Decimal] = None

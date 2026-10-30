@@ -345,6 +345,8 @@ export interface ServiceRequest {
   facility_name: string | null
   equipment_name: string | null
   equipment_asset_tag?: string | null
+  equipment_serial_number?: string | null
+  equipment_description?: string | null
   requester_name: string | null
   technician_name: string | null
   
