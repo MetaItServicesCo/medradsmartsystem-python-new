@@ -219,9 +219,13 @@ export const updateLease = async (id: number, payload: LeaseInput): Promise<Leas
   (await apiClient.put(`/leases/${id}`, payload)).data
 
 // share_url is the customer's link, returned only here: it is never stored
-// readable, and sending again replaces it.
-export const sendLease = async (id: number): Promise<LeaseDetail & { share_url?: string }> =>
-  (await apiClient.post(`/leases/${id}/send`)).data
+// readable, and sending again replaces it. emailCustomer=false issues the same
+// secure link but emails nobody (Share Link Only).
+export const sendLease = async (
+  id: number,
+  emailCustomer = true,
+): Promise<LeaseDetail & { share_url?: string; emailed?: boolean }> =>
+  (await apiClient.post(`/leases/${id}/send`, undefined, { params: { email_customer: emailCustomer } })).data
 
 export const startLeaseBuyout = async (id: number): Promise<LeaseDetail> =>
   (await apiClient.post(`/leases/${id}/buyout`)).data

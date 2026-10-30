@@ -18,6 +18,7 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
+import LinkIcon from '@mui/icons-material/Link'
 import SendIcon from '@mui/icons-material/Send'
 import { toast } from 'react-toastify'
 
@@ -27,6 +28,7 @@ import {
   type LeaseDetail, type LeaseFrequency, type LeaseInput, type LeaseQuotePreview, type LeaseStage,
   type LeaseStatus,
 } from '@/api/leases'
+import DeliveryLinkDialog, { type DeliveryLink } from '@/components/DeliveryLinkDialog'
 import SearchableSelect from '@/components/SearchableSelect'
 
 const STAGE_LOOK: Record<LeaseStage, { label: string; color: 'default' | 'info' | 'warning' | 'success' | 'error' | 'primary' }> = {
@@ -368,7 +370,7 @@ function LeaseDetailDialog({ leaseId, onClose, onEdit }: {
   const qc = useQueryClient()
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
-  const [deliveryLink, setDeliveryLink] = useState('')
+  const [deliveryLink, setDeliveryLink] = useState<DeliveryLink | null>(null)
   const [returnStock, setReturnStock] = useState(true)
 
   const { data: lease, isLoading, isError, error } = useQuery({
@@ -387,13 +389,14 @@ function LeaseDetailDialog({ leaseId, onClose, onEdit }: {
     onError: (e: unknown) => toast.error(errorText(e, 'That did not work')),
   })
   const send = useMutation({
-    ...action(() => sendLease(leaseId as number), 'Agreement sent to the customer'),
-    onSuccess: (result: LeaseDetail & { share_url?: string }) => {
-      toast.success('Agreement sent to the customer')
-      const { share_url: link, ...next } = result
+    mutationFn: (email: boolean) => sendLease(leaseId as number, email),
+    onSuccess: (result: LeaseDetail & { share_url?: string; emailed?: boolean }, email: boolean) => {
+      toast.success(email ? 'Agreement sent to the customer' : 'Secure lease link ready — no email was sent')
+      const { share_url: link, emailed: _emailed, ...next } = result
       refresh(next as LeaseDetail)
-      if (link) setDeliveryLink(link)
+      if (link) setDeliveryLink({ url: link, emailed: email })
     },
+    onError: (e: unknown) => toast.error(errorText(e, 'That did not work')),
   })
   const collect = useMutation(action(() => collectLeaseNow(leaseId as number), 'Collection run complete'))
   const buyout = useMutation(action(() => startLeaseBuyout(leaseId as number), 'Buyout invoice raised'))
@@ -530,7 +533,12 @@ function LeaseDetailDialog({ leaseId, onClose, onEdit }: {
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           {open === 'draft' && <Button onClick={() => onEdit(lease)} disabled={busy}>Edit</Button>}
           {(open === 'draft' || (open === 'sent' && !lease.signed_at)) && (
-            <Button variant="contained" startIcon={<SendIcon />} disabled={busy} onClick={() => send.mutate()}>
+            <Button startIcon={<LinkIcon />} disabled={busy} onClick={() => send.mutate(false)}>
+              Share Link Only
+            </Button>
+          )}
+          {(open === 'draft' || (open === 'sent' && !lease.signed_at)) && (
+            <Button variant="contained" startIcon={<SendIcon />} disabled={busy} onClick={() => send.mutate(true)}>
               {open === 'draft' ? 'Send to customer' : 'Resend link'}
             </Button>
           )}
@@ -571,35 +579,12 @@ function LeaseDetailDialog({ leaseId, onClose, onEdit }: {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Lease Agreement Sent</DialogTitle>
-        <DialogContent dividers>
-          <Typography sx={{ color: '#4B5563', mb: 2 }}>
-            The customer was notified. You can also copy this secure lease agreement link and share it any way you like.
-            Sending again issues a new link and the previous one stops working.
-          </Typography>
-          <TextField
-            fullWidth
-            value={deliveryLink}
-            InputProps={{ readOnly: true }}
-            onFocus={event => event.target.select()}
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDeliveryLink('')}>Close</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              navigator.clipboard.writeText(deliveryLink)
-                .then(() => toast.success('Lease link copied'))
-                .catch(() => toast.error('Copy the link from the field'))
-            }}
-            sx={{ fontWeight: 900 }}
-          >
-            Copy Link
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DeliveryLinkDialog
+        link={deliveryLink}
+        documentLabel="Lease Agreement"
+        note="Sending or sharing again issues a new link and the previous one stops working."
+        onClose={() => setDeliveryLink(null)}
+      />
     </Dialog>
   )
 }

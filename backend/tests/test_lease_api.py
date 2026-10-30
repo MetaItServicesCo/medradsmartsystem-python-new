@@ -235,6 +235,20 @@ ok("resending returns a fresh link", r.status_code == 200
 ok("  and the link it replaced stops working", client.get("/api/v1/lease-portal/{}".format(TOKEN)).status_code == 404)
 TOKEN = captured["token"]
 
+lease_emails = []
+svc.send_html_email = lambda *a, **k: lease_emails.append(a) or True
+svc.issue_portal_token = capture
+r = client.post("/api/v1/leases/{}/send".format(LID), params={"email_customer": "false"})
+svc.issue_portal_token = real_issue
+svc.send_html_email = lambda *a, **k: True
+ok("Share Link Only issues a fresh link and emails nobody", r.status_code == 200 and lease_emails == []
+   and r.json().get("emailed") is False and r.json().get("share_url", "").endswith("/lease/" + captured["token"]),
+   "{} {}".format(r.text[:120], len(lease_emails)))
+latest_send = max((h for h in r.json()["history"] if h.get("action") == "sent"), key=lambda h: h["at"])
+ok("  and the history records it was shared, not emailed", latest_send.get("details", {}).get("channel") == "link",
+   str(latest_send)[:160])
+TOKEN = captured["token"]
+
 r = client.get("/api/v1/lease-portal/{}".format(TOKEN))
 view = r.json()
 ok("the customer can open the agreement", r.status_code == 200, r.text[:120])

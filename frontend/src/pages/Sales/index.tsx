@@ -12,6 +12,7 @@ import HandshakeIcon from '@mui/icons-material/Handshake'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
+import LinkIcon from '@mui/icons-material/Link'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import HistoryIcon from '@mui/icons-material/History'
@@ -30,6 +31,7 @@ import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditC
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import DateRangeFilter from '@/components/DateRangeFilter'
+import DeliveryLinkDialog, { type DeliveryLink } from '@/components/DeliveryLinkDialog'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
 import SalesPricingBreakdown from '@/components/Sales/SalesPricingBreakdown'
 import SalesQuotationDocument from '@/components/Sales/SalesQuotationDocument'
@@ -397,7 +399,7 @@ const Sales = () => {
   const [refundInvoice, setRefundInvoice] = useState<SalesInvoice | null>(null)
   const [refundForm, setRefundForm] = useState({ amount: 0, payment_method: '', notes: '' })
   const [partInfo, setPartInfo] = useState<SalesPartInfo | null>(null)
-  const [deliveryLink, setDeliveryLink] = useState('')
+  const [deliveryLink, setDeliveryLink] = useState<DeliveryLink | null>(null)
   const [quotationsPage, setQuotationsPage] = useState(0)
   const [invoicesPage, setInvoicesPage] = useState(0)
   const [inProgressPage, setInProgressPage] = useState(0)
@@ -695,7 +697,7 @@ const Sales = () => {
   }
 
   const saveQuotationMut = useMutation({
-    mutationFn: async (action: 'draft' | 'send') => {
+    mutationFn: async (action: 'draft' | 'send' | 'link') => {
       const quotation = salesDocumentMode === 'invoice'
         ? editingQuotation?.converted_invoice_id
           ? await updateDirectSalesInvoice(editingQuotation.converted_invoice_id, { ...quotationForm, quotation_type: 'standard' })
@@ -703,22 +705,24 @@ const Sales = () => {
         : editingQuotation
         ? await updateSalesQuotation(editingQuotation.id, quotationForm)
         : await createSalesQuotation(quotationForm)
-      const delivered = action === 'send'
-        ? await sendSalesQuotation(quotation.id)
-        : quotation
-      return { quotation: delivered, sent: action === 'send' }
+      const delivered = action === 'draft'
+        ? quotation
+        : await sendSalesQuotation(quotation.id, 30, action === 'send')
+      return { quotation: delivered, sent: action !== 'draft', emailed: action === 'send' }
     },
-    onSuccess: ({ quotation, sent }) => {
+    onSuccess: ({ quotation, sent, emailed }) => {
       const isInvoice = quotation.document_kind === 'direct_invoice'
       toast.success(
         sent
-          ? `Sales ${isInvoice ? 'invoice' : 'quotation'} sent to its recipients`
+          ? emailed
+            ? `Sales ${isInvoice ? 'invoice' : 'quotation'} sent to its recipients`
+            : `Secure ${isInvoice ? 'invoice' : 'quotation'} link ready — no email was sent`
           : editingQuotation
             ? 'Sales quotation draft updated'
             : `Sales ${isInvoice ? 'invoice' : 'quotation'} saved as draft`,
       )
       if (sent && 'primary_share_url' in quotation && typeof quotation.primary_share_url === 'string' && quotation.primary_share_url) {
-        setDeliveryLink(quotation.primary_share_url)
+        setDeliveryLink({ url: quotation.primary_share_url, emailed })
       }
       setQuotationDialog(false)
       setEditingQuotation(null)
@@ -758,11 +762,13 @@ const Sales = () => {
   })
 
   const sendQuotationMut = useMutation({
-    mutationFn: (id: number) => sendSalesQuotation(id),
-    onSuccess: quotation => {
+    mutationFn: ({ id, email }: { id: number; email: boolean }) => sendSalesQuotation(id, 30, email),
+    onSuccess: (quotation, { email }) => {
       const isInvoice = quotation.document_kind === 'direct_invoice'
-      toast.success(`Sales ${isInvoice ? 'invoice' : 'quotation'} sent to its recipients`)
-      if (quotation.primary_share_url) setDeliveryLink(quotation.primary_share_url)
+      toast.success(email
+        ? `Sales ${isInvoice ? 'invoice' : 'quotation'} sent to its recipients`
+        : `Secure ${isInvoice ? 'invoice' : 'quotation'} link ready — no email was sent`)
+      if (quotation.primary_share_url) setDeliveryLink({ url: quotation.primary_share_url, emailed: email })
       closeActions()
       invalidateSales()
       locateSalesRecord(
@@ -1092,7 +1098,7 @@ const Sales = () => {
     setQuotationForm(prev => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))
   }
 
-  const submitQuotation = (action: 'draft' | 'send') => {
+  const submitQuotation = (action: 'draft' | 'send' | 'link') => {
     if (quotationForm.facility_id) {
       if (!quotationForm.primary_recipient_user_id) return toast.error('Select a primary facility recipient')
     } else {
@@ -1943,10 +1949,20 @@ const Sales = () => {
           <MenuItem
             sx={ACTION_MENU_ITEM}
             disabled={sendQuotationMut.isPending}
-            onClick={() => sendQuotationMut.mutate(actionQuotation.id)}
+            onClick={() => sendQuotationMut.mutate({ id: actionQuotation.id, email: true })}
           >
             <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><AssignmentIcon fontSize="small" /></ListItemIcon>
             {['sent', 'viewed'].includes(String(actionQuotation.status)) ? 'Resend Quotation' : 'Send Quotation'}
+          </MenuItem>
+        )}
+        {actionQuotation && ['draft', 'pending', 'sent', 'viewed'].includes(String(actionQuotation.status)) && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            disabled={sendQuotationMut.isPending}
+            onClick={() => sendQuotationMut.mutate({ id: actionQuotation.id, email: false })}
+          >
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><LinkIcon fontSize="small" /></ListItemIcon>
+            Share Link Only
           </MenuItem>
         )}
         <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionQuotation || Boolean(actionQuotation.converted_invoice_id)} onClick={() => actionQuotation && openConvertDialog(actionQuotation)}>
@@ -2020,13 +2036,27 @@ const Sales = () => {
             sx={ACTION_MENU_ITEM}
             onClick={async () => {
               const source = await ensureQuotation(actionInvoice.sales_quotation_id)
-              if (source) sendQuotationMut.mutate(source.id)
+              if (source) sendQuotationMut.mutate({ id: source.id, email: true })
               else toast.error('Could not load the invoice delivery record')
               closeInvoiceActions()
             }}
           >
             <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><AssignmentIcon fontSize="small" /></ListItemIcon>
             Send to Customer
+          </MenuItem>
+        )}
+        {actionInvoice?.source_document_kind === 'direct_invoice' && actionInvoice.source_document_status === 'draft' && (
+          <MenuItem
+            sx={ACTION_MENU_ITEM}
+            onClick={async () => {
+              const source = await ensureQuotation(actionInvoice.sales_quotation_id)
+              if (source) sendQuotationMut.mutate({ id: source.id, email: false })
+              else toast.error('Could not load the invoice delivery record')
+              closeInvoiceActions()
+            }}
+          >
+            <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><LinkIcon fontSize="small" /></ListItemIcon>
+            Share Link Only
           </MenuItem>
         )}
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => {
@@ -2792,6 +2822,15 @@ const Sales = () => {
           </Button>
           <Button
             disabled={saveQuotationMut.isPending}
+            startIcon={<LinkIcon />}
+            onClick={() => submitQuotation('link')}
+            variant="outlined"
+            sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}
+          >
+            Share Link Only
+          </Button>
+          <Button
+            disabled={saveQuotationMut.isPending}
             startIcon={saveQuotationMut.isPending ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <AddIcon />}
             onClick={() => submitQuotation('send')}
             variant="contained"
@@ -2802,29 +2841,11 @@ const Sales = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} Sent</DialogTitle>
-        <DialogContent dividers>
-          <Typography sx={{ color: '#4B5563', mb: 2 }}>
-            Recipients were notified. You can also copy this secure {salesDocumentMode === 'invoice' ? 'invoice' : 'quotation'} link.
-          </Typography>
-          <TextField fullWidth value={deliveryLink} InputProps={{ readOnly: true }} />
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDeliveryLink('')}>Close</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              navigator.clipboard.writeText(deliveryLink)
-                .then(() => toast.success(`${salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'} link copied`))
-                .catch(() => toast.error('Copy the link from the field'))
-            }}
-            sx={{ fontWeight: 900 }}
-          >
-            Copy Link
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DeliveryLinkDialog
+        link={deliveryLink}
+        documentLabel={salesDocumentMode === 'invoice' ? 'Invoice' : 'Quotation'}
+        onClose={() => setDeliveryLink(null)}
+      />
 
       <Dialog open={Boolean(convertQuotation)} onClose={() => setConvertQuotation(null)} maxWidth="lg" fullWidth PaperProps={{ sx: { borderRadius: '22px', overflow: 'hidden' } }}>
         <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B', textAlign: 'center' }}>

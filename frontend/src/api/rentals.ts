@@ -656,8 +656,12 @@ export interface RentalPortal {
   }
 }
 
-export const sendRentalPortalLink = async (id: number): Promise<{ detail: string; link: string }> => {
-  const res = await apiClient.post(`/rentals/${id}/send`)
+// emailCustomer=false issues the same secure link but emails nobody (Share Link Only).
+export const sendRentalPortalLink = async (
+  id: number,
+  emailCustomer = true,
+): Promise<{ detail: string; link: string; emailed?: boolean }> => {
+  const res = await apiClient.post(`/rentals/${id}/send`, undefined, { params: { email_customer: emailCustomer } })
   return res.data
 }
 

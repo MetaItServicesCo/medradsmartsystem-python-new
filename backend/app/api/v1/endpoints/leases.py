@@ -221,21 +221,23 @@ def update_lease(lease_id: int, payload: LeaseIn, db: Session = Depends(get_db),
 
 @router.post("/{lease_id}/send")
 def send_lease(lease_id: int, db: Session = Depends(get_db),
-               current_user: User = Depends(get_current_user)) -> Any:
+               current_user: User = Depends(get_current_user),
+               email_customer: bool = Query(True, description="False shares the link without emailing anyone"),) -> Any:
     _require_staff(current_user)
     agreement = _load(db, lease_id, lock=True)
     try:
-        token = svc.send_agreement(db, agreement, current_user)
+        token = svc.send_agreement(db, agreement, current_user, email=email_customer)
     except svc.LeaseError as exc:
         db.rollback()
         _raise(exc)
     log_activity(db, "lease_agreements", agreement.id, "LEASE_SENT", current_user,
-                 {"to": agreement.customer_email})
+                 {"to": agreement.customer_email, "channel": "email" if email_customer else "link"})
     db.commit()
     # The customer link, so staff can also share it by text or chat, as Sales
     # and Rentals do. Only its hash is stored, so this is the one moment it
     # exists to return; sending again issues a new one and retires this.
-    return {**lease_detail(_load(db, lease_id), staff=True), "share_url": svc.portal_url(token)}
+    return {**lease_detail(_load(db, lease_id), staff=True), "share_url": svc.portal_url(token),
+            "emailed": email_customer}
 
 
 @router.post("/{lease_id}/buyout")

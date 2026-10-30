@@ -1495,8 +1495,13 @@ def send_rental_portal_link(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    email_customer: bool = Query(True, description="False shares the link without emailing anyone"),
 ) -> Any:
-    """Email the customer a secure link to view the agreement and save a card / pay."""
+    """Email the customer a secure link to view the agreement and save a card / pay.
+
+    With email_customer=False the link is issued the same way but nobody is
+    emailed, so staff can share it by text, chat or any other medium.
+    """
     _require_internal_rental_operator(current_user)
     rental = (
         db.query(Rental)
@@ -1537,6 +1542,7 @@ def send_rental_portal_link(
     ]
     _append_history(rental, "portal_link_sent", current_user, {
         "expires_at": rental.token_expires_at.isoformat(),
+        "channel": "email" if email_customer else "link",
         "recipient_count": len(recipients),
         "recipients": [recipient["email"] for recipient in recipients],
     })
@@ -1544,7 +1550,12 @@ def send_rental_portal_link(
     if first_invoice:
         add_invoice_transaction(
             db, first_invoice, "portal_link_sent", 0, None,
-            f"Rental portal link emailed to {len(recipients)} recipient(s)", current_user, "SEND",
+            (
+                f"Rental portal link emailed to {len(recipients)} recipient(s)"
+                if email_customer
+                else "Rental portal link shared by staff without email"
+            ),
+            current_user, "SEND",
         )
     if rental.customer_user_id is not None:
         create_notifications(
@@ -1571,8 +1582,11 @@ def send_rental_portal_link(
             link_url=f"/rentals/account/{rental.id}",
             actor_id=current_user.id,
         )
-    log_activity(db, "rentals", rental.id, "SEND_PORTAL", current_user, {})
+    log_activity(db, "rentals", rental.id, "SEND_PORTAL", current_user,
+                 {"channel": "email" if email_customer else "link"})
     db.commit()
+    if not email_customer:
+        return {"detail": "Secure link ready; no email was sent", "link": link, "emailed": False}
 
     # Send separately so recipients never see each other's email addresses.
     for recipient in recipients:
@@ -1609,7 +1623,7 @@ def send_rental_portal_link(
                 )
             ),
         )
-    return {"detail": f"Portal link sent to {len(recipients)} recipient(s)", "link": link}
+    return {"detail": f"Portal link sent to {len(recipients)} recipient(s)", "link": link, "emailed": True}
 
 
 def _apply_extension_offer(

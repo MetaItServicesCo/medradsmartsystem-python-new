@@ -2091,6 +2091,7 @@ def send_quotation(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    email_customer: bool = Query(True, description="False shares the link without emailing anyone"),
 ) -> Any:
     if current_user.role not in INTERNAL_SALES_ROLES:
         raise HTTPException(status_code=403, detail="Only an Admin or Super Admin can send sales quotations")
@@ -2158,6 +2159,8 @@ def send_quotation(
     now = datetime.utcnow()
     expires_at = now + timedelta(days=payload.expires_in_days)
     delivery_links: list[dict[str, Any]] = []
+    # Sharing the link only issues it exactly as sending does; it just emails nobody.
+    queue_email = background_tasks.add_task if email_customer else (lambda *args, **kwargs: None)
     for recipient in quotation.recipients:
         token = secrets.token_urlsafe(32)
         recipient.access_token_hash = _token_hash(token)
@@ -2190,7 +2193,7 @@ def send_quotation(
                 link_url=relative_url,
                 actor_id=current_user.id,
             )
-        background_tasks.add_task(
+        queue_email(
             send_html_email,
             [recipient.email],
             (
@@ -2225,6 +2228,7 @@ def send_quotation(
         {
             "revision": quotation.revision or 1,
             "expires_at": expires_at.isoformat(),
+            "channel": "email" if email_customer else "link",
             "recipients": [
                 {
                     "user_id": item.user_id,
@@ -2242,11 +2246,13 @@ def send_quotation(
         quotation.id,
         "SEND",
         current_user,
-        {"recipient_count": len(quotation.recipients), "expires_at": expires_at},
+        {"recipient_count": len(quotation.recipients), "expires_at": expires_at,
+         "channel": "email" if email_customer else "link"},
     )
     db.commit()
     return {
         **_quotation_response(quotation),
+        "emailed": email_customer,
         "delivery_links": delivery_links,
         "primary_share_url": next(
             (

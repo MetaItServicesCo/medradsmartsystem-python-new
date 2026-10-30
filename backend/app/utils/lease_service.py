@@ -303,7 +303,8 @@ def portal_url(token: str) -> str:
     return "{}/lease/{}".format(settings.PUBLIC_APP_URL.rstrip("/"), token)
 
 
-def send_agreement(db: Session, agreement: LeaseAgreement, actor: User) -> str:
+def send_agreement(db: Session, agreement: LeaseAgreement, actor: User, *, email: bool = True) -> str:
+    """Issue a fresh signing link; email it unless staff are sharing it themselves."""
     if agreement.status not in ("draft", "sent"):
         raise LeaseError("This agreement can no longer be sent.", 409)
     if agreement.signed_at:
@@ -316,24 +317,26 @@ def send_agreement(db: Session, agreement: LeaseAgreement, actor: User) -> str:
     token = issue_portal_token(agreement, SIGNING_LINK_DAYS)
     agreement.status = "sent"
     agreement.sent_at = _now()
-    append_history(agreement, "sent", actor, {"to": agreement.customer_email, "revision": agreement.revision})
-    _email(
-        agreement,
-        "Your lease-to-own agreement {}".format(agreement.agreement_number),
-        "<p>Hello {name},</p>"
-        "<p>Your lease-to-own agreement for <strong>{item}</strong> is ready for you to review and sign.</p>"
-        "<p>Total of payments: <strong>${total}</strong>, as {count} {freq} installments of "
-        "<strong>${each}</strong>{down}.</p>"
-        "<p><a href=\"{url}\">Review and sign the agreement</a></p>"
-        "<p>This link expires in {days} days.</p>".format(
-            name=agreement.customer_name, item=agreement.item_description,
-            total=agreement.total_of_payments, count=agreement.installment_count,
-            freq=agreement.frequency, each=agreement.regular_installment,
-            down=(" after a down payment of ${}".format(money(agreement.down_payment) + money(agreement.down_payment_tax))
-                  if money(agreement.down_payment) > 0 else ""),
-            url=portal_url(token), days=SIGNING_LINK_DAYS,
-        ),
-    )
+    append_history(agreement, "sent", actor, {"to": agreement.customer_email, "revision": agreement.revision,
+                                             "channel": "email" if email else "link"})
+    if email:
+        _email(
+            agreement,
+            "Your lease-to-own agreement {}".format(agreement.agreement_number),
+            "<p>Hello {name},</p>"
+            "<p>Your lease-to-own agreement for <strong>{item}</strong> is ready for you to review and sign.</p>"
+            "<p>Total of payments: <strong>${total}</strong>, as {count} {freq} installments of "
+            "<strong>${each}</strong>{down}.</p>"
+            "<p><a href=\"{url}\">Review and sign the agreement</a></p>"
+            "<p>This link expires in {days} days.</p>".format(
+                name=agreement.customer_name, item=agreement.item_description,
+                total=agreement.total_of_payments, count=agreement.installment_count,
+                freq=agreement.frequency, each=agreement.regular_installment,
+                down=(" after a down payment of ${}".format(money(agreement.down_payment) + money(agreement.down_payment_tax))
+                      if money(agreement.down_payment) > 0 else ""),
+                url=portal_url(token), days=SIGNING_LINK_DAYS,
+            ),
+        )
     return token
 
 

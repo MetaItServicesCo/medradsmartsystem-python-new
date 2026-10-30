@@ -11,6 +11,7 @@ import AddIcon from '@mui/icons-material/Add'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
+import LinkIcon from '@mui/icons-material/Link'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import HistoryIcon from '@mui/icons-material/History'
@@ -30,6 +31,7 @@ import { resolveUploadUrl } from '@/api/users'
 import CreditCardAuthorizationDialog, { type AuthorizationLineItem, type CreditCardAuthorizationPayload } from '@/components/Billing/CreditCardAuthorizationDialog'
 import InvoicePrintDialog, { type PrintableLedgerTransaction, type PrintableLineItem } from '@/components/Billing/InvoicePrintDialog'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
+import DeliveryLinkDialog, { type DeliveryLink } from '@/components/DeliveryLinkDialog'
 import DateRangeFilter from '@/components/DateRangeFilter'
 import FacilitySearchAutocomplete from '@/components/FacilitySearchAutocomplete'
 import PartSearchAutocomplete from '@/components/PartSearchAutocomplete'
@@ -649,7 +651,7 @@ const Rentals = () => {
 
   const [actionAnchor, setActionAnchor] = useState<HTMLElement | null>(null)
   const [actionAgreement, setActionAgreement] = useState<Rental | null>(null)
-  const [deliveryLink, setDeliveryLink] = useState('')
+  const [deliveryLink, setDeliveryLink] = useState<DeliveryLink | null>(null)
   const [deliveryLinkKind, setDeliveryLinkKind] = useState<'agreement' | 'extension'>('agreement')
   const [extensionOfferEnd, setExtensionOfferEnd] = useState('')
   const [extensionOfferPeriods, setExtensionOfferPeriods] = useState('')
@@ -1456,15 +1458,15 @@ const Rentals = () => {
   })
 
   const sendMut = useMutation({
-    mutationFn: (id: number) => sendRentalPortalLink(id),
-    onSuccess: (result, rentalId) => {
+    mutationFn: ({ id, email }: { id: number; email: boolean }) => sendRentalPortalLink(id, email),
+    onSuccess: (result, { id: rentalId, email }) => {
       setDeliveryLinkKind('agreement')
-      setDeliveryLink(result.link)
-      toast.success('Secure link emailed to the customer')
+      setDeliveryLink({ url: result.link, emailed: email })
+      toast.success(email ? 'Secure link emailed to the customer' : 'Secure rental link ready — no email was sent')
       const rental = rentals.find(item => item.id === rentalId)
       if (rental) {
         focusRecord(`rental-agreement-${rental.id}`, rental.rental_number, {
-          message: 'Secure rental agreement link sent to the customer.',
+          message: email ? 'Secure rental agreement link sent to the customer.' : 'Secure rental agreement link ready to share.',
           announce: true,
           pathname: '/rentals/agreements',
           query: { search: rental.rental_number },
@@ -1488,7 +1490,7 @@ const Rentals = () => {
     },
     onSuccess: async (result) => {
       setDeliveryLinkKind('extension')
-      setDeliveryLink(result.link)
+      setDeliveryLink({ url: result.link, emailed: true })
       toast.success('Extension offer emailed to the customer')
       if (viewAgreement) {
         focusRecord(`rental-agreement-${viewAgreement.id}`, viewAgreement.rental_number, {
@@ -1537,7 +1539,7 @@ const Rentals = () => {
     },
     onSuccess: async (result) => {
       setDeliveryLinkKind('extension')
-      setDeliveryLink(result.link)
+      setDeliveryLink({ url: result.link, emailed: true })
       toast.success('Extension offer emailed to the customer')
       if (viewAgreement) {
         focusRecord(`rental-agreement-${viewAgreement.id}`, viewAgreement.rental_number, {
@@ -2458,9 +2460,13 @@ const Rentals = () => {
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><VisibilityIcon fontSize="small" /></ListItemIcon>
           View Details
         </MenuItem>
-        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || sendMut.isPending} onClick={() => actionAgreement && sendMut.mutate(actionAgreement.id)}>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || sendMut.isPending} onClick={() => actionAgreement && sendMut.mutate({ id: actionAgreement.id, email: true })}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><CreditCardIcon fontSize="small" /></ListItemIcon>
           Send Link to Customer
+        </MenuItem>
+        <MenuItem sx={ACTION_MENU_ITEM} disabled={!actionAgreement || sendMut.isPending} onClick={() => actionAgreement && sendMut.mutate({ id: actionAgreement.id, email: false })}>
+          <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><LinkIcon fontSize="small" /></ListItemIcon>
+          Share Link Only
         </MenuItem>
         <MenuItem sx={ACTION_MENU_ITEM} onClick={() => { if (actionAgreement) setPrintAgreement(actionAgreement); closeActions() }}>
           <ListItemIcon sx={{ color: 'inherit', minWidth: 34 }}><PrintIcon fontSize="small" /></ListItemIcon>
@@ -2477,34 +2483,11 @@ const Rentals = () => {
         </>) : null}
       </Menu>
 
-      <Dialog open={Boolean(deliveryLink)} onClose={() => setDeliveryLink('')} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
-        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>{deliveryLinkKind === 'extension' ? 'Extension Offer Sent' : 'Rental Link Sent'}</DialogTitle>
-        <DialogContent dividers>
-          <Typography sx={{ color: '#4B5563', mb: 2 }}>
-            The customer was notified. You can also copy this secure {deliveryLinkKind === 'extension' ? 'extension amendment' : 'rental agreement'} link.
-          </Typography>
-          <TextField
-            fullWidth
-            value={deliveryLink}
-            InputProps={{ readOnly: true }}
-            onFocus={event => event.target.select()}
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDeliveryLink('')}>Close</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              navigator.clipboard.writeText(deliveryLink)
-                .then(() => toast.success('Rental link copied'))
-                .catch(() => toast.error('Copy the link from the field'))
-            }}
-            sx={{ fontWeight: 900 }}
-          >
-            Copy Link
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DeliveryLinkDialog
+        link={deliveryLink}
+        documentLabel={deliveryLinkKind === 'extension' ? 'Extension Offer' : 'Rental Agreement'}
+        onClose={() => setDeliveryLink(null)}
+      />
 
       <Menu anchorEl={invoiceActionAnchor} open={Boolean(invoiceActionAnchor)} onClose={closeInvoiceActions} PaperProps={{ sx: ACTION_MENU_PAPER }}>
         {isInternalRentalOperator ? (<>

@@ -319,6 +319,7 @@ export interface SalesQuotationPayload {
 }
 
 export interface SalesQuotationDelivery extends SalesQuotation {
+  emailed?: boolean
   primary_share_url: string | null
   delivery_links: Array<{
     recipient_id: number
@@ -531,13 +532,15 @@ export const fetchSalesQuotationRecipientCandidates = async (
   return res.data
 }
 
+// emailCustomer=false issues the same secure link but emails nobody (Share Link Only).
 export const sendSalesQuotation = async (
   id: number,
   expiresInDays = 30,
+  emailCustomer = true,
 ): Promise<SalesQuotationDelivery> => {
   const res = await apiClient.post(`/sales/quotations/${id}/send`, {
     expires_in_days: expiresInDays,
-  })
+  }, { params: { email_customer: emailCustomer } })
   return res.data
 }
 
