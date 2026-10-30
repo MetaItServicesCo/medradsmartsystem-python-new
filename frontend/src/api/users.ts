@@ -37,6 +37,7 @@ export interface UserData {
   user_type: string
   role: string
   is_active: boolean
+  is_technician?: boolean
   facility_id: number | null
   permissions?: UserPermissionMatrix
   created_at: string
@@ -68,6 +69,7 @@ export interface CreateUserPayload {
   role?: string
   user_type?: string
   facility_ids?: number[]
+  is_technician?: boolean
 }
 
 export interface UpdateUserPayload {
@@ -80,6 +82,7 @@ export interface UpdateUserPayload {
   user_type?: string
   is_active?: boolean
   facility_ids?: number[]
+  is_technician?: boolean
 }
 
 export interface UpdateOwnProfilePayload {

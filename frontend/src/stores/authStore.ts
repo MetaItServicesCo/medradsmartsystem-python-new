@@ -11,6 +11,7 @@ interface User {
   phone?: string | null
   avatar_url?: string | null
   is_active?: boolean
+  is_technician?: boolean
   facility_id?: number | null
   permissions?: Record<string, {
     index: boolean

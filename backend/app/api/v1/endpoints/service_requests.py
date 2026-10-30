@@ -15,7 +15,9 @@ from sqlalchemy.orm.attributes import flag_modified
 from app import crud
 from app.core.deps import get_current_user
 from app.utils.permission_deps import require_module_access
-from app.utils.permissions import has_module_permission
+from app.utils.permissions import (
+    acts_as_technician, also_assigned, assigned_only, has_module_permission, is_additional_technician,
+)
 from app.db.base import get_db
 from app.models.user import User, UserRole
 from app.models.user_facility import UserFacility
@@ -41,7 +43,10 @@ from app.schemas.service_request import (
     ServiceRequestWorkSessionCreate,
 )
 from app.utils.notifications import create_notification, create_notifications, notify_admins
-from app.utils.facility_access import get_user_facility_ids, require_facility_access, scope_query_to_user_facilities
+from app.utils.facility_access import (
+    get_user_facility_ids, require_assignable_technician, require_facility_access,
+    scope_query_to_user_facilities,
+)
 from app.utils.invoice_editing import compose_invoice_edit_notes, editable_labels, editable_line_items, editable_summary_rows, parse_invoice_edit_metadata, strip_invoice_edit_metadata
 from app.utils.invoice_ledger import record_invoice_created, record_invoice_edit, record_payment_delta, record_status_change, transaction_response
 from app.utils.invoice_approval import (
@@ -221,6 +226,21 @@ def _require_service_facility_access(
             raise HTTPException(status_code=403, detail="You do not have access to this facility")
         return
     require_facility_access(db, user, facility_id)
+
+
+def _require_view_as_technician_or_requester(user: User, sr: ServiceRequest) -> None:
+    """The per-request view rules for technicians and employees, in one place.
+
+    Facility access is checked separately and first. A user also working as a
+    technician may always open a job assigned to them; their own role's rules
+    decide everything else.
+    """
+    assigned_to_user = sr.assigned_technician_id == user.id
+    if assigned_only(user, "service-requests") and not assigned_to_user:
+        raise HTTPException(status_code=403, detail="You can only view service requests assigned to you")
+    if user.role == UserRole.EMPLOYEE and sr.requester_id != user.id:
+        if not (also_assigned(user, "service-requests") and assigned_to_user):
+            raise HTTPException(status_code=403, detail="You can only view service requests you submitted")
 
 
 def _scope_service_query(query, facility_column, db: Session, user: User):
@@ -887,14 +907,22 @@ def list_service_requests(
     if date_to:
         base_query = base_query.filter(ServiceRequest.created_at <= datetime.combine(date_to, time.max))
 
-    # Technicians only see service requests they are assigned to
-    if current_user.role == UserRole.TECHNICIAN:
+    # Technicians only see service requests they are assigned to -- as does a
+    # user also working as one whose own role has no service-request access.
+    if assigned_only(current_user, "service-requests"):
         base_query = base_query.filter(ServiceRequest.assigned_technician_id == current_user.id)
 
-    # Employees only see requests they submitted. Clients are facility-scoped
-    # through scope_query_to_user_facilities when assigned to facilities.
+    # Employees only see requests they submitted, plus any assigned to them if
+    # they also work as a technician. Clients are facility-scoped through
+    # scope_query_to_user_facilities when assigned to facilities.
     if current_user.role == UserRole.EMPLOYEE:
-        base_query = base_query.filter(ServiceRequest.requester_id == current_user.id)
+        if also_assigned(current_user, "service-requests"):
+            base_query = base_query.filter(or_(
+                ServiceRequest.requester_id == current_user.id,
+                ServiceRequest.assigned_technician_id == current_user.id,
+            ))
+        else:
+            base_query = base_query.filter(ServiceRequest.requester_id == current_user.id)
 
     open_statuses = [ServiceRequestStatus.NEW, ServiceRequestStatus.ASSIGNED]
     active_statuses = [
@@ -1189,10 +1217,7 @@ def download_service_request_image(
     if not sr or not sr.request_image_url:
         raise HTTPException(status_code=404, detail="Image not found")
     _require_service_facility_access(db, current_user, sr.facility_id)
-    if current_user.role == UserRole.TECHNICIAN and sr.assigned_technician_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only view service requests assigned to you")
-    if current_user.role == UserRole.EMPLOYEE and sr.requester_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only view service requests you submitted")
+    _require_view_as_technician_or_requester(current_user, sr)
 
     try:
         file_path = protected_upload_path(
@@ -1239,12 +1264,10 @@ def get_service_request(
     if not sr:
         raise HTTPException(status_code=404, detail="Service request not found")
     _require_service_facility_access(db, current_user, sr.facility_id)
-    # Technicians can only view service requests assigned to them
-    if current_user.role == UserRole.TECHNICIAN and sr.assigned_technician_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only view service requests assigned to you")
-    # Employees can only view requests they submitted. Clients are facility-scoped.
-    if current_user.role == UserRole.EMPLOYEE and sr.requester_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only view service requests you submitted")
+    # Technicians can only view requests assigned to them; employees only those
+    # they submitted, or are assigned if they also work as a technician.
+    # Clients are facility-scoped.
+    _require_view_as_technician_or_requester(current_user, sr)
     data = _enrich(sr, include_quotation_ledger=True)
     active_invoice = None
     if has_module_permission(current_user, "billing", "view"):
@@ -1400,6 +1423,8 @@ def update_service_request(
 
     update_data = sr_in.model_dump(exclude_unset=True)
     _authorize_service_request_update(current_user, db_sr, update_data)
+    if update_data.get("assigned_technician_id"):
+        require_assignable_technician(db, update_data["assigned_technician_id"], db_sr.facility_id)
     changes = {}
 
     requested_billing_status = update_data.get("billing_status")
@@ -2094,14 +2119,15 @@ def create_quotation(
 ) -> Any:
     """Create a new quotation for a service request. Multiple quotations allowed.
     Quotation can only be created if the service is NOT completed."""
-    if not (_is_internal_service_user(current_user) or current_user.role == UserRole.TECHNICIAN):
+    if not (_is_internal_service_user(current_user) or acts_as_technician(current_user)):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db_sr = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_sr:
         raise HTTPException(status_code=404, detail="Service request not found")
     _require_service_facility_access(db, current_user, db_sr.facility_id)
-    if current_user.role == UserRole.TECHNICIAN and db_sr.assigned_technician_id != current_user.id:
+    if (not _is_internal_service_user(current_user) and acts_as_technician(current_user)
+            and db_sr.assigned_technician_id != current_user.id):
         raise HTTPException(status_code=403, detail="You can only create quotations for service requests assigned to you")
 
     if db_sr.status in {ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED}:
@@ -2174,7 +2200,7 @@ def update_quotation(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Update a quotation. Editable until the service request is completed."""
-    if not (_is_internal_service_user(current_user) or current_user.role == UserRole.TECHNICIAN):
+    if not (_is_internal_service_user(current_user) or acts_as_technician(current_user)):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db_quotation = (
@@ -2189,7 +2215,8 @@ def update_quotation(
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
     _require_service_facility_access(db, current_user, db_quotation.service_request.facility_id)
-    if current_user.role == UserRole.TECHNICIAN and db_quotation.service_request.assigned_technician_id != current_user.id:
+    if (not _is_internal_service_user(current_user) and acts_as_technician(current_user)
+            and db_quotation.service_request.assigned_technician_id != current_user.id):
         raise HTTPException(status_code=403, detail="You can only edit quotations for service requests assigned to you")
 
     if db_quotation.service_request.status in {ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED}:
@@ -2303,7 +2330,7 @@ def delete_quotation(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Delete a quotation."""
-    if not (_is_internal_service_user(current_user) or current_user.role == UserRole.TECHNICIAN):
+    if not (_is_internal_service_user(current_user) or acts_as_technician(current_user)):
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     db_quotation = (
@@ -2315,7 +2342,8 @@ def delete_quotation(
     if not db_quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
     _require_service_facility_access(db, current_user, db_quotation.service_request.facility_id)
-    if current_user.role == UserRole.TECHNICIAN and db_quotation.service_request.assigned_technician_id != current_user.id:
+    if (not _is_internal_service_user(current_user) and acts_as_technician(current_user)
+            and db_quotation.service_request.assigned_technician_id != current_user.id):
         raise HTTPException(status_code=403, detail="You can only delete quotations for service requests assigned to you")
 
     if db_quotation.service_request.status in {ServiceRequestStatus.COMPLETED, ServiceRequestStatus.CANCELLED}:

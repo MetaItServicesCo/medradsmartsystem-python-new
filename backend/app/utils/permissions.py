@@ -224,12 +224,61 @@ def _saved_rule(user: User, module: str) -> Optional[dict[str, Any]]:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+# ── Also working as a technician ──────────────────────────────────────────────
+# A user keeps their role and every right it gives, and may additionally be
+# flagged to work as a technician on jobs assigned to them. The flag only ever
+# adds: these helpers are the single definition of what it adds, so the many
+# places that used to ask "is this a technician?" cannot drift apart.
+
+def acts_as_technician(user: User) -> bool:
+    """A technician by role, or a user flagged to work as one."""
+    return _role_value(user) == "technician" or is_additional_technician(user)
+
+
+def is_additional_technician(user: User) -> bool:
+    """Flagged to work as a technician on top of a different role.
+
+    Never true for a client: clients are customers' own accounts, not staff,
+    so the flag is refused for them and ignored here even if it were set.
+    """
+    role = _role_value(user)
+    return bool(getattr(user, "is_technician", False)) and role not in ("technician", "client")
+
+
+def role_grants(user: User, module: str, action: PermissionAction = "view") -> bool:
+    """What the user's own role (or saved matrix) allows, ignoring the flag."""
+    module = _canonical_module(module)
+    saved = _saved_rule(user, module)
+    if saved is not None:
+        return bool(saved.get(action))
+    return action in _ROLE_PERMISSIONS.get(_role_value(user), {}).get(module, _NO)
+
+
+def assigned_only(user: User, module: str) -> bool:
+    """Should this user see only the work in *module* that is assigned to them?
+
+    True for a technician. True for a flagged user whose own role has no access
+    to the module -- an HR manager who also does technician work sees the jobs
+    assigned to them, never every service request in the system.
+    """
+    if _role_value(user) == "technician":
+        return True
+    return is_additional_technician(user) and not role_grants(user, module, "view")
+
+
+def also_assigned(user: User, module: str) -> bool:
+    """Does this user see their usual view of *module* plus their assigned work?"""
+    return is_additional_technician(user) and role_grants(user, module, "view")
+
+
 def has_module_permission(user: User, module: str, action: PermissionAction = "index") -> bool:
     """Return True if *user* may perform *action* on *module*.
 
     Precedence (highest first):
     1. Saved per-user matrix rule in ``user.permissions``
     2. Role default from ``_ROLE_PERMISSIONS``
+    3. For a user also working as a technician, the technician's default,
+       added on top -- only where neither of the above already decided.
     """
     module = _canonical_module(module)
 
@@ -239,7 +288,11 @@ def has_module_permission(user: User, module: str, action: PermissionAction = "i
 
     role = _role_value(user)
     allowed_actions = _ROLE_PERMISSIONS.get(role, {}).get(module, _NO)
-    return action in allowed_actions
+    if action in allowed_actions:
+        return True
+    if is_additional_technician(user):
+        return action in _ROLE_PERMISSIONS.get("technician", {}).get(module, _NO)
+    return False
 
 
 def require_module_permission(user: User, module: str, action: PermissionAction = "index") -> None:

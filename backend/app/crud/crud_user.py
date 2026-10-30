@@ -29,6 +29,7 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             user_type=user_type_enum,
             role=role_enum,
             is_active=True,
+            is_technician=bool(getattr(obj_in, "is_technician", False)),
         )
         db.add(db_user)
         db.commit()

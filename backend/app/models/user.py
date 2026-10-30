@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON, Index, false
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -35,6 +35,10 @@ class User(Base):
     user_type = Column(SQLEnum(UserType), nullable=False)
     role = Column(SQLEnum(UserRole), nullable=False)
     is_active = Column(Boolean, default=True)
+    # Works as a technician as well as in their own role. Adds the technician's
+    # rights for jobs assigned to them; never removes anything the role grants.
+    # See app.utils.permissions.acts_as_technician.
+    is_technician = Column(Boolean, nullable=False, default=False, server_default=false())
     is_locked = Column(Boolean, default=False)
     failed_login_attempts = Column(Integer, default=0)
     last_login = Column(DateTime, nullable=True)

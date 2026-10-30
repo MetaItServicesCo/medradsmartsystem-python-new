@@ -43,6 +43,7 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
     role: '',
     user_type: '',
     is_active: true,
+    is_technician: false,
     facility_ids: [] as number[],
   })
 
@@ -57,6 +58,7 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
         role: user.role,
         user_type: user.user_type,
         is_active: user.is_active,
+        is_technician: Boolean(user.is_technician),
         facility_ids: user.facilities?.map((f) => f.id) || [],
       })
       setSelectedFacilities(user.facilities || [])
@@ -103,6 +105,9 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
     },
   })
 
+  // A technician already has these rights, and a client is not staff.
+  const canAlsoBeTechnician = form.role !== 'technician' && form.role !== 'client'
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (form.password && form.password.length < 12) {
@@ -118,6 +123,9 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
       user_type: form.user_type,
       is_active: form.is_active,
       facility_ids: form.facility_ids,
+    }
+    if (canAlsoBeTechnician) {
+      payload.is_technician = form.is_technician
     }
     if (form.password) {
       payload.password = form.password
@@ -258,6 +266,27 @@ const EditUserModal = ({ open, user, onClose }: Props) => {
                 }
               />
             </Grid>
+            {canAlsoBeTechnician && (
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={form.is_technician}
+                      onChange={(e) => setForm({ ...form, is_technician: e.target.checked })}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      Also works as a technician
+                    </Typography>
+                  }
+                />
+                <Typography variant="caption" sx={{ display: 'block', color: '#6B7280', ml: 6, mt: -0.5 }}>
+                  Keeps this user's role and adds technician rights on the jobs assigned to them.
+                </Typography>
+              </Grid>
+            )}
           </Grid>
         </DialogContent>
 

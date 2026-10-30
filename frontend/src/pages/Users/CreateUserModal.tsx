@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   TextField, Grid, FormControl, InputLabel, Select, MenuItem,
   Box, Typography, CircularProgress, InputAdornment, IconButton,
-  Chip, Autocomplete,
+  Chip, Autocomplete, Switch, FormControlLabel,
 } from '@mui/material'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -45,8 +45,12 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
     phone: '',
     role: 'employee',
     user_type: 'employee',
+    is_technician: false,
     facility_ids: [] as number[],
   })
+
+  // A technician already has these rights, and a client is not staff.
+  const canAlsoBeTechnician = form.role !== 'technician' && form.role !== 'client'
 
   const {
     data: facilitiesData,
@@ -92,6 +96,7 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
       phone: formatUSPhoneInput(form.phone) || undefined,
       role: form.role,
       user_type: form.user_type,
+      is_technician: canAlsoBeTechnician && form.is_technician,
       facility_ids: facilityContext
         ? [facilityContext.id]
         : (form.facility_ids.length > 0 ? form.facility_ids : undefined),
@@ -109,7 +114,7 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
   const handleClose = () => {
     setForm({
       username: '', email: '', full_name: '', password: '',
-      phone: '', role: 'employee', user_type: 'employee', facility_ids: [],
+      phone: '', role: 'employee', user_type: 'employee', is_technician: false, facility_ids: [],
     })
     setSelectedFacilities([])
     setFacilitySearch('')
@@ -294,6 +299,27 @@ const CreateUserModal = ({ open, onClose, facilityContext }: Props) => {
                 />
               )}
             </Grid>
+            {canAlsoBeTechnician && (
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={form.is_technician}
+                      onChange={(e) => setForm({ ...form, is_technician: e.target.checked })}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      Also works as a technician
+                    </Typography>
+                  }
+                />
+                <Typography variant="caption" sx={{ display: 'block', color: '#6B7280', ml: 6, mt: -0.5 }}>
+                  Keeps this user's role and adds technician rights on the jobs assigned to them.
+                </Typography>
+              </Grid>
+            )}
           </Grid>
         </DialogContent>
 

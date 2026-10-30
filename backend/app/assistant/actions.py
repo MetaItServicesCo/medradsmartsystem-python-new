@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
+from fastapi import HTTPException
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.assistant.tools.base import ToolContext, ToolInputError, ToolResult
@@ -39,6 +40,7 @@ from app.models.equipment import Equipment
 from app.models.facility import Facility
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus
 from app.models.user import User
+from app.utils.facility_access import require_assignable_technician
 from app.utils.numbering import assign_unique_number
 from app.utils.service_access import can_work_on_service_request
 
@@ -338,6 +340,7 @@ def create_service_request(
     technician = None
     if assigned_technician_id is not None:
         technician = _load_active_user(ctx, assigned_technician_id, "assign it to")
+        _require_assignable(ctx, technician, facility.id)
 
     after = {
         "facility_id": facility.id,
@@ -397,6 +400,18 @@ def create_service_request(
     ), confirm_token)
 
 
+def _require_assignable(ctx: ToolContext, technician: User, facility_id: Optional[int]) -> None:
+    """The same facility rule the service-request screen enforces.
+
+    A facility account also working as a technician may only be given jobs at
+    its own facilities; the assistant must not be a way around that.
+    """
+    try:
+        require_assignable_technician(ctx.db, technician.id, facility_id)
+    except HTTPException as exc:
+        raise ToolInputError(str(exc.detail))
+
+
 def assign_service_request(
     ctx: ToolContext,
     service_request_id: int,
@@ -407,6 +422,7 @@ def assign_service_request(
     ctx.require_module("service-requests", "edit")
     sr = _load_request(ctx, service_request_id)
     technician = _load_active_user(ctx, technician_id, "assign the request to")
+    _require_assignable(ctx, technician, sr.facility_id)
 
     if sr.assigned_technician_id == technician.id:
         raise ToolInputError(

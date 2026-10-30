@@ -35,7 +35,7 @@ import SearchFieldSelect from '@/components/SearchFieldSelect'
 import ContextTableRow from '@/components/ContextTableRow'
 import { useListContext } from '@/contexts/ListContext'
 import { fetchFacility } from '@/api/facilities'
-import { hasPermission } from '@/config/permissions'
+import { hasPermission, isAdditionalTechnician } from '@/config/permissions'
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All Roles' },
@@ -426,6 +426,18 @@ const Users = () => {
                           sx={{
                             backgroundColor: `${ROLE_COLORS[u.role] || '#7C3AED'}18`,
                             color: ROLE_COLORS[u.role] || '#7C3AED',
+                            fontWeight: 600,
+                          }}
+                        />
+                      )}
+                      {isAdditionalTechnician(u) && (
+                        <Chip
+                          label="+ Technician"
+                          size="small"
+                          sx={{
+                            ml: 0.5,
+                            backgroundColor: `${ROLE_COLORS.technician}18`,
+                            color: ROLE_COLORS.technician,
                             fontWeight: 600,
                           }}
                         />

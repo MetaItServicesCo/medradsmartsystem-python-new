@@ -117,6 +117,7 @@ def login(
             "user_type": user.user_type.value if user.user_type else "employee",
             "role": user.role.value if hasattr(user.role, "value") else str(user.role),
             "is_active": user.is_active,
+            "is_technician": bool(getattr(user, "is_technician", False)),
             "facility_id": user.facility_id,
             "permissions": user.permissions or {},
         }

@@ -99,6 +99,7 @@ def _build_user_response(
         user_type=db_user.user_type.value if db_user.user_type else "employee",
         role=db_user.role.value if db_user.role else "employee",
         is_active=db_user.is_active,
+        is_technician=bool(getattr(db_user, "is_technician", False)),
         facility_id=db_user.facility_id,
         permissions=db_user.permissions or {},
         created_at=db_user.created_at,
@@ -287,6 +288,8 @@ def create_user(
             raise HTTPException(status_code=400, detail=f"Facility #{facility_id} not found")
         require_facility_access(db, current_user, facility_id)
 
+    user_in.is_technician = _technician_flag_for(user_in.role or UserRole.EMPLOYEE.value,
+                                                 user_in.is_technician, False)
     db_user = crud_user.create(db, obj_in=user_in)
 
     # Assign facilities if provided
@@ -311,6 +314,38 @@ def create_user(
     log_activity(db, "users", db_user.id, "CREATE", current_user, user_in.model_dump(exclude={"password"}))
     db.commit()
     return _build_user_response(db_user, db)
+
+
+def _filter_by_role(query, role: str):
+    """Filter a user query by role.
+
+    Asking for technicians also returns users flagged to work as one, so every
+    technician picker -- service requests, inspections, test equipment --
+    offers them without each having to know the flag exists. Every other role
+    filters exactly as it always has.
+    """
+    if role == UserRole.TECHNICIAN.value:
+        return query.filter(or_(User.role == UserRole.TECHNICIAN, User.is_technician.is_(True)))
+    return query.filter(User.role == role)
+
+
+def _technician_flag_for(role: str, requested: Optional[bool], current: bool) -> bool:
+    """The is_technician value to store, given the user's role after the change.
+
+    A client is a customer's own account, not staff, so asking to make one a
+    technician is refused outright. A user whose role is already Technician
+    needs no flag; it is stored off so the data says one thing.
+    """
+    if role == UserRole.CLIENT.value:
+        if requested:
+            raise HTTPException(
+                status_code=422,
+                detail="A client account cannot also be a technician; technicians are staff",
+            )
+        return False
+    if role == UserRole.TECHNICIAN.value:
+        return False
+    return current if requested is None else bool(requested)
 
 
 @router.get("/", response_model=UserListResponse)
@@ -338,7 +373,7 @@ def list_users(
             (User.facility_id == facility_id) | (User.id.in_(secondary_user_ids))
         )
         if role:
-            query = query.filter(User.role == role)
+            query = _filter_by_role(query, role)
         if is_active is not None:
             query = query.filter(User.is_active == is_active)
         query = _apply_user_list_search(query, search, search_field)
@@ -351,7 +386,7 @@ def list_users(
             (User.facility_id.in_(allowed_facility_ids)) | (User.id.in_(secondary_user_ids))
         )
         if role:
-            query = query.filter(User.role == role)
+            query = _filter_by_role(query, role)
         if is_active is not None:
             query = query.filter(User.is_active == is_active)
         query = _apply_user_list_search(query, search, search_field)
@@ -360,7 +395,7 @@ def list_users(
     else:
         query = db.query(User)
         if role:
-            query = query.filter(User.role == role)
+            query = _filter_by_role(query, role)
         if is_active is not None:
             query = query.filter(User.is_active == is_active)
         query = _apply_user_list_search(query, search, search_field)
@@ -531,7 +566,14 @@ def update_user(
         if existing:
             raise HTTPException(status_code=400, detail="Email already taken")
 
+    final_role = user_in.role or (db_user.role.value if db_user.role else UserRole.EMPLOYEE.value)
+    technician_flag = _technician_flag_for(final_role, user_in.is_technician,
+                                           bool(getattr(db_user, "is_technician", False)))
     db_user = crud_user.update_user(db, db_obj=db_user, obj_in=user_in)
+    if bool(db_user.is_technician) != technician_flag:
+        db_user.is_technician = technician_flag
+        db.commit()
+        db.refresh(db_user)
 
     # Update facility assignments if provided
     if user_in.facility_ids is not None:
@@ -581,6 +623,8 @@ def update_user_role(
         raise HTTPException(status_code=400, detail=f"Invalid role: {role_in.role}")
 
     db_user = crud_user.update_role(db, db_obj=db_user, role=role_in.role)
+    # Becoming a client or a technician makes the flag meaningless; clear it.
+    db_user.is_technician = _technician_flag_for(role_in.role, None, bool(db_user.is_technician))
     log_activity(db, "users", user_id, "UPDATE_ROLE", current_user, {"role": role_in.role})
     create_notification(
         db,

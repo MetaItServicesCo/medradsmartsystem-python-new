@@ -87,7 +87,7 @@ import {
 import { fetchModalities, type Modality } from '@/api/modalities'
 import { fetchUsers, resolveUploadUrl, type UserData } from '@/api/users'
 import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
-import { hasPermission } from '@/config/permissions'
+import { actsAsTechnician, hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import ClippedTooltipText from '@/components/ClippedTooltipText'
 import ContextTableRow from '@/components/ContextTableRow'
@@ -1950,7 +1950,7 @@ const Inspections = () => {
     return users.filter((user: UserData) =>
       user.facility_id === selectedBatch.facility_id ||
       (user.facilities || []).some(facility => facility.id === selectedBatch.facility_id) ||
-      ['superadmin', 'admin', 'technician'].includes(user.role),
+      ['superadmin', 'admin'].includes(user.role) || actsAsTechnician(user),
     )
   }, [selectedBatch?.facility_id, usersQ.data?.items])
 
@@ -1958,7 +1958,7 @@ const Inspections = () => {
     if (!infoInspection) return []
     return (usersQ.data?.items || []).filter((user: UserData) => {
       const isCurrentInspector = user.id === infoInspection.inspector_id
-      if (user.role !== 'technician' && !isCurrentInspector) return false
+      if (!actsAsTechnician(user) && !isCurrentInspector) return false
       return isCurrentInspector
         || user.facility_id === infoInspection.facility_id
         || (user.facilities || []).some(facility => facility.id === infoInspection.facility_id)

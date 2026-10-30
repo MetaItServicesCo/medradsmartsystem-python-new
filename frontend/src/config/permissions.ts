@@ -47,7 +47,19 @@ export type PermissionMatrix = Record<string, PermissionRule>
 export interface PermissionUser {
   role?: string
   permissions?: PermissionMatrix
+  // Also works as a technician on top of their role. Mirrors
+  // is_additional_technician on the server: never for a technician (no-op)
+  // or a client (refused).
+  is_technician?: boolean
 }
+
+/** Flagged to work as a technician on top of a different role. */
+export const isAdditionalTechnician = (user: PermissionUser | null | undefined): boolean =>
+  Boolean(user?.is_technician) && user?.role !== 'technician' && user?.role !== 'client'
+
+/** A technician by role, or a user flagged to work as one. */
+export const actsAsTechnician = (user: PermissionUser | null | undefined): boolean =>
+  user?.role === 'technician' || isAdditionalTechnician(user)
 
 export const ACTIONS: PermissionAction[] = ['index', 'view', 'add', 'edit', 'delete']
 
@@ -294,7 +306,19 @@ export function getPermissionRule(
   if (!canonical) return emptyRule()
   const saved = normalizePermissionMatrix(user?.permissions)[canonical]
   if (saved) return saved
-  return defaultRuleFor(user?.role, canonical)
+  const own = defaultRuleFor(user?.role, canonical)
+  if (!isAdditionalTechnician(user)) return own
+  // The technician's defaults, added on top of the role's own -- the same
+  // merge the server makes. A saved rule above always wins.
+  const technician = defaultRuleFor('technician', canonical)
+  return {
+    index: own.index || technician.index,
+    view: own.view || technician.view,
+    add: own.add || technician.add,
+    edit: own.edit || technician.edit,
+    delete: own.delete || technician.delete,
+    scope: own.index ? own.scope : technician.scope,
+  }
 }
 
 export function hasPermission(
@@ -317,7 +341,8 @@ export function getVisibleModules(userOrRole: PermissionUser | string | null | u
     .map((module) => module.key)
     .filter((module) => {
       if (hasCustomRule(user, module)) return canAccessModule(user, module)
-      return Boolean(user?.role && ROLE_PERMISSIONS[user.role]?.includes(module))
+      if (user?.role && ROLE_PERMISSIONS[user.role]?.includes(module)) return true
+      return isAdditionalTechnician(user) && ROLE_PERMISSIONS.technician.includes(module)
     })
 }
 

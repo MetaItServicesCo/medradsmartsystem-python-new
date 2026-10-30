@@ -26,6 +26,8 @@ class UserCreate(UserBase):
     phone: Optional[str] = None
     user_type: Optional[str] = "employee"
     facility_ids: Optional[List[int]] = None
+    # Also works as a technician on jobs assigned to them, keeping their role.
+    is_technician: Optional[bool] = False
 
     _password_policy = field_validator("password")(_validate_password)
 
@@ -40,6 +42,7 @@ class UserUpdate(BaseModel):
     user_type: Optional[str] = None
     is_active: Optional[bool] = None
     facility_ids: Optional[List[int]] = None
+    is_technician: Optional[bool] = None
 
     _password_policy = field_validator("password")(_validate_password)
 
@@ -99,6 +102,7 @@ class UserResponse(BaseModel):
     user_type: str
     role: str
     is_active: bool
+    is_technician: bool = False
     facility_id: Optional[int] = None
     permissions: Optional[Dict[str, UserPermissionRule]] = None
     created_at: Optional[datetime] = None

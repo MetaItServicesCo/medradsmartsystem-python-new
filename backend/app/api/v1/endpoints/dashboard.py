@@ -22,7 +22,7 @@ from app.models.user_facility import UserFacility
 from app.schemas.audit_log import AuditLogItem, DashboardActivityResponse
 from app.utils.facility_access import get_user_facility_ids, is_facility_scoped_user
 from app.utils.invoice_approval import scope_invoice_approval_visibility
-from app.utils.permissions import has_module_permission
+from app.utils.permissions import also_assigned, assigned_only, has_module_permission
 from app.utils.read_cache import cached_read
 
 router = APIRouter(dependencies=[Depends(require_module_access("dashboard"))])
@@ -113,15 +113,20 @@ def read_dashboard_summary(
 
     def service_scope(query):
         query = facility_scope(query, ServiceRequest)
-        if current_user.role == UserRole.TECHNICIAN:
+        if assigned_only(current_user, "service-requests"):
             return query.filter(ServiceRequest.assigned_technician_id == current_user.id)
         if current_user.role == UserRole.EMPLOYEE:
+            if also_assigned(current_user, "service-requests"):
+                return query.filter(or_(
+                    ServiceRequest.requester_id == current_user.id,
+                    ServiceRequest.assigned_technician_id == current_user.id,
+                ))
             return query.filter(ServiceRequest.requester_id == current_user.id)
         return query
 
     def inspection_scope(query):
         query = facility_scope(query, Inspection)
-        if current_user.role == UserRole.TECHNICIAN:
+        if assigned_only(current_user, "inspections"):
             return query.filter(Inspection.inspector_id == current_user.id)
         if current_user.role == UserRole.EMPLOYEE:
             return query.filter(False)
@@ -281,15 +286,20 @@ def _build_dashboard_intelligence(
 
     def service_scope(query):
         query = facility_scope(query, ServiceRequest)
-        if current_user.role == UserRole.TECHNICIAN:
+        if assigned_only(current_user, "service-requests"):
             return query.filter(ServiceRequest.assigned_technician_id == current_user.id)
         if current_user.role == UserRole.EMPLOYEE:
+            if also_assigned(current_user, "service-requests"):
+                return query.filter(or_(
+                    ServiceRequest.requester_id == current_user.id,
+                    ServiceRequest.assigned_technician_id == current_user.id,
+                ))
             return query.filter(ServiceRequest.requester_id == current_user.id)
         return query
 
     def inspection_scope(query):
         query = facility_scope(query, Inspection)
-        if current_user.role == UserRole.TECHNICIAN:
+        if assigned_only(current_user, "inspections"):
             return query.filter(Inspection.inspector_id == current_user.id)
         if current_user.role == UserRole.EMPLOYEE:
             return query.filter(False)

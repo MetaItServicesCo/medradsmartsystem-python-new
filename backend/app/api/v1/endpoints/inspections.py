@@ -38,8 +38,10 @@ from app.utils.invoice_approval import (
 )
 from app.utils.logging import log_activity
 from app.utils.notifications import notify_admins, notify_facility_users
-from app.utils.facility_access import require_facility_access, scope_query_to_user_facilities
-from app.utils.permissions import has_module_permission, require_module_permission
+from app.utils.facility_access import (
+    require_assignable_technician, require_facility_access, scope_query_to_user_facilities,
+)
+from app.utils.permissions import assigned_only, has_module_permission, require_module_permission
 from app.utils.list_search import (
     contains_ci,
     normalize_list_search,
@@ -1435,7 +1437,7 @@ def inspection_summary(
     batches = scope_query_to_user_facilities(
         db.query(InspectionBatch), InspectionBatch.facility_id, db, current_user
     )
-    if current_user.role == UserRole.TECHNICIAN:
+    if assigned_only(current_user, "inspections"):
         inspections = inspections.filter(Inspection.inspector_id == current_user.id)
         batches = batches.filter(InspectionBatch.inspector_id == current_user.id)
     elif current_user.role == UserRole.EMPLOYEE:
@@ -1659,7 +1661,7 @@ def list_inspections(
             .outerjoin(User, Inspection.inspector_id == User.id)
             .filter(or_(*predicates_for_field(search_field, search_by_field)))
         )
-    if current_user.role == UserRole.TECHNICIAN:
+    if assigned_only(current_user, "inspections"):
         query = query.filter(Inspection.inspector_id == current_user.id)
     elif current_user.role == UserRole.EMPLOYEE:
         query = query.filter(False)
@@ -1773,7 +1775,7 @@ def list_inspection_batches(
         query = query.filter(batch_date_column >= datetime.combine(date_from, time.min))
     if date_to:
         query = query.filter(batch_date_column <= datetime.combine(date_to, time.max))
-    if current_user.role == UserRole.TECHNICIAN:
+    if assigned_only(current_user, "inspections"):
         query = query.filter(InspectionBatch.inspector_id == current_user.id)
     elif current_user.role == UserRole.EMPLOYEE:
         query = query.filter(False)
@@ -2132,6 +2134,7 @@ def update_inspection_technician(
         technician = db.query(User).filter(User.id == payload.inspector_id, User.is_active.is_(True)).first()
         if not technician:
             raise HTTPException(status_code=404, detail="Technician not found")
+        require_assignable_technician(db, payload.inspector_id, inspection.facility_id)
     inspection.inspector_id = payload.inspector_id
     inspection.updated_at = datetime.utcnow()
     log_activity(db, "inspections", inspection.id, "CHANGE_TECHNICIAN", current_user, {"inspector_id": payload.inspector_id})
@@ -2387,6 +2390,7 @@ def update_upcoming_inspection(
         )
         if not technician:
             raise HTTPException(status_code=404, detail="Technician not found")
+        require_assignable_technician(db, update_data["inspector_id"], inspection.facility_id)
 
     tracked_fields = [
         "scheduled_date",

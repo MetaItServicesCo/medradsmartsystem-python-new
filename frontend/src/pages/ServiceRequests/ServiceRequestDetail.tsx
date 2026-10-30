@@ -53,7 +53,7 @@ import { fetchUsers, type UserData } from '@/api/users'
 import { resolveUploadUrl } from '@/api/users'
 import { fetchActiveTestEquipment, type TestEquipment } from '@/api/testEquipment'
 import { useAuthStore } from '@/stores/authStore'
-import { hasPermission } from '@/config/permissions'
+import { actsAsTechnician, hasPermission } from '@/config/permissions'
 import { isFacilityServiceUser, isInternalServiceAdmin } from '@/utils/serviceRolePolicy'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useListContext } from '@/contexts/ListContext'
@@ -205,14 +205,13 @@ const ServiceRequestDetail = () => {
 
 
   const user = useAuthStore(state => state.user)
-  const role = user?.role || ''
   const isInternalServiceUser = isInternalServiceAdmin(user)
   const isFacilityCustomerView = isFacilityServiceUser(user)
   const canAddServiceRequests = hasPermission(user, 'service-requests', 'add')
   const canEditServiceRequests = hasPermission(user, 'service-requests', 'edit')
   const canAssignTechnician = isInternalServiceUser && canEditServiceRequests
   const canManageOperationalStatus = isInternalServiceUser && canEditServiceRequests
-  const canCreateQuotation = (isInternalServiceUser || role === 'technician') && canAddServiceRequests
+  const canCreateQuotation = (isInternalServiceUser || actsAsTechnician(user)) && canAddServiceRequests
   const canManageServiceBilling = isInternalServiceUser && hasPermission(user, 'billing', 'edit')
   const canViewServiceBilling = hasPermission(user, 'billing', 'view')
   const canViewServiceReports = hasPermission(user, 'reports', 'view')

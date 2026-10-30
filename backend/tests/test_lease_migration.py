@@ -158,7 +158,8 @@ print("-" * 72)
 script = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
 heads = script.get_heads()
 ok("there is exactly one head", len(heads) == 1, str(heads))
-ok("  and it is this migration", heads == ["c7d1e5a9b3f2"], str(heads))
+ok("  and this migration is on the path to it",
+   any(rev.revision == "c7d1e5a9b3f2" for rev in script.iterate_revisions(heads[0], "base")), str(heads))
 ok("it follows the previous head", migration.down_revision == "o0a1b2c3d4e5")
 
 print()

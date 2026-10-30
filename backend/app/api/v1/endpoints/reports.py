@@ -19,6 +19,7 @@ from app.models.service_request import ServiceRequest, ServiceRequestStatus
 from app.models.user import User, UserRole
 from app.utils.facility_access import scope_query_to_user_facilities
 from app.utils.permission_deps import require_module_access
+from app.utils.permissions import also_assigned, assigned_only
 from app.utils.invoice_approval import scope_invoice_approval_visibility
 
 router = APIRouter(dependencies=[Depends(require_module_access("reports"))])
@@ -224,16 +225,22 @@ def _inspection_report_row(
 
 def _scope_service_query(query, db: Session, current_user: User):
     query = scope_query_to_user_facilities(query, ServiceRequest.facility_id, db, current_user)
-    if current_user.role == UserRole.TECHNICIAN:
+    if assigned_only(current_user, "service-requests"):
         query = query.filter(ServiceRequest.assigned_technician_id == current_user.id)
     elif current_user.role == UserRole.EMPLOYEE:
-        query = query.filter(ServiceRequest.requester_id == current_user.id)
+        if also_assigned(current_user, "service-requests"):
+            query = query.filter(or_(
+                ServiceRequest.requester_id == current_user.id,
+                ServiceRequest.assigned_technician_id == current_user.id,
+            ))
+        else:
+            query = query.filter(ServiceRequest.requester_id == current_user.id)
     return query
 
 
 def _scope_inspection_query(query, db: Session, current_user: User):
     query = scope_query_to_user_facilities(query, Inspection.facility_id, db, current_user)
-    if current_user.role == UserRole.TECHNICIAN:
+    if assigned_only(current_user, "inspections"):
         query = query.filter(Inspection.inspector_id == current_user.id)
     elif current_user.role == UserRole.EMPLOYEE:
         query = query.filter(False)
