@@ -8,6 +8,7 @@ import {
   TextField, Typography, useMediaQuery, useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import HandshakeIcon from '@mui/icons-material/Handshake'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
@@ -1776,9 +1777,19 @@ const Sales = () => {
             <Typography variant="h4" sx={{ color: '#1E1B4B', fontWeight: 900 }}>Sales Module</Typography>
             <Typography sx={{ color: '#6B7280', fontWeight: 700 }}>Create quotations from inventory parts marked for Sales, convert them to invoices, and track progress through completion.</Typography>
           </Box>
-          <Button startIcon={<AddIcon />} variant="contained" onClick={() => openCreate(tab === 1 ? 'invoice' : 'quotation')} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
-            {tab === 1 ? 'New Invoice' : 'New Quotation'}
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={() => openCreate(tab === 1 ? 'invoice' : 'quotation')} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
+              {tab === 1 ? 'New Invoice' : 'New Quotation'}
+            </Button>
+            {/* Same shape as the button beside it. Lease to Own is its own page;
+                shown to the roles that may create Sales quotations, the only
+                ones its API accepts. */}
+            {canConfigureDefaults && (
+              <Button startIcon={<HandshakeIcon />} variant="contained" onClick={() => navigate('/sales/lease-to-own')} sx={{ borderRadius: '14px', px: 3, py: 1.4, textTransform: 'none', fontWeight: 900, background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}>
+                Lease to Own
+              </Button>
+            )}
+          </Box>
         </Box>
       </Card>
 
@@ -1790,16 +1801,6 @@ const Sales = () => {
         {renderKpi('History', stats.history, <HistoryIcon />, '#7C3AED', 3)}
       </Box>
 
-      {/* Lease to Own is its own page; the tabs below are unchanged. Shown to
-          the same roles that may create Sales quotations, which are the only
-          ones its API accepts. */}
-      {canConfigureDefaults && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
-          <Button variant="outlined" onClick={() => navigate('/sales/lease-to-own')} sx={{ fontWeight: 800, borderRadius: '12px' }}>
-            Lease to Own
-          </Button>
-        </Box>
-      )}
       <Card sx={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid #EEF0F6', boxShadow: '0 18px 45px rgba(49,46,129,0.08)' }}>
         <Tabs value={tab} onChange={(_, value) => handleTabChange(value)} variant="scrollable" scrollButtons={false} sx={{ px: 2, borderBottom: '1px solid #EEF0F6' }}>
           <Tab icon={<AssignmentIcon />} iconPosition="start" label="Quotations" />
