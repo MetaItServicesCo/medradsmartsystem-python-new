@@ -256,6 +256,7 @@ class ServiceRequestResponse(BaseModel):
     # Denormalized names for UI display
     facility_name: Optional[str] = None
     equipment_name: Optional[str] = None
+    equipment_asset_tag: Optional[str] = None
     tier_id: Optional[int] = None
     tier_name: Optional[str] = None
     tier_labor_rate_per_hour: Optional[Decimal] = None

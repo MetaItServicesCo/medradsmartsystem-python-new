@@ -12,6 +12,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import BuildIcon from '@mui/icons-material/Build'
 import BusinessIcon from '@mui/icons-material/Business'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
+import LocalOfferIcon from '@mui/icons-material/LocalOffer'
 import PersonIcon from '@mui/icons-material/Person'
 import EngineeringIcon from '@mui/icons-material/Engineering'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
@@ -967,6 +968,21 @@ const ServiceRequestDetail = () => {
                   </Typography>
                   <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
                     {sr.equipment_name || '—'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Asset # -- the asset_tag entered as "Asset #" in Facilities; how the unit is identified on site */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '12px', backgroundColor: '#ECFEFF' }}>
+                <Avatar sx={{ backgroundColor: '#CFFAFE', color: '#0E7490', width: 36, height: 36 }}>
+                  <LocalOfferIcon sx={{ fontSize: '1.1rem' }} />
+                </Avatar>
+                <Box>
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                    Asset #
+                  </Typography>
+                  <Typography sx={{ fontWeight: 600, color: '#1E1B4B', fontSize: '0.9rem' }}>
+                    {sr.equipment_asset_tag || '—'}
                   </Typography>
                 </Box>
               </Box>

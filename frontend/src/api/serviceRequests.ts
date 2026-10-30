@@ -344,6 +344,7 @@ export interface ServiceRequest {
   // Denormalized display names
   facility_name: string | null
   equipment_name: string | null
+  equipment_asset_tag?: string | null
   requester_name: string | null
   technician_name: string | null
   
