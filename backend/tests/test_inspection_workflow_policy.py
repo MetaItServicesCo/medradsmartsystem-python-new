@@ -357,7 +357,30 @@ def test_approved_batch_invoice_loads_through_the_billing_list_endpoint():
         assert response["items"][0]["billing_approval_status"] == "approved"
         assert response["items"][0]["approved_for_billing_by_name"] == "Admin User"
         assert response["items"][0]["transactions"][0]["transaction_type"] == "billing_approved"
-        assert len(response["items"][0]["batch_items"]) == 1
+
+        # The list deliberately does not derive a batch breakdown. Doing so
+        # meant eager-loading every inspection on every row, so it now serves
+        # the snapshot stored on the invoice and nothing else. This invoice
+        # predates snapshots, so it has none -- but the asset count, which is
+        # what the Billing list actually renders, is still right.
+        assert response["items"][0]["batch_items"] == []
+        assert response["items"][0]["batch_asset_count"] == 1
+
+        # Asking for the one invoice is the detail path, and that does derive
+        # the breakdown, so an older batch invoice still opens correctly.
+        detail = list_inspection_quotations(
+            db=db,
+            invoice_id=invoice.id,
+            search=None,
+            status_filter=None,
+            balance_filter=None,
+            skip=0,
+            limit=25,
+            current_user=approver,
+        )
+        assert detail["total"] == 1
+        assert len(detail["items"][0]["batch_items"]) == 1
+        assert detail["items"][0]["batch_items"][0]["inspection_number"] == "INSP-001-001"
 
         summary = inspection_summary(
             date_from=None,
