@@ -230,26 +230,19 @@ class _FormParser(HTMLParser):
         """One field per text box.
 
         Measurement tables gave every row's Set box the same name and left the
-        Actual boxes unnamed, so keying by name alone merged all the Set
-        readings into one field and dropped the Actual ones. A box keeps its
-        name when that is free (so existing answers stay attached), otherwise
-        it is keyed by its element id, or where the page repeats that id (every
-        row's Note box shared one), by its table, row and column. Those keys
-        carry a prefix so they can never collide with a question's name. A
-        completed report saves the same page, so its answers land on the same
-        keys.
+        Actual and Note boxes unnamed, so keying by name alone merged all the
+        Set readings into one field and dropped the rest. A box keeps its name
+        when that is free, so existing answers stay attached. An unnamed box is
+        keyed by its label ("SpO2 - Actual"), numbered when a page repeats a
+        label: the legacy pages reused element ids across layouts (id 5 was
+        PM Kit's date in one and an EKG reading in another), but the label is
+        what the technician read and wrote against, so the same reading lines
+        up across every report. Only a box with no label at all falls back to
+        its id or its table position. Derived keys carry a prefix, so they
+        never collide with a question's name; the legacy notes boxes keep their
+        id, which is how they are recognised.
         """
-        if name and name not in self._by_name:
-            key = name
-        elif element_id and element_id not in self._duplicate_ids:
-            key = f"id_{element_id}"
-        elif self._column >= 0:
-            key = f"pos_t{self._table_index}_r{self._row_index}_c{self._column}"
-        else:
-            return
-        if key in self._by_name:
-            return
-        label = self._last_label or f"Field {key}"
+        label = self._last_label
         row_name = self._row_texts.get(0, "")
         captioned = bool(self.items) and self.items[-1].get("kind") == "heading" \
             and self.items[-1].get("_row") == (self._table_index, self._row_index)
@@ -260,11 +253,30 @@ class _FormParser(HTMLParser):
         elif (label.strip().rstrip(":").strip().lower() in READING_LABELS
                 and row_name and row_name.lower() != label.lower()):
             # A bare "Read:" or "Due" says which reading, not which test.
-            label = f"{row_name} – {label.strip().rstrip(':').strip()}"
+            label = f"{row_name} \u2013 {label.strip().rstrip(':').strip()}"
         column = self._header.get(self._column, "")
-        if not captioned and column and column.lower() not in _HEADER_WORDS and column.lower() != label.lower():
+        if label and not captioned and column and column.lower() not in _HEADER_WORDS \
+                and column.lower() != label.lower():
             label = f"{label} \u2013 {column}"
-        item = {"name": key, "kind": "input", "label": label, "raw_options": [], "value": value or None}
+
+        slug = "_".join(re.findall(r"[a-z0-9]+", label.lower()))
+        if name and name not in self._by_name:
+            key = name
+        elif element_id in NOTE_INPUT_NAMES:
+            key = f"id_{element_id}"
+        elif slug:
+            key, number = f"lbl_{slug}", 2
+            while key in self._by_name:
+                key, number = f"lbl_{slug}_{number}", number + 1
+        elif element_id and element_id not in self._duplicate_ids:
+            key = f"id_{element_id}"
+        elif self._column >= 0:
+            key = f"pos_t{self._table_index}_r{self._row_index}_c{self._column}"
+        else:
+            return
+        if key in self._by_name:
+            return
+        item = {"name": key, "kind": "input", "label": label or f"Field {key}", "raw_options": [], "value": value or None}
         row_owner = standard_check_key(self._row_texts.get(0, ""))
         reading = READING_LABELS.get(self._last_label.strip().rstrip(":").strip().lower())
         if row_owner in READING_ROWS and reading:

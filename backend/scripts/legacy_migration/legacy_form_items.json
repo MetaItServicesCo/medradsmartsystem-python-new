@@ -73,7 +73,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -83,7 +83,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -103,7 +103,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -113,7 +113,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -133,7 +133,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -143,7 +143,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -310,7 +310,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -320,7 +320,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -340,7 +340,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -350,7 +350,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -370,7 +370,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -380,7 +380,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -611,7 +611,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -621,7 +621,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -641,7 +641,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -651,7 +651,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -671,7 +671,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -681,7 +681,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -832,7 +832,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_lt_monitor",
     "kind": "input",
     "label": "LT Monitor",
     "raw_options": []
@@ -848,7 +848,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_rt_monitor",
     "kind": "input",
     "label": "RT Monitor",
     "raw_options": []
@@ -864,7 +864,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_workstation_cart",
     "kind": "input",
     "label": "Workstation Cart",
     "raw_options": []
@@ -880,7 +880,7 @@
     ]
    },
    {
-    "name": "id_7",
+    "name": "lbl_power_cord",
     "kind": "input",
     "label": "Power Cord",
     "raw_options": []
@@ -896,7 +896,7 @@
     ]
    },
    {
-    "name": "id_8",
+    "name": "lbl_hand_switch",
     "kind": "input",
     "label": "Hand Switch",
     "raw_options": []
@@ -912,7 +912,7 @@
     ]
    },
    {
-    "name": "id_9",
+    "name": "lbl_foot_switch",
     "kind": "input",
     "label": "Foot Switch",
     "raw_options": []
@@ -928,7 +928,7 @@
     ]
    },
    {
-    "name": "id_10",
+    "name": "lbl_skin_spacer",
     "kind": "input",
     "label": "Skin spacer",
     "raw_options": []
@@ -944,7 +944,7 @@
     ]
    },
    {
-    "name": "id_11",
+    "name": "lbl_rt_wheel_cover",
     "kind": "input",
     "label": "RT Wheel Cover",
     "raw_options": []
@@ -960,7 +960,7 @@
     ]
    },
    {
-    "name": "id_12",
+    "name": "lbl_lt_wheel_cover",
     "kind": "input",
     "label": "LT Wheel Cover",
     "raw_options": []
@@ -976,7 +976,7 @@
     ]
    },
    {
-    "name": "id_13",
+    "name": "lbl_nose_cover",
     "kind": "input",
     "label": "Nose Cover",
     "raw_options": []
@@ -992,7 +992,7 @@
     ]
    },
    {
-    "name": "id_14",
+    "name": "lbl_main_frame_c_arm",
     "kind": "input",
     "label": "Main Frame C Arm",
     "raw_options": []
@@ -1013,7 +1013,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_lt_monitor",
     "kind": "input",
     "label": "LT Monitor",
     "raw_options": []
@@ -1029,7 +1029,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_rt_monitor",
     "kind": "input",
     "label": "RT Monitor",
     "raw_options": []
@@ -1045,7 +1045,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_workstation_cart",
     "kind": "input",
     "label": "Workstation Cart",
     "raw_options": []
@@ -1061,7 +1061,7 @@
     ]
    },
    {
-    "name": "id_7",
+    "name": "lbl_power_cord",
     "kind": "input",
     "label": "Power Cord",
     "raw_options": []
@@ -1077,7 +1077,7 @@
     ]
    },
    {
-    "name": "id_8",
+    "name": "lbl_hand_switch",
     "kind": "input",
     "label": "Hand Switch",
     "raw_options": []
@@ -1093,7 +1093,7 @@
     ]
    },
    {
-    "name": "id_9",
+    "name": "lbl_foot_switch",
     "kind": "input",
     "label": "Foot Switch",
     "raw_options": []
@@ -1109,7 +1109,7 @@
     ]
    },
    {
-    "name": "id_10",
+    "name": "lbl_skin_spacer",
     "kind": "input",
     "label": "Skin spacer",
     "raw_options": []
@@ -1125,7 +1125,7 @@
     ]
    },
    {
-    "name": "id_11",
+    "name": "lbl_rt_wheel_cover",
     "kind": "input",
     "label": "RT Wheel Cover",
     "raw_options": []
@@ -1141,7 +1141,7 @@
     ]
    },
    {
-    "name": "id_12",
+    "name": "lbl_lt_wheel_cover",
     "kind": "input",
     "label": "LT Wheel Cover",
     "raw_options": []
@@ -1157,7 +1157,7 @@
     ]
    },
    {
-    "name": "id_13",
+    "name": "lbl_nose_cover",
     "kind": "input",
     "label": "Nose Cover",
     "raw_options": []
@@ -1173,7 +1173,7 @@
     ]
    },
    {
-    "name": "id_14",
+    "name": "lbl_main_frame_c_arm",
     "kind": "input",
     "label": "Main Frame C Arm",
     "raw_options": []
@@ -1254,7 +1254,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -1264,7 +1264,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -1284,7 +1284,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -1294,7 +1294,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -1314,7 +1314,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -1324,7 +1324,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -1338,7 +1338,7 @@
     "label": "Functional Test"
    },
    {
-    "name": "id_20",
+    "name": "lbl_pm_kit_due_2",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -1451,7 +1451,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -1461,7 +1461,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -1481,7 +1481,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -1491,7 +1491,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -1511,7 +1511,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -1521,7 +1521,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -1685,163 +1685,163 @@
     "label": "Vaporizer Verification: N/A"
    },
    {
-    "name": "id_7",
+    "name": "lbl_leak_check",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_8",
+    "name": "lbl_leak_check_2",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_9",
+    "name": "lbl_leak_check_3",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_10",
+    "name": "lbl_leak_check_4",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_11",
+    "name": "lbl_leak_check_5",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_12",
+    "name": "lbl_leak_check_6",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_13",
+    "name": "lbl_leak_check_7",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_14",
+    "name": "lbl_leak_check_8",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_15",
+    "name": "lbl_leak_check_9",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_16",
+    "name": "lbl_leak_check_10",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_17",
+    "name": "lbl_leak_check_11",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_18",
+    "name": "lbl_leak_check_12",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_19",
+    "name": "lbl_leak_check_13",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_20",
+    "name": "lbl_leak_check_14",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_21",
+    "name": "lbl_leak_check_15",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_22",
+    "name": "lbl_leak_check_16",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_23",
+    "name": "lbl_leak_check_17",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_24",
+    "name": "lbl_leak_check_18",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_25",
+    "name": "lbl_leak_check_19",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_26",
+    "name": "lbl_leak_check_20",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_27",
+    "name": "lbl_leak_check_21",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_28",
+    "name": "lbl_leak_check_22",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_29",
+    "name": "lbl_leak_check_23",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_30",
+    "name": "lbl_leak_check_24",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_31",
+    "name": "lbl_leak_check_25",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_32",
+    "name": "lbl_leak_check_26",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "id_33",
+    "name": "lbl_leak_check_27",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
@@ -1851,31 +1851,31 @@
     "label": "Anesthesia Ventilator: N/A"
    },
    {
-    "name": "id_34",
+    "name": "lbl_pm_kit",
     "kind": "input",
     "label": "PM KIT",
     "raw_options": []
    },
    {
-    "name": "id_35",
+    "name": "lbl_pm_kit_2",
     "kind": "input",
     "label": "PM KIT",
     "raw_options": []
    },
    {
-    "name": "id_36",
+    "name": "lbl_pm_kit_3",
     "kind": "input",
     "label": "PM KIT",
     "raw_options": []
    },
    {
-    "name": "id_37",
+    "name": "lbl_pm_kit_4",
     "kind": "input",
     "label": "PM KIT",
     "raw_options": []
    },
    {
-    "name": "id_38",
+    "name": "lbl_pm_kit_5",
     "kind": "input",
     "label": "PM KIT",
     "raw_options": []
@@ -1984,7 +1984,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -1994,7 +1994,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -2014,7 +2014,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -2024,7 +2024,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -2044,7 +2044,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -2054,7 +2054,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -2068,25 +2068,25 @@
     "label": "General Information"
    },
    {
-    "name": "id_7",
+    "name": "lbl_asset_tag",
     "kind": "input",
     "label": "Asset Tag#",
     "raw_options": []
    },
    {
-    "name": "id_8",
+    "name": "lbl_make",
     "kind": "input",
     "label": "Make",
     "raw_options": []
    },
    {
-    "name": "id_9",
+    "name": "lbl_model",
     "kind": "input",
     "label": "Model",
     "raw_options": []
    },
    {
-    "name": "id_10",
+    "name": "lbl_system",
     "kind": "input",
     "label": "System",
     "raw_options": []
@@ -2104,13 +2104,13 @@
     "label": "Software Configuration:"
    },
    {
-    "name": "id_11",
+    "name": "lbl_hours_on_system",
     "kind": "input",
     "label": "Hours on System",
     "raw_options": []
    },
    {
-    "name": "id_12",
+    "name": "lbl_software_version",
     "kind": "input",
     "label": "Software Version",
     "raw_options": []
@@ -2120,7 +2120,7 @@
     "label": "Frame Rate (fps):"
    },
    {
-    "name": "id_13",
+    "name": "lbl_image_storage_capacity_200_5_000_etc",
     "kind": "input",
     "label": "Image Storage Capacity (200, 5,000 Etc.)",
     "raw_options": []
@@ -2130,7 +2130,7 @@
     "label": "Cosmetic Condition:"
    },
    {
-    "name": "id_14",
+    "name": "lbl_comments",
     "kind": "input",
     "label": "Comments",
     "raw_options": []
@@ -2160,7 +2160,7 @@
     ]
    },
    {
-    "name": "id_15",
+    "name": "lbl_horizontal_cross_arm_comments",
     "kind": "input",
     "label": "Horizontal Cross-Arm – Comments",
     "raw_options": []
@@ -2186,7 +2186,7 @@
     ]
    },
    {
-    "name": "id_16",
+    "name": "lbl_vertical_column_lift_comments",
     "kind": "input",
     "label": "Vertical Column Lift – Comments",
     "raw_options": []
@@ -2212,7 +2212,7 @@
     ]
    },
    {
-    "name": "id_17",
+    "name": "lbl_wig_wag_comments",
     "kind": "input",
     "label": "Wig-Wag – Comments",
     "raw_options": []
@@ -2238,7 +2238,7 @@
     ]
    },
    {
-    "name": "id_18",
+    "name": "lbl_l_arm_rotation_comments",
     "kind": "input",
     "label": "L-Arm Rotation – Comments",
     "raw_options": []
@@ -2264,7 +2264,7 @@
     ]
    },
    {
-    "name": "id_19",
+    "name": "lbl_c_arm_orbital_rotation_comments",
     "kind": "input",
     "label": "C-arm Orbital Rotation – Comments",
     "raw_options": []
@@ -2290,7 +2290,7 @@
     ]
    },
    {
-    "name": "id_20",
+    "name": "lbl_flip_flop_comments",
     "kind": "input",
     "label": "Flip-Flop – Comments",
     "raw_options": []
@@ -2316,7 +2316,7 @@
     ]
    },
    {
-    "name": "id_21",
+    "name": "lbl_c_brakes_wheels_comments",
     "kind": "input",
     "label": "C- Brakes/Wheels – Comments",
     "raw_options": []
@@ -2342,7 +2342,7 @@
     ]
    },
    {
-    "name": "id_22",
+    "name": "lbl_monitor_cart_brakes_wheels_comments",
     "kind": "input",
     "label": "Monitor Cart Brakes/Wheels – Comments",
     "raw_options": []
@@ -2362,7 +2362,7 @@
     ]
    },
    {
-    "name": "id_23",
+    "name": "lbl_all_lights_displays_buttons_on_c_comments",
     "kind": "input",
     "label": "All Lights, Displays, Buttons on C- – Comments",
     "raw_options": []
@@ -2378,7 +2378,7 @@
     ]
    },
    {
-    "name": "id_24",
+    "name": "lbl_collimator_iris_functionality_comments",
     "kind": "input",
     "label": "Collimator Iris Functionality – Comments",
     "raw_options": []
@@ -2394,7 +2394,7 @@
     ]
    },
    {
-    "name": "id_25",
+    "name": "lbl_collimator_wedge_filter_functionality_comments",
     "kind": "input",
     "label": "Collimator Wedge Filter Functionality – Comments",
     "raw_options": []
@@ -2410,7 +2410,7 @@
     ]
    },
    {
-    "name": "id_26",
+    "name": "lbl_interconnect_cable_condition_functionality_comments",
     "kind": "input",
     "label": "Interconnect Cable Condition/Functionality – Comments",
     "raw_options": []
@@ -2426,7 +2426,7 @@
     ]
    },
    {
-    "name": "id_27",
+    "name": "lbl_all_lights_displays_buttons_on_monitor_cart_comments",
     "kind": "input",
     "label": "All Lights, Displays, Buttons on Monitor Cart- – Comments",
     "raw_options": []
@@ -2442,7 +2442,7 @@
     ]
    },
    {
-    "name": "id_28",
+    "name": "lbl_monitor_functionality_image_quality_comments",
     "kind": "input",
     "label": "Monitor Functionality/Image Quality – Comments",
     "raw_options": []
@@ -2458,7 +2458,7 @@
     ]
    },
    {
-    "name": "id_29",
+    "name": "lbl_power_cable_condition_functionality_comments",
     "kind": "input",
     "label": "Power Cable Condition/Functionality – Comments",
     "raw_options": []
@@ -2478,7 +2478,7 @@
     ]
    },
    {
-    "name": "id_30",
+    "name": "lbl_fluoro_mode_functionality_comments",
     "kind": "input",
     "label": "Fluoro Mode Functionality – Comments",
     "raw_options": []
@@ -2494,7 +2494,7 @@
     ]
    },
    {
-    "name": "id_31",
+    "name": "lbl_boost_fluoro_mode_functionality_comments",
     "kind": "input",
     "label": "Boost Fluoro Mode Functionality – Comments",
     "raw_options": []
@@ -2510,7 +2510,7 @@
     ]
    },
    {
-    "name": "id_32",
+    "name": "lbl_pulsed_fluoro_functionality_comments",
     "kind": "input",
     "label": "Pulsed Fluoro Functionality – Comments",
     "raw_options": []
@@ -2526,7 +2526,7 @@
     ]
    },
    {
-    "name": "id_33",
+    "name": "lbl_camera_function_rotation_reversal_comments",
     "kind": "input",
     "label": "Camera Function, Rotation, Reversal – Comments",
     "raw_options": []
@@ -2542,7 +2542,7 @@
     ]
    },
    {
-    "name": "id_34",
+    "name": "lbl_imaging_artifacts_in_any_of_the_above_comments",
     "kind": "input",
     "label": "Imaging Artifacts in any of the Above – Comments",
     "raw_options": []
@@ -2552,19 +2552,19 @@
     "label": "Enabed Software Options"
    },
    {
-    "name": "id_35",
+    "name": "lbl_cine",
     "kind": "input",
     "label": "Cine",
     "raw_options": []
    },
    {
-    "name": "id_36",
+    "name": "lbl_please_list_any_other_options",
     "kind": "input",
     "label": "Please list any other options:",
     "raw_options": []
    },
    {
-    "name": "id_37",
+    "name": "lbl_please_list_any_other_options_2",
     "kind": "input",
     "label": "Please list any other options:",
     "raw_options": []
@@ -2574,43 +2574,43 @@
     "label": "Accessories Present:"
    },
    {
-    "name": "id_38",
+    "name": "lbl_working",
     "kind": "input",
     "label": "Working",
     "raw_options": []
    },
    {
-    "name": "id_39",
+    "name": "lbl_skin_spacer",
     "kind": "input",
     "label": "Skin Spacer",
     "raw_options": []
    },
    {
-    "name": "id_40",
+    "name": "lbl_service_manual",
     "kind": "input",
     "label": "Service Manual",
     "raw_options": []
    },
    {
-    "name": "id_41",
+    "name": "lbl_operator_manual",
     "kind": "input",
     "label": "Operator Manual",
     "raw_options": []
    },
    {
-    "name": "id_42",
+    "name": "lbl_testing_phantom",
     "kind": "input",
     "label": "Testing Phantom",
     "raw_options": []
    },
    {
-    "name": "id_43",
+    "name": "lbl_backup_software",
     "kind": "input",
     "label": "Backup Software",
     "raw_options": []
    },
    {
-    "name": "id_44",
+    "name": "lbl_sample_patient_films",
     "kind": "input",
     "label": "Sample Patient Films",
     "raw_options": []
@@ -2719,7 +2719,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -2729,7 +2729,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -2749,7 +2749,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -2759,7 +2759,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -2779,7 +2779,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -2789,7 +2789,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -2829,7 +2829,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_bipolar_coag_note",
     "kind": "input",
     "label": "BiPolar Coag – Note",
     "raw_options": []
@@ -2845,7 +2845,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_monopolar_cut_note",
     "kind": "input",
     "label": "MonoPolar Cut – Note",
     "raw_options": []
@@ -2861,7 +2861,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_monopolar_coag_note",
     "kind": "input",
     "label": "MonoPolar Coag – Note",
     "raw_options": []
@@ -2877,7 +2877,7 @@
     ]
    },
    {
-    "name": "pos_t1_r6_c4",
+    "name": "lbl_foot_switch_note",
     "kind": "input",
     "label": "Foot Switch – Note",
     "raw_options": []
@@ -2986,7 +2986,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -2996,7 +2996,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -3016,7 +3016,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -3026,7 +3026,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -3046,7 +3046,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -3056,7 +3056,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -3096,7 +3096,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_battery_note",
     "kind": "input",
     "label": "Battery – Note",
     "raw_options": []
@@ -3112,7 +3112,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_adult_pad_note",
     "kind": "input",
     "label": "Adult Pad – Note",
     "raw_options": []
@@ -3128,7 +3128,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_neonatal_pad_note",
     "kind": "input",
     "label": "Neonatal Pad – Note",
     "raw_options": []
@@ -3237,7 +3237,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -3247,7 +3247,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -3267,7 +3267,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -3277,7 +3277,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -3297,7 +3297,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -3307,7 +3307,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -3347,7 +3347,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_port_2_burn_note",
     "kind": "input",
     "label": "Port 2 Burn – Note",
     "raw_options": []
@@ -3363,7 +3363,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_port_3_burn_note",
     "kind": "input",
     "label": "Port 3 Burn – Note",
     "raw_options": []
@@ -3379,7 +3379,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_port_4_burn_note",
     "kind": "input",
     "label": "Port 4 Burn – Note",
     "raw_options": []
@@ -3395,7 +3395,7 @@
     ]
    },
    {
-    "name": "pos_t1_r6_c4",
+    "name": "lbl_foot_switch_note",
     "kind": "input",
     "label": "Foot Switch – Note",
     "raw_options": []
@@ -3504,7 +3504,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -3514,7 +3514,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -3534,7 +3534,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -3544,7 +3544,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -3564,7 +3564,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -3574,7 +3574,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -3614,7 +3614,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_sevo_note",
     "kind": "input",
     "label": "Sevo – Note",
     "raw_options": []
@@ -3630,7 +3630,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_iso_note",
     "kind": "input",
     "label": "Iso – Note",
     "raw_options": []
@@ -3646,7 +3646,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_deso_note",
     "kind": "input",
     "label": "Deso – Note",
     "raw_options": []
@@ -3755,7 +3755,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -3765,7 +3765,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -3785,7 +3785,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -3795,7 +3795,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -3815,7 +3815,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -3825,7 +3825,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -3865,7 +3865,7 @@
     ]
    },
    {
-    "name": "pos_t1_r2_c9",
+    "name": "lbl_floor_unlock_note",
     "kind": "input",
     "label": "Floor Unlock – Note",
     "raw_options": []
@@ -3881,7 +3881,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_orient_normal_note",
     "kind": "input",
     "label": "Orient Normal – Note",
     "raw_options": []
@@ -3897,7 +3897,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c9",
+    "name": "lbl_orient_reverse_note",
     "kind": "input",
     "label": "Orient Reverse – Note",
     "raw_options": []
@@ -3913,7 +3913,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_trend_note",
     "kind": "input",
     "label": "Trend – Note",
     "raw_options": []
@@ -3929,7 +3929,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c9",
+    "name": "lbl_reverse_trend_note",
     "kind": "input",
     "label": "Reverse Trend – Note",
     "raw_options": []
@@ -3945,7 +3945,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_height_up_note",
     "kind": "input",
     "label": "Height Up – Note",
     "raw_options": []
@@ -3961,7 +3961,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c9",
+    "name": "lbl_height_down_note",
     "kind": "input",
     "label": "Height Down – Note",
     "raw_options": []
@@ -3977,7 +3977,7 @@
     ]
    },
    {
-    "name": "pos_t1_r6_c4",
+    "name": "lbl_back_up_note",
     "kind": "input",
     "label": "Back Up – Note",
     "raw_options": []
@@ -3993,7 +3993,7 @@
     ]
    },
    {
-    "name": "pos_t1_r6_c9",
+    "name": "lbl_back_down_note",
     "kind": "input",
     "label": "Back Down – Note",
     "raw_options": []
@@ -4009,7 +4009,7 @@
     ]
    },
    {
-    "name": "pos_t1_r7_c4",
+    "name": "lbl_leg_up_note",
     "kind": "input",
     "label": "Leg Up – Note",
     "raw_options": []
@@ -4025,7 +4025,7 @@
     ]
    },
    {
-    "name": "pos_t1_r7_c9",
+    "name": "lbl_leg_down_note",
     "kind": "input",
     "label": "Leg Down – Note",
     "raw_options": []
@@ -4041,7 +4041,7 @@
     ]
    },
    {
-    "name": "pos_t1_r8_c4",
+    "name": "lbl_flex_note",
     "kind": "input",
     "label": "Flex – Note",
     "raw_options": []
@@ -4057,7 +4057,7 @@
     ]
    },
    {
-    "name": "pos_t1_r8_c9",
+    "name": "lbl_reflex_note",
     "kind": "input",
     "label": "Reflex – Note",
     "raw_options": []
@@ -4073,7 +4073,7 @@
     ]
    },
    {
-    "name": "pos_t1_r9_c4",
+    "name": "lbl_level_note",
     "kind": "input",
     "label": "Level – Note",
     "raw_options": []
@@ -4089,7 +4089,7 @@
     ]
    },
    {
-    "name": "pos_t1_r9_c9",
+    "name": "lbl_brakes_note",
     "kind": "input",
     "label": "Brakes – Note",
     "raw_options": []
@@ -4105,7 +4105,7 @@
     ]
    },
    {
-    "name": "pos_t1_r10_c4",
+    "name": "lbl_casters_note",
     "kind": "input",
     "label": "Casters – Note",
     "raw_options": []
@@ -4121,7 +4121,7 @@
     ]
    },
    {
-    "name": "pos_t1_r10_c9",
+    "name": "lbl_power_coard_note",
     "kind": "input",
     "label": "Power Coard – Note",
     "raw_options": []
@@ -4230,7 +4230,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -4240,7 +4240,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -4260,7 +4260,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -4270,7 +4270,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -4290,7 +4290,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -4300,7 +4300,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -4340,7 +4340,7 @@
     ]
    },
    {
-    "name": "pos_t1_r2_c9",
+    "name": "lbl_brake_unlock_note",
     "kind": "input",
     "label": "Brake Unlock – Note",
     "raw_options": []
@@ -4356,7 +4356,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_height_up_note",
     "kind": "input",
     "label": "Height up – Note",
     "raw_options": []
@@ -4372,7 +4372,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c9",
+    "name": "lbl_height_down_note",
     "kind": "input",
     "label": "Height Down – Note",
     "raw_options": []
@@ -4388,7 +4388,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_back_up_note",
     "kind": "input",
     "label": "Back Up – Note",
     "raw_options": []
@@ -4404,7 +4404,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c9",
+    "name": "lbl_back_down_note",
     "kind": "input",
     "label": "Back Down – Note",
     "raw_options": []
@@ -4420,7 +4420,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_leg_up_note",
     "kind": "input",
     "label": "Leg Up – Note",
     "raw_options": []
@@ -4436,7 +4436,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c9",
+    "name": "lbl_leg_down_note",
     "kind": "input",
     "label": "Leg Down – Note",
     "raw_options": []
@@ -4452,7 +4452,7 @@
     ]
    },
    {
-    "name": "pos_t1_r6_c4",
+    "name": "lbl_recylener_mode_note",
     "kind": "input",
     "label": "Recylener Mode – Note",
     "raw_options": []
@@ -4468,7 +4468,7 @@
     ]
    },
    {
-    "name": "pos_t1_r6_c9",
+    "name": "lbl_normal_mode_note",
     "kind": "input",
     "label": "Normal Mode – Note",
     "raw_options": []
@@ -4484,7 +4484,7 @@
     ]
    },
    {
-    "name": "pos_t1_r7_c4",
+    "name": "lbl_side_rail_controlls_note",
     "kind": "input",
     "label": "Side Rail Controlls – Note",
     "raw_options": []
@@ -4500,7 +4500,7 @@
     ]
    },
    {
-    "name": "pos_t1_r7_c9",
+    "name": "lbl_weight_scale_note",
     "kind": "input",
     "label": "Weight Scale – Note",
     "raw_options": []
@@ -4516,7 +4516,7 @@
     ]
    },
    {
-    "name": "pos_t1_r8_c4",
+    "name": "lbl_cpr_mode_note",
     "kind": "input",
     "label": "CPR Mode – Note",
     "raw_options": []
@@ -4532,7 +4532,7 @@
     ]
    },
    {
-    "name": "pos_t1_r8_c9",
+    "name": "lbl_nurse_call_note",
     "kind": "input",
     "label": "Nurse Call – Note",
     "raw_options": []
@@ -4641,7 +4641,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -4651,7 +4651,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -4671,7 +4671,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -4681,7 +4681,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -4701,7 +4701,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -4711,7 +4711,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -4751,7 +4751,7 @@
     ]
    },
    {
-    "name": "pos_t1_r2_c9",
+    "name": "lbl_arm_up_note",
     "kind": "input",
     "label": "Arm Up – Note",
     "raw_options": []
@@ -4767,7 +4767,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_arm_down_note",
     "kind": "input",
     "label": "Arm Down – Note",
     "raw_options": []
@@ -4783,7 +4783,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c9",
+    "name": "lbl_arm_down_note_2",
     "kind": "input",
     "label": "Arm Down – Note",
     "raw_options": []
@@ -4799,7 +4799,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_hold_position_note",
     "kind": "input",
     "label": "Hold Position – Note",
     "raw_options": []
@@ -4815,7 +4815,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c9",
+    "name": "lbl_hold_position_note_2",
     "kind": "input",
     "label": "Hold Position – Note",
     "raw_options": []
@@ -4831,7 +4831,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_brightness_increass_note",
     "kind": "input",
     "label": "Brightness Increass – Note",
     "raw_options": []
@@ -4847,7 +4847,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c9",
+    "name": "lbl_brightness_increase_note",
     "kind": "input",
     "label": "Brightness Increase – Note",
     "raw_options": []
@@ -4863,7 +4863,7 @@
     ]
    },
    {
-    "name": "pos_t1_r6_c4",
+    "name": "lbl_brightness_decrease_note",
     "kind": "input",
     "label": "Brightness Decrease – Note",
     "raw_options": []
@@ -4879,7 +4879,7 @@
     ]
    },
    {
-    "name": "pos_t1_r6_c9",
+    "name": "lbl_brightness_decrease_note_2",
     "kind": "input",
     "label": "Brightness Decrease – Note",
     "raw_options": []
@@ -4895,7 +4895,7 @@
     ]
    },
    {
-    "name": "pos_t1_r7_c4",
+    "name": "lbl_luminescences_note",
     "kind": "input",
     "label": "Luminescences – Note",
     "raw_options": []
@@ -4911,7 +4911,7 @@
     ]
    },
    {
-    "name": "pos_t1_r7_c9",
+    "name": "lbl_luminescence_note",
     "kind": "input",
     "label": "Luminescence – Note",
     "raw_options": []
@@ -5020,7 +5020,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -5030,7 +5030,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -5050,7 +5050,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -5060,7 +5060,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -5080,7 +5080,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -5090,7 +5090,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -5150,7 +5150,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c8",
+    "name": "lbl_fun_test",
     "kind": "input",
     "label": "Fun Test",
     "raw_options": []
@@ -5176,7 +5176,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c8",
+    "name": "lbl_fun_test_2",
     "kind": "input",
     "label": "Fun Test",
     "raw_options": []
@@ -5202,7 +5202,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c8",
+    "name": "lbl_fun_test_3",
     "kind": "input",
     "label": "Fun Test",
     "raw_options": []
@@ -5315,7 +5315,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -5325,7 +5325,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -5345,7 +5345,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -5355,7 +5355,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -5375,7 +5375,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -5385,7 +5385,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -5425,7 +5425,7 @@
     ]
    },
    {
-    "name": "pos_t1_r2_c9",
+    "name": "lbl_defrost_note",
     "kind": "input",
     "label": "Defrost – Note",
     "raw_options": []
@@ -5441,7 +5441,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_30_c_note",
     "kind": "input",
     "label": "30 °C – Note",
     "raw_options": []
@@ -5457,7 +5457,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c9",
+    "name": "lbl_80_c_note",
     "kind": "input",
     "label": "-80 °C – Note",
     "raw_options": []
@@ -5473,7 +5473,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_15_c_note",
     "kind": "input",
     "label": "15 °C – Note",
     "raw_options": []
@@ -5489,7 +5489,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c9",
+    "name": "lbl_40_c_note",
     "kind": "input",
     "label": "-40 °C – Note",
     "raw_options": []
@@ -5505,7 +5505,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_0_c_note",
     "kind": "input",
     "label": "0 °C – Note",
     "raw_options": []
@@ -5521,7 +5521,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c9",
+    "name": "lbl_10_c_note",
     "kind": "input",
     "label": "-10 °C – Note",
     "raw_options": []
@@ -5630,7 +5630,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -5640,7 +5640,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -5660,7 +5660,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -5670,7 +5670,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -5690,7 +5690,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -5700,7 +5700,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -5740,7 +5740,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_brightnes_note",
     "kind": "input",
     "label": "Brightnes – Note",
     "raw_options": []
@@ -5756,7 +5756,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_casters_note",
     "kind": "input",
     "label": "Casters – Note",
     "raw_options": []
@@ -5772,7 +5772,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_wall_mount_note",
     "kind": "input",
     "label": "Wall Mount – Note",
     "raw_options": []
@@ -5881,7 +5881,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -5891,7 +5891,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -5911,7 +5911,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -5921,7 +5921,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -5941,7 +5941,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -5951,7 +5951,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -5991,7 +5991,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_back_down_note",
     "kind": "input",
     "label": "Back Down – Note",
     "raw_options": []
@@ -6007,7 +6007,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_foot_step_note",
     "kind": "input",
     "label": "Foot Step – Note",
     "raw_options": []
@@ -6023,7 +6023,7 @@
     ]
    },
    {
-    "name": "pos_t1_r5_c4",
+    "name": "lbl_heater_note",
     "kind": "input",
     "label": "Heater – Note",
     "raw_options": []
@@ -6132,7 +6132,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -6142,7 +6142,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -6162,7 +6162,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -6172,7 +6172,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -6192,7 +6192,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -6202,7 +6202,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -6242,7 +6242,7 @@
     ]
    },
    {
-    "name": "pos_t1_r3_c4",
+    "name": "lbl_eye_pease_note",
     "kind": "input",
     "label": "Eye Pease – Note",
     "raw_options": []
@@ -6258,7 +6258,7 @@
     ]
    },
    {
-    "name": "pos_t1_r4_c4",
+    "name": "lbl_brightnes_note",
     "kind": "input",
     "label": "Brightnes – Note",
     "raw_options": []
@@ -6367,7 +6367,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -6377,7 +6377,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -6397,7 +6397,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -6407,7 +6407,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -6427,7 +6427,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -6437,7 +6437,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -6564,7 +6564,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -6574,7 +6574,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -6594,7 +6594,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -6604,7 +6604,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -6624,7 +6624,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -6634,7 +6634,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -6751,7 +6751,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -6761,7 +6761,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -6781,7 +6781,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -6791,7 +6791,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -6811,7 +6811,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -6821,7 +6821,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -6895,31 +6895,31 @@
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c1",
+    "name": "lbl_50",
     "kind": "input",
     "label": "50",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c1",
+    "name": "lbl_100",
     "kind": "input",
     "label": "100",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r5_c1",
+    "name": "lbl_200",
     "kind": "input",
     "label": "200",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r6_c1",
+    "name": "lbl_300",
     "kind": "input",
     "label": "300",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r7_c1",
+    "name": "lbl_max",
     "kind": "input",
     "label": "Max",
     "raw_options": []
@@ -6929,37 +6929,37 @@
     "label": "Pacing Record"
    },
    {
-    "name": "pos_t4_r2_c1",
+    "name": "lbl_0",
     "kind": "input",
     "label": "0",
     "raw_options": []
    },
    {
-    "name": "pos_t4_r3_c1",
+    "name": "lbl_40",
     "kind": "input",
     "label": "40",
     "raw_options": []
    },
    {
-    "name": "pos_t4_r4_c1",
+    "name": "lbl_100_2",
     "kind": "input",
     "label": "100",
     "raw_options": []
    },
    {
-    "name": "pos_t4_r5_c1",
+    "name": "lbl_80",
     "kind": "input",
     "label": "80",
     "raw_options": []
    },
    {
-    "name": "pos_t4_r6_c1",
+    "name": "lbl_120",
     "kind": "input",
     "label": "120",
     "raw_options": []
    },
    {
-    "name": "pos_t4_r7_c1",
+    "name": "lbl_max_2",
     "kind": "input",
     "label": "Max",
     "raw_options": []
@@ -7068,7 +7068,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -7078,7 +7078,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -7098,7 +7098,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -7108,7 +7108,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -7128,7 +7128,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -7138,7 +7138,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -7265,7 +7265,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -7275,7 +7275,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -7295,7 +7295,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -7305,7 +7305,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -7325,7 +7325,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -7335,7 +7335,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -7365,43 +7365,43 @@
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c2",
+    "name": "lbl_ekg_set",
     "kind": "input",
     "label": "EKG Set",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c1",
+    "name": "lbl_spo2",
     "kind": "input",
     "label": "SpO2",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c2",
+    "name": "lbl_bp",
     "kind": "input",
     "label": "bp",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c1",
+    "name": "lbl_nibp",
     "kind": "input",
     "label": "NIBP",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c2",
+    "name": "lbl_bpm",
     "kind": "input",
     "label": "bpm",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r5_c1",
+    "name": "lbl_co2",
     "kind": "input",
     "label": "Co2",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r5_c2",
+    "name": "lbl_mmhg",
     "kind": "input",
     "label": "mmHG",
     "raw_options": []
@@ -7510,7 +7510,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -7520,7 +7520,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -7540,7 +7540,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -7550,7 +7550,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -7570,7 +7570,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -7580,7 +7580,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -7610,61 +7610,61 @@
     "raw_options": []
    },
    {
-    "name": "pos_t2_r3_c4",
+    "name": "lbl_rt_monitor",
     "kind": "input",
     "label": "RT Monitor",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r4_c4",
+    "name": "lbl_workstation_cart",
     "kind": "input",
     "label": "Workstation Cart",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r5_c4",
+    "name": "lbl_power_cord",
     "kind": "input",
     "label": "Power Cord",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r6_c4",
+    "name": "lbl_hand_switch",
     "kind": "input",
     "label": "Hand Switch",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r7_c4",
+    "name": "lbl_foot_switch",
     "kind": "input",
     "label": "Foot Switch",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r8_c4",
+    "name": "lbl_skin_spacer",
     "kind": "input",
     "label": "Skin spacer",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r9_c4",
+    "name": "lbl_rt_wheel_cover",
     "kind": "input",
     "label": "RT Wheel Cover",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r10_c4",
+    "name": "lbl_lt_wheel_cover",
     "kind": "input",
     "label": "LT Wheel Cover",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r11_c4",
+    "name": "lbl_nose_cover",
     "kind": "input",
     "label": "Nose Cover",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r12_c4",
+    "name": "lbl_main_frame_c_arm",
     "kind": "input",
     "label": "Main Frame C Arm",
     "raw_options": []
@@ -7773,7 +7773,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -7783,7 +7783,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -7803,7 +7803,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -7813,7 +7813,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -7833,7 +7833,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -7843,7 +7843,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -7873,61 +7873,61 @@
     "raw_options": []
    },
    {
-    "name": "pos_t2_r3_c4",
+    "name": "lbl_rt_monitor",
     "kind": "input",
     "label": "RT Monitor",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r4_c4",
+    "name": "lbl_workstation_cart",
     "kind": "input",
     "label": "Workstation Cart",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r5_c4",
+    "name": "lbl_power_cord",
     "kind": "input",
     "label": "Power Cord",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r6_c4",
+    "name": "lbl_hand_switch",
     "kind": "input",
     "label": "Hand Switch",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r7_c4",
+    "name": "lbl_foot_switch",
     "kind": "input",
     "label": "Foot Switch",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r8_c4",
+    "name": "lbl_skin_spacer",
     "kind": "input",
     "label": "Skin spacer",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r9_c4",
+    "name": "lbl_rt_wheel_cover",
     "kind": "input",
     "label": "RT Wheel Cover",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r10_c4",
+    "name": "lbl_lt_wheel_cover",
     "kind": "input",
     "label": "LT Wheel Cover",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r11_c4",
+    "name": "lbl_nose_cover",
     "kind": "input",
     "label": "Nose Cover",
     "raw_options": []
    },
    {
-    "name": "pos_t2_r12_c4",
+    "name": "lbl_main_frame_c_arm",
     "kind": "input",
     "label": "Main Frame C Arm",
     "raw_options": []
@@ -8036,7 +8036,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -8046,7 +8046,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -8066,7 +8066,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -8076,7 +8076,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -8096,7 +8096,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -8106,7 +8106,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -8223,7 +8223,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -8233,7 +8233,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -8253,7 +8253,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -8263,7 +8263,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -8283,7 +8283,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -8293,7 +8293,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -8333,157 +8333,157 @@
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c1",
+    "name": "lbl_leak_check",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c2",
+    "name": "lbl_leak_check_2",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c3",
+    "name": "lbl_leak_check_3",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c4",
+    "name": "lbl_leak_check_4",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c5",
+    "name": "lbl_leak_check_5",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c6",
+    "name": "lbl_leak_check_6",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c7",
+    "name": "lbl_leak_check_7",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r2_c8",
+    "name": "lbl_leak_check_8",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c0",
+    "name": "lbl_leak_check_9",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c1",
+    "name": "lbl_leak_check_10",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c2",
+    "name": "lbl_leak_check_11",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c3",
+    "name": "lbl_leak_check_12",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c4",
+    "name": "lbl_leak_check_13",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c5",
+    "name": "lbl_leak_check_14",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c6",
+    "name": "lbl_leak_check_15",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c7",
+    "name": "lbl_leak_check_16",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r3_c8",
+    "name": "lbl_leak_check_17",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c0",
+    "name": "lbl_leak_check_18",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c1",
+    "name": "lbl_leak_check_19",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c2",
+    "name": "lbl_leak_check_20",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c3",
+    "name": "lbl_leak_check_21",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c4",
+    "name": "lbl_leak_check_22",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c5",
+    "name": "lbl_leak_check_23",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c6",
+    "name": "lbl_leak_check_24",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c7",
+    "name": "lbl_leak_check_25",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
    },
    {
-    "name": "pos_t3_r4_c8",
+    "name": "lbl_leak_check_26",
     "kind": "input",
     "label": "Leak Check",
     "raw_options": []
@@ -8596,7 +8596,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -8606,7 +8606,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -8626,7 +8626,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -8636,7 +8636,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -8656,7 +8656,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -8666,7 +8666,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -8696,7 +8696,7 @@
     "raw_options": []
    },
    {
-    "name": "id_incolumn3611",
+    "name": "lbl_ekg_set_actual",
     "kind": "input",
     "label": "EKG Set – Actual",
     "raw_options": []
@@ -8712,13 +8712,13 @@
     ]
    },
    {
-    "name": "id_incolumn352",
+    "name": "lbl_spo2_set",
     "kind": "input",
     "label": "SpO2 – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn3612",
+    "name": "lbl_spo2_actual",
     "kind": "input",
     "label": "SpO2 – Actual",
     "raw_options": []
@@ -8734,13 +8734,13 @@
     ]
    },
    {
-    "name": "id_incolumn353",
+    "name": "lbl_nibp_set",
     "kind": "input",
     "label": "NIBP – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn3613",
+    "name": "lbl_nibp_actual",
     "kind": "input",
     "label": "NIBP – Actual",
     "raw_options": []
@@ -8756,13 +8756,13 @@
     ]
    },
    {
-    "name": "id_incolumn354",
+    "name": "lbl_co2_set",
     "kind": "input",
     "label": "Co2 – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn3614",
+    "name": "lbl_co2_actual",
     "kind": "input",
     "label": "Co2 – Actual",
     "raw_options": []
@@ -8901,7 +8901,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -8911,7 +8911,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -8931,7 +8931,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -8941,7 +8941,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -8961,7 +8961,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -8971,7 +8971,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -9084,7 +9084,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -9094,7 +9094,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -9114,7 +9114,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -9124,7 +9124,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -9144,7 +9144,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -9154,7 +9154,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -9341,7 +9341,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -9351,7 +9351,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -9371,7 +9371,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -9381,7 +9381,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -9401,7 +9401,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -9411,7 +9411,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -9519,13 +9519,13 @@
     ]
    },
    {
-    "name": "id_incolumn4511",
+    "name": "lbl_open_set",
     "kind": "input",
     "label": "Open Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn4711",
+    "name": "lbl_door_switch_read",
     "kind": "input",
     "label": "Door Switch – Read",
     "raw_options": []
@@ -9541,13 +9541,13 @@
     ]
    },
    {
-    "name": "id_incolumn4512",
+    "name": "lbl_closed_set",
     "kind": "input",
     "label": "Closed Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn4712",
+    "name": "lbl_door_switch_read_2",
     "kind": "input",
     "label": "Door Switch – Read",
     "raw_options": []
@@ -9563,13 +9563,13 @@
     ]
    },
    {
-    "name": "id_incolumn4513",
+    "name": "lbl_line_voltage_set",
     "kind": "input",
     "label": "Line Voltage – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn4713",
+    "name": "lbl_line_voltage_read",
     "kind": "input",
     "label": "Line Voltage – Read",
     "raw_options": []
@@ -9585,13 +9585,13 @@
     ]
    },
    {
-    "name": "id_incolumn4514",
+    "name": "lbl_thermostat_set",
     "kind": "input",
     "label": "Thermostat – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn4714",
+    "name": "lbl_thermostat_read",
     "kind": "input",
     "label": "Thermostat – Read",
     "raw_options": []
@@ -9700,7 +9700,7 @@
     ]
    },
    {
-    "name": "id_1",
+    "name": "lbl_electrical_safety_set",
     "kind": "input",
     "label": "Electrical Safety – Set",
     "raw_options": [],
@@ -9710,7 +9710,7 @@
     ]
    },
    {
-    "name": "id_2",
+    "name": "lbl_electrical_safety_read",
     "kind": "input",
     "label": "Electrical Safety – Read",
     "raw_options": [],
@@ -9730,7 +9730,7 @@
     ]
    },
    {
-    "name": "id_3",
+    "name": "lbl_battery_replaced_on",
     "kind": "input",
     "label": "Battery – Replaced on",
     "raw_options": [],
@@ -9740,7 +9740,7 @@
     ]
    },
    {
-    "name": "id_4",
+    "name": "lbl_battery_due",
     "kind": "input",
     "label": "Battery – Due",
     "raw_options": [],
@@ -9760,7 +9760,7 @@
     ]
    },
    {
-    "name": "id_5",
+    "name": "lbl_pm_kit_replaced_on",
     "kind": "input",
     "label": "PM Kit – Replaced on",
     "raw_options": [],
@@ -9770,7 +9770,7 @@
     ]
    },
    {
-    "name": "id_6",
+    "name": "lbl_pm_kit_due",
     "kind": "input",
     "label": "PM Kit – Due",
     "raw_options": [],
@@ -9794,13 +9794,13 @@
     ]
    },
    {
-    "name": "id_incolumn3511",
+    "name": "lbl_ekg_set_set",
     "kind": "input",
     "label": "EKG Set – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn3611",
+    "name": "lbl_ekg_set_actual",
     "kind": "input",
     "label": "EKG Set – Actual",
     "raw_options": []
@@ -9816,13 +9816,13 @@
     ]
    },
    {
-    "name": "id_incolumn3512",
+    "name": "lbl_spo2_set",
     "kind": "input",
     "label": "SpO2 – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn3612",
+    "name": "lbl_spo2_actual",
     "kind": "input",
     "label": "SpO2 – Actual",
     "raw_options": []
@@ -9838,13 +9838,13 @@
     ]
    },
    {
-    "name": "id_incolumn3513",
+    "name": "lbl_nibp_set",
     "kind": "input",
     "label": "NIBP – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn3613",
+    "name": "lbl_nibp_actual",
     "kind": "input",
     "label": "NIBP – Actual",
     "raw_options": []
@@ -9860,13 +9860,13 @@
     ]
    },
    {
-    "name": "id_incolumn3514",
+    "name": "lbl_co2_set",
     "kind": "input",
     "label": "Co2 – Set",
     "raw_options": []
    },
    {
-    "name": "id_incolumn3614",
+    "name": "lbl_co2_actual",
     "kind": "input",
     "label": "Co2 – Actual",
     "raw_options": []

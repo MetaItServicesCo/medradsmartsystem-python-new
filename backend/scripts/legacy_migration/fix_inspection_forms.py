@@ -112,28 +112,61 @@ def rebuild_legacy_form(schema: dict[str, Any], definitions: dict[str, Any],
     Its legacy definition, plus every question its migrated inspections
     recorded, through the corrected converter: the standard checks, notes and
     standard readings go to the report, and every reading box gets its own
-    field. No field the form has today is ever dropped; a form edited in the
-    app, or one without a legacy definition, is only cleaned. Returns the
-    schema unchanged when there is nothing to do.
+    field. A form without a legacy definition uses its own fields as the
+    definition. No field the form has today is ever dropped, except the
+    duplicated report-owned ones; a form edited in the app is not touched.
+    Returns the schema unchanged when there is nothing to do.
     """
     grid = (schema or {}).get("custom_grid") or {}
     if (schema or {}).get("source") != "legacy_pm_desc" or not isinstance(grid.get("cells"), list):
         return schema
     legacy_id = schema.get("legacy_pm_desc_id")
     definition = definitions.get(str(legacy_id)) if legacy_id is not None else None
-    if not definition:
+    current = _items_from_grid(grid["cells"])
+    if not definition and current is None:
         cleaned, _ = clean_grid_schema(schema)
         return cleaned
-    items = merge_item_lists(copy.deepcopy(definition["items"]), copy.deepcopy(recorded))
+    current = current or []
+    # Without a legacy definition, the form's own fields are its definition.
+    base = definition["items"] if definition else [item for item in current if not _derived_key(item.get("name", ""))]
+    items = merge_item_lists(copy.deepcopy(base), copy.deepcopy(recorded))
     present = {item["name"] for item in items if item["kind"] != "heading"}
-    current = _items_from_grid(grid["cells"]) or []
-    missing = [item for item in current if item["kind"] != "heading" and item["name"] not in present]
+    # Fields keyed by element id or position came from an earlier run of this
+    # correction; they are rebuilt by label now (see superseded_fields).
+    missing = [item for item in current if item["kind"] != "heading" and item["name"] not in present
+               and not _derived_key(item["name"])]
     if missing:
         items = merge_item_lists(items, missing)
     rebuilt = build_grid_schema_from_items(items, schema.get("title") or grid.get("title") or "", legacy_id)
     if rebuilt["custom_grid"]["cells"] == grid["cells"]:
         return schema
     return {**schema, "custom_grid": {**grid, **rebuilt["custom_grid"]}}
+
+
+def _derived_key(name: str) -> bool:
+    """A field key an earlier run derived from an element id or position."""
+    return name.startswith(("id_", "pos_")) and note_input_name(name) is None
+
+
+def superseded_fields(old: dict[str, Any], new: dict[str, Any]) -> dict[str, str]:
+    """Earlier id/position-keyed cells -> the label-keyed cell that replaces them.
+
+    So an answer typed into one of those fields after an earlier run is carried
+    to the field that now shows the same reading.
+    """
+    new_cells = _item_cells(new)
+    by_label: dict[str, str] = {}
+    for cell_id, cell in new_cells.items():
+        label = " ".join(str(((cell.get("blocks") or [{}])[0]).get("label") or "").split()).lower()
+        by_label.setdefault(label, cell_id)
+    mapping: dict[str, str] = {}
+    for cell_id, cell in _item_cells(old).items():
+        if cell_id in new_cells or not _derived_key(cell_id[len("item_"):]):
+            continue
+        label = " ".join(str(((cell.get("blocks") or [{}])[0]).get("label") or "").split()).lower()
+        if label in by_label:
+            mapping[cell_id] = by_label[label]
+    return mapping
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -196,6 +229,7 @@ def correct(conn, report: dict[str, Any]) -> None:
     definitions = _legacy_form_items()
 
     removed_by_form: dict[int, dict[str, tuple[str, str]]] = {}
+    superseded_by_form: dict[int, dict[str, str]] = {}
     for form_id, name, raw_schema in conn.execute(select(forms.c.id, forms.c.name, forms.c.schema)).all():
         schema = _as_dict(raw_schema)
         if (
@@ -210,6 +244,7 @@ def correct(conn, report: dict[str, Any]) -> None:
         if cleaned is schema:
             continue
         removed_by_form[form_id] = _removed_targets(schema, cleaned)
+        superseded_by_form[form_id] = superseded_fields(schema, cleaned)
         before, after = set(_item_cells(schema)), set(_item_cells(cleaned))
         conn.execute(update(forms).where(forms.c.id == form_id).values(schema=cleaned))
         report["forms_cleaned"].append((form_id, name.strip(), len(before - after), len(after - before)))
@@ -241,6 +276,16 @@ def correct(conn, report: dict[str, Any]) -> None:
                 report["compliance_cleared"] += 1
 
         grid_values = data.get("custom_grid_values") or {}
+        carried = {}
+        for old_cell, new_cell in superseded_by_form.get(form_id, {}).items():
+            answer = grid_values.get(f"{old_cell}__{ANSWER_BLOCK_ID}")
+            new_key = f"{new_cell}__{ANSWER_BLOCK_ID}"
+            if str(answer or "").strip() and not str(grid_values.get(new_key) or "").strip():
+                carried[new_key] = answer
+        if carried:
+            grid_values = {**grid_values, **carried}
+            data["custom_grid_values"] = grid_values
+            report["readings_carried"] += len(carried)
         for cell_id, (kind, target) in removed_by_form.get(form_id, {}).items():
             answer = grid_values.get(f"{cell_id}__{ANSWER_BLOCK_ID}")
             if kind == "check":
@@ -287,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report: dict[str, Any] = {
         "templates_fixed": [], "forms_cleaned": [], "inspections_filled": 0,
-        "compliance_cleared": 0, "notes_carried": 0, "check_overrides": [], "check_conflicts": [],
+        "compliance_cleared": 0, "notes_carried": 0, "readings_carried": 0, "check_overrides": [], "check_conflicts": [],
     }
     engine = create_engine(args.database_url)
     with engine.connect() as conn:
@@ -311,6 +356,7 @@ def main(argv: list[str] | None = None) -> int:
     print("inspections given their checks / notes: {}".format(report["inspections_filled"]))
     print("raw HTML cleared from compliance field: {}".format(report["compliance_cleared"]))
     print("notes typed into a removed box, carried to Biomed Notes: {}".format(report["notes_carried"]))
+    print("readings carried from fields of an earlier run to their label-keyed field: {}".format(report["readings_carried"]))
     overrides = report["check_overrides"]
     print("built-in checks updated from an answer given in a removed duplicate cell: {}".format(len(overrides)))
     for number, key, previous, value in overrides[:100]:
