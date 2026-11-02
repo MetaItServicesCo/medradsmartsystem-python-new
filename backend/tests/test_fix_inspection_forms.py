@@ -182,8 +182,10 @@ ok("the generated legacy template uses the sections the report screen reads",
    all(isinstance(section, dict) and section.get("key") for section in LEGACY_REPORT_SCHEMA["sections"]))
 
 # ── The correction script, on a database shaped like production ────────────
-db_file = pathlib.Path(tempfile.mkdtemp()) / "fix.db"
-url = "sqlite:///{}".format(db_file.as_posix())
+# SQLite by default; FIX_FORMS_TEST_DB runs the same scenario against an empty
+# PostgreSQL database, the engine production uses.
+url = os.environ.get("FIX_FORMS_TEST_DB") or "sqlite:///{}".format(
+    (pathlib.Path(tempfile.mkdtemp()) / "fix.db").as_posix())
 engine = sa.create_engine(url)
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
@@ -278,6 +280,15 @@ def snapshot():
 baseline = snapshot()
 fix.main(["--database-url", url])
 ok("a dry run writes nothing", snapshot() == baseline)
+with engine.connect() as conn:
+    trial = conn.begin()
+    fix.correct(conn, {"templates_fixed": [], "forms_cleaned": [], "inspections_filled": 0, "compliance_cleared": 0,
+                       "notes_carried": 0, "readings_carried": 0, "check_overrides": [], "check_conflicts": []})
+    # On PostgreSQL a connection left streaming runs its UPDATEs as server-side
+    # cursors, which fails; streaming belongs to the one read query.
+    ok("streaming is set on the read query, never left on the connection that writes",
+       "stream_results" not in conn.get_execution_options())
+    trial.rollback()
 
 fix.main(["--database-url", url, "--apply"])
 forms_after, rows_after = snapshot()

@@ -189,10 +189,10 @@ def main(argv: list[str] | None = None) -> int:
         for form_id, name, schema in conn.execute(select(forms.c.id, forms.c.name, forms.c.schema)):
             form_keys[form_id] = form_field_keys(_as_dict(schema))
             form_names[form_id] = (name or "").strip()
-        stream = conn.execution_options(stream_results=True).execute(select(
+        stream = conn.execute(select(
             inspections.c.inspection_number, inspections.c.form_template_id, inspections.c.form_data,
             inspections.c.corrective_actions, inspections.c.compliance_requirement,
-        ))
+        ).execution_options(stream_results=True))
         verify(stream, form_keys, report)
     print_report(report, form_names)
     return 1 if report["mismatched"] else 0

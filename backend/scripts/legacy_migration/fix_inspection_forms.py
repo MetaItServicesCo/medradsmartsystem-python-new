@@ -219,8 +219,11 @@ def correct(conn, report: dict[str, Any]) -> None:
     # The questions each form's migrated inspections recorded, as the migration
     # merged them. Streamed, so the legacy pages are never all held at once.
     recorded: dict[int, dict[str, dict[str, Any]]] = {}
-    stream = conn.execution_options(stream_results=True).execute(
-        select(inspections.c.form_template_id, inspections.c.form_data))
+    # Streaming is set on this one query: set on the connection, it would turn
+    # every later statement, the UPDATEs included, into a server-side cursor,
+    # which PostgreSQL refuses for anything but a SELECT.
+    stream = conn.execute(
+        select(inspections.c.form_template_id, inspections.c.form_data).execution_options(stream_results=True))
     for form_id, raw_form_data in stream:
         form_data = _as_dict(raw_form_data)
         legacy = form_data.get("legacy_report") if form_data.get("source") == SOURCE_SYSTEM else None
