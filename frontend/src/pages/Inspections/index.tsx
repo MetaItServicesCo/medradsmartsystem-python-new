@@ -38,6 +38,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { toast } from 'react-toastify'
 import { CanvasFormBuilder, CanvasFormViewer, type CanvasFormSchema, type CanvasFormValues } from './CanvasFormBuilder'
+import { canvasValuesFromGrid, gridHasContent, gridToCanvas } from '@/utils/gridToCanvas'
 
 import {
   addInspectionBatchAsset,
@@ -1083,6 +1084,8 @@ const Inspections = () => {
   const [formBuilderEngine, setFormBuilderEngine] = useState<'grid' | 'canvas'>('grid')
   const [canvasFormSchema, setCanvasFormSchema] = useState<CanvasFormSchema | null>(null)
   const [canvasFormValues, setCanvasFormValues] = useState<CanvasFormValues>({})
+  // Leaving a canvas for the grid cannot convert it, so it is confirmed first.
+  const [confirmGridSwitch, setConfirmGridSwitch] = useState(false)
   const [formBuilderSchema, setFormBuilderSchema] = useState<InspectionFormSchema>(() => normalizeInspectionFormSchema({ sections: [] }))
   const [formBuilderFormioForm, setFormBuilderFormioForm] = useState<FormioFormSchema>(() => createEmptyFormioForm())
   const [formBuilderRows, setFormBuilderRows] = useState(3)
@@ -1785,6 +1788,15 @@ const Inspections = () => {
     mutationFn: async () => {
       const name = formBuilderName.trim()
       if (!name) throw new Error('Form name is required')
+      // Saving writes only the editor on screen, so an empty one would replace
+      // the form's grid or canvas with nothing. Refuse that instead.
+      const canvasHasContent = Boolean(canvasFormSchema?.elements?.length)
+      if (formBuilderEngine === 'grid' && !gridHasContent(formBuilderSchema.custom_grid) && canvasHasContent) {
+        throw new Error('The grid is empty. Build the grid first, or switch back to Canvas to keep the canvas layout.')
+      }
+      if (formBuilderEngine === 'canvas' && !canvasHasContent && gridHasContent(formBuilderSchema.custom_grid)) {
+        throw new Error('The canvas is empty. Add fields first, or switch back to Grid to keep the grid.')
+      }
       const payload = {
         name,
         description: formBuilderDescription.trim() || null,
@@ -1883,6 +1895,16 @@ const Inspections = () => {
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || e.message || 'Could not archive this form'),
   })
+
+  // Each report opens with its own canvas answers: those saved with it, or for
+  // a form converted from a grid, the answers recorded against that grid.
+  useEffect(() => {
+    const canvas = activeReportSchema?.canvas_form
+    const saved = (reportInspection?.form_data as any)?.canvas_values
+    if (saved && typeof saved === 'object') setCanvasFormValues(saved)
+    else if (canvas?.elements?.length) setCanvasFormValues(canvasValuesFromGrid(canvas, (reportInspection?.form_data as any)?.custom_grid_values))
+    else setCanvasFormValues({})
+  }, [reportInspection, activeReportSchema?.canvas_form])
 
   useEffect(() => {
     if (reportInspection) {
@@ -2127,6 +2149,30 @@ const Inspections = () => {
     setFormBuilderColumns(3)
     setTablePickerHover(null)
     setFormBuilderOpen(true)
+  }
+
+  // Switching editors on an existing form carries its content across: a grid
+  // becomes a canvas laid out the same way. A canvas cannot become a grid, so
+  // that switch is confirmed, and the canvas stays saved unless a grid is
+  // built and saved in its place.
+  const switchBuilderEngine = (engine: 'grid' | 'canvas', confirmed = false) => {
+    if (engine === formBuilderEngine) return
+    if (engine === 'canvas') {
+      if (!canvasFormSchema?.elements?.length && gridHasContent(formBuilderSchema.custom_grid)) {
+        setCanvasFormSchema(gridToCanvas(formBuilderSchema.custom_grid!))
+        toast.info('The grid was laid out on the canvas. Save to keep it, or switch back to Grid to discard it.')
+      } else if (!canvasFormSchema) {
+        setCanvasFormSchema({ canvas_width: 1080, canvas_height: 900, elements: [] })
+      }
+      setFormBuilderEngine('canvas')
+      return
+    }
+    if (!confirmed && canvasFormSchema?.elements?.length && !gridHasContent(formBuilderSchema.custom_grid)) {
+      setConfirmGridSwitch(true)
+      return
+    }
+    setConfirmGridSwitch(false)
+    setFormBuilderEngine('grid')
   }
 
   const openEditFormBuilder = (form: InspectionFormOption) => {
@@ -3062,6 +3108,7 @@ const Inspections = () => {
     const partTotal = (normalizedReport.parts || []).reduce((sum: number, part: any) => sum + Number(part.price || 0), 0)
     const formData = {
       ...normalizedReport,
+      ...(activeReportSchema?.canvas_form?.elements?.length ? { canvas_values: canvasFormValues } : {}),
       form_template: {
         id: formTemplateId,
         name: formTemplateName,
@@ -4795,6 +4842,22 @@ const Inspections = () => {
         ]}
       </Menu>
 
+      <Dialog open={confirmGridSwitch} onClose={() => setConfirmGridSwitch(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '18px' } }}>
+        <DialogTitle sx={{ fontWeight: 900, color: '#1E1B4B' }}>Switch to the grid editor?</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 14, color: '#334155' }}>
+            A canvas layout cannot be turned into a grid, so the grid editor opens empty.
+            Your canvas is kept: it is only replaced if you build a grid and save. Switch back to Canvas at any time to keep it.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setConfirmGridSwitch(false)} sx={{ fontWeight: 900 }}>Stay on Canvas</Button>
+          <Button onClick={() => switchBuilderEngine('grid', true)} variant="contained" sx={{ borderRadius: '12px', fontWeight: 900, textTransform: 'none' }}>
+            Open Grid Editor
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* One dialog for both, because the choice depends on something the
           user cannot see: whether any inspection was ever run against this
           form. It says which, and offers only what is actually possible. */}
@@ -5210,10 +5273,7 @@ const Inspections = () => {
                     {(['grid', 'canvas'] as const).map(eng => (
                       <Box
                         key={eng}
-                        onClick={() => {
-                          setFormBuilderEngine(eng)
-                          if (eng === 'canvas' && !canvasFormSchema) setCanvasFormSchema({ canvas_width: 1080, canvas_height: 900, elements: [] })
-                        }}
+                        onClick={() => switchBuilderEngine(eng)}
                         sx={{
                           px: 2, py: 0.5, cursor: 'pointer', fontSize: 12, fontWeight: 800,
                           bgcolor: formBuilderEngine === eng ? '#7C3AED' : 'transparent',
