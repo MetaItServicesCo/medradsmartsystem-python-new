@@ -82,7 +82,7 @@ const SERVICE_SEARCH_FIELDS = [
   { value: 'equipment', label: 'Equipment' },
   { value: 'priority', label: 'Priority' },
   { value: 'status', label: 'Status' },
-  { value: 'requester', label: 'Requester' },
+  { value: 'requester', label: 'Created By' },
   { value: 'created', label: 'Created' },
 ]
 
@@ -473,7 +473,7 @@ const ServiceRequestList = () => {
                 <TableCell>Equipment</TableCell>
                 <TableCell>Priority</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>Requester</TableCell>
+                <TableCell>Created By</TableCell>
                 <TableCell>Created</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
