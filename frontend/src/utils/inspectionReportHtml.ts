@@ -386,9 +386,8 @@ const customGridHtml = (inspection: InspectionReportLike): string => {
   return checkTable + fieldTable
 }
 
-const gridHtml = (inspection: InspectionReportLike) => {
-  const custom = customGridHtml(inspection)
-  if (custom) return custom
+// The standard nine-check table, filled from the report's own checks.
+const standardGridHtml = (inspection: InspectionReportLike) => {
   const data = reportData(inspection)
   const checks = data.checks || {}
   const measurements: any[] = data.measurements || []
@@ -422,6 +421,88 @@ const gridHtml = (inspection: InspectionReportLike) => {
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`
+}
+
+const answerText = (value: unknown): string => {
+  if (Array.isArray(value)) return value.map(String).join(', ')
+  if (value === true || value === 'true') return 'Yes'
+  if (value === false || value === undefined || value === null) return ''
+  return String(value)
+}
+
+const hasAnswer = (value: unknown) =>
+  Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== '' && value !== false
+
+// A canvas table with its answers in place: text cells as text, a bare tick
+// box as a filled or empty dot, any other field as its answer.
+const canvasTableAnswersHtml = (element: any, values: Record<string, unknown>): string => {
+  const rows: any[][] = Array.isArray(element.cells) ? element.cells : []
+  if (!rows.length) return ''
+  const body = rows
+    .map((row, rowIndex) => {
+      const header = element.headerRow && rowIndex === 0
+      const cells = (row || [])
+        .map((cell: any) => {
+          if (!cell || cell.hidden) return ''
+          const spans = [
+            Number(cell.colSpan) > 1 ? ` colspan="${Number(cell.colSpan)}"` : '',
+            Number(cell.rowSpan) > 1 ? ` rowspan="${Number(cell.rowSpan)}"` : '',
+          ].join('')
+          const value = values[cell.id]
+          let inner: string
+          if (cell.type === 'label' || cell.type === 'heading') inner = esc(cell.label || '')
+          else if ((cell.type === 'radio' || cell.type === 'checkbox') && !(cell.options || []).length) inner = dot(value === true || value === 'true')
+          else inner = `${cell.label ? `${esc(cell.label)}: ` : ''}<b>${esc(answerText(value))}</b>`
+          return `<td${spans} style="border:1px solid #CBD5E1;padding:5px 6px;background:${
+            header || cell.bgColor === 'grey' ? '#F1F5F9' : '#fff'};font-size:11px;font-weight:${
+            header || cell.fontWeight === 'bold' ? 800 : 500};text-align:${cell.align || 'left'};vertical-align:middle">${inner}</td>`
+        })
+        .join('')
+      return `<tr>${cells}</tr>`
+    })
+    .join('')
+  return `<table style="width:100%;border-collapse:collapse;table-layout:fixed"><tbody>${body}</tbody></table>`
+}
+
+// A filled canvas form. On screen its fields sit at fixed positions; on paper
+// it is printed top to bottom as each question with its answer, so a long
+// answer can never run over the next field. Returns '' when the inspection
+// has no canvas form or nothing was answered on it.
+const canvasAnswersHtml = (inspection: InspectionReportLike): string => {
+  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  const elements: any[] = Array.isArray(schema?.canvas_form?.elements) ? schema.canvas_form.elements : []
+  if (!elements.length) return ''
+  const values: Record<string, unknown> = reportData(inspection).canvas_values || {}
+  if (!Object.values(values).some(hasAnswer)) return ''
+  const rows = elements
+    .slice()
+    .sort((a, b) => (Number(a.y) || 0) - (Number(b.y) || 0) || (Number(a.x) || 0) - (Number(b.x) || 0))
+    .map(element => {
+      if (element.type === 'heading' || element.type === 'label') {
+        return element.label ? `<tr><td colspan="2" class="k" style="font-weight:900">${esc(element.label)}</td></tr>` : ''
+      }
+      if (element.type === 'signature') return ''
+      if (element.type === 'table') {
+        const table = canvasTableAnswersHtml(element, values)
+        return table ? `<tr><td colspan="2">${table}</td></tr>` : ''
+      }
+      return `<tr><td class="k">${esc(element.label || '-')}</td><td>${esc(answerText(values[element.id]))}</td></tr>`
+    })
+    .join('')
+  return rows ? `<table class="doc notes" style="margin-top:8px"><tbody>${rows}</tbody></table>` : ''
+}
+
+// The inspection section of a printed report. An app-built grid form prints
+// its own answers, as it always has. A migrated legacy form's nine standard
+// checks were moved out of the form into the report's own table, so it prints
+// that table and the form's device-specific answers, as it did before. Every
+// other report prints the standard table, followed by a canvas form's answers
+// when it has one.
+const gridHtml = (inspection: InspectionReportLike) => {
+  const custom = customGridHtml(inspection)
+  const schema: any = inspection.form_schema || inspection.attached_form_schema || inspection.form_template_schema
+  if (custom && schema?.source !== 'legacy_pm_desc') return custom
+  return standardGridHtml(inspection) + custom + canvasAnswersHtml(inspection)
 }
 
 const biomedNotesHtml = (inspection: InspectionReportLike) => {
